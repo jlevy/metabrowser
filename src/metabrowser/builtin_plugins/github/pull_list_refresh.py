@@ -390,6 +390,8 @@ async def refresh_pull_list(
                             "GitHub's API rate limit is exhausted",
                             reset_at=last_refresh.reset_at,
                         )
+                    # A delta scan vouches for what GitHub had when it asked for its first page.
+                    asked_at = utc_stamp(pull_list.utc_now())
                     page = await _read_page(
                         repository, "all" if updated else scan, cursor, login=login, updated=updated
                     )
@@ -403,7 +405,11 @@ async def refresh_pull_list(
                 cursors, covered = dict(state.cursors), dict(state.covered)
                 if updated:
                     retry_state = state.model_copy(
-                        update={"delta_cursor": None, "delta_started": False}
+                        update={
+                            "delta_cursor": None,
+                            "delta_started": False,
+                            "delta_started_at": None,
+                        }
                     )
                     retry = True
                 else:
@@ -434,6 +440,11 @@ async def refresh_pull_list(
             }
             if updated:
                 watermark = state.delta_watermark if state.delta_started else page.latest
+                started_at = (
+                    state.delta_started_at
+                    if state.delta_started and state.delta_started_at is not None
+                    else asked_at
+                )
                 reached = page.done or any(
                     state.watermark is not None and row.updated_at < state.watermark
                     for row in page.rows
@@ -442,9 +453,10 @@ async def refresh_pull_list(
                     delta_started=not reached,
                     delta_cursor=None if reached else page.cursor,
                     delta_watermark=None if reached else watermark,
+                    delta_started_at=None if reached else started_at,
                 )
                 if reached:
-                    changes.update(fetched_at=now, watermark=watermark or state.watermark)
+                    changes.update(fetched_at=started_at, watermark=watermark or state.watermark)
             else:
                 cursors, covered, done = dict(state.cursors), dict(state.covered), dict(state.done)
                 cursors[scan], covered[scan], done[scan] = (

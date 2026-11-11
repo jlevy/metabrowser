@@ -91,6 +91,9 @@ class CatalogState(BaseModel):
     delta_cursor: str | None = None
     delta_watermark: str | None = None
     delta_started: bool = False
+    # When the running delta scan asked for its first page, which its fetched_at becomes:
+    # a row changed later can sit on a page already read.
+    delta_started_at: str | None = None
     truncated: bool = False
 
     @model_validator(mode="after")
@@ -109,7 +112,13 @@ class CatalogState(BaseModel):
             raise ValueError("invalid catalog identity")
         if not 1 <= len(self.repository_id) <= 256:
             raise ValueError("invalid repository identity")
-        for stamp in (self.fetched_at, self.count_at, self.watermark, self.delta_watermark):
+        for stamp in (
+            self.fetched_at,
+            self.count_at,
+            self.watermark,
+            self.delta_watermark,
+            self.delta_started_at,
+        ):
             if stamp is not None:
                 parse_stamp(stamp)
         return self
