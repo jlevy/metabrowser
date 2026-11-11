@@ -1,4 +1,14 @@
-"""Bounded shared loads for immutable values on one event loop."""
+"""Shared loads of immutable values on one event loop.
+
+A caller asks for a key's value with the coroutine that produces it. A ready value is
+returned at once, a load already running is joined, and otherwise this call's load starts
+and later callers join it. Cancelling a waiter cancels only that waiter: the load goes on
+for the others and finishes even when every waiter has gone. A failed or cancelled load
+keeps nothing, so the next call loads again.
+
+Not specific to the repository cache: the GitHub plugin shares a comparison's manifest
+load this way, and a revision page's Markdown render.
+"""
 
 from __future__ import annotations
 
@@ -8,16 +18,11 @@ from collections.abc import Awaitable, Callable, Hashable
 from functools import partial
 
 
-class LoadingCacheBusyError(Exception):
-    """All producer slots are occupied by different keys."""
-
-
 class LoadingCache[K: Hashable, V]:
-    """Return a ready value or share one producer. Cancelling a waiter is local."""
+    """Return a ready value or share one producer, keeping at most *max_values* values."""
 
-    def __init__(self, *, max_values: int, max_loads: int | None = None) -> None:
+    def __init__(self, *, max_values: int) -> None:
         self._max_values = max_values
-        self._max_loads = max_loads
         self._ready: OrderedDict[K, V] = OrderedDict()
         self._loading: dict[K, asyncio.Task[V]] = {}
 
@@ -27,8 +32,6 @@ class LoadingCache[K: Hashable, V]:
             return self._ready[key]
         task = self._loading.get(key)
         if task is None:
-            if self._max_loads is not None and len(self._loading) >= self._max_loads:
-                raise LoadingCacheBusyError
 
             async def produce() -> V:
                 # Register ownership first, including under eager task factories.
@@ -48,3 +51,6 @@ class LoadingCache[K: Hashable, V]:
         self._ready[key] = task.result()
         if len(self._ready) > self._max_values:
             self._ready.popitem(last=False)
+
+
+__all__ = ["LoadingCache"]

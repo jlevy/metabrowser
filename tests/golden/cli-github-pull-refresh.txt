@@ -22,6 +22,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -257,6 +259,8 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": "<RECORD 7>",
     "core_preview": null
   },
@@ -282,6 +286,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null
 }
@@ -334,6 +340,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null
 }
@@ -376,6 +384,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -401,6 +411,8 @@ status: 200
     "refreshing": false,
     "last_refresh": null,
     "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
     "record": null,
     "core_preview": null
   },
@@ -428,6 +440,8 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
     "record": null,
     "core_preview": null
   },
@@ -453,6 +467,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -561,6 +577,8 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "record": "<RECORD 10>",
     "core_preview": null
   },
@@ -666,6 +684,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -894,6 +914,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -999,6 +1021,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -1030,6 +1054,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null
 }

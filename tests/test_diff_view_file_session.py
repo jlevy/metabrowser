@@ -27,11 +27,13 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.builtin_plugins.github.pull_route import snapshot_route
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.records import StoreOperation
 from metabrowser.git.tree_source import GitPath
@@ -60,6 +62,7 @@ from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _settle, _stand_in_times, _write_state
 
 SESSION = "diff-view-file-session.js"
+_STORE_STAND_IN = "0123456789abcdef"
 # What the shell writes into a page on a pin: the commit and ref it was rendered for.
 _PAGE_PIN = re.compile(r"window\.METABROWSER_SOURCE_PIN=(\{.*?\});</script>")
 
@@ -129,6 +132,24 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["pull"] = comparison(
                 left=ids["base"], right=ids["second"], base_policy="merge_base"
             )
+            # The routes a pull request's envelope names for that comparison, by the
+            # server's own spelling. This mirror is not a GitHub repository, so no envelope
+            # names them; and a store's token is derived from its path, so a fixed one
+            # stands in for it.
+            merged = recorded["pull"]["body"]["resolved"]["left"]["id"]
+            recorded["pull_routes"] = {
+                "comparison": "/api/plugin/github/pull-comparison?"
+                + urlencode(
+                    {
+                        "number": 7,
+                        "left": merged,
+                        "right": ids["second"],
+                        "base_policy": "merge_base",
+                        "store": _STORE_STAND_IN,
+                    }
+                ),
+                "snapshot": snapshot_route(7, merged, ids["second"], store=_STORE_STAND_IN),
+            }
             patch = view("changes.patch").removeprefix("/view/")
             recorded["patch"] = answer(
                 client.get("/api/plugin/diff/document", params={"path": patch})
@@ -218,6 +239,7 @@ def test_recording_is_what_the_servers_answer(
     assert recorded["other_fetch_failed"]["body"]["code"] == "selection_fetch_failed"
     assert recorded["folder_page"] is None
     assert recorded["folder_refused"]["status"] == 409
+    assert recorded["pull_routes"]["snapshot"].startswith("/api/plugin/github/pull-snapshot?")
     check_recording(
         "diff-view-file-responses.json", recorded, transcript="cli-ui-diff-view-file.tryscript.md"
     )
@@ -246,8 +268,10 @@ def test_only_a_pinned_page_asks_for_the_view_file_module() -> None:
     assert asked["modules"] == ["diff-view-file.js"]
     assert asked["bars"] == {}
     assert any(controls for controls in pinned["bars"].values())
-    # Nothing later in the session loads anything more.
-    assert not any("modules" in step for step in steps[2:])
+    # Nothing later in the session loads anything more, but the route codec beside a
+    # checkout, whose shell does not load it.
+    later = {step["step"]: step["modules"] for step in steps[2:] if "modules" in step}
+    assert later == {"beside a checkout both sides open on their revision page": [CODEC]}
 
 
 def test_a_module_that_does_not_load_is_said_and_logged() -> None:
@@ -277,7 +301,26 @@ def test_a_module_that_does_not_load_is_said_and_logged() -> None:
 
 
 _LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
+_SNAPSHOT = re.compile(r"link (/api/plugin/github/pull-snapshot\?\S+) · Open .* at ([0-9a-f]{12}) ")
+CODEC = "/static/git-path.js"
 _SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
+
+
+def _snapshot_file(href: str, short: str) -> tuple[str, str]:
+    """A revision-page link as the route reads it: the side's commit and its `/view/` path.
+
+    The page appends ``side`` and ``path`` to the route the server named and nothing else,
+    and names the commit of the side it opens.
+    """
+
+    query = parse_qs(urlsplit(href).query, strict_parsing=True)
+    assert sorted(query) == ["left", "number", "path", "right", "side", "store"], href
+    assert all(len(values) == 1 for values in query.values()), href
+    side = query["side"][0]
+    commit = query["left" if side == "base" else "right"][0]
+    assert commit.startswith(short), (href, short)
+    GitPath.from_wire(query["path"][0])
+    return short, "/view/" + query["path"][0]
 
 
 def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -> None:
@@ -297,6 +340,9 @@ def test_every_side_the_session_offers_is_a_file_at_its_commit(tmp_path: Path) -
                 link = _LINK.search(control)
                 if link is not None:
                     offered.add((link.group(2), link.group(1)))
+                snapshot = _SNAPSHOT.search(control)
+                if snapshot is not None:
+                    offered.add(_snapshot_file(snapshot.group(1), snapshot.group(2)))
         for request in step["requests"]:
             switch = _SWITCH.match(request)
             if switch is not None:

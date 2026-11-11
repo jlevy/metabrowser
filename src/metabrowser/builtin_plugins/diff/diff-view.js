@@ -2549,7 +2549,8 @@ function measureInContainer(root, container) {
  *   showSummary?: boolean,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
- *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">
+ *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
+ *   isSnapshotTarget?: (value: string, image: boolean) => boolean
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -2615,6 +2616,9 @@ export function mountDiffView(container, document_, api, options = {}) {
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
+        ...(options.isSnapshotTarget === undefined
+          ? {}
+          : { isSnapshotTarget: options.isSnapshotTarget }),
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -2694,7 +2698,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   if (view.markdown !== null) {
     const pane = scrollerOf(view);
     const observerRoot = pane === view.root.ownerDocument?.scrollingElement ? null : pane;
-    view.markdown.controller.observe(view.root, observerRoot, HYDRATION_AHEAD_PX);
+    view.markdown.controller.observe(view.root, observerRoot);
   }
   // Drawing changes the root's height, which this also reports, so it waits for a task of its
   // own: done in the callback, it would be a ResizeObserver loop error. A width is one frame

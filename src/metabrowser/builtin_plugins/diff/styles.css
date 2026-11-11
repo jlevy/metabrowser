@@ -423,9 +423,18 @@
   margin-block: 2px;
 }
 
-.metabrowser-diff-host .diff-markdown-control + .diff-file-view,
-.metabrowser-diff-host .diff-markdown-control + .diff-file-copy {
+.metabrowser-diff-host .diff-markdown-progress + .diff-file-view,
+.metabrowser-diff-host .diff-markdown-progress + .diff-file-copy {
   margin-inline-start: auto;
+}
+
+/* Keeps its place in the bar, so it never moves the controls, and appears only after
+   the loading-state delay (.mb-delayed-loading). */
+.metabrowser-diff-host .diff-markdown-progress {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  visibility: hidden;
 }
 
 .metabrowser-diff-host .diff-markdown-control .chip:disabled {
@@ -433,20 +442,8 @@
   cursor: default;
 }
 
-.metabrowser-diff-host .diff-markdown-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .metabrowser-diff-host
-  :is(
-    .diff-markdown-control,
-    .diff-markdown-progress,
-    .diff-markdown-fallback,
-    .diff-markdown,
-    .diff-file-body
-  )[hidden] {
+  :is(.diff-markdown-control, .diff-markdown-fallback, .diff-markdown, .diff-file-body)[hidden] {
   display: none;
 }
 
@@ -463,6 +460,17 @@
 
 .metabrowser-diff-host .diff-markdown-block .kpress-prose {
   margin: 0;
+}
+
+/* One list item or quoted paragraph per row reads as one list or quote. */
+.metabrowser-diff-host .diff-markdown-block .kpress-prose > :is(ul, ol, blockquote) {
+  margin-block: 0;
+}
+
+.metabrowser-diff-host .diff-markdown-note {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
 }
 
 .metabrowser-diff-host .diff-markdown-block img {

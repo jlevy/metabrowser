@@ -260,6 +260,7 @@ def test_cold_source_waiter_reuses_another_process_publication(
             loop = asyncio.get_running_loop()
             busy = asyncio.Event()
             phases: list[str] = []
+            notes: list[str] = []
 
             def observed_claim(
                 home: Path, key: str, *, order: LockOrder | None = None
@@ -279,7 +280,9 @@ def test_cold_source_waiter_reuses_another_process_publication(
                 await cancelled
 
             busy.clear()
-            waiting = asyncio.create_task(acquire_source(source, home=home, on_phase=phases.append))
+            waiting = asyncio.create_task(
+                acquire_source(source, home=home, on_phase=phases.append, on_note=notes.append)
+            )
             await asyncio.wait_for(busy.wait(), CHILD_TIMEOUT)
             independent = await asyncio.wait_for(
                 acquire_source(other_source, home=home), CHILD_TIMEOUT
@@ -294,6 +297,10 @@ def test_cold_source_waiter_reuses_another_process_publication(
             published = await asyncio.wait_for(waiting, CHILD_TIMEOUT)
             assert not published.fetched
             assert phases == []
+            # Review A12: the wait is said once, not silent for up to its deadline.
+            assert notes == [
+                f"waiting for another Metabrowser process to finish acquiring {source.normalized}"
+            ]
             assert independent.store_key != published.store_key
             return published.store_key
 

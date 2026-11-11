@@ -1,0 +1,566 @@
+# metab <PATH>/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: <PATH>
+slug: <SLUG>
+store: <STORE>
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+cloning <PATH> into <HOME>
+cloned <PATH> in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh auth status
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
+status: 200
+one
+two
+
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=base&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=base&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
+status: 200
+one
+
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source
+status: 200
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>src/app.txt at 85fcb2fa9e77</title><script>[the document width default]</script><script>[the shell's document width script]</script><script>[the shell's theme script]</script><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/plugin-static/github/pull-snapshot.css"><body class="pull-snapshot-page"><main class="pull-snapshot"><header><nav aria-label="Revision file"><a href="/pull/7/files">Pull request #7 Changes</a></nav><h1 class="page-heading">src/app.txt</h1><code>85fcb2fa9e77eb5db485ffef445cbbc645d6db4a</code></header><article class="pull-snapshot-content"><pre><code>one
+two
+</code></pre></article></main></body></html>
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image
+status: 410
+{
+  "code": "snapshot_expired",
+  "message": "This PR revision is no longer available. Open Changes again for the current comparison."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image returned HTTP 410
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image
+status: 400
+{
+  "code": "invalid_snapshot",
+  "message": "This revision file address is invalid."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image
+status: 404
+{
+  "code": "file_not_found",
+  "message": "This file is absent at this revision."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image returned HTTP 404
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image
+status: 404
+{
+  "code": "not_a_file",
+  "message": "This path is a folder at this revision."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image returned HTTP 404
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image
+status: 415
+{
+  "code": "unsupported_image",
+  "message": "This image cannot be displayed."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image returned HTTP 415
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99
+status: 416
+<!doctype html><html lang=en><meta charset=utf-8><title>File unavailable</title><main><h1>File unavailable</h1><p>This source window is outside the preview limit.</p></main></html>
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99 returned HTTP 416
+--- gh ---
+# sources/<SLUG>/pulls/7.snapshots.json
+[{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}]
+
+# metab <PATH>/pull/7 --api /api/plugin/github/pull-refresh --data reader.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "<PATH>",
+    "number": 7,
+    "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "pin_ref": "refs/pull/7/head",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "<PATH>",
+      "number": 7,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
+        "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+        "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+        "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+        "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+        "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+      },
+      "pull": {
+        "number": 7,
+        "title": "Count to two in the app",
+        "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 2,
+        "merge_commit_sha": null,
+        "mergeable": "mergeable",
+        "labels": [
+          "enhancement"
+        ],
+        "author": "forker",
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "count-to-two",
+          "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "repository": "forker/demo"
+        },
+        "html_url": "<PATH>/pull/7"
+      },
+      "issue_comments": [
+        {
+          "id": 3341937855,
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Thanks. CI is green; one question inline.",
+          "body_truncated": false,
+          "created_at": "2026-09-16T17:34:17Z",
+          "updated_at": "2026-09-16T17:35:33Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": 3274109685,
+          "state": "COMMENTED",
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "",
+          "body_truncated": false,
+          "submitted_at": "2026-09-16T12:32:50Z",
+          "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+        },
+        {
+          "id": 3279967139,
+          "state": "APPROVED",
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Looks right.",
+          "body_truncated": false,
+          "submitted_at": "2026-09-16T17:36:02Z",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+        }
+      ],
+      "review_comments": [
+        {
+          "id": 2383608906,
+          "review_id": 3274109685,
+          "in_reply_to": null,
+          "path": "src/app.txt",
+          "line": null,
+          "original_line": 1,
+          "start_line": null,
+          "original_start_line": null,
+          "side": "RIGHT",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+          "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+          "diff_hunk_truncated": false,
+          "author": "maintainer",
+          "author_avatar_url": null,
+          "body": "Why does this line change?",
+          "body_truncated": false,
+          "created_at": "2026-09-16T12:32:50Z",
+          "updated_at": "2026-09-16T12:32:50Z"
+        },
+        {
+          "id": 2388073350,
+          "review_id": 3279967139,
+          "in_reply_to": 2383608906,
+          "path": "src/app.txt",
+          "line": 2,
+          "original_line": 2,
+          "start_line": null,
+          "original_start_line": null,
+          "side": "RIGHT",
+          "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+          "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+          "diff_hunk_truncated": false,
+          "author": "forker",
+          "author_avatar_url": null,
+          "body": "It no longer does; the second line is new.",
+          "body_truncated": false,
+          "created_at": "2026-09-16T17:30:11Z",
+          "updated_at": "2026-09-16T17:30:11Z"
+        }
+      ],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+        "base_from": "base_branch"
+      },
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {}
+    },
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "<PATH>",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "b11067f0c62f37d78b13dad56eff5838b598a5de6e3b766d03c8e40a77b9f36b",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "<PATH>",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"6a3910542cf06b04855d345176a8a5137e2e75ca25688ac5197c92c23de29ffd\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1": "W/\"3ce11c9515d54ffe4aa424209cd7cac7b2460f2d872e4a76517ed10398aa4701\"",
+      "repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1": "W/\"a1d3ebf699ed08833f26e9118f0cda9c0220ea8a6bcaf959ede03bbfca21e5ac\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        "enhancement"
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "repository": "forker/demo"
+      },
+      "html_url": "<PATH>/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "author_avatar_url": null,
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+# sources/<SLUG>/pulls/7.snapshots.json
+[{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"f7c5a9918657080d6aeb455902615b6e17df760a"}]
+
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
+status: 200
+one
+two
+
+--- stderr ---
+selection: pull_request
+pin: f7c5a9918657080d6aeb455902615b6e17df760a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
+status: 200
+one
+extra
+
+--- stderr ---
+selection: pull_request
+pin: f7c5a9918657080d6aeb455902615b6e17df760a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
