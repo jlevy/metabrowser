@@ -22,6 +22,7 @@ import subprocess
 import sys
 import textwrap
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,9 +34,11 @@ from metabrowser.cache.paths import source_pull_refresh
 from metabrowser.capabilities import Capabilities, set_capabilities
 from tests.checkout_replica import fingerprint
 from tests.github_pull_fixture import (
+    ANOTHER_READER,
     CANONICAL,
     FETCHED_AT,
     HOSTILE_COMMENT,
+    READER,
     Origin,
     allowlist_violations,
     clone_checkout,
@@ -461,6 +464,20 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
     assert fingerprint(read_only_checkout) == before
+    # A revision file opens from the store beside the checkout and leaves it as it was.
+    from metabrowser.git.tree_source import GitPath
+
+    revision = _api(
+        root,
+        after["snapshot_route"]
+        + "&side=head&mode=download&path="
+        + GitPath.from_display("docs/draft.md").to_wire(),
+        None,
+        request,
+    )
+    assert revision.exit_code == 0, revision.stderr
+    assert revision.stdout.endswith("# Draft\n\n"), revision.stdout
+    assert fingerprint(read_only_checkout) == before
 
     # A fresh server adopts the persisted store without acquisition or a timestamp write.
     checkout_module._RESOLVED.clear()  # pyright: ignore[reportPrivateUsage]
@@ -490,6 +507,169 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert _calls(git_log), "the comparison exercises real Git"
     assert all(str(read_only_checkout) not in call for call in _calls(git_log))
     assert all(str(tmp_path / "checkout") not in call for call in _calls(git_log))
+
+
+def _idle_job_stand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin, events: list[str]
+) -> tuple[Any, asyncio.Event, asyncio.Event]:
+    """A checkout with a store, whose job phases only note that they ran.
+
+    The idle phase sets the first event and waits for the second, so a test can act
+    while it runs.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
+
+    checkout = clone_checkout(origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, tmp_path / "home")  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    monkeypatch.setattr(ServedPulls, "git_dir", property(lambda _self: tmp_path / "store.git"))
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def prepare_idle(_state: Any, companion: ServedPull, _eager: Any) -> None:
+        events.append(f"idle {companion.number} starts")
+        started.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            events.append(f"idle {companion.number} cancelled")
+            raise
+        events.append(f"idle {companion.number} ends")
+
+    async def prepare_foreground(
+        _coordinator: Any, _state: Any, _repository: Any, companion: ServedPull
+    ) -> str:
+        events.append(f"comparison {companion.number}")
+        return "done"
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(checkout_module, "_prepare_idle", prepare_idle)
+    monkeypatch.setattr(checkout_module, "_prepare_foreground", prepare_foreground)
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+    return repository, started, release
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("reader", ["another_pull", "refresh", "changes"])
+def test_a_readers_request_never_waits_for_idle_comparison_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, reader: str
+) -> None:
+    """Review B1: idle work holds no slot, and any reader's request ends it.
+
+    Before, the idle job held the store turn and one of two network slots through a whole
+    acquisition, and the reader's job waited for it: 2.1 to 4.3 s in review D's runs.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.mirror_refresh import MAX_CONCURRENT_REFRESHES, RefreshCoordinator
+
+    events: list[str] = []
+    repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    async def run() -> None:
+        try:
+            assert start(10, comparison=True, eager_revision="a" * 64) == "started"
+            await asyncio.wait_for(started.wait(), 5)
+            assert checkout_module.comparison_preparing(coordinator, repository, 10)
+            free = coordinator.slot()._value  # pyright: ignore[reportPrivateUsage]
+            assert free == MAX_CONCURRENT_REFRESHES, "an idle job holds no network slot"
+            if reader == "another_pull":
+                assert start(12) == "started"
+            elif reader == "refresh":
+                held = checkout_module.checkout_pulls(repository)
+                assert (await held.companion(10)).request_recovery(None)
+                assert start(10) == "joined"
+            else:
+                assert start(10, comparison=True) == "joined"
+                assert not checkout_module.comparison_preparing(coordinator, repository, 10)
+                release.set()
+            await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    assert (
+        events
+        == {
+            "another_pull": ["idle 10 starts", "idle 10 cancelled", "refresh 12"],
+            "refresh": ["idle 10 starts", "idle 10 cancelled", "refresh 10"],
+            # Changes asks for the very work the idle job is doing, which goes on as the reader's.
+            "changes": ["idle 10 starts", "idle 10 ends", "comparison 10"],
+        }[reader]
+    )
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review D2: optional work starts only on a quiet checkout.
+
+    Before, an idle job queued behind a running job took the turn ahead of the third
+    waiting reader's job, through the turn's rule that keeps a mirror refresh from
+    starving: ``foreground 12, foreground 13, idle 10, foreground 14, foreground 15``.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, _started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    async def run() -> None:
+        turn = checkout_module._checkout_state(repository).turn  # pyright: ignore[reportPrivateUsage]
+        try:
+            assert start(12) == "started"
+            assert start(10, comparison=True, eager_revision="a" * 64) == "not_due"
+            await coordinator.drain(timeout_s=5)
+            # Even an idle job that is waiting when the readers come is ended by them.
+            async with turn(lambda: True):
+                assert start(10, comparison=True, eager_revision="a" * 64) == "started"
+                await asyncio.sleep(0)
+                assert start(11, comparison=True, eager_revision="b" * 64) == "not_due"
+                for number in (12, 13, 14, 15):
+                    assert start(number) == "started"
+                    await asyncio.sleep(0)
+            await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator(limit=8)
+    asyncio.run(run())
+    assert events == ["refresh 12", "refresh 12", "refresh 13", "refresh 14", "refresh 15"]
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_idle_comparison_never_starts_without_a_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, tmp_path / "home")  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+
+    async def run() -> str:
+        coordinator = RefreshCoordinator()
+        try:
+            return checkout_module.start_pull_refresh(
+                coordinator, repository, 10, comparison=True, eager_revision="a" * 64
+            )
+        finally:
+            await coordinator.aclose()
+
+    assert asyncio.run(run()) == "not_due"
 
 
 def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
@@ -1085,3 +1265,839 @@ def test_metadata_refresh_keeps_comparison_published_during_its_api_read(
             await metadata
 
     asyncio.run(run())
+
+
+# ── Comparison preparation ─────────────────────────────────────────
+
+_REFRESH: str = "/api/plugin/github/pull-refresh"
+
+
+class _Session:
+    """One checkout served by one-shot ``--api`` commands, with every Git and gh call logged."""
+
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> None:
+        from tests.golden_harness import isolate_cli
+
+        self.home = isolate_cli(tmp_path, monkeypatch).home
+        self.origin = origin
+        self.tmp_path = tmp_path
+        self.checkout = clone_checkout(origin, tmp_path / "checkout")
+        for name, value in install_fake_gh(tmp_path, files_scenario(origin)).items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: origin.url)
+        self.monkeypatch = monkeypatch
+        self.now(FETCHED_AT)
+        real_git = subprocess.run(
+            ["sh", "-c", "command -v git"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+        self.git_log = _logging_tool(tmp_path / "git-bin", "git", then=real_git)
+        monkeypatch.setattr(
+            "metabrowser.git.process.git_executable", lambda: str(self.git_log.parent / "git")
+        )
+        self.request = tmp_path / "request.json"
+        self.before = fingerprint(self.checkout)
+
+    def now(self, moment: datetime) -> None:
+        self.monkeypatch.setattr(pulls, "utc_now", lambda: moment)
+
+    def post(self, body: dict[str, Any]) -> Invocation:
+        answer = _api(self.checkout, _REFRESH, body, self.request)
+        assert answer.exit_code == 0, answer.stderr
+        return answer
+
+    def after(self, body: dict[str, Any]) -> dict[str, Any]:
+        from tests.test_cli_github_checkout_golden import (
+            _after,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        return _after(self.post(body))
+
+    def get(self, route: str) -> Invocation:
+        return _api(self.checkout, route, None, self.request)
+
+    def gh(self) -> list[str]:
+        from tests.github_pull_fixture import logged_gh_calls
+
+        return logged_gh_calls(self.tmp_path)
+
+    def git(self) -> list[str]:
+        """Each Git call since the last ask, as its arguments."""
+        calls = [line.split("\t", 2)[2] for line in _calls(self.git_log)]
+        self.git_log.unlink(missing_ok=True)
+        return calls
+
+    def stamp(self, number: int) -> bytes:
+        slug = self.state().pulls.slug
+        return (self.home / source_pull_refresh(slug, number)).read_bytes()
+
+    def state(self) -> Any:
+        from metabrowser.builtin_plugins.github import checkout as checkout_module
+
+        (held,) = checkout_module._PULLS.values()  # pyright: ignore[reportPrivateUsage]
+        return held
+
+    def store_refs(self) -> list[str]:
+        git_dir = self.state().pulls.git_dir
+        assert git_dir is not None
+        return subprocess.run(
+            ["git", "--git-dir", str(git_dir), "for-each-ref", "--format=%(refname)"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.split()
+
+    def attach_store(self) -> dict[str, Any]:
+        """Records for 9 and 10 without a store, then the reader's Changes on 10 attaches one."""
+        first = self.after({"number": 9, "retry": True})
+        assert first["record"]["unavailable"]["comparison"] == "no_store"
+        assert self.after({"number": 10, "retry": True})["last_refresh"]["outcome"] == "succeeded"
+        assert self.gh()
+        changes = self.after({"number": 10, "retry": True, "comparison": True})
+        assert changes["comparison_route"] is not None, changes
+        # The record is current, so the comparison is prepared from it without reading
+        # GitHub a second time.
+        assert self.gh() == []
+        self.git()
+        return first
+
+
+def _subcommand(argv: str) -> str:
+    words = argv.split()
+    while words and (words[0].startswith("-") or words[0] in {"--git-dir"}):
+        words = words[2:] if words[0] in {"-c", "-C", "--git-dir"} else words[1:]
+    return words[0] if words else ""
+
+
+def _push_unfetched_branches(origin: Origin, count: int) -> None:
+    """Branches pushed after the checkout and its store fetched: one 64 KiB blob each."""
+    from tests.github_pull_fixture import DEFAULT_BRANCH, git_env
+
+    env = git_env(origin.path.parent)
+    tip = subprocess.run(
+        ["git", "--git-dir", str(origin.path), "rev-parse", f"refs/heads/{DEFAULT_BRANCH}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    chunks: list[bytes] = []
+    for index in range(count):
+        data = os.urandom(64 * 1024)
+        chunks.append(
+            f"commit refs/heads/later-{index:04d}\n"
+            f"committer Dev <dev@example.com> {1758110400 + index} +0000\n"
+            f"data 6\nlater\nfrom {tip}\n"
+            f"M 100644 inline later/{index:04d}.bin\ndata {len(data)}\n".encode()
+            + data
+            + b"\n"
+        )
+    subprocess.run(
+        ["git", "--git-dir", str(origin.path), "fast-import", "--quiet"],
+        input=b"".join(chunks),
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_conversation_alone_never_creates_a_store_or_runs_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Idle preparation needs a store a reader's Changes attached (Review D1).
+
+    Before, an idle request acquired an overlay store, fetching every branch and tag the
+    checkout lacked, and every later Conversation refresh then fetched into it: 21 Git
+    calls for the idle request and 22 and 18 with 2 and 1 origin fetches for the two
+    refreshes below, in review D's measurement. Mutation check: drop the store condition
+    from ``start_pull_refresh`` and the route, and the idle request starts that acquisition.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.after({"number": 10, "retry": True})
+    assert record["record"]["unavailable"]["comparison"] == "no_store"
+    idle = session.post({"number": 10, "prepare_comparison": record["record_revision"]})
+    assert idle.payload()["refresh"] == "not_due"
+    for number in (9, 10):
+        assert session.after({"number": number, "retry": True})["comparison_route"] is None
+    assert session.git() == []
+    assert not list((session.home / "repository-stores").iterdir())
+    assert fingerprint(session.checkout) == session.before
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_idle_comparison_fetches_only_its_pull_request_into_the_attached_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Optional work costs what its comparison needs, not what the origin has since gained."""
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.attach_store()
+    stamp = session.stamp(9)
+    _push_unfetched_branches(pull_origin, 25)
+    refs = session.store_refs()
+
+    stale = session.post({"number": 9, "prepare_comparison": "a" * 64})
+    assert stale.payload()["refresh"] == "not_due"
+    after = session.after({"number": 9, "prepare_comparison": record["record_revision"]})
+    assert after["comparison_route"] is not None, after
+    assert after["fetched_at"] == record["fetched_at"]
+    assert after["last_refresh"] == record["last_refresh"]
+    assert session.stamp(9) == stamp
+    calls = session.git()
+    # The head by its pull-request ref and the observed base by its commit: nothing else.
+    fetches = [call.split() for call in calls if _subcommand(call) == "fetch"]
+    base = record["record"]["pull"]["base"]["sha"]
+    wanted = [words[-1].split(":")[0].removeprefix("+") for words in fetches]
+    assert wanted == ["refs/pull/9/head", base], fetches
+    assert not any(_subcommand(call) == "ls-remote" for call in calls), calls
+    assert not any("later-" in ref for ref in session.store_refs())
+    assert len(session.store_refs()) <= len(refs) + 1
+    assert session.gh() == []
+
+    again = session.post({"number": 9, "prepare_comparison": record["record_revision"]})
+    assert again.payload()["refresh"] == "not_due"
+    clicked = session.after({"number": 9, "retry": True, "comparison": True})
+    assert clicked["comparison_route"] == after["comparison_route"]
+    assert session.gh() == []
+    assert fingerprint(session.checkout) == session.before
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_a_failed_idle_comparison_reports_nothing_and_is_not_repeated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Idle work never writes the refresh stamp (Review A1).
+
+    Before, the failure became ``last_refresh``, and Conversation said the last refresh
+    failed for work the reader never asked for.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.attach_store()
+    stamp = session.stamp(9)
+    moved = pull_origin.path.with_name("moved-origin.git")
+    pull_origin.path.rename(moved)
+    try:
+        idle = session.after({"number": 9, "prepare_comparison": record["record_revision"]})
+        assert idle["last_refresh"] == record["last_refresh"]
+        assert idle["record_revision"] == record["record_revision"]
+        assert session.stamp(9) == stamp
+        assert [_subcommand(call) for call in session.git()].count("fetch") == 1
+        again = session.post({"number": 9, "prepare_comparison": record["record_revision"]})
+        assert again.payload()["refresh"] == "not_due"
+        assert session.git() == []
+    finally:
+        moved.rename(pull_origin.path)
+    assert session.gh() == []
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_a_comparison_from_the_cached_record_keeps_the_metadata_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Only a metadata read writes a success stamp (Review A1).
+
+    Before, a comparison prepared from the cached record stamped success at the time of
+    the click, though nothing was read from GitHub.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.after({"number": 10, "retry": True})
+    stamp = session.stamp(10)
+    session.gh()
+    session.now(FETCHED_AT + timedelta(seconds=30))
+    changes = session.after({"number": 10, "retry": True, "comparison": True})
+    assert changes["comparison_route"] is not None
+    assert session.gh() == []
+    assert session.stamp(10) == stamp
+    assert changes["last_refresh"]["at"] == "2026-09-17T12:00:00Z"
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("why", ["stale", "rate_limited", "another_reader"])
+def test_changes_reads_github_first_unless_the_cached_record_is_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, why: str
+) -> None:
+    """A stale record, a failure since it, or another reader's record is refreshed first.
+
+    Review A2: before, Changes prepared any cached record of the same source with
+    no GitHub read, and a rate limit's stamp was replaced by a success nothing read.
+    """
+    from metabrowser.builtin_plugins.github.pull_record import (
+        PullRefreshStamp,
+        read_pull_record,
+        write_pull_record,
+    )
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.after({"number": 10, "retry": True})
+    session.gh()
+    clicked_at = FETCHED_AT + timedelta(seconds=40)
+    held = session.state().pulls
+    if why == "stale":
+        clicked_at = FETCHED_AT + timedelta(days=2)
+    elif why == "rate_limited":
+        write_refresh_stamp(
+            held.home,
+            held.slug,
+            source_pull_refresh(held.slug, 10),
+            PullRefreshStamp(
+                outcome="rate_limited",
+                message="GitHub's API rate limit was reached",
+                reset_at="2026-09-17T13:00:00Z",
+                at="2026-09-17T12:00:30Z",
+            ),
+        )
+    else:
+        cached = read_pull_record(held.home, held.slug, 10)
+        assert not isinstance(cached, str)
+        write_pull_record(
+            held.home, held.slug, cached.model_copy(update={"reader": f"gh:{ANOTHER_READER}"})
+        )
+    session.now(clicked_at)
+    changes = session.after({"number": 10, "retry": True, "comparison": True})
+    assert changes["comparison_route"] is not None, changes
+    assert session.gh(), "the comparison request read GitHub"
+    assert changes["fetched_at"] == clicked_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert changes["last_refresh"] == {
+        "outcome": "succeeded",
+        "message": None,
+        "reset_at": None,
+        "at": changes["fetched_at"],
+    }
+    assert changes["record"]["reader"] == f"gh:{READER}"
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_attaching_a_store_keeps_the_observed_reader_for_reader_scoped_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review B2: the bind no longer forgets the reader, and no refresh follows it.
+
+    Each check below admits data of any reader when the observed reader is ``None``, as it
+    was after the bind before; the last assertions show that for the two that read cores.
+    """
+    from metabrowser.builtin_plugins.github.pull_catalog import catalog_members
+    from metabrowser.builtin_plugins.github.pull_core_cache import (
+        read_cached_core,
+        write_cached_cores,
+    )
+    from metabrowser.builtin_plugins.github.pull_cores import CoreRequest, cached_batch
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record, write_pull_record
+    from metabrowser.builtin_plugins.github.served_pull import cached_comparison_record
+    from tests.github_pull_fixture import list_entries, list_page, seed_catalog
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.attach_store()
+    held = session.state().pulls
+    assert held.git_dir is not None
+    assert held.observed_reader == f"gh:{READER}"
+    published = held.published
+
+    # The comparison and the idle job admit only the observed reader's record.
+    mine = read_pull_record(held.home, held.slug, 10)
+    assert not isinstance(mine, str)
+    theirs = mine.model_copy(update={"reader": f"gh:{ANOTHER_READER}"})
+    write_pull_record(held.home, held.slug, theirs, store_id=published.store_id)
+    assert cached_comparison_record(published, held.observed_reader, 10) is None
+    # A snapshot of that record's comparison is refused.
+    envelope = session.get("/api/plugin/github/pull?number=10").payload()
+    query = envelope["comparison_route"].split("?", 1)[1]
+    snapshot = session.get(f"/api/plugin/github/pull-snapshot?{query}&side=head&path=README.md")
+    assert snapshot.exit_code != 0, snapshot.stdout
+
+    # Core admission and cached cores refuse another reader's catalog.
+    lists = list_entries(pull_origin)
+    items = [*lists[list_page("all")]["body"], *lists[list_page("all", 2)]["body"]]
+    repository = ListedRepository(held.home, held.slug, "octo", "demo")
+    catalog = seed_catalog(repository, items, reader=ANOTHER_READER)
+    ask = CoreRequest("all", "octo", catalog.generation("all"), (10,))
+    _, members = catalog_members(held.home, held.slug, "all", (10,))
+    write_cached_cores(held.home, held.slug, catalog, members, {10: mine.pull}, FETCHED_AT)
+    held.observe_catalog(catalog)
+    assert held.observed_reader == f"gh:{READER}"
+    assert cached_batch(held, ask) is None
+    assert read_cached_core(held.home, held.slug, 10, reader=held.observed_reader) is None
+    # The mutation: the reader the bind used to forget.
+    held.observed_reader = None
+    assert cached_batch(held, ask) is not None
+    assert read_cached_core(held.home, held.slug, 10, reader=held.observed_reader) is not None
+
+
+def test_a_catalog_from_another_account_changes_the_reader_after_a_bind() -> None:
+    """Review E5: a store bind keeps the catalog the reader was observed with.
+
+    So after ``gh auth switch`` a catalog the other account writes changes the observed
+    reader whether or not a store was attached meanwhile. A bind to another source forgets
+    both.
+    """
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+
+    listed = ListedRepository(home=Path("/nonexistent"), slug="s", owner="octo", repo="demo")
+
+    def store(source: str) -> Any:
+        normalized = SimpleNamespace(normalized=source)
+        return SimpleNamespace(source=normalized, home=listed.home, slug="s", git_dir=None)
+
+    def catalog(reader: str, epoch: str) -> Any:
+        return SimpleNamespace(source=listed.source, repository_id="R", reader=reader, epoch=epoch)
+
+    readers: dict[bool, str | None] = {}
+    for bind in (False, True):
+        served = ServedPulls(listed)
+        served.observe_catalog(catalog("gh:alice", "e1"))
+        served.observe_reader(listed, "gh:alice")
+        if bind:
+            served.bind(store(listed.source))
+        served.observe_catalog(catalog("gh:bob", "e2"))
+        readers[bind] = served.observed_reader
+    assert readers == {False: "gh:bob", True: "gh:bob"}
+    served.bind(store("https://github.com/octo/other"))
+    assert served.observed_reader is None and served.core_catalog_identity is None
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("winner_compared", [True, False])
+def test_a_comparison_that_loses_publication_adopts_the_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, winner_compared: bool
+) -> None:
+    """Review A6: the checkout job adopts a record another writer published first.
+
+    A winner with a comparison ends the request; one without it is read from GitHub again.
+    """
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.attach_store()
+    stamp = session.stamp(9)
+    real = pulls.write_pull_record
+    winners: list[PullRecord] = []
+
+    def first_writer_wins(home: Any, slug: str, record: PullRecord, **kwargs: Any) -> Any:
+        if record.number == 9 and not winners:
+            update: dict[str, Any] = {"fetched_at": "2026-09-17T12:00:05Z"}
+            if not winner_compared:
+                update["comparison"] = None
+            winners.append(record.model_copy(update=update))
+            real(home, slug, winners[0], store_id=kwargs.get("store_id"))
+        return real(home, slug, record, **kwargs)
+
+    monkeypatch.setattr(pulls, "write_pull_record", first_writer_wins)
+    changes = session.after({"number": 9, "retry": True, "comparison": True})
+    assert winners
+    if winner_compared:
+        assert changes["fetched_at"] == "2026-09-17T12:00:05Z"
+        assert changes["comparison_route"] is not None
+        assert session.gh() == []
+        assert session.stamp(9) == stamp
+    else:
+        assert session.gh(), "a winner without a comparison is read again"
+        assert changes["comparison_route"] is not None
+
+
+# ── Follow-up review E ──────────────────────────────────────────────
+
+
+def _checkout_repository() -> Any:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+
+    (repository,) = [r for r in checkout_module._RESOLVED.values() if r is not None]  # pyright: ignore[reportPrivateUsage]
+    return repository
+
+
+def _slow_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, match: str, sleep_s: float) -> Path:
+    """A git that sleeps before a fetch naming *match*, recording each such call."""
+    real = subprocess.run(
+        ["sh", "-c", "command -v git"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    calls = tmp_path / "slow-calls"
+    script = tmp_path / "slow-bin" / "git"
+    script.parent.mkdir()
+    script.write_text(
+        "#!/bin/sh\n"
+        f'case "$*" in *fetch*{match}*) echo $$ >> "{calls}"; sleep {sleep_s};; esac\n'
+        f'exec "{real}" "$@"\n'
+    )
+    script.chmod(0o755)
+    monkeypatch.setattr("metabrowser.git.process.git_executable", lambda: str(script))
+    return calls
+
+
+def _origin_only_commit(origin: Origin, parent: str) -> str:
+    """A commit only the origin has, at the tip of a new branch there."""
+    from tests.github_pull_fixture import git_env
+
+    # The fixture's origin is written by fast-import, so no identity is configured; a
+    # runner without one to detect refuses `commit-tree` without these.
+    env = {
+        **git_env(origin.path.parent),
+        "GIT_AUTHOR_NAME": "Origin",
+        "GIT_AUTHOR_EMAIL": "origin@example.invalid",
+        "GIT_COMMITTER_NAME": "Origin",
+        "GIT_COMMITTER_EMAIL": "origin@example.invalid",
+    }
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "--git-dir", str(origin.path), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.strip()
+
+    oid = run("commit-tree", run("rev-parse", f"{parent}^{{tree}}"), "-p", parent, "-m", "moved")
+    run("update-ref", "refs/heads/moved-base", oid)
+    return oid
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_a_failed_idle_comparison_leaves_the_shared_record_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E1 on #348: idle work publishes only a computed comparison.
+
+    The record names a base only the origin has, and the origin is gone. Before, the idle
+    request wrote `fetch_failed` into the record every server reads, so Conversation said
+    Changes could not be read and Changes stopped asking for the comparison by itself.
+    """
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record, write_pull_record
+    from metabrowser.builtin_plugins.github.served_pull import record_revision
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.attach_store()
+    held = session.state().pulls
+    current = read_pull_record(held.home, held.slug, 10)
+    assert not isinstance(current, str) and current.comparison is not None
+    base = _origin_only_commit(pull_origin, current.pull.base.sha)
+    observed = current.model_copy(
+        update={
+            "comparison": None,
+            "unavailable": {**current.unavailable, "comparison": "no_store"},
+            "pull": current.pull.model_copy(
+                update={"base": current.pull.base.model_copy(update={"sha": base})}
+            ),
+        }
+    )
+    write_pull_record(held.home, held.slug, observed)
+    revision = record_revision(observed.model_dump(mode="json"))
+    stamp = session.stamp(10)
+    moved = pull_origin.path.with_name("moved-origin.git")
+    pull_origin.path.rename(moved)
+    try:
+        idle = session.after({"number": 10, "prepare_comparison": revision})
+        assert [_subcommand(call) for call in session.git()].count("fetch") == 1
+        again = session.post({"number": 10, "prepare_comparison": revision})
+        assert again.payload()["refresh"] == "not_due", "the failed revision is not tried again"
+    finally:
+        moved.rename(pull_origin.path)
+    assert read_pull_record(held.home, held.slug, 10) == observed
+    assert idle["record"]["unavailable"]["comparison"] == "no_store"
+    assert idle["state"] == "stale", "Changes still finds the record to ask about"
+    assert session.stamp(10) == stamp and session.gh() == []
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_idle_work_never_deepens_an_uncertain_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E1: deepening fetches more than the head and base, so only a reader's runs it."""
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record
+    from metabrowser.cache.pull_refs import BaseUncertainError
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.attach_store()
+    deepened: list[int] = []
+
+    async def uncertain(_published: Any, **kwargs: Any) -> Any:
+        raise BaseUncertainError(base_commit=kwargs["base_sha"], base_from="base_sha")
+
+    async def deepen(_published: Any, number: int, **_kwargs: Any) -> Any:
+        deepened.append(number)
+        raise AssertionError("idle work must not deepen")
+
+    monkeypatch.setattr(pulls, "comparison_endpoints", uncertain)
+    monkeypatch.setattr(pulls, "deepen_until_certain", deepen)
+    held = session.state().pulls
+    before = read_pull_record(held.home, held.slug, 9)
+    session.after({"number": 9, "prepare_comparison": record["record_revision"]})
+    assert deepened == []
+    assert read_pull_record(held.home, held.slug, 9) == before
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("failure", ["git_unavailable", "disk_full"])
+def test_a_failed_changes_is_reported_after_its_own_pending_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, failure: str
+) -> None:
+    """Review E3: the failure stamp describes the pending record this request wrote.
+
+    Before, the stamp expected the record from before the request and was refused, and
+    the failure was not kept in memory either, so the envelope still said `succeeded`.
+    """
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record
+    from metabrowser.cache.pull_refs import BaseUncertainError
+    from metabrowser.git.process import GitUnavailableError
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.attach_store()
+    real_endpoints = pulls.comparison_endpoints
+
+    async def uncertain(_published: Any, **kwargs: Any) -> Any:
+        raise BaseUncertainError(base_commit=kwargs["base_sha"], base_from="base_sha")
+
+    async def deepen(published: Any, _number: int, **kwargs: Any) -> Any:
+        if failure == "git_unavailable":
+            raise GitUnavailableError("could not run git: resource temporarily unavailable")
+        return await real_endpoints(
+            published,
+            head=kwargs["head"],
+            base_sha=kwargs["uncertain"].base_commit,
+            base_branch=None,
+            open_pull=False,
+        )
+
+    writes: list[str | None] = []
+    real_write = pulls.write_pull_record
+
+    def write(home: Any, slug: str, record: Any, **kwargs: Any) -> Any:
+        if record.number == 9:
+            writes.append(record.unavailable.get("comparison"))
+            if failure == "disk_full" and len(writes) == 2:
+                raise OSError(28, "No space left on device")
+        return real_write(home, slug, record, **kwargs)
+
+    monkeypatch.setattr(pulls, "comparison_endpoints", uncertain)
+    monkeypatch.setattr(pulls, "deepen_until_certain", deepen)
+    monkeypatch.setattr(pulls, "write_pull_record", write)
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    asked = _api(
+        session.checkout,
+        _REFRESH,
+        {"number": 9, "retry": True, "comparison": True},
+        session.request,
+    )
+    assert asked.exit_code == 1, "a one-shot request reports the failure"
+    changes = _after(asked)
+    held = session.state().pulls
+    on_disk = read_pull_record(held.home, held.slug, 9)
+    assert not isinstance(on_disk, str)
+    assert on_disk.unavailable["comparison"] == "base_uncertain"
+    expected = "git_failed" if failure == "git_unavailable" else "cache_unwritable"
+    assert changes["last_refresh"]["outcome"] == expected
+    stamp = json.loads(session.stamp(9))
+    assert stamp["outcome"] == expected
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_changes_that_promoted_a_failing_idle_fetch_does_not_repeat_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E4: the idle failure a reader promoted becomes the reader's, fetched once.
+
+    Before, the reader waited for the idle fetch to fail and then for its own second
+    fetch: 4.21 s over two attempts in review E's run.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.attach_store()
+    calls = _slow_git(tmp_path, monkeypatch, "refs/pull/9/head", 1)
+    moved = pull_origin.path.with_name("moved-origin.git")
+    repository = _checkout_repository()
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        try:
+            assert (
+                checkout_module.start_pull_refresh(
+                    coordinator,
+                    repository,
+                    9,
+                    comparison=True,
+                    eager_revision=record["record_revision"],
+                )
+                == "started"
+            )
+            for _ in range(400):
+                if calls.exists():
+                    break
+                await asyncio.sleep(0.025)
+            assert calls.exists(), "the idle fetch never started"
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 9, comparison=True)
+                == "joined"
+            )
+            await coordinator.drain(timeout_s=30)
+        finally:
+            await coordinator.aclose()
+
+    pull_origin.path.rename(moved)
+    try:
+        asyncio.run(run())
+    finally:
+        moved.rename(pull_origin.path)
+    assert len(calls.read_text().split()) == 1
+    companion = session.state().pulls.held(9)
+    assert companion is not None and companion.last is not None
+    assert companion.last["outcome"] == "fetch_failed"
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_changes_waits_for_another_process_cold_open_without_a_network_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E6: a reader's acquisition waits out another process's holding nothing.
+
+    Before, the job held one of the two network slots for the whole wait, up to
+    `RESERVATION_WAIT_S`, and reported a generic message without the lock's name.
+    """
+    import threading
+
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.cache import acquire as acquire_module
+    from metabrowser.cache.identity import source_identity
+    from metabrowser.cache.layout import open_cache
+    from metabrowser.cache.locks import source_acquisition_lock, source_acquisition_lock_name
+    from metabrowser.mirror_refresh import MAX_CONCURRENT_REFRESHES, RefreshCoordinator
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    home = tmp_path / "home"
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _s: pull_origin.url)
+    monkeypatch.setattr(acquire_module, "RESERVATION_WAIT_S", 1.0)
+    source = repository.git_source
+    source_id = source_identity(source.transport, source.normalized)
+    opened = open_cache(home).home
+    ready, done = threading.Event(), threading.Event()
+    held: list[Any] = []
+
+    def other_process() -> None:
+        held.append(source_acquisition_lock(opened, source_id))
+        ready.set()
+        done.wait(10)
+        held[0].release()
+
+    thread = threading.Thread(target=other_process)
+    thread.start()
+    assert ready.wait(5)
+    free: list[int] = []
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        try:
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                == "started"
+            )
+            key = checkout_module.checkout_job_key(repository, 10)
+            while coordinator.running(key):
+                free.append(coordinator.slot()._value)  # pyright: ignore[reportPrivateUsage]
+                await asyncio.sleep(0.05)
+        finally:
+            await coordinator.aclose()
+
+    try:
+        asyncio.run(run())
+    finally:
+        done.set()
+        thread.join(5)
+    assert free and min(free) == MAX_CONCURRENT_REFRESHES
+    companion = checkout_module.checkout_pulls(repository).held(10)
+    assert companion is not None and companion.last is not None
+    assert companion.last["outcome"] == "refreshing_elsewhere"
+    assert source_acquisition_lock_name(source_id) in (companion.last["message"] or "")
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_a_due_automatic_refresh_promotes_idle_work_to_a_metadata_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E8: an automatic refresh no longer joins idle work that reads nothing."""
+    from functools import partial
+
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github import pull_route
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    record = session.attach_store()
+    calls = _slow_git(tmp_path, monkeypatch, "refs/pull/9/head", 2)
+    repository = _checkout_repository()
+    outcome: dict[str, Any] = {}
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        host = pull_route.PullHost(
+            checkout_module.checkout_pulls(repository),
+            lambda n: coordinator.running(checkout_module.checkout_job_key(repository, n)),
+            partial(checkout_module.start_pull_refresh, coordinator, repository),
+            partial(checkout_module.start_pull_refresh, coordinator, repository, comparison=True),
+            coordinator,
+            lambda n, rev: checkout_module.start_pull_refresh(
+                coordinator, repository, n, comparison=True, eager_revision=rev
+            ),
+            partial(checkout_module.comparison_preparing, coordinator, repository),
+        )
+        try:
+            idle = pull_route.RefreshRequest(9, False, prepare_comparison=record["record_revision"])
+            assert await pull_route.start_refresh(host, idle) == "started"
+            for _ in range(400):
+                if calls.exists():
+                    break
+                await asyncio.sleep(0.025)
+            automatic = pull_route.RefreshRequest(9, False)
+            outcome["automatic"] = await pull_route.start_refresh(host, automatic)
+            outcome["preparing"] = host.preparing is not None and host.preparing(9)
+            await coordinator.drain(timeout_s=30)
+        finally:
+            await coordinator.aclose()
+
+    asyncio.run(run())
+    assert outcome == {"automatic": "joined", "preparing": False}
+    assert any("pulls/9" in call for call in session.gh()), "the promoted job read GitHub"
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_a_reader_s_failure_is_reported_even_when_its_stamp_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """Review E3: this server reports a failed Changes whatever the disk now holds.
+
+    Another writer's newer observation refuses the stamp, as it should; before, the
+    in-memory outcome was dropped with it, and the reader saw `succeeded`.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record, write_pull_record
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    session.attach_store()
+    held = session.state().pulls
+    observed = read_pull_record(held.home, held.slug, 9)
+    assert not isinstance(observed, str)
+    newer = observed.model_copy(update={"fetched_at": "2026-09-17T12:00:05Z"})
+    write_pull_record(held.home, held.slug, newer)
+    stamp = session.stamp(9)
+
+    async def run() -> Any:
+        companion = await held.companion(9)
+        await checkout_module._keep_comparison_failure(  # pyright: ignore[reportPrivateUsage]
+            companion,
+            _checkout_repository(),
+            PullDataError("network_error", "the origin is unavailable"),
+            expected=observed,
+        )
+        return companion
+
+    companion = asyncio.run(run())
+    assert session.stamp(9) == stamp, "the stamp describes no newer observation"
+    assert companion.last is not None and companion.last["outcome"] == "network_error"

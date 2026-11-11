@@ -17,7 +17,7 @@
 // no-op for the same comparison, and a record that moved its head cancels the old request.
 
 /**
- * @typedef {{left: string, right: string, route?: string}} ComparisonEnds
+ * @typedef {{left: string, right: string, route?: string, rendered_route?: string}} ComparisonEnds
  *
  * @typedef {{
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,

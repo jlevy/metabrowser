@@ -34,6 +34,18 @@ route = "pull-comparison"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
 methods = ["GET"]
 
+# Open an admitted comparison side without changing the served pin.
+[[data_hook]]
+route = "pull-snapshot"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_snapshot_handler"
+methods = ["GET"]
+
+# One changed Markdown file of an admitted comparison as a bounded rendered redline.
+[[data_hook]]
+route = "pull-rendered-diff"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_rendered_diff_handler"
+methods = ["GET"]
+
 # A selected PR's bounded Conversation projection, held separately from discussion.
 [[data_hook]]
 route = "pull-timeline"

@@ -15,7 +15,11 @@ reports one of:
 ``refreshing`` says whether the pull request's refresh job is running, and
 ``last_refresh`` how its last one ended. ``pin`` is the commit the server serves and
 ``pin_ref`` the ref it was resolved from; the record's ``pull.head.sha`` and
-``comparison_route`` name the head the record was read at. They differ when the pin is
+``comparison_route`` name the head the record was read at. ``snapshot_route`` opens a file
+of that comparison's base or head without changing the pin; a page completes it with
+``side`` and ``path`` (:func:`snapshot_route`). ``rendered_route`` answers the rendered
+Markdown redline of one changed file of that comparison; a page completes it with ``file``
+(:func:`rendered_route`). They differ when the pin is
 another pull request or a branch, when the URL selected a commit inside the pull request,
 and when a refresh found a newer head than the pin, which status reports as ``latest``
 for the page to offer rather than switching under a reader.
@@ -24,12 +28,14 @@ A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_r
 holds what it starts to the rule: a request that is not a reader's own action refreshes
 only a pull request with a record, and only when that record is stale and not tried within
 the window. A visible cold page can request the selected fetch with a separate POST.
+Idle checkout comparison preparation instead names a fresh record revision, only where a
+store is already attached, and a reader's Changes request promotes that job.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a
 record with no comparison, ``no_store``, whoever wrote it. A server with a store answers
-a record written that way as ``stale``. Only an explicit comparison Fetch may attach a
-store to a checkout's pull records.
+a record written that way as ``stale``. A comparison refresh request may attach a store
+to a checkout's pull records.
 """
 
 from __future__ import annotations
@@ -45,17 +51,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Final, Literal, NotRequired, TypedDict
+from urllib.parse import urlencode
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
     checkout_job_key,
     checkout_pulls,
+    comparison_preparing,
     served_checkout,
     start_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -66,8 +75,10 @@ from metabrowser.builtin_plugins.github.served_pull import (
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
+    cached_comparison_record,
     written_without_store,
 )
+from metabrowser.builtin_plugins.github.served_pull import record_revision as _record_revision
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import is_full_revision
@@ -83,7 +94,9 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery", "wait_core"})
+_REFRESH_FIELDS: Final = frozenset(
+    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison"}
+)
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -108,8 +121,11 @@ class PullEnvelope(TypedDict):
     record_revision: str | None
     fresh_for_s: float
     refreshing: bool
+    preparing_comparison: NotRequired[Literal[True]]
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
+    snapshot_route: str | None
+    rendered_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
 
@@ -151,6 +167,33 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
     return {**dumped, "comparison": None, "unavailable": unavailable}
 
 
+SNAPSHOT_ROUTE: Final = "/api/plugin/github/pull-snapshot"
+RENDERED_ROUTE: Final = "/api/plugin/github/pull-rendered-diff"
+
+
+def snapshot_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The revision-file route of one comparison, the one spelling of its address.
+
+    A page appends ``side`` (``base`` or ``head``) and ``path`` (a Git path's wire form)
+    to open one file; the route itself adds ``mode`` and ``offset`` to its own links.
+    """
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{SNAPSHOT_ROUTE}?{query}"
+
+
+def rendered_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The rendered Markdown redline route of one comparison.
+
+    A page appends ``file``, the manifest ID of one changed Markdown file, and
+    ``prefetch=1`` on a request it sends before the reader asks, which also starts the
+    projection process.
+    """
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{RENDERED_ROUTE}?{query}"
+
+
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
     """The diff plugin's comparison of the record's pinned endpoints, or ``None``."""
 
@@ -189,15 +232,6 @@ def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | No
     if not stat.S_ISREG(status.st_mode):
         return None
     return status.st_ino, status.st_mtime_ns, status.st_size
-
-
-def _record_revision(dumped: dict[str, Any]) -> str:
-    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
-
-    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
-    return hashlib.sha256(
-        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
 
 
 def cached_pull_record(
@@ -242,6 +276,8 @@ class PullHost:
     start: Callable[[int], PullJobStart]
     start_comparison: Callable[[int], PullJobStart] | None = None
     coordinator: RefreshCoordinator | None = None
+    prepare: Callable[[int, str], PullRefreshStart] | None = None
+    preparing: Callable[[int], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -264,6 +300,10 @@ def pull_host(app: Any) -> PullHost | None:
             partial(start_pull_refresh, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, comparison=True),
             coordinator,
+            lambda number, revision: start_pull_refresh(
+                coordinator, checkout, number, comparison=True, eager_revision=revision
+            ),
+            partial(comparison_preparing, coordinator, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -294,6 +334,7 @@ class PullView:
     core_preview: PullCorePreview | None = None
     core_window: CoreWindow | None = None
     core_admission: CoreAdmission | None = None
+    preparing_comparison: bool = False
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -319,6 +360,9 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         core_preview=live or prepared,
         core_window=window if prepared is not None else None,
         core_admission=admission,
+        preparing_comparison=host is not None
+        and host.preparing is not None
+        and host.preparing(number),
     )
 
 
@@ -340,6 +384,8 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             refreshing=False,
             last_refresh=None,
             comparison_route=None,
+            snapshot_route=None,
+            rendered_route=None,
             record=None,
             core_preview=None,
         )
@@ -353,11 +399,14 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = (
-        comparison_route(record, store=store_tag(served.git_dir))
-        if isinstance(record, PullRecord) and served.git_dir is not None
-        else None
-    )
+    route = snapshots = rendered = None
+    if isinstance(record, PullRecord) and served.git_dir is not None:
+        store = store_tag(served.git_dir)
+        route = comparison_route(record, store=store)
+        if record.comparison is not None:
+            ends = (record.number, record.comparison.base, record.comparison.head)
+            snapshots = snapshot_route(*ends, store=store)
+            rendered = rendered_route(*ends, store=store)
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
         preview = None
@@ -369,7 +418,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             reader=served.observed_reader,
             reader_identity=served.core_catalog_identity,
         )
-    return PullEnvelope(
+    envelope = PullEnvelope(
         state=state,
         reason=absence,
         source=served.source,
@@ -380,11 +429,18 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
-        last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
+        last_refresh=(
+            view.kept.outcome() if view.kept is not None else served.last_refresh(view.number)
+        ),
         comparison_route=route,
+        snapshot_route=snapshots,
+        rendered_route=rendered,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
     )
+    if view.preparing_comparison:
+        envelope["preparing_comparison"] = True
+    return envelope
 
 
 def note_full_record(view: PullView) -> None:
@@ -478,13 +534,18 @@ def requested_number(params: Mapping[str, str]) -> int:
 
 @dataclass(frozen=True, slots=True)
 class RefreshRequest:
-    """What a ``POST`` asks for. *retry* is a reader's own action."""
+    """What a ``POST`` asks for.
+
+    *retry* is a reader's own action, or the one comparison request a page on Changes
+    sends by itself for a record without a store.
+    """
 
     number: int
     retry: bool
     comparison: bool = False
     recovery: tuple[str, str] | None = None
     wait_core: bool = False
+    prepare_comparison: str | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -492,7 +553,8 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
 
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
-            'a refresh request names only "number", "retry", "comparison", "recovery", and "wait_core"'
+            'a refresh request names only "number", "retry", "comparison", "recovery", '
+            '"wait_core", and "prepare_comparison"'
         )
     number = body.get("number")
     if (
@@ -533,10 +595,56 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         wait_core and (not retry or comparison or pair is not None)
     ):
         raise PullRequestError('"wait_core" is true or false and requires only "retry": true')
-    return RefreshRequest(number, retry, comparison, pair, wait_core)
+    preparation = None
+    if "prepare_comparison" in body:
+        revision = body["prepare_comparison"]
+        if (
+            not isinstance(revision, str)
+            or len(revision) != 64
+            or not is_full_revision(revision)
+            or retry
+            or comparison
+            or pair is not None
+            or wait_core
+        ):
+            raise PullRequestError('"prepare_comparison" is a record revision and stands alone')
+        preparation = revision
+    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
+    if ask.prepare_comparison is not None:
+        served = host.pulls
+
+        def foreground_waiting() -> bool:
+            return served.foreground_pending(host.running) or (
+                host.coordinator is not None
+                and host.coordinator.running(preparation_key(served.source))
+            )
+
+        publication = served.published
+        # Optional work never attaches a store. The first acquisition fetches whatever the
+        # checkout lacks from its origin, and every later refresh then fetches into the
+        # store, so only a reader's own Changes request starts one; see :mod:`.checkout`.
+        if (
+            host.prepare is None
+            or isinstance(publication, ListedRepository)
+            or foreground_waiting()
+        ):
+            return "not_due"
+        reader = served.observed_reader
+        record = await asyncio.to_thread(
+            cached_comparison_record, publication, reader, ask.number, ask.prepare_comparison
+        )
+        if (
+            record is None
+            or not written_without_store(record)
+            or served.published is not publication
+            or served.observed_reader != reader
+            or foreground_waiting()
+        ):
+            return "not_due"
+        return host.prepare(ask.number, ask.prepare_comparison)
     if not ask.retry and not ask.comparison:
         return await _start_refresh(host, ask)
     served = host.pulls
@@ -568,7 +676,8 @@ async def _start_refresh(
 ) -> PullRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts nothing.
 
-    A reader's own action always may start one. An automatic request may only for a
+    A request with *retry*, a reader's own action or a Changes page's one comparison
+    request, always may start one. An automatic request may only for a
     pull request with a record (``not_cached`` otherwise), and only when that record is
     stale and no attempt is due to wait (``not_due`` otherwise).
     """
@@ -598,8 +707,18 @@ async def _start_refresh(
                     adopt = prepared
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
-    if host.running(ask.number):
-        return "joined"
+    # Optional comparison work on a checkout reads no metadata, so an automatic request
+    # finding it is due as if nothing ran, and when due promotes the job to a metadata read.
+    idle = (
+        not ask.retry
+        and host.preparing is not None
+        and host.running(ask.number)
+        and host.preparing(ask.number)
+    )
+    if host.running(ask.number) and not idle:
+        # Only checkout jobs can be promoted from idle preparation. The other
+        # hosts are already running the requested refresh.
+        return host.start(ask.number) if ask.retry and host.prepare is not None else "joined"
     if not ask.retry:
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
@@ -617,7 +736,7 @@ async def _start_refresh(
             or window.preview(ask.number) is not preview
         ):
             adopt = None
-    if host.running(ask.number):
+    if host.running(ask.number) and not idle:
         return "joined"
     started = host.start(ask.number)
     if queued is not None:
@@ -640,6 +759,7 @@ def status_route(number: int) -> str:
 __all__ = [
     "NUMBER_REQUIRED",
     "PULL_ROUTE",
+    "SNAPSHOT_ROUTE",
     "PullEnvelope",
     "PullHost",
     "PullRefreshStart",
@@ -656,7 +776,9 @@ __all__ = [
     "pull_view",
     "record_stamp",
     "refresh_request",
+    "rendered_route",
     "requested_number",
+    "snapshot_route",
     "start_refresh",
     "status_route",
 ]

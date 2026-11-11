@@ -8,14 +8,17 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
+from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import (
     AcquisitionError,
     PartialCloneSourceError,
     ProgressReporter,
+    PublishedSource,
     RemoteUnavailableError,
     ValidationFailedError,
     acquire_into_staging,
@@ -24,7 +27,7 @@ from metabrowser.cache.acquire import (
 from metabrowser.cache.atomic import read_record
 from metabrowser.cache.identity import source_identity
 from metabrowser.cache.layout import FutureLayoutFormatError
-from metabrowser.cache.locks import LockBusyError, LockKind, held_locks
+from metabrowser.cache.locks import CacheLock, LockBusyError, LockKind, LockOrder, held_locks
 from metabrowser.cache.paths import source_record
 from metabrowser.cache.reclaim import sweep_staging
 from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
@@ -177,6 +180,61 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
 
 
 @posix_only
+def test_exact_pull_fetch_waiter_reuses_the_commit_under_the_fetch_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path)
+    work = tmp_path / "work"
+    home = tmp_path / "home"
+    published = asyncio.run(acquire_source(_file_source(origin), home=home))
+    (work / "README").write_text("PR head\n")
+    _git(work, "add", "README")
+    _git(work, "commit", "-qm", "pull")
+    _git(work, "push", str(origin), "HEAD:refs/pull/7/head")
+    head = subprocess.check_output(
+        ["git", "-C", str(work), "rev-parse", "HEAD"],
+        env=_git_env(work),
+        text=True,
+    ).strip()
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        fetching, busy, finish = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        real_git = pull_refs.run_git
+        real_claim = pull_refs._claim_fetch_lock
+        fetches = 0
+
+        async def delayed_fetch(args: list[str], **kwargs: Any) -> bytes:
+            nonlocal fetches
+            if "fetch" in args:
+                fetches += 1
+                fetching.set()
+                await asyncio.wait_for(finish.wait(), 10)
+            return await real_git(args, **kwargs)
+
+        def observed_claim(source: PublishedSource, owner: LockOrder) -> CacheLock:
+            try:
+                return real_claim(source, owner)
+            except LockBusyError:
+                loop.call_soon_threadsafe(busy.set)
+                raise
+
+        monkeypatch.setattr(pull_refs, "run_git", delayed_fetch)
+        monkeypatch.setattr(pull_refs, "_claim_fetch_lock", observed_claim)
+        async with asyncio.TaskGroup() as tasks:
+            leader = tasks.create_task(pull_refs.fetch_pull_head(published, 7, expected_head=head))
+            await asyncio.wait_for(fetching.wait(), 10)
+            waiter = tasks.create_task(pull_refs.fetch_pull_head(published, 7, expected_head=head))
+            await asyncio.wait_for(busy.wait(), 10)
+            finish.set()
+        assert leader.result() == waiter.result() == head
+        assert fetches == 1
+
+    asyncio.run(scenario())
+
+
+@posix_only
 def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -252,9 +310,15 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         git_dir: Path | None = None,
         timeout_s: float | None = None,
         on_progress: ProgressReporter | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> bytes:
         result = await real_run(
-            args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, on_progress=on_progress
+            args,
+            cwd=cwd,
+            git_dir=git_dir,
+            timeout_s=timeout_s,
+            on_progress=on_progress,
+            pass_fds=pass_fds,
         )
         if "ls-remote" in args:
             _git(work, "commit", "-q", "--allow-empty", "-m", "moved")
@@ -643,3 +707,95 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
     monkeypatch.setattr(acquire_module, "source_alias_lock", busy)
     second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id
+
+
+@posix_only
+def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reviews A7, A12, and E7: which descriptors are open in each staging Git process.
+
+    The entry's liveness lock keeps a sweep from removing a killed owner's entry while its
+    Git still writes. The source reservation is the owner's alone, so a dead owner's
+    orphaned fetch cannot keep other processes' cold opens waiting. A `git` first on the
+    way to the real one lists the descriptors open in it, so this sees what reached the
+    child, not what a caller passed: dropping `pass_fds` anywhere on the way fails it.
+    """
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    real_git = subprocess.run(
+        ["sh", "-c", "command -v git"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    log = tmp_path / "git-descriptors.log"
+    wrapper = tmp_path / "descriptor-git" / "git"
+    wrapper.parent.mkdir()
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\t%s\\n" "$*" "$(ls /dev/fd | tr "\\n" " ")" >> "{log}"\n'
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr("metabrowser.git.process.git_executable", lambda: str(wrapper))
+    real_claim = acquire_module._open_and_claim_staging  # pyright: ignore[reportPrivateUsage]
+    real_reserve = acquire_module._reserve_acquisition  # pyright: ignore[reportPrivateUsage]
+    staging: list[int] = []
+    reserved: list[int] = []
+
+    def claimed(*args: Any, **kwargs: Any) -> Any:
+        claim = real_claim(*args, **kwargs)
+        staging.append(claim.lock.descriptor)
+        return claim
+
+    async def reserve(*args: Any, **kwargs: Any) -> CacheLock:
+        lock = await real_reserve(*args, **kwargs)
+        reserved.append(lock.descriptor)
+        return lock
+
+    monkeypatch.setattr(acquire_module, "_open_and_claim_staging", claimed)
+    monkeypatch.setattr(acquire_module, "_reserve_acquisition", reserve)
+    assert asyncio.run(acquire_source(source, home=tmp_path / "home")).fetched
+    (entry,) = staging
+    (reservation,) = reserved
+    runs: list[tuple[str, set[int]]] = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        argv, _, listed = line.partition("\t")
+        words = argv.split()
+        while words and words[0].startswith("-"):
+            words = words[2:] if words[0] in {"-c", "-C", "--git-dir"} else words[1:]
+        runs.append((words[0] if words else "", {int(fd) for fd in listed.split()}))
+    for name in ("init", "config", "fetch"):
+        assert any(command == name and entry in fds for command, fds in runs), (name, runs)
+    assert all(reservation not in fds for _command, fds in runs), runs
+    assert any(command == "ls-remote" and entry not in fds for command, fds in runs), runs
+
+
+@posix_only
+def test_a_cold_open_waits_out_the_owners_worst_case_and_names_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review B4: the wait covers two attempts, and its failure names the lock."""
+    from metabrowser.cache.locks import source_acquisition_lock, source_acquisition_lock_name
+    from metabrowser.cache.origin import REMOTE_PROBE_TIMEOUT_S
+    from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
+
+    assert acquire_module.RESERVATION_WAIT_S >= 2 * (
+        GIT_ACQUISITION_TIMEOUT_S + REMOTE_PROBE_TIMEOUT_S
+    )
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    other = tmp_path / "other"
+    other.mkdir()
+    asyncio.run(acquire_source(_file_source(_origin(other)), home=home))
+    source_id = source_identity(source.transport, source.normalized)
+    held = source_acquisition_lock(home, source_id)
+    monkeypatch.setattr(acquire_module, "RESERVATION_WAIT_S", 0.05)
+    notes: list[str] = []
+    try:
+        with pytest.raises(AcquisitionError) as refused:
+            asyncio.run(acquire_source(source, home=home, on_note=notes.append))
+    finally:
+        held.release()
+    assert source_acquisition_lock_name(source_id) in str(refused.value)
+    assert len(notes) == 1 and notes[0].startswith("waiting for another Metabrowser process")

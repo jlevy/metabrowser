@@ -65,7 +65,11 @@ def test_explicit_retry_joining_active_metadata_job_is_consumed(
         assert await start_refresh(host, RefreshRequest(7, True, recovery=pair)) == "joined"
         release.set()
         await task
-        assert calls == [{}, {"recover": True, "recovery_pair": pair}]
+        # Each run keeps its own outcome when another writer publishes first (review D3).
+        assert calls == [
+            {"adopt_current": False},
+            {"recover": True, "recovery_pair": pair, "adopt_current": False},
+        ]
         assert held.last is not None and held.last["outcome"] == "succeeded"
         assert not held.refreshing
 

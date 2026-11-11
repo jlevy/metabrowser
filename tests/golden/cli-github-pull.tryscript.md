@@ -77,6 +77,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -534,6 +536,8 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 1,
@@ -694,6 +698,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -746,6 +752,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -817,6 +825,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -848,6 +858,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -879,6 +891,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -1002,6 +1016,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
     "record": null,
     "core_preview": null
   },
@@ -1027,6 +1043,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -1061,6 +1079,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
     "record": null,
     "core_preview": null
   },
@@ -1086,6 +1106,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": null
 }
@@ -1121,6 +1143,8 @@ status: 200
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
     "record": null,
     "core_preview": null
   },

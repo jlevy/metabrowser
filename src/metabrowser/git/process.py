@@ -836,7 +836,7 @@ async def spawn_git_process(
         # Cancelled while the child was starting. The child may already have forked
         # helpers, and asyncio's own cleanup would kill only ``git``; finish the
         # spawn, then kill the whole group before the cancellation continues.
-        await _kill_when_spawned(spawn)
+        await kill_when_spawned(spawn)
         raise
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
@@ -845,7 +845,7 @@ async def spawn_git_process(
         raise GitUnavailableError(f"could not run git: {exc}") from exc
 
 
-async def _kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:
+async def kill_when_spawned(spawn: asyncio.Future[asyncio.subprocess.Process]) -> None:
     """Wait out a spawn that a cancellation interrupted, then kill what it started."""
 
     while not spawn.done():
@@ -1055,6 +1055,7 @@ __all__ = [
     "git_executable",
     "forget_process_group",
     "kill_live_process_groups",
+    "kill_when_spawned",
     "loggable",
     "parse_git_version",
     "parsed_git_version_as_fixture",

@@ -94,3 +94,105 @@ def test_diff_view_file_decides_sides_addresses_and_switches() -> None:
 
 def test_comparison_routes_are_shared_by_mount_prefetch_and_deferred_files() -> None:
     _run("diff-comparison-route-behavior.js", "diff comparison routes OK")
+
+
+def test_markdown_diff_observes_nearby_files_and_preserves_the_selected_mode() -> None:
+    _run("diff-markdown-behavior.js", "diff Markdown view OK")
+
+
+def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> None:
+    """Projected hostile blocks, and blocks the server never sends, through sanitizeBlock."""
+
+    import json
+
+    from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot
+    from metabrowser.diff.markdown_projection import project_markdown_diff
+    from metabrowser.git.tree_source import GitPath
+    from tests.github_pull_fixture import html_tree
+    from tests.test_markdown_diff_projection import (
+        _patch,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    require_node()
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef", "head")
+    source = GitPath((b"docs", b"guide.md"))
+    links = json.loads(
+        (REPO_ROOT / "tests/fixtures/inert-html-hostile-links.json").read_text(encoding="utf-8")
+    )
+    document = (
+        b"# Guide\n\nSee [the guide](other.md), [the top](#guide) and "
+        b"[outside](https://example.org/x).\n\n![diagram](diagram.png)\n\n"
+        + b"".join(
+            # A lone carriage return makes the whole source unmappable, so it is a space.
+            b"[%s](<%s>) " % (name.encode(), re.sub(r"[\r\n]", " ", href).encode())
+            for name, href in {**links["refused"], **links["kept"]}.items()
+            # Markup inside a destination is raw HTML, which projects nothing at all.
+            if "<" not in href
+        )
+        + b"\n"
+    )
+    projected = project_markdown_diff(
+        old=None,
+        new=document,
+        patch=_patch(None, document),
+        namespace="comparison/file",
+        rewrite_local=lambda href, image: snapshot.reference(source, href, image),
+    )
+    assert projected["status"] == "ready"
+    cases: list[dict[str, object]] = [
+        {"name": f"projected {index}", "html": block["html"], "expect": {}}
+        for index, block in enumerate(projected["blocks"])
+    ]
+    cases[1]["expect"] = {
+        "contains": ["/api/plugin/github/pull-snapshot?", "#user-content-", "https://example.org/x"]
+    }
+    cases[2]["expect"] = {"contains": ["mode=image"]}
+    snapshot_image = cases[2]["html"]
+    assert isinstance(snapshot_image, str)
+    wrong_mode = snapshot_image.split('src="', 1)[1].split('"', 1)[0].replace("&amp;mode=image", "")
+    extra: list[dict[str, object]] = [
+        {
+            "name": "local and same-origin targets the server never sends",
+            "html": (
+                '<p><a href="/api/tree">api</a> <a href="http://127.0.0.1:8123/raw?path=x">same'
+                '</a> <a href="../x.md">relative</a> <img src="https://example.com/t.gif" '
+                f'alt="tracker"> <img src="{wrong_mode}" alt="wrong mode"></p>'
+            ),
+            "expect": {"lacks": ['href="/api/tree"', "127.0.0.1:8123", "../x.md", "t.gif", "src="]},
+        },
+        {
+            "name": "a forged snapshot marker",
+            "html": '<p><a href="mb-snapshot-target-0">forged</a></p>',
+            "expect": {"lacks": ["mb-snapshot-target"], "contains": ["<a>forged</a>"]},
+        },
+        {
+            "name": "attributes the allowlist drops",
+            "html": (
+                '<p onclick="x" style="color:red" class="modal" id="app"><a href="https://e.x/"'
+                ' onclick="x" name="settings">x</a><ins class="z">y</ins><del>z</del></p>'
+            ),
+            "expect": {
+                "lacks": ["onclick", "style", "class", 'id="app"', "name="],
+                "contains": ["<ins>y</ins>", "<del>z</del>"],
+            },
+        },
+    ]
+    cases += extra
+    for case in cases:
+        html = case["html"]
+        assert isinstance(html, str)
+        case["tree"] = html_tree(html)
+    from metabrowser.builtin_plugins.github.pull_route import snapshot_route
+
+    recorded = tmp_path / "cases.json"
+    route = snapshot_route(snapshot.number, snapshot.base, snapshot.head, store=snapshot.store)
+    recorded.write_text(json.dumps({"route": route, "cases": cases}), encoding="utf-8")
+    result = subprocess.run(
+        ["node", str(DOM_DIR / "diff-markdown-sanitize-session.js"), str(REPO_ROOT), str(recorded)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"diff Markdown sanitize OK ({len(cases)} blocks)" in result.stdout

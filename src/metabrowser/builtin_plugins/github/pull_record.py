@@ -16,6 +16,7 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import stat
 from datetime import datetime
@@ -46,6 +47,8 @@ from metabrowser.home import (
     ensure_private_directory,
     write_private_file_atomic,
 )
+
+log = logging.getLogger(__name__)
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
@@ -292,6 +295,14 @@ class PullRecord(_Model):
 type RecordAbsence = Literal["not_cached", "schema_mismatch", "unreadable"]
 
 
+class PullObservationSuperseded(Exception):
+    """A different process published the record first."""
+
+    def __init__(self, current: PullRecord) -> None:
+        super().__init__("a newer pull-request observation is already cached")
+        self.current = current
+
+
 class RecordTooLargeError(Exception):
     """A record would be larger than :data:`MAX_PULL_RECORD_BYTES`; nothing was written."""
 
@@ -486,30 +497,93 @@ def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) ->
 
 
 def write_pull_record(
-    home: Path, slug: str, record: PullRecord, *, metadata_only: bool = False
+    home: Path,
+    slug: str,
+    record: PullRecord,
+    *,
+    metadata_only: bool = False,
+    store_id: str | None = None,
+    expected: PullRecord | RecordAbsence | None = None,
 ) -> PullRecord:
-    """Publish and return *record* under its source's alias lock. Blocking.
+    """Publish *record* under its source's alias lock and return what was written. Blocking.
 
     Every writer takes the same lock. A metadata-only writer merges a compatible
-    comparison from the latest shared record inside that publication boundary. Readers
-    remain lock-free and see the old or the complete new record. Async callers use
-    ``run_lock_section`` so cancellation abandons a queued lock wait.
+    comparison from the latest shared record inside that publication boundary, and
+    returns that merged record. Readers remain lock-free and see the old or the complete
+    new record. Async callers use ``run_lock_section`` so cancellation abandons a queued
+    lock wait.
+
+    *expected* is what the caller read of the record before the work that produced
+    *record*: a record, or ``"not_cached"`` for no file. When the file under the lock is
+    a different record, another writer published first, and nothing is written; this
+    raises :class:`PullObservationSuperseded` with that record. A read that failed
+    (``"unreadable"``, ``"schema_mismatch"``) observed nothing of the disk, so it is no
+    expectation, and neither is ``None``.
+
+    *store_id* names the store a mirror computed *record*'s comparison in. The pair it
+    replaces and its own pair are kept in the bounded history the revision route admits
+    (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
+    a store or without. A history that cannot be read or saved is left as it was and
+    logged, and the record is still published.
 
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
+        retain_reader,
+        retain_replaced_pair,
+        retain_snapshot_binding,
+    )
+
     data = serialize_pull_record(record)
     # Do not create a lock or any source path for an unclaimed source. Check again
     # under the lock before creating the pulls directory or publishing the record.
     _require_published_source(home, slug)
+    observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
     with source_alias_lock(home, slug):
         ensure_pulls_directory(home, slug)
-        if metadata_only:
+        if observed is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
+            if (
+                observed is not None
+                and isinstance(current, PullRecord)
+                and current != observed
+                and (
+                    not same_observation(current, observed)
+                    # A writer that changes only the comparison of the same read loses
+                    # to one that computed it: it adopts that comparison rather than
+                    # replacing it with its own failure or pending base.
+                    or (current.comparison is not None and same_observation(record, observed))
+                )
+            ):
+                raise PullObservationSuperseded(current)
+        else:
+            current = "not_cached"
+        if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
+        try:
+            if store_id is not None:
+                # The current record still authorizes its exact pair if history cannot be
+                # saved.
+                retain_replaced_pair(home, slug, store_id, current, record)
+            else:
+                # No store, so no pair to keep; another reader's pairs still go.
+                retain_reader(home, slug, record.number, record.reader)
+        except (PrivateStorageError, OSError) as exc:
+            _history_not_kept(record.number, exc)
         write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+        if store_id is not None and record.comparison is not None:
+            try:
+                retain_snapshot_binding(home, slug, store_id, record)
+            except (PrivateStorageError, OSError) as exc:
+                _history_not_kept(record.number, exc)
     return record
+
+
+def _history_not_kept(number: int, exc: Exception) -> None:
+    # The record is published either way; only older revision links can expire early.
+    log.debug("could not keep pull request %s's revision history: %s", number, exc)
 
 
 def read_pull_record(
@@ -597,10 +671,50 @@ def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
         return None
 
 
-def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
-    """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
+def same_observation(current: PullRecord, observed: PullRecord | RecordAbsence | None) -> bool:
+    """Whether *current* is the *observed* read, only with its comparison changed since.
 
-    write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+    A comparison prepared from a cached record, or refused, adds no newer observation, so
+    a refresh that read GitHub after it is not superseded by it, and the refresh's newer
+    read is kept.
+    """
+    if not isinstance(observed, PullRecord):
+        return False
+    if current == observed:
+        return True
+
+    def bare(record: PullRecord) -> PullRecord:
+        unavailable = {
+            part: state for part, state in record.unavailable.items() if part != "comparison"
+        }
+        return record.model_copy(update={"comparison": None, "unavailable": unavailable})
+
+    return bare(current) == bare(observed)
+
+
+def write_pull_refresh(
+    home: Path,
+    slug: str,
+    number: int,
+    stamp: PullRefreshStamp,
+    *,
+    expected: PullRecord | RecordAbsence,
+) -> bool:
+    """Keep the outcome only while the observation it describes is current.
+
+    *expected* is the record the outcome describes, or ``"not_cached"`` when there was
+    none. As for :func:`write_pull_record`, only those observe the disk; another absence,
+    such as an unreadable record, checks nothing. A different record there now refuses
+    the stamp, and the answer is ``False``.
+    """
+    _require_published_source(home, slug)
+    observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
+    with source_alias_lock(home, slug):
+        current = read_pull_record(home, slug, number) if observed is not None else None
+        if isinstance(current, PullRecord) and not same_observation(current, observed):
+            return False
+        write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+        return True
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
@@ -624,6 +738,7 @@ __all__ = [
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
     "PULL_RECORD_SCHEMA",
+    "PullObservationSuperseded",
     "PullRefreshStamp",
     "Reader",
     "CheckRun",
@@ -649,6 +764,7 @@ __all__ = [
     "read_pull_record",
     "read_pull_refresh",
     "read_refresh_stamp",
+    "same_observation",
     "serialize_pull_record",
     "write_pull_record",
     "write_pull_refresh",

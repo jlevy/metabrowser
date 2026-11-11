@@ -313,6 +313,11 @@ async function controllerStory(tree) {
   const reads = [];
   const requests = [];
   const jumps = [];
+  // Each jump says whether a walk will settle there, and a cancelled walk says so.
+  const settling = [];
+  let cancelled = 0;
+  // Paths the route cannot encode, as `tab.fileHref` answers null for them.
+  const unroutable = new Set();
   const opens = [];
   let model = null;
   let nextTimer = 0;
@@ -352,12 +357,17 @@ async function controllerStory(tree) {
       markMuted() {},
       page: () => ({
         fileForPath: () => ({ kind: "file" }),
-        showFile: (path) => {
+        showFile: (path, how) => {
           jumps.push(path);
+          settling.push(how?.settling === true);
           return { kind: "jumped" };
+        },
+        walkCancelled: () => {
+          cancelled += 1;
         },
       }),
       open: (route) => opens.push(route),
+      routable: (path) => !unroutable.has(path),
       leave() {},
     },
     { number: 106, autoExpandFiles: 300 },
@@ -420,6 +430,9 @@ async function controllerStory(tree) {
   if (opens.length !== 1 || !opens[0].replace || !opens[0].jumped) {
     throw Error("a key's stop must replace one entry");
   }
+  if (settling.length === 0 || settling.some((will) => !will) || cancelled !== 0) {
+    throw Error("a walk's jumps will settle, and its stop cancels nothing");
+  }
   story.push({
     step: "held keys jump every file but replace history once on release",
     jumps: jumps.length,
@@ -463,6 +476,9 @@ async function controllerStory(tree) {
   if (controller.snapshot().walking !== null || opens.length !== 0) {
     throw Error("a later route must cancel the old walk");
   }
+  if (cancelled !== 1) {
+    throw Error("a cancelled walk must tell the page it will not settle");
+  }
   look("a later route cancels a pending file walk");
   startWalk();
   controller.setShown(false);
@@ -470,6 +486,15 @@ async function controllerStory(tree) {
   if (controller.snapshot().walking !== null || opens.length !== 0) {
     throw Error("a hidden panel must cancel the old walk");
   }
+  if (cancelled !== 2) {
+    throw Error("hiding the panel must tell the page the walk will not settle");
+  }
+  startWalk();
+  controller.activateAnchor();
+  if (cancelled !== 2 || opens.length !== 1) {
+    throw Error("Enter during a walk opens the file, which the page then owns");
+  }
+  opens.length = 0;
   look("hiding the panel cancels a pending file walk");
   controller.collapse();
   if (timers.size !== 0) {
@@ -478,7 +503,58 @@ async function controllerStory(tree) {
   visible = false;
   controller.onVisibilityChange();
   look("a closed or hidden tree has no timer");
+  // A walk's other endings tell the page too: the page hidden, the tree collapsed, and the
+  // tree disposed. A walk onto a file the route cannot encode claims no settling at all,
+  // since no address will confirm it.
+  const walkOn = () => {
+    const at = model.rows.findIndex(
+      (row, index) => row.kind === "file" && model.rows[index + 1]?.kind === "file",
+    );
+    controller.focused(model.rows[at].id);
+    controller.move(1, { repeat: true });
+    if (controller.snapshot().walking === null) {
+      throw Error("the probe needs a pending file walk");
+    }
+    return model.rows[at + 1].path;
+  };
+  visible = true;
+  controller.setShown(true);
+  reads.push("filled");
+  controller.expand();
+  await settle();
+  walkOn();
+  visible = false;
+  controller.onVisibilityChange();
+  if (cancelled !== 3) {
+    throw Error("a hidden page must tell the page the walk will not settle");
+  }
+  visible = true;
+  reads.push("filled");
+  controller.onVisibilityChange();
+  await settle();
+  walkOn();
+  controller.collapse();
+  if (cancelled !== 4) {
+    throw Error("collapsing the tree must tell the page the walk will not settle");
+  }
+  reads.push("filled");
+  controller.expand();
+  await settle();
+  const at = model.rows.findIndex(
+    (row, index) => row.kind === "file" && model.rows[index + 1]?.kind === "file",
+  );
+  unroutable.add(model.rows[at + 1].path);
+  settling.length = 0;
+  walkOn();
+  if (settling.at(-1) !== false) {
+    throw Error("a walk onto a file the route cannot encode must claim no settling");
+  }
+  unroutable.clear();
+  walkOn();
   controller.dispose();
+  if (cancelled !== 5) {
+    throw Error("disposing the tree must tell the page the walk will not settle");
+  }
   return story;
 }
 

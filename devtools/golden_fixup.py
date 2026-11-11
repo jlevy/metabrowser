@@ -70,6 +70,13 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     # PR comparison addresses name the editable build and sandbox store, neither pinned.
     (r"(&build=)[0-9a-f]{12}(&store=)[0-9a-f]{16}", r"\1[BUILD]\2[STORE]"),
+    # Its revision-file and rendered-Markdown addresses name the sandbox store after the
+    # endpoints.
+    (
+        r"(/api/plugin/github/pull-(?:snapshot|rendered-diff)\?number=\d+"
+        r"&left=[0-9a-f]{40,64}&right=[0-9a-f]{40,64}&store=)[0-9a-f]{16}",
+        r"\1[STORE]",
+    ),
     (r"Usage: metab \[OPTIONS\] \[ROOT\]", "Usage: metab [OPTIONS] [ROOT_ARG]"),
     # A served mirror's origin is a file:// address of the sandbox. Its scheme is part
     # of what the status answered and stays; the sandbox rule would take it with the path.
