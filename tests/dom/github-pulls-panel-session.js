@@ -1328,8 +1328,9 @@ async function paintStory(panel, selection = false) {
       assert(
         message.classList.contains("mb-refreshing") &&
           message.classList.contains("mb-refreshing-muted") &&
-          connection.getAttribute("aria-busy") === "true",
-        "the outage breathes, muted, and the row is busy",
+          connectionText.getAttribute("aria-busy") === "true" &&
+          connection.getAttribute("aria-busy") === null,
+        "the outage breathes, muted, and its text, not the row's Reload, is busy",
       );
       assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
     };

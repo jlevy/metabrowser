@@ -201,10 +201,12 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const refreshing = warm.querySelector(".github-pull-status");
   assert.match(refreshing.textContent, /^Fetched .+ via GitHub CLI$/);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
+  const age = refreshing.querySelector(".github-pull-freshness");
   assert(
-    refreshing.querySelector(".github-pull-freshness").classes.has("mb-refreshing") &&
-      refreshing.getAttribute("aria-busy") === "true",
-    "the cached page's age breathes while it refreshes",
+    age.classes.has("mb-refreshing") &&
+      age.getAttribute("aria-busy") === "true" &&
+      refreshing.getAttribute("aria-busy") === null,
+    "the cached page's age breathes, and is the one thing busy, while it refreshes",
   );
   resolveStacks({
     status: optionalStacks.current.status,

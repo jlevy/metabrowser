@@ -22,9 +22,10 @@
 // markup; the only markup parsed is the shell's own chevron.
 //
 // A list with rows is never covered by a spinner: while its refresh is asked for or runs, the
-// group carries `.mb-refreshing-group` and `aria-busy`, and the folder and file names, which
-// are the rows' primary ink, breathe together (docs/design-system.md, "Refreshing Content").
-// The spinner is only for a list with no rows yet.
+// group carries `.mb-refreshing-group`, and the folder and file names, which are the rows'
+// primary ink, breathe together (docs/design-system.md, "Refreshing Content"). The rows stay
+// usable, so nothing marks them busy; the live region says what changed. The spinner is only
+// for a list with no rows yet.
 
 import { createFileTreeController, LISTING_FILES, windowRange } from "./pull-files-tree.js";
 import { alignRefreshing, h, isPlainClick } from "./pull-page.js";
@@ -353,8 +354,8 @@ export function mountFileTree(host) {
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
     line.hidden = next.line === null && !next.loading;
     spinner.hidden = !next.loading;
+    // The names breathe as paint; the rows stay fully usable, so the group is not marked busy.
     group.classList.toggle("mb-refreshing-group", next.refreshing);
-    group.setAttribute("aria-busy", String(next.loading || next.refreshing));
     retryButton = null;
     if (next.notice === null) {
       notice.replaceChildren();

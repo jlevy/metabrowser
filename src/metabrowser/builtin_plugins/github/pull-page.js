@@ -931,6 +931,27 @@ function describeCore(pull) {
 }
 
 /**
+ * When GitHub's rate limit stops holding this pull request's automatic refresh, in ms, or NaN
+ * when none holds it: not before `reset_at`, and not within a freshness window of the
+ * attempt the limit refused, which the server's guard and the page's own once-a-window ask
+ * both wait out. `last_refresh.at` is when that attempt ended, never before the server
+ * counted it from, so the time this names is never earlier than the next check. Pure.
+ *
+ * @param {PullEnvelope | null} envelope
+ */
+export function rateLimitLifts(envelope) {
+  const last = envelope?.last_refresh ?? null;
+  if (last === null || last.outcome !== "rate_limited") {
+    return Number.NaN;
+  }
+  const lifts = [
+    last.reset_at === null ? Number.NaN : Date.parse(last.reset_at),
+    Date.parse(last.at) + (envelope?.fresh_for_s ?? 0) * 1000,
+  ].filter(Number.isFinite);
+  return lifts.length === 0 ? Number.NaN : Math.max(...lifts);
+}
+
+/**
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
@@ -997,13 +1018,14 @@ export function describePull(envelope, page) {
   const last = envelope.last_refresh;
   // What the last attempt said stays until a refresh actually runs, so an automatic ask that
   // the server answers at once does not blink it.
+  // A rate limit holds the automatic refresh, which asks again by itself when it lifts.
+  const heldUntil = rateLimitLifts(envelope);
+  const held = heldUntil > page.nowMs;
   if (last?.outcome === "rate_limited" && !envelope.refreshing) {
-    // Held, not failed: the page asks again by itself when GitHub said it may.
-    const lifts = last.reset_at === null ? Number.NaN : Date.parse(last.reset_at);
-    model.failure =
-      Number.isFinite(lifts) && lifts > page.nowMs
-        ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(/** @type {string} */ (last.reset_at))}`
-        : "GitHub rate limit · next check within a minute";
+    // Held, not failed: the time named is the one the page next asks at.
+    model.failure = Number.isFinite(heldUntil)
+      ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(new Date(heldUntil).toISOString().replace(".000Z", "Z"))}`
+      : "GitHub rate limit · next check within a minute";
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
@@ -1060,11 +1082,14 @@ export function describePull(envelope, page) {
   model.recordRevision = envelope.record_revision;
   model.contentReady = true;
   model.message = page.error ?? null;
-  // A stale record the page is refreshing by itself offers nothing to press: Refresh is for
-  // a failure, a hold, Changes, or a stale record whose automatic refresh did not run.
+  // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
+  // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
+  // hold offers none either: the page names when it asks again and asks then, as the Pulls
+  // tab's Reload waits out the same hold, and a press would only meet the limit.
   model.canRefresh =
     !envelope.refreshing &&
     !model.revalidating &&
+    !held &&
     (envelope.state !== "stale" || !offline) &&
     (envelope.state === "stale" ||
       model.failure !== null ||
@@ -1368,14 +1393,9 @@ export function createPullController(deps, options) {
     return deps.isOnline?.() !== false;
   }
 
-  /** GitHub's rate limit holds automatic refreshes until the time it gave. */
+  /** GitHub's rate limit holds automatic refreshes until `rateLimitLifts`. */
   function rateLimitHolds() {
-    const last = envelope?.last_refresh;
-    return (
-      last?.outcome === "rate_limited" &&
-      last.reset_at !== null &&
-      Date.parse(last.reset_at) > deps.now()
-    );
+    return rateLimitLifts(envelope) > deps.now();
   }
 
   /**
@@ -1598,11 +1618,20 @@ export function createPullController(deps, options) {
     const last = envelope?.last_refresh;
     const resetMs = last?.outcome === "rate_limited" ? Date.parse(last.reset_at ?? "") : Number.NaN;
     const nowMs = deps.now();
-    return resetMs > nowMs &&
-      (envelope?.state === "stale" ||
-        comparisonQueued(envelope, { ...pageState(), ownsChanges: ownsChanges(), nowMs: resetMs }))
-      ? resetMs - nowMs
-      : null;
+    /** @type {number[]} */
+    const waits = [];
+    if (
+      resetMs > nowMs &&
+      comparisonQueued(envelope, { ...pageState(), ownsChanges: ownsChanges(), nowMs: resetMs })
+    ) {
+      waits.push(resetMs - nowMs);
+    }
+    // The stale record's refresh is asked for when its hold lifts, the time the page names.
+    const recordLifts = rateLimitLifts(envelope);
+    if (envelope?.state === "stale" && recordLifts > nowMs) {
+      waits.push(recordLifts - nowMs);
+    }
+    return waits.length === 0 ? null : Math.min(...waits);
   }
 
   // Every request that answers an envelope is numbered when it is sent. A slow poll sent
@@ -3538,7 +3567,12 @@ export function mountPullPage(container, ctx, mb) {
       model.freshness !== null &&
       (model.revalidating || (timelineBusy && model.tab === ""));
     freshnessLine.classList.toggle("mb-refreshing", busy);
-    status.setAttribute("aria-busy", String(busy));
+    // Busy is said of the age being updated, never of the status line's buttons and links.
+    if (busy) {
+      freshnessLine.setAttribute("aria-busy", "true");
+    } else {
+      freshnessLine.removeAttribute("aria-busy");
+    }
   }
 
   /** @param {PullModel} model */

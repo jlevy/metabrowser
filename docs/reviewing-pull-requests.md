@@ -442,7 +442,10 @@ last failure, with **Refresh**. It tries a failure again once a minute while you
 open, except one you must fix, such as GitHub CLI missing or signed out, which waits for
 your **Refresh**. **Refresh** is available after a failed refresh or an unavailable
 comparison, on a stale record whose automatic refresh did not run, and on **Changes**
-even while the record is current.
+even while the record is current, but not while GitHub’s rate limit holds the page, as
+the Pulls tab’s **Reload** waits too.
+The time the page names is when it asks again: not before GitHub’s reset, and not within
+a minute of the attempt the limit refused.
 A managed source’s row at the foot of the navigation pane separately reports when its
 Git store was fetched and can refresh it.
 

@@ -68,6 +68,9 @@ class Element {
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
     if (name === "class") {

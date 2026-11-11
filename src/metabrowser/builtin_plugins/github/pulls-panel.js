@@ -937,6 +937,8 @@ export function createPullsController(deps, options = {}) {
       deps.cancel(coreRetryTimer);
       coreRetryTimer = null;
     }
+    // The panel no longer follows the batch, so its titles stop saying GitHub is read for them.
+    noteCoreRefreshing();
   }
 
   async function sendCoreWindow() {
@@ -1085,9 +1087,17 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
-  /** The rows GitHub is being read for: an admitted batch that has not settled. */
+  /**
+   * The rows GitHub is being read for: an admitted batch the panel still follows, live and
+   * retrying until it settles. Offline, a selection, or an address that cancels the retry
+   * ends it, as a settled or replaced batch does.
+   */
   function coreRefreshing() {
-    return coreWanted !== null && coreWanted.admitted === true && !coreWanted.done
+    return coreWanted !== null &&
+      coreWanted.admitted === true &&
+      !coreWanted.done &&
+      coreWanted.canRetry &&
+      coreLive()
       ? coreWanted.body.numbers
       : [];
   }
@@ -3091,15 +3101,15 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * Breathe a row's title while GitHub is read for it, and mark the row busy.
+   * Breathe a row's title while GitHub is read for it. Paint only: the row stays a usable
+   * link, so it is not marked busy.
    *
-   * @param {{title: HTMLElement, row: HTMLElement, info: PullRow}} entry
+   * @param {{title: HTMLElement, info: PullRow}} entry
    * @returns {boolean} Whether it is breathing.
    */
   function markRefreshing(entry) {
     const on = refreshingTitles.has(entry.info.number);
     entry.title.classList.toggle("mb-refreshing", on);
-    entry.row.setAttribute("aria-busy", String(on));
     return on;
   }
 
@@ -3361,7 +3371,12 @@ export function mountPullsPanel(container, ctx, mb) {
     spinner.hidden = !working && !retrying;
     // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
-    connection.setAttribute("aria-busy", String(working || retrying || refreshing));
+    // Busy is said of the status text, never of the row's Reload or help link.
+    if (working || retrying || refreshing) {
+      connectionText.setAttribute("aria-busy", "true");
+    } else {
+      connectionText.removeAttribute("aria-busy");
+    }
     const message = connected?.text ?? "";
     if (connectionMessage.textContent !== message) {
       connectionMessage.textContent = message;

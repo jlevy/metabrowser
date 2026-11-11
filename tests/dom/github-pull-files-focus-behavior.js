@@ -398,6 +398,7 @@ async function refreshingPaint(mountFileTree) {
     );
     return {
       breathing: view.group.classes.has("mb-refreshing-group"),
+      // The rows stay usable, so the group is never marked busy.
       busy: view.group.getAttribute("aria-busy"),
       spinner: !spinner.hidden,
       line: line.hidden ? null : line.textContent,

@@ -19,9 +19,12 @@ A stale page refreshes itself, without `retry`, and offers nothing to press whil
 does: once a reader has stayed on it, so a page walked past asks nothing, and again each
 time it goes stale while it is left open, at once (`leftOpen`). A page whose own refresh
 is not due or failed asks again only once a freshness window has passed, and keeps
-saying why meanwhile (`failing`). `revalidating` says the content shown is being
-refreshed, which the paint shows by breathing the age line, never with a spinner, and
-the freshness is the plain age, never “may be out of date”.
+saying why meanwhile (`failing`). GitHub’s rate limit is a hold, not a failure
+(`rateLimited`): the page offers no Refresh, names the time it asks again, not before
+`reset_at` and not within a window of the refused attempt, wakes then, and asks at once.
+`revalidating` says the content shown is being refreshed, which the paint shows by
+breathing the age line, never with a spinner, and the freshness is the plain age, never
+“may be out of date”.
 The Markdown of each text is asked for one part at a time from
 `/api/plugin/github/pull-markdown`, two at once, and a render of a record the page no
 longer shows is dropped.
@@ -1150,6 +1153,106 @@ $ node tests/dom/github-pull-page-second-session.js
         "revalidating": true,
         "failure": null,
         "browse": "switches to refs/pull/8/head",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    }
+  ],
+  "rateLimited": [
+    {
+      "step": "a stale page asks for its refresh",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "GitHub's rate limit refused it",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "still held, it wakes at the time it named",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": 20000,
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "at the time it named, its poll asks again at once",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "and sends that ask with no wait",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
         "headOffer": null
       },
       "conversation": "keep",
