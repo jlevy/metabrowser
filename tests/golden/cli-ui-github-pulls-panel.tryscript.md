@@ -139,7 +139,9 @@ $ node tests/dom/github-pulls-panel-session.js
     },
     {
       "step": "cached windows fill only the display budget",
-      "requests": [],
+      "requests": [
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
+      ],
       "timer": "slow",
       "painted": 1,
       "paint": {
@@ -236,7 +238,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5801",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5701",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5601",
-        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500,\"background\":true}"
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500,\"background\":true}",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[5999,6000,5998,5997,5996],\"files\":[5999],\"changed\":true}"
       ],
       "timer": "slow",
       "marks": [
@@ -382,7 +385,8 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "one press opens with its cached record",
       "requests": [
-        "GET /api/plugin/github/pull?number=105"
+        "GET /api/plugin/github/pull?number=105",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[106,104,103,102],\"files\":[105,106,104],\"changed\":false}"
       ],
       "timer": "slow",
       "marks": [
@@ -417,7 +421,9 @@ $ node tests/dom/github-pulls-panel-session.js
     },
     {
       "step": "the row it stopped on opens",
-      "requests": [],
+      "requests": [
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[66,64,106,105,104,103,102],\"files\":[65,66,64],\"changed\":false}"
+      ],
       "timer": "slow",
       "opened": [
         {
@@ -450,7 +456,8 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "a repeated hover and click reuse one cached record",
       "requests": [
-        "GET /api/plugin/github/pull?number=80"
+        "GET /api/plugin/github/pull?number=80",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[81,79,106,105,104,103,102],\"files\":[80,81,79],\"changed\":false}"
       ],
       "timer": "slow",
       "marks": [

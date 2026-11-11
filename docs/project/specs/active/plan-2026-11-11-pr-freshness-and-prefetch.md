@@ -273,6 +273,9 @@ One phase, one pull request, in this order:
 The PR page sends no prefetch of its own: the request replaces the lane’s queue, so it
 would drop the panel’s, and the changed-files list it would warm is the tree under the
 panel’s row, which the panel already names.
+While a lane it started works, the panel reads its report once a fast poll, and the row
+whose record the lane is reading joins `refreshingRows`, so its title breathes as a core
+batch’s rows do (the presentation pull request’s `.mb-refreshing`).
 
 ## Testing Strategy
 
