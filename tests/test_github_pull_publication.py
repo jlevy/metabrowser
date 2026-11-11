@@ -158,3 +158,49 @@ def test_a_refresh_failing_after_its_own_pending_write_stamps_that_failure(
     assert record.unavailable["comparison"] == "base_uncertain"
     stamp = read_pull_refresh(stand.published.home, stand.published.slug, 7)
     assert stamp is not None and stamp.outcome == failed.value.state == "git_failed"
+
+
+def test_a_comparison_of_an_older_read_does_not_discard_a_newer_refresh(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review E2 on #348: a comparison added to a record is not a newer observation.
+
+    During a reader's 12:10 refresh, another server prepares the comparison of the record it
+    read at 12:00. Before, the refresh's write was refused as superseded, and the 12:10
+    read was discarded for the 12:00 one.
+    """
+    from datetime import timedelta
+
+    from tests.github_pull_fixture import FETCHED_AT
+
+    first = stand.refresh(7)
+    published = stand.published
+    observed = first.model_copy(
+        update={"comparison": None, "unavailable": {**first.unavailable, "comparison": "no_store"}}
+    )
+    write_pull_record(published.home, published.slug, observed)
+    real_read = pulls._read_api  # pyright: ignore[reportPrivateUsage]
+    raced: list[Any] = []
+
+    async def read_while_another_server_prepares(*args: Any, **kwargs: Any) -> Any:
+        if not raced:
+            raced.append(await pulls.prepare_pull_comparison(published, observed))
+        return await real_read(*args, **kwargs)
+
+    later = FETCHED_AT + timedelta(minutes=10)
+    monkeypatch.setattr(pulls, "_read_api", read_while_another_server_prepares)
+    monkeypatch.setattr(pulls, "utc_now", lambda: later)
+
+    async def reader_refresh() -> Any:
+        served = ServedPulls(published)
+        companion = await served.companion(7)
+        await companion.refresh()
+        return companion
+
+    companion = asyncio.run(reader_refresh())
+    stamp = later.strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert raced and raced[0] is not None and raced[0].fetched_at == first.fetched_at
+    on_disk = stand.record(7)
+    assert isinstance(on_disk, PullRecord) and on_disk.fetched_at == stamp
+    assert companion.fetched_at == stamp
+    assert companion.last is not None and companion.last["at"] == stamp
