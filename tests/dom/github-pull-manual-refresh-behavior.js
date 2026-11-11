@@ -72,6 +72,11 @@ async function run() {
   };
   assert.equal(describePull(noStore, options).canRefresh, false);
   assert.equal(describePull(noStore, options).canRetryComparison, false);
+  const readFailed = describePull(noStore, { ...options, error: "The server did not answer." });
+  assert.equal(readFailed.changesPending, false, "a failed read is no attempt in progress");
+  assert.equal(readFailed.canRetryComparison, false, "nor a failed attempt to retry");
+  assert.equal(readFailed.canFetchComparison, false, "the next good read asks by itself");
+  assert.equal(readFailed.filesUnavailable, "Changes have not been fetched.");
   const failed = describePull(
     {
       ...noStore,
