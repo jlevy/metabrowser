@@ -79,6 +79,7 @@ Where to look while it runs:
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children. |
 | `Resources/Info.plist`, `scripts/` | The bundle’s property list, the bundle script, and the icon generator. |
+| `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit
 or WebKit. The app target is the platform behavior the brief exempts from the CLI parity
