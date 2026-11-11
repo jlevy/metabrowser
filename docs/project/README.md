@@ -98,6 +98,7 @@ Once its questions are answered and its measurements are superseded, it moves to
 - [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
 - [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md)
 - [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md)
+- [Installing the native macOS app through uv and `metab`](research/research-2026-11-11-uv-and-macos-app-install.md)
 
 ### Archived Research
 

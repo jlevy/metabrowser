@@ -1,6 +1,6 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-10)
+**Date:** 2026-11-10 (last updated 2026-11-11)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -312,7 +312,8 @@ user decides to merge it.
 
 - Research:
   [Native macOS App](../../research/research-2026-11-08-macos-app-packaging.md),
-  [Server Topology, Lifecycle, and Agent Handoff](../../research/research-2026-11-10-native-app-server-topology.md)
+  [Server Topology, Lifecycle, and Agent Handoff](../../research/research-2026-11-10-native-app-server-topology.md),
+  [Installing the Native App Through uv and `metab`](../../research/research-2026-11-11-uv-and-macos-app-install.md)
 - Code: `apps/macos/README.md`, `skills/metabrowser/SKILL.md`,
   [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - tbd guidelines: `macos-webview-shell-patterns`, `desktop-python-runtime-patterns`,
