@@ -89,6 +89,7 @@ _NATIVE_ATTRIBUTES = {
     "td_open": frozenset({"style"}),
 }
 _COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
+_DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
 _SPACE = re.compile(r"\s+")
 # Separates rendered blocks through KPress's post-processing, sanitizer and the hardener.
@@ -338,6 +339,7 @@ def _block(
     tokens: Sequence[Token],
     span: tuple[int, int],
     node: _Element,
+    lines: Sequence[str],
     offset: int,
     after: int,
     *,
@@ -346,6 +348,15 @@ def _block(
     first, stop = span
     start, end = _map(tokens[first], offset, after)
     hidden, concealed = _hidden(tokens[first:stop])
+    # A link reference definition inside a quote or a list renders nothing where it is
+    # written, and one that repeats a label renders nothing at all, title included.
+    definitions = tuple(
+        ("definition", line.strip())
+        for line in lines[start - offset : end - offset]
+        if _DEFINITION.match(line)
+    )
+    if definitions:
+        hidden, concealed = (*hidden, *definitions), True
     children: tuple[_Block, ...] | None = None
     if descend and tokens[first].type in _CONTAINERS:
         inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
@@ -358,6 +369,7 @@ def _block(
                         tokens,
                         child_span,
                         child,
+                        lines,
                         offset,
                         items[-1].end if items else start,
                         descend=False,
@@ -448,9 +460,18 @@ def _render(side: _Side, budget: int) -> tuple[list[_Block], int]:
         raise _Unsupported("a block separator moved inside a block")
     tree = _Html(hardened, budget)
     blocks: list[_Block] = []
+    lines = side.source.split("\n")
     for span, node in zip(side.blocks, _segments(tree.root, len(side.blocks)), strict=True):
         blocks.append(
-            _block(tokens, span, node, side.offset, blocks[-1].end if blocks else 0, descend=True)
+            _block(
+                tokens,
+                span,
+                node,
+                lines,
+                side.offset,
+                blocks[-1].end if blocks else 0,
+                descend=True,
+            )
         )
     return blocks, tree.nodes
 
@@ -794,6 +815,15 @@ def _html(
     return f"{start}{inner()}</{tag}>"
 
 
+def _shifted(
+    wrap: Callable[[_Element, bool, int], _Element], by: int
+) -> Callable[[_Element, bool, int], _Element]:
+    def at(node: _Element, old_side: bool, index: int) -> _Element:
+        return wrap(node, old_side, by + index)
+
+    return at
+
+
 @dataclass(slots=True)
 class _Projector:
     old_lines: list[bytes]
@@ -904,8 +934,18 @@ class _Projector:
             return
         if len(old) == len(new) == 1 and self.pair(old[0], new[0], wrap):
             return
+        if len(old) == len(new) > 1 and all(
+            a.node.tag == b.node.tag for a, b in zip(old, new, strict=True)
+        ):
+            # Adjacent edited blocks of the same kinds pair in order, so each is shown,
+            # marked and flagged as itself rather than as one undivided run.
+            for index, (before, after) in enumerate(zip(old, new, strict=True)):
+                self.group([before], [after], _shifted(wrap, index))
+            return
         if old and new:
-            source_only = [block.hidden for block in old] != [block.hidden for block in new]
+            source_only = [entry for block in old for entry in block.hidden] != [
+                entry for block in new for entry in block.hidden
+            ]
             if " ".join(" ".join(_text(block.node).split()) for block in old) == " ".join(
                 " ".join(_text(block.node).split()) for block in new
             ):

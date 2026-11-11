@@ -4,6 +4,36 @@ const { pathToFileURL } = require("node:url");
 
 const plugin = path.join(process.argv[2], "src/metabrowser/builtin_plugins/diff");
 
+class ClassList {
+  constructor() {
+    this.names = new Set();
+  }
+
+  add(...names) {
+    for (const name of names) {
+      this.names.add(name);
+    }
+  }
+
+  remove(name) {
+    this.names.delete(name);
+  }
+
+  toggle(name, force) {
+    const on = force ?? !this.names.has(name);
+    if (on) {
+      this.names.add(name);
+    } else {
+      this.names.delete(name);
+    }
+    return on;
+  }
+
+  contains(name) {
+    return this.names.has(name);
+  }
+}
+
 class Element {
   constructor(tag = "") {
     this.tagName = tag.toUpperCase();
@@ -11,10 +41,20 @@ class Element {
     this.attributes = new Map();
     this.listeners = new Map();
     this.dataset = {};
-    this.classList = { add() {} };
+    this.classList = new ClassList();
     this.hidden = false;
     this.textContent = "";
     this.content = this;
+    this.open = false;
+  }
+
+  set className(value) {
+    this.classList = new ClassList();
+    this.classList.add(...value.split(" ").filter(Boolean));
+  }
+
+  get className() {
+    return [...this.classList.names].join(" ");
   }
 
   append(...children) {
@@ -37,18 +77,28 @@ class Element {
     this.attributes.set(name, value);
   }
 
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
   get firstElementChild() {
     return this.children[0];
   }
 
-  after(child) {
+  after(...children) {
     const siblings = this.parent.children;
-    siblings.splice(siblings.indexOf(this) + 1, 0, child);
+    siblings.splice(siblings.indexOf(this) + 1, 0, ...children);
+    for (const child of children) {
+      child.parent = this.parent;
+    }
   }
 
   before(...children) {
     const siblings = this.parent.children;
     siblings.splice(siblings.indexOf(this), 0, ...children);
+    for (const child of children) {
+      child.parent = this.parent;
+    }
   }
 
   addEventListener(name, listener) {
@@ -67,6 +117,7 @@ class Element {
 
   set innerHTML(spec) {
     if (typeof spec === "string") {
+      this.html = spec;
       return;
     }
     // Stand in for parsing the shared chip family's groupHtml output.
@@ -99,9 +150,10 @@ globalThis.document = {
 
 let observer;
 globalThis.IntersectionObserver = class {
-  constructor(notify) {
+  constructor(notify, options) {
     observer = this;
     this.notify = notify;
+    this.options = options;
     this.observed = new Set();
   }
 
@@ -114,10 +166,45 @@ globalThis.IntersectionObserver = class {
   }
 };
 
-async function main() {
-  const { createMarkdownViews, isSnapshotTarget, supportsMarkdownChange } = await import(
-    pathToFileURL(path.join(plugin, "diff-markdown.js"))
+/** Timers the test advances by hand. */
+function clock() {
+  let time = 0;
+  const pending = new Map();
+  let next = 1;
+  return {
+    now: () => time,
+    later(callback, ms) {
+      const handle = next++;
+      pending.set(handle, { at: time + ms, callback });
+      return handle;
+    },
+    cancel(handle) {
+      pending.delete(handle);
+    },
+    advance(ms) {
+      time += ms;
+      for (const [handle, timer] of [...pending].sort((a, b) => a[1].at - b[1].at)) {
+        if (timer.at <= time) {
+          pending.delete(handle);
+          timer.callback();
+        }
+      }
+    },
+    get pending() {
+      return pending.size;
+    },
+  };
+}
+
+function texts(node) {
+  return node.children.flatMap((child) =>
+    child.children ? [child.textContent, ...texts(child)] : [child.textContent],
   );
+}
+
+async function main() {
+  const { appendBlocks, createMarkdownViews, isSnapshotTarget, supportsMarkdownChange } =
+    await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
   const md = { entry_type: "file", path: "docs/readme.MD" };
   assert.equal(supportsMarkdownChange({ availability: "ready", old: null, new: md }), true);
   assert.equal(supportsMarkdownChange({ availability: "deferred", old: md, new: null }), true);
@@ -146,12 +233,53 @@ async function main() {
   assert.equal(isSnapshotTarget("/raw?path=README.md", true), false);
   assert.equal(isSnapshotTarget(href.replace("g1-ZG9jcw", ".."), false), false);
 
+  // Long unchanged runs fold, a folded run is built only when it opens, and a context
+  // block whose source says more never folds.
+  const built = [];
+  const build = (html) => {
+    built.push(html);
+    return make("div");
+  };
+  const context = (n) => ({ kind: "context", html: `<p id="user-content-x-${n}">${n}</p>` });
+  const fragment = make("div");
+  const folds = appendBlocks(
+    fragment,
+    [
+      ...[0, 1, 2, 3, 4, 5, 6, 7].map(context),
+      { kind: "context", html: "<p>flagged</p>", source_only: true },
+      { kind: "added", html: "<p>new</p>", source_only: true },
+    ],
+    build,
+  );
+  const details = fragment.children.find((child) => child.tagName === "DETAILS");
+  assert.equal(details.children[0].textContent, "4 unchanged blocks");
+  assert.equal(details.children.length, 1, "a closed fold holds only its summary");
+  assert.deepEqual(
+    built,
+    [0, 1, 6, 7].map((n) => context(n).html).concat(["<p>flagged</p>", "<p>new</p>"]),
+  );
+  const flagged = fragment.children.at(-1);
+  assert.ok(flagged.classList.contains("diff-markdown-source-only"));
+  assert.ok(texts(flagged).includes("Source shows changes not shown here."));
+  assert.ok(texts(flagged).includes("Added: "));
+  assert.deepEqual(
+    [...folds.keys()],
+    [2, 3, 4, 5].map((n) => `user-content-x-${n}`),
+  );
+  folds.get("user-content-x-3")();
+  assert.equal(details.open, true);
+  assert.equal(details.children.length, 5, "opening a fold builds its blocks once");
+  details.listeners.get("toggle")();
+  assert.equal(details.children.length, 5);
+
   const calls = [];
   let assets = 0;
+  let mutations = 0;
   const inert = {
     sanitizeNodes: () => [],
     kpressProse: () => make("div"),
   };
+  const time = clock();
   const root = make("div");
   const view = createMarkdownViews({
     controls: {
@@ -173,8 +301,12 @@ async function main() {
     },
     async loadStyles() {},
     mutate(change) {
+      mutations += 1;
       change();
     },
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
   });
   function file(id) {
     const section = make("section");
@@ -185,7 +317,8 @@ async function main() {
     section.append(bar, source);
     bar.append(make("button"));
     const state = view.add({ section, bar, source, id });
-    const [, progress, fallback, rendered] = section.children;
+    const [, fallback, rendered] = section.children;
+    const [, control, progress] = bar.children;
     return {
       section,
       source,
@@ -194,10 +327,10 @@ async function main() {
       fallback,
       state,
       get renderedChoice() {
-        return bar.children[1].children[0];
+        return control.children[0];
       },
       get sourceChoice() {
-        return bar.children[1].children[1];
+        return control.children[1];
       },
     };
   }
@@ -205,27 +338,42 @@ async function main() {
   const a = file("a");
   const b = file("b");
   const c = file("c");
-  view.observe(root, null, 240);
+  const d = file("d");
+  assert.equal(a.source.hidden, true, "a file waits for Rendered before showing Source");
+  view.observe(root, null);
+  assert.equal(observer.options.rootMargin, "0px 0px 100% 0px", "a viewport of lookahead");
   assert.equal(calls.length, 0);
   assert.equal(a.renderedChoice.attributes.get("aria-checked"), "true");
   const arrival = (file) => ({ target: file.section, isIntersecting: true });
-  observer.notify([arrival(a), arrival(b)]);
+  observer.notify([arrival(a), arrival(b), { target: d.section, isIntersecting: false }]);
+  assert.equal(c.source.hidden, false, "a file away from the first screen shows Source at once");
+  assert.equal(d.source.hidden, false);
+  assert.equal(b.source.hidden, true);
   assert.deepEqual(
     calls.map(({ id }) => id),
     ["a"],
   );
-  assert.equal(a.progress.hidden, false);
+  assert.ok(a.progress.classList.contains("mb-delayed-loading"), "progress waits for the delay");
+  time.advance(50);
+  assert.equal(a.source.hidden, false, "past the loading delay Source shows");
+  assert.equal(b.source.hidden, false);
   await a.sourceChoice.click();
-  assert.equal(a.progress.hidden, true);
+  assert.equal(a.progress.classList.contains("mb-delayed-loading"), false);
   assert.equal(a.source.hidden, false);
   assert.equal(document.activeElement, a.sourceChoice);
-  assert.equal(calls[0].signal.aborted, true);
+  assert.equal(
+    calls[0].signal.aborted,
+    false,
+    "the server finishes it anyway, so the answer is kept",
+  );
   assert.equal(calls.length, 1, "the next file waits for the first request to settle");
   const ready = {
     version: "markdown-diff-v1",
     status: "ready",
     source_only: true,
-    blocks: [{ kind: "added", side: "new", html: "<p>Edited <ins>word</ins></p>" }],
+    blocks: [
+      { kind: "added", side: "new", html: "<p>Edited <ins>word</ins></p>", source_only: false },
+    ],
   };
   calls[0].resolve(ready);
   await new Promise(setImmediate);
@@ -234,20 +382,40 @@ async function main() {
     ["a", "b"],
   );
   assert.equal(a.rendered.hidden, true, "late response cannot override Source");
-  assert.equal(assets, 0, "the sanitizer loads only for an admitted projection");
+  assert.equal(a.source.hidden, false);
+  assert.equal(assets, 1, "the sanitizer loads for the first admitted projection");
+
+  // A busy server is transient: the file keeps Rendered and asks again after a wait.
+  const busy = Object.assign(new Error("busy"), { status: 429 });
+  calls[1].reject(busy);
+  await new Promise(setImmediate);
+  assert.equal(b.renderedChoice.attributes.get("aria-checked"), "true");
+  assert.equal(b.fallback.textContent, "");
+  assert.equal(calls.length, 2);
+  time.advance(99);
+  assert.equal(calls.length, 2);
+  time.advance(1);
+  assert.deepEqual(
+    calls.map(({ id }) => id),
+    ["a", "b", "b"],
+  );
+  mutations = 0;
+  calls[2].resolve(ready);
+  await new Promise(setImmediate);
+  assert.equal(b.rendered.hidden, false);
+  assert.equal(b.source.hidden, true);
+  assert.equal(b.progress.classList.contains("mb-delayed-loading"), false);
+  assert.equal(mutations, 1, "a ready file is drawn and its progress cleared in one mutation");
 
   observer.notify([arrival(c)]);
   b.state.setExpanded(false);
-  assert.equal(calls[1].signal.aborted, true);
-  assert.equal(b.progress.hidden, true);
-  calls[1].resolve(ready);
-  await new Promise(setImmediate);
+  assert.equal(b.source.hidden, true, "a collapsed file keeps its Rendered view");
   assert.deepEqual(
     calls.map(({ id }) => id),
-    ["a", "b", "c"],
+    ["a", "b", "b", "c"],
   );
   c.renderedChoice.focus();
-  calls[2].resolve({ status: "too_large" });
+  calls[3].resolve({ status: "too_large" });
   await new Promise(setImmediate);
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.renderedChoice.disabled, true);
@@ -255,38 +423,37 @@ async function main() {
   assert.equal(c.fallback.hidden, false);
 
   await a.renderedChoice.click();
-  assert.deepEqual(
-    calls.map(({ id }) => id),
-    ["a", "b", "c", "a"],
-  );
-  calls[3].resolve(ready);
-  await new Promise(setImmediate);
+  assert.equal(calls.length, 4, "the answer that arrived after Source was chosen is reused");
   assert.equal(a.rendered.hidden, false);
   assert.equal(a.source.hidden, true);
-  assert.equal(a.rendered.children.length, 1);
+  const [shown] = a.rendered.children;
+  assert.equal(shown.children.length, 2, "the notice and the one block");
+  assert.equal(shown.children[0].textContent, "Source shows additional changes.");
   assert.equal(assets, 1);
   await a.sourceChoice.click();
   assert.equal(a.source.hidden, false);
   await a.renderedChoice.click();
   assert.equal(a.rendered.hidden, false);
   assert.equal(calls.length, 4, "switching back reuses rendered content");
-  b.state.setExpanded(true);
+
+  observer.notify([arrival(d)]);
   assert.equal(calls.length, 5);
-  calls[4].reject(new Error("Server is busy"));
+  calls[4].reject(new Error("Server is broken"));
   await new Promise(setImmediate);
-  assert.equal(b.sourceChoice.attributes.get("aria-checked"), "true");
-  assert.equal(b.renderedChoice.disabled, false, "a transport error allows another attempt");
-  assert.match(b.fallback.textContent, /retry/);
-  await b.renderedChoice.click();
+  assert.equal(d.sourceChoice.attributes.get("aria-checked"), "true");
+  assert.equal(d.renderedChoice.disabled, false, "a transport error allows another attempt");
+  assert.match(d.fallback.textContent, /retry/);
+  await d.renderedChoice.click();
   assert.equal(calls.length, 6);
-  assert.equal(b.fallback.hidden, true);
+  assert.equal(d.fallback.hidden, true);
   view.dispose();
-  assert.equal(calls[5].signal.aborted, true);
+  assert.equal(calls[5].signal.aborted, true, "disposal stops the request in flight");
   assert.equal(observer.observed.size, 0);
   assert.equal(sharedChange, undefined);
+  assert.equal(time.pending, 0, "disposal cancels every timer");
   calls[5].resolve(ready);
   await new Promise(setImmediate);
-  assert.equal(b.rendered.hidden, true);
+  assert.equal(d.rendered.hidden, true);
   console.log("diff Markdown view OK");
 }
 

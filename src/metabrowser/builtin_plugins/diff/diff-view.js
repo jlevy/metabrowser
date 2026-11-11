@@ -2694,7 +2694,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   if (view.markdown !== null) {
     const pane = scrollerOf(view);
     const observerRoot = pane === view.root.ownerDocument?.scrollingElement ? null : pane;
-    view.markdown.controller.observe(view.root, observerRoot, HYDRATION_AHEAD_PX);
+    view.markdown.controller.observe(view.root, observerRoot);
   }
   // Drawing changes the root's height, which this also reports, so it waits for a task of its
   // own: done in the callback, it would be a ResizeObserver loop error. A width is one frame
