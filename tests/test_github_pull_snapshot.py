@@ -126,7 +126,8 @@ def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
         change for change in source["manifest"]["files"] if change["new"]["path"] == "docs/guide.md"
     )
     stand.calls()
-    address = f"{route}&rendered_file={file['id']}"
+    assert envelope["rendered_route"].startswith("/api/plugin/github/pull-rendered-diff?number=8&")
+    address = f"{envelope['rendered_route']}&file={file['id']}"
 
     async def missing_object(*_args: object) -> None:
         raise DiffSourceError("unresolved revision") from GitError("object unavailable")
@@ -962,14 +963,17 @@ def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tre
         [str(checkout), "--api", "/api/plugin/github/pull-refresh", "--data", str(request)]
     )
     assert fetched.exit_code == 0, fetched.stderr
-    route = _after(fetched)["comparison_route"]
+    envelope = _after(fetched)
+    route = envelope["comparison_route"]
     manifest = run_metab([str(checkout), "--api", route]).payload()["manifest"]
     draft = next(
         change
         for change in manifest["files"]
         if (change["new"] or {}).get("path") == "docs/draft.md"
     )
-    rendered = run_metab([str(checkout), "--api", f"{route}&rendered_file={draft['id']}"])
+    rendered = run_metab(
+        [str(checkout), "--api", f"{envelope['rendered_route']}&file={draft['id']}"]
+    )
     assert rendered.exit_code == 0, rendered.stderr
     answer = rendered.payload()
     assert answer["status"] == "ready", answer
@@ -987,14 +991,14 @@ def test_rendered_markdown_past_the_html_cap_is_too_large(
 
     stand, client = pinned_pull
     stand.refresh(8)
-    route = client.get("/api/plugin/github/pull", params={"number": 8}).json()["comparison_route"]
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
     file = next(
         change
-        for change in client.get(route).json()["manifest"]["files"]
+        for change in client.get(envelope["comparison_route"]).json()["manifest"]["files"]
         if change["new"]["path"] == "docs/guide.md"
     )
     monkeypatch.setattr(pull_rendered_diff, "_MAX_HTML_BYTES", 8)
-    answer = client.get(f"{route}&rendered_file={file['id']}").json()
+    answer = client.get(f"{envelope['rendered_route']}&file={file['id']}").json()
     assert answer == {
         "version": "markdown-diff-v1",
         "status": "too_large",
@@ -1050,3 +1054,31 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
     asyncio.run(run())
     assert asked[0] == [f"f{index}" for index in range(16)], "sixteen Markdown files, code skipped"
     assert asked[1:] == [["f16", "f17", "f18", "f19"]]
+
+
+def test_a_request_ahead_of_changes_starts_the_projection_process(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+
+    starts: list[str] = []
+
+    class Recording(ProjectionWorker):
+        def start(self) -> None:
+            starts.append("start")
+
+    stand, client = pinned_pull
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    file = next(
+        change
+        for change in client.get(envelope["comparison_route"]).json()["manifest"]["files"]
+        if change["new"]["path"] == "docs/guide.md"
+    )
+    application: Any = client.app
+    application.state.pull_rendered_diff_worker = Recording(processes=False)
+    address = f"{envelope['rendered_route']}&file={file['id']}"
+    assert client.get(address).json()["status"] == "ready"
+    assert starts == [], "one request does not start a child"
+    assert client.get(f"{address}&prefetch=1").json()["status"] == "ready"
+    assert starts == ["start"]

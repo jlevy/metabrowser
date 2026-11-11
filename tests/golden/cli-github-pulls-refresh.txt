@@ -1092,6 +1092,7 @@ status: 200
   "last_refresh": null,
   "comparison_route": null,
   "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": {
     "source": "https://github.com/octo/demo",
@@ -1162,6 +1163,7 @@ status: 200
   "last_refresh": null,
   "comparison_route": null,
   "snapshot_route": null,
+  "rendered_route": null,
   "record": null,
   "core_preview": {
     "source": "https://github.com/octo/demo",

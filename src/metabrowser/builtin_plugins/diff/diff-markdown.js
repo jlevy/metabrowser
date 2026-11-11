@@ -1,8 +1,8 @@
-// The PR-only rendered Markdown layer. Source stays hydrated by the diff's
-// existing scheduler, so a refusal or a reader's Source selection has a patch ready.
+// The rendered Markdown layer of a comparison whose server names a route for it, as a
+// pull request's does. Source stays hydrated by the diff's existing scheduler, so a
+// refusal or a reader's Source selection has a patch ready. This module names no route:
+// the comparison carries the rendered route and the snapshot route that its links open.
 
-const SNAPSHOT_ROUTE = "/api/plugin/github/pull-snapshot";
-const SNAPSHOT_ORIGIN = "http://metabrowser.invalid";
 const CONTEXT_BLOCKS = 2;
 const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
 // How far below the viewport a projection is requested: one viewport. A projection
@@ -84,25 +84,60 @@ function isProjection(value) {
   );
 }
 
-/** @param {string} value @param {boolean} image */
-export function isSnapshotTarget(value, image) {
-  if (!value.startsWith(`${SNAPSHOT_ROUTE}?`)) {
-    return false;
+/**
+ * Which addresses in a rendered block open a file of this comparison: those the server
+ * spelled from the comparison's own snapshot route, which a page completes with a side,
+ * a path in the Git path codec's wire form, and, for an image, its mode. Every other
+ * local address is dropped before the shared sanitizer, which would drop it anyway.
+ * @param {string | undefined} route The comparison's `snapshot_route`, when it names one.
+ * @returns {(value: string, image: boolean) => boolean}
+ */
+export function snapshotTargets(route) {
+  if (typeof route !== "string" || !route.startsWith("/") || !route.includes("?")) {
+    return () => false;
   }
-  const url = new URL(value, SNAPSHOT_ORIGIN);
-  const query = url.searchParams;
-  return (
-    url.origin === SNAPSHOT_ORIGIN &&
-    url.pathname === SNAPSHOT_ROUTE &&
-    /^\d{1,10}$/.test(query.get("number") ?? "") &&
-    [query.get("left"), query.get("right")].every((oid) =>
-      /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid ?? ""),
-    ) &&
-    /^[a-f0-9]{16}$/.test(query.get("store") ?? "") &&
-    /^(?:base|head)$/.test(query.get("side") ?? "") &&
-    /^g1-[\w-]+(?:\/g1-[\w-]+)*$/.test(query.get("path") ?? "") &&
-    (image ? query.get("mode") === "image" : [null, "document"].includes(query.get("mode")))
-  );
+  return (value, image) => {
+    if (!value.startsWith(`${route}&`)) {
+      return false;
+    }
+    const query = new URLSearchParams(value.slice(route.length + 1));
+    const names = [...query.keys()];
+    return (
+      new Set(names).size === names.length &&
+      names.every((name) => ["side", "path", "mode"].includes(name)) &&
+      /^(?:base|head)$/.test(query.get("side") ?? "") &&
+      /^g1-[\w-]+(?:\/g1-[\w-]+)*$/.test(query.get("path") ?? "") &&
+      (image ? query.get("mode") === "image" : [null, "document"].includes(query.get("mode")))
+    );
+  };
+}
+
+// The files a projection is asked for before the reader opens Changes: the Markdown files
+// among the ones the first screen shows. The page draws files in manifest order, a file
+// bar and its first rows take about 420 px, and the server hydrates the first 8 files'
+// patches with the comparison, so at most 4 Markdown files of the first 8 are asked for.
+// Each costs one projection in the server's worker process (12 ms at the median, 31-33
+// ms at p90 of the 434 real pairs), sent one at a time after the comparison arrives.
+const FIRST_SCREEN_FILES = 8;
+const FIRST_SCREEN_MARKDOWN = 4;
+
+/**
+ * The IDs of the Markdown files a page asks projections for ahead of Changes.
+ * @param {unknown[]} files A comparison manifest's files, in their order.
+ * @returns {string[]}
+ */
+export function firstScreenMarkdown(files) {
+  return files
+    .slice(0, FIRST_SCREEN_FILES)
+    .filter(
+      (file) =>
+        file !== null &&
+        typeof file === "object" &&
+        typeof (/** @type {{id?: unknown}} */ (file).id) === "string" &&
+        supportsMarkdownChange(/** @type {Record<string, unknown>} */ (file)),
+    )
+    .slice(0, FIRST_SCREEN_MARKDOWN)
+    .map((file) => String(/** @type {{id: string}} */ (file).id));
 }
 
 /** @param {string} value */
@@ -125,8 +160,9 @@ function outsideLink(value) {
  * @param {MetabrowserInertHtmlRuntime} inert
  * @param {HTMLTemplateElement} template
  * @param {Document} scratch
+ * @param {(value: string, image: boolean) => boolean} isSnapshotTarget
  */
-export function sanitizeBlock(html, inert, template, scratch) {
+export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) {
   template.innerHTML = html;
   /** @type {Map<string, string>} */
   const targets = new Map();
@@ -275,6 +311,7 @@ function stylesOnly(assets) {
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
+ *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void
@@ -282,6 +319,7 @@ function stylesOnly(assets) {
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
+  const isSnapshotTarget = deps.isSnapshotTarget ?? (() => false);
   const later = deps.later ?? ((callback, ms) => setTimeout(callback, ms));
   const cancel =
     deps.cancel ??
@@ -454,7 +492,7 @@ export function createMarkdownViews(deps) {
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
       const folds = appendBlocks(content, projection.blocks, (html) =>
-        sanitizeBlock(html, inert, template, scratch),
+        sanitizeBlock(html, inert, template, scratch, isSnapshotTarget),
       );
       if (projection.source_only) {
         const note = document.createElement("p");

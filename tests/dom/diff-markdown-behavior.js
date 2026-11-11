@@ -203,8 +203,13 @@ function texts(node) {
 }
 
 async function main() {
-  const { appendBlocks, createMarkdownViews, isSnapshotTarget, supportsMarkdownChange } =
-    await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
+  const {
+    appendBlocks,
+    createMarkdownViews,
+    firstScreenMarkdown,
+    snapshotTargets,
+    supportsMarkdownChange,
+  } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
   const md = { entry_type: "file", path: "docs/readme.MD" };
   assert.equal(supportsMarkdownChange({ availability: "ready", old: null, new: md }), true);
   assert.equal(supportsMarkdownChange({ availability: "deferred", old: md, new: null }), true);
@@ -217,21 +222,50 @@ async function main() {
     false,
   );
 
-  const query = new URLSearchParams({
+  // Snapshot addresses are the comparison's own route, which the server names, completed
+  // with a side, a path and, for an image, its mode.
+  const route = `/api/plugin/github/pull-snapshot?${new URLSearchParams({
     number: "346",
     left: "1".repeat(40),
     right: "2".repeat(40),
     store: "3".repeat(16),
-    side: "head",
-    path: "g1-ZG9jcw/g1-UkVBRE1FLm1k",
-  });
-  const href = `/api/plugin/github/pull-snapshot?${query}`;
+  })}`;
+  const isSnapshotTarget = snapshotTargets(route);
+  const href = `${route}&side=head&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
   assert.equal(isSnapshotTarget(href, false), true);
+  assert.equal(isSnapshotTarget(`${href}&mode=document`, false), true);
   assert.equal(isSnapshotTarget(`${href}&mode=image`, true), true);
   assert.equal(isSnapshotTarget(`${href}&mode=image`, false), false);
+  assert.equal(isSnapshotTarget(`${href}&mode=source`, false), false);
+  assert.equal(isSnapshotTarget(`${href}&side=base`, false), false, "a repeated name");
+  assert.equal(isSnapshotTarget(`${href}&offset=9`, false), false);
   assert.equal(isSnapshotTarget(`https://example.org${href}`, false), false);
+  assert.equal(isSnapshotTarget(href.replace("left=1", "left=0"), false), false);
   assert.equal(isSnapshotTarget("/raw?path=README.md", true), false);
   assert.equal(isSnapshotTarget(href.replace("g1-ZG9jcw", ".."), false), false);
+  assert.equal(snapshotTargets(undefined)(href, false), false, "no route opens nothing");
+
+  // The first screen's Markdown files, asked for ahead of Changes.
+  const entry = (id, path, availability = "ready") => ({
+    id,
+    availability,
+    old: null,
+    new: { entry_type: "file", path },
+  });
+  assert.deepEqual(
+    firstScreenMarkdown([
+      entry("1", "a.md"),
+      entry("2", "b.py"),
+      entry("3", "c.md", "deferred"),
+      entry("4", "d.md", "too_large"),
+      entry("5", "e.md"),
+      entry("6", "f.md"),
+      entry("7", "g.md"),
+      entry("8", "h.md"),
+      entry("9", "i.md"),
+    ]),
+    ["1", "3", "5", "6"],
+  );
 
   // Long unchanged runs fold, a folded run is built only when it opens, and a context
   // block whose source says more never folds.

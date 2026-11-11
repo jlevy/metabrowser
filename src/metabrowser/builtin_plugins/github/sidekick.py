@@ -223,13 +223,18 @@ async def pull_snapshot_handler(request: Request) -> Response:
     return await read_snapshot(request)
 
 
+async def pull_rendered_diff_handler(request: Request) -> Response:
+    """One changed Markdown file of an admitted comparison, rendered as a redline."""
+
+    from metabrowser.builtin_plugins.github.pull_rendered_diff import (
+        pull_rendered_diff_handler as rendered,
+    )
+
+    return await rendered(request)
+
+
 async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
-
-    if "rendered_file" in request.query_params:
-        from metabrowser.builtin_plugins.github.pull_rendered_diff import pull_rendered_diff_handler
-
-        return await pull_rendered_diff_handler(request)
 
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
     from metabrowser.builtin_plugins.github.pull_manifest import (
@@ -766,6 +771,7 @@ __all__ = [
     "pull_markdown_handler",
     "pull_refresh_handler",
     "pull_comparison_handler",
+    "pull_rendered_diff_handler",
     "pulls_handler",
     "stacks_handler",
     "stacks_refresh_handler",

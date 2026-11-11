@@ -182,8 +182,11 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
         html = case["html"]
         assert isinstance(html, str)
         case["tree"] = html_tree(html)
+    from metabrowser.builtin_plugins.github.pull_route import snapshot_route
+
     recorded = tmp_path / "cases.json"
-    recorded.write_text(json.dumps(cases), encoding="utf-8")
+    route = snapshot_route(snapshot.number, snapshot.base, snapshot.head, store=snapshot.store)
+    recorded.write_text(json.dumps({"route": route, "cases": cases}), encoding="utf-8")
     result = subprocess.run(
         ["node", str(DOM_DIR / "diff-markdown-sanitize-session.js"), str(REPO_ROOT), str(recorded)],
         capture_output=True,

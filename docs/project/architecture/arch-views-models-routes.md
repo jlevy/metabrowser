@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>`; `github/pull-rendered-diff` per changed Markdown file |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -200,6 +200,7 @@ A pull request’s Changes never switches the pin, on a mirror or beside a check
 Its comparison carries the envelope’s `snapshot_route`, the `GET github/pull-snapshot`
 address of that base and head, and the diff plugin appends only `side` and `path`; it
 names no GitHub route of its own.
+Its `rendered_route` is likewise the server’s, to which the plugin appends only `file`.
 A side at the commit a pinned page shows keeps its `/view/` link, so the file opens in
 the app’s own viewer.
 Every other side is a link to its revision page, including both sides beside a checkout,
@@ -321,11 +322,20 @@ The envelope’s `comparison_route` names `GET github/pull-comparison` with the 
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
 it never acquires one.
-The optional `rendered_file` query returns a bounded Markdown projection for one
-manifest file ID after the same snapshot admission check as the full-file route.
-The projection reuses the authoritative Git patch and exact blobs.
-Its transient cache joins simultaneous requests for the same file, and the browser falls
-back to the regular source diff when a projection is unsupported or over budget.
+The envelope’s `rendered_route` names `GET github/pull-rendered-diff` for the same
+endpoints and store token; a page appends `file`, one manifest file ID, and `prefetch=1`
+on a request it sends before the reader asks, which also starts the projection process.
+After the same admission check as `github/pull-snapshot` it answers `markdown-diff-v1`
+(`diff/markdown_projection.py`): `ready` with rendered blocks, each `context`, `removed`
+or `added` with changed words marked and a `source_only` flag when its source says more
+than its render, and the file’s own `source_only`; or `unsupported` or `too_large` with
+no blocks. Refusals have their own codes: `invalid_rendered_diff` (400),
+`snapshot_expired` (410), `snapshot_unavailable` and `rendered_objects_unavailable`
+(409), and `rendered_diff_busy` (429) past four loads waiting for its one projection at
+a time. Projections run in one child process once it is ready
+(`diff/markdown_projection_worker.py`) and the answers of the last 32 files are kept.
+The page loads `diff-markdown.js` beside the comparison and falls back to the source
+diff when a projection is unsupported or over budget.
 The envelope’s `snapshot_route` names `GET github/pull-snapshot` for the same endpoints
 and store token; a page appends `side` and `path`. It opens a full file from the exact
 displayed base or head without changing the served pin or checkout, and never fetches.
@@ -614,6 +624,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-snapshot` | covered | `--api` | `cli-github-pull-snapshot.txt` |
+| `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
@@ -799,6 +810,8 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `diff.file-jump` | interaction | `builtin_plugins/diff/diff-view.js#jumpToFile`, `builtin_plugins/diff/diff-view.js#jumpPlacement`, `builtin_plugins/diff/diff-view.js#reservedRows`, `builtin_plugins/diff/diff-view.js#failDeferred`, `builtin_plugins/diff/diff-view.js#observeHydration`, `builtin_plugins/diff/diff-view.js#createHydrationScheduler`, `builtin_plugins/diff/diff-view.js#patchRows`, `builtin_plugins/diff/diff-view.js#firstScreenBudget` | `/api/plugin/diff/comparison` | `node tests/dom/diff-file-jump-session.js` | `cli-ui-diff-file-jump.tryscript.md` |
 | `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&file=src/new_name.py'` | `cli-api-diff-view-file.tryscript.md` |
 | `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `builtin_plugins/diff/index.js#viewFileOpener`, `builtin_plugins/diff/index.js#snapshotHost`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin`, `/api/plugin/github/pull-comparison`, `/api/plugin/github/pull-snapshot` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
+| `github.pull-rendered-diff` | data | `/api/plugin/github/pull-rendered-diff` | `owned-route` | `metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&store=<STORE>&file=f3'` | `cli-github-pull-rendered.txt` |
+| `diff.markdown-rendered-view` | interaction | `builtin_plugins/diff/diff-markdown.js#createMarkdownViews`, `builtin_plugins/diff/diff-markdown.js#supportsMarkdownChange`, `builtin_plugins/diff/diff-markdown.js#firstScreenMarkdown`, `builtin_plugins/diff/diff-markdown.js#snapshotTargets`, `builtin_plugins/diff/diff-markdown.js#sanitizeBlock`, `builtin_plugins/diff/diff-markdown.js#appendBlocks` | `/api/plugin/github/pull-rendered-diff`, `/api/plugin/github/pull-snapshot` | `node tests/dom/diff-markdown-session.js` | `cli-ui-diff-markdown.tryscript.md` |
 | `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost`, `static/pull-route.js#parsePulls`, `static/pull-route.js#pullsHref` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `navigation.main-tab-destinations` | interaction | `static/main-tabs.js#openMainTab`, `static/main-tabs.js#bindShortcuts`, `static/navigation.js#createController` | `local-only` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.quick-search-pulls` | interaction | `static/search-controller.js#createPullProvider`, `static/search-palette.js#create` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh` | `node tests/dom/quick-search-pulls-session.js` | `cli-ui-quick-search.tryscript.md` |

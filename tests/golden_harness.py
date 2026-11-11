@@ -205,7 +205,8 @@ _BUILD_STATE: Final = re.compile(r"  \[dev build: [^\]]*\]")
 def normalize_pull_comparison_scopes(text: str) -> str:
     """Keep a PR comparison's endpoints while labeling build and sandbox-store identity.
 
-    The same for the revision-file route of that comparison, which names the store too.
+    The same for the revision-file and rendered-Markdown routes of that comparison, which
+    name the store too.
     """
     text = re.sub(
         r"(/api/plugin/github/pull-comparison\?number=\d+&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
@@ -215,7 +216,8 @@ def normalize_pull_comparison_scopes(text: str) -> str:
         text,
     )
     return re.sub(
-        r"(/api/plugin/github/pull-snapshot\?number=\d+&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        r"(/api/plugin/github/pull-(?:snapshot|rendered-diff)\?number=\d+"
+        r"&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
         r"&right=[0-9a-f]{40}(?:[0-9a-f]{24})?&store=)[0-9a-f]{16}",
         r"\1<STORE>",
         text,

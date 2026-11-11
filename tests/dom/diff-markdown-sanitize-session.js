@@ -7,7 +7,8 @@
 // template the page parses a block into is built from the recorded parse, so the swap of
 // snapshot targets, the shared allowlist and the restore all run as the page runs them.
 //
-// argv: <repo root> <cases.json>, a list of {name, html, tree, expect}.
+// argv: <repo root> <cases.json>: {route, cases}, the comparison's snapshot route and a
+// list of {name, html, tree, expect}.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -16,7 +17,7 @@ const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
 
 const repoRoot = process.argv[2];
-const cases = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+const { route, cases } = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 const ORIGIN = "http://127.0.0.1:8123";
 globalThis.window = { location: { origin: ORIGIN } };
 const inertPath = path.join(repoRoot, "src/metabrowser/static/inert-html.js");
@@ -123,12 +124,13 @@ function serialize(nodes) {
 }
 
 async function main() {
-  const { isSnapshotTarget, sanitizeBlock } = await import(
+  const { snapshotTargets, sanitizeBlock } = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
+  const isSnapshotTarget = snapshotTargets(route);
   let checked = 0;
   for (const { name, html, expect } of cases) {
-    const prose = sanitizeBlock(html, inert, template, scratch);
+    const prose = sanitizeBlock(html, inert, template, scratch, isSnapshotTarget);
     assert.equal(prose.className, "kpress-prose", name);
     const shown = serialize(prose.childNodes);
     for (const link of select(prose, "a[href], img[src]")) {

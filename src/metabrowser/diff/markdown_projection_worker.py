@@ -10,10 +10,16 @@ child, at the same 35-37 projections in 1.5 s. The repository budgets 50 ms for 
 unrelated request's delay (``inventory_engine/providers/python_inventory.py``), and a
 request with more wake-ups pays the switch interval at each.
 
+The child costs memory while it runs: 65-66 MB resident once it is ready, 68.5-68.7 MB
+after the 20 largest of this repository's 434 real Markdown pairs, and 70.2-70.4 MB after
+all of them (two runs, development Mac, macOS ``ps`` RSS). That is why it starts only
+when a server projects a second file, or a page asks ahead for its first screen.
+
 The child is this module run with ``python -m``, so it never imports the server's main
 module, and it speaks length-prefixed JSON over its standard input and output: plain
-data each way, nothing executable. It starts at a server's second projection, or when
-:meth:`ProjectionWorker.start` is called, and until it has imported the renderer each
+data each way, nothing executable. It starts at the second projection an event loop
+asks for, or when :meth:`ProjectionWorker.start` is called (a page's ``prefetch=1``
+request), and until it has imported the renderer each
 projection runs in a thread, so the first screen of a Changes tab never waits for it.
 A build without the GIL, or a platform where the child cannot start, keeps the thread.
 A child that overruns or exits is stopped and started again on demand.
@@ -162,6 +168,7 @@ class ProjectionWorker:
         self._ready = False
         self._starts = 0
         self._requests = 0
+        self._counted: asyncio.AbstractEventLoop | None = None
 
     @property
     def ready(self) -> bool:
@@ -232,6 +239,11 @@ class ProjectionWorker:
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
     ) -> PreparedMarkdownDiff:
+        loop = asyncio.get_running_loop()
+        if self._counted is not loop:
+            # Each event loop counts its own: a command that runs one request per loop
+            # in a process never starts a child.
+            self._counted, self._requests = loop, 0
         self._requests += 1
         if self._requests >= 2:
             # A one-request command never pays for a child it would not use.

@@ -185,6 +185,7 @@ const TRUNCATED = Object.freeze({
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   snapshot_route: string | null,
+ *   rendered_route?: string | null,
  *   record: Record<string, any> | null,
  *   core_preview: {source: string, number: number, reader: string, observed_at: string,
  *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
@@ -275,7 +276,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, headMoved: boolean} | null,
+ *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -1039,6 +1040,10 @@ export function describePull(envelope, page) {
       // Where View file opens a file of either end without changing the served pin.
       ...(typeof envelope.snapshot_route === "string"
         ? { snapshot_route: envelope.snapshot_route }
+        : {}),
+      // Where Changes asks for one Markdown file's rendered redline.
+      ...(typeof envelope.rendered_route === "string"
+        ? { rendered_route: envelope.rendered_route }
         : {}),
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
@@ -3591,6 +3596,9 @@ export function mountPullPage(container, ctx, mb) {
           right: comparison.right,
           base_policy: "merge_base",
           ...(comparison.route === undefined ? {} : { route: comparison.route }),
+          ...(comparison.rendered_route === undefined
+            ? {}
+            : { rendered_route: comparison.rendered_route }),
         },
         signal,
       );
@@ -3612,7 +3620,7 @@ export function mountPullPage(container, ctx, mb) {
     isVisible: () => document.visibilityState === "visible",
   });
 
-  /** @param {{left: string, right: string, route?: string, snapshot_route?: string}} comparison */
+  /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
   async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
@@ -3662,6 +3670,9 @@ export function mountPullPage(container, ctx, mb) {
                 ...(comparison.snapshot_route === undefined
                   ? {}
                   : { snapshot_route: comparison.snapshot_route }),
+                ...(comparison.rendered_route === undefined
+                  ? {}
+                  : { rendered_route: comparison.rendered_route }),
               },
               ...(prefetched === undefined ? {} : { raw: prefetched }),
             }),

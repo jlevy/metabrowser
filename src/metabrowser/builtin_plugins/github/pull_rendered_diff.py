@@ -1,4 +1,13 @@
-"""On-demand Markdown redlines from one admitted immutable Git comparison."""
+"""``GET github/pull-rendered-diff``: one changed Markdown file of an admitted comparison.
+
+The envelope's ``rendered_route`` names the comparison; a page appends ``file``, the
+manifest ID of the file. The pair passes the same admission check as
+``GET github/pull-snapshot``, and the answer is ``markdown-diff-v1``
+(:mod:`metabrowser.diff.markdown_projection`) or a refusal with its own code. A page's
+request sent before the reader asks names ``prefetch=1``, which also starts the projection
+process, so the first screen of Changes is computed while the reader is still on
+Conversation.
+"""
 
 from __future__ import annotations
 
@@ -243,7 +252,7 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
     except PullRequestError:
         number = None
     base, head = params.get("left", ""), params.get("right", "")
-    file_id = params.get("rendered_file", "")
+    file_id = params.get("file", "")
     if (
         number is None
         or not is_full_revision(base)
@@ -260,6 +269,8 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
         return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
 
     state = request.app.state
+    if params.get("prefetch") == "1":
+        projection_worker(state).start()
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
         cache = state.pull_rendered_diff_cache = LoadingCache(max_values=32)

@@ -9,6 +9,10 @@ type MetabrowserRenderContext = {
     right: string;
     base_policy: "direct" | "merge_base";
     route?: string;
+    /** The route that opens a file at either end, which a page completes with a side and a path. */
+    snapshot_route?: string;
+    /** The route that renders one changed Markdown file, which a page completes with its ID. */
+    rendered_route?: string;
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
@@ -101,6 +105,7 @@ type MetabrowserViewSpec = {
       right: string;
       base_policy: "direct" | "merge_base";
       route?: string;
+      rendered_route?: string;
     },
     signal?: AbortSignal,
   ) => Promise<unknown>;

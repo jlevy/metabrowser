@@ -17,7 +17,9 @@ reports one of:
 ``pin_ref`` the ref it was resolved from; the record's ``pull.head.sha`` and
 ``comparison_route`` name the head the record was read at. ``snapshot_route`` opens a file
 of that comparison's base or head without changing the pin; a page completes it with
-``side`` and ``path`` (:func:`snapshot_route`). They differ when the pin is
+``side`` and ``path`` (:func:`snapshot_route`). ``rendered_route`` answers the rendered
+Markdown redline of one changed file of that comparison; a page completes it with ``file``
+(:func:`rendered_route`). They differ when the pin is
 another pull request or a branch, when the URL selected a commit inside the pull request,
 and when a refresh found a newer head than the pin, which status reports as ``latest``
 for the page to offer rather than switching under a reader.
@@ -123,6 +125,7 @@ class PullEnvelope(TypedDict):
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     snapshot_route: str | None
+    rendered_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
 
@@ -165,6 +168,7 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
 
 
 SNAPSHOT_ROUTE: Final = "/api/plugin/github/pull-snapshot"
+RENDERED_ROUTE: Final = "/api/plugin/github/pull-rendered-diff"
 
 
 def snapshot_route(number: int, base: str, head: str, *, store: str) -> str:
@@ -176,6 +180,18 @@ def snapshot_route(number: int, base: str, head: str, *, store: str) -> str:
 
     query = urlencode({"number": number, "left": base, "right": head, "store": store})
     return f"{SNAPSHOT_ROUTE}?{query}"
+
+
+def rendered_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The rendered Markdown redline route of one comparison.
+
+    A page appends ``file``, the manifest ID of one changed Markdown file, and
+    ``prefetch=1`` on a request it sends before the reader asks, which also starts the
+    projection process.
+    """
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{RENDERED_ROUTE}?{query}"
 
 
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
@@ -369,6 +385,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             last_refresh=None,
             comparison_route=None,
             snapshot_route=None,
+            rendered_route=None,
             record=None,
             core_preview=None,
         )
@@ -382,14 +399,14 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = snapshots = None
+    route = snapshots = rendered = None
     if isinstance(record, PullRecord) and served.git_dir is not None:
         store = store_tag(served.git_dir)
         route = comparison_route(record, store=store)
         if record.comparison is not None:
-            snapshots = snapshot_route(
-                record.number, record.comparison.base, record.comparison.head, store=store
-            )
+            ends = (record.number, record.comparison.base, record.comparison.head)
+            snapshots = snapshot_route(*ends, store=store)
+            rendered = rendered_route(*ends, store=store)
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
         preview = None
@@ -415,6 +432,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
         comparison_route=route,
         snapshot_route=snapshots,
+        rendered_route=rendered,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
     )
@@ -748,6 +766,7 @@ __all__ = [
     "pull_view",
     "record_stamp",
     "refresh_request",
+    "rendered_route",
     "requested_number",
     "snapshot_route",
     "start_refresh",

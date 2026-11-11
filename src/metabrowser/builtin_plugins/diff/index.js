@@ -26,10 +26,11 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 // neither spelling can be mistaken for a revision.
 
 /**
- * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, snapshot_route?: string}} Comparison
- *   *route* is the plugin route that answers the comparison, and *snapshot_route* the one
- *   that opens a file at either end of it: both come from the server that issued them, so
- *   this plugin spells neither.
+ * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, snapshot_route?: string, rendered_route?: string}} Comparison
+ *   *route* is the plugin route that answers the comparison, *snapshot_route* the one
+ *   that opens a file at either end of it, and *rendered_route* the one that renders a
+ *   changed Markdown file of it: all come from the server that issued them, so this plugin
+ *   spells none.
  */
 
 /** @param {Comparison} comparison */
@@ -68,21 +69,76 @@ function pluginComparisonRoute(route) {
   return { plugin: match[1], hook: match[2], params: Object.fromEntries(url.searchParams) };
 }
 
-/** @param {string} key */
-function pullComparison(key) {
-  if (!key.startsWith("/")) {
+/**
+ * The rendered Markdown layer of a comparison that names a rendered route, or null. Its
+ * module is imported now, beside the diff's own request and the View file opener, and a
+ * mount awaits it only when the manifest lists a Markdown file. A failed import leaves
+ * every file in Source.
+ *
+ * diff-markdown.js is an on-demand tier: a pull request's Changes loads it, and no other
+ * diff does: 25,267 bytes, 7,861 gzipped.
+ *
+ * @param {Comparison | undefined} comparison
+ */
+function markdownLayer(comparison) {
+  const route = comparison?.rendered_route;
+  if (typeof route !== "string") {
     return null;
   }
-  const target = pluginComparisonRoute(key);
-  const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-  return target.plugin === "github" &&
-    target.hook === "pull-comparison" &&
-    fullOid.test(target.params.left) &&
-    fullOid.test(target.params.right) &&
-    /^[0-9a-f]{16}$/.test(target.params.store) &&
-    /^[1-9][0-9]*$/.test(target.params.number)
-    ? target
-    : null;
+  let target;
+  try {
+    target = pluginComparisonRoute(route);
+  } catch (error) {
+    console.error(
+      "metabrowser diff: rendered Markdown unavailable",
+      { hook: "diff/markdown" },
+      error,
+    );
+    return null;
+  }
+  const { plugin, hook, params } = target;
+  return {
+    module: import("./diff-markdown.js").catch((error) => {
+      console.error("metabrowser diff: Markdown view unavailable", error);
+      return null;
+    }),
+    /** @param {string} fileId @param {AbortSignal} [signal] @param {boolean} [ahead] */
+    load: (fileId, signal, ahead = false) =>
+      mb.fetchPluginData(
+        plugin,
+        hook,
+        { ...params, file: fileId, ...(ahead ? { prefetch: "1" } : {}) },
+        signal === undefined ? undefined : { signal },
+      ),
+  };
+}
+
+/**
+ * Ask the server for the first screen's projections while the reader is still on another
+ * tab, one at a time, so Changes finds them computed. The answers are the server's to
+ * keep; a page leaving stops the rest.
+ *
+ * @param {NonNullable<ReturnType<typeof markdownLayer>>} markdown
+ * @param {unknown} payload
+ * @param {AbortSignal} [signal]
+ */
+async function prefetchMarkdown(markdown, payload, signal) {
+  const views = await markdown.module;
+  const files = /** @type {{manifest?: {files?: unknown}} | null | undefined} */ (payload)?.manifest
+    ?.files;
+  if (views === null || !Array.isArray(files)) {
+    return;
+  }
+  for (const fileId of views.firstScreenMarkdown(files)) {
+    if (signal?.aborted) {
+      return;
+    }
+    try {
+      await markdown.load(fileId, signal, true);
+    } catch {
+      return;
+    }
+  }
 }
 
 /** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
@@ -290,6 +346,7 @@ mb.registerView("diff", "diff", {
     // answers for itself, and the rejection still needs a handler.
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
+    const markdown = markdownLayer(ctx.comparison);
     let payload;
     try {
       payload = revision
@@ -361,41 +418,28 @@ mb.registerView("diff", "diff", {
     if (signal?.aborted) {
       return null;
     }
-    const pull = pullComparison(revision);
-    const manifest = /** @type {{files: {old?: {path?: string}, new?: {path?: string}}[]}} */ (
-      result.document.manifest
-    );
-    const hasMarkdown =
-      pull !== null &&
-      manifest.files.some((file) =>
-        /\.(?:md|markdown|mdown|mkd)$/i.test(file.new?.path ?? file.old?.path ?? ""),
-      );
-    const markdownViews = !hasMarkdown
-      ? null
-      : await import("./diff-markdown.js").catch((error) => {
-          console.error("metabrowser diff: Markdown view unavailable", error);
-          return null;
-        });
+    const markdownViews = markdown === null ? null : await markdown.module;
     if (signal?.aborted) {
       return null;
     }
+    const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
+      .files;
+    const rendered =
+      markdown !== null &&
+      markdownViews !== null &&
+      files.some((file) => markdownViews.supportsMarkdownChange(file));
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
       viewFile,
-      ...(pull === null || markdownViews === null
+      ...(!rendered
         ? {}
         : {
             markdownViews,
-            renderMarkdown: (fileId, signal) =>
-              mb.fetchPluginData(
-                pull.plugin,
-                pull.hook,
-                { ...pull.params, rendered_file: fileId },
-                { signal },
-              ),
+            renderMarkdown: (fileId, signal) => markdown.load(fileId, signal),
+            isSnapshotTarget: markdownViews.snapshotTargets(ctx.comparison?.snapshot_route),
           }),
     });
   },
@@ -405,10 +449,22 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison
+   * A comparison that names a rendered route also has its first screen's Markdown
+   * projections asked for, after the comparison answers and without holding it back.
+   *
+   * @param {Comparison} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
-  prefetch: (comparison, signal) =>
-    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
+  prefetch: (comparison, signal) => {
+    const options = signal === undefined ? undefined : { signal };
+    const answer = fetchComparison(comparisonKey(comparison), options);
+    const markdown = markdownLayer(comparison);
+    return markdown === null
+      ? answer
+      : answer.then((payload) => {
+          void prefetchMarkdown(markdown, payload, signal);
+          return payload;
+        });
+  },
 });

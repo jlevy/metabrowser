@@ -223,17 +223,26 @@ def _text(node: _Element) -> str:
     )
 
 
+# Block elements whose leading and trailing whitespace no render shows.
+_EDGED = frozenset({"p", "li", "td", "th", "dt", "dd", "summary", *(f"h{n}" for n in range(1, 7))})
+
+
 def _shape(node: _Element, *, collapse: bool) -> _Element:
     collapse = collapse and node.tag != "pre"
+    children: list[_Element | str] = [
+        _shape(child, collapse=collapse)
+        if isinstance(child, _Element)
+        else (_SPACE.sub(" ", child) if collapse else child)
+        for child in node.children
+    ]
+    if collapse and node.tag in _EDGED and children:
+        if isinstance(children[0], str):
+            children[0] = children[0].lstrip()
+        if isinstance(children[-1], str):
+            children[-1] = children[-1].rstrip()
+        children = [child for child in children if child != ""]
     return _Element(
-        node.tag,
-        tuple((name, value) for name, value in node.attrs if name != "id"),
-        [
-            _shape(child, collapse=collapse)
-            if isinstance(child, _Element)
-            else (_SPACE.sub(" ", child) if collapse else child)
-            for child in node.children
-        ],
+        node.tag, tuple((name, value) for name, value in node.attrs if name != "id"), children
     )
 
 
