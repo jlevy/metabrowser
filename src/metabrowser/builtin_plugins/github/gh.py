@@ -15,7 +15,9 @@ and ``--cache`` would hide the page cap, the ETags, and the rate-limit headers. 
 read is owned by the one refresh job of what it reads, so identical reads do not overlap:
 in the GitHub plugin's test flows, 3 of 1,523 launches did, all in one test that runs
 same-second refreshes at once on purpose (measured 2026-11-11).
-:func:`gh_graphql` runs only a read-only query document, checked by its structure.
+:func:`gh_graphql` runs only a read-only query document, checked by its structure. Both
+hand every response's rate-limit headers, and every ``rate_limited`` refusal, to
+:mod:`.gh_budget`, which decides whether background work may spend the account's budget.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal
 
+from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.git.process import (
     forget_process_group,
     kill_when_spawned,
@@ -472,8 +475,12 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
     response = parse_included_response(completed.stdout)
     if response is None:
         raise _failure_without_response(completed)
-    refused = _refusal(response, now=now or datetime.now(UTC))
+    moment = now or datetime.now(UTC)
+    gh_budget.observe(response.headers, resource="core")
+    refused = _refusal(response, now=moment)
     if refused is not None:
+        if refused.state == "rate_limited":
+            gh_budget.hold(refused.reset_at, now=moment)
         raise refused
     return response
 
@@ -568,8 +575,11 @@ async def gh_graphql(
     if response is None:
         raise _failure_without_response(completed)
     moment = now or datetime.now(UTC)
+    gh_budget.observe(response.headers, resource="graphql")
     refused = _refusal(response, now=moment)
     if refused is not None:
+        if refused.state == "rate_limited":
+            gh_budget.hold(refused.reset_at, now=moment)
         raise refused
     payload = response.json()
     if not isinstance(payload, dict):
@@ -587,10 +597,10 @@ async def gh_graphql(
         )
         if limited:
             reset = rate_limit_reset(GhResponse(429, response.headers, response.body), now=moment)
+            reset_at = None if reset == "unknown" else reset
+            gh_budget.hold(reset_at, now=moment)
             raise GhError(
-                "GitHub's API rate limit is exhausted",
-                state="rate_limited",
-                reset_at=None if reset == "unknown" else reset,
+                "GitHub's API rate limit is exhausted", state="rate_limited", reset_at=reset_at
             )
         if any(
             isinstance(error, dict)
