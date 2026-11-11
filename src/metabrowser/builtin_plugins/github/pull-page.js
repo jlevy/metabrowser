@@ -17,8 +17,11 @@
 // What starts a fetch: a page opened at an address shows what is cached, whether the address
 // was typed, followed from rendered content, or reached by Back, so only a reader's press of
 // Fetch adds a pull request to the cache. A page with a record refreshes it by itself while
-// it is visible and stale, as a stale mirror does, once per visible period and only once a
-// reader has stayed on it, and the server holds each number to one attempt per window.
+// it is visible and stale, as a stale mirror does, each time it goes stale and at most once a
+// freshness window, the first time only once a reader has stayed on it; the server holds each
+// number to one attempt per window, and a rate limit or a lost network holds the page too.
+// Content the page already shows stays as it is while it refreshes, with no spinner: only
+// the age line breathes (`.mb-refreshing`, "Refreshing Content" in docs/design-system.md).
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
@@ -81,11 +84,13 @@ export const PLACE_WRITE_MS = 350;
 // texts. A page that changes later than this keeps its place by the browser's own scroll
 // anchoring, except in a browser without it.
 export const LANDING_SETTLE_MS = 2000;
-// How long a stale page is shown before it asks for its refresh. A reader who walks past
-// pages, holding Back or a key, spends no refresh on one they did not stop at: in Chrome
+// How long a stale page reached by an address or a key is shown before it first asks for its
+// refresh; a click asks at once, and a page left open asks again at once. A reader who walks
+// past pages, holding Back or a key, spends no refresh on one they did not stop at: in Chrome
 // (2026-11-02) ten pages opened 30 ms apart started eight refreshes when each asked at once,
 // and each is eight gh processes and a fetch that take about 5 s. It is a choice, longer than
-// a press of Back takes and short beside the refresh it delays.
+// a press of Back takes and short beside the refresh it delays. The wait shows nothing: the
+// page is already painted refreshing.
 export const REFRESH_ASK_MS = 500;
 // The blocks a place is counted in: the conversation's cards and sections, and Files
 // changed's files, which keep their order for as long as the page shows one comparison.
@@ -266,6 +271,7 @@ const TRUNCATED = Object.freeze({
  *   contentReady: boolean,
  *   message: string | null,
  *   refreshing: boolean,
+ *   revalidating: boolean,
  *   canRefresh: boolean,
  *   canRetryComparison: boolean,
  *   canFetchComparison: boolean,
@@ -925,9 +931,16 @@ function describeCore(pull) {
  * for yet that the page will send once it is visible or the reader stops; *ownsChanges*
  * is whether the address names Changes, which an automatic comparison needs (see
  * `comparisonQueued`); *comparisonRefusal* is why the page's last comparison request
- * was refused, kept until it asks again.
+ * was refused, kept until it asks again. *refreshDue* is the page's own automatic refresh of
+ * a stale record, scheduled or on its way; *online* is false when the browser reports no
+ * network, and *formatTime* writes the time a rate limit lifts.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null}} page
+ * Content already shown is never covered by progress: while a refresh runs or is about to,
+ * `revalidating` says so, and the page breathes the age line instead of a spinner. The age is
+ * the plain age. A stale record says why only when no refresh can run: offline, held by
+ * GitHub's rate limit, or a failure the reader can retry.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -941,6 +954,7 @@ export function describePull(envelope, page) {
     contentReady: Boolean(page.error),
     message: page.error ?? null,
     refreshing: false,
+    revalidating: false,
     canRefresh: false,
     canRetryComparison: false,
     canFetchComparison: false,
@@ -968,8 +982,19 @@ export function describePull(envelope, page) {
   model.refreshing =
     (envelope.refreshing && (page.tab === "files" || !envelope.preparing_comparison)) ||
     page.refreshPending === true;
+  model.revalidating = model.refreshing || page.refreshDue === true;
+  const offline = page.online === false;
   const last = envelope.last_refresh;
-  if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
+  // What the last attempt said stays until a refresh actually runs, so an automatic ask that
+  // the server answers at once does not blink it.
+  if (last?.outcome === "rate_limited" && !envelope.refreshing) {
+    // Held, not failed: the page asks again by itself when GitHub said it may.
+    const lifts = last.reset_at === null ? Number.NaN : Date.parse(last.reset_at);
+    model.failure =
+      Number.isFinite(lifts) && lifts > page.nowMs
+        ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(/** @type {string} */ (last.reset_at))}`
+        : "GitHub rate limit · next check within a minute";
+  } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
       model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
@@ -988,9 +1013,7 @@ export function describePull(envelope, page) {
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
-    model.freshness = model.refreshing
-      ? `Loading details… · description fetched ${age} via GitHub CLI`
-      : `Description fetched ${age} via GitHub CLI`;
+    model.freshness = `${offline && !model.refreshing ? "Offline · description" : "Description"} fetched ${age} via GitHub CLI`;
     model.canRefresh =
       envelope.state === "absent" &&
       envelope.reason !== "not_github" &&
@@ -1014,6 +1037,8 @@ export function describePull(envelope, page) {
     model.message = fetching
       ? "Fetching the pull request…"
       : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
+    // Nothing is shown to refresh: the skeleton or the message is all there is.
+    model.revalidating = false;
     model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
     model.canRefresh =
       !fetching &&
@@ -1025,8 +1050,12 @@ export function describePull(envelope, page) {
   model.recordRevision = envelope.record_revision;
   model.contentReady = true;
   model.message = page.error ?? null;
+  // A stale record the page is refreshing by itself offers nothing to press: Refresh is for
+  // a failure, a hold, Changes, or a stale record whose automatic refresh did not run.
   model.canRefresh =
     !envelope.refreshing &&
+    !model.revalidating &&
+    (envelope.state !== "stale" || !offline) &&
     (envelope.state === "stale" ||
       model.failure !== null ||
       (page.tab === "files" &&
@@ -1035,9 +1064,13 @@ export function describePull(envelope, page) {
       (typeof record.unavailable?.comparison === "string" &&
         record.unavailable.comparison !== "no_store"));
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
-  model.freshness = model.refreshing
-    ? `Refreshing… · fetched ${age} via GitHub CLI`
-    : `Fetched ${age} via GitHub CLI${envelope.state === "stale" ? " · may be out of date" : ""}`;
+  // The plain age while a refresh runs or is due: the page breathes it, and says nothing
+  // about being out of date. Offline is the one stale state named here, since no refresh
+  // can run; a hold or a failure is named by `failure`.
+  model.freshness =
+    offline && envelope.state === "stale" && !model.revalidating
+      ? `Offline · fetched ${age} via GitHub CLI`
+      : `Fetched ${age} via GitHub CLI`;
   const pull = record.pull ?? {};
   model.pull = describeCore(pull);
   model.timeline = timeline(record);
@@ -1183,6 +1216,8 @@ export function isEnvelope(value) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
+ *   isOnline?(): boolean,
+ *   formatTime?(iso: string): string,
  *   ownsChanges?(): boolean,
  *   ownsConversation?(): boolean,
  *   scheduleComparison?(callback: () => void): () => void,
@@ -1224,9 +1259,15 @@ export function createPullController(deps, options) {
   let hasPolled = false;
   let inFlightRefreshes = 0;
   let disposed = false;
-  // One refresh asked for by itself per visible period: a stale page whose refresh cannot
-  // run must not ask again on every poll.
-  let refreshAskedWhileVisible = false;
+  // When this page last sent a refresh of its own for a stale record, by `deps.now()`. It asks
+  // again once a freshness window has passed while the record is still or again stale, so a
+  // page left open keeps refreshing, and a stale page whose refresh cannot run does not ask
+  // on every poll; the server holds each number to one attempt a window as well.
+  /** @type {number | null} */
+  let autoAskedAt = null;
+  /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
+  /** @type {"none" | "scheduled" | "sent"} */
+  let autoAsk = "none";
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -1291,6 +1332,79 @@ export function createPullController(deps, options) {
     return deps.ownsChanges?.() !== false;
   }
 
+  /** Whether the browser reports a network; offline, nothing is asked by itself. */
+  function online() {
+    return deps.isOnline?.() !== false;
+  }
+
+  /** GitHub's rate limit holds automatic refreshes until the time it gave. */
+  function rateLimitHolds() {
+    const last = envelope?.last_refresh;
+    return (
+      last?.outcome === "rate_limited" &&
+      last.reset_at !== null &&
+      Date.parse(last.reset_at) > deps.now()
+    );
+  }
+
+  /**
+   * Whether the page asks for its stale record's refresh now: visible, online, nothing on its
+   * way or running, not held, and not asked within a freshness window. A failure the reader
+   * must fix (no gh, an old gh, signed out) waits for the reader's Refresh after the first ask.
+   */
+  function staleRefreshDue() {
+    if (
+      disposed ||
+      !deps.isVisible() ||
+      !online() ||
+      envelope?.state !== "stale" ||
+      envelope.refreshing ||
+      fetching ||
+      autoAsk !== "none" ||
+      askTimer !== null ||
+      rateLimitHolds() ||
+      (envelope.record?.unavailable?.comparison === "no_store" &&
+        (tab === "files" ||
+          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata())))
+    ) {
+      return false;
+    }
+    if (autoAskedAt === null) {
+      return true;
+    }
+    const outcome = envelope.last_refresh?.outcome ?? "";
+    return (
+      !["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome) &&
+      deps.now() - autoAskedAt >= envelope.fresh_for_s * 1000
+    );
+  }
+
+  /**
+   * Ask for the stale record's refresh when it is due. The first ask of a page waits for the
+   * reader to stay on it, as long as the Pulls tab's opening said (none for a click) or
+   * `REFRESH_ASK_MS` for an address, which holding Back walks through; a later one, on a
+   * page left open, asks at once. Any of them waits while a key that opened the page is held.
+   */
+  function askIfStale() {
+    if (!staleRefreshDue()) {
+      return;
+    }
+    const delayMs = autoAskedAt !== null ? 0 : (reader?.fetchAfterMs ?? REFRESH_ASK_MS);
+    autoAsk = "scheduled";
+    askAfter(async () => {
+      autoAsk = "sent";
+      autoAskedAt = deps.now();
+      try {
+        await askForRefresh({ number: options.number });
+      } finally {
+        autoAsk = "none";
+      }
+      if (!disposed) {
+        render();
+      }
+    }, delayMs);
+  }
+
   /** What `describePull` and `comparisonQueued` read of this page. */
   function pageState() {
     return {
@@ -1301,6 +1415,9 @@ export function createPullController(deps, options) {
       fetching: fetching || refreshPending,
       fetchQueued: fetchQueued(),
       refreshPending,
+      refreshDue: autoAsk !== "none",
+      online: online(),
+      ...(deps.formatTime === undefined ? {} : { formatTime: deps.formatTime }),
       ownsChanges: walkSettling || ownsChanges(),
       comparisonAttempted,
       comparisonRefusal,
@@ -1361,6 +1478,10 @@ export function createPullController(deps, options) {
     if (askTimer !== null) {
       deps.cancel(askTimer);
       askTimer = null;
+      if (autoAsk === "scheduled") {
+        // Not sent, so not asked: the page asks again when it is due, or is shown again.
+        autoAsk = "none";
+      }
     }
   }
 
@@ -1404,16 +1525,17 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * How long until a rate limit stops holding this page's automatic comparison, or null
-   * when none holds it. The page reads again then, so it asks without waiting for a slow
-   * poll and does not keep a Retry changes painted past the hold.
+   * How long until a rate limit stops holding this page's automatic comparison or its stale
+   * record's refresh, or null when none holds either. The page reads again then, so it asks
+   * without waiting for a slow poll and does not keep a hold or a Retry changes painted past it.
    */
   function untilHoldLifts() {
     const last = envelope?.last_refresh;
     const resetMs = last?.outcome === "rate_limited" ? Date.parse(last.reset_at ?? "") : Number.NaN;
     const nowMs = deps.now();
     return resetMs > nowMs &&
-      comparisonQueued(envelope, { ...pageState(), ownsChanges: ownsChanges(), nowMs: resetMs })
+      (envelope?.state === "stale" ||
+        comparisonQueued(envelope, { ...pageState(), ownsChanges: ownsChanges(), nowMs: resetMs }))
       ? resetMs - nowMs
       : null;
   }
@@ -1504,22 +1626,10 @@ export function createPullController(deps, options) {
     );
     fetchForReader();
     fetchSelectedChanges();
+    // Decided before the paint, so a record that just went stale is painted refreshing and
+    // never offers a Refresh it is about to make.
+    askIfStale();
     render();
-    if (
-      deps.isVisible() &&
-      envelope?.state === "stale" &&
-      !(
-        envelope.record?.unavailable?.comparison === "no_store" &&
-        (tab === "files" ||
-          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata()))
-      ) &&
-      !envelope.refreshing &&
-      !fetching &&
-      !refreshAskedWhileVisible
-    ) {
-      refreshAskedWhileVisible = true;
-      askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
-    }
     deps.timelineStateChanged?.();
     fetchIdleChanges();
   }
@@ -1915,7 +2025,6 @@ export function createPullController(deps, options) {
       clearTimer();
       cancelAsk();
       cancelIdleComparison();
-      refreshAskedWhileVisible = false;
       if (fetching) {
         fetching = false;
         readerAsked = false;
@@ -1923,6 +2032,18 @@ export function createPullController(deps, options) {
       return;
     }
     void poll();
+  }
+
+  /** The browser's network came or went: online, read and ask if due; offline, say so. */
+  function onConnectivityChange() {
+    if (disposed) {
+      return;
+    }
+    if (online()) {
+      void poll();
+    } else {
+      render();
+    }
   }
 
   function dispose() {
@@ -1940,6 +2061,9 @@ export function createPullController(deps, options) {
       const initial = reader?.initial?.body;
       if (isEnvelope(initial) && accept(initial, 0)) {
         etag = reader?.initial?.etag ?? null;
+        // A stale record the row read is painted refreshing from its first frame, never with
+        // a Refresh it is about to make; the ask still waits as long as the opening said.
+        askIfStale();
       }
       render();
       return poll(true);
@@ -1959,6 +2083,7 @@ export function createPullController(deps, options) {
     setTab,
     walkCancelled,
     onVisibilityChange,
+    onConnectivityChange,
     dispose,
     snapshot: () => ({
       state: envelope?.state ?? null,
@@ -2314,6 +2439,41 @@ export function h(tag, attributes = {}, children = []) {
     }
   }
   return element;
+}
+
+/** The shell's keyframes for refreshing text (static/styles.css, `.mb-refreshing`). */
+const REFRESHING = "mb-refreshing-text";
+
+/**
+ * Bring every refreshing breath under *root* to one beat. CSS starts an animation when its
+ * element first matches, so a row drawn into a refreshing list, by a scroll of a windowed list
+ * or a row whose text changed, would otherwise breathe out of step with the rest. The earliest
+ * start among them is the beat; a browser without the Web Animations API keeps its own.
+ *
+ * @param {Element} root
+ */
+export function alignRefreshing(root) {
+  if (typeof root.getAnimations !== "function") {
+    return;
+  }
+  const breaths = root
+    .getAnimations({ subtree: true })
+    .filter((animation) => "animationName" in animation && animation.animationName === REFRESHING);
+  /** @type {number | null} */
+  let beat = null;
+  for (const animation of breaths) {
+    const start = animation.startTime;
+    if (typeof start === "number" && (beat === null || start < beat)) {
+      beat = start;
+    }
+  }
+  if (beat !== null) {
+    for (const animation of breaths) {
+      if (animation.startTime !== beat) {
+        animation.startTime = beat;
+      }
+    }
+  }
 }
 
 /** Optional cached avatar URLs are revalidated before becoming browser requests.
@@ -2732,6 +2892,12 @@ export function mountPullPage(container, ctx, mb) {
   const stateDetails = h("span");
   const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stackColumn, stateDetails]);
   header.append(stateRow);
+  // The status line and its age are kept across paints, so the age's breathing while a
+  // refresh runs is one animation from start to end rather than one restarted at each paint.
+  const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
+  const status = h("div", { class: "github-pull-status" }, [freshnessLine]);
+  /** Commits of the conversation are being read from GitHub for the record shown. */
+  let timelineBusy = false;
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -2899,6 +3065,8 @@ export function mountPullPage(container, ctx, mb) {
         )
       : null;
 
+  /** An exact time, as an age's tooltip and a rate limit's lift give it. @param {number} ms */
+  const exact = (ms) => mb.formatTimestamp(ms / 1000);
   /**
    * An age, from the one primitive, with the exact time in its tooltip. `also` is a time
    * the row leaves out because its age reads the same as this one; its exact time joins
@@ -2913,7 +3081,6 @@ export function mountPullPage(container, ctx, mb) {
       return h("span", {}, [iso]);
     }
     const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    const exact = (/** @type {number} */ ms) => mb.formatTimestamp(ms / 1000);
     const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
     const tip =
       also !== null && Number.isFinite(alsoAt)
@@ -3145,11 +3312,19 @@ export function mountPullPage(container, ctx, mb) {
       children,
     );
 
-  /** @param {string} text */
-  const progress = (text) =>
-    h("span", { class: "github-pull-progress", role: "status" }, [
-      h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
-      text,
+  /**
+   * A section a description preview does not have yet, while its refresh runs: the shell's
+   * neutral pulsing blocks after the quiet period, never a spinner or a sentence. The reveal
+   * wrapper and the skeleton are separate nodes, as on a cold page.
+   *
+   * @param {{"aria-label": string}} named What is loading, for a screen reader only.
+   */
+  const pendingSection = (named) =>
+    h("div", { class: "mb-delayed-loading", role: "status", ...named }, [
+      h("div", {
+        class: "recent-loading github-pull-loading github-pull-section-loading",
+        "aria-hidden": "true",
+      }),
     ]);
 
   /** Only shell-owned icon constants enter this parser, never pull-request content.
@@ -3268,6 +3443,22 @@ export function mountPullPage(container, ctx, mb) {
     return stateRow;
   }
 
+  /**
+   * Breathe the age while a refresh of what is shown runs or is due, or the conversation's
+   * commits are read: the one sign of refreshing over content, with no spinner.
+   *
+   * @param {PullModel | null} model
+   */
+  function paintRefreshing(model) {
+    const busy =
+      model !== null &&
+      model.pull !== null &&
+      model.freshness !== null &&
+      (model.revalidating || (timelineBusy && model.tab === ""));
+    freshnessLine.classList.toggle("mb-refreshing", busy);
+    status.setAttribute("aria-busy", String(busy));
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     const children = [];
@@ -3324,11 +3515,20 @@ export function mountPullPage(container, ctx, mb) {
         h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
       );
     }
-    const freshness =
-      model.tab === "files" && model.changesPending && model.refreshing ? null : model.freshness;
-    const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
-      model.refreshing && freshness !== null ? progress(freshness) : freshness,
-    ]);
+    status.dataset.status = model.status;
+    for (const node of [...status.childNodes]) {
+      if (node !== freshnessLine) {
+        node.remove();
+      }
+    }
+    if (freshnessLine.parentNode !== status) {
+      status.prepend(freshnessLine);
+    }
+    freshnessLine.hidden = model.freshness === null;
+    if (freshnessLine.textContent !== (model.freshness ?? "")) {
+      freshnessLine.textContent = model.freshness ?? "";
+    }
+    paintRefreshing(model);
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }
@@ -3527,11 +3727,11 @@ export function mountPullPage(container, ctx, mb) {
       sections.push(
         h("section", { class: "github-pull-section" }, [
           h("h2", { class: "section-heading" }, ["Discussion"]),
-          h("p", { class: "github-pull-quiet" }, [
-            model.refreshing
-              ? progress("Comments and reviews are still loading.")
-              : "Comments and reviews have not been fetched.",
-          ]),
+          model.refreshing
+            ? pendingSection({ "aria-label": "Loading comments and reviews" })
+            : h("p", { class: "github-pull-quiet" }, [
+                "Comments and reviews have not been fetched.",
+              ]),
         ]),
       );
       body.replaceChildren(...sections);
@@ -3624,11 +3824,9 @@ export function mountPullPage(container, ctx, mb) {
     ]);
     if (model.corePreview) {
       checksSection.append(
-        h("p", { class: "github-pull-quiet" }, [
-          model.refreshing
-            ? progress("Checks and statuses are still loading.")
-            : "Checks and statuses have not been fetched.",
-        ]),
+        model.refreshing
+          ? pendingSection({ "aria-label": "Loading checks and statuses" })
+          : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     } else if (summary !== null) {
       checksSection.append(
@@ -3887,9 +4085,23 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      const message = notice(model.corePreview || model.changesPending ? null : "error", [
-        model.changesPending ? progress(model.filesUnavailable) : model.filesUnavailable,
-      ]);
+      if (model.changesPending) {
+        // Nothing of Changes is cached yet and its shape is unknown: the shared spinner after
+        // the quiet period, and the sentence only for a screen reader.
+        body.replaceChildren(
+          h(
+            "div",
+            {
+              class: "loading mb-delayed-loading github-pull-changes-pending",
+              role: "status",
+              "aria-label": model.filesUnavailable,
+            },
+            [h("span", { class: "spinner", "aria-hidden": "true" })],
+          ),
+        );
+        return;
+      }
+      const message = notice(model.corePreview ? null : "error", [model.filesUnavailable]);
       if (model.canRetryComparison || model.canFetchComparison) {
         const retry = model.canRetryComparison;
         const ask = h(
@@ -4092,20 +4304,18 @@ export function mountPullPage(container, ctx, mb) {
         held.retryPending = false;
         held.settled = true;
       }
-      const spinner = cachedOnly
-        ? null
-        : h(
-            "span",
-            {
-              class: "github-pull-timeline-loading mb-delayed-loading",
-              role: "status",
-              "aria-label": "Loading commits…",
-            },
-            [h("span", { class: "spinner spinner-sm", "aria-hidden": "true" })],
-          );
-      if (spinner !== null) {
-        discussion?.description.querySelector(".github-pull-card-head")?.append(spinner);
-        read.abort.signal.addEventListener("abort", () => spinner.remove(), { once: true });
+      // Commits join a conversation that is already shown, so the age line breathes for
+      // them as for a refresh; nothing spins in the description card.
+      const settleBusy = () => {
+        if (timelineBusy) {
+          timelineBusy = false;
+          paintRefreshing(shown);
+        }
+      };
+      if (!cachedOnly) {
+        timelineBusy = true;
+        paintRefreshing(shown);
+        read.abort.signal.addEventListener("abort", settleBusy, { once: true });
       }
       /** @type {TimelineProjection | null} */
       let projection = null;
@@ -4127,7 +4337,9 @@ export function mountPullPage(container, ctx, mb) {
       } catch {
         // The held discussion is already readable when the optional projection fails.
       } finally {
-        spinner?.remove();
+        if (!cachedOnly) {
+          settleBusy();
+        }
       }
       if (!owns()) {
         return;
@@ -4213,6 +4425,8 @@ export function mountPullPage(container, ctx, mb) {
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
+      isOnline: () => navigator.onLine !== false,
+      formatTime: (iso) => exact(Date.parse(iso)),
       ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
       ownsConversation: () =>
         active &&
@@ -4287,6 +4501,12 @@ export function mountPullPage(container, ctx, mb) {
     },
     { signal: listening.signal },
   );
+  // The browserless sessions' window has no event target; a browser's always does.
+  for (const type of ["online", "offline"]) {
+    window.addEventListener?.(type, () => controller.onConnectivityChange(), {
+      signal: listening.signal,
+    });
+  }
   const stacks = watchStacks((index) => {
     stackIndex = index;
     if (shown !== null && !listening.signal.aborted) {

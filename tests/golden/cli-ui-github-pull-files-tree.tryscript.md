@@ -26,6 +26,9 @@ A path is the identity, with its characters intact, and the name is the serverâ€
 display, with control and invisible characters shown as U+FFFD. The other stories are
 each kind of list and each way a refresh can end, and `invariants` are the relations
 `tests/test_github_pull_files_tree_session.py` holds.
+`a stale list's rows are never covered by progress` is what the tree says while a stale
+list it shows refreshes: no line about being stale, `refreshing`, which the paint shows
+by breathing the names, and the spinnerâ€™s `loading` only for a list with no rows yet.
 
 ```console
 $ node tests/dom/github-pull-files-tree-session.js
@@ -306,6 +309,32 @@ $ node tests/dom/github-pull-files-tree-session.js
       "truncated": false,
       "failure": "cache_unwritable",
       "says": "The list of changed files could not be written to the cache."
+    },
+    "a stale list's rows are never covered by progress": {
+      "its refresh about to be asked for": {
+        "line": null,
+        "loading": false,
+        "refreshing": false,
+        "notice": null
+      },
+      "its refresh asked for": {
+        "line": null,
+        "loading": false,
+        "refreshing": true,
+        "notice": null
+      },
+      "its refresh running": {
+        "line": null,
+        "loading": false,
+        "refreshing": true,
+        "notice": null
+      },
+      "no rows yet, while listing": {
+        "line": null,
+        "loading": true,
+        "refreshing": false,
+        "notice": null
+      }
     },
     "a server with no GitHub repository": {
       "status": "absent",

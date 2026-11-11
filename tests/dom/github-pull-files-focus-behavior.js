@@ -269,7 +269,155 @@ async function run() {
     view.dispose();
   }
   await walkClaims(mountFileTree);
+  results.push({ scenario: "refreshing", paints: await refreshingPaint(mountFileTree) });
   return results;
+}
+
+/**
+ * A stale list whose rows are shown: while its refresh is asked for and while it runs, the
+ * names breathe in one group marked busy, and nothing spins or says the list is stale; the
+ * spinner is only for a list with no rows. The paint is the production view's.
+ *
+ * @param {Function} mountFileTree
+ */
+async function refreshingPaint(mountFileTree) {
+  class Painted extends Element {
+    constructor(tag) {
+      super(tag);
+      const classes = new Set();
+      this.classes = classes;
+      this.classList = {
+        toggle(name, on) {
+          const want = on ?? !classes.has(name);
+          if (want) {
+            classes.add(name);
+          } else {
+            classes.delete(name);
+          }
+          return want;
+        },
+        contains: (name) => classes.has(name),
+      };
+    }
+    setAttribute(name, value) {
+      super.setAttribute(name, value);
+      if (name === "class") {
+        for (const each of String(value).split(" ").filter(Boolean)) {
+          this.classes.add(each);
+        }
+      }
+    }
+  }
+  const timers = new Map();
+  globalThis.window = {
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+  };
+  globalThis.document = {
+    visibilityState: "visible",
+    createElement: (tag) => new Painted(tag),
+  };
+  document.body = new Painted("body");
+  document.activeElement = document.body;
+  const parent = new Painted("li");
+  const owner = new Painted("a");
+  document.body.append(parent);
+  parent.append(owner);
+  const listing = (state, refreshing, rows) => ({
+    state,
+    reason: null,
+    number: 7,
+    listed_from: "github",
+    source: "https://github.com/octo/demo",
+    generation: "0".repeat(32),
+    fetched_at: "2026-11-03T00:00:00Z",
+    reader: "gh:test",
+    head: null,
+    base: null,
+    fresh_for_s: 60,
+    refreshing,
+    last_refresh: null,
+    fetched: 2,
+    pages: 1,
+    last_page: null,
+    complete: true,
+    capped: false,
+    truncated: false,
+    offset: 0,
+    limit: 3000,
+    rows: rows
+      ? ["src/a.py", "src/b.py"].map((file) => ({
+          path: file,
+          display: file,
+          previous_path: null,
+          previous_display: null,
+          status: "modified",
+          additions: 1,
+          deletions: 0,
+        }))
+      : [],
+  });
+  const reads = [listing("stale", false, true)];
+  /** @type {(value: unknown) => void} */
+  let answerAsk = () => {};
+  const view = mountFileTree({
+    decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    number: 7,
+    autoExpandFiles: 3000,
+    current: null,
+    shown: true,
+    scrollRoot: document.body,
+    chevron: () => null,
+    href: (file) => `/${file}`,
+    request: (method) =>
+      method === "POST"
+        ? new Promise((resolve) => {
+            answerAsk = resolve;
+          })
+        : Promise.resolve({ status: 200, etag: null, body: reads.shift() }),
+    formatTime: (value) => value,
+    page: () => null,
+    open() {},
+    leave() {},
+    focusedIn() {},
+  });
+  view.attach(parent, owner);
+  view.controller.expand();
+  await settle();
+  const [line, , list] = view.group.children;
+  const [spinner] = line.children;
+  const painted = () => {
+    const names = list.children.flatMap((row) =>
+      row.children.filter((part) => part.classes.has("github-pull-file-name")),
+    );
+    return {
+      breathing: view.group.classes.has("mb-refreshing-group"),
+      busy: view.group.getAttribute("aria-busy"),
+      spinner: !spinner.hidden,
+      line: line.hidden ? null : line.textContent,
+      names: names.map((name) => name.children.map((text) => text.textContent).join("")),
+      namesBreathe: names.every((name) => name.classes.has("mb-refreshing-text")),
+    };
+  };
+  const asked = painted();
+  answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
+  await settle();
+  const running = painted();
+  reads.push(listing("current", false, true));
+  const poll = [...timers].find(([, timer]) => timer.delay === 1000);
+  assert.ok(poll, "a running refresh is read again in a second");
+  timers.delete(poll[0]);
+  poll[1].callback();
+  await settle();
+  const settled = painted();
+  view.dispose();
+  return { asked, running, settled };
 }
 
 /**

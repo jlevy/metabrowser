@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request that is already shown no longer shows a spinner while it refreshes.
+  Its page, the changed files under its row, and the Pulls list keep what they show and
+  refresh in the background; the line that says when it was fetched, the folder and file
+  names, and the list’s “Updated” line breathe gently until the refresh lands, and stop
+  under reduced motion.
+  A description preview shows gray blocks for the comments and checks still to come.
+  Nothing says “may be out of date” any more: stale data is being refreshed, and a page
+  left open refreshes again each time it goes stale.
+  A view names a problem only when it cannot refresh: offline, GitHub’s rate limit with
+  the time of the next check, or the last failure with **Refresh** or **Retry**.
+
 - A cached pull request is checked against the repository’s list of pull requests, which
   says what changed on GitHub since: one that has not changed is current however long
   ago it was read, and one that has, or whose head moved, is refreshed at once.

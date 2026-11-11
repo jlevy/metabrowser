@@ -1121,7 +1121,9 @@ async function run() {
   await settle();
   const checkoutBody = checkoutContainer.querySelector(".github-pull-body");
   assert.deepEqual(posts, [comparisonAsk]);
-  assert.match(checkoutBody.textContent, /Fetching changes/);
+  const acquiring = checkoutBody.querySelector(".github-pull-changes-pending");
+  assert.match(acquiring?.getAttribute("aria-label") ?? "", /Fetching changes/);
+  assert.ok(acquiring.classes.has("mb-delayed-loading"), "after the quiet period");
   assert.ok(checkoutBody.querySelector(".spinner"));
   assert.equal(checkoutBody.querySelector(".github-pull-retry-changes"), null);
   resolveComparison({

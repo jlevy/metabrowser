@@ -31,6 +31,7 @@
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
+  alignRefreshing,
   authorLabel,
   avatarUrl,
   FAST_POLL_MS,
@@ -175,7 +176,8 @@ const CHECKOUT_NOT_LISTED =
  *   catalogReady: boolean,
  *   window: string | null,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
- *     reload: boolean, retrying?: true, help?: "install" | "update"} | null,
+ *     reload: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
+ *   refreshingRows?: number[],
  *   empty: string | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
@@ -318,6 +320,13 @@ function watchPaused(envelope) {
  * *rows* are the rows held so far, already described; the envelope is the last answer, whose
  * own `rows` are only a window.
  *
+ * Rows already shown are never covered by progress. While a refresh runs with rows held, the
+ * connection row keeps the plain age, "Updated 3 min ago", marked `refreshing`, which the paint
+ * breathes; `working`, with the shared spinner and "Fetching pull requests…", is only for a list
+ * with no rows yet. A stale list says nothing of being stale: it is being refreshed, or the
+ * row says why it cannot be (offline, a failure, a rate limit). *refreshingRows* are the rows
+ * whose own data GitHub is being read for now, whose titles breathe too.
+ *
  * @param {PullsEnvelope | null} envelope
  * @param {{
  *   filter: string,
@@ -331,6 +340,7 @@ function watchPaused(envelope) {
  *   checkout?: boolean,
  *   online?: boolean,
  *   requesting?: boolean,
+ *   refreshingRows?: number[],
  * }} page
  * @returns {PullsModel}
  */
@@ -412,21 +422,26 @@ export function describePulls(envelope, page) {
       state: "paused",
       text: failure.text + cached,
       reload: !heldByRate && !asking,
-      ...(asking ? { retrying: true } : {}),
+      ...(asking ? (holding ? { refreshing: true } : { retrying: true }) : {}),
     };
-  } else if (working || page.more) {
+  } else if ((working || page.more) && !holding) {
     model.connection = { state: "working", text: FETCHING, reload: false };
-  } else if (!envelope.complete && envelope.catalog_fetched > 0) {
+  } else if (!working && !envelope.complete && envelope.catalog_fetched > 0) {
     const count = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
     model.connection = { state: "paused", text: `Catalog paused · ${count} cached`, reload: true };
   } else {
+    // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const note = envelope.truncated
-      ? " · some pull requests could not be cached"
-      : envelope.state === "stale"
-        ? " · may be out of date"
-        : "";
-    model.connection = { state: "connected", text: `Updated ${age}${note}`, reload: true };
+    const note = envelope.truncated ? " · some pull requests could not be cached" : "";
+    model.connection = {
+      state: "connected",
+      text: `Updated ${age}${note}`,
+      reload: !working,
+      ...(working ? { refreshing: true } : {}),
+    };
+  }
+  if (page.refreshingRows !== undefined && page.refreshingRows.length > 0) {
+    model.refreshingRows = page.refreshingRows;
   }
   model.live = model.connection.state === "connected" ? model.listName : model.connection.text;
   const belowTotal = envelope.total === null || page.rows.length < envelope.total;
@@ -479,7 +494,7 @@ function pinChanged(response) {
 
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
- * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean}} CoreDemand
+ * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean, admitted?: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -618,6 +633,8 @@ export function createPullsController(deps, options = {}) {
   let coreSent = null;
   /** Last token that may still own the server window. @type {CoreDemand | null} */
   let coreHeld = null;
+  /** The rows last painted as being read from GitHub, joined. */
+  let coreRefreshingKey = "";
   let coreEpoch = 0;
   // Traversal can restart while the same accepted producer remains owned.
   let corePass = 0;
@@ -932,6 +949,11 @@ export function createPullsController(deps, options = {}) {
         const admitted =
           response?.status === 202 &&
           (receipt?.preparation === "started" || receipt?.preparation === "joined");
+        if (admitted) {
+          // GitHub is being read for these rows now; their titles breathe until it settles.
+          demand.admitted = true;
+          noteCoreRefreshing();
+        }
         const settled =
           response?.status === 200 &&
           (receipt?.preparation === "ready" || receipt?.preparation === "partial");
@@ -1044,6 +1066,23 @@ export function createPullsController(deps, options = {}) {
       }
     } finally {
       sendingCore = false;
+      noteCoreRefreshing();
+    }
+  }
+
+  /** The rows GitHub is being read for: an admitted batch that has not settled. */
+  function coreRefreshing() {
+    return coreWanted !== null && coreWanted.admitted === true && !coreWanted.done
+      ? coreWanted.body.numbers
+      : [];
+  }
+
+  /** Paint again when the rows being read change, which nothing else would repaint for. */
+  function noteCoreRefreshing() {
+    const key = coreRefreshing().join(",");
+    if (key !== coreRefreshingKey) {
+      coreRefreshingKey = key;
+      render();
     }
   }
 
@@ -1051,6 +1090,7 @@ export function createPullsController(deps, options = {}) {
     cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
+    noteCoreRefreshing();
     void sendCoreWindow();
   }
 
@@ -1077,6 +1117,7 @@ export function createPullsController(deps, options = {}) {
       retryDelay: CORE_BUSY_RETRY_MS,
       body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
     };
+    noteCoreRefreshing();
     void sendCoreWindow();
   }
 
@@ -1130,6 +1171,7 @@ export function createPullsController(deps, options = {}) {
       checkout,
       online: online(),
       requesting: refreshReads.size > 0,
+      refreshingRows: coreRefreshing(),
     });
   }
 
@@ -2352,7 +2394,7 @@ export function mountPullsPanel(container, ctx, mb) {
   // sees these rows.
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const connectionMessage = h("span");
+  const connectionMessage = h("span", { class: "mb-refreshing-muted" });
   const spinner = h("span", { class: "github-pulls-connection-spinner", hidden: "" }, [
     h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
   ]);
@@ -2402,6 +2444,8 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   /** @type {Map<number, PaintedRow>} */
   const painted = new Map();
+  /** The rows whose titles breathe: GitHub is being read for them. @type {Set<number>} */
+  let refreshingTitles = new Set();
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -2906,8 +2950,22 @@ export function mountPullsPanel(container, ctx, mb) {
     queueCoreSample();
   }
 
+  /**
+   * Breathe a row's title while GitHub is read for it, and mark the row busy.
+   *
+   * @param {{title: HTMLElement, row: HTMLElement, info: PullRow}} entry
+   * @returns {boolean} Whether it is breathing.
+   */
+  function markRefreshing(entry) {
+    const on = refreshingTitles.has(entry.info.number);
+    entry.title.classList.toggle("mb-refreshing", on);
+    entry.row.setAttribute("aria-busy", String(on));
+    return on;
+  }
+
   /** @param {number[]} arrivals */
   function paintWindow(arrivals) {
+    let builtRefreshing = false;
     const view = tab.scrollRoot?.getBoundingClientRect();
     const listTop = view === undefined ? 0 : list.getBoundingClientRect().top;
     const focusBefore =
@@ -2962,6 +3020,7 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.item.dataset.number = String(row.number);
         painted.set(row.number, entry);
         rowSizes?.observe(entry.item);
+        builtRefreshing ||= markRefreshing(entry);
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
@@ -2984,6 +3043,9 @@ export function mountPullsPanel(container, ctx, mb) {
       } else {
         list.insertBefore(node, cursor);
       }
+    }
+    if (builtRefreshing) {
+      alignRefreshing(list);
     }
     if (readingPlace !== null && tab.scrollRoot !== null) {
       const entry = painted.get(readingPlace.number);
@@ -3108,7 +3170,9 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     for (const { chip, value, tally } of tallies) {
       const count = model.filterTotals?.[value] ?? null;
-      const pending = count === null && model.connection?.state === "working";
+      const pending =
+        count === null &&
+        (model.connection?.state === "working" || model.connection?.refreshing === true);
       tally.classList.toggle("tally-pending", pending);
       tally.classList.toggle("tally-pending-narrow", pending);
       const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
@@ -3150,13 +3214,31 @@ export function mountPullsPanel(container, ctx, mb) {
     const connected = model.connection;
     const working = connected?.state === "working";
     const retrying = connected?.retrying === true;
+    const refreshing = connected?.refreshing === true;
     connection.hidden = connected === null;
     connectionText.classList.toggle("mb-delayed-loading", working);
     spinner.classList.toggle("mb-delayed-loading", retrying);
     spinner.hidden = !working && !retrying;
+    // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
+    connectionMessage.classList.toggle("mb-refreshing", refreshing);
+    connection.setAttribute("aria-busy", String(working || retrying || refreshing));
     const message = connected?.text ?? "";
     if (connectionMessage.textContent !== message) {
       connectionMessage.textContent = message;
+    }
+    const breathing = new Set(model.refreshingRows ?? []);
+    if (
+      breathing.size !== refreshingTitles.size ||
+      [...breathing].some((number) => !refreshingTitles.has(number))
+    ) {
+      refreshingTitles = breathing;
+      let any = false;
+      for (const entry of painted.values()) {
+        any = markRefreshing(entry) || any;
+      }
+      if (any) {
+        alignRefreshing(list);
+      }
     }
     reloadButton.setAttribute("aria-disabled", String(connected?.reload !== true));
     const help = connected?.help ?? "";
