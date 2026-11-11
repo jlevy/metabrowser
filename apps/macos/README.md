@@ -14,10 +14,11 @@ over HTTP and server-sent events, and the page never calls a shell API. The app 
 only what a browser tab cannot give: a Dock icon, folders dropped on it or opened with
 Open With, native menus and windows, and server lifetimes it controls.
 
-It is not a distribution.
+It is not yet a distribution.
 It installs nothing: no Python, no uv, no Metabrowser.
-It has no notarization, updater, DMG, Homebrew cask, URL scheme, or CI job.
-It runs on arm64 Macs with macOS 15 or later.
+It has a [release pipeline](#building-a-release) (Developer ID signing, notarization, a
+DMG, and a draft Homebrew cask) that has not yet made a release, and no updater, URL
+scheme, or CI job. It runs on arm64 Macs with macOS 15 or later.
 [Gaps to Close](#gaps-to-close) maps what is missing to the brief.
 
 ## Build, Test, and Run
@@ -33,8 +34,11 @@ prints a skip message on systems other than macOS):
 
 ```shell
 make macos-test                      # unit tests (swift test)
-make macos-app                       # build, assemble, and sign build/Metabrowser.app
+make macos-app                       # build, assemble, and sign build/Metabrowser Dev.app
 make macos-run FOLDER="$HOME/notes"  # build the app and open a folder with it
+make macos-dmg                       # build/Metabrowser-Dev-0.1.0-arm64.dmg, checked
+make macos-release                   # the official build; see Building a Release
+make macos-notarize FILE=path        # notarize and staple one .app or .dmg
 make macos-build                     # debug build only
 make macos-clean                     # remove .build and build
 ```
@@ -42,12 +46,58 @@ make macos-clean                     # remove .build and build
 `make verify` neither needs nor runs Swift, so Linux CI is unchanged.
 
 `scripts/build-app.sh` builds a release binary, strips it, lays out the bundle, stamps
-the version, generates the icon from `scripts/generate-icon.swift`, and signs.
+the variant’s identity and the version, copies the variant’s icon, and signs.
 It signs ad hoc by default, which runs on this Mac only.
 Set `SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"` to sign with the hardened
 runtime and a secure timestamp.
-`VERSION`, `BUILD`, `ARCHES` (for example `"arm64 x86_64"`), and `ICON=0` are documented
-in the script. The script does not notarize.
+`BUILD`, `ARCHES` (for example `"arm64 x86_64"`), and `ICON=0` are documented in the
+script.
+
+### Versions
+
+`VERSION` holds the version, `MAJOR.MINOR.PATCH`, and nothing overrides it; a release is
+tagged `macos-v<VERSION>`. `CFBundleVersion` is the commit count of `HEAD`, so a shallow
+clone is refused unless `BUILD` is set.
+The app versions separately from the Python package, which it runs but does not contain.
+
+### Variants
+
+Every build is one of two variants, and the variant decides the bundle’s identity:
+
+|  | dev | release |
+| --- | --- | --- |
+| Bundle | `build/Metabrowser Dev.app` | `build/Metabrowser.app` |
+| Bundle identifier | `io.github.jlevy.metabrowser.dev` | `io.github.jlevy.metabrowser` |
+| Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
+| URL schemes | each declared scheme with `-dev` (none yet) | as declared |
+| DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
+
+The rule: **the canary icon is for development builds, and the published icon only for
+official releases.**
+
+- **Every development build is dev**: `make app`, `make run`, `make dmg`, their
+  `macos-*` forms, any ad hoc build, and any build CI makes from a branch, a pull
+  request, or `main`.
+- **Only the release path builds release**: `make release`, and CI on a `macos-v*` tag.
+  An official build must be signed with a Developer ID, notarized, built from a commit,
+  and carry the published icon; `make release` checks all four before it builds.
+  `make release NOTARIZE=0` rehearses the same steps with an ad hoc signature and says
+  it is a rehearsal.
+- **Release only on request**: elsewhere, `VARIANT=release` on the `make` command line
+  builds the release variant.
+  A `VARIANT` exported in the environment is ignored, so a leftover export cannot turn a
+  development build into a release build.
+- **The canary icon never ships in a release**: `scripts/check-dmg.sh` refuses a release
+  image that holds the canary icon or lacks the published one, and a development image
+  that holds the published icon.
+  `scripts/build-app.sh` refuses to sign a release build with a Developer ID when the
+  published icon is missing.
+
+A separate identity is what lets a development build run beside an installed release:
+two copies with one bundle identifier share user defaults, privacy grants, and
+LaunchServices registration, and a URL scheme claimed twice has no defined target.
+Until the icon files exist, both variants use the icon `scripts/generate-icon.swift`
+draws, which no official build may ship.
 
 To run the tests against a real server too:
 
@@ -62,11 +112,140 @@ Where to look while it runs:
   the server’s output, with the app’s lifecycle events interleaved: start command, pid,
   announced URL, readiness time, stop, and exit status.
   File > Reveal Server Log opens it.
-- **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser"'`.
+- **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
+  for a development build; the subsystem is the bundle identifier, so a release build
+  logs as `io.github.jlevy.metabrowser`.
 - **Web Inspector:** Safari’s Develop menu, in debug builds or after
-  `defaults write io.github.jlevy.metabrowser WebInspectorEnabled -bool true`.
-- **Start over:** `defaults delete io.github.jlevy.metabrowser` forgets the saved
+  `defaults write io.github.jlevy.metabrowser.dev WebInspectorEnabled -bool true`.
+- **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
   runtime and the recent folders, so the next launch runs discovery again.
+  Each variant has its own defaults domain, named by its bundle identifier.
+
+## Building a Release
+
+A release is one command, `make macos-release`, and it uses only Apple’s tools: `swift`,
+`codesign`, `ditto`, `hdiutil`, `xcrun notarytool`, `xcrun stapler`, and `spctl`. No
+release has been made yet; the pipeline has run end to end with an ad hoc signature and
+the notarization steps skipped.
+
+### Once per Mac
+
+1. **A Developer ID Application certificate**, with its private key, in the login
+   keychain. It needs the Apple Developer Program, and only the account holder can create
+   one. `security find-identity -v -p codesigning` lists it as
+   `Developer ID Application: Name (TEAMID)`.
+
+2. **Notary credentials in the keychain**, saved once under a profile name, so no secret
+   appears in a command line or an environment:
+
+   ```shell
+   xcrun notarytool store-credentials metabrowser-notary \
+     --key AuthKey_KEYID.p8 --key-id KEYID --issuer ISSUER_UUID
+   ```
+
+   That is an App Store Connect API key; `--apple-id`, `--team-id`, and an app-specific
+   password work too.
+
+3. **The published icon**, `Resources/AppIcon.icns`, committed.
+
+### Each Release
+
+```shell
+echo 0.1.0 > apps/macos/VERSION
+git commit -m "release(macos): 0.1.0" apps/macos/VERSION
+git tag -a macos-v0.1.0 -m "Metabrowser for macOS 0.1.0"
+make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
+  APPLE_KEYCHAIN_PROFILE=metabrowser-notary
+```
+
+`scripts/release.sh` then runs, stopping at the first failure:
+
+1. **Preflight:** the identity is in the keychain, the notary credentials are set, the
+   published icon exists, and `apps/macos` has no uncommitted changes.
+2. **App:** `build-app.sh` builds and signs it with the hardened runtime and a secure
+   timestamp, inside out and never with `--deep`, and refuses any entitlement.
+3. **App notarization:** `notarize.sh` zips the app with `ditto`, submits it with
+   `notarytool submit --wait`, saves the notary log as
+   `build/notary-Metabrowser.app.json` (read it for warnings even after an Accepted
+   verdict), staples the ticket to the app, and runs `spctl --assess --type execute`. A
+   stapled app opens without reaching Apple, also after it is dragged out of the image.
+4. **Image:** `make-dmg.sh` stages the app, an `Applications` link, and the app’s icon
+   as `.VolumeIcon.icns`, creates a read-write image to set the volume’s custom-icon
+   flag, converts it to a compressed UDZO image, signs it, and writes its checksum.
+5. **Image notarization:** the image is submitted, stapled, and assessed with
+   `spctl --assess --type open`, and its checksum is written again, since stapling
+   changes it.
+6. **Check:** `check-dmg.sh` checks the image as a downloader meets it (see
+   [Variants](#variants) for the icon rule).
+7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
+   version and checksum filled in.
+
+The outputs, at 0.1.0:
+
+| File | Size |
+| --- | --- |
+| `build/Metabrowser.app` | about 0.9 MB |
+| `build/Metabrowser-0.1.0-arm64.dmg` | about 0.5 MB |
+| `build/Metabrowser-0.1.0-arm64.dmg.sha256` | one `shasum -a 256` line |
+| `build/metabrowser-app.rb` | the cask |
+| `build/notary-*.json` | the notary logs |
+
+Apple says most submissions finish within 5 minutes; `NOTARY_TIMEOUT` (default `30m`)
+bounds the wait.
+`make macos-notarize FILE=build/Metabrowser-0.1.0-arm64.dmg` retries one
+step. `make macos-release NOTARIZE=0` rehearses every step without credentials.
+
+To publish, push the tag and attach the image and its checksum to a draft release, then
+review the draft and publish it:
+
+```shell
+git push origin macos-v0.1.0
+gh release create macos-v0.1.0 --draft --verify-tag --latest=false \
+  --title "Metabrowser for macOS 0.1.0" \
+  apps/macos/build/Metabrowser-0.1.0-arm64.dmg \
+  apps/macos/build/Metabrowser-0.1.0-arm64.dmg.sha256
+```
+
+`--latest=false` keeps the Python package’s release as the repository’s latest.
+Then copy `build/metabrowser-app.rb` to `Casks/` in a personal tap.
+The draft CI workflow for all of this is not yet in `.github/workflows`, and the PyPI
+publish workflow must first learn to ignore `macos-v*` releases (see
+[Gaps to Close](#gaps-to-close)).
+
+### What a Downloader Experiences
+
+With a signed, notarized, and stapled release:
+
+1. **Download.** The browser marks the DMG with `com.apple.quarantine`, which is what
+   makes Gatekeeper check it.
+   `shasum -a 256 -c Metabrowser-0.1.0-arm64.dmg.sha256` checks the download.
+2. **Open the DMG.** Gatekeeper checks the image’s signature and stapled ticket, and a
+   window shows Metabrowser and Applications; the volume carries the app’s icon.
+   Finder arranges the two icons itself, since the image has no window layout yet.
+   Drag Metabrowser to Applications.
+3. **First launch.** Gatekeeper checks the Developer ID signature and the stapled
+   ticket, which needs no network, and asks once whether to open an app downloaded from
+   the Internet, saying Apple checked it for malicious software.
+   An app opened straight from the DMG or from Downloads runs from a randomized
+   read-only copy (App Translocation); it works, but belongs in Applications.
+4. **Runtime.** The app runs the `metab` command-line tool and does not yet install it.
+   Without one, the first launch shows the install command,
+   `uv tool install metabrowser`, and every place it looked, and Find Again picks up the
+   new install.
+5. **Privacy prompts.** Opening a folder in Desktop, Documents, Downloads, iCloud Drive,
+   or on a removable or network volume asks once, in Metabrowser’s name, because the app
+   is responsible for the server it starts.
+   A Git remote on the local network can ask for Local Network access.
+
+With Homebrew, `brew install --cask jlevy/tap/metabrowser-app` downloads the same image,
+quarantines it, and installs the app, so the first launch is the same; updates come from
+`brew upgrade --cask`, as the app has no updater.
+
+A development or rehearsal DMG is signed ad hoc.
+It runs on the Mac that built it, but on any Mac that downloads it, CI artifacts
+included, Gatekeeper refuses it as unverifiable, and since macOS 15 only Open Anyway, in
+the Privacy & Security pane of System Settings, overrides that.
+Do not hand one out as a release.
 
 ## Architecture
 
@@ -78,7 +257,12 @@ Where to look while it runs:
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, and the navigation policy. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children. |
-| `Resources/Info.plist`, `scripts/` | The bundle’s property list, the bundle script, and the icon generator. |
+| `Resources/` | The bundle’s property list, and the published and canary icons once they are committed. |
+| `VERSION` | The app’s version, set nowhere else. |
+| `scripts/build-app.sh`, `scripts/common.sh` | The bundle script, and the variants and helpers every script shares. |
+| `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
+| `scripts/generate-icon.swift` | The stand-in icon, until the icon files exist. |
+| `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit
 or WebKit. The app target is the platform behavior the brief exempts from the CLI parity
@@ -288,10 +472,13 @@ Each gap points to the part of the brief that closes it.
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |
 | **App-managed runtime** | None: a CLI install is required. | Recommendation 5.2; Wrapping uv |
-| **Notarization and updates** | Ad hoc or Developer ID signing only: no `notarytool`, DMG, cask, or Sparkle. | Recommendation 6 |
+| **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized, and the published and canary icons are not yet committed. | Recommendation 6 |
+| **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
+| **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
+| **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
 | **WebKit measurement gate** | Not run. Large-content bounds were measured in Chrome; `window.print()` and drag and drop are not yet checked by hand. | Recommendation 4 (`mb-etqi`) |
 | **Multi-root and attach** | One server per root; no attaching to an agent’s server, no state files, no `metabrowser://` hand-off from the CLI. | Use Cases Under Exploration; Sharing an Installation |
-| **macOS CI** | `swift test` runs locally only. | Next Steps |
+| **macOS CI** | `swift test` and the pipeline run locally only. A workflow is drafted, not added, and the PyPI publish workflow would fail on a published `macos-v*` release. | Next Steps |
 
 ## Known Limitations
 
