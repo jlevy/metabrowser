@@ -5,7 +5,7 @@ title: "App icon: an MB mark in the sister app's style"
 kind: feature
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T03:04:45.303Z
-updated_at: 2026-11-11T14:44:35.048Z
+updated_at: 2026-11-11T20:26:14.786Z
 started_at: 2026-11-11T03:18:43.016Z
 ---
 Phase 1. A full, modern icon matching the sister app's Figma-designed v6 icon: its squircle, rim bevel, panel sheen, and inset letter shadows, copied from its SVG masters. The mark is a hand-drawn half-M (|\/) followed by a clean B whose stem completes the M, built on Reddit Mono Bold's construction, in light shades of Metabrowser's JavaScript yellow-green and Markdown purple. Release and canary variants, SVG masters, every icns size, a reproducible build script, and inline review with the user.
@@ -32,3 +32,5 @@ Draft on branch claude/macos-app-icon (latest 1a847b97; b-over default at feac58
 - Folder is AppIcon/, not Icon/: the user's global gitignore ignores any path named Icon.
 
 2026-11-11: Merged into claude/macos-app-spike and pushed to jlevy/metabrowser#341 at 21dae3c3 (not to be merged into main until the user says so).
+
+2026-11-11: Design chosen by the user: sym-drop19-gap34 (junction gap, faceTopFlat 0, faceDrop 19.337, gap 34; mark 241.654 wide). Both masters and both .icns rebuilt on claude/macos-app-icon (1721e583), merged into the app branch (e52318fb, pushed to jlevy/metabrowser#341); b-over and the other designs stay as alternate parameter files. Remaining: hand-tuned 16 and 32 px masters.

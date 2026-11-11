@@ -5,7 +5,7 @@ title: "PR 2: event-based PR freshness, budgeted prefetch, rate-limit governor"
 kind: feature
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-11-pr-freshness-and-prefetch.md
 delegate: claude-code@spud10.local
 labels: []
@@ -19,9 +19,10 @@ child_order_hints:
   - is-01m75s9tgh4bwq1pbcezr4dnst
   - is-01m75s9v0h811tq955gnc641y1
   - is-01m75s9vh1760pwb14b401n6se
+  - is-01m764ch9wv71k63djf6m1sgxh
 hold: null
 hold_until: null
 created_at: 2026-11-11T16:52:44.579Z
-updated_at: 2026-11-11T17:08:25.888Z
+updated_at: 2026-11-11T20:21:59.727Z
 started_at: 2026-11-11T16:54:12.366Z
 ---
