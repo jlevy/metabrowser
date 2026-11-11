@@ -71,6 +71,8 @@ function panelRig(panel, { current = null } = {}) {
     },
   };
   const prefetches = [];
+  // While `state.holdPrefetch` is set, a prefetch POST waits here until `release()`.
+  const held = [];
   const opened = [];
   const timers = new Map();
   let model = null;
@@ -84,7 +86,11 @@ function panelRig(panel, { current = null } = {}) {
         }
         if (route === PREFETCH) {
           prefetches.push(options.body);
-          return { status: 202, etag: null, body: { prefetch: "started", queued: 1 } };
+          const answer = { status: 202, etag: null, body: { prefetch: "started", queued: 1 } };
+          if (state.holdPrefetch) {
+            return new Promise((resolve) => held.push(() => resolve(answer)));
+          }
+          return answer;
         }
         if (method === "POST") {
           return { status: 200, etag: null, body: { pulls: listEnvelope(state, route) } };
@@ -123,6 +129,12 @@ function panelRig(panel, { current = null } = {}) {
     opened,
     controller,
     model: () => model,
+    async release() {
+      for (const answer of held.splice(0)) {
+        answer();
+      }
+      await settle();
+    },
     async fire(delayMs) {
       const entries = [...timers.entries()].filter(([, timer]) => timer.delayMs === delayMs);
       for (const [id, timer] of entries) {
@@ -154,8 +166,8 @@ function pageRig(page, envelope) {
   const calls = [];
   const timers = new Map();
   let model = null;
-  /** What the next GET answers: 200 with the envelope, or a 304 carrying this header. */
-  let next = { status: 200, verified: null };
+  /** What the next GET answers: 200 with an envelope, or a 304, and the header it carries. */
+  let next = { status: 200, verified: null, body: envelope };
   const controller = page.createPullController(
     {
       async request(method, route, options) {
@@ -169,7 +181,7 @@ function pageRig(page, envelope) {
         if (next.status === 304) {
           return { status: 304, etag: '"pull"', body: null, verified: next.verified };
         }
-        return { status: 200, etag: '"pull"', body: envelope, verified: null };
+        return { status: 200, etag: '"pull"', body: next.body, verified: next.verified };
       },
       schedule(callback, delayMs) {
         const id = Symbol();
@@ -194,8 +206,12 @@ function pageRig(page, envelope) {
     calls,
     controller,
     model: () => model,
-    answer(status, verified = null) {
-      next = { status, verified };
+    answer(status, verified = null, body = envelope) {
+      next = { status, verified, body };
+    },
+    /** The delays of the timers set, in order. */
+    delays() {
+      return [...timers.values()].map((timer) => timer.delayMs).sort((a, b) => a - b);
     },
     async fire(delayMs) {
       const entries = [...timers.entries()].filter(([, timer]) => timer.delayMs === delayMs);
@@ -277,6 +293,28 @@ function pageRig(page, envelope) {
   assert.deepEqual(facts.breathingAfter, []);
   shown.controller.dispose();
 
+  // A walk faster than the prefetch POST answers: each landing made while one is on its way
+  // waits as the one pending ask, sent when it answers, from the row landed on last.
+  const walk = panelRig(panel);
+  await walk.controller.start({ shown: true });
+  await settle();
+  walk.prefetches.splice(0);
+  walk.state.holdPrefetch = true;
+  for (const number of [115, 114, 113]) {
+    walk.controller.activate(number);
+    await settle();
+  }
+  facts.walkAsksInFlight = walk.prefetches.length;
+  walk.state.holdPrefetch = false;
+  await walk.release();
+  facts.walkFiles = walk.prefetches.map((ask) => ask.files);
+  assert.equal(facts.walkAsksInFlight, 1, "one ask is on its way at a time");
+  assert.deepEqual(facts.walkFiles, [
+    [115, 116, 114],
+    [113, 114, 112],
+  ]);
+  walk.controller.dispose();
+
   // A scan still running, a list whose refresh failed, a hidden panel, and offline.
   const quiet = {};
   for (const [name, change] of Object.entries({
@@ -334,6 +372,32 @@ function pageRig(page, envelope) {
   await view.fire(SLOW_POLL_MS);
   facts.withinWindow = view.take();
   view.controller.dispose();
+
+  // The catalog's next scan running: its last check still vouches, the 304 says the scan
+  // runs, and the page reads again in a fast poll, so a change that scan publishes is
+  // refreshed then, not a slow poll later.
+  const { FAST_POLL_MS: fastPoll } = pageModule;
+  const scanning = pageRig(pageModule, envelope);
+  await scanning.controller.start();
+  await settle();
+  scanning.take();
+  scanning.state.now = Date.parse("2026-09-17T12:01:01Z");
+  scanning.answer(304, `catalog ${checkedAt} scanning`);
+  await scanning.fire(SLOW_POLL_MS);
+  facts.scanningRead = scanning.take();
+  facts.scanningNextPolls = scanning.delays();
+  const changed = structuredClone(envelope);
+  changed.state = "stale";
+  changed.verified_by = "fetch";
+  changed.verified_at = fetchedAt;
+  scanning.answer(200, `fetch ${fetchedAt}`, changed);
+  scanning.state.now = Date.parse("2026-09-17T12:01:02Z");
+  await scanning.fire(fastPoll);
+  await scanning.fire(pageModule.REFRESH_ASK_MS);
+  facts.scanPublishedChange = scanning.take();
+  facts.afterScanPolls = scanning.delays();
+  assert(facts.scanningNextPolls.includes(fastPoll), "a running scan is polled fast");
+  scanning.controller.dispose();
 
   // A record the catalog never vouched for, its checks still running: the page refreshes
   // it once a window instead, and never asks the catalog for it.

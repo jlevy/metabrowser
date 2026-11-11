@@ -1324,6 +1324,9 @@ export function createPullController(deps, options) {
   let catalogBacked = false;
   /** When the page last asked for the catalog's scan, by `deps.now()`. @type {number | null} */
   let catalogAskedAt = null;
+  // The last answer said the catalog vouched while its next scan ran: the page reads again
+  // in a fast poll, so a change that scan publishes is refreshed then, not a slow poll later.
+  let catalogScanning = false;
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -1481,7 +1484,7 @@ export function createPullController(deps, options) {
    * @param {string | null | undefined} value
    */
   function adoptVerified(value) {
-    const found = /^(catalog|fetch) (\S+)$/u.exec(value ?? "");
+    const found = /^(catalog|fetch) (\S+)(?: scanning)?$/u.exec(value ?? "");
     if (envelope === null || envelope.record === null || found === null) {
       return;
     }
@@ -1606,7 +1609,12 @@ export function createPullController(deps, options) {
   function pollsFast() {
     // Optional comparison work says nothing to Conversation, so it is polled slowly there.
     const quiet = envelope?.preparing_comparison === true && tab !== "files";
-    return envelope === null || (envelope.refreshing && !quiet) || envelope.state === "pending";
+    return (
+      envelope === null ||
+      (envelope.refreshing && !quiet) ||
+      envelope.state === "pending" ||
+      catalogScanning
+    );
   }
 
   /**
@@ -1707,20 +1715,24 @@ export function createPullController(deps, options) {
       if (disposed) {
         return;
       }
+      catalogScanning = false;
       if (response.status === 200 && isEnvelope(response.body)) {
         if (accept(response.body, request)) {
           etag = response.etag;
+          catalogScanning = / scanning$/u.test(response.verified ?? "");
         }
         error = null;
       } else if (response.status === 304 || pinChanged(response)) {
         if (response.status === 304) {
           adoptVerified(response.verified);
+          catalogScanning = / scanning$/u.test(response.verified ?? "");
         }
         error = null;
       } else {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
       }
     } catch {
+      catalogScanning = false;
       error = "The server did not answer.";
     } finally {
       polling = false;

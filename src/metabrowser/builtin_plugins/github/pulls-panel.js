@@ -671,10 +671,14 @@ export function createPullsController(deps, options = {}) {
   /** @type {PullFilterTotals | null} */
   let filterTotals = null;
   // Background prefetch (`PREFETCH_ROUTE`): the scan it last asked after, by the list's
-  // `fetched_at`, and whether a request is on its way, which a second ask then skips.
+  // `fetched_at`, and whether a request is on its way. An ask made meanwhile waits as the
+  // one pending ask, sent when that request answers and built from the panel as it is then,
+  // `changed` when any ask that waited had it; null when none waits.
   /** @type {string | null} */
   let prefetchedScan = null;
   let prefetching = false;
+  /** @type {boolean | null} */
+  let prefetchPending = null;
   // The lane's report is followed while it works: its next read, and the row it is reading.
   /** @type {unknown} */
   let prefetchTimer = null;
@@ -1777,14 +1781,13 @@ export function createPullsController(deps, options = {}) {
    * again, admits what is due within its caps, and waits behind any reader's work.
    *
    * @param {boolean} changed
-   * @returns {boolean} Whether a request was sent.
+   * @returns {boolean} Whether a request was sent, or waits behind the one on its way.
    */
   function prefetch(changed) {
     const list = held();
     if (
       !live() ||
       !online() ||
-      prefetching ||
       list.envelope === null ||
       list.envelope.reason === "not_github" ||
       // GitHub refused the list's own refresh, and would refuse the prefetch too.
@@ -1792,6 +1795,10 @@ export function createPullsController(deps, options = {}) {
       list.rows.length === 0
     ) {
       return false;
+    }
+    if (prefetching) {
+      prefetchPending = prefetchPending === true || changed;
+      return true;
     }
     const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
     const near = [at - 1, at + 1]
@@ -1813,6 +1820,11 @@ export function createPullsController(deps, options = {}) {
       .catch(() => null)
       .finally(() => {
         prefetching = false;
+        const pending = prefetchPending;
+        prefetchPending = null;
+        if (pending !== null && !disposed) {
+          prefetch(pending);
+        }
       });
     return true;
   }
@@ -1879,6 +1891,7 @@ export function createPullsController(deps, options = {}) {
       prefetchTimer = null;
     }
     prefetchRows = [];
+    prefetchPending = null;
   }
 
   /** After a scan the server finished, once per scan: ask for what it found changed. */

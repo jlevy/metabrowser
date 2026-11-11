@@ -15,12 +15,16 @@ neighbours. A scan still running asks nothing of its own; a list whose refresh f
 hidden panel, and an offline page ask nothing at all.
 While the lane the panel started is reading a row’s record, that row’s title breathes,
 as a core batch’s rows do, and only while the panel is live and online.
+The panel sends one prefetch request at a time: landings made while one is on its way
+wait as one pending ask, sent when it answers, from the row landed on last.
 
 The pull-request page says when the repository’s list last checked a record apart from
 when the record was read.
 When that check is a window old, the page asks for the list’s next scan before it reads,
 once a window, and a 304 carries the next check in its header.
-A record whose checks are still running is refreshed once a window instead.
+While that scan runs the header says so, and the page polls fast until it ends, so a
+change the scan publishes is refreshed within a fast poll.
+A record the list never vouched for is refreshed once a window instead.
 When the head moved, the page says so over the diff it keeps.
 
 This browserless session loads both production controllers and answers every request at
@@ -67,6 +71,19 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
   ],
   "breathingOffline": [],
   "breathingAfter": [],
+  "walkAsksInFlight": 1,
+  "walkFiles": [
+    [
+      115,
+      116,
+      114
+    ],
+    [
+      113,
+      114,
+      112
+    ]
+  ],
   "quiet": {
     "refreshing": 1,
     "failed": 0,
@@ -84,6 +101,20 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
   "checkedAfter304": "Checked just now · fetched 3 h ago via GitHub CLI",
   "withinWindow": [
     "GET /api/plugin/github/pull?number=7"
+  ],
+  "scanningRead": [
+    "POST /api/plugin/github/pulls-refresh",
+    "GET /api/plugin/github/pull?number=7"
+  ],
+  "scanningNextPolls": [
+    1000
+  ],
+  "scanPublishedChange": [
+    "GET /api/plugin/github/pull?number=7",
+    "POST /api/plugin/github/pull-refresh"
+  ],
+  "afterScanPolls": [
+    30000
   ],
   "pendingChecks": [
     "GET /api/plugin/github/pull?number=7",
