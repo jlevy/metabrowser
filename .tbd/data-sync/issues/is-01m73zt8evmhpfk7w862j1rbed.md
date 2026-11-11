@@ -1,0 +1,20 @@
+---
+type: is
+id: is-01m73zt8evmhpfk7w862j1rbed
+title: Avoid duplicate PR ages and align conversation commit hashes
+kind: bug
+status: in_progress
+priority: 2
+version: 2
+spec_path: docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md
+delegate: codex@spud10.local
+labels: []
+dependencies: []
+parent_id: is-01m7327d4wd92r1n5bnmr1b0zb
+hold: null
+hold_until: null
+created_at: 2026-11-11T00:23:37.690Z
+updated_at: 2026-11-11T00:23:59.368Z
+started_at: 2026-11-11T00:23:59.367Z
+---
+Omit the updated age when it repeats the opened age in PR metadata. Apply the convention consistently to created/updated summaries. Match the monospace commit hash size to the surrounding committed text in PR conversation entries. Include the shared design guidance and verify the rendered page.
