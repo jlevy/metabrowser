@@ -1142,7 +1142,8 @@ def test_the_rendered_route_answers_an_undecided_pair_and_a_busy_slot(
             raise pull_rendered_diff._Busy  # pyright: ignore[reportPrivateUsage]
 
     application: Any = client.app
-    application.state.pull_rendered_diff_slot = Busy()
+    # The app outlives this test, so the stand-in slot is removed after it.
+    monkeypatch.setattr(application.state, "pull_rendered_diff_slot", Busy(), raising=False)
     busy = client.get(address)
     assert busy.status_code == 429
     assert busy.json() == {"code": "rendered_diff_busy"}
