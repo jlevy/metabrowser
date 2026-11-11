@@ -343,3 +343,29 @@ def test_an_idle_child_is_stopped_and_the_next_projection_starts_another(
             worker.stop()
 
     asyncio.run(run())
+
+
+@_needs_child
+def test_a_child_no_projection_reaches_is_stopped_when_idle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A page's prefetch starts the child, and every answer may then come from the
+    # thread or the route's cache, so the idle stop counts from the start.
+    monkeypatch.setattr(worker_module, "_IDLE_S", 0.3)
+
+    async def run() -> None:
+        worker = ProjectionWorker()
+        try:
+            for _ in range(2):
+                worker.start()
+                async with asyncio.timeout(60):
+                    assert await worker.started()
+                process = worker._process  # pyright: ignore[reportPrivateUsage]
+                assert process is not None
+                await asyncio.sleep(0.8)
+                assert worker._process is None, "a child nothing used was stopped"  # pyright: ignore[reportPrivateUsage]
+                assert await process.wait() is not None
+        finally:
+            worker.stop()
+
+    asyncio.run(run())
