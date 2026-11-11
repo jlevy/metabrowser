@@ -269,7 +269,17 @@ user decides to merge it.
 - [ ] The WebKit measurement gate against the Chrome-measured bounds (`mb-etqi`).
 - [ ] An app-managed runtime from a bundled uv and a hash-pinned `pylock.toml`
   (`mb-lrcd`).
-- [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`).
+- [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`). Each
+  installed copy has one updater, and an update replaces the bundle whole.
+- [ ] `metab` installs, reports, and removes the app from the notarized release ZIP,
+  verifying it itself because a command-line download carries no quarantine (`mb-92d9`;
+  see the
+  [uv and app install brief](../../research/research-2026-11-11-uv-and-macos-app-install.md)).
+- [ ] Publish the stapled app ZIP and a release manifest beside the DMG (`mb-5jr9`).
+- [ ] Find the app by bundle id from `metab`, filtered to Applications folders
+  (`mb-56nq`).
+- [ ] A clean-account matrix for a command-line-installed app (`mb-5fp7`).
+- [ ] Optional: a separate bundle id for release-rehearsal builds (`mb-nneo`).
 - [ ] The project-plugin trust spec (`mb-m1mw`).
 
 ### Phase 6: Measured Follow-Ups
