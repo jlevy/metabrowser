@@ -71,6 +71,8 @@ class _Host:
         self.coordinator = RefreshCoordinator()
         self.started: list[int] = []
         self.gates: dict[int, asyncio.Event] = {}
+        # Set when the number's background refresh starts, for a test that waits for it.
+        self.entered: dict[int, asyncio.Event] = {}
         self.on_refresh: dict[int, Any] = {}
 
     def job_key(self, number: int) -> str:
@@ -82,6 +84,8 @@ class _Host:
     def start_background(self, number: int) -> str:
         async def work() -> None:
             self.started.append(number)
+            if number in self.entered:
+                self.entered[number].set()
             gate = self.gates.get(number)
             if gate is not None:
                 await gate.wait()
@@ -293,9 +297,11 @@ def test_a_preempted_job_is_said_so_and_a_new_request_replaces_the_queue(
 
     async def scenario() -> None:
         host.gates[7] = asyncio.Event()
+        host.entered[7] = asyncio.Event()
         await request_prefetch(None, host, PrefetchRequest(records=(7, 8)))  # pyright: ignore[reportArgumentType]
-        for _ in range(50):
-            await asyncio.sleep(0)
+        # The lane reads the record, the governor's hold, and the catalog off the loop before
+        # it starts 7: three thread hops, which fifty turns of the loop did not cover on CI.
+        await asyncio.wait_for(host.entered[7].wait(), 10)
         assert host.started == [7]
         envelope = await prefetch_envelope(host)  # pyright: ignore[reportArgumentType]
         assert envelope["running"] == {"kind": "record", "number": 7}
