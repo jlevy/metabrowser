@@ -27,7 +27,6 @@ from metabrowser.builtin_plugins.diff.sidekick import (
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_PULL_RECORD_BYTES, PullRecord
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
-from metabrowser.cache.loading import LoadingCache
 from metabrowser.cache.paths import store_directory
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import MAX_MANIFEST_FILES, GitDiffSource
@@ -40,6 +39,7 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 from metabrowser.http_caching import BUILD_TAG, store_tag
+from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
