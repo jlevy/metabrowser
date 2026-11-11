@@ -3317,10 +3317,10 @@ export function mountPullPage(container, ctx, mb) {
    * neutral pulsing blocks after the quiet period, never a spinner or a sentence. The reveal
    * wrapper and the skeleton are separate nodes, as on a cold page.
    *
-   * @param {string} label What is loading, for a screen reader.
+   * @param {{"aria-label": string}} named What is loading, for a screen reader only.
    */
-  const pendingSection = (label) =>
-    h("div", { class: "mb-delayed-loading", role: "status", "aria-label": label }, [
+  const pendingSection = (named) =>
+    h("div", { class: "mb-delayed-loading", role: "status", ...named }, [
       h("div", {
         class: "recent-loading github-pull-loading github-pull-section-loading",
         "aria-hidden": "true",
@@ -3728,7 +3728,7 @@ export function mountPullPage(container, ctx, mb) {
         h("section", { class: "github-pull-section" }, [
           h("h2", { class: "section-heading" }, ["Discussion"]),
           model.refreshing
-            ? pendingSection("Loading comments and reviews")
+            ? pendingSection({ "aria-label": "Loading comments and reviews" })
             : h("p", { class: "github-pull-quiet" }, [
                 "Comments and reviews have not been fetched.",
               ]),
@@ -3825,7 +3825,7 @@ export function mountPullPage(container, ctx, mb) {
     if (model.corePreview) {
       checksSection.append(
         model.refreshing
-          ? pendingSection("Loading checks and statuses")
+          ? pendingSection({ "aria-label": "Loading checks and statuses" })
           : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     } else if (summary !== null) {

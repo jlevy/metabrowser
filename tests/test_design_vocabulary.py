@@ -1386,7 +1386,9 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert 'group.setAttribute("aria-busy", String(next.loading || next.refreshing));' in files
     assert "spinner.hidden = !next.loading;" in files
     # A file the comparison does not hold is muted ink, so its name breathes as a muted line.
-    muted_name = github[".mb-refreshing-group .github-pull-file-muted > .mb-refreshing-text"]
+    muted_name = github[
+        ".github-pull-files.mb-refreshing-group .github-pull-file-muted > .github-pull-file-name"
+    ]
     assert muted_name == {
         "--mb-refreshing-to": "var(--refreshing-muted-lift-opacity)",
         "color": "var(--text)",
