@@ -383,6 +383,8 @@ export function createMarkdownViews(deps) {
       const button = /** @type {HTMLButtonElement} */ (chip);
       const mode = button.dataset.chipValue;
       button.setAttribute("aria-controls", mode === "rendered" ? file.rendered.id : file.source.id);
+      // Never seen: the chooser is hidden whenever this applies. Kept, with select()'s
+      // guard, so a file that can only show Source cannot be switched to Rendered.
       button.disabled = mode === "rendered" && file.state === "unavailable";
       if (restoreFocus && chooser && mode === file.mode) {
         button.focus();

@@ -12,8 +12,8 @@
 // steps of the story rather than races.
 //
 // Each step prints the requests the page made, and for each file whose state the step
-// changed: its chooser (`*` marks the chosen format, `-` one that cannot be chosen, and
-// `none` for a file that can show only Source), what its body shows (`rendered`,
+// changed: its chooser (`*` marks the chosen format, and `none` for a file that can show
+// only Source), what its body shows (`rendered`,
 // `source`, or `nothing` while it waits within the loading delay), whether its progress
 // mark is counting down to visible, any message under its bar, and the rendered rows:
 // each block's kind and text, `[note]` when its source says more than its render, and
@@ -385,8 +385,10 @@ function serialize(nodes) {
 
 function describe(file) {
   const chips = file.control.children.map((chip) => {
+    // Rendered is disabled only for a file that can show only Source, whose chooser is hidden.
+    assert(file.control.hidden || !chip.disabled, `${file.name}: a shown chooser disables a chip`);
     const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
-    return `${chosen}${chip.disabled ? "-" : ""}${chip.textContent}`;
+    return `${chosen}${chip.textContent}`;
   });
   const shows = !file.rendered.hidden ? "rendered" : !file.source.hidden ? "source" : "nothing";
   // A file with no chooser has no progress mark either, and its bar drops the layout that

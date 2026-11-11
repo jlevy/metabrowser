@@ -47,10 +47,10 @@ hand.
 
 `links` says which addresses in a rendered block open a file of the comparison.
 Each step lists the requests the page made and each file whose state it changed: its
-chooser (`*` chosen, `-` cannot be chosen, `none` when the file can show only Source),
-what its body shows (`nothing` while it waits within the loading delay), `progress`
-while its mark counts down, any message under its bar, and its rendered rows, `[note]`
-marking a block whose source says more.
+chooser (`*` chosen, `none` when the file can show only Source), what its body shows
+(`nothing` while it waits within the loading delay), `progress` while its mark counts
+down, any message under its bar, and its rendered rows, `[note]` marking a block whose
+source says more.
 
 ```console
 $ node tests/dom/diff-markdown-session.js
