@@ -264,3 +264,75 @@ def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tre
     assert "Draft" in answer["blocks"][0]["html"]
     assert "working tree" not in json.dumps(answer)
     assert live.read_bytes() == b"# Draft\n\nOnly the working tree says this.\n"
+
+
+def test_rendered_markdown_past_the_html_cap_is_too_large(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+
+    stand, client = pinned_pull
+    stand.refresh(8)
+    route = client.get("/api/plugin/github/pull", params={"number": 8}).json()["comparison_route"]
+    file = next(
+        change
+        for change in client.get(route).json()["manifest"]["files"]
+        if change["new"]["path"] == "docs/guide.md"
+    )
+    monkeypatch.setattr(pull_rendered_diff, "_MAX_HTML_BYTES", 8)
+    answer = client.get(f"{route}&rendered_file={file['id']}").json()
+    assert answer == {
+        "version": "markdown-diff-v1",
+        "status": "too_large",
+        "blocks": [],
+        "source_only": False,
+    }
+
+
+def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> None:
+    import asyncio
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.format import Availability, ContentRefKind, EntryType, FilePatch
+
+    def change(file_id: str, path: str) -> Any:
+        side = SimpleNamespace(
+            entry_type=EntryType.file,
+            content=SimpleNamespace(kind=ContentRefKind.git_object),
+            path=path,
+            path_b64=None,
+        )
+        return SimpleNamespace(
+            id=file_id,
+            availability=Availability.ready,
+            binary=False,
+            old=side,
+            new=side,
+        )
+
+    files = [change(f"f{index}", f"docs/{index}.md") for index in range(20)]
+    files.insert(3, change("code", "src/app.py"))
+    asked: list[list[str]] = []
+
+    class Source:
+        async def hydrate(self, _resolved: object, ids: list[str], *, manifest: object) -> Any:
+            asked.append(list(ids))
+            return SimpleNamespace(
+                patches={each: FilePatch(file_id=each, hunks=(), truncated=False) for each in ids}
+            )
+
+    patches = pull_rendered_diff._Patches()  # pyright: ignore[reportPrivateUsage]
+    manifest = cast("Any", SimpleNamespace(files=files))
+
+    async def run() -> None:
+        for file_id in ("f0", "f1", "f5", "f15", "f16"):
+            patch = await patches.get(
+                ("store", "a", "b"), cast("Any", Source()), None, manifest, file_id
+            )
+            assert patch is not None and patch.file_id == file_id
+
+    asyncio.run(run())
+    assert asked[0] == [f"f{index}" for index in range(16)], "sixteen Markdown files, code skipped"
+    assert asked[1:] == [["f16", "f17", "f18", "f19"]]

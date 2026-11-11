@@ -66,7 +66,9 @@ _MAX_TOKENS = 2_000
 # hold p50 478, p90 1,355 and at most 2,355; 6 more exceed it. Highlighting, now gone,
 # added 34% to a render's nodes. In headless Chrome a 1,426-node answer built in
 # 1.6-1.7 ms with 4.3-4.6 ms of layout (review C of #349), so the server's parse, which
-# the token budget bounds first, is the binding cost, and this bounds the page.
+# the token budget bounds first, is the binding cost, and this bounds the page. Code
+# blocks need no budget of their own once unhighlighted: 400 one-line fences projected
+# in 23 ms, and 1,600 are refused before rendering in 16 ms (93 ms unbounded).
 _MAX_NODES = 2_400
 # The changed span of one text node, in words, spaces and punctuation runs, after the
 # shared ends are trimmed. difflib is quadratic: 256 tokens diffed in 1.6 ms of prose
@@ -437,6 +439,9 @@ def _parse(text: str) -> _Side:
                 and not member.meta.get("kpress_figure_image")
             ):
                 elements += 1
+            elif member.type in {"fence", "code_block"}:
+                # `pre` and `code`.
+                elements += 2
     return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements)
 
 

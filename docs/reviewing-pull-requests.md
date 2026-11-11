@@ -180,8 +180,8 @@ The page has three tabs.
   **Review comments** lists inline review comments with their files and diff hunks.
 - **Changes** shows the comparison from the merge base to the head, split or unified.
   Markdown changes open in **Rendered** when Metabrowser can map the Git hunks to the
-  document. **Source** keeps the exact patch and is used automatically for files beyond
-  the rendered view’s limits.
+  document. **Source** keeps the exact patch and is used automatically for the files
+  [Rendered Markdown in Changes](#rendered-markdown-in-changes) lists.
   The changed-files tree in Pulls navigates this comparison.
 - **Checks** summarizes check runs and status contexts, with links to their details.
   Open or share it directly at `/pull/<n>/checks`.
@@ -199,6 +199,31 @@ Previously opened comparisons can be reopened offline while their snapshots and 
 objects are retained.
 On a managed source, **Browse code** and **Switch to the head** still select a pin
 shared by the server’s pages.
+
+### Rendered Markdown in Changes
+
+**Rendered** shows each changed block of a Markdown file as removed and added, with the
+changed words marked.
+A changed list item or quoted paragraph is shown alone, and long runs of unchanged
+blocks fold. A file’s **Rendered** | **Source** chooser switches between the two.
+
+Rendered never presents a change as complete when the source says more.
+**Source shows additional changes** appears above a file whose source changed in a way
+its render does not show: a link or image destination or title, an HTML comment,
+attribute syntax such as `{#name}`, a code fence’s language, or only whitespace and line
+wrapping. A changed block that hides such a change also says **Source shows changes not
+shown here**.
+
+These files open in **Source**:
+
+- files with raw HTML, including inline tags such as `<br>` and blocks such as
+  `<details>` (HTML comments are allowed),
+- task lists (`- [ ]` items) and footnotes,
+- files past the rendered view’s limits, such as more than 48 KiB of Markdown across the
+  two sides.
+
+Rendered differs from the file’s own document view in two ways: math (`$…$`) and Mermaid
+diagrams show as their source text, and code blocks are not highlighted.
 
 ## Beside a Checkout
 

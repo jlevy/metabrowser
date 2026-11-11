@@ -710,3 +710,16 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
         for block in result["blocks"]:
             assert _snapshot_violations(block["html"]) == [], (name, block)
             assert "\x00" not in block["html"], (name, block)
+
+
+def test_code_blocks_count_toward_the_element_bound_before_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metabrowser.diff import markdown_projection
+
+    def unexpected(*_args: object) -> None:
+        pytest.fail("rendered past the element bound")
+
+    monkeypatch.setattr(markdown_projection, "_render", unexpected)
+    fences = b"".join(b"```\nx%d\n```\n\n" % i for i in range(1_250))
+    assert _project(None, fences)["status"] == "too_large"
