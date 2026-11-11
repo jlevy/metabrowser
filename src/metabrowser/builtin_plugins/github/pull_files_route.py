@@ -14,13 +14,17 @@ never waits on the network. It answers one of:
 ``head``, and is current only while the record names that exact comparison. An older local
 list without a saved base, or a record with no comparison, is stale. GitHub-derived lists
 do not depend on locally resolved endpoints: discovering a comparison later leaves their
-freshness on the provider's ``updated_at`` and account rules. A GitHub list is current while
-the pull request's ``updated_at`` is no newer than the list's ``fetched_at``, because any push
-updates it; the newer of the record's and a cached list row's is read. With neither, the
-list ages by the refresh coordinator's window. A list another account read, or one whose
-last refresh ended ``account_changed``, is stale, as a list of pull requests is.
-``fetched_at`` is this machine's clock and ``updated_at`` GitHub's, so a clock behind
-GitHub's can make a new list stale; the window holds such a list to one attempt a window.
+freshness on the provider's head, ``updated_at``, and account rules. A GitHub list names
+the head commit and base branch it was read for (``head``, ``base_ref``), and is current
+while they are the pull request's as last known: the newer of the record and the cached
+list row, by ``updated_at``. A comment, a review, or a label changes neither. When the list
+or that newer source names no head, the list is current while the pull request's
+``updated_at`` is no newer than the list's ``fetched_at``, because any push updates it, and
+with neither known it ages by the refresh coordinator's window. A list another account
+read, or one whose last refresh ended ``account_changed``, is stale, as a list of pull
+requests is. ``fetched_at`` is this machine's clock and ``updated_at`` GitHub's, so under
+that fallback a clock behind GitHub's can make a new list stale; the window holds such a
+list to one attempt a window.
 
 **The count is honest.** ``fetched`` is how many rows are held. While ``complete`` is false
 the list is filling, or stopped part-way, and ``last_page`` is the page count GitHub's
@@ -55,6 +59,7 @@ from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_PULL_FILES,
     FileListSource,
+    KnownHead,
     ListedRepository,
     LocalComparison,
     PullFileList,
@@ -125,6 +130,7 @@ class PullFilesEnvelope(TypedDict):
     reader: str | None
     head: str | None
     base: str | None
+    base_ref: str | None
     fresh_for_s: float
     refreshing: bool
     last_refresh: LastRefresh | None
@@ -305,21 +311,42 @@ def _cached_files(
 
 @dataclass(frozen=True, slots=True)
 class _Facts:
-    """The cached pull request and the newest known provider update time."""
+    """The cached pull request, and the newest known provider update time and head.
+
+    ``head`` and ``base_ref`` are the head commit and base branch name of the newer of the
+    record and the catalog row, by ``updated_at``; ``None`` when that one does not say.
+    """
 
     updated_at: str | None
     record: PullRecord | None
+    head: str | None = None
+    base_ref: str | None = None
+
+    @property
+    def known_head(self) -> KnownHead:
+        return self.head, self.base_ref
 
 
 def _facts(home: Path, slug: str, number: int) -> _Facts:
     record, _dumped, _revision = cached_pull_record(home, slug, number)
     held = record if isinstance(record, PullRecord) else None
     row = cached_list_row(home, slug, number)
-    times = [moment for moment in (held and held.pull.updated_at, row and row.updated_at) if moment]
-    return _Facts(
-        updated_at=max(times) if times else None,
-        record=held,
-    )
+    known: list[tuple[str, str | None, str | None]] = []
+    if held is not None:
+        known.append((held.pull.updated_at, held.pull.head.sha, held.pull.base.ref))
+    if row is not None:
+        known.append((row.updated_at, row.head_oid, row.base_ref))
+    # On a tie the record, which always names its head, is the one taken.
+    newest = max(known, key=lambda fact: fact[0], default=None)
+    if newest is None:
+        return _Facts(updated_at=None, record=held)
+    return _Facts(updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2])
+
+
+def known_head(home: Path, slug: str, number: int) -> KnownHead:
+    """The head and base branch the pull request has as last known. Blocking and bounded."""
+
+    return _facts(home, slug, number).known_head
 
 
 def _read_by_another(listed: PullFileList, stamp: PullRefreshStamp | None) -> bool:
@@ -328,6 +355,18 @@ def _read_by_another(listed: PullFileList, stamp: PullRefreshStamp | None) -> bo
     if stamp is None or pull_list.parse_stamp(stamp.at) < pull_list.parse_stamp(listed.fetched_at):
         return False
     return stamp.outcome == "account_changed" or stamp.reader not in (None, listed.reader)
+
+
+def _head_moved(listed: PullFileList, facts: _Facts) -> bool | None:
+    """Whether GitHub's list was read for another head or base than the newest known one.
+
+    ``None`` when the list or the newest source names no head, so it cannot say.
+    """
+
+    if listed.listed_from != "github" or listed.head is None or facts.head is None:
+        return None
+    bases = (listed.base_ref, facts.base_ref)
+    return listed.head != facts.head or (None not in bases and bases[0] != bases[1])
 
 
 def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) -> FilesState:
@@ -341,6 +380,9 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
         return "current" if current else "stale"
     if _read_by_another(listed, stamp):
         return "stale"
+    moved = _head_moved(listed, facts)
+    if moved is not None:
+        return "stale" if moved else "current"
     fetched = pull_list.parse_stamp(listed.fetched_at)
     if facts.updated_at is not None:
         fresh = pull_list.parse_stamp(facts.updated_at) <= fetched
@@ -371,6 +413,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         reader=None,
         head=None,
         base=None,
+        base_ref=None,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=None,
@@ -410,6 +453,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         "reader": listed.reader,
         "head": listed.head,
         "base": listed.base,
+        "base_ref": listed.base_ref,
         "last_refresh": last_refresh,
         "fetched": len(listed.rows),
         "pages": listed.pages,
@@ -458,7 +502,8 @@ def files_refresh_wanted(
     as for the list of pull requests. A **Retry** may start one otherwise. Any other request,
     a row expanded, starts one for a list that is not cached, not complete, or stale, and
     not tried within the window. A successful stamp without readable rows allows repair
-    immediately; failed attempts still wait for their window.
+    immediately, as does a GitHub list read for a head or base that has since moved; failed
+    attempts still wait for their window.
     """
 
     repository = view.repository
@@ -482,6 +527,14 @@ def files_refresh_wanted(
     # A previous success cannot stand in for rows that were removed or became unreadable.
     # Repeated failure still backs off, and provider rate holds were checked above.
     if not isinstance(listed, PullFileList) and stamp is not None and stamp.outcome == "succeeded":
+        return True, local
+    # A head that moved since a successful read is read again at once: the next list names
+    # the head known before it, so this cannot repeat for one push. A failure still waits.
+    if (
+        isinstance(listed, PullFileList)
+        and _head_moved(listed, facts)
+        and (stamp is None or stamp.outcome == "succeeded")
+    ):
         return True, local
     if local is not None:
         due = stamp is None or now - pull_list.parse_stamp(stamp.at) > timedelta(
@@ -534,7 +587,13 @@ async def _run_files_refresh(
     from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
 
     try:
-        await refresh_pull_files(repository, number, local=local, slot=coordinator.slot)
+        await refresh_pull_files(
+            repository,
+            number,
+            local=local,
+            slot=coordinator.slot,
+            known_head=partial(known_head, repository.home, repository.slug, number),
+        )
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
         return

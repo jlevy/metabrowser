@@ -10,12 +10,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.avatars import avatar_of
@@ -55,10 +56,14 @@ from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 log = logging.getLogger(__name__)
 _MAX_RATE_HOLD_S = 15 * 60
+_COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 # Two public repositories, two 100-row pages each (2026-11-03): 46–49 KB instead
 # of REST's 1.9–2.2 MB, with every existing row field. GitHub reported cost=1/query.
 # A page remains 100 rows and at most 100 bounded label names on each row.
+# ``headRefOid`` lets a cached record or file list be checked against its row; on
+# cli/cli's 100 newest rows it took a page from 58,811 to 64,410 bytes (9.5%), at the
+# same cost of 1 (2026-11-11).
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
   repository(owner:$owner,name:$name) {
@@ -71,7 +76,7 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title state isDraft mergedAt createdAt updatedAt closedAt
-        author { login avatar_url:avatarUrl(size:40) } baseRefName headRefName headRepository { nameWithOwner }
+        author { login avatar_url:avatarUrl(size:40) } baseRefName headRefName headRefOid headRepository { nameWithOwner }
         labels(first:100) { nodes { name } pageInfo { hasNextPage } }
       }
     }
@@ -102,6 +107,9 @@ def _row(value: object) -> tuple[PullListRow, bool]:
     head_repository, repository_cut = (
         cut_escaped(full_name, MAX_ROW_REF_BYTES) if isinstance(full_name, str) else (None, False)
     )
+    sha = head.get("sha")
+    # A head GitHub did not name as a commit ID is unknown, not a reason to drop the row.
+    head_oid = sha if isinstance(sha, str) and _COMMIT_ID.fullmatch(sha) else None
     labels = item.get("labels")
     listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
     names = [as_dict(label).get("name") for label in listed[:MAX_LABELS]]
@@ -121,6 +129,7 @@ def _row(value: object) -> tuple[PullListRow, bool]:
         head_ref=head_ref,
         head_repository=head_repository,
         labels=tuple(name for name, _cut in cut_names),
+        head_oid=head_oid,
     )
     cut = (
         title_cut
@@ -179,6 +188,7 @@ def _graph_row(value: object) -> dict[str, Any]:
         "base": {"ref": raw["baseRefName"]},
         "head": {
             "ref": raw["headRefName"],
+            "sha": raw.get("headRefOid"),
             "repo": {"full_name": head.get("nameWithOwner")} if isinstance(head, dict) else None,
         },
         "labels": as_dict(raw["labels"])["nodes"],

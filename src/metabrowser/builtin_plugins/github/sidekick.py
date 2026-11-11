@@ -36,6 +36,7 @@ from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.builtin_plugins.github.pull_route import PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
@@ -126,7 +127,7 @@ async def pull_handler(request: Request) -> Response:
         PullRequestError,
         envelope_etag,
         note_full_record,
-        pull_envelope,
+        pull_answer,
         pull_host,
         pull_view,
         record_stamp,
@@ -149,14 +150,16 @@ async def pull_handler(request: Request) -> Response:
         pinned_subject = get_source_session().subject
     await _resolve(request)
 
-    async def snapshot() -> tuple[PullView, tuple[int, int, int] | None, PullEnvelope]:
+    async def snapshot() -> tuple[
+        PullView, tuple[int, int, int] | None, PullEnvelope, RecordFreshness | None
+    ]:
         subject = pinned_subject if pinned_subject is not None else get_source_session().subject
         view = pull_view(pull_host(request.app), subject, number)
         stamp = await asyncio.to_thread(record_stamp, view)
-        envelope = await asyncio.to_thread(pull_envelope, view)
-        return view, stamp, envelope
+        envelope, freshness = await asyncio.to_thread(pull_answer, view)
+        return view, stamp, envelope, freshness
 
-    view, stamp, envelope = await snapshot()
+    view, stamp, envelope, freshness = await snapshot()
     preview = envelope["core_preview"]
     # Prepared and adopted observations carry catalog admission. A captured live preview
     # may already have settled while the worker was building its first envelope.
@@ -172,13 +175,15 @@ async def pull_handler(request: Request) -> Response:
         kept = view.kept
         waited = await kept.wait_for_full(preview)
         if waited or kept.core_preview is not preview:
-            view, stamp, envelope = await snapshot()
+            view, stamp, envelope, freshness = await snapshot()
     if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+        view.kept.saw_record(
+            envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
+        )
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):
         served = await view.host.pulls.companion(number)
@@ -373,7 +378,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         note_full_record,
-        pull_envelope,
+        pull_answer,
         pull_host,
         pull_view,
         refresh_request,
@@ -405,13 +410,15 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             await served.wait_for_core()
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
-    envelope = await asyncio.to_thread(pull_envelope, view)
+    envelope, freshness = await asyncio.to_thread(pull_answer, view)
     if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+        view.kept.saw_record(
+            envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
+        )
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
     answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
     if started == "too_many":

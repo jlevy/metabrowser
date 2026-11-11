@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
     from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
+    from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.cache.acquire import PublishedSource
 
 # Pull requests whose state is kept in memory. The numbers are request text, so this is a
@@ -212,6 +213,10 @@ class ServedPull:
     fetched_at: str | None = None
     last: PullRefreshOutcome | None = None
     without_store: bool = False
+    # The catalog's newest verdict on the held record (:mod:`.pull_freshness`): when it
+    # last vouched for it, and when it published a change the record predates.
+    verified_at: str | None = field(default=None, repr=False)
+    changed_seen_at: str | None = field(default=None, repr=False)
     # Set when another writer published this job's record first: how a refresh last ended
     # is then the stamp beside the record, read each time, not anything this job kept.
     outcome_on_disk: bool = field(default=False, repr=False)
@@ -285,29 +290,44 @@ class ServedPull:
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         """Older than *window_s*, and not tried within it or before GitHub's limit lifts.
 
-        A record fetched within the window is fresh. Without one, or with an older one, a
-        refresh attempted within the window counts as fresh too, whether or not it
-        succeeded, so a failing ``gh`` is asked once a window rather than on every poll.
-        After ``rate_limited`` no attempt is due before ``reset_at``, when GitHub said.
-        A record written with no store is fresh only where there is none, a checkout's: a
-        mirror refreshes it whatever its age, for its Files changed.
+        A record fetched within the window, or one the catalog vouched for within it
+        (``verified_at``), is fresh. Without one, or with an older one, a refresh attempted
+        within the window counts as fresh too, whether or not it succeeded, so a failing
+        ``gh`` is asked once a window rather than on every poll. After ``rate_limited`` no
+        attempt is due before ``reset_at``, when GitHub said. A record written with no
+        store is fresh only where there is none, a checkout's: a mirror refreshes it
+        whatever its age, for its Files changed. A record the catalog says GitHub changed
+        since (``changed_seen_at``) is due at once unless an attempt was made after the
+        catalog published that change, and then once a window, so a head that moved is read
+        at once and an answer that lags the catalog cannot loop.
         """
 
         window = timedelta(seconds=window_s)
         unserved = self.without_store and not isinstance(self.published, ListedRepository)
-        if (
-            not unserved
-            and self.fetched_at is not None
-            and now - _parse_stamp(self.fetched_at) <= window
-        ):
-            return False
         last = self.last
-        if (
+        held = (
             last is not None
             and last["outcome"] == "rate_limited"
             and last["reset_at"] is not None
             and now < _parse_stamp(last["reset_at"])
-        ):
+        )
+        if self.changed_seen_at is not None and self.fetched_at is not None:
+            # GitHub changed it after this record: due unless an attempt since saw that.
+            if held:
+                return False
+            seen = _parse_stamp(self.changed_seen_at)
+            return (
+                self._last_attempt is None
+                or self._last_attempt < seen
+                or now - self._last_attempt > window
+            )
+        newest = max(
+            (stamp for stamp in (self.fetched_at, self.verified_at) if stamp is not None),
+            default=None,
+        )
+        if not unserved and newest is not None and now - _parse_stamp(newest) <= window:
+            return False
+        if held:
             return False
         if unserved and last is not None and last["outcome"] == "succeeded":
             # What succeeded was a server with no store writing that record. This one's
@@ -315,13 +335,27 @@ class ServedPull:
             return True
         return self._last_attempt is None or now - self._last_attempt > window
 
-    def saw_record(self, fetched_at: str | None, *, without_store: bool = False) -> None:
-        """Adopt a record the pull route read, if newer, so status and it agree."""
+    def saw_record(
+        self,
+        fetched_at: str | None,
+        *,
+        without_store: bool = False,
+        freshness: RecordFreshness | None = None,
+    ) -> None:
+        """Adopt a record the pull route read, if newer, so status and it agree.
+
+        *freshness* is the catalog's verdict on that record, adopted only while it is the
+        record held: a verdict on an older one says nothing about this one.
+        """
 
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
             self.without_store = without_store
             self.display_core = None
+            self.verified_at = self.changed_seen_at = None
+        if freshness is not None and fetched_at is not None and fetched_at == self.fetched_at:
+            self.verified_at = freshness.verified_at if freshness.verified_by == "catalog" else None
+            self.changed_seen_at = freshness.changed_seen_at
 
     def request_core_preview(self) -> None:
         """Prepare only a selected missing record, never replace a full cached record."""
@@ -379,8 +413,12 @@ class ServedPull:
         return True
 
     async def refresh(self) -> None:
-        """Read again, consuming explicit recovery requests before the ordinary PR fetch."""
-        self._last_attempt = pulls.utc_now()
+        """Read again, consuming explicit recovery requests before the ordinary PR fetch.
+
+        A refresh cancelled before it ended, as a background job a reader's work preempts
+        is, forgets its attempt, so the next automatic request is not held for a window.
+        """
+        previous_attempt, self._last_attempt = self._last_attempt, pulls.utc_now()
         self._refreshing = True
         try:
             while True:
@@ -469,6 +507,7 @@ class ServedPull:
                     # until this job's next refresh (see outcome()).
                     self.fetched_at = exc.current.fetched_at
                     self.without_store = written_without_store(exc.current)
+                    self.verified_at = self.changed_seen_at = None
                     self.outcome_on_disk = True
                 except pulls.PullDataError as exc:
                     self.outcome_on_disk = False
@@ -482,6 +521,7 @@ class ServedPull:
                     self.outcome_on_disk = False
                     self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
+                    self.verified_at = self.changed_seen_at = None
                     if record.comparison is not None:
                         self.note_comparison((record.comparison.base, record.comparison.head))
                     self.last = PullRefreshOutcome(
@@ -489,6 +529,9 @@ class ServedPull:
                     )
                 if not self._recoveries:
                     return
+        except asyncio.CancelledError:
+            self._last_attempt = previous_attempt
+            raise
         finally:
             self.display_core = None
             self._clear_core_preview()

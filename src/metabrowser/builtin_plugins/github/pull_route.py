@@ -62,8 +62,14 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
+from metabrowser.builtin_plugins.github.pull_freshness import (
+    RecordFreshness,
+    VerifiedBy,
+    record_freshness,
+)
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -118,6 +124,10 @@ class PullEnvelope(TypedDict):
     pin: str | None
     pin_ref: str | None
     fetched_at: str | None
+    verified_at: str | None
+    verified_by: VerifiedBy | None
+    head_moved: bool
+    checks_pending: bool
     record_revision: str | None
     fresh_for_s: float
     refreshing: bool
@@ -140,17 +150,22 @@ def pull_state(
     now: datetime,
     refreshing: bool = False,
     has_store: bool = True,
+    freshness: RecordFreshness | None = None,
 ) -> tuple[PullState, RecordAbsence | None]:
     """The state a cached record (or its absence) is in at *now*.
 
     A record written with no store, by a checkout's server, is stale whatever its age on a
-    server that *has_store*, which can give it its Files changed.
+    server that *has_store*, which can give it its Files changed. Otherwise the catalog's
+    *freshness* verdict decides when it has one (:mod:`.pull_freshness`), and the
+    refresh coordinator's window when it has none.
     """
 
     if not isinstance(record, PullRecord):
         return ("pending", None) if refreshing else ("absent", record)
     if has_store and written_without_store(record):
         return "stale", None
+    if freshness is not None and freshness.verdict != "unverified":
+        return ("current" if freshness.verdict == "current" else "stale"), None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
@@ -369,9 +384,19 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
 def pull_envelope(view: PullView) -> PullEnvelope:
     """The envelope for one pull request. Blocking and bounded; run it off the loop."""
 
+    return pull_answer(view)[0]
+
+
+def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
+    """The envelope, and the catalog's verdict on its record for the held state to adopt.
+
+    Blocking and bounded; run it off the loop. Besides the record it reads the catalog's
+    checkpoint and one row (:func:`~.pull_catalog.catalog_member`).
+    """
+
     host = view.host
     if host is None:
-        return PullEnvelope(
+        none = PullEnvelope(
             state="absent",
             reason="not_github",
             source=None,
@@ -379,6 +404,10 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             pin=view.pin,
             pin_ref=view.pin_ref,
             fetched_at=None,
+            verified_at=None,
+            verified_by=None,
+            head_moved=False,
+            checks_pending=False,
             record_revision=None,
             fresh_for_s=FRESHNESS_WINDOW_S,
             refreshing=False,
@@ -389,12 +418,19 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             record=None,
             core_preview=None,
         )
+        return none, None
     served = host.pulls
     record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
     has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
+    now = pulls.utc_now()
+    freshness = (
+        record_freshness(record, *catalog_member(served.home, served.slug, view.number), now=now)
+        if isinstance(record, PullRecord)
+        else None
+    )
     state, absence = pull_state(
-        record, now=pulls.utc_now(), refreshing=view.refreshing, has_store=has_store
+        record, now=now, refreshing=view.refreshing, has_store=has_store, freshness=freshness
     )
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
@@ -426,6 +462,10 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         pin=view.pin,
         pin_ref=view.pin_ref,
         fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
+        verified_at=freshness.verified_at if freshness is not None else None,
+        verified_by=freshness.verified_by if freshness is not None else None,
+        head_moved=freshness is not None and freshness.head_moved,
+        checks_pending=freshness is not None and freshness.checks_pending,
         record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
@@ -440,7 +480,19 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
-    return envelope
+    return envelope, freshness
+
+
+def record_and_freshness(
+    served: ServedPulls, number: int
+) -> tuple[PullRecord | None, RecordFreshness | None]:
+    """The cached record of *number* and the catalog's verdict on it. Blocking and bounded."""
+
+    record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
+    if not isinstance(record, PullRecord):
+        return None, None
+    member = catalog_member(served.home, served.slug, number)
+    return record, record_freshness(record, *member, now=pulls.utc_now())
 
 
 def note_full_record(view: PullView) -> None:
@@ -723,6 +775,11 @@ async def _start_refresh(
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
             return "not_cached"
+        held, freshness = await asyncio.to_thread(record_and_freshness, host.pulls, ask.number)
+        if held is not None:
+            served.saw_record(
+                held.fetched_at, without_store=written_without_store(held), freshness=freshness
+            )
         if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "not_due"
     if adopt is not None:
@@ -770,10 +827,12 @@ __all__ = [
     "cached_pull_record",
     "comparison_route",
     "envelope_etag",
+    "pull_answer",
     "pull_envelope",
     "pull_host",
     "pull_state",
     "pull_view",
+    "record_and_freshness",
     "record_stamp",
     "refresh_request",
     "rendered_route",

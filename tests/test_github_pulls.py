@@ -2609,17 +2609,17 @@ def _exercise_selected_core_wait(
             entered, release_worker = threading.Event(), threading.Event()
             captured: list[PullView] = []
             responses: list[Any] = []
-            original = pull_route.pull_envelope
+            original = pull_route.pull_answer
 
             def blocked(view: PullView) -> Any:
                 answer = original(view)
-                if view.number == 8 and answer["core_preview"] is not None:
+                if view.number == 8 and answer[0]["core_preview"] is not None:
                     captured.append(view)
                     entered.set()
                     assert release_worker.wait(5)
                 return answer
 
-            monkeypatch.setattr(pull_route, "pull_envelope", blocked)
+            monkeypatch.setattr(pull_route, "pull_answer", blocked)
             stand.calls()
             thread = threading.Thread(
                 target=lambda: responses.append(
@@ -2676,7 +2676,7 @@ def _assert_full_after_captured_snapshot(
 ) -> None:
     from metabrowser.builtin_plugins.github import pull_route
 
-    original = pull_route.pull_envelope
+    original = pull_route.pull_answer
     captured, resume = threading.Event(), threading.Event()
     responses: list[Any] = []
     initial = pending.json()
@@ -2684,16 +2684,17 @@ def _assert_full_after_captured_snapshot(
     route = "/api/plugin/github/pull?number=8"
 
     def hold_snapshot(view: PullView) -> Any:
-        envelope = original(view)
+        answer = original(view)
+        envelope = answer[0]
         if view.number == 8 and envelope["core_preview"] is not None:
             assert (
                 envelope["core_preview"] == initial["core_preview"] and envelope["record"] is None
             )
             captured.set()
             assert resume.wait(10)
-        return envelope
+        return answer
 
-    monkeypatch.setattr(pull_route, "pull_envelope", hold_snapshot)
+    monkeypatch.setattr(pull_route, "pull_answer", hold_snapshot)
     read = threading.Thread(
         target=lambda: responses.append(
             client.get(
