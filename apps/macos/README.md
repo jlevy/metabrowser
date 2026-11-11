@@ -257,7 +257,8 @@ Do not hand one out as a release.
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, and the navigation policy. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children. |
-| `Resources/` | The bundle’s property list, and the published and canary icons once they are committed. |
+| `Resources/Info.plist` | The bundle’s property list. |
+| `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh` | The bundle script, and the variants and helpers every script shares. |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
