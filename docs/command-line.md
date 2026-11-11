@@ -909,6 +909,14 @@ Environment overrides must be nonempty absolute paths without `..` components.
 CLI paths may be relative to the current directory.
 Ordinary folder browsing does not create these directories.
 Cache creation preserves existing configuration.
+New configuration declares `metabrowser.config:ApplicationConfig/v1`; repository-cache
+records use the `metabrowser.cache` namespace.
+These names do not depend on a hosting provider or account.
+If configuration cannot be parsed or validated, Metabrowser names the file and exits
+without replacing it.
+Move it aside or remove it, then restart to create a fresh config; cached repositories
+remain in the separate cache directory.
+A newer configuration format instead asks you to upgrade Metabrowser.
 Version 0.12 does not read `METABROWSER_HOME` or migrate `~/.metabrowser`.
 
 <!-- This document follows common-doc-guidelines.md.

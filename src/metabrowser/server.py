@@ -1578,7 +1578,6 @@ async def index(
     # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
     # indefinitely. See docs/development.md "Asset Loading Tiers".
     optional_script_assets = [
-        {"src": _static_asset_url("vendor/mustache.min.js")},
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
     ]
@@ -1589,6 +1588,9 @@ async def index(
     # Tiers" and the load-time plan for the measurement.
     main_tabs_asset = {"src": _static_asset_url("main-tabs.js"), "provides": "MetabrowserMainTabs"}
     on_demand_script_bundles = {
+        # Idle prefetch and plugin demand share this loader. A plugin may call
+        # synchronous mb.render() while its module evaluates, before idle runs.
+        "mustache": [{"src": _static_asset_url("vendor/mustache.min.js"), "provides": "Mustache"}],
         # A main tab click can arrive before the initial tree request settles.
         "main-tabs": [main_tabs_asset],
         # Navigation, search, Help, and Git controls are application-lifetime
@@ -1712,7 +1714,15 @@ async def index(
     // timeout is the floor — a busy thread must not defer them forever,
     // because a source view that never highlights is worse than one that
     // highlights late.
-    function start() {{ loadNext(0); }}
+    function start() {{
+      window.MetabrowserAssets.ensureAsset("mustache").then(
+        function () {{ loadNext(0); }},
+        function (error) {{
+          console.warn("metabrowser optional asset failed:", error);
+          loadNext(0);
+        }}
+      );
+    }}
     function schedule() {{
       if (typeof window.requestIdleCallback === "function") {{
         window.requestIdleCallback(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});

@@ -36,8 +36,10 @@ after a `dispose` listens again.
 of `treeitem` rows, with app.js’s `initKeyboardInfrastructure` and
 `resolveApplicationFocusFallback` run verbatim on a stand-in for the DOM whose focus
 events bubble: the Files tree’s keyboard handler is made on the Files tab, so focus on a
-Pulls row leaves each tree its own Tab stop and J, ArrowDown, and Enter are the list’s,
-and the overlay’s focus fallback hands back a Files row only for a Files row.
+Pulls row leaves each tree its own Tab stop.
+J, ArrowDown, and Enter are the list’s, and Space toggles the focused pull request’s
+changed files in place even when the current page is a file.
+The overlay’s focus fallback hands back a Files row only for a Files row.
 
 ```console
 $ node tests/dom/pulls-nav-session.js
@@ -86,6 +88,28 @@ $ node tests/dom/pulls-nav-session.js
       "Pulls": [
         "/pull/3900"
       ]
+    },
+    "Space expands changed files in place": {
+      "handled": true,
+      "did": [
+        "expanded changed files"
+      ],
+      "focus on": "/pull/3900",
+      "address": "/view/"
+    },
+    "holding Space leaves the tree open": {
+      "handled": true,
+      "did": [],
+      "focus on": "/pull/3900",
+      "address": "/view/"
+    },
+    "Space again collapses changed files in place": {
+      "handled": true,
+      "did": [
+        "collapsed changed files"
+      ],
+      "focus on": "/pull/3900",
+      "address": "/view/"
     },
     "J on it is the list's": {
       "handled": true,
@@ -541,9 +565,14 @@ $ node tests/dom/pulls-nav-session.js
         "description": "Open the next pull request in the list."
       },
       {
-        "keys": "Enter or Space",
+        "keys": "Enter",
         "action": "Open pull request",
         "description": "Open the focused pull request."
+      },
+      {
+        "keys": "Space",
+        "action": "Toggle changed files",
+        "description": "Expand or collapse the focused pull request's changed files."
       },
       {
         "keys": "Right arrow",

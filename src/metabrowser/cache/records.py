@@ -38,19 +38,13 @@ from metabrowser.cache.identity import (
     source_identity,
 )
 
-CONFIG_CONTRACT_ID: Final = "com.github.jlevy.metabrowser.config:ApplicationConfig/v1"
-CACHE_LAYOUT_CONTRACT_ID: Final = "com.github.jlevy.metabrowser.cache:CacheLayout/v1"
-REPOSITORY_SOURCE_CONTRACT_ID: Final = "com.github.jlevy.metabrowser.cache:RepositorySource/v1"
-REPOSITORY_SOURCE_STATE_CONTRACT_ID: Final = (
-    "com.github.jlevy.metabrowser.cache:RepositorySourceState/v1"
-)
-REPOSITORY_STORE_ALIAS_CONTRACT_ID: Final = (
-    "com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1"
-)
-REPOSITORY_STORE_CONTRACT_ID: Final = "com.github.jlevy.metabrowser.cache:RepositoryStore/v1"
-REPOSITORY_STORE_STATE_CONTRACT_ID: Final = (
-    "com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1"
-)
+CONFIG_CONTRACT_ID: Final = "metabrowser.config:ApplicationConfig/v1"
+CACHE_LAYOUT_CONTRACT_ID: Final = "metabrowser.cache:CacheLayout/v1"
+REPOSITORY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v1"
+REPOSITORY_SOURCE_STATE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySourceState/v1"
+REPOSITORY_STORE_ALIAS_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStoreAlias/v1"
+REPOSITORY_STORE_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStore/v1"
+REPOSITORY_STORE_STATE_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStoreState/v1"
 
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 # A layout format is `f` and at least two decimal digits, so formats order by number.

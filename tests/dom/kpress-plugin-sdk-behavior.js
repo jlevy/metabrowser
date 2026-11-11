@@ -238,6 +238,23 @@ vm.runInContext(
   { filename: "plugin-sdk-views.js" },
 );
 
+// This session starts with the view prerequisites already loaded. The cold,
+// shared-loader and failure paths run in plugin-view-helpers-session.js.
+vm.runInContext(
+  fs.readFileSync(path.join(path.dirname(sdkPath), "vendor/mustache.min.js"), "utf-8"),
+  sandbox,
+  { filename: "vendor/mustache.min.js" },
+);
+sandbox.MetabrowserAssets = {
+  ensureAsset(name) {
+    _assert(
+      name === "mustache" && typeof sandbox.Mustache.render === "function",
+      "unexpected asset",
+    );
+    return Promise.resolve();
+  },
+};
+
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
   fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
 }

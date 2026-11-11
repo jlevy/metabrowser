@@ -14,6 +14,7 @@ patterns:
   BUILD: '[0-9a-f]{12}'
   STORE: '[0-9a-f]{16}'
 before: >-
+  METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --files
   > fixture.log 2>&1 &&

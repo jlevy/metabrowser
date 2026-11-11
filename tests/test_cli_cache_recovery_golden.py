@@ -17,6 +17,7 @@ wrote with the real clock, and those times read ``<TIME>``.
 
 from __future__ import annotations
 
+import errno
 import os
 import signal
 import stat
@@ -30,8 +31,10 @@ from typing import Final
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
+from metabrowser.cache import layout as layout_module
 from metabrowser.cache.identity import store_key
 from metabrowser.git import process as git_process
+from metabrowser.home import configuration_directory
 from tests.golden_harness import (
     block,
     check_golden,
@@ -381,6 +384,66 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     home.chmod(0o700)
     assert session.no_serve("A", url_a).stdout == acquired.stdout
     session.no_serve("B", url_b)
+
+    session.note(
+        "A broken config names the file and how to recreate it without changing the cache."
+    )
+    config = configuration_directory() / "config.yml"
+    session.labels.add(str(config.parent), "<CONFIG>")
+    broken = b"softschema: [\n"
+    config.write_bytes(broken)
+    before = _snapshot(home)
+    refused = session.no_serve("A", url_a, exit_code=1)
+    assert str(config) in refused.stderr
+    assert "Move this config file aside or remove it" in refused.stderr
+    assert "restart Metabrowser" in refused.stderr
+    assert "Traceback" not in refused.stderr
+    assert config.read_bytes() == broken
+    assert _snapshot(home) == before
+
+    config.rename(config.with_name("config.yml.saved"))
+    session.note(
+        "A full configuration disk names the file and leaves the cached repository intact."
+    )
+
+    def no_space(home: Path, relative_path: str, data: bytes, *, replace: bool = True) -> None:
+        assert home == config.parent and relative_path == config.name and not replace
+        raise OSError(errno.ENOSPC, "fixture detail that must not reach the console")
+
+    before = _snapshot(home)
+    with monkeypatch.context() as writing:
+        writing.setattr(layout_module, "write_private_file_atomic", no_space)
+        refused = session.no_serve("A", url_a, exit_code=1)
+    assert str(config) in refused.stderr
+    assert "Could not create configuration" in refused.stderr
+    assert "writable and has free space" in refused.stderr
+    assert "fixture detail" not in refused.stderr
+    assert "remove it" not in refused.stderr and "Traceback" not in refused.stderr
+    assert not config.exists()
+    assert _snapshot(home) == before
+
+    session.note("The next start recreates the config and reuses the cached repository.")
+    assert session.no_serve("A", url_a).stdout == acquired.stdout
+    fresh = config.read_bytes()
+    assert b"contract: metabrowser.config:ApplicationConfig/v1" in fresh
+    assert config.with_name("config.yml.saved").read_bytes() == broken
+
+    session.note(
+        "A valid config from a newer format instead asks for an upgrade and stays unchanged."
+    )
+    config.write_bytes(
+        fresh.replace(b"format: f01", b"format: f02", 1).replace(
+            b"ApplicationConfig/v1", b"ApplicationConfig/v2", 1
+        )
+    )
+    before = _snapshot(home)
+    newer = config.read_bytes()
+    refused = session.no_serve("A", url_a, exit_code=1)
+    assert "Upgrade Metabrowser" in refused.stderr
+    assert "remove it" not in refused.stderr
+    assert config.read_bytes() == newer
+    assert _snapshot(home) == before
+    config.write_bytes(fresh)
 
     session.note("A home written by a newer release is refused before anything is written.")
     layout = home / "layout.yml"

@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Self
 
+import metabrowser
 from metabrowser.cache.atomic import RecordError, publish_entry, read_record, write_record_atomic
 from metabrowser.cache.identity import (
     ObjectFormat,
@@ -44,7 +45,13 @@ from metabrowser.cache.identity import (
     source_identity,
     store_key,
 )
-from metabrowser.cache.layout import open_cache, preflight_layout, read_config, read_layout
+from metabrowser.cache.layout import (
+    ensure_configuration,
+    open_cache,
+    preflight_layout,
+    read_config,
+    read_layout,
+)
 from metabrowser.cache.lender import (
     CheckoutRefusedError,
     Lender,
@@ -1295,14 +1302,17 @@ def _find_or_open_cache(
         if not open_on_miss:
             require_acquisition_git()
         return None, home
+    config_missing = False
     try:
         layout = read_layout(home, shared="keep")
-        read_config(configuration_directory(), shared="keep")
+        config_missing = read_config(configuration_directory(), shared="keep") is None
     except PrivateStorageError:
         layout = None
     if layout is not None:
         found = _find_published(source, home)
         if found is not None:
+            if config_missing:
+                ensure_configuration(version=metabrowser.__version__)
             _touch_last_opened(found)
             return found, home
     require_acquisition_git()

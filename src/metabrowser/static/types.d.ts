@@ -75,6 +75,8 @@ type MetabrowserPullsPanelHandle = Readonly<{
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
   activateAnchor(): boolean;
+  /** Space on a pull request's row toggles its changed files in place. */
+  toggleFiles(number: number): boolean;
   /** Right and Left on a pull request's row: its changed files open, or close. */
   expand(): boolean;
   collapse(): boolean;
@@ -317,6 +319,12 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
+  recoverFailedExpandedFolders(options: {
+    panel: HTMLElement | null;
+    revision: boolean;
+    recent: boolean;
+    load(path: string, children: HTMLElement): unknown;
+  }): void;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,
     entries: Array<Record<string, unknown> & { path: string }>,

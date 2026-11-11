@@ -20,8 +20,11 @@ chooses. It pins that the helpers, the plugin’s stylesheet, and a preload of i
 are requested together, so the wait costs no round trip; that none of the plugin’s code
 runs until the helpers are there; that a helper then works in all three places; and that
 a second plugin asks only for its own assets.
-When the bundle cannot be fetched, the load is refused, no plugin code has run, and
-asking again fetches only what failed.
+The synchronous template helper uses real vendored Mustache for escaping and sections.
+Its idle prefetch and plugin demand share one request; a held template response keeps
+plugin code from running even when the other helpers have loaded.
+When either required asset cannot be fetched, the load is refused, no plugin code has
+run, and asking again fetches only what failed.
 
 ```console
 $ node tests/dom/plugin-view-helpers-session.js
@@ -31,7 +34,8 @@ $ node tests/dom/plugin-view-helpers-session.js
     "requestedTogether": [
       "link rel=stylesheet /plugin-static/fixture-kind/styles.css",
       "link rel=modulepreload <the plugin's module>",
-      "script /static/plugin-sdk-views.js"
+      "script /static/plugin-sdk-views.js",
+      "script /static/vendor/mustache.min.js"
     ],
     "whileWaiting": {
       "loading": "pending",
@@ -49,6 +53,12 @@ $ node tests/dom/plugin-view-helpers-session.js
       "render: a Source view with a gutter of 2 lines",
       "click handler: a Source view with a gutter of 3 lines",
       "module evaluation: a Source view with a gutter of 1 lines"
+    ],
+    "templateCalls": [
+      "module evaluation: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>",
+      "render: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>",
+      "click handler: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>",
+      "module evaluation: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>"
     ],
     "aSecondPlugin": {
       "requested": [
@@ -71,6 +81,32 @@ $ node tests/dom/plugin-view-helpers-session.js
       "loading": "resolved",
       "pluginCode": [
         "module evaluation: a Source view with a gutter of 1 lines"
+      ]
+    }
+  },
+  "whenTemplatesCannotBeFetched": {
+    "whileHeld": {
+      "loading": "pending",
+      "helpers": "15 of 15",
+      "templateRequests": 1,
+      "pluginCode": []
+    },
+    "afterFailure": {
+      "loading": "rejected: Failed to load asset: /static/vendor/mustache.min.js",
+      "prefetch": "rejected: Failed to load asset: /static/vendor/mustache.min.js",
+      "pluginCode": [],
+      "viewRegistered": false
+    },
+    "retry": {
+      "requested": [
+        "script /static/vendor/mustache.min.js"
+      ],
+      "loading": "resolved",
+      "pluginCode": [
+        "module evaluation: a Source view with a gutter of 1 lines"
+      ],
+      "templateCalls": [
+        "module evaluation: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>"
       ]
     }
   },

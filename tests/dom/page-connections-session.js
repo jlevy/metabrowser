@@ -123,6 +123,9 @@ function scheduleRecentAuthoritativeRefetch() {}
 function notifyFileStoreSubscribers() {}
 function startIndexProgressPolling() {}
 function retryUnreachablePreview() {}
+// These stream-only pages have no failed mounted folder. The folder loader's
+// recovery boundary runs against production code in page-reconnect-behavior.js.
+function retryFailedExpandedSubtrees() {}
 function flagRunEndedBadge() {
   __did("live log: marked ended");
 }
