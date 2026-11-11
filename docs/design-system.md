@@ -991,13 +991,15 @@ Its content is left-aligned reading order — chevron, kind letter, filename in 
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
 anywhere toggles, with only the copy and View file controls opting out.
-On a page that shows a pinned revision, the bar ends with quiet text actions that open
-the file at a side of the change: **View file**, and **View at parent** or **View at
-base** where the old side exists.
-They stay visible rather than revealing on hover, because they are how a reader leaves
-the diff for the file.
+On a page that shows a pinned revision, and on a pull request’s Changes beside a
+checkout, the bar ends with quiet text actions that open the file at a side of the
+change: **View file**, and **View at parent** or **View at base** where the old side
+exists. They stay visible rather than revealing on hover, because they are how a reader
+leaves the diff for the file.
 They are [text actions](#control-families), so each is a link or a button by whether it
 first switches the served pin, and looks the same either way.
+A pull request’s are always links: a side the page does not show opens on its revision
+page and never switches the pin.
 A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces

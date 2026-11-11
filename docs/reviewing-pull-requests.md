@@ -185,11 +185,16 @@ The code controls depend on how the repository was opened:
 | Opened with | Code controls |
 | --- | --- |
 | A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. |
-| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**, **View file**, or **View at base** controls: the working files may differ from the PR commits. |
+| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**: the working files may differ from the PR commits. Once Changes are fetched, **View file** and **View at base** open each side from the cache. |
 
-On a managed source, **View at base** moves the server’s pin to the merge-base commit.
-**Browse code** returns to the PR head, or **Switch to the head** does so when the page
-shows that offer. A pin is shared by the pages of that server.
+**View file** and **View at base** never move the server’s pin.
+A side the page does not show opens on its own revision page, at that exact commit, in
+your theme; the link keeps working after the pull request moves on, for its last 16
+comparisons.
+On a managed source pinned at the head, **View file** opens in the app’s own
+viewer. **Browse code** returns to the PR head, or **Switch to the head** does so when
+the page shows that offer.
+A pin is shared by the pages of that server.
 
 ## Beside a Checkout
 
