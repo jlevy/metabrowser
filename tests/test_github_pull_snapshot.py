@@ -718,6 +718,13 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         _repeat(b"*a"),
         _repeat(b"$a$"),
         (b"[" * 16384 + b"$a$" * _CAP)[:_CAP],
+        _repeat(b"a\n\n"),
+        _repeat(b"a\\\n"),
+        (b"$a$ " * 2200 + b"a\n\n" * _CAP)[:_CAP],
+        _repeat(b"> - [ ] a\n"),
+        _repeat(b"- - [ ] a\n"),
+        _repeat(b"a,", b"```ruby\n"),
+        _repeat(b"$ " + b"a;" * 100 + b"\n", b"```console\n"),
     ],
     ids=[
         "brackets",
@@ -730,11 +737,78 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         "emphasis",
         "math-run",
         "brackets-then-math",
+        "paragraphs",
+        "backslash-breaks",
+        "math-then-paragraphs",
+        "quoted-tasks",
+        "nested-tasks",
+        "ruby-tokens",
+        "console-commands",
     ],
 )
 def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
-    """Review A4: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
+    """Reviews A4 and F1 to F3: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
     assert len(body) == _CAP
+    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+    path = GitPath.from_display("README.md")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
+    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
+
+
+_CODE = b"a," * 20000
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"```console\n" + b"[a@]" * 1000 + b"\n```\n",
+        b"```console\n" + b"a" * 800 + b"@" * 800 + b"\n```\n",
+        b"```console\n()(" + b"[a@])" * 200 + b"\n```\n",
+        _repeat(b"> " + b"a," * 32 + b"\n", b"> ```ruby\n"),
+        _repeat(b"  " + b"a," * 32 + b"\n", b"- ```ruby\n"),
+        b"- ```text\n```\n```\n```ruby\n" + _CODE + b"\n```\n",
+        # Python, which lexes a backtick as one error token and goes on, where Ruby would
+        # lex the rest as one string.
+        b"```python\n> ```\n" + _CODE + b"\n```\n",
+        b"```python\n    ```\n" + _CODE + b"\n```\n",
+        b"```python\n```text\n" + _CODE + b"\n```\n",
+        b"```python\n- ```\n" + _CODE + b"\n```\n",
+        b"```ruby\n" + b"a," * 8000 + b"\n```\n",
+        _repeat(b"> $ " + b"a;" * 100 + b"\n", b"> ```console\n"),
+        b"   ```console\n   " + b"[a@]" * 1000 + b"\n```\n",
+        b"```console\n(x) " + b"[a@]" * 1000 + b"\n```\n",
+        b"- [ ] a\r" * 1025,
+        b"-\n  [ ] a\n" * 1025,
+        b"> - > - [ ] a\n" * 1025,
+    ],
+    ids=[
+        "prompt-brackets",
+        "prompt-word",
+        "prompt-parentheses",
+        "quoted-ruby",
+        "listed-ruby",
+        "fence-in-list-ends-with-it",
+        "quoted-line-in-a-fence",
+        "indented-line-in-a-fence",
+        "info-line-in-a-fence",
+        "listed-line-in-a-fence",
+        "token-dense-ruby",
+        "quoted-console",
+        "indented-console-prompt",
+        "prompt-after-venv",
+        "cr-tasks",
+        "blank-first-tasks",
+        "quote-in-list-tasks",
+    ],
+)
+def test_shapes_a_line_scan_could_misread_open_as_source(body: bytes) -> None:
+    """What the estimate reads line by line is read the way the renderer reads it.
+
+    One line in a ``console`` fence costs 5.5 to 11.5 s in Pygments' prompt pattern;
+    highlighted code in a quote, a list item, or a fence the scan cannot tell has ended
+    costs what it costs anywhere; and a task is one behind any container, or on its own
+    line, or after a carriage return.
+    """
     assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
     path = GitPath.from_display("README.md")
     snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
@@ -751,6 +825,11 @@ def test_ordinary_documents_are_within_the_render_bound() -> None:
         (root / "README.md").read_bytes()[:_CAP],
         (root / "CHANGELOG.md").read_bytes()[:_CAP],
         (root / "docs" / "reviewing-pull-requests.md").read_bytes()[:_CAP],
+        # Console transcripts, which render in 43 to 73 ms; review F3 found them refused.
+        (root / "tests" / "golden" / "cli-ui-github-pull-page.tryscript.md").read_bytes()[:_CAP],
+        (root / "tests" / "golden" / "cli-api-cache.tryscript.md").read_bytes()[:_CAP],
+        # Inline code at a line's start, which opens no fence: what follows is still prose.
+        (b"```python `x` names the language.\n" + prose)[:_CAP],
     ):
         assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
 
@@ -762,10 +841,20 @@ def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
 
     One full-file render runs at a time; a request for the same document joins it, and one
     for another waits for it. Each estimate runs in the worker thread with its render
-    (review D4).
+    (review D4), and a kept page is served without reading its blob again (review F5).
     """
     import asyncio
     import threading
+    from collections.abc import Awaitable, Callable
+
+    reads: list[bytes] = []
+
+    def reader(body: bytes) -> Callable[[], Awaitable[bytes]]:
+        async def read() -> bytes:
+            reads.append(body)
+            return body
+
+        return read
 
     renders: list[str] = []
     estimated_off_loop: list[bool] = []
@@ -794,20 +883,21 @@ def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
     async def run() -> list[str | None]:
         return list(
             await asyncio.gather(
-                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "2" * 40, b"two"),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "2" * 40, reader(b"two")),  # pyright: ignore[reportPrivateUsage]
             )
         )
 
     async def run_and_reload() -> tuple[list[str | None], str | None]:
         first = await run()
-        return first, await pull_snapshot._document(snapshot, path, "1" * 40, b"one")  # pyright: ignore[reportPrivateUsage]
+        return first, await pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one"))  # pyright: ignore[reportPrivateUsage]
 
     pages, reloaded = asyncio.run(run_and_reload())
     assert pages == ["<p>one</p>", "<p>one</p>", "<p>two</p>"] and reloaded == "<p>one</p>"
     # The reload is the kept page: the hardening after KPress's own cache does not run again.
     assert sorted(renders) == ["1" * 40, "2" * 40] and most == 1
+    assert sorted(reads) == [b"one", b"one", b"two"]
     assert estimated_off_loop and all(estimated_off_loop)
 
 
