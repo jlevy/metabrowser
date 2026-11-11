@@ -632,7 +632,7 @@ unsettled rather than consistently offset.
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, View file controls, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -990,7 +990,12 @@ file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order — chevron, kind letter, filename in the
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
-anywhere toggles, with only the copy and View file controls opting out.
+anywhere toggles, with only the copy control, the View file controls, and a Markdown
+file’s **Rendered** | **Source** chooser opting out.
+On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
+joined chip pair, after the chevron, and beside it a small spinner that keeps its place
+in the bar and appears only after the loading-state delay while the rendered view is on
+its way.
 On a page that shows a pinned revision, and on a pull request’s Changes beside a
 checkout, the bar ends with quiet text actions that open the file at a side of the
 change: **View file**, and **View at parent** or **View at base** where the old side

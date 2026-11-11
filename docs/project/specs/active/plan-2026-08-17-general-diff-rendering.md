@@ -440,19 +440,53 @@ View phasing for a changed text file, all tabs from one diff layout:
 | Phase | Tabs |
 | --- | --- |
 | First | **Diff** (unified source), After |
-| Planned for PR Markdown | **Rendered** redline by default, **Source** for the existing diff, and links to the full base and head files |
+| PR Markdown (#349) | **Rendered** redline by default, **Source** for the existing diff, and links to the full base and head files |
 | Later | Equivalent rendered comparisons for other eligible document types |
 
 ### Rendered Diffs and Revision File Links
 
+**Status:** The first Markdown projection ships in PR Changes, in checkout and managed
+sessions (#349): `GET github/pull-rendered-diff`, `diff/markdown_projection.py`, and
+`builtin_plugins/diff/diff-markdown.js`. Open items are listed under
+[Acceptance](#acceptance).
+
 The implementation links directly to each admitted revision file and keeps the server’s
 current subject in place.
-The first projection supports ordinary Markdown blocks when the parser’s source ranges
-agree with KPress’s complete render.
-Raw HTML, footnotes, unsupported mappings, and over-budget documents remain readable in
-Source.
+Each side is parsed once by KPress’s own MarkdownIt core, and every top-level block is
+rendered from its own tokens, so a block’s source range is the token map that rendered
+it; a test checks the joined blocks against KPress’s `parse_markdown`. One changed list
+item or quoted paragraph is shown on its own, and changed words are marked by a bounded
+word diff whose span must occur exactly once in the changed source lines.
+These remain readable only in Source:
 
-**Status:** Planned for PR Changes in checkout and managed sessions.
+- raw HTML, including inline tags such as `<br>` (HTML comments are allowed),
+- task lists, whose checkbox the inert render drops,
+- footnotes, and
+- documents past the projection’s budgets: 48 KiB of Markdown across both sides, 256 `[`
+  per side, 2,000 tokens per side, 2,400 rendered nodes, and nesting 32 deep, each
+  measured beside its constant in `diff/markdown_projection.py`.
+
+Math (`$…$`) and Mermaid sources render as literal text, because the projection renders
+with math and diagrams off, and code blocks are not highlighted, because the inert
+render drops the highlighting classes; the Document view renders all three.
+
+Whatever a block’s source says that its render does not show is its hidden signature:
+link and image destinations and titles, alt text under a shown image, HTML comments,
+attribute syntax, fence info strings, and reference definitions inside quotes and lists.
+A changed block whose signature differs carries a note naming Source, and the file
+carries **Source shows additional changes** whenever any source change has no visible
+counterpart, a whitespace-only or rewrap edit included.
+
+A Markdown file on screen when Changes mounts waits for its projection with Source
+hidden for the app’s 50 ms loading-state delay, so an answer within it paints Rendered
+first. Past it, Rendered files paint Source first and Rendered replaces it when it
+arrives: the first useful paint never waits on a projection.
+Conversation’s prefetch asks for the projections of the first screen’s Markdown files,
+so Changes usually finds them computed, and the progress mark in the file bar stays
+invisible until the same delay passes.
+Projections run in one child process once it is ready, so they never hold the server’s
+GIL; see `diff/markdown_projection_worker.py` for the measurements.
+
 The rendered and source views follow GitHub’s prose-review pattern.
 Markdown is the first eligible format.
 Later formats can register a renderer that supplies an equivalent bounded, inert
@@ -572,6 +606,16 @@ comparison before widening automatic preparation.
 Expose the snapshot and projection through the CLI/API parity path and add goldens for
 mode selection, fallback, and exact file-side bytes.
 Browser tests cover paint, focus, and history restoration.
+
+Delivered in #349: both repository modes (`tests/test_github_pull_snapshot.py`, with a
+checkout whose live file differs), duplicate headings, reference links, format-only and
+repeated-block edits, the hostile corpus through the projection and the page’s own
+sanitizer, the route golden `cli-github-pull-rendered.txt`, and the
+`diff.markdown-rendered-view` session `cli-ui-diff-markdown.tryscript.md`. Still open: a
+rename, two tabs across a force-push and restart, an offline cached reopen, history
+restoration in a real browser, and the measurement of first diff content, requests, and
+main-thread work against the Source default on a documentation-heavy comparison, which
+gates widening automatic preparation.
 
 ### The format is defined standalone, up front
 

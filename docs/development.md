@@ -244,6 +244,7 @@ These are the ones with a measurement on record, and where it is:
 | Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | The step that places a Markdown render | On demand, in the Markdown plugin’s module tree at the first Markdown render, a folder’s README included | `builtin_plugins/markdown/place-rendered.js` | the comment at its head |
 | A diff’s View file controls | On demand, at the first diff that has them: a pinned page’s, or a pull request’s Changes beside a checkout; a served folder’s commit diffs never request them | `viewFileOpener` in `builtin_plugins/diff/index.js` | the comment beside it |
+| A pull request’s rendered Markdown layer | On demand, requested beside the comparison for a comparison that names a rendered route, and by Conversation’s prefetch; mounted only when the manifest lists a Markdown file | `markdownLayer` in `builtin_plugins/diff/index.js` | a cold import took 1.2-4.2 ms from 127.0.0.1 (review C of #349, 10 imports) |
 
 What would move next, if the budget tightens or a startup script has to grow, measured
 2026-10-01 as the compressed bytes each saves where it stands (gzip level 6, as the

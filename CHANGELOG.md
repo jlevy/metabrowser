@@ -24,6 +24,15 @@ All notable changes to Metabrowser are documented here.
   A Markdown file whose rendering would cost more than a few hundred milliseconds, such
   as a long task list or tens of kilobytes of highlighted code, opens as Source.
 
+- A pull request’s **Changes** shows Markdown files **Rendered** by default: changed
+  blocks are shown as removed and added, with changed words marked, and a changed list
+  item or quoted paragraph is shown on its own.
+  **Source** remains one click away, and is used for files with raw HTML, task lists,
+  footnotes, or more than 48 KiB of Markdown.
+  When the source changed in a way the rendered view cannot show, such as a link
+  destination or an HTML comment, the file and the block say so.
+  The first screen is rendered in the background while you read **Conversation**.
+
 ## 0.12.0
 
 - Configuration and repository-cache contract names use `metabrowser.config` and
