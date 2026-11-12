@@ -537,7 +537,8 @@ A registry this large is a list, not a map.
 Every registered hypothesis appears exactly once below, grouped by which part of
 [the objective](#what-we-are-optimizing-for) it serves, so an agent picking up this loop
 can find the rows that bear on the question they care about instead of reading all of
-them. **✓** is resolved, **✗** did not reproduce as stated, everything else is open.
+them. **✓** is resolved, **✗** did not reproduce as stated or was rejected, everything
+else is open.
 Status and evidence stay in the registry tables; this is only the grouping.
 
 **What the reader sees** — stability, and one paint instead of several.
@@ -549,6 +550,7 @@ The objective’s first two failure modes.
 - H51 measure LCP and CLS in a visible window · H56 the primary metric is mis-aimed
 - H62 ✓ treat the first inventory as baseline before highlighting changes
 - H63 ✓ reject rendered failures and isolate release measurement adapters
+- H64 ✓ keep the prior Git revision visible through an atomic handoff
 
 **How fast the first correct frame arrives** — everything on the critical path between
 navigation and a usable viewport.
@@ -561,7 +563,10 @@ navigation and a usable viewport.
 - H80 selected core viewer attribution and provider process cost
 - H81 visible PR description preparation · H82 publication-to-paint delay · H83 catalog
   updates during preparation
+- H73 ✓ a prepared PR manifest and visible prefix · H84 ✓ progressive PR metadata
+  warming
 - H57 attribute the shell’s own boot · H9 the eager JavaScript count · H17 import cost
+- H14 start-to-serving scales with the tree
 - H19 `/api/events` on the critical path · H29 the first byte waits on a filesystem walk
 - H5 the root tree route under a scan · H8 ✓/H23 ✓ the tally pass per request
 - H59 the event loop waits on the tally memo lock · H61 the worker pass can starve it
@@ -575,6 +580,7 @@ navigation and a usable viewport.
 - H7 window the rendered rows · H15 no silent truncation at 500,000
 - H26 the eager request count priced at localhost · H44 the remote-link regime
 - H41 a columnar index
+- H58 main-thread work during load bounded by a budget, not the data
 
 **Whether a revisit costs anything** — the desktop-app property this plan does not have.
 
@@ -593,12 +599,35 @@ navigation and a usable viewport.
   free-threaded
 - H18 profile the walk · H22 batch it · H13 walk attribution · H28 build from the SSE
   stream
+- H65 ✓ positional write-token copies · H66 ✗ netted ancestor deltas · H67 ✓ a
+  delta-free add path · H68 ✗ memoized ancestor chains
+- H69 ✗ path checks without `split` · H70 ✗ `derive_ext` without splitting · H71 ✓ a
+  module-level import and positional construction · H72 the walker builds the provider’s
+  record
 
 **The loop’s own instruments** — rows that decide how every other row is judged.
 
 - H16 ✓ measure a real corpus · H55 ✓ one corpus for every checkpoint · H49 the four
   unrecorded regimes
 - H38 what counts as acting a row into view · H3 ✗ the sweep’s request rate
+- H85 a release candidate against every hard gate
+
+**How a transition looks** — the November 11 campaign: a switch that paints at once and
+nothing that moves after it.
+
+- H86 reserve every region’s box at first paint · H87 immutable asset headers
+- H88 keep Git comparisons and memoize git routes · H89 parallel serial loaders
+- H90 a render cache and a kept Markdown worker · H91 four small shift fixes
+- H92 one read per PR selection, file trees that open once, a held Changes paint
+- H93 admission control for background work · H94 one prepare unit per subject
+- H95 retained main-tab surfaces · H96 a shorter landing chain · H97 first view without
+  visibility
+- H98 a detached surface LRU · H99 laid-out view tabs and chunked source · H100 one
+  layout per Markdown mount
+- H101 highlighting in a worker · H102 a persistent render cache · H103 no loopback
+  compression
+- H104 a bulk Pulls walk · H105 pre-mounted view tabs · H106 a PR body final at first
+  paint
 
 | # | Hypothesis | Metric that would show it | Status |
 | --- | --- | --- | --- |
@@ -716,6 +745,60 @@ provider/cache state and request concurrency, and preserve cancellation and exac
 source/account/record ownership.
 A range that overlaps supports no speed claim.
 Record rejected explanations with the same provenance as accepted ones.
+
+### Apparent Speed and Layout Stability
+
+The November 11, 2026 campaign (epic `mb-mpo0`) implements the ranking in
+[apparent UI performance for the native app](../../research/research-2026-11-11-ui-apparent-performance.md).
+Its work order is the phase order of
+[the implementation plan](plan-2026-11-11-ui-apparent-performance.md).
+
+It follows the [November 4 iteration](#pr-and-git-navigation) and the provider prefetch
+lane that landed with #355
+([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)), and five of
+its rows revisit their results: H88 generalizes H78; H92 measures H75’s join clause for
+the Pulls selection; H94 covers file navigation, which H74 to H76 did not; H104 revises
+H84’s walk; and H106 revisits the description readiness of H77, H81, and H84. Each of
+these rows carries the metrics its predecessors were accepted on as guards, because the
+accept rule’s third clause sees only the metrics in a round’s own table.
+A row that bundles mechanisms keeps one identifier and records a lettered verdict for
+each mechanism, each decided by its own named metric.
+
+Each round’s control is the build immediately before that item’s commits, run
+interleaved with its candidate on the corpus checkout frozen at `7a02fed4`, under
+[the accept rule](../../../../explorations/performance-loop/README.md#the-accept-rule).
+exp-058 is the campaign’s reference, not a round’s control: it measured the product at
+`main` 09903292 on that corpus, and the campaign summary, exp-079, compares every
+accepted item together against it.
+A commit does not pin pull request data, so each condition reads GitHub records from its
+own cache directory, filled by an unrecorded warm-up pass; subjects are named by number,
+and each row records the catalog totals it saw.
+Reserved experiment IDs are identifiers, not an order: H106 holds exp-080 although the
+summary is exp-079.
+
+| # | Hypothesis | Metric that would show it | Status |
+| --- | --- | --- | --- |
+| H86 | Chrome that toggles (filter bar, view tab bar, scrollbar, print button, status rows, a late tab button) and header sections that fill in late move content during transitions. Reserving each region’s box at first paint removes the movement without slowing the transition. | Two verdicts, each on region movement per transition in its own regions: (a) shell chrome (tree content top, content start, pane width, header label, main tab bar); (b) the PR page header (title, state row, status row, tab bar). Layout-shift value as a second reading; painted-ready as a guard on both | **Open** (`mb-4z69`, reserved exp-059) |
+| H87 | Stamped assets carry no `Cache-Control`, and plugin and KPress assets are `no-cache`, so every reload and relaunch revalidates them. Immutable headers on content-keyed URLs remove those requests. | Conditional requests per reload in Chrome decide the row, with reload ready time as a guard. Requests per relaunch in `WKWebView` are a secondary reading that waits on `metab` host mode’s sticky port (`mb-qzny`) and the committed probe (`mb-fevz`) | **Open** (`mb-3m3l`, reserved exp-060) |
+| H88 | A commit revisit re-fetches its comparison, and git routes recompute on every call. (a) A browser comparison cache by commit ID makes a revisit request-free; it generalizes H78, accepted in exp-046, from the hovered selected row to every revisit. (b) A server memo keyed by a refs fingerprint read from ref storage without running Git makes repeated routes cheap; the existing scope fingerprint spawns Git (`git/history.py:303-393`), so it cannot be the key. | (a) Comparison requests and painted-ready on a commit revisit, with H78’s guards (cancellation, ownership, Long Tasks, memory) and H79’s first painted text from exp-047 not regressing. (b) Server time of repeated `log`, `summary`, and `refs`, and Git processes spawned per repeat | **Open** (`mb-8a8g`, reserved exp-061) |
+| H89 | Shell tools and KPress assets load one round trip at a time. Fetching them in parallel, in the same execution order, shortens the chain to tools ready and to a styled Markdown view. | Dependent request levels; time to shell tools ready; cold Markdown painted-ready | **Open** (`mb-pdul`, reserved exp-062) |
+| H90 | A Markdown revisit uploads its source and downloads its render again, and leaving Markdown discards the worker. A render cache keyed by content identity and a kept worker make revisits request-free. | Requests and uploaded bytes on a revisit; painted-ready | **Open** (`mb-mbd3`, reserved exp-063) |
+| H91 | Four small mechanisms, each with its own prediction: (a) prose faces loaded before the first document’s swap remove its 21–23 px reflow; (b) programmatic tree reveals that do not animate remove the no-input shift of a deep reveal; (c) coalescing a held arrow key renders only the row it stops on; (d) a fixed position for pull request results in Quick Search replaces no row after the first results paint. | (a) Shift without input on a first document, 0.003 to 0, with first contentful paint and first-document painted-ready as guards; (b) shift without input on a deep reveal, 0.046 to 0; (c) requests per six-key skim, 14 to those of one file, with painted-ready of the row it stops on as a guard; (d) result rows replaced after first paint, three to none | **Open** (`mb-n3r5`, reserved exp-064) |
+| H92 | A PR click reads the selected record two to four times. The click does join the mousedown peek; the extra reads are the page’s own first read after `OPEN_WAIT_MS`, the hover timer re-reading the clicked row, and a click on the row already shown. Separately, a selected row’s file tree grows seconds after the click, and Changes paints before its rendered diffs. (a) An answer the selection read less than one fast poll earlier counts as the page’s first read; (b) a row’s file tree opens once at its full height; (c) Changes holds first paint for diffs in flight. Mechanism (a) is H75’s join clause measured for the Pulls selection; H75 stays open for intent timing. | (a) Reads of the selected record per click, settlement polls while a refresh runs excluded, with two guards: the page never treats a record older than one fast poll as its first read, and prepared-click description readiness keeps H81’s and H84’s results (37–40 ms in exp-052, 71–80 ms in exp-055). (b) No-input layout shift in the Pulls list after a selection. (c) Layout shift on Changes first paint, with trusted input to first painted diff as a guard | **Open** (`mb-6chh`, reserved exp-065) |
+| H93 | Saturated background work inflates a cheap foreground request 3.3–26x. A cap on background requests in flight and a low-priority server lane keep a cheap foreground route near its quiet latency. The cap starts at two, a value the research did not measure; this round sets it. | Foreground route p50 and p95 under background warm-up; guards: background completion time, the prepared hit rate, and the provider lane’s outcomes | **Open** (`mb-16d7`, reserved exp-066) |
+| H94 | A file click waits for the envelope, the worker, and the render in series. One prepare unit per subject, driven by keyboard, pointer-down, and hover, makes a predicted transition as fast as a revisit. H74 and H75 measured PR and Git navigation, and H76 found that a held PR description paints in 42–53 ms, a render floor more prefetch cannot remove. What is new is the file chain (envelope, worker preparation, render, kind assets) and keyboard prediction; H75’s dwell sweep becomes this row’s sweep for files. | Cold-neighbor and hovered painted-ready at 0, 100, 200, and 450 ms dwell and on keyboard selection; selected-subject requests (one cold, none prepared); cost: wasted prepare requests and bytes per transition | **Open** (`mb-fejb`, reserved exp-067) |
+| H95 | Main tabs destroy the preview on every switch. Retaining each tab’s surface makes a switch one frame with no request and no blank frame. | Main-tab switch painted-ready, blank frames, requests; retained memory and DOM nodes as guards | **Open** (`mb-88mp`, reserved exp-068) |
+| H96 | The cold landing is about 23 dependent request levels deep. Concatenated startup scripts, preloads after them, and an early content request shorten it. The early content request depends on the render `GET`, served from the server’s render cache (the plan’s API Changes). | Request levels; cold and reload ready; guards: first contentful paint and first tree rows, which the tree-first order (`app.js:8374-8378`) protects and which preloads ahead of the startup scripts slowed | **Open** (`mb-a1nu`, reserved exp-069) |
+| H97 | A hidden page never finishes its first view, because readiness waits on animation frames. Readiness that does not depend on visibility lets a prewarmed web view show ready content at once. | Show-to-ready and hidden first-view completion in `WKWebView` | **Blocked** on a committed `WKWebView` probe (`mb-fevz`), a measurement instrument under `explorations/`, not app code; not to be read in Chrome instead (`mb-touu`, reserved exp-070) |
+| H98 | A file revisit rebuilds the pane. A detached LRU of surfaces with suspend and resume makes revisits a re-attach. | Revisit and history painted-ready; requests; retained memory | **Open** (`mb-d1uo`, reserved exp-071) |
+| H99 | View tabs hidden with `display: none` lose their layout, so a heavy view costs a full layout on every return. (a) Keeping shown views laid out under `content-visibility: hidden` removes that layout. (b) Chunking long source with `content-visibility: auto` cuts its first layout; this half is inferred from measured costs, not prototyped. | (a) Heavy view-tab revisit painted-ready and longest task, with retained memory and DOM nodes as guards. (b) First layout time and longest task on a large source view, with find-in-page and anchor scrolling checked | **Open** (`mb-1bh1`, reserved exp-072) |
+| H100 | A Markdown mount is laid out twice: once forced in the stage and again after re-parenting. One layout per mount saves the second pass. | Layout passes over 10 ms per mount; painted-ready | **Open** (`mb-jak8`, reserved exp-073) |
+| H101 | Highlighting a large source file is one main-thread task of up to 103 ms. A worker moves its lexing share off the main thread; the token spans it returns must still be parsed, styled, and laid out there ([rendering large content](../../../large-content-rendering.md#syntax-highlighting-spends-elements-and-main-thread-time)), so the gain is less than the whole task. | Longest task on large source files; time to highlighted | **Open** (`mb-y04k`, reserved exp-074) |
+| H102 | Renders are cached in memory only, so a restart pays cold renders again. A disk cache keyed by source digest returns them at warm cost. | Render route time after restart | **Open** (`mb-4ufj`, reserved exp-075) |
+| H103 | Compressing for a loopback client costs event-loop time the client does not need. An opt-in uncompressed mode removes it. | Event-loop compression time per cold landing; cold ready | **Open** (`mb-e500`, reserved exp-076) |
+| H104 | The Pulls walk issues about two requests a second for most of a minute after every load, even when steps only read the cache. Bulk preparation removes that traffic. The walk is H84’s, accepted in exp-055, so this row revises an accepted result. | Background requests per minute after settle; H84’s guards: viewport and catalog coverage, prepared-click description readiness beyond the first eight rows (71–80 ms in exp-055), provider calls and bytes, prolonged busy admission, and foreground latency while the walk runs | **Open** (`mb-b7ru`, reserved exp-077) |
+| H105 | A first view-tab visit mounts the view at click time. Mounting at idle after the default view settles makes the first visit a toggle. The headroom is small: a first visit took 43 ms against 32–33 ms for a revisit, about 1.3x at best, which is the rough tolerance. | First view-tab visit painted-ready; main-thread busy time and longest task while idle as guards | **Open** (`mb-yyja`, reserved exp-078) |
+| H106 | The PR description paints as plain text and is then replaced by Markdown, and the full record and commit rows rebuild or insert into the painted Conversation. Caching Markdown by record revision, patching in place, and delivering commits with the record make the body final at first paint. This revisits H77, accepted in exp-045 (description in 1.27–1.56 s against 3.06–4.09 s), and the prepared descriptions of H81 and H84; a hold for Markdown in flight could give those gains back. | Body and section movement after first paint; no-input layout shift on PR landings and switches. Guards: trusted click to exact description, cold, core-only, and prepared, against exp-045, exp-052, and exp-055; full-Conversation paint | **Open** (`mb-gsa0`, reserved exp-080) |
 
 ## Debt Carried into v0.10.0
 
