@@ -67,9 +67,19 @@ final class FolderSession: ManagedServer {
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
     /// Starts the server unless one is starting, running, or stopping, and returns once
-    /// that start is ready or has failed.
-    func startServer() async {
+    /// that start is ready or has failed. False if `launchCheck` refused it.
+    @discardableResult
+    func startServer() async -> Bool {
         await supervisor.start()
+        return !supervisor.launchWasRefused
+    }
+
+    /// For a restored background folder, the check made just before its server would
+    /// spawn, after the launch gate (`ServerSupervisor.mayLaunch`); nil once one of its
+    /// tabs is selected, which starts it as the user's choice.
+    var launchCheck: (() -> Bool)? {
+        get { supervisor.mayLaunch }
+        set { supervisor.mayLaunch = newValue }
     }
 
     /// Retry and Restart Server: a fresh server from the runtime chosen now, which may not

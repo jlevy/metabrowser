@@ -184,6 +184,14 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         return true
     }
 
+    /// `root`'s launch was refused at the last check before spawning: it waits for its
+    /// tab, unless a tab of it was selected.
+    public mutating func hold(_ root: String) {
+        guard !selected.contains(root), !deferred.contains(root) else { return }
+        pending.removeAll { $0 == root }
+        deferred.append(root)
+    }
+
     /// Every tab of `root` closed before its server started.
     public mutating func remove(_ root: String) {
         pending.removeAll { $0 == root }
