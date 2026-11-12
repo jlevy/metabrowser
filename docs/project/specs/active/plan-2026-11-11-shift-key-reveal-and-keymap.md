@@ -651,8 +651,11 @@ container that clips.
   inline-end padding. It is the default for tabs, chips, and text buttons, and because
   the badge stays inside the target’s box, a pill-shaped container such as the diff
   layout chip group clips nothing.
-- `beside` places the badge just past the target’s inline end, positioned within the
-  nearest ancestor that declares itself a badge anchor and does not clip.
+- `beside` places the badge over the target’s own inline end, but positions it through
+  the nearest ancestor that declares itself a badge anchor and does not clip, so the
+  badge covers its own control and never the text after it (#382 review A, finding A1).
+  The one exception is the root crumb `/`, narrower than a keycap, where `U` reaches
+  back over the end of the dimmed root name.
   It is for icon-only buttons and for targets inside `overflow: hidden` containers: the
   file header’s Copy path button, 24 pixels wide inside a clipping path row; the commit
   view’s Copy revision button; the folder header’s icon-only Up button; and the file
@@ -705,9 +708,9 @@ own the keymap.
 The reveal’s visual contract, owned by the `── Keyboard keys ──` block of
 `static/styles.css` and documented in the design system:
 
-- **Tokens.** `--key-reveal-bg` is `--row-flash-bg`; `--kbd-badge-bg` is the same color
-  with partial alpha; `--kbd-badge-border` is a deeper tone of the same hue;
-  `--kbd-badge-color` is the body text color.
+- **Tokens.** `--key-reveal-bg` is `--row-flash-bg`; `--kbd-badge-bg` is mixed from it
+  at 60% over transparent, so the yellow has one source of truth; `--kbd-badge-border`
+  is a deeper tone of the same hue; `--kbd-badge-color` is the body text color.
   All are `oklch`, defined in both themes, and keep `--row-flash-bg`’s hue, as
   `tests/test_design_vocabulary.py` requires.
 - **Contrast.** Text meets 4.5:1 in both themes on everything the reveal paints: a
@@ -765,7 +768,10 @@ descriptor to present.
 The list is short enough to need no layout measurement: a fixed maximum item count,
 chosen by measuring the minimum navigation-pane width in a browser and recorded beside
 the surface definition, caps it, and items later in the order drop first and remain in
-Help.
+Help. The measured cap is 7: at the 180-pixel minimum width and 100% zoom, seven items
+take four rows, 21% of the pane, and eight take five, 27%. No cap keeps the layer within
+the pane’s bottom quarter at 200% zoom, and none needs to, because the layer shows only
+while Shift is held.
 
 ### Help Changes
 
@@ -1127,6 +1133,13 @@ directly: file views through view composition, the Git commit view (`git-panel.j
 `getRegisteredView("diff", "diff")`), and the pull request page’s Changes tab
 (`pull-page.js` `mountDiff`). Each host disposes the handle it gets back, so the diff
 view’s own `dispose()` is the reliable path in all three.
+The Git commit view did not: when another owner took the pane it only cancelled pending
+work, leaving `L` attached and listed in Help on later pages.
+It now disposes its diff when it loses the pane (#383 review B, finding B1). The
+view-composition safety net runs before the view’s own `dispose()`, so it also catches
+attachments inside DOM the view removes itself and a render that finishes after
+cancellation, and the eager queue drops an attachment that is detached or aborted before
+the facade loads.
 
 **Pull request tabs.** The page’s tabs are Conversation, Changes, and Checks (`TABS` in
 `pull-page.js`), rendered once per page as `a.tab-btn[role=tab]` links in a
@@ -1209,6 +1222,23 @@ and that must not turn a working view into a render failure:
   Each target has its own `activate`, so only the first visible target runs and gets a
   badge.
 
+As implemented, recorded after #383’s reviews:
+
+- A digit throws as malformed input, because it is not one letter, rather than warning.
+- Malformed input queued before the facade loads cannot throw to its caller, which has
+  returned; the facade logs it with `console.error` and the same `shortcuts.attach:`
+  prefix. Once the facade has loaded, it throws.
+- Unknown options, such as `bindings`, throw, and `order` is required.
+- The registry command for a letter is `plugin.<holder id>`; when the holder detaches,
+  the letter is registered again under the next holder’s copy, so Help shows one entry
+  per letter with its holder’s copy.
+- A retarget to the same element is a badge refresh, which is what the pull request
+  page’s re-inserted tab column needs.
+- The facade registers a key observer, to warn at dispatch when a shell key wins its
+  letter.
+- A test ties the built-in plugin letters `c`, `g`, `h`, and `l` to the reserved table,
+  so a later reservation of one of them fails the build (#383 review A, finding A2).
+
 **SDK version.** `PLUGIN_SDK_VERSION` stays `0.7`. `docs/plugins.md` bumps it “only when
 the contract actually breaks”.
 The architecture map’s planned-surfaces section treats a capability as additive when
@@ -1283,6 +1313,10 @@ Badge geometry stays under phase 1’s paint-exempt row.
 - **`MetabrowserPluginHost`** (internal): `copyFromControl()`, in phase 1.
 - **`static/plugin-shortcuts.js`** (phase 2, internal): `attachShortcutRegistry()`,
   which `initKeyboardInfrastructure()` calls.
+- **Registry, phase 2 additions** (internal): `heldAbove(scope, key)`, so a live shell
+  key suppresses a plugin key’s badge and liveness as well as its dispatch;
+  `isTargetLive(element)`; and a `rank` option on `attachTarget()`, so the earliest
+  attached plugin holds a letter ahead of document order.
 - **`METABROWSER_SETTINGS`** (phase 2): the reserved shell keys, with the contexts of
   `N` and `P`.
 - **`metab --show`**: each view’s key on the views line.
