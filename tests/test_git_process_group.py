@@ -984,3 +984,68 @@ def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
         return killed
 
     assert asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+
+
+class _FakeXcrun:
+    """``subprocess.run`` with ``/usr/bin/xcrun`` answering from a script, in turn.
+
+    An answer is the path ``xcrun --find`` prints, or ``None`` for a lookup that times
+    out. Any other command runs for real.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, answers: list[Path | None]) -> None:
+        self.answers = answers
+        self.calls = 0
+        real_run = subprocess.run
+
+        def run(args: Any, *rest: Any, **kwargs: Any) -> Any:
+            if not (isinstance(args, list) and args[:1] == ["/usr/bin/xcrun"]):
+                return real_run(args, *rest, **kwargs)
+            self.calls += 1
+            answer = self.answers.pop(0)
+            if answer is None:
+                raise subprocess.TimeoutExpired(args, 2.0)
+            return subprocess.CompletedProcess(args, 0, stdout=f"{answer}\n", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", run)
+        # Whatever an earlier lookup kept, this test starts without it.
+        cache_clear = getattr(process_module._apple_shim_tool, "cache_clear", None)
+        if callable(cache_clear):
+            cache_clear()
+        monkeypatch.setattr(process_module, "_SHIM_TOOLS", {}, raising=False)
+
+
+def _developer_git(tmp_path: Path, name: str) -> Path:
+    git = tmp_path / name / "usr" / "bin" / "git"
+    git.parent.mkdir(parents=True)
+    git.write_text("", encoding="utf-8")
+    return git
+
+
+def test_the_shim_tool_follows_a_changed_default_developer_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no ``DEVELOPER_DIR``, the shim runs the system's selection, which
+    ``xcode-select -s`` may change while the server runs; each lookup asks again.
+    Before, the first answer was kept for the process."""
+
+    first, second = _developer_git(tmp_path, "A"), _developer_git(tmp_path, "B")
+    _FakeXcrun(monkeypatch, [first, second])
+    assert process_module._apple_shim_tool("git", None) == os.path.realpath(first)
+    assert process_module._apple_shim_tool("git", None) == os.path.realpath(second)
+
+
+def test_a_failed_shim_lookup_is_tried_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lookup that times out is not kept, so a later spawn can still know the tool.
+    An explicit developer directory's answer, once found, is kept. Before, the failure
+    was kept for the process."""
+
+    tool = _developer_git(tmp_path, "Explicit")
+    xcrun = _FakeXcrun(monkeypatch, [None, tool])
+    developer_dir = str(tmp_path / "Explicit")
+    assert process_module._apple_shim_tool("git", developer_dir) is None
+    assert process_module._apple_shim_tool("git", developer_dir) == os.path.realpath(tool)
+    assert process_module._apple_shim_tool("git", developer_dir) == os.path.realpath(tool)
+    assert xcrun.calls == 2
