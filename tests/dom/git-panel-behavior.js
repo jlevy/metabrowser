@@ -2452,6 +2452,8 @@ async function run() {
     const mountedRevision = "91".repeat(20);
     responses.set(`/api/git/commit/${mountedRevision}`, detail(mountedRevision));
     await internals.selectCommit(mountedRevision);
+    // A comparison is kept in the task after the one that handed it to the diff.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const retained = previewNode;
     const history = internals.stateForTests().pageCache;
     hydration.add("old-active", 0);
@@ -2890,7 +2892,17 @@ async function run() {
     appendTestPage([commit(SHA_A, [SHA_B], "on screen")], "history:1");
     const before = internals.stateForTests();
     assertEqual("stale: one row on screen before the next page", before.rowCount, 1);
+    // A replace ref or a graft among the moved refs can change a kept comparison's answer.
+    internals.clearComparisonCache();
+    await internals.beginDiffPreparation("5a".repeat(20), null).comparison;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual("stale: a comparison is kept before", internals.comparisonCacheStats().entries, 1);
     await internals.loadNextPage(false);
+    assertEqual(
+      "stale: a stale walk forgets kept comparisons",
+      internals.comparisonCacheStats().entries,
+      0,
+    );
     const stale = internals.stateForTests();
     assertEqual("stale: one request, no silent replay", staleCalls, 1);
     assertTrue("stale: the state is typed stale", stale.stale);
@@ -3324,8 +3336,10 @@ async function run() {
     comparisonResponder = async (revision) => ({ comparison_id: revision, answer: {} });
     const askedBefore = comparisonFetches.length;
     await internals.selectCommit(revisitA);
+    await tick();
     const firstAnswer = renderedDiffContexts.at(-1)?.raw;
     await internals.selectCommit(revisitB);
+    await tick();
     await internals.selectCommit(revisitA);
     assertEqual(
       "kept: two commits and a revisit ask for two comparisons",
@@ -3395,15 +3409,24 @@ async function run() {
     }
     const large = "89".repeat(20);
     padded.set(large, 1200);
+    // Sizing an answer serializes it, so it waits for the task after the one that hands the
+    // answer to the diff (review B of #368, B3).
+    await internals.beginDiffPreparation(sized[0], null).comparison;
+    assertEqual("kept: an answer is not sized in the task that delivers it", kept().entries, 0);
+    await tick();
+    assertEqual("kept: it is kept in the next task", kept().entries, 1);
     for (const revision of sized.slice(0, 4)) {
       await internals.beginDiffPreparation(revision, null).comparison;
+      await tick();
     }
     assertEqual("kept: four answers fit", kept().entries, 4);
     assertTrue("kept: their bytes are counted", kept().bytes > 3600 && kept().bytes <= 4000);
     const readBefore = comparisonFetches.length;
     await internals.beginDiffPreparation(sized[0], null).comparison;
+    await tick();
     assertEqual("kept: a kept answer is read, not asked for", comparisonFetches.length, readBefore);
     await internals.beginDiffPreparation(sized[4], null).comparison;
+    await tick();
     assertEqual("kept: a fifth answer keeps the bound", kept().entries, 4);
     assertTrue(
       "kept: the least recently used answer is the one evicted",
@@ -3413,7 +3436,9 @@ async function run() {
     assertTrue("kept: the total stays within the bound", kept().bytes <= 4000);
     const largeBefore = comparisonFetches.length;
     await internals.beginDiffPreparation(large, null).comparison;
+    await tick();
     await internals.beginDiffPreparation(large, null).comparison;
+    await tick();
     assertEqual(
       "kept: an answer over a quarter of the bound is asked for each time",
       comparisonFetches.length,
@@ -3429,6 +3454,7 @@ async function run() {
     comparisonResponder = async (revision) => ({ comparison_id: revision });
     const afterFailure = comparisonFetches.length;
     await internals.beginDiffPreparation(failedRevision, null).comparison;
+    await tick();
     assertEqual(
       "kept: a failed request is asked for again",
       comparisonFetches.length,

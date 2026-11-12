@@ -17,6 +17,9 @@ hide, without requiring a browser.
 It also pins which mounts reuse a kept render: a second mount of the same envelope asks
 for nothing, while a changed file’s new envelope, another table-of-contents option, and
 a folder’s README panel each ask again.
+And it pins where a kept render is placed: a small one in the task of the input that
+found it, a large one after that input’s first paint, and a large one in a hidden page
+in the input’s task again.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -47,9 +50,27 @@ $ node tests/dom/markdown-functional-session.js
       "kept.md v2 POST toc=auto",
       "kept.md v2 POST toc=off",
       "docs/README.md folder GET toc=off",
-      "docs/README.md folder GET toc=off"
+      "docs/README.md folder GET toc=off",
+      "large.md l1 POST toc=auto"
     ],
-    "kept": 3,
+    "kept": 4,
+    "placement": {
+      "hiddenPageLargeRender": {
+        "framesRequested": 0,
+        "inInputTask": true,
+        "placed": true
+      },
+      "largeRender": {
+        "framesRequested": 1,
+        "inInputTask": false,
+        "placed": true
+      },
+      "smallRender": {
+        "framesRequested": 0,
+        "inInputTask": true,
+        "placed": true
+      }
+    },
     "shown": [
       "<p>kept.md v1</p>",
       "<p>kept.md v1</p>",

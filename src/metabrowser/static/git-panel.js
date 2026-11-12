@@ -30,7 +30,7 @@
   const COMPARISON_CACHE_BYTES = settings.GIT_COMPARISON_CACHE_BYTES || 16 * 1024 * 1024;
   // A comparison larger than this is shown and not kept: one must not push out every other.
   const COMPARISON_ENTRY_BYTES = Math.floor(COMPARISON_CACHE_BYTES / 4);
-  // A full SHA-1 or SHA-256 commit ID: the one revision whose comparison cannot change.
+  // A full SHA-1 or SHA-256 commit ID: the one revision that names the same commit later.
   const FULL_COMMIT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
   // Distance from the bottom at which the next page is requested. One
@@ -122,10 +122,16 @@
   const detailInFlight = new Map();
   /**
    * Answered comparisons, least recently used first, by the request that asked for them.
-   * Only a comparison named by full commit IDs is kept: its answer cannot change, while a
-   * ref name or HEAD names whatever it points at now. A revisit then mounts the diff with
-   * no request, where the comparison route took 88 to 141 ms each time
+   * Only a comparison named by full commit IDs is kept, while a ref name or HEAD names
+   * whatever it points at now. A revisit then mounts the diff with no request, where the
+   * comparison route took 88 to 141 ms each time
    * (research-2026-11-11-ui-apparent-performance.md).
+   *
+   * A kept answer is kept until Refresh, teardown, or a history walk found stale. Four
+   * inputs can change a served folder's answer for the same commit ID before then, and the
+   * page does not see them: the working tree's `.gitattributes`, `.git/config`, the
+   * reader's Git configuration (a diff driver), and a replace ref or graft that gives the
+   * commit another first parent. A store's answers read none of them.
    *
    * @type {Map<string, {raw: unknown, bytes: number}>}
    */
@@ -582,6 +588,9 @@
         recoverSession = failure === "recover";
         if (failure === "stale") {
           state.stale = true;
+          // The refs moved, and a replace ref or a graft among them changes a commit's
+          // first parent, so a kept comparison may no longer be the answer.
+          clearComparisonCache();
         }
         throw new Error(`HTTP ${response.status}`);
       }
@@ -886,9 +895,10 @@
   /**
    * Keep *raw* under *key*, evicting the least recently used answers past the bound.
    *
-   * The bound is on the answer's JSON length, which is what it cost to receive and, in V8,
-   * 1.0 to 1.5 times what the parsed answer holds (measured 2026-11-11 on answers of 28 KB,
-   * 203 KB, and 3.3 MB). Measuring it costs under a millisecond for a 203 KB answer.
+   * The bound is on the answer's JSON length in characters; the parsed answer holds 0.97 to
+   * 1.66 times that in V8's heap (see settings.py). Measuring it costs 0.45 ms for a 197 KB
+   * answer and about 8 ms for a 3.3 MB one, so it runs in a task after the one that hands
+   * the answer to the diff (review B of #368, B3).
    *
    * @param {string} key
    * @param {unknown} raw
@@ -948,8 +958,12 @@
         }
         const generation = comparisonGeneration;
         return pluginSdk.fetchPluginData("diff", "comparison", params, { signal }).then((raw) => {
-          if (key !== null && generation === comparisonGeneration) {
-            keepComparison(key, raw);
+          if (key !== null) {
+            setTimeout(() => {
+              if (generation === comparisonGeneration) {
+                keepComparison(key, raw);
+              }
+            }, 0);
           }
           return raw;
         });
@@ -2546,9 +2560,9 @@
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
     // A comparison names no refs, but a served folder's answer also
-    // reads its attributes and configuration, which this panel cannot
-    // see change; a refresh is the reader's way to ask again, so it
-    // asks again for both.
+    // reads its attributes, its configuration, and its replace refs and
+    // grafts, which this panel cannot see change; a refresh is the
+    // reader's way to ask again, so it asks again for both.
     if (!options.preserveDetail) {
       detailCache.clear();
       missingRevisions.clear();

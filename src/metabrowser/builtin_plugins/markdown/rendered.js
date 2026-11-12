@@ -31,30 +31,35 @@ let mountSequence = 0;
 // envelope of the file it renders is kept: a folder's README panel mounts with the folder's
 // envelope, whose identity does not move when the README's content does.
 
-// Bytes kept across every envelope, counted as the render's HTML plus the JSON of the rest.
+// Characters kept across every envelope: the render's HTML plus the JSON of the rest.
 // Measured 2026-11-11 over this repository's 269 Markdown files, each rendered by the
 // server from the file as a GET (a posted, prepared source adds its heading anchors): 32 KB
 // of JSON at the median, 101 KB at the 90th percentile, 244 KB at the 99th, and 3.2 MB at
 // the largest. The shell's file cache holds 30 envelopes, so this keeps a render for each
-// of thirty 99th-percentile documents, and one render may take a quarter of it.
+// of thirty 99th-percentile documents, and one render may take a quarter of it. A count
+// of characters, not bytes: V8 stores a string with any character outside Latin-1, which
+// typographic quotes are, at two bytes a character (1.92 measured, review B of #368), so
+// the heap this bounds is up to about 16 MiB.
 export const RENDER_CACHE_BYTES = 8 * 1024 * 1024;
 
 // The largest kept render, in characters of HTML, that a mount places in the task that
 // found it. A kept render is found during the input that opened the document, so placing
 // it there makes the input's first paint wait for the placement. Measured in exp-061's
-// series (Chrome 152, 2026-11-12) with every kept render placed that way: architecture.md
-// (52,335 characters, 525 elements) and README.md (29,192) placed with no task over 50 ms
-// and the input's next paint 32 ms after it, one frame later than the control's 16;
-// design-system.md (211,103 characters, 2,299 elements) placed in one 80 to 93 ms task,
-// and the click's next paint came 96 to 120 ms after it. This bound sits just above the
-// largest size measured with no long task. A larger render waits for the input's first
-// paint, which shows the document being left marked pending, as a render fetched from the
-// server does; sizes between 64 KiB and 211,103 characters were not measured, so they take
-// that side.
-export const KEPT_RENDER_INPUT_TASK_MAX_CHARS = 64 * 1024;
+// pilot series (Chrome 152, 2026-11-12) with every kept render placed that way:
+// architecture.md (52,335 characters, 525 elements) and README.md (29,192) placed with no
+// task over 50 ms and the input's next paint 32 ms after it, one frame later than the
+// control's 16; design-system.md (211,103 characters, 2,299 elements) placed in one 80 to
+// 93 ms task, and the click's next paint came 96 to 120 ms after it. The bound is the
+// largest size measured with no long task; every larger render, measured or not, waits
+// for the input's first paint, which shows the document being left marked pending, as a
+// render fetched from the server does. The cost tracked elements as well as characters,
+// which a character count only approximates.
+export const KEPT_RENDER_INPUT_TASK_MAX_CHARS = 52_335;
 
 // How long a mount waits for the input's first paint before placing a large kept render
-// anyway. Animation frames stop in a hidden page, where no paint is waiting to be seen.
+// anyway. It is a guard, not a measured cost: a visible page paints within a frame or
+// two, and a hidden one does not wait at all. Only a page hidden during the wait, whose
+// frames then stop, reaches it.
 const KEPT_RENDER_PAINT_WAIT_MAX_MS = 100;
 
 /**
@@ -499,7 +504,11 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       const request = primaryRenderRequest(ctx, raw, options.includeToc);
       const found = request ? keptRenders.lookup(raw, request) : undefined;
       if (found) {
-        if (found.rendered.html.length > KEPT_RENDER_INPUT_TASK_MAX_CHARS) {
+        // A hidden page paints nothing a wait could protect, and its frames do not run.
+        if (
+          found.rendered.html.length > KEPT_RENDER_INPUT_TASK_MAX_CHARS &&
+          globalThis.document?.visibilityState !== "hidden"
+        ) {
           await afterInputPaint(controller.signal);
         }
         await ensureKeptAssets(found.rendered);

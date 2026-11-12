@@ -846,7 +846,24 @@ async function endOfTask() {
       pendingPaintWaits().length === 0,
   );
 
-  // A hidden page paints no frame; the wait ends after its bound instead.
+  // A page hidden during the wait paints no frame; the wait ends after its bound instead.
+  const hiddenDuring = makeContainer();
+  const hiddenDuringMount = module.mountRenderedMarkdown(
+    hiddenDuring,
+    { path: "large-kept-doc.md", raw: largeEnvelope },
+    mb,
+  );
+  await endOfTask();
+  runTimersDueWithin(100);
+  await hiddenDuringMount.ready;
+  check(
+    "with no frame, a large kept render is placed after the wait's bound",
+    hiddenDuring.innerHTML.includes("large kept") && animationFrames.size === 0,
+  );
+  hiddenDuringMount.dispose();
+
+  // A page already hidden has no paint to protect, so it does not wait (review B, B6).
+  globalThis.document.visibilityState = "hidden";
   const hidden = makeContainer();
   const hiddenMount = module.mountRenderedMarkdown(
     hidden,
@@ -854,13 +871,15 @@ async function endOfTask() {
     mb,
   );
   await endOfTask();
-  runTimersDueWithin(100);
-  await hiddenMount.ready;
   check(
-    "with no frame, a large kept render is placed after the wait's bound",
-    hidden.innerHTML.includes("large kept") && animationFrames.size === 0,
+    "in a hidden page a large kept render is placed in the input's own task",
+    hidden.innerHTML.includes("large kept") &&
+      animationFrames.size === 0 &&
+      pendingPaintWaits().length === 0,
   );
+  await hiddenMount.ready;
   hiddenMount.dispose();
+  delete globalThis.document.visibilityState;
 
   // The bound is bytes: the render's HTML and the JSON of the rest. A store past it evicts
   // the least recently used render, which a lookup refreshes, and a render over a quarter

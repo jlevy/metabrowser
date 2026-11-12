@@ -11,12 +11,16 @@ All notable changes to Metabrowser are documented here.
   document opened after a file of another kind does not start it again, and it stops
   when that minute ends or the page is hidden.
 
-- A commit opened again in the Commits tab shows its diff without asking the server,
-  because a comparison named by a full commit ID cannot change.
+- A commit opened again in the Commits tab shows its diff without asking the server: the
+  page keeps a comparison named by a full commit ID until Refresh.
+  In a served folder, an edit to `.gitattributes` or Git configuration, or a new replace
+  ref or graft, shows only after Refresh.
   `/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer a repeat from memory
   while the repository’s refs, `HEAD`, and `packed-refs` have not changed, and a later
   log page no longer runs Git to prove its scope still holds.
-  Each sends an ETag and answers `If-None-Match` with 304.
+  Each sends an ETag and answers `If-None-Match` with 304. `/api/git/summary?scope=all`
+  now counts the commits the `scope=all` log walks, which leaves out the `HEAD` of
+  another worktree of the repository.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

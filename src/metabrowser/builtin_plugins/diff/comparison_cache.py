@@ -20,7 +20,10 @@ What the answer depends on, other than the two commit IDs:
 - The store. Its Git directory and its token are the first parts of the key in memory, and
   a browser's copy is scoped to it by the entity tag and by the ``store`` a request names,
   the token ``http_caching.store_tag`` makes, which the shell gives the page beside the
-  build. A folder has no token, so its answers are never kept by the browser either.
+  build. A folder has no token, so the browser's HTTP cache never keeps its answers. The
+  Commits panel does keep them in the page, until Refresh, by commit ID; that keep and
+  what it does not notice are in ``static/git-panel.js`` and the architecture document
+  ``arch-git-and-comparison-sources.md``.
 - A store's Git configuration and attributes. Its reads ignore user and system
   configuration and the reader's attributes files (``STORE_READ_POLICY``: ``HOME`` and
   ``XDG_CONFIG_HOME`` hold nothing, ``GIT_ATTR_NOSYSTEM`` is set), and read no commit's
@@ -47,9 +50,11 @@ What the answer depends on, other than the two commit IDs:
   never read: Git reads the attributes of the repository it runs in.
   ``tests/test_checkout_overlay.py`` holds each of these on a replica.
 
-A folder has inputs of its own beyond those, so it is never cached this way: its working
-tree's ``.gitattributes``, which an edit changes, ``.git/config``, and the reader's Git
-configuration, which can name a diff driver.
+A folder has inputs of its own beyond those, so this server never caches its answers: its
+working tree's ``.gitattributes``, which an edit changes, ``.git/config``, the reader's Git
+configuration, which can name a diff driver, and its replace refs and grafts, which can give
+a commit another first parent. The page's own keep of them, which lasts until Refresh, is
+the one place a folder's answer outlives a request.
 
 Only an answer is kept: a refusal is computed again, since fetching can answer it.
 """

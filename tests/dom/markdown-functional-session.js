@@ -667,9 +667,66 @@ function hidePage() {
       { includeToc: "off" },
     );
   }
+  // Where a kept render is placed, against the input that found it: a small one in the
+  // input's own task, a large one after that input's first paint, and a large one in a
+  // hidden page, where nothing is painted, in the input's task again. Frames run when the
+  // session paints one.
+  const frames = [];
+  globalThis.requestAnimationFrame = (callback) => frames.push(callback);
+  globalThis.cancelAnimationFrame = (id) => {
+    frames[id - 1] = null;
+  };
+  const endOfTask = async () => {
+    for (let turn = 0; turn < 20; turn += 1) {
+      await Promise.resolve();
+    }
+  };
+  const placement = async (ctx) => {
+    const container = new FakeContainer([]);
+    const handle = renderedMarkdown.mountRenderedMarkdown(container, ctx, keptSdk);
+    await endOfTask();
+    const inInputTask = container.innerHTML.includes("<p>");
+    const framesRequested = frames.filter(Boolean).length;
+    for (const callback of frames.splice(0)) {
+      callback?.(0);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await handle.ready;
+    const placed = container.innerHTML.includes("<p>");
+    handle.dispose();
+    return { framesRequested, inInputTask, placed };
+  };
+  const largeEnvelope = { content: "# Large\n", mtime_hash: "l1", path: "large.md", type: "text" };
+  const largeSdk = {
+    ...keptSdk,
+    fetchKpressRender: async (ctx, view, options) => {
+      const small = await keptSdk.fetchKpressRender(ctx, view, options);
+      return {
+        ...small,
+        html: `${small.html}${"x".repeat(renderedMarkdown.KEPT_RENDER_INPUT_TASK_MAX_CHARS)}`,
+      };
+    },
+  };
+  const largeFirst = renderedMarkdown.mountRenderedMarkdown(
+    new FakeContainer([]),
+    { path: "large.md", raw: largeEnvelope },
+    largeSdk,
+  );
+  await largeFirst.ready;
+  largeFirst.dispose();
+  const smallPlacement = await placement({ path: "kept.md", raw: keptChanged });
+  const largePlacement = await placement({ path: "large.md", raw: largeEnvelope });
+  globalThis.document = { visibilityState: "hidden" };
+  const hiddenPlacement = await placement({ path: "large.md", raw: largeEnvelope });
+  delete globalThis.document;
   const keptRenders = {
     asks: renderAsks,
     kept: renderedMarkdown.keptRenders.stats().entries,
+    placement: {
+      hiddenPageLargeRender: hiddenPlacement,
+      largeRender: largePlacement,
+      smallRender: smallPlacement,
+    },
     shown: shownByKeptMounts,
   };
   delete globalThis.Element;

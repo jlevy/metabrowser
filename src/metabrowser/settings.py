@@ -347,11 +347,13 @@ GIT_HOVER_DEBOUNCE_MS = 300
 # the detail view so hovering then selecting a row is one request.
 GIT_DETAIL_CACHE_SIZE = 200
 
-# Bytes of comparison JSON the Commits panel keeps, so a revisited commit's
-# diff mounts with no request. Measured 2026-11-11 over this repository's
-# last 200 commits, merges included: 28 KB at the median, 203 KB at the
-# 90th percentile, and 3.3 MB at the largest, 28 MB in all; the parsed
-# answer is 1.0 to 1.5 times its JSON in V8. So this keeps about eighty
+# Characters of comparison JSON the Commits panel keeps, so a revisited
+# commit's diff mounts with no request. Measured 2026-11-11 over this
+# repository's last 200 commits, merges included: 28 KB at the median,
+# 203 KB at the 90th percentile, and 3.3 MB at the largest, 28 MB in all.
+# The parsed answer holds 0.97 to 1.66 times its JSON length in V8's heap
+# (five answers from 28 KB to 3.3 MB, here and in review B of #368), so the
+# heap this bounds is up to about 27 MiB. It keeps about eighty
 # 90th-percentile commits, and one answer may take a quarter of it.
 GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 

@@ -452,6 +452,9 @@ async function createPage(start, options = {}) {
     for (let turn = 0; turn < 8; turn += 1) {
       await new Promise((resolve) => setImmediate(resolve));
     }
+    // And the timers those turns queued, as a reader's next step comes after them: the
+    // panel keeps a comparison in a task after the one that delivered it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   };
   await settle();
 
