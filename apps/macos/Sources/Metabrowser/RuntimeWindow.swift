@@ -75,6 +75,8 @@ struct RuntimeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            Divider()
+            WindowPreferencesView()
         }
         .padding(20)
         .frame(width: 620, alignment: .leading)

@@ -7,6 +7,8 @@ import WebKit
 /// The first window opens before the server starts and shows its progress; windows the
 /// page opens (`target=_blank`, Command-click) join it as tabs. When the last window
 /// closes, the server stops: a folder nobody is looking at keeps no process running.
+/// A restored folder's windows open before its server starts, which `FolderWindows`
+/// schedules.
 final class FolderSession: ManagedServer {
     let root: URL
     let logURL: URL
@@ -21,6 +23,10 @@ final class FolderSession: ManagedServer {
     /// The runtime the app would start now, which Retry and Restart Server use.
     private let currentSetup: () -> RuntimeSetup?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
+    /// A window became key, which is how a tab is selected.
+    var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
+    /// A window opened or closed, or a page changed: what the saved session records.
+    var onLayoutChange: (() -> Void)?
 
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate, currentSetup: @escaping () -> RuntimeSetup?) {
         self.currentSetup = currentSetup
@@ -47,13 +53,23 @@ final class FolderSession: ManagedServer {
 
     var folderName: String { FileManager.default.displayName(atPath: root.path(percentEncoded: false)) }
 
+    /// The folder's canonical path without a trailing slash, as `OpenTarget` and the saved
+    /// session name it.
+    var path: String { FolderSession.path(of: root) }
+
+    static func path(of root: URL) -> String {
+        var path = root.path(percentEncoded: false)
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return path
+    }
+
     /// Every server child not yet reaped; each pid is also its process group.
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
-    func start() {
-        let controller = makeWindow()
-        controller.showWindow(nil)
-        Task { await supervisor.start() }
+    /// Starts the server unless one is starting, running, or stopping, and returns once
+    /// that start is ready or has failed.
+    func startServer() async {
+        await supervisor.start()
     }
 
     /// Retry and Restart Server: a fresh server from the runtime chosen now, which may not
@@ -72,8 +88,10 @@ final class FolderSession: ManagedServer {
         await supervisor.shutDown()
     }
 
-    func showFrontWindow() {
+    /// Brings the folder's front window forward, showing `page` in it if one is given.
+    func showFrontWindow(page: PageAddress? = nil) {
         let front = windows.first { $0.window?.isVisible == true } ?? windows.first
+        if let page { front?.show(page) }
         front?.window?.makeKeyAndOrderFront(nil)
     }
 
@@ -98,11 +116,26 @@ final class FolderSession: ManagedServer {
     func windowClosed(_ controller: BrowserWindowController) {
         windows.removeAll { $0 === controller }
         if windows.isEmpty { onAllWindowsClosed?(self) }
+        onLayoutChange?()
     }
 
-    private func makeWindow(configuration: WKWebViewConfiguration? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController(session: self, configuration: configuration)
+    func windowShown(_ controller: BrowserWindowController) {
+        onWindowShown?(self, controller)
+    }
+
+    func pageChanged() {
+        onLayoutChange?()
+    }
+
+    /// A window not yet shown. It loads `page`, or the entry page, once the server is
+    /// ready, and a `discarded` one only once it is shown.
+    func makeWindow(
+        configuration: WKWebViewConfiguration? = nil, page: PageAddress? = nil, discarded: Bool = false
+    ) -> BrowserWindowController {
+        let controller = BrowserWindowController(
+            session: self, configuration: configuration, page: page, discarded: discarded)
         windows.append(controller)
+        defer { onLayoutChange?() }
         controller.adoptServer(endpoint)
         if let failure { controller.showFailure(failure) }
         return controller

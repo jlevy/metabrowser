@@ -19,6 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Open folders by canonical path (one session, and so one server, per root), plus
     /// the sessions of closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
+    private lazy var folderWindows = FolderWindows(
+        store: SessionStore(directory: Self.supportDirectory),
+        openSessions: { [weak self] in self?.sessions.openServers.compactMap { $0 as? FolderSession } ?? [] },
+        session: { [weak self] path in
+            self?.sessions[URL(filePath: path, directoryHint: .isDirectory).path(percentEncoded: false)] as? FolderSession
+        })
+    /// Set when a launch found no runtime, so the last session is restored once one is.
+    private var restoreAfterDiscovery = false
     private var runtimeWindow: RuntimeWindowController?
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
@@ -33,7 +41,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
         // before applicationDidFinishLaunching. Marking the search as running now makes
         // such a folder wait for it, instead of opening Settings as if none was found.
-        if selection.setup == nil { beginDiscovery() }
+        // Restoring now puts the last session's windows behind any such folder.
+        if selection.setup == nil {
+            restoreAfterDiscovery = true
+            beginDiscovery()
+        } else {
+            restoreLastSession()
+        }
+    }
+
+    /// `~/Library/Application Support/<bundle identifier>`, so each variant has its own.
+    private static var supportDirectory: URL {
+        URL.applicationSupportDirectory.appending(path: AppLog.subsystem, directoryHint: .isDirectory)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -67,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Stops every server, each with SIGTERM to its group, a bounded wait, then SIGKILL,
     /// before the app exits.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        folderWindows.saveForQuit()
         guard !sessions.isEmpty else { return .terminateNow }
         AppLog.app.info(
             "quitting: stopping \(self.sessions.openServers.count) server(s), \(self.sessions.stoppingCount) already stopping"
@@ -145,32 +165,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Folders
 
-    /// Opens `url` in its own window and server, or brings its window forward.
+    /// Opens `url`: a folder in its own server and window or tab, or a file at its page
+    /// inside the open folder that holds it, else inside its own folder (`OpenTarget`). A
+    /// folder already open brings its window forward.
     func request(_ url: URL) {
         guard url.isFileURL else { return }
-        let root = URL(
-            filePath: FileChecks.canonicalPath(url.path(percentEncoded: false)), directoryHint: .isDirectory)
-        let key = root.path(percentEncoded: false)
-        guard FileChecks.isDirectory(key) else {
-            return refuse("Metabrowser opens folders", "\(url.lastPathComponent) is not a folder. Open the folder that contains it.")
+        let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
+        let openRoots = sessions.openServers.compactMap { ($0 as? FolderSession)?.path }
+        guard let target = OpenTarget.resolve(path, kind: OpenTarget.Kind(of: path), openRoots: openRoots) else {
+            return refuse(
+                "Metabrowser opens folders and files",
+                "\(url.lastPathComponent) is not a folder or a file, or it no longer exists.")
         }
+        let root = URL(filePath: target.root, directoryHint: .isDirectory)
         if let reason = CLIServeLaunch.unservableReason(root) {
-            return refuse("Metabrowser cannot open this folder", "\(url.lastPathComponent) cannot be served: \(reason).")
+            return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
         RecentFoldersMenu.noteOpened(root)
-        if let session = sessions[key] as? FolderSession {
-            session.showFrontWindow()
+        if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
+            session.showFrontWindow(page: target.page)
             return
         }
-        guard let setup = selection.setupForOpening(root) else {
+        // A request waiting for a runtime is resolved again when one is found.
+        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: root) else {
             if !selection.isSearching { showSettings(nil) }
             return
         }
+        folderWindows.place(session.makeWindow(page: target.page))
+        Task { await session.startServer() }
+    }
+
+    /// The open session for `root`, or a new one with no window and no server yet; nil
+    /// without a runtime or for a folder that cannot be served.
+    private func session(for root: URL) -> FolderSession? {
+        let key = root.path(percentEncoded: false)
+        if let open = sessions[key] as? FolderSession { return open }
+        guard let setup = selection.setup, CLIServeLaunch.unservableReason(root) == nil else { return nil }
         let session = FolderSession(
             root: root, setup: setup, gate: launchGate, currentSetup: { [weak self] in self?.selection.setup })
-        session.onAllWindowsClosed = { [weak self] closed in self?.sessions.retire(closed) }
+        session.onAllWindowsClosed = { [weak self] closed in
+            self?.sessions.retire(closed)
+            self?.folderWindows.folderClosed(closed)
+        }
+        session.onWindowShown = { [weak self] folder, controller in
+            self?.folderWindows.windowShown(controller, of: folder)
+        }
+        session.onLayoutChange = { [weak self] in self?.folderWindows.scheduleSave() }
         sessions.insert(session, for: key)
-        session.start()
+        return session
+    }
+
+    private func restoreLastSession() {
+        folderWindows.restore { [weak self] root in self?.session(for: root) }
     }
 
     private func refuse(_ message: String, _ detail: String) {
@@ -187,10 +233,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openFolder(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
-        panel.canChooseFiles = false
+        panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
         panel.prompt = "Open"
-        panel.message = "Choose a folder to browse with Metabrowser."
+        panel.message = "Choose a folder to browse with Metabrowser, or a file to see in its folder."
         panel.begin { [weak self] response in
             guard response == .OK else { return }
             panel.urls.forEach { self?.request($0) }
@@ -236,6 +282,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
+        if restoreAfterDiscovery {
+            restoreAfterDiscovery = false
+            restoreLastSession()
+        }
         openPendingFolders()
     }
 
