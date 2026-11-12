@@ -928,6 +928,64 @@ batched.dispose();
   closeModal();
   check("closing it brings them back", tree.body.querySelectorAll(".kbd-badge").length === 2);
 
+  // While revealed, a pass over the badges reads each target's liveness once, and a batch
+  // of changes moves the badges once, as it ends, before its one publication. Without
+  // checkVisibility(), one liveness read is one read of the target's own `display`.
+  const countReads = (work) => {
+    let reads = 0;
+    const view = tree.defaultView;
+    view.getComputedStyle = (node) => {
+      const style = Object.getPrototypeOf(view).getComputedStyle.call(view, node);
+      if (!node.hasAttribute("aria-keyshortcuts")) {
+        return style;
+      }
+      return {
+        get display() {
+          reads += 1;
+          return style.display;
+        },
+        visibility: style.visibility,
+        direction: style.direction,
+      };
+    };
+    try {
+      work();
+    } finally {
+      delete view.getComputedStyle;
+    }
+    return reads;
+  };
+  // Two targets reach the computed style: the Tree tab and Copy. The staged tab is
+  // inert, which ends its read before any style.
+  equal(
+    "a pass reads each target once",
+    countReads(() => targetRegistry.refreshBadges()),
+    2,
+  );
+  const passes = [tab("tree", "Tree"), tab("tree", "Tree"), tab("tree", "Tree")];
+  /** @type {boolean[]} */
+  const badgedInside = [];
+  events.length = 0;
+  const batchedReads = countReads(() =>
+    targetRegistry.batch(() => {
+      for (const next of passes) {
+        bar.replaceChildren(next, source);
+        handle.retarget(next);
+        badgedInside.push(next.querySelector(".kbd-badge") !== null);
+      }
+    }),
+  );
+  equal("inside a batch no badge moves", badgedInside, [false, false, false]);
+  check(
+    "the batch ends with the badge on the last target",
+    passes[2].querySelector(".kbd-badge") !== null &&
+      tree.body.querySelectorAll(".kbd-badge").length === 2,
+  );
+  equal("a batch of three retargets is one pass", batchedReads, 2);
+  equal("and one publication", events, [{ kind: "batch", kinds: ["target"] }]);
+  bar.replaceChildren(rebuilt, source);
+  handle.retarget(rebuilt);
+
   targetRegistry.setRevealed(false);
   check(
     "ending the reveal removes every badge",

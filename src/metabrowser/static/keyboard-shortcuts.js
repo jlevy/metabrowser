@@ -508,6 +508,8 @@
     let batchDepth = 0;
     /** @type {ShortcutEvent[]} */
     let batchedEvents = [];
+    // Whether a change inside the current batch left the badges to move, once, as it ends.
+    let badgesStale = false;
     /** Each command's attached targets, kept apart from registration: a command
      * re-registered with new copy keeps the elements it acts on.
      * @type {Map<string, ShortcutTargetRecord[]>} */
@@ -536,8 +538,9 @@
     /**
      * Run `work` and publish what it changed once, when the outermost batch
      * ends: one event of its own when it changed one thing, otherwise a `batch`
-     * event naming each kind it contained. What a failed batch changed is
-     * still published.
+     * event naming each kind it contained. While revealed, the badges move once
+     * then too, before the publication, however many changes the batch held.
+     * What a failed batch changed is still published.
      *
      * @template T
      * @param {() => T} work
@@ -549,6 +552,10 @@
         return work();
       } finally {
         batchDepth -= 1;
+        if (batchDepth === 0 && badgesStale) {
+          badgesStale = false;
+          followBadges();
+        }
         if (batchDepth === 0 && batchedEvents.length > 0) {
           const events = batchedEvents;
           batchedEvents = [];
@@ -700,25 +707,42 @@
      * @param {ReadonlySet<string>} activeScopes
      */
     function entryIsLive(entry, activeScopes) {
+      return (
+        entryIsReady(entry, activeScopes) &&
+        (!entry.descriptor.targeted || firstLiveTarget(entry.descriptor.id) !== null)
+      );
+    }
+
+    /**
+     * Whether a command would run now apart from its targets: its scope is active and
+     * its `available()` holds.
+     *
+     * @param {ShortcutEntry} entry
+     * @param {ReadonlySet<string>} activeScopes
+     */
+    function entryIsReady(entry, activeScopes) {
       const descriptor = entry.descriptor;
       return (
         activeScopes.has(descriptor.scope) &&
-        (typeof descriptor.available !== "function" || descriptor.available({})) &&
-        (!descriptor.targeted || firstLiveTarget(descriptor.id) !== null)
+        (typeof descriptor.available !== "function" || descriptor.available({}))
       );
     }
 
     /**
      * Badges follow targets: while revealed, each live command's first live target
      * carries one keycap, and every other target carries none. At rest no target
-     * carries one, so nothing about a target's text or layout changes then.
+     * carries one, so nothing about a target's text or layout changes then. Each
+     * target's liveness is read once a pass: a ready command's first live target is
+     * both what makes it live and the one its badge goes on.
      */
     function reconcileBadges() {
       const activeScopes = new Set(activeLayers());
       for (const [commandId, records] of targets) {
         const entry = commands.get(commandId);
         const chosen =
-          revealed && entry && entryIsLive(entry, activeScopes) ? firstLiveTarget(commandId) : null;
+          revealed && entry && entryIsReady(entry, activeScopes)
+            ? firstLiveTarget(commandId)
+            : null;
         for (const record of records) {
           if (record === chosen && entry) {
             mountBadge(record, entry);
@@ -729,9 +753,17 @@
       }
     }
 
-    // A change while revealed moves the badges at once; at rest there are none to move.
+    /**
+     * A change while revealed moves the badges at once, or inside a batch once as the
+     * batch ends; at rest there are none to move.
+     */
     function followBadges() {
-      if (revealed) {
+      if (!revealed) {
+        return;
+      }
+      if (batchDepth > 0) {
+        badgesStale = true;
+      } else {
         reconcileBadges();
       }
     }
