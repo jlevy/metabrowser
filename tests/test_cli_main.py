@@ -28,6 +28,7 @@ import uvicorn
 from click import unstyle
 from typer.testing import CliRunner
 
+import metabrowser.git.process as git_process
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cache import urls as cache_urls
@@ -486,6 +487,14 @@ def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
     assert _shutdown_noise_filter(unexpected)
 
 
+@pytest.fixture
+def fresh_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stop is for good and process-wide, so a test that stops gets its own."""
+
+    monkeypatch.setattr(git_process, "_GROUP_STOP", git_process._GroupStop())
+
+
+@pytest.mark.usefixtures("fresh_stop")
 def test_interrupt_exits_before_any_later_logger_mutation_could_matter() -> None:
     """The interrupt exits from the handler, ahead of the ``finally`` in
     ``run_serve`` that restores the uvicorn logger.
@@ -510,6 +519,7 @@ def test_interrupt_exits_before_any_later_logger_mutation_could_matter() -> None
         uvicorn_logger.setLevel(original_level)
 
 
+@pytest.mark.usefixtures("fresh_stop")
 def test_one_interrupt_announces_and_stops() -> None:
     """One Ctrl-C announces the stop and ends the process, with no second press.
 
@@ -538,6 +548,7 @@ def test_one_interrupt_announces_and_stops() -> None:
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+@pytest.mark.usefixtures("fresh_stop")
 def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status() -> None:
     """A mirror's refresh Git is outside the terminal's group, so only the server
     hears a hangup; at its default action the server would die and leave Git
@@ -552,7 +563,7 @@ def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status()
         assert signal.getsignal(signal.SIGHUP) is _stop_now
         with (
             patch("metabrowser.cli.serve.os.write"),
-            patch("metabrowser.cli.serve.kill_live_process_groups") as kill_groups,
+            patch("metabrowser.git.process.kill_live_process_groups") as kill_groups,
             patch("metabrowser.cli.serve.os._exit") as hard_exit,
         ):
             _stop_now(signal.SIGHUP, None)

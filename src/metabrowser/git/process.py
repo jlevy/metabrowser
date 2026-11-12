@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import hashlib
 import logging
 import os
@@ -38,8 +39,9 @@ import re
 import shutil
 import signal
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+import threading
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
@@ -485,10 +487,48 @@ def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPo
 # Git processes started as the leaders of their own process groups and not yet reaped.
 # They outlive a Python process that exits without unwinding, because they are in
 # another group, so a command that must stop at once kills them first; see
-# :func:`kill_live_process_groups`.
+# :func:`stop_process_groups`.
 # Kept by process ID with the ``Process`` itself, whose ``returncode`` is set once the
 # child is reaped, by its owner or by asyncio: from then on its ID may be reused.
 _LIVE_PROCESS_GROUPS: dict[int, asyncio.subprocess.Process] = {}
+
+
+@dataclass(slots=True)
+class _GroupStop:
+    """What a stop shares with the spawns of process groups (:func:`start_process_group`).
+
+    A group's ID is known only once its spawn returns, a few event-loop turns after the
+    fork, so a stop that killed what the registry held then would miss a group whose
+    spawn was under way. The stop counts those spawns instead: once it begins, no group
+    is spawned, one whose spawn was under way is killed as soon as it exists, and the
+    stop's own last step runs when none is left.
+
+    The lock is re-entrant because a stop may run in a signal handler, between two
+    bytecodes of the main thread, while that thread holds the lock for a spawn's
+    bookkeeping. Each step below leaves the state one a handler can act on: a spawn is
+    registered before it stops being counted.
+    """
+
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    in_flight: int = 0
+    requested: bool = False
+    finished: bool = False
+    finish: Callable[[], object] | None = None
+    settled: threading.Event = field(default_factory=threading.Event)
+
+
+_GROUP_STOP = _GroupStop()
+
+
+class ProcessGroupsStoppedError(OSError):
+    """A process group was not started, because this process is stopping.
+
+    An ``OSError``, as a spawn that failed is, so callers that report a failed spawn
+    report this one too.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(errno.ECANCELED, "this process is stopping")
 
 
 def kill_live_process_groups() -> None:
@@ -497,7 +537,8 @@ def kill_live_process_groups() -> None:
     Safe to call from a signal handler just before ``os._exit``: it only signals.
     A group killed here leaves what an interrupted Git leaves, which the next fetch
     cleans up under the store's fetch lock. A reaped child is skipped, because its
-    group ID may already belong to an unrelated process.
+    group ID may already belong to an unrelated process. A group whose spawn is still
+    under way is not in the registry yet; :func:`stop_process_groups` covers those.
     """
 
     for pid, proc in tuple(_LIVE_PROCESS_GROUPS.items()):
@@ -505,6 +546,93 @@ def kill_live_process_groups() -> None:
             continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
+
+
+def stop_process_groups(finish: Callable[[], object]) -> bool:
+    """Kill every live process group, refuse new ones, and then call *finish*.
+
+    For a command that must stop at once and exits without unwinding: *finish* is its
+    ``os._exit``. A group already registered is killed here. A spawn still under way
+    kills what it started as soon as it exists, and the last such spawn to end calls
+    *finish*, on its own thread. From now on :func:`start_process_group` refuses.
+
+    Returns whether *finish* was called here, as it is when no spawn was under way. When
+    it was not, a caller on another thread may wait for the spawns with
+    :func:`wait_for_process_group_spawns`; a signal handler returns, so its thread can
+    end those spawns. A second stop while the first waits does not wait: it calls its
+    own *finish* at once.
+
+    Safe in a signal handler: it takes a re-entrant lock and only signals.
+    """
+
+    stop = _GROUP_STOP
+    with stop.lock:
+        forced = stop.requested
+        stop.requested = True
+        now = forced or stop.in_flight == 0
+        if now:
+            stop.finished = True
+        else:
+            stop.finish = finish
+        kill_live_process_groups()
+    # ``settled`` is not set here: only a stop that waits needs it, and setting it takes
+    # a plain lock, which this thread may hold if the handler interrupted a spawn's end.
+    if now:
+        finish()
+    return now
+
+
+def wait_for_process_group_spawns(timeout_s: float) -> bool:
+    """Wait for the spawns a stop found under way to end; whether they did in time."""
+
+    return _GROUP_STOP.settled.wait(timeout_s)
+
+
+async def start_process_group(
+    start: Callable[[], Awaitable[asyncio.subprocess.Process]],
+) -> asyncio.subprocess.Process:
+    """Spawn, with *start*, a process that leads its own group, and track that group.
+
+    Every such spawn goes through here, Git's and another tool's run the same way, such
+    as ``gh``, so a stop can account for it: the group is registered for
+    :func:`kill_live_process_groups` as soon as it exists, and its owner calls
+    :func:`forget_process_group` once it is reaped. Raises
+    :class:`ProcessGroupsStoppedError`, and starts nothing, once a stop has begun.
+    """
+
+    stop = _GROUP_STOP
+    with stop.lock:
+        if stop.requested:
+            raise ProcessGroupsStoppedError
+        stop.in_flight += 1
+    try:
+        proc = await start()
+    except BaseException:
+        # A failed or cancelled spawn started nothing this layer can name; it still ends.
+        _end_group_spawn(stop, None)
+        raise
+    _end_group_spawn(stop, proc)
+    return proc
+
+
+def _end_group_spawn(stop: _GroupStop, proc: asyncio.subprocess.Process | None) -> None:
+    """Register what a spawn started, or nothing, and end a stop that waited for it."""
+
+    with stop.lock:
+        if proc is not None:
+            _register_group(proc)
+        stop.in_flight -= 1
+        if not stop.requested:
+            return
+        if proc is not None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(proc.pid, signal.SIGKILL)
+        finish = stop.finish
+        if stop.in_flight or stop.finished or finish is None:
+            return
+        stop.finished = True
+    stop.settled.set()
+    finish()
 
 
 def _register_group(proc: asyncio.subprocess.Process) -> None:
@@ -521,18 +649,8 @@ def _reaped(proc: asyncio.subprocess.Process) -> None:
         del _LIVE_PROCESS_GROUPS[proc.pid]
 
 
-def track_process_group(proc: asyncio.subprocess.Process) -> None:
-    """Have :func:`kill_live_process_groups` kill *proc*'s group, as it kills Git's.
-
-    For another tool run the way Git is, as the leader of its own process group, such
-    as ``gh``; call :func:`forget_process_group` once it is reaped.
-    """
-
-    _register_group(proc)
-
-
 def forget_process_group(proc: asyncio.subprocess.Process) -> None:
-    """Stop tracking a group :func:`track_process_group` registered."""
+    """Stop tracking a group :func:`start_process_group` registered."""
 
     _reaped(proc)
 
@@ -812,8 +930,8 @@ async def spawn_git_process(
         env["GIT_CEILING_DIRECTORIES"] = str(Path(work_cwd).resolve().parent)
     own_group = chosen.own_process_group and os.name == "posix"
 
-    async def spawn_and_register() -> asyncio.subprocess.Process:
-        proc = await asyncio.create_subprocess_exec(
+    async def spawn() -> asyncio.subprocess.Process:
+        return await asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
@@ -824,19 +942,17 @@ async def spawn_git_process(
             start_new_session=own_group,
             pass_fds=tuple(pass_fds),
         )
-        # Registered as soon as it exists, so a stop that cannot unwind kills it too.
-        if own_group:
-            _register_group(proc)
-        return proc
 
-    spawn = asyncio.ensure_future(spawn_and_register())
+    # A group is registered as soon as it exists, so a stop that cannot unwind kills it
+    # too, and a stop that begins while it is starting waits for it.
+    spawning = asyncio.ensure_future(start_process_group(spawn) if own_group else spawn())
     try:
-        return await asyncio.shield(spawn)
+        return await asyncio.shield(spawning)
     except asyncio.CancelledError:
         # Cancelled while the child was starting. The child may already have forked
         # helpers, and asyncio's own cleanup would kill only ``git``; finish the
         # spawn, then kill the whole group before the cancellation continues.
-        await kill_when_spawned(spawn)
+        await kill_when_spawned(spawning)
         raise
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or
@@ -1040,6 +1156,7 @@ __all__ = [
     "GitTimeoutError",
     "GitUnavailableError",
     "OBJECT_FORMATS",
+    "ProcessGroupsStoppedError",
     "ObjectFormat",
     "READ_POLICY",
     "STORE_READ_POLICY",
@@ -1065,6 +1182,8 @@ __all__ = [
     "run_git_at",
     "spawn_git_at",
     "spawn_git_process",
+    "start_process_group",
+    "stop_process_groups",
     "terminate_git_process",
-    "track_process_group",
+    "wait_for_process_group_spawns",
 ]
