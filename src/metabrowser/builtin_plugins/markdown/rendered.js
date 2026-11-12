@@ -39,6 +39,70 @@ let mountSequence = 0;
 // of thirty 99th-percentile documents, and one render may take a quarter of it.
 export const RENDER_CACHE_BYTES = 8 * 1024 * 1024;
 
+// The largest kept render, in characters of HTML, that a mount places in the task that
+// found it. A kept render is found during the input that opened the document, so placing
+// it there makes the input's first paint wait for the placement. Measured in exp-061's
+// series (Chrome 152, 2026-11-12) with every kept render placed that way: architecture.md
+// (52,335 characters, 525 elements) and README.md (29,192) placed with no task over 50 ms
+// and the input's next paint 32 ms after it, one frame later than the control's 16;
+// design-system.md (211,103 characters, 2,299 elements) placed in one 80 to 93 ms task,
+// and the click's next paint came 96 to 120 ms after it. This bound sits just above the
+// largest size measured with no long task. A larger render waits for the input's first
+// paint, which shows the document being left marked pending, as a render fetched from the
+// server does; sizes between 64 KiB and 211,103 characters were not measured, so they take
+// that side.
+export const KEPT_RENDER_INPUT_TASK_MAX_CHARS = 64 * 1024;
+
+// How long a mount waits for the input's first paint before placing a large kept render
+// anyway. Animation frames stop in a hidden page, where no paint is waiting to be seen.
+const KEPT_RENDER_PAINT_WAIT_MAX_MS = 100;
+
+/**
+ * Resolve once the frame now pending has painted: a task posted from that frame's
+ * animation callback runs after its paint. Resolves at once on abort, and after
+ * {@link KEPT_RENDER_PAINT_WAIT_MAX_MS} when no frame comes; every timer and the frame
+ * request are released when it resolves.
+ *
+ * @param {AbortSignal} signal
+ * @returns {Promise<void>}
+ */
+function afterInputPaint(signal) {
+  return new Promise((resolve) => {
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let task = null;
+    /** @type {number | null} */
+    let frame = null;
+    let settled = false;
+    const settle = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(fallback);
+      if (task !== null) {
+        clearTimeout(task);
+      }
+      if (frame !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(frame);
+      }
+      signal.removeEventListener("abort", settle);
+      resolve();
+    };
+    const fallback = setTimeout(settle, KEPT_RENDER_PAINT_WAIT_MAX_MS);
+    if (signal.aborted) {
+      settle();
+      return;
+    }
+    signal.addEventListener("abort", settle, { once: true });
+    if (typeof requestAnimationFrame === "function") {
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        task = setTimeout(settle, 0);
+      });
+    }
+  });
+}
+
 /**
  * Everything a render depends on beside the envelope that holds it.
  *
@@ -435,6 +499,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       const request = primaryRenderRequest(ctx, raw, options.includeToc);
       const found = request ? keptRenders.lookup(raw, request) : undefined;
       if (found) {
+        if (found.rendered.html.length > KEPT_RENDER_INPUT_TASK_MAX_CHARS) {
+          await afterInputPaint(controller.signal);
+        }
         await ensureKeptAssets(found.rendered);
       }
       const { rendered, diagnostics: preparationDiagnostics } =

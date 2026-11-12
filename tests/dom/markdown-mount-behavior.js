@@ -108,6 +108,43 @@ function elapseIdlePeriod() {
     timer.callback();
   }
 }
+/** Run the timers due within *ms*, as the event loop would once that much time passed. */
+function runTimersDueWithin(ms) {
+  for (const [id, timer] of [...idleTimers]) {
+    if (timer.delay <= ms) {
+      idleTimers.delete(id);
+      timer.callback();
+    }
+  }
+}
+
+/**
+ * Animation frames run when the session paints one, so a check can tell the task an input
+ * runs in from the frame it paints and the task after it.
+ */
+const animationFrames = new Map();
+let nextAnimationFrame = 1;
+globalThis.requestAnimationFrame = (callback) => {
+  const id = nextAnimationFrame;
+  nextAnimationFrame += 1;
+  animationFrames.set(id, callback);
+  return id;
+};
+globalThis.cancelAnimationFrame = (id) => {
+  animationFrames.delete(id);
+};
+function paintFrame() {
+  for (const [id, callback] of [...animationFrames]) {
+    animationFrames.delete(id);
+    callback(0);
+  }
+}
+/** Settle every microtask the current task queued, and nothing else. */
+async function endOfTask() {
+  for (let turn = 0; turn < 20; turn += 1) {
+    await Promise.resolve();
+  }
+}
 
 (async () => {
   const source = fs.readFileSync(
@@ -717,6 +754,113 @@ function elapseIdlePeriod() {
     completeTextRequests.length === completeTextsBefore + 1 &&
       requestsFor("large-kept.md").length === 1,
   );
+
+  // A kept render is found in the task of the input that opened the document. A small one
+  // is placed in that task. A large one waits for that input's first paint, which shows the
+  // document being left, and is placed in the task after it: placing design-system.md in
+  // the input's task was one 80 to 93 ms task and pushed the click's next paint to 96 to
+  // 120 ms (exp-061's series).
+  const smallKept = makeContainer();
+  const smallKeptMount = module.mountRenderedMarkdown(
+    smallKept,
+    { path: "kept.md", raw: keptEnvelope },
+    mb,
+  );
+  await endOfTask();
+  check(
+    "a small kept render is placed in the input's own task",
+    smallKept.innerHTML.includes("kept v1") && animationFrames.size === 0,
+    smallKept.innerHTML,
+  );
+  await smallKeptMount.ready;
+  smallKeptMount.dispose();
+
+  const largeHtml = `<article>large kept ${"x".repeat(module.KEPT_RENDER_INPUT_TASK_MAX_CHARS)}</article>`;
+  const largeEnvelope = {
+    content: "# Large",
+    mtime_hash: "large-kept-1",
+    path: "large-kept-doc.md",
+    type: "text",
+  };
+  const largeFirst = makeContainer();
+  const largeFirstMount = module.mountRenderedMarkdown(
+    largeFirst,
+    { path: "large-kept-doc.md", raw: largeEnvelope },
+    mb,
+  );
+  await flush();
+  requestsFor("large-kept-doc.md")[0].resolve({ html: largeHtml, diagnostics: [] });
+  await largeFirstMount.ready;
+  largeFirstMount.dispose();
+  const pendingPaintWaits = () => [...idleTimers.values()].filter((timer) => timer.delay <= 100);
+
+  const enhanceCallsBeforeLarge = globalThis.__markdownEnhanceCalls.length;
+  const largeRevisit = makeContainer();
+  const largeRevisitMount = module.mountRenderedMarkdown(
+    largeRevisit,
+    { path: "large-kept-doc.md", raw: largeEnvelope },
+    mb,
+  );
+  await endOfTask();
+  check(
+    "a large kept render is not placed in the input's own task",
+    !largeRevisit.innerHTML.includes("large kept") &&
+      globalThis.__markdownEnhanceCalls.length === enhanceCallsBeforeLarge,
+  );
+  check("it waits for the frame the input paints", animationFrames.size === 1);
+  paintFrame();
+  await endOfTask();
+  check(
+    "it is not placed in that frame's own callbacks, before the paint",
+    !largeRevisit.innerHTML.includes("large kept"),
+  );
+  runTimersDueWithin(0);
+  await largeRevisitMount.ready;
+  check(
+    "it is placed in the task after the input's first paint",
+    largeRevisit.innerHTML.includes("large kept") &&
+      globalThis.__markdownEnhanceCalls.length === enhanceCallsBeforeLarge + 1,
+  );
+  check("and still asks for nothing", requestsFor("large-kept-doc.md").length === 1);
+  check(
+    "the wait leaves no frame request or timer behind",
+    animationFrames.size === 0 && pendingPaintWaits().length === 0,
+    JSON.stringify(pendingPaintWaits()),
+  );
+  largeRevisitMount.dispose();
+
+  const leaving = makeContainer();
+  const leavingMount = module.mountRenderedMarkdown(
+    leaving,
+    { path: "large-kept-doc.md", raw: largeEnvelope },
+    mb,
+  );
+  await endOfTask();
+  check("a mount that waits holds one frame request", animationFrames.size === 1);
+  leavingMount.dispose();
+  await leavingMount.ready;
+  check(
+    "a mount disposed while it waits places nothing and releases its frame and timers",
+    !leaving.innerHTML.includes("large kept") &&
+      animationFrames.size === 0 &&
+      pendingPaintWaits().length === 0,
+  );
+
+  // A hidden page paints no frame; the wait ends after its bound instead.
+  const hidden = makeContainer();
+  const hiddenMount = module.mountRenderedMarkdown(
+    hidden,
+    { path: "large-kept-doc.md", raw: largeEnvelope },
+    mb,
+  );
+  await endOfTask();
+  runTimersDueWithin(100);
+  await hiddenMount.ready;
+  check(
+    "with no frame, a large kept render is placed after the wait's bound",
+    hidden.innerHTML.includes("large kept") && animationFrames.size === 0,
+  );
+  hiddenMount.dispose();
 
   // The bound is bytes: the render's HTML and the JSON of the rest. A store past it evicts
   // the least recently used render, which a lookup refreshes, and a render over a quarter
