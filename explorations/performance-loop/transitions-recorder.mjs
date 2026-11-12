@@ -997,7 +997,21 @@ export function driver(browser) {
     );
   // Driver-owned scrolling happens here, before any clock starts: scroll the target into
   // view, let two frames settle, then take its center and prove a press there lands on it.
+  // A list that re-anchors while it fills (the Pulls list as a selected row expands) can
+  // move the target after the scroll; up to three attempts, all before the clock starts.
   async function resolveTarget(selector) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await resolveOnce(selector);
+      } catch (error) {
+        if (!(error instanceof Refusal) || error.guard !== "hit_test" || attempt >= 3) {
+          throw error;
+        }
+        await sleep(500);
+      }
+    }
+  }
+  async function resolveOnce(selector) {
     const sel = JSON.stringify(selector);
     const found = await evaluate(
       `(() => { const e = document.querySelector(${sel}); if (!e) { return false; } e.scrollIntoView({ block: "nearest", inline: "nearest" }); return true; })()`,
