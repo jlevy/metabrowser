@@ -153,21 +153,21 @@
   });
   // Plugin keys until static/plugin-shortcuts.js loads and takes them: 233 bytes of
   // startup transfer, by devtools/check_startup_scripts.py.
-  const _shortcutQueue = [];
+  const _shortcutQueue = new Set();
   function queueShortcut(element, options) {
     const facade = global.MetabrowserPluginShortcuts;
     if (facade) {
       return facade.attachShortcut(element, options);
     }
     const queued = { element, options };
-    _shortcutQueue.push(queued);
+    _shortcutQueue.add(queued);
     return {
       retarget(next) {
         queued.element = next;
         queued.handle?.retarget(next);
       },
       detach() {
-        queued.options = null;
+        _shortcutQueue.delete(queued);
         queued.handle?.detach();
       },
     };

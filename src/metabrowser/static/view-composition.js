@@ -33,11 +33,13 @@
       return;
     }
     const Node = window.Node;
-    for (const queued of window.MetabrowserPluginHost?.shortcutQueue ?? []) {
+    const queue = window.MetabrowserPluginHost?.shortcutQueue ?? new Set();
+    for (const queued of queue) {
       // What the plugin passed is checked only when the facade takes it.
       if (typeof Node === "function" && queued.element instanceof Node) {
         if (container.contains(queued.element)) {
-          queued.options = null;
+          // The queue lets go of the element as well as the key.
+          queue.delete(queued);
         }
       }
     }

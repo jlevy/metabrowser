@@ -338,8 +338,8 @@ async function main() {
   mb.shortcuts.attach(before, spec("demo.moved", "m", "Moved")).retarget(after);
   mb.shortcuts.attach("#not-an-element", spec("demo.broken", "b", "Broken"));
   steps.push(
-    page.record("attached before the facade loads: the SDK queues each one", {
-      queued: context.MetabrowserPluginHost.shortcutQueue.length,
+    page.record("attached before the facade loads: the SDK queues each one still attached", {
+      queued: context.MetabrowserPluginHost.shortcutQueue.size,
     }),
   );
 
@@ -349,7 +349,7 @@ async function main() {
   page.load("plugin-shortcuts.js");
   steps.push(
     page.record("the facade loads and takes the queue; the malformed one is logged", {
-      queued: context.MetabrowserPluginHost.shortcutQueue.length,
+      queued: context.MetabrowserPluginHost.shortcutQueue.size,
     }),
   );
 
@@ -792,17 +792,19 @@ async function main() {
   );
   assert((await earlyMount) === "mounted", "the early view did not mount");
   assert(
-    early.context.MetabrowserPluginHost.shortcutQueue.length === 1,
+    early.context.MetabrowserPluginHost.shortcutQueue.size === 1,
     "the early view's key was not queued",
   );
   earlyStage.commit(() => {});
   earlyLifecycle.disposeActive();
+  const queuedAfterDispose = early.context.MetabrowserPluginHost.shortcutQueue.size;
   for (const name of [...SHELL_TOOLS, "plugin-shortcuts.js"]) {
     early.load(name);
   }
   early.build();
   steps.push(
     early.record("disposed while queued, before the facade loaded: never bound", {
+      queuedAfterDispose,
       handled: early.press("e"),
     }),
   );

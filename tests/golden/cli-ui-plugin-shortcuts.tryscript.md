@@ -22,19 +22,20 @@ Each step prints the plugin keys the registry holds, with what each runs on now,
 control’s `aria-keyshortcuts`, the badges while revealed, what the controls were asked
 to do, and what the facade warned or logged.
 
-The steps show an attachment queued, detached, and retargeted before the facade loads;
-the replay onto the shell’s registry; a key with and without Shift; the badges; Help,
-opened through the real overlay, still listing the keys of controls it made inert; the
-shell’s reserved letters refused with one warning per command id, and every letter tried
-to show the refused set is exactly the reserved table; two plugins on one letter, where
-the earlier attachment runs and badges and the later is warned; a shell view tab
-outranking a plugin key; two mounts of one command id; a rebuilt control retargeted; a
-control taken out of the page and put back; the inert stage; an aborted signal and an
-idempotent detach; malformed input, which throws with the `shortcuts.attach:` prefix;
-the registry torn down and rebuilt; and view composition releasing a key that a view’s
-own `dispose()` forgot, whether or not the facade had loaded, including one whose
-`dispose()` takes its own root out of the container, a render that finishes after its
-stage was cancelled, and a render that attaches a key and then fails.
+The steps show an attachment queued, detached, and retargeted before the facade loads, a
+detached one leaving the queue; the replay onto the shell’s registry; a key with and
+without Shift; the badges; Help, opened through the real overlay, still listing the keys
+of controls it made inert; the shell’s reserved letters refused with one warning per
+command id, and every letter tried to show the refused set is exactly the reserved
+table; two plugins on one letter, where the earlier attachment runs and badges and the
+later is warned; a shell view tab outranking a plugin key; two mounts of one command id;
+a rebuilt control retargeted; a control taken out of the page and put back; the inert
+stage; an aborted signal and an idempotent detach; malformed input, which throws with
+the `shortcuts.attach:` prefix; the registry torn down and rebuilt; and view composition
+releasing a key that a view’s own `dispose()` forgot, whether or not the facade had
+loaded (before, its entry leaves the queue), including one whose `dispose()` takes its
+own root out of the container, a render that finishes after its stage was cancelled, and
+a render that attaches a key and then fails.
 `tests/test_keymap.py` holds the printed reserved table and refused letters to
 `src/metabrowser/keymap.py`.
 
@@ -43,10 +44,10 @@ $ node tests/dom/plugin-shortcuts-session.js
 {
   "steps": [
     {
-      "step": "attached before the facade loads: the SDK queues each one",
+      "step": "attached before the facade loads: the SDK queues each one still attached",
       "keys": [],
       "aria": ["Unified: none","Stale: none","Before: none","After: none"],
-      "queued": 4
+      "queued": 3
     },
     {
       "step": "the facade loads and takes the queue; the malformed one is logged",
@@ -266,6 +267,7 @@ $ node tests/dom/plugin-shortcuts-session.js
       "step": "disposed while queued, before the facade loaded: never bound",
       "keys": [],
       "aria": ["Early: none"],
+      "queuedAfterDispose": 0,
       "handled": false
     }
   ]

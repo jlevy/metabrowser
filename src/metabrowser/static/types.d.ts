@@ -1865,8 +1865,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   isOwnedDelegate(element: Element | null | undefined): boolean;
   /** Copy what an owned copy control names, as its click does; see plugin-sdk.js. */
   copyFromControl(control: HTMLElement | null): boolean;
-  /** Plugin keys attached before static/plugin-shortcuts.js loaded; it empties this. */
-  shortcutQueue: Array<MetabrowserQueuedShortcut>;
+  /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
+  shortcutQueue: Set<MetabrowserQueuedShortcut>;
   configureAssets(
     assetsByKind: Record<
       string,
@@ -2384,7 +2384,6 @@ type MetabrowserPluginShortcutsApi = Readonly<{
 /** One attachment plugin-sdk.js holds until static/plugin-shortcuts.js loads and takes it. */
 type MetabrowserQueuedShortcut = {
   element: unknown;
-  /** Null once the plugin detached it. */
   options: unknown;
   /** The facade's handle, once the facade took the attachment. */
   handle?: MetabrowserPluginShortcutHandle;

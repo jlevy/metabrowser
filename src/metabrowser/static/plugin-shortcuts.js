@@ -541,13 +541,12 @@
     releaseWithin,
   });
 
-  // What plugins attached before this module loaded. A malformed one was a plugin's
-  // error when it was made, and no caller is left to throw to, so it is logged.
-  const queue = window.MetabrowserPluginHost?.shortcutQueue ?? [];
-  for (const queued of queue.splice(0)) {
-    if (queued.options === null) {
-      continue;
-    }
+  // What plugins attached before this module loaded and still hold: a detach before
+  // then took its entry out of the queue. A malformed one was a plugin's error when it
+  // was made, and no caller is left to throw to, so it is logged.
+  const queue = window.MetabrowserPluginHost?.shortcutQueue ?? new Set();
+  for (const queued of queue) {
+    queue.delete(queued);
     try {
       queued.handle = attachShortcut(queued.element, queued.options);
     } catch (error) {
