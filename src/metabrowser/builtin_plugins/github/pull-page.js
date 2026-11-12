@@ -4135,6 +4135,18 @@ export function mountPullPage(container, ctx, mb) {
     ]);
   }
 
+  /** Remove the commit rows a superseded record's projection placed. */
+  function retireRows() {
+    if (discussion === null || discussion.inserts.size === 0) {
+      return;
+    }
+    for (const node of discussion.inserts.values()) {
+      node.remove();
+    }
+    discussion.inserts = new Map();
+    discussion.projection = null;
+  }
+
   /**
    * Install the provider order around the existing cards. Keep the focused card in
    * place and move its neighbors around it, so even a reordered review keeps focus.
@@ -5097,6 +5109,10 @@ export function mountPullPage(container, ctx, mb) {
         followTimeline();
       } else {
         held.settled = true;
+        if (held.projection === null) {
+          // This record has no projection, so the rows an earlier one placed are not its own.
+          retireRows();
+        }
       }
     };
     if (retrying) {

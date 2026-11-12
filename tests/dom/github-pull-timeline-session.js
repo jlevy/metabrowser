@@ -351,6 +351,34 @@ async function run() {
   assert.equal(placed.querySelector(".github-pull-commit"), null);
   session.handle.dispose();
 
+  // A changed record keeps the rows it shows while its own timeline is on its way, and
+  // retires them when that answers with nothing: they may name commits it no longer has.
+  const superseded = mount(mountPullPage, fixture());
+  await superseded.handle.ready;
+  await settle();
+  superseded.handle.activate();
+  superseded.frame();
+  superseded.frame();
+  superseded.timelines[0].answer("complete", [commit]);
+  await settle();
+  assert.ok(superseded.body().querySelector(".github-pull-commit"));
+  superseded.replace({ ...fixture(), record_revision: nextRevision });
+  superseded.timer(SLOW_POLL_MS);
+  await settle();
+  assert.ok(superseded.body().querySelector(".github-pull-commit"), "kept while its read runs");
+  superseded.frame();
+  superseded.frame();
+  assert.equal(superseded.timelines[1].request.record_revision, nextRevision);
+  superseded.timelines[1].answer("unavailable", []);
+  await settle();
+  assert.equal(
+    superseded.body().querySelector(".github-pull-commit"),
+    null,
+    "a record with no projection of its own shows no other record's commits",
+  );
+  assert.deepEqual(order(superseded.body()), original);
+  superseded.handle.dispose();
+
   // A stale page can show held commits without putting a timeline provider read
   // ahead of metadata. A missed lookup is remembered throughout the refresh.
   for (const outcome of ["hit", "miss", "late-miss", "replaced"]) {
@@ -506,6 +534,7 @@ async function run() {
     departedReadAborted: true,
     unavailableKeepsDiscussion: true,
     transientRetryIsBoundedAndKeepsPartial: true,
+    supersededRowsRetired: true,
   };
 }
 

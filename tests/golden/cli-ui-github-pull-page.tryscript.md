@@ -1670,8 +1670,9 @@ A later first paint with that projection held, here the Conversation shown again
 another tab, places its commit summaries among the cards in provider order, keeping
 unmatched and pending discussion (`interleaved`). The provider request breathes the
 header’s age line and marks it busy; nothing spins.
-A refreshed record keeps the rows it shows until its own timeline answers.
-A stale page can show a held timeline before its metadata refresh.
+A refreshed record keeps the rows it shows until its own timeline answers, and retires
+them when that timeline answers with nothing (`supersededRowsRetired`). A stale page can
+show a held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
@@ -1703,7 +1704,8 @@ $ node tests/dom/github-pull-timeline-session.js
   "supersededReadAborted": true,
   "departedReadAborted": true,
   "unavailableKeepsDiscussion": true,
-  "transientRetryIsBoundedAndKeepsPartial": true
+  "transientRetryIsBoundedAndKeepsPartial": true,
+  "supersededRowsRetired": true
 }
 ? 0
 ```
