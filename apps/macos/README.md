@@ -20,12 +20,12 @@ It has a [release pipeline](#building-a-release) (Developer ID signing, notariza
 DMG, and a draft Homebrew cask) that has not yet made a release, a
 [CI workflow](#continuous-integration) that builds, tests, and rehearses it, and no
 updater or URL scheme.
-It runs on arm64 Macs with macOS 15 or later.
+It runs on arm64 Macs with macOS 26 or later.
 [Gaps to Close](#gaps-to-close) maps what is missing to the brief.
 
 ## Build, Test, and Run
 
-You need macOS 15 or later, Xcode 26 (Swift 6.2 or later), and a CLI install:
+You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a CLI install:
 
 ```shell
 uv tool install metabrowser
@@ -129,12 +129,11 @@ Where to look while it runs:
 `.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
 that changes `apps/macos`, the root `Makefile`, or the workflow.
 It uses no secrets and signs only ad hoc.
-It runs on two pinned runner images, each with its Xcode selected explicitly:
+It runs on one pinned runner image, with its Xcode selected explicitly:
 
 | Runner | Xcode | Why | Runs |
 | --- | --- | --- | --- |
-| `macos-26` | 26.6 (Swift 6.3) | The toolchain the app is developed and built with | Every step below |
-| `macos-15` | 26.0.1 (Swift 6.2) | The oldest macOS and Swift the app supports | Steps 1 to 3 |
+| `macos-26` | 26.6 (Swift 6.3) | The toolchain the app is built with, on the oldest macOS it supports | Every step below |
 
 1. `make install`, after setting up uv, Python, and Node as `ci.yml` does.
 2. `make macos-test` with `METABROWSER_SHELL_TEST_METAB` set to that environment’s
@@ -478,8 +477,6 @@ AppKit draws a system title in one font and one color, so the window hides it
   to the title bar, which drags and double-clicks the window.
   In a narrow window, “• Metabrowser” goes first and whole, then the short name
   truncates (`WindowTitle.segments(fitting:)`).
-- **macOS 15 is unchecked.** There a plain window’s title is centered, and this one
-  stays at the leading edge.
 
 ### Pitfalls Found in the Live Run
 

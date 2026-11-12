@@ -1,4 +1,4 @@
-# The native macOS app. See README.md. Needs macOS and Swift 6.2 or later (Xcode 26).
+# The native macOS app. See README.md. Needs macOS 26 and Swift 6.3 or later (Xcode 26).
 #
 #   make build                build the debug executable
 #   make test                 run the unit tests and the release scripts' checks

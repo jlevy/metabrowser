@@ -43,23 +43,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The toolchain the app is developed and built with: Xcode 26.6 (Swift 6.3)
-          # on macOS 26. Only this leg packages the app and rehearses the release, so
-          # its images come from that compiler.
+          # The toolchain the app is developed and built with, and the oldest it supports:
+          # Xcode 26.6 (Swift 6.3) on macOS 26, the deployment target. It packages the app
+          # and rehearses the release.
           - name: macOS 26, Xcode 26.6
             runner: macos-26
             xcode: "26.6"
             package: true
-          # The oldest the app supports: macOS 15, its deployment target, and Xcode
-          # 26.0.1, whose Swift 6.2 is the swift-tools-version Package.swift declares.
-          # No other job tests the app on either.
-          - name: macOS 15, Xcode 26.0.1
-            runner: macos-15
-            xcode: "26.0.1"
-            package: false
     # Named images rather than macos-latest, and an Xcode selected below rather than the
     # image's default, so that an image update cannot change the OS or the compiler
-    # silently. Both images are arm64, the one architecture the app builds by default.
+    # silently. The image is arm64, the one architecture the app builds by default.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     env:

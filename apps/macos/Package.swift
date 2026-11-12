@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.3
 // The native macOS app for Metabrowser. See README.md.
 import PackageDescription
 
@@ -8,7 +8,7 @@ let settings: [SwiftSetting] = [.defaultIsolation(MainActor.self)]
 
 let package = Package(
     name: "Metabrowser",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v26)],
     products: [
         .executable(name: "Metabrowser", targets: ["Metabrowser"])
     ],
