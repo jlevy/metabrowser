@@ -4,6 +4,34 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s **Conversation** shows its description as Markdown from the first
+  paint: the page waits up to 200 ms for the rendered description, keeping the page it
+  replaces on screen meanwhile, and shows plain text only past that wait.
+  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
+  refresh that leaves a text unchanged shows it at once without asking again.
+  When the full record replaces a description preview, the description stays where it is
+  and only the sections below it change.
+  Commits Metabrowser already holds are placed among the comments and reviews in
+  GitHub’s order when the conversation first paints; commits fetched from GitHub after
+  that are added after everything shown, so nothing you are reading moves.
+  The state badge shows the fresher of the cached record and the repository’s list of
+  pull requests, so a stale record of a merged pull request no longer shows Open first.
+
+- A pull request’s **Changes** with rendered Markdown appears once the first screen’s
+  Markdown files are drawn, waiting up to 200 ms, so the files below them no longer
+  shift as rendered diffs arrive.
+
+- In the Pulls tab, a pull request’s changed files open in one step at their full height
+  when Metabrowser holds the list.
+  A list GitHub takes a while to return is offered on the tree’s line as **Show N
+  files** instead of being drawn by itself, so the rows below never move while you are
+  not interacting with the list.
+
+- For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
+  the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle
+  adds `firstScreen()`, a promise that settles once none of those files is still
+  waiting. A page can keep the comparison out of sight until then.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
