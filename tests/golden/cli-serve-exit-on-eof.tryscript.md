@@ -8,11 +8,6 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
 patterns:
   ROOT_ARG: '\[ROOT\]'
-  # The sandbox's absolute path, the port the walk found free, and a checkout's
-  # `[dev build: …]` suffix all change from run to run.
-  SERVED: '/[^ ]+'
-  PORT: '\d+'
-  BUILD: '(  \[dev build: [^\]]*\])?'
 before: >-
   mkdir served && printf 'hello\n' > served/a.txt
 ---
@@ -20,16 +15,18 @@ before: >-
 
 `--exit-on-eof` is for a parent that holds the server’s stdin open, such as the macOS
 app: when that parent exits, even by crashing, the kernel closes the pipe and the server
-stops by itself. Here stdin is `/dev/null`, which is at its end from the start, so the
-server prints its banner, sees the end, and stops with exit 0 before it serves a
-request. `tests/test_stdin_lifeline.py` closes the stdin of a server that is answering.
+stops by itself. The watch begins as soon as the command line is read, before startup
+does anything that can block.
+Here stdin is `/dev/null`, which is at its end from the start, so the server stops with
+exit 0 before it serves a request, and almost always before it prints its address;
+stdout is dropped so the transcript does not depend on which comes first.
+`tests/test_stdin_lifeline.py` closes the stdin of a server that is answering, and of
+servers whose startup is held before the banner.
 
 ## Test: a closed stdin stops serving
 
 ```console
-$ metab served --no-open --exit-on-eof < /dev/null 2>&1
-Serving [SERVED] at http://127.0.0.1:[PORT]/view/[BUILD]
-Plugins: agent-log, binary, diff, folder, github, html, image, markdown, structured, text, unknown-jsonl
+$ metab served --no-open --exit-on-eof < /dev/null 2>&1 >/dev/null
 Stopping Metabrowser: stdin closed.
 ? 0
 ```
