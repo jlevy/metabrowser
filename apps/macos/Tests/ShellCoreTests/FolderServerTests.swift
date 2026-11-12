@@ -28,7 +28,7 @@ import Testing
 
     private func fastPolicy() -> SupervisorPolicy {
         var policy = SupervisorPolicy()
-        policy.startupTimeout = .seconds(2)
+        policy.startupTimeout = .seconds(30)  // the fakes answer at once; a loaded machine is slow
         policy.shutdownGrace = .milliseconds(100)
         policy.probeInterval = .milliseconds(5)
         policy.outputSettle = .milliseconds(50)
@@ -109,6 +109,8 @@ import Testing
         let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: children)
         #expect(await subject.start())
         let running = subject.supervisor.state
+        #expect(running == .ready(ServerEndpoint(
+            origin: URL(string: "http://127.0.0.1:8412")!, entryURL: URL(string: "http://127.0.0.1:8412/view/")!)))
         let recheck = runtime.startRecheck()
         _ = runtime.finishRecheck(recheck, fingerprint: stamp(2), result: .tooOld(version: "0.12.0"))
         #expect(runtime.setup == nil)
@@ -128,6 +130,7 @@ import Testing
         let runtime = selection(with: old)
         let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: children)
         #expect(await subject.start())
+        #expect(children.made[0].signals == [])  // ready, not stopped by a slow start
         let recheck = runtime.startRecheck()
         #expect(await subject.restart() == false)
         #expect(children.made[0].signals == [])
