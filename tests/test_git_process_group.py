@@ -16,6 +16,8 @@ import contextlib
 import fcntl
 import os
 import signal
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -36,6 +38,7 @@ from metabrowser.git.process import (
     run_git,
     spawn_git_process,
 )
+from tests.child_io import read_line
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -254,6 +257,10 @@ def test_the_exit_path_kills_live_groups_and_skips_reaped_ones(
 
 # ── A stop while a group is starting ──────────────────────────────────────
 
+# A stop's own bound on waiting is a couple of seconds; this bounds only a process that
+# does not stop at all, so the test fails instead of hanging the suite.
+_STOP_TIMEOUT_S = 15.0
+
 
 @pytest.fixture
 def fresh_stop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -270,14 +277,19 @@ class _HeldSpawn:
     Held on events, not for a time, so the stop always lands inside the window.
     """
 
-    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *, reap_first: bool = False) -> None:
         self.started = threading.Event()
+        self.reaped = threading.Event()
         self.release = threading.Event()
         real_spawn = asyncio.create_subprocess_exec
 
         async def held_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
             proc = await real_spawn(*args, **kwargs)
             self.started.set()
+            if reap_first:
+                # The child ends and is reaped before the spawn returns to its caller.
+                await proc.wait()
+                self.reaped.set()
             await asyncio.to_thread(self.release.wait, 30)
             return proc
 
@@ -309,6 +321,18 @@ def _lock_free_within(path: Path, seconds: float = 5.0) -> bool:
         os.close(fd)
 
 
+def _release_once_the_stop_kills(held: _HeldSpawn, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let the held spawn go only once the stop has begun: its first kill of the groups."""
+
+    real_kill = process_module._kill_owned_groups
+
+    def kill_then_release(stop: process_module._GroupStop) -> None:
+        real_kill(stop)
+        held.release.set()
+
+    monkeypatch.setattr(process_module, "_kill_owned_groups", kill_then_release)
+
+
 async def _end(task: asyncio.Future[bytes]) -> None:
     """End a ``run_git`` task, killed by the stop or cancelled here, without waiting long."""
 
@@ -325,9 +349,9 @@ def test_a_closed_stdin_kills_a_group_still_starting_and_frees_its_lock(
 
     The group must still be killed, with the helper it forked and the fetch lock it
     inherited (cache locks are ``flock`` on a descriptor the child holds), and the stop
-    must exit only once the spawn has ended. Before, the stop killed what the registry
-    held at that moment, which did not include this group, and exited, leaving the
-    helper running and the lock held.
+    exits once the spawn has ended. Before, the stop killed what the registry held at
+    that moment, which did not include this group, and exited, leaving the helper
+    running and the lock held.
     """
 
     pid_file = tmp_path / "helper.pid"
@@ -337,15 +361,7 @@ def test_a_closed_stdin_kills_a_group_still_starting_and_frees_its_lock(
     exits: list[int] = []
     monkeypatch.setattr(os, "_exit", exits.append)
 
-    # Let the spawn go only once the stop has begun: its first kill of the groups.
-    real_kill = process_module.kill_live_process_groups
-
-    def kill_then_release() -> None:
-        real_kill()
-        held.release.set()
-
-    monkeypatch.setattr(process_module, "kill_live_process_groups", kill_then_release)
-    monkeypatch.setattr(stdin_lifeline, "kill_live_process_groups", kill_then_release)
+    _release_once_the_stop_kills(held, monkeypatch)
 
     async def scenario() -> tuple[int, bool, bool]:
         task = asyncio.ensure_future(
@@ -377,14 +393,15 @@ def test_a_closed_stdin_kills_a_group_still_starting_and_frees_its_lock(
 
 
 @pytest.mark.usefixtures("fresh_stop")
-def test_an_interrupt_while_a_group_is_starting_exits_once_it_is_killed(
+def test_an_interrupt_while_a_group_is_starting_kills_it_and_exits_at_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ctrl-C lands on the event loop's own thread, between the fork and the registry.
 
-    The handler cannot wait for the spawn on the thread that has to finish it, so it
-    returns, and the spawn's end kills the group and exits with the interrupt's status.
-    Before, the handler exited at once and the group was never killed.
+    The handler cannot wait for the spawn on the thread that has to finish it, and need
+    not: the kernel lists the child, so the handler kills its group and exits with the
+    interrupt's status there and then. Before the stop counted spawns, the handler
+    exited and the group was never killed.
     """
 
     pid_file = tmp_path / "helper.pid"
@@ -414,9 +431,9 @@ def test_an_interrupt_while_a_group_is_starting_exits_once_it_is_killed(
     finally:
         signal.signal(signal.SIGINT, previous)
     try:
-        assert during == [], "the interrupt exited before the group it missed was killed"
+        assert during == [130], "one interrupt did not stop the process"
         assert gone, "the helper of a group still starting outlived the interrupt"
-        assert exits == [130]
+        assert exits[:1] == [130]
     finally:
         _kill_leftover(helper)
 
@@ -441,3 +458,166 @@ def test_no_group_is_started_once_a_stop_has_begun(
     with pytest.raises(GitUnavailableError, match="stopping"):
         asyncio.run(spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY))
     assert started == []
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_group_reaped_before_its_spawn_returns_is_never_signalled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that exits and is reaped while its spawn is held has given up its ID.
+
+    The kernel may hand that ID to an unrelated process group at once, so the stop that
+    was waiting for the spawn must finish without ever passing it to ``killpg``.
+    """
+
+    held = _HeldSpawn(monkeypatch, reap_first=True)
+    exits: list[int] = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    signalled: list[int] = []
+    real_killpg = os.killpg
+
+    def recording_killpg(pgid: int, signum: int) -> None:
+        signalled.append(pgid)
+        real_killpg(pgid, signum)
+
+    monkeypatch.setattr(os, "killpg", recording_killpg)
+    _release_once_the_stop_kills(held, monkeypatch)
+
+    async def scenario() -> int:
+        task = asyncio.ensure_future(
+            spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        await asyncio.to_thread(held.reaped.wait, 30)
+        stopper = threading.Thread(target=stdin_lifeline.stop_for_closed_stdin, daemon=True)
+        stopper.start()
+        await asyncio.to_thread(held.release.wait, 30)
+        proc = await asyncio.wait_for(task, 20)
+        await asyncio.to_thread(stopper.join, 20)
+        assert not stopper.is_alive(), "the stop never finished"
+        return proc.pid
+
+    pid = asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+    assert pid not in signalled
+    assert exits[:1] == [0]
+
+
+# A process that runs a real acquisition Git, with a helper and a fetch lock it inherits,
+# whose spawn is held after the fork for good: its event loop's thread stuck, its
+# set-up failing once a stop has begun, or the loop running and the spawn never returning.
+# It stops by its own --exit-on-eof and Ctrl-C paths, with a real os._exit.
+_HELD_SPAWN_DRIVER = """
+import asyncio, fcntl, os, sys, time
+
+import metabrowser.git.process as process
+from metabrowser.cli.serve import stop_on_interrupt
+from metabrowser.cli.stdin_lifeline import stop_when_stdin_closes
+
+mode, workdir, lock_path, pid_file = sys.argv[1:5]
+lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+fcntl.flock(lock_fd, fcntl.LOCK_EX)
+real_spawn = asyncio.create_subprocess_exec
+
+
+async def held_spawn(*args, **kwargs):
+    proc = await real_spawn(*args, **kwargs)
+    os.close(lock_fd)  # From here only Git and its helper hold the lock.
+    print("spawned", flush=True)
+    if mode == "stalled":
+        time.sleep(600)  # The loop's thread is stuck: nothing on it runs again.
+    elif mode == "failed":
+        while not process._GROUP_STOP.requested:
+            await asyncio.sleep(0.01)
+        raise OSError("the pipes would not connect")
+    else:
+        await asyncio.Event().wait()  # The loop runs; this spawn never returns.
+    return proc
+
+
+asyncio.create_subprocess_exec = held_spawn
+stop_on_interrupt()
+stop_when_stdin_closes()
+script = f"!sleep 60 & echo $! > '{pid_file}'; wait"
+try:
+    asyncio.run(
+        process.run_git(
+            ["-c", f"alias.hang={script}", "hang"],
+            cwd=workdir,
+            policy=process.ACQUISITION_POLICY,
+            pass_fds=(lock_fd,),
+        )
+    )
+except process.GitError:
+    pass  # A server goes on serving after a failed fetch; only a stop ends it.
+while True:
+    time.sleep(1)
+"""
+
+
+@pytest.mark.parametrize(
+    ("mode", "stop", "status"),
+    [
+        ("stalled", "stdin closes", 0),
+        ("failed", "stdin closes", 0),
+        ("held", "interrupt", 130),
+        ("stalled", "interrupt", 130),
+    ],
+    ids=["eof-loop-stuck", "eof-set-up-fails", "sigint-spawn-held", "sigint-loop-stuck"],
+)
+def test_a_stop_kills_a_group_whose_spawn_never_registers(
+    mode: str, stop: str, status: int, tmp_path: Path
+) -> None:
+    """The group is the stop's from its fork on, whether or not its spawn ever returns.
+
+    The registry learns a group only when its spawn returns, which needs the event
+    loop. Here the spawn is held after the fork past any wait: the loop's thread stuck,
+    its set-up failing once the stop has begun, or the loop running and the spawn never
+    returning. Each stop must still kill the group, with the helper it forked and the
+    fetch lock it inherited, and exit with its own status, in a bounded time. Before,
+    the stop for a closed stdin exited after its wait and left them running, or exited
+    from the failed set-up without killing them; one Ctrl-C did not exit at all.
+    """
+
+    lock_path = tmp_path / "fetch.lock"
+    pid_file = tmp_path / "helper.pid"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _HELD_SPAWN_DRIVER,
+            mode,
+            str(tmp_path),
+            str(lock_path),
+            str(pid_file),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    helper: int | None = None
+    try:
+        assert read_line(process).strip() == "spawned"
+        helper = _wait_for_pid(pid_file)
+        assert process.stdin is not None
+        if stop == "interrupt":
+            process.send_signal(signal.SIGINT)
+        else:
+            process.stdin.close()
+            process.stdin = None
+        try:
+            returncode = process.wait(timeout=_STOP_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"{stop}: the process did not stop with its spawn held ({mode})")
+        gone = _gone_within(helper)
+        lock_free = _lock_free_within(lock_path)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        if helper is not None:
+            _kill_leftover(helper)
+    assert returncode == status, process.stderr.read() if process.stderr else ""
+    assert gone, "the helper of a group whose spawn never registered outlived the stop"
+    assert lock_free, "the fetch lock outlived the stop"

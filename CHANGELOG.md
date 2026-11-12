@@ -19,7 +19,8 @@ All notable changes to Metabrowser are documented here.
 - Stopping a server by Ctrl-C, a hangup, or `--exit-on-eof` now also kills a fetch’s or
   clone’s Git, or a `gh`, whose start was under way at that moment, which used to keep
   running and could keep holding the store’s fetch lock; no new one starts once the stop
-  has begun.
+  has begun. The stop finds them from the system’s list of the server’s children, so it
+  ends promptly even when the server’s event loop is stuck.
 
 - A folder’s File Overview is shorter.
   Under the Files, Ignored, and Total bars it shows a legend of the five largest file
