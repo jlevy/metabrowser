@@ -149,11 +149,15 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_adddup2(&actions, stdinPipe[0], 0)
-        posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1)
-        posix_spawn_file_actions_adddup2(&actions, log?.handle.fileDescriptor ?? outputPipe[1], 2)
+        // A file action that cannot be added (out of memory) would spawn a child without
+        // it, wired wrong or in the wrong folder, so it fails the spawn instead.
+        var actionsAdded = [
+            posix_spawn_file_actions_adddup2(&actions, stdinPipe[0], 0),
+            posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1),
+            posix_spawn_file_actions_adddup2(&actions, log?.handle.fileDescriptor ?? outputPipe[1], 2),
+        ]
         if let directory = spec.workingDirectory {
-            posix_spawn_file_actions_addchdir_np(&actions, directory)
+            actionsAdded.append(posix_spawn_file_actions_addchdir(&actions, directory))
         }
 
         let argv = ([spec.executable] + spec.arguments).map { strdup($0) } + [nil]
@@ -162,7 +166,8 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         defer { (argv + envp).forEach { free($0) } }
 
         var spawned: pid_t = 0
-        let rc = posix_spawn(&spawned, spec.executable, &actions, &attr, argv, envp)
+        let rc = actionsAdded.first { $0 != 0 }
+            ?? posix_spawn(&spawned, spec.executable, &actions, &attr, argv, envp)
         close(stdinPipe[0])
         close(outputPipe[1])
         guard rc == 0 else {

@@ -66,6 +66,13 @@ import Testing
         #expect(await lines(of: child) == [directory.path(percentEncoded: false).trimmingSuffix("/")])
     }
 
+    /// The child must never run in another folder than the one it serves.
+    @Test func aWorkingDirectoryThatIsGoneFailsTheSpawn() {
+        #expect(throws: SpawnError.spawn(ENOENT)) {
+            try SpawnedProcess(LaunchSpec(executable: "/bin/pwd", workingDirectory: "/nonexistent-\(UUID().uuidString)"))
+        }
+    }
+
     @Test func groupSignalReachesAGrandchild() async throws {
         let child = try SpawnedProcess(LaunchSpec(
             executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $!; wait"]))
