@@ -477,8 +477,10 @@ and WebKit passes when every pair is within 1.3 times Chrome.
   under 5 ms is reported and not judged.
   A metric that either engine left unmeasured in any pair the run asked for, by a failed
   sample or a pair that never ran, is incomplete rather than judged
-  ([`summary.mjs`](../apps/macos/webkit-gate/summary.mjs)). Both measurement runs
-  recorded here measured every metric in every pair.
+  ([`summary.mjs`](../apps/macos/webkit-gate/summary.mjs)). A run whose record gives no
+  valid pair count is not judged at all, since a missing pair could not be told from one
+  never asked for. Both measurement runs recorded here asked for five pairs and measured
+  every metric in every pair.
 
 The metrics:
 

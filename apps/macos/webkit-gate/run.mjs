@@ -9,15 +9,19 @@
 //   node apps/macos/webkit-gate/run.mjs --summarize DIR  # recompute a run's summary
 //
 // It writes deterministic corpora, serves them with this checkout's `metab` (one server
-// for both engines), serves the repository root for the committed diff benchmark pages,
-// builds webkit-driver, the app package's WebKitDriver target, then runs each case as
-// pairs: Chrome then WebKit, then WebKit then Chrome, alternating, each sample a fresh
-// browser with a cold cache at the app's 1200 x 820 content size. Both engines run
-// probe.js, so they time the same intervals with the same code. Results go to
-// attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora), samples.jsonl
-// (every record), summary.json, and summary.md, the table docs/large-content-rendering.md
-// quotes. Every process and listener a run starts is stopped when it ends, however it
-// ends (processes.mjs).
+// for both engines), serves the committed diff benchmark pages and only the files they
+// load (static-server.mjs), builds webkit-driver, the app package's WebKitDriver target,
+// then runs each case as pairs: Chrome then WebKit, then WebKit then Chrome, alternating,
+// each sample a fresh browser with a cold cache at the app's 1200 x 820 content size.
+// Both engines run probe.js, so they time the same intervals with the same code. Results
+// go to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora),
+// samples.jsonl (every record), summary.json, and summary.md, the table
+// docs/large-content-rendering.md quotes. Every process and listener a run starts is
+// stopped when the run ends: normally, by an error, by an uncaught exception, or by
+// SIGHUP, SIGINT, or SIGTERM (processes.mjs). A harness killed outright stops nothing
+// itself: metab ends with its stdin, as webkit-driver does while measuring, a driver
+// check runs on to its own end, at most 600 s, and a Chrome sample in progress is left
+// running.
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
@@ -27,14 +31,32 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
-import { Cleanup, startMetab, terminate, within } from "./processes.mjs";
+import { Cleanup, cleanUpBeforeExit, startMetab, terminate, within } from "./processes.mjs";
+import { BENCHMARK_ASSETS, startStatic } from "./static-server.mjs";
 import { markdown, summarize } from "./summary.mjs";
+
+/**
+ * @typedef {import("./summary.mjs").Metric} Metric
+ * @typedef {import("./summary.mjs").Sample} Sample
+ * @typedef {import("./summary.mjs").RunMeta} RunMeta
+ * @typedef {import("../../../explorations/performance-loop/pr-cdp.mjs").Session} Session
+ * @typedef {{
+ *   pairs: number, warmup: number, cases: string[] | null, checks: boolean,
+ *   summarize: string | null, metab: string, out: string
+ * }} Options
+ * @typedef {{ metab: string, static: string }} Servers
+ * @typedef {any} ProbeRecord A record probe.js or webkit-driver printed: JSON, whose shape
+ *   each case's metrics function reads.
+ * @typedef {{
+ *   url: (servers: Servers) => string, config: Record<string, unknown>,
+ *   metrics: (record: ProbeRecord) => Metric[], diagnostic?: boolean
+ * }} CaseDefinition
+ */
 
 const run = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +74,12 @@ const MIB = 1024 * KIB;
 
 // ── Options ─────────────────────────────────────────────────────
 
+/**
+ * @param {string[]} argv
+ * @returns {Options}
+ */
 function parseArguments(argv) {
+  /** @type {Options} */
   const options = {
     pairs: 5,
     warmup: 1,
@@ -97,7 +124,10 @@ function parseArguments(argv) {
 
 // ── Corpora ─────────────────────────────────────────────────────
 
-/** Tracked files matching the pathspecs, sorted, so a corpus depends only on the checkout. */
+/**
+ * Tracked files matching the pathspecs, sorted, so a corpus depends only on the checkout.
+ * @param {...string} pathspecs
+ */
 async function trackedText(...pathspecs) {
   const { stdout } = await run("git", ["-C", ROOT, "ls-files", "-z", "--", ...pathspecs], {
     maxBuffer: 64 * MIB,
@@ -112,7 +142,11 @@ async function trackedText(...pathspecs) {
   return files.map((name) => fs.readFileSync(path.join(ROOT, name), "utf8")).join("\n");
 }
 
-/** `text` repeated to `bytes`, cut back to the last newline so every line is whole. */
+/**
+ * `text` repeated to `bytes`, cut back to the last newline so every line is whole.
+ * @param {string} text
+ * @param {number} bytes
+ */
 function repeatToLines(text, bytes) {
   const unit = Buffer.from(text.endsWith("\n") ? text : `${text}\n`, "utf8");
   const buffer = Buffer.alloc(bytes + unit.length);
@@ -123,7 +157,11 @@ function repeatToLines(text, bytes) {
   return buffer.subarray(0, cut + 1);
 }
 
-/** One line of `text` with its newlines replaced, exactly `bytes` long. */
+/**
+ * One line of `text` with its newlines replaced, exactly `bytes` long.
+ * @param {string} text
+ * @param {number} bytes
+ */
 function repeatToOneLine(text, bytes) {
   const unit = Buffer.from(text.replace(/[\r\n]+/g, " ").replace(/[^\x20-\x7e]/g, " "), "latin1");
   const buffer = Buffer.alloc(bytes);
@@ -139,6 +177,9 @@ function repeatToOneLine(text, bytes) {
  * zero fill, or text, chosen by a fixed-seed xorshift generator. With `randomPercent` 0
  * there are no random pages, so the bytes switch between text and byte codes so seldom
  * that the binary view keeps its two-tone accent (DEFAULT_ACCENT_RUN_BUDGET).
+ * @param {number} bytes
+ * @param {string} text
+ * @param {number} seed
  */
 function binaryCorpus(bytes, text, seed, randomPercent = 45) {
   let state = seed >>> 0;
@@ -182,6 +223,10 @@ function denseJson() {
   return `[\n${records.join("\n")}\n]\n`;
 }
 
+/**
+ * Writes every corpus under `directory` and returns each one's size and SHA-256.
+ * @param {string} directory
+ */
 async function writeCorpora(directory) {
   fs.mkdirSync(path.join(directory, "folder"), { recursive: true });
   const source = await trackedText("src/metabrowser/*.py", "src/metabrowser/static/*.js");
@@ -207,6 +252,7 @@ async function writeCorpora(directory) {
     ),
     "folder/inside.txt": Buffer.from("A file inside a folder, for the drop check.\n"),
   };
+  /** @type {Record<string, { bytes: number, sha256: string }>} */
   const manifest = {};
   for (const [name, bytes] of Object.entries(corpora)) {
     fs.writeFileSync(path.join(directory, name), bytes);
@@ -218,63 +264,12 @@ async function writeCorpora(directory) {
   return manifest;
 }
 
-// ── Servers ─────────────────────────────────────────────────────
-
-const MIME = {
-  ".css": "text/css",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".json": "application/json",
-  ".mjs": "text/javascript",
-};
-
-/**
- * The repository root, read-only, for the committed benchmark pages and their modules,
- * closed by `cleanup` from the moment it is created.
- */
-async function startStatic(corpus, cleanup) {
-  const server = http.createServer((request, response) => {
-    const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-    if (pathname === "/__gate/blank.html") {
-      response.writeHead(200, { "content-type": MIME[".html"] });
-      response.end("<!doctype html><title>blank</title><body></body>");
-      return;
-    }
-    const [base, relative] = pathname.startsWith("/__gate/corpus/")
-      ? [corpus, pathname.slice("/__gate/corpus/".length)]
-      : [ROOT, pathname];
-    const file = path.resolve(base, `./${relative}`);
-    if (
-      !file.startsWith(`${base}${path.sep}`) ||
-      !fs.statSync(file, { throwIfNoEntry: false })?.isFile()
-    ) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, {
-      "cache-control": "no-store",
-      "content-type": MIME[path.extname(file)] || "application/octet-stream",
-    });
-    fs.createReadStream(file).pipe(response);
-  });
-  cleanup.add(
-    () =>
-      new Promise((resolve) => {
-        // A browser's idle keep-alive connections would hold close() open.
-        server.closeAllConnections();
-        server.close(() => resolve());
-      }),
-  );
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  return { origin: `http://127.0.0.1:${server.address().port}`, server };
-}
-
 // ── Engines ─────────────────────────────────────────────────────
 
-/** Physical footprint of one process, total and without its graphics surfaces, and its priority. */
+/**
+ * Physical footprint of one process, total and without its graphics surfaces, and its priority.
+ * @param {number | null | undefined} pid
+ */
 async function footprint(pid) {
   if (!pid) {
     return null;
@@ -329,21 +324,35 @@ const CHROME_FLAGS = [
 
 /**
  * Runs `use(connection, page)` in a fresh Chrome with a scratch profile, its page at the
- * app's content size, then closes the browser and removes the profile.
+ * app's content size, then closes the browser and removes the profile. `cleanup` owns the
+ * browser while it runs, so a crash anywhere in the harness still stops it.
+ * @template T
+ * @param {string} scratch
+ * @param {Cleanup} cleanup
+ * @param {(connection: Connection, page: Session) => Promise<T>} use
+ * @returns {Promise<T>}
  */
-async function withChrome(scratch, use) {
+async function withChrome(scratch, cleanup, use) {
   const profile = fs.mkdtempSync(path.join(scratch, "chrome-profile-"));
   const child = spawn(
     CHROME,
     [...CHROME_FLAGS, `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"],
     { stdio: "ignore" },
   );
+  // Chrome has no stdin to lose when the harness dies, so the run owns it from here: a
+  // crash stops it and removes its profile, as the finally below does for every ordinary
+  // ending.
+  const release = cleanup.add(async () => {
+    await terminate(child);
+    fs.rmSync(profile, { recursive: true, force: true });
+  });
   const exited = new Promise((resolve) => child.on("exit", resolve));
-  let spawnError = null;
+  // Set by the error listener, so typed as the union rather than narrowed to null.
+  let spawnError = /** @type {Error | null} */ (null);
   child.on("error", (error) => {
     spawnError = error;
   });
-  let connection = null;
+  let connection = /** @type {Connection | null} */ (null);
   try {
     const portFile = path.join(profile, "DevToolsActivePort");
     for (let waited = 0; !fs.existsSync(portFile); waited += 100) {
@@ -359,8 +368,12 @@ async function withChrome(scratch, use) {
     const [port, socketPath] = fs.readFileSync(portFile, "utf8").trim().split("\n");
     connection = new Connection(`ws://127.0.0.1:${port}${socketPath}`);
     await connection.open();
+    /** @type {{ targetInfos: { type: string, targetId: string }[] }} */
     const { targetInfos } = await connection.send("Target.getTargets");
     const target = targetInfos.find((info) => info.type === "page");
+    if (!target) {
+      throw new Error("Chrome opened no page");
+    }
     const { sessionId } = await connection.send("Target.attachToTarget", {
       targetId: target.targetId,
       flatten: true,
@@ -388,18 +401,32 @@ async function withChrome(scratch, use) {
       await terminate(child);
     }
     fs.rmSync(profile, { recursive: true, force: true });
+    release();
   }
 }
 
-/** Navigates `page` to `url` and resolves after its load event. */
+/**
+ * Navigates `page` to `url` and resolves after its load event.
+ * @param {Session} page
+ * @param {string} url
+ */
 async function navigate(page, url) {
   const loadFired = page.once("Page.loadEventFired", () => true, SAMPLE_TIMEOUT_MS);
   await page.send("Page.navigate", { url });
   await loadFired;
 }
 
-function chromeSample(url, script, scratch) {
-  return withChrome(scratch, async (connection, page) => {
+/**
+ * One sample in a fresh Chrome: the probe's record, its renderer's footprint, and the
+ * browser's version.
+ * @param {string} url
+ * @param {string} script
+ * @param {string} scratch
+ * @param {Cleanup} cleanup
+ * @returns {Promise<ProbeRecord>}
+ */
+function chromeSample(url, script, scratch, cleanup) {
+  return withChrome(scratch, cleanup, async (connection, page) => {
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await navigate(page, url);
     const evaluated = await page.send(
@@ -417,6 +444,7 @@ function chromeSample(url, script, scratch) {
       );
     }
     const record = JSON.parse(evaluated.result.value);
+    /** @type {{ processInfo: { type: string, id: number, cpuTime: number }[] }} */
     const { processInfo } = await connection.send("SystemInfo.getProcessInfo");
     // The page did nearly all of the renderer work in this browser, so its renderer has
     // the most CPU time.
@@ -430,9 +458,15 @@ function chromeSample(url, script, scratch) {
   });
 }
 
-/** Chrome's print of the same page to PDF, beside WebKit's, for the print check. */
-function chromePrint(url, pdfPath, scratch) {
-  return withChrome(scratch, async (_connection, page) => {
+/**
+ * Chrome's print of the same page to PDF, beside WebKit's, for the print check.
+ * @param {string} url
+ * @param {string} pdfPath
+ * @param {string} scratch
+ * @param {Cleanup} cleanup
+ */
+function chromePrint(url, pdfPath, scratch, cleanup) {
+  return withChrome(scratch, cleanup, async (_connection, page) => {
     await navigate(page, url);
     // The view renders after the load event; give it the time the WebKit check waits.
     await sleep(3000);
@@ -444,12 +478,22 @@ function chromePrint(url, pdfPath, scratch) {
   });
 }
 
-/** Runs webkit-driver and returns its first stdout line as JSON, after `onRecord`. */
-function driverRun(driver, args, onRecord = async () => {}) {
+/**
+ * Runs webkit-driver and returns its first stdout line as JSON, after `onRecord`.
+ * `cleanup` owns the driver while it runs.
+ * @param {string} driver
+ * @param {string[]} args
+ * @param {Cleanup} cleanup
+ * @param {(record: ProbeRecord) => Promise<void>} [onRecord]
+ * @returns {Promise<ProbeRecord>}
+ */
+function driverRun(driver, args, cleanup, onRecord = async () => {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(driver, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const release = cleanup.add(() => terminate(child));
     let stdout = "";
     let stderr = "";
+    /** @type {ProbeRecord} */
     let record = null;
     const timer = setTimeout(() => child.kill("SIGKILL"), SAMPLE_TIMEOUT_MS);
     child.stderr.on("data", (data) => {
@@ -471,10 +515,12 @@ function driverRun(driver, args, onRecord = async () => {}) {
     });
     child.on("error", (error) => {
       clearTimeout(timer);
+      release();
       reject(new Error(`webkit-driver did not start: ${error.message}`, { cause: error }));
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
+      release();
       if (code === 0 && record !== null) {
         resolve(record);
       } else {
@@ -484,10 +530,18 @@ function driverRun(driver, args, onRecord = async () => {}) {
   });
 }
 
-async function webkitSample(driver, url, script, scratch) {
+/**
+ * One sample in webkit-driver: the probe's record and its web content process's footprint.
+ * @param {string} driver
+ * @param {string} url
+ * @param {string} script
+ * @param {string} scratch
+ * @param {Cleanup} cleanup
+ */
+async function webkitSample(driver, url, script, scratch, cleanup) {
   const scriptPath = path.join(scratch, "probe-injected.js");
   fs.writeFileSync(scriptPath, script);
-  return driverRun(driver, ["measure", url, scriptPath], async (record) => {
+  return driverRun(driver, ["measure", url, scriptPath], cleanup, async (record) => {
     record.footprint = await footprint(record.web_process_pid);
   });
 }
@@ -505,7 +559,10 @@ const HIGHLIGHT_CORPORA = [
   { language: "typescript", file: "highlight-512kib.ts" },
 ];
 
-/** Each case: where it loads, what the probe runs, and the metrics it reports. */
+/**
+ * Each case: where it loads, what the probe runs, and the metrics it reports.
+ * @type {Record<string, CaseDefinition>}
+ */
 const CASES = {
   "source-16mib": {
     url: (servers) => `${servers.metab}/view/source-16mib.txt`,
@@ -536,6 +593,7 @@ const CASES = {
     url: (servers) => `${servers.metab}/view/`,
     config: { case: "highlight", corpora: HIGHLIGHT_CORPORA },
     metrics: (record) => {
+      /** @type {Metric[]} */
       const metrics = [];
       for (const sample of record.result.samples) {
         metrics.push(gated(`${sample.file} highlight + layout (ms)`, sample.elapsed_ms));
@@ -559,7 +617,11 @@ const CASES = {
         gated("max blocking switch (ms)", result.max_blocking_switch_ms),
         gated(
           "slowest settled switch (ms)",
-          Math.max(...result.layout_switches_ms.map((sample) => sample.settled)),
+          Math.max(
+            ...result.layout_switches_ms.map(
+              /** @param {{ settled: number }} sample */ (sample) => sample.settled,
+            ),
+          ),
         ),
         counted("mounted elements", result.dom_elements),
       ];
@@ -573,8 +635,9 @@ const CASES = {
       errorKey: "diffIntralineBenchmarkError",
     },
     metrics: (record) =>
-      record.result.samples.map((sample) =>
-        gated(`${sample.name}, ${sample.status} (ms)`, sample.elapsed_ms),
+      record.result.samples.map(
+        /** @param {{ name: string, status: string, elapsed_ms: number }} sample */ (sample) =>
+          gated(`${sample.name}, ${sample.status} (ms)`, sample.elapsed_ms),
       ),
   },
   clamp: {
@@ -619,39 +682,67 @@ const CASES = {
   },
 };
 
+/**
+ * @param {ProbeRecord} record
+ * @returns {Metric[]}
+ */
 function appendMetrics(record) {
-  return record.result.steps.flatMap((step) => [
-    gated(`to ${mib(step.characters)} Mi chars: append to laid out (ms)`, step.layout_ms),
-    gated(`to ${mib(step.characters)} Mi chars: append to next frame (ms)`, step.frame_ms),
-  ]);
+  return record.result.steps.flatMap(
+    /** @param {{ characters: number, layout_ms: number, frame_ms: number }} step */ (step) => [
+      gated(`to ${mib(step.characters)} Mi chars: append to laid out (ms)`, step.layout_ms),
+      gated(`to ${mib(step.characters)} Mi chars: append to next frame (ms)`, step.frame_ms),
+    ],
+  );
 }
 
-/** A cost the gate compares as a ratio. */
+/**
+ * A cost the gate compares as a ratio.
+ * @param {string} name
+ * @param {unknown} value
+ * @returns {Metric}
+ */
 function gated(name, value) {
   return { name, value, gated: true };
 }
 
-/** A count or size, reported beside the costs and not held to the ratio. */
+/**
+ * A count or size, reported beside the costs and not held to the ratio.
+ * @param {string} name
+ * @param {unknown} value
+ * @returns {Metric}
+ */
 function counted(name, value) {
   return { name, value, gated: false };
 }
 
+/** @param {number} bytes */
 function mib(bytes) {
   return Math.round((bytes / MIB) * 10) / 10;
 }
 
+/**
+ * @param {ProbeRecord} record
+ * @returns {Metric[]}
+ */
 function viewMetrics(record) {
   const { open, clicks, scroll, dom_elements: elements } = record.result;
+  /** @type {Metric[]} */
   const metrics = [
     gated("open: response end to laid out (ms)", open.after_response_ms),
     gated("open: navigation to laid out (ms)", open.layout_ms),
     gated("open: navigation to next frame (ms)", open.frame_ms),
   ];
-  clicks.forEach((click, index) => {
-    const label = `Load more ${index + 1}`;
-    metrics.push(gated(`${label}: response end to laid out (ms)`, click.after_response_ms));
-    metrics.push(gated(`${label}: click to next frame (ms)`, click.frame_ms));
-  });
+  clicks.forEach(
+    /**
+     * @param {{ after_response_ms: number, frame_ms: number }} click
+     * @param {number} index
+     */
+    (click, index) => {
+      const label = `Load more ${index + 1}`;
+      metrics.push(gated(`${label}: response end to laid out (ms)`, click.after_response_ms));
+      metrics.push(gated(`${label}: click to next frame (ms)`, click.frame_ms));
+    },
+  );
   for (const sample of scroll.samples) {
     metrics.push(gated(`scroll to ${sample.to * 100}%: frame work (ms)`, sample.work_ms));
   }
@@ -668,7 +759,12 @@ function viewMetrics(record) {
 
 // ── Main ────────────────────────────────────────────────────────
 
+/**
+ * The machine, OS, engine, server, and checkout versions a run records.
+ * @param {string} metab
+ */
 async function machineFacts(metab) {
+  /** @param {string} name */
   const sysctl = async (name) => (await run("sysctl", ["-n", name])).stdout.trim();
   const [model, cpu, memory] = await Promise.all([
     sysctl("hw.model"),
@@ -710,27 +806,45 @@ const loadAverage = () => os.loadavg().map((value) => Math.round(value * 10) / 1
 /**
  * window.print() and File > Print in WebKit, Chrome's print of the same page, and drops
  * of a file and a folder on the app's web view. The PDFs land beside the corpus.
+ * @param {string} driver
+ * @param {Servers} servers
+ * @param {string} corpus
+ * @param {string} scratch
+ * @param {Cleanup} cleanup
  */
-async function runChecks(driver, servers, corpus, scratch) {
+async function runChecks(driver, servers, corpus, scratch, cleanup) {
   const out = path.dirname(corpus);
   const url = `${servers.metab}/view/print-check.md`;
-  const print = await driverRun(driver, [
-    "print",
+  const print = await driverRun(
+    driver,
+    ["print", url, path.join(out, "print-webkit.pdf"), String(PRINT_PAGE_LIMIT)],
+    cleanup,
+  );
+  const chromePrinted = await chromePrint(
     url,
-    path.join(out, "print-webkit.pdf"),
-    String(PRINT_PAGE_LIMIT),
-  ]);
-  const chromePrinted = await chromePrint(url, path.join(out, "print-chrome.pdf"), scratch);
-  const drop = await driverRun(driver, [
-    "drop",
-    `${servers.metab}/view/`,
-    path.join(corpus, "print-check.md"),
-    path.join(corpus, "folder"),
-  ]);
+    path.join(out, "print-chrome.pdf"),
+    scratch,
+    cleanup,
+  );
+  const drop = await driverRun(
+    driver,
+    [
+      "drop",
+      `${servers.metab}/view/`,
+      path.join(corpus, "print-check.md"),
+      path.join(corpus, "folder"),
+    ],
+    cleanup,
+  );
   return { print, chrome_print: chromePrinted, drop };
 }
 
-/** Writes summary.json and summary.md for a run's samples and returns the Markdown. */
+/**
+ * Writes summary.json and summary.md for a run's samples and returns the Markdown.
+ * @param {string} out
+ * @param {RunMeta & { pairs?: unknown, cases?: string[] }} meta
+ * @param {Sample[]} samples
+ */
 function writeSummary(out, meta, samples) {
   const summary = summarize(samples, {
     pairs: meta.pairs,
@@ -750,14 +864,16 @@ function writeSummary(out, meta, samples) {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
-  if (options.summarize) {
+  const finished = options.summarize;
+  if (finished) {
     // Recompute the summary of a finished run from its records.
-    const read = (name) => fs.readFileSync(path.join(options.summarize, name), "utf8");
+    /** @param {string} name */
+    const read = (name) => fs.readFileSync(path.join(finished, name), "utf8");
     const samples = read("samples.jsonl")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    console.log(writeSummary(options.summarize, JSON.parse(read("meta.json")), samples));
+    console.log(writeSummary(finished, JSON.parse(read("meta.json")), samples));
     return;
   }
   // A page on a sleeping display gets no frames in WebKit, so keep the display awake
@@ -772,19 +888,29 @@ async function main() {
       throw new Error(`unknown case ${name}; cases: ${Object.keys(CASES).join(", ")}`);
     }
   }
-  // Every process and listener the run starts is stopped here, however the run ends.
+  // Every process and listener the run starts is stopped here when the run ends, or by
+  // cleanUpBeforeExit when an uncaught exception or a signal ends the harness first.
   const cleanup = new Cleanup();
+  const restoreDefaults = cleanUpBeforeExit(cleanup);
   try {
     await measure(options, caseNames, cleanup);
   } finally {
     for (const error of await cleanup.run()) {
-      console.error(`webkit-gate: while stopping: ${error.stack || error}`);
+      console.error(
+        `webkit-gate: while stopping: ${(error instanceof Error && error.stack) || error}`,
+      );
       process.exitCode = 1;
     }
+    restoreDefaults();
   }
 }
 
-/** The run itself: corpora, driver, servers, then the checks or every case's pairs. */
+/**
+ * The run itself: corpora, driver, servers, then the checks or every case's pairs.
+ * @param {Options} options
+ * @param {string[]} caseNames
+ * @param {Cleanup} cleanup
+ */
 async function measure(options, caseNames, cleanup) {
   fs.mkdirSync(options.out, { recursive: true });
   const corpus = path.join(options.out, "corpus");
@@ -794,8 +920,20 @@ async function measure(options, caseNames, cleanup) {
   console.error(`webkit-gate: writing corpora and building webkit-driver in ${options.out}`);
   const [manifest, driver] = await Promise.all([writeCorpora(corpus), buildDriver()]);
   const metab = await startMetab(options.metab, corpus, scratch, { cleanup });
-  const files = await startStatic(corpus, cleanup);
+  const files = await startStatic({
+    root: ROOT,
+    assets: BENCHMARK_ASSETS,
+    corpus,
+    corpusFiles: Object.keys(manifest),
+    cleanup,
+  });
   const servers = { metab: metab.origin, static: files.origin };
+  /**
+   * @type {RunMeta & {
+   *   pairs: number, cases: string[], viewport: string, cores: number,
+   *   corpora: Record<string, { bytes: number, sha256: string }>
+   * }}
+   */
   const meta = {
     ...(await machineFacts(options.metab)),
     started: new Date().toISOString(),
@@ -807,12 +945,13 @@ async function measure(options, caseNames, cleanup) {
   };
   fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   if (options.checks) {
-    const checks = await runChecks(driver, servers, corpus, scratch);
+    const checks = await runChecks(driver, servers, corpus, scratch, cleanup);
     fs.writeFileSync(path.join(options.out, "checks.json"), `${JSON.stringify(checks, null, 2)}\n`);
     console.log(JSON.stringify(checks, null, 2));
     return;
   }
   const samplesPath = path.join(options.out, "samples.jsonl");
+  /** @type {Sample[]} */
   const samples = [];
   for (const caseName of caseNames) {
     const definition = CASES[caseName];
@@ -825,23 +964,27 @@ async function measure(options, caseNames, cleanup) {
     for (let index = 0; index < total; index += 1) {
       const warmup = index < options.warmup;
       const pair = index - options.warmup;
+      /** @type {import("./summary.mjs").Engine[]} */
       const order = index % 2 === 0 ? ["chrome", "webkit"] : ["webkit", "chrome"];
       for (const engine of order) {
         const load = loadAverage();
         const locked = await screenLocked();
         const startedAt = Date.now();
         // A failed sample is recorded and leaves its pair incomplete; the run goes on.
+        /** @type {ProbeRecord} */
         let record = null;
+        /** @type {string | null} */
         let error = null;
+        /** @type {Metric[]} */
         let metrics = [];
         try {
           record =
             engine === "chrome"
-              ? await chromeSample(url, script, scratch)
-              : await webkitSample(driver, url, script, scratch);
+              ? await chromeSample(url, script, scratch, cleanup)
+              : await webkitSample(driver, url, script, scratch, cleanup);
           metrics = definition.metrics(record);
         } catch (caught) {
-          error = String(caught?.message || caught);
+          error = String((caught instanceof Error && caught.message) || caught);
         }
         const sample = {
           case: caseName,
