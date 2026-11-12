@@ -5,14 +5,20 @@ title: macOS CI job for the app
 kind: task
 status: open
 priority: 3
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m76cd0j37s7vbfjfwtw1ey7n
+  - type: blocks
+    target: is-01m76h3hdcp0ek254274recmn5
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T03:02:57.202Z
-updated_at: 2026-11-11T22:42:10.360Z
+updated_at: 2026-11-12T00:04:28.154Z
 ---
 Phase 5. Build and test apps/macos on a macOS runner, and later sign and notarize release builds from secrets in a temporary keychain.
+
+## Notes
+
+2026-11-11: The user granted adding this workflow for the v1 milestone: asked "Can the v1 work add a macOS CI workflow under .github/workflows?", they answered "Yes, add it". Scope: a macOS app workflow (build, test, ad hoc release rehearsal, check-dmg) and gating publish.yml to the Python package's v<version> release tags. Not a standing grant for other workflow changes.
