@@ -108,7 +108,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private func wire(_ webView: DropAwareWebView) {
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.onFolderDrop = { urls in
+        webView.onFileDrop = { urls in
             guard let app = NSApp.delegate as? AppDelegate else { return false }
             urls.forEach(app.request)
             return true
@@ -181,7 +181,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         discarded.stopLoading()
         discarded.navigationDelegate = nil
         discarded.uiDelegate = nil
-        discarded.onFolderDrop = nil
+        discarded.onFileDrop = nil
         webView = Self.makeWebView(WebConfiguration.make())
         wire(webView)
         container.replaceWebView(webView)
