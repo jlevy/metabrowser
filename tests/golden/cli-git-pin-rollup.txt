@@ -506,6 +506,77 @@ status: 200
       "others": null
     }
   },
+  "file_type_legend": {
+    "schema": "file-type-legend-v1",
+    "limit": 5,
+    "minimum_share_percent": 1,
+    "files": {
+      "all": {
+        "total": 16,
+        "named": [
+          {
+            "family": "plain-text",
+            "value": 4
+          },
+          {
+            "family": "markdown",
+            "value": 3
+          },
+          {
+            "family": "images",
+            "value": 1
+          },
+          {
+            "family": "json",
+            "value": 1
+          },
+          {
+            "family": "shell",
+            "value": 1
+          }
+        ],
+        "other": 6
+      },
+      "unignored": {
+        "total": 16,
+        "named": [
+          {
+            "family": "plain-text",
+            "value": 4
+          },
+          {
+            "family": "markdown",
+            "value": 3
+          },
+          {
+            "family": "images",
+            "value": 1
+          },
+          {
+            "family": "json",
+            "value": 1
+          },
+          {
+            "family": "shell",
+            "value": 1
+          }
+        ],
+        "other": 6
+      }
+    },
+    "bytes": {
+      "all": {
+        "total": 16777474,
+        "named": [],
+        "other": 16777474
+      },
+      "unignored": {
+        "total": 16777474,
+        "named": [],
+        "other": 16777474
+      }
+    }
+  },
   "index_status": "done",
   "indexed_files": 16,
   "max_files": 500000,
