@@ -89,29 +89,40 @@ final class FolderSession: ManagedServer {
     /// Every server child not yet reaped; each pid is also its process group.
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
-    /// The runtime the server last started from, which an upgrade compares with; nil for
-    /// a folder whose server has not started, such as a restored one waiting for its tab.
+    /// The runtime the server last spawned from, which an upgrade compares with; nil for
+    /// a folder whose server has not spawned, such as a restored one waiting for its tab.
     var startedRuntime: Runtime? { server.startedRuntime }
 
-    /// Whether a start or restart is waiting for a runtime the app accepts.
+    /// Whether a start or restart the user asked for is waiting for a runtime the app
+    /// accepts. A restore's start waits in its queue instead.
     var isWaitingForRuntime: Bool { server.held != nil }
 
-    /// Starts the server from the runtime accepted now, unless one is starting, running,
-    /// or stopping, and returns once that start is ready or has failed. Without an
-    /// accepted runtime the windows say so, and the start waits for `resume()`. False if
-    /// `launchCheck` refused it.
-    @discardableResult
-    func startServer() async -> Bool {
-        if await !server.start() { waitForRuntime() }
-        return !supervisor.launchWasRefused
+    /// Whether a runtime is accepted now.
+    var isRuntimeAccepted: Bool { server.isRuntimeAccepted }
+
+    /// A folder the user opened: starts its server from the runtime accepted when it
+    /// spawns, unless one is starting, running, or stopping, and returns once that start
+    /// is ready or has failed. Without an accepted runtime the windows say so, and the
+    /// start waits for `resume()`.
+    func startServer() async {
+        if await server.start() == .waitingForRuntime { waitForRuntime() }
     }
 
-    /// For a restored background folder, the check made just before its server would
-    /// spawn, after the launch gate (`ServerSupervisor.mayLaunch`); nil once one of its
-    /// tabs is selected, which starts it as the user's choice.
+    /// A restored folder's turn (`FolderWindows`): the same start, which waits in the
+    /// restore's queue rather than here when there is no runtime, so it is admitted again
+    /// and keeps its place.
+    func startRestored() async -> FolderServer.Outcome {
+        let outcome = await server.start(holding: false)
+        if outcome == .waitingForRuntime { waitForRuntime() }
+        return outcome
+    }
+
+    /// For a restored background folder, the root check made just before its server would
+    /// spawn, after the launch gate and beside the runtime check (`FolderServer`); nil
+    /// once one of its tabs is selected, which starts it as the user's choice.
     var launchCheck: (() -> Bool)? {
-        get { supervisor.mayLaunch }
-        set { supervisor.mayLaunch = newValue }
+        get { server.rootCheck }
+        set { server.rootCheck = newValue }
     }
 
     /// Retry and Restart Server: a fresh server from the runtime accepted now, which may
@@ -119,7 +130,7 @@ final class FolderSession: ManagedServer {
     /// restart waits for `resume()`.
     func retry() {
         Task {
-            if await !server.restart() { waitForRuntime() }
+            if await server.restart() == .waitingForRuntime { waitForRuntime() }
         }
     }
 

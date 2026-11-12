@@ -10,15 +10,15 @@ import Testing
     private typealias Node = ExecutableTrust.Node
 
     private func dir(_ owner: uid_t = 501, _ mode: mode_t = 0o755) -> Node {
-        Node(kind: .directory, owner: owner, mode: mode, aclGrantsWrite: false)
+        Node(kind: .directory, owner: owner, mode: mode, acl: .harmless)
     }
 
     private func file(_ owner: uid_t = 501, _ mode: mode_t = 0o755) -> Node {
-        Node(kind: .file, owner: owner, mode: mode, aclGrantsWrite: false)
+        Node(kind: .file, owner: owner, mode: mode, acl: .harmless)
     }
 
     private func link(_ target: String, _ owner: uid_t = 501) -> Node {
-        Node(kind: .link(target), owner: owner, mode: 0o755, aclGrantsWrite: false)
+        Node(kind: .link(target), owner: owner, mode: 0o755, acl: .harmless)
     }
 
     /// A Homebrew-style tree: `/` and `/opt` belong to root, the prefix to the user, and
@@ -63,12 +63,72 @@ import Testing
         #expect(refusal("/opt/homebrew/bin/uv", in: everyone)
             == "/opt/homebrew/Cellar/uv/0.9.0/bin/uv can be changed by every account")
         var acl = tree()
-        acl["/opt/homebrew/Cellar"] = Node(kind: .directory, owner: 501, mode: 0o755, aclGrantsWrite: true)
+        acl["/opt/homebrew/Cellar"] = Node(kind: .directory, owner: 501, mode: 0o755, acl: .grantsWrite)
         #expect(refusal("/opt/homebrew/bin/uv", in: acl)
             == "/opt/homebrew/Cellar has an access control entry that grants a right to change it")
     }
 
     /// A shared, writable directory on the login shell's `PATH`, as B1 describes.
+    /// mb-f1tu: an access control list that could not be read counted as one that grants
+    /// nothing, so a file another account could change through it was run.
+    @Test func anAccessControlListThatCannotBeReadIsRefused() {
+        var unreadable = tree()
+        unreadable["/opt/homebrew/Cellar/uv/0.9.0/bin/uv"] = Node(
+            kind: .file, owner: 0, mode: 0o755, acl: .unreadable(EACCES))
+        #expect(refusal("/opt/homebrew/bin/uv", in: unreadable)
+            == "/opt/homebrew/Cellar/uv/0.9.0/bin/uv has an access control list that could not be read (Permission denied)")
+        var directory = tree()
+        directory["/opt/homebrew/bin"] = Node(kind: .directory, owner: 501, mode: 0o755, acl: .unreadable(ENOMEM))
+        #expect(refusal("/opt/homebrew/bin/uv", in: directory)
+            == "/opt/homebrew/bin has an access control list that could not be read (Cannot allocate memory)")
+    }
+
+    /// The probe never runs a uv whose list could not be read.
+    @Test func aUvWhoseAccessControlListCannotBeReadIsNeverRun() async {
+        var nodes = tree()
+        nodes["/opt/homebrew/Cellar/uv/0.9.0/bin/uv"] = Node(kind: .file, owner: 0, mode: 0o755, acl: .unreadable(EACCES))
+        let ran = Recorder<String>()
+        let env = DiscoveryEnvironment(
+            home: "/Volumes/Home", environment: [:], saved: nil, shell: nil,
+            isExecutable: { $0 == "/opt/homebrew/bin/uv" }, canonicalPath: { $0 },
+            run: { spec, _ in
+                ran.append(spec.executable)
+                return CommandResult(status: 0, output: ["/elsewhere"])
+            })
+        let frozen = nodes
+        let survey = await UvToolDirectory.survey(
+            ["/opt/homebrew/bin/uv"], env: env,
+            refusal: { ExecutableTrust.refusal($0, uid: 501, inspect: { frozen[$0] }) })
+        #expect(survey.run == nil)
+        #expect(survey.refused.map(\.path) == ["/opt/homebrew/bin/uv"])
+        #expect(ran.all == [])
+    }
+
+    @Test func theLiveCheckTellsNoListFromAListItCannotRead() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "uv").path
+        try "#!/bin/sh\n".write(toFile: file, atomically: false, encoding: .utf8)
+        #expect(ExecutableTrust.live(file)?.acl == .harmless)  // none at all
+        #expect(ExecutableTrust.live(directory.appending(path: "missing").path) == nil)
+    }
+
+    /// An entry that denies reading security information, even to the owner, makes the
+    /// file one the app cannot examine: macOS then refuses `lstat` itself, and the check
+    /// refuses the file rather than calling it missing.
+    @Test func aListTheAppMayNotReadIsRefusedLive() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "uv").path
+        try "#!/bin/sh\n".write(toFile: file, atomically: false, encoding: .utf8)
+        #expect(chmod(file, 0o755) == 0)
+        let denied = await CommandRunner.live(
+            LaunchSpec(executable: "/bin/chmod", arguments: ["+a", "everyone deny readsecurity", file]), .seconds(10))
+        #expect(denied.succeeded)
+        #expect(ExecutableTrust.live(file)?.kind == .unreadable(EACCES))
+        #expect(ExecutableTrust.refusal(file) == "\(file) could not be examined (Permission denied)")
+    }
+
     @Test func aStickyWorldWritableDirectoryIsRefusedToo() {
         var nodes = tree()
         nodes["/opt/shared"] = dir(0, 0o1777)

@@ -283,3 +283,17 @@ stop_listed() {
   sleep 0.5
   [[ -z "$($list)" ]] || check_fail "$what still running after SIGKILL: $($list | tr '\n' ' ')"
 }
+
+# Stops a setup check where the app would find a metab, or, for "$1" no-metab, a uv, in
+# one of the directories "$2" lists, one per line. Each line is one directory, however
+# it is spelled: spaces and glob characters are part of its name.
+refuse_ambient() {
+  local scenario="$1" dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    [[ ! -e "$dir/metab" ]] || die "$dir/metab would be found before the scratch HOME's; these checks need a Mac without it"
+    if [[ "$scenario" == no-metab && -e "$dir/uv" ]]; then
+      die "$dir/uv would be found, so no-metab could not start without uv; run it on a Mac without uv outside ~/.local/bin, or run old-metab"
+    fi
+  done <<<"$2"
+}

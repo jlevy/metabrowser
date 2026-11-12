@@ -88,12 +88,7 @@ ambient_dirs="$(
     login_path | tr ':' '\n'
   } | grep '^/' | grep -v "^$home" | awk '!seen[$0]++'
 )"
-for dir in $ambient_dirs; do
-  [[ ! -e "$dir/metab" ]] || die "$dir/metab would be found before the scratch HOME's; these checks need a Mac without it"
-  if [[ "$scenario" == no-metab && -e "$dir/uv" ]]; then
-    die "$dir/uv would be found, so no-metab could not start without uv; run it on a Mac without uv outside ~/.local/bin, or run old-metab"
-  fi
-done
+refuse_ambient "$scenario" "$ambient_dirs"
 
 step() {
   echo
