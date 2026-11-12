@@ -2,6 +2,10 @@
 
 (() => {
   const PROJECT_URL = "https://github.com/jlevy/metabrowser";
+  // The registry events that change what the strip shows: the `nav` surface
+  // gains or loses a command on a registration, and a contextual command
+  // appears or goes with its scope.
+  const HINT_EVENT_KINDS = new Set(["registration", "scope"]);
   /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly {keys: readonly string[], separators: readonly string[]}[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
@@ -291,12 +295,19 @@
     });
     const { groups: groupsHost, projectLink } = buildHelpContent(hostDocument, modal.body);
     let disposed = false;
+    // Help's groups are rendered when it opens and, while it is open, on a
+    // registration. A registration while it is closed only marks them stale, so
+    // a navigation that registers and releases commands rebuilds nothing.
+    let helpStale = true;
     /** @type {Promise<void> | null} */
     let decoration = null;
     /** Opening Help does not require a file view or make its helper an eager asset.
      * @param {HTMLElement | null} [trigger]
      */
     function open(trigger = null) {
+      if (helpStale) {
+        renderHelp();
+      }
       modal?.open(trigger);
       if (decoration === null && !disposed) {
         decoration = window.metabrowser
@@ -332,6 +343,7 @@
     });
 
     function renderHelp() {
+      helpStale = false;
       renderHelpGroups(
         groupsHost,
         options.shortcuts.snapshot("help", { includeInactive: true }),
@@ -348,13 +360,19 @@
       );
     }
 
-    renderHelp();
     renderHints();
     const unsubscribe = options.shortcuts.subscribe((event) => {
-      if (event.kind === "registration") {
-        renderHelp();
+      const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
+      if (kinds.includes("registration")) {
+        if (modal?.isOpen()) {
+          renderHelp();
+        } else {
+          helpStale = true;
+        }
       }
-      renderHints();
+      if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {
+        renderHints();
+      }
     });
 
     function dispose() {

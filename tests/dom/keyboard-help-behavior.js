@@ -223,6 +223,47 @@ const help = sandbox.MetabrowserKeyboardHelp.create({
 });
 
 check("Help creation does not load view helpers", viewLoads.length === 0);
+
+// Help renders its groups when it opens and, while open, on a registration;
+// the strip reconciles only on the registry events it displays. Counting each
+// renderer's one write says how often it ran.
+const groupsHost = body.querySelector(".help-shortcut-groups");
+check("Help does not render while closed", groupsHost.children.length === 0);
+let helpRenders = 0;
+const replaceGroups = groupsHost.replaceChildren.bind(groupsHost);
+groupsHost.replaceChildren = (...children) => {
+  helpRenders += 1;
+  replaceGroups(...children);
+};
+let stripReconciles = 0;
+const appendHints = hintHost.append.bind(hintHost);
+hintHost.append = (...children) => {
+  stripReconciles += 1;
+  appendHints(...children);
+};
+function keydown(values) {
+  const event = {
+    altKey: false,
+    ctrlKey: false,
+    defaultPrevented: false,
+    isComposing: false,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+    target: document.body,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+    ...values,
+  };
+  for (const entry of document.listeners.get("keydown") || []) {
+    entry.listener(event);
+  }
+  return event;
+}
+function headings() {
+  return body.querySelectorAll("h4").map((element) => element.textContent);
+}
 const paragraphs = body.querySelectorAll("p").map((element) => element.textContent);
 check(
   "approved three-sentence description",
@@ -264,6 +305,11 @@ check(
 check("punctuation shortcut has no guessed ARIA", !helpButton.hasAttribute("aria-keyshortcuts"));
 helpButton.dispatchEvent({ type: "click" });
 check("pointer trigger reaches modal", modalOpen && openedTrigger === helpButton);
+check(
+  "opening Help renders it once, though opening also changes the scope",
+  helpRenders === 1 && JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Help"]),
+  JSON.stringify({ headings: headings(), helpRenders }),
+);
 shortcuts.invoke("help.close");
 check("Help close descriptor reaches modal", closeCount === 1);
 
@@ -316,6 +362,47 @@ check(
 );
 hintButtons[1].dispatchEvent({ type: "click" });
 check("Quick File button invokes registry", quickOpenCount === 1);
+check("a registration while Help is closed does not render it", helpRenders === 1);
+
+// A handled key publishes nothing, so at rest it costs the strip no work.
+const stripBeforeKey = stripReconciles;
+const quickKey = keydown({ key: "t" });
+check(
+  "a handled key at rest does no strip work",
+  quickKey.defaultPrevented && quickOpenCount === 2 && stripReconciles === stripBeforeKey,
+);
+
+// A batch of registrations reconciles the strip once.
+const stripBeforeBatch = stripReconciles;
+shortcuts.batch(() => {
+  const releaseFirst = shortcuts.register({
+    bindings: [{ key: "x" }],
+    copy: { action: "First", description: "Do the first thing.", hint: "First" },
+    group: "anywhere",
+    handler: () => true,
+    id: "test.first",
+    order: 30,
+    scope: "global",
+    surfaces: { help: "always", nav: "always" },
+  });
+  shortcuts.register({
+    bindings: [{ key: "y" }],
+    copy: { action: "Second", description: "Do the second thing.", hint: "Second" },
+    group: "anywhere",
+    handler: () => true,
+    id: "test.second",
+    order: 40,
+    scope: "global",
+    surfaces: { help: "always" },
+  })();
+  releaseFirst();
+});
+check(
+  "a batch reconciles the strip once",
+  stripReconciles === stripBeforeBatch + 1 && hintHost.children.length === 2,
+  JSON.stringify({ added: stripReconciles - stripBeforeBatch }),
+);
+check("a batch while Help is closed does not render it", helpRenders === 1);
 
 shortcuts.register({
   bindings: [{ key: "Enter" }, { key: " " }],
@@ -340,12 +427,19 @@ check("active tree hint appears", hintHost.children.length === 3);
 check("scope reconciliation keeps Help trigger", hintHost.children[0] === originalHelpButton);
 deactivateTree();
 check("tree hint disappears", hintHost.children.length === 2);
+check(
+  "scope changes reconcile the strip and leave closed Help alone",
+  helpRenders === 1 && JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Help"]),
+);
 
-const headings = body.querySelectorAll("h4").map((element) => element.textContent);
+check("Help reuses the first open load", viewLoads.length === 1);
+// The earlier shortcut open started one load; repeated opens share it.
+help.open(helpButton);
+check("reopening Help renders what changed while it was closed", helpRenders === 2);
 check(
   "full Help preserves group order",
-  JSON.stringify(headings) === JSON.stringify(["Anywhere", "Navigation", "Help"]),
-  JSON.stringify(headings),
+  JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Navigation", "Help"]),
+  JSON.stringify(headings()),
 );
 check(
   "Help copy comes from descriptors",
@@ -353,13 +447,25 @@ check(
     .querySelectorAll(".help-command-description")
     .some((element) => element.textContent.includes("Find and open a file")),
 );
-
-check("Help reuses the first open load", viewLoads.length === 1);
-// The earlier shortcut open started one load; repeated opens share it.
-help.open(helpButton);
+shortcuts.batch(() => {
+  shortcuts.register({
+    bindings: [{ key: "z" }],
+    copy: { action: "Later", description: "Do a later thing.", hint: "Later" },
+    group: "navigation",
+    handler: () => true,
+    id: "test.later",
+    order: 80,
+    scope: "tree",
+    surfaces: { help: "always" },
+  })();
+});
+check("open Help renders a batch of registrations once", helpRenders === 3);
 viewLoads[0].resolve();
 shortcuts.invoke("help.close");
 check("Help can reopen and close", closeCount === 2);
+help.open(helpButton);
+check("reopening Help with nothing changed does not render it again", helpRenders === 3);
+shortcuts.invoke("help.close");
 
 // The tree's own registrations, rendered as Help renders them: a movement row
 // lists its arrow and its letter alias as one "or" group with one spoken phrase.
