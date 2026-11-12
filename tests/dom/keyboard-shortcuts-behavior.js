@@ -698,6 +698,266 @@ equal("a failed batch still publishes what it changed", published, [
 ]);
 batched.dispose();
 
+// ── Badge targets ────────────────────────────────────────────────
+// A command's targets are the elements its key acts on. The registry reads their
+// liveness at dispatch, gives them `aria-keyshortcuts`, and badges the first live one
+// while revealed. These run on a stand-in tree, because liveness is a property of it.
+{
+  const { FakeDocument, element, keyEvent } = require("./key-reveal-dom.js");
+  const tree = new FakeDocument();
+  const targetRegistry = shortcuts.create({ document: tree });
+  const events = [];
+  targetRegistry.subscribe((event) => events.push(JSON.parse(JSON.stringify(event))));
+  const ran = [];
+  function tab(id, label) {
+    return element(tree, "button", { class: "tab-btn", "data-tab": id }, label);
+  }
+  const bar = element(tree, "div", { class: "tab-bar" });
+  const tree1 = tab("tree", "Tree");
+  const source = tab("source", "Source");
+  bar.append(tree1, source);
+  tree.body.append(bar);
+  targetRegistry.register(
+    command({
+      bindings: [{ key: "r" }],
+      copy: { action: "Tree", description: "Show the Tree view.", hint: "Tree" },
+      group: "view-tabs",
+      handler: (context) => {
+        ran.push(context.target?.dataset.tab ?? null);
+        return true;
+      },
+      id: "view-tabs.r",
+      scope: "view-tabs",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  const press = (key, init = {}) => {
+    const event = keyEvent("keydown", key, { target: tree.body, ...init });
+    tree.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const liveIds = () =>
+    targetRegistry
+      .snapshot("reveal")
+      .flatMap((group) => group.commands)
+      .map((presented) => presented.id);
+
+  check("a targeted command with no target leaves the key to the browser", !press("r"));
+  equal("a targeted command with no target is not live", liveIds(), []);
+  equal("nothing ran without a target", ran, []);
+
+  events.length = 0;
+  const handle = targetRegistry.attachTarget("view-tabs.r", tree1);
+  equal("attaching publishes a target event", events, [
+    { commandId: "view-tabs.r", kind: "target" },
+  ]);
+  equal("an attached target carries the key", tree1.getAttribute("aria-keyshortcuts"), "R");
+  check("a live target takes the key", press("R", { shiftKey: true }));
+  equal("the handler is told which target it serves", ran, ["tree"]);
+  equal("a live targeted command is in a live snapshot", liveIds(), ["view-tabs.r"]);
+  check("a target at rest carries no badge", tree1.querySelector(".kbd-badge") === null);
+
+  // Each way a target stops being live: hidden by an ancestor's display, disabled,
+  // inside an inert subtree, and disconnected.
+  ran.length = 0;
+  bar.style.display = "none";
+  check("a target under display: none does not take the key", !press("r"));
+  bar.style.display = "";
+  tree1.disabled = true;
+  check("a disabled target does not take the key", !press("r"));
+  tree1.disabled = false;
+  bar.inert = true;
+  check("a target inside an inert subtree does not take the key", !press("r"));
+  // checkVisibility() ignores inert, so the inert walk runs on that path too.
+  tree1.checkVisibility = () => true;
+  check("an inert target stays dead where checkVisibility() exists", !press("r"));
+  bar.inert = false;
+  tree1.checkVisibility = () => false;
+  check("checkVisibility() decides where the browser has it", !press("r"));
+  delete tree1.checkVisibility;
+  tree1.style.visibility = "hidden";
+  check("a target computing visibility: hidden does not take the key", !press("r"));
+  tree1.style.visibility = "";
+  equal("no dead target ran the command", ran, []);
+
+  // The first live target in document order wins, and gets the badge.
+  const staged = element(tree, "div", { class: "preview-file-stage", inert: true });
+  const stagedTab = tab("tree", "Tree");
+  staged.append(stagedTab);
+  tree.body.append(staged);
+  const stagedHandle = targetRegistry.attachTarget("view-tabs.r", stagedTab);
+  const second = element(tree, "div", {}, tab("raw", "Raw JSON"));
+  tree.body.insertBefore(second, bar);
+  const earlier = targetRegistry.attachTarget("view-tabs.r", second.firstElementChild);
+  check("the first live target in document order runs", press("r") && ran.at(-1) === "raw");
+  check(
+    "a target in the inert stage never counts beside the visible ones",
+    targetRegistry.liveTarget("view-tabs.r") === second.firstElementChild,
+  );
+  earlier.detach();
+  earlier.detach();
+  check(
+    "a detached target loses its key, and detaching twice is harmless",
+    !second.firstElementChild.hasAttribute("aria-keyshortcuts") &&
+      targetRegistry.liveTarget("view-tabs.r") === tree1,
+  );
+
+  // While revealed a badge mounts at once, follows a retarget, and goes on release.
+  events.length = 0;
+  targetRegistry.setRevealed(true);
+  equal("revealing publishes a reveal event", events, [{ kind: "reveal" }]);
+  const badge = tree1.querySelector(".kbd-badge");
+  check(
+    "revealing badges the live target with a hidden keycap",
+    badge?.tagName === "KBD" &&
+      badge.className === "kbd kbd-badge" &&
+      badge.getAttribute("aria-hidden") === "true" &&
+      badge.textContent === "R" &&
+      tree1.classList.contains("kbd-badge-host"),
+  );
+  check("a dead target gets no badge", stagedTab.querySelector(".kbd-badge") === null);
+  const rebuilt = tab("tree", "Tree");
+  bar.replaceChildren(rebuilt, source);
+  handle.retarget(rebuilt);
+  check(
+    "a retarget during a reveal moves the badge at once",
+    rebuilt.querySelector(".kbd-badge") !== null &&
+      rebuilt.getAttribute("aria-keyshortcuts") === "R",
+  );
+  check(
+    "the old element keeps neither badge nor attribute",
+    !tree1.hasAttribute("aria-keyshortcuts") && tree1.querySelector(".kbd-badge") === null,
+  );
+  bar.style.display = "none";
+  events.length = 0;
+  targetRegistry.refreshBadges();
+  check("a refresh after a key reads liveness again", rebuilt.querySelector(".kbd-badge") === null);
+  equal("a refresh publishes a dispatch event", events, [{ kind: "dispatch" }]);
+  bar.style.display = "";
+  targetRegistry.refreshBadges();
+  check("a target shown again gets its badge back", rebuilt.querySelector(".kbd-badge") !== null);
+  const late = tab("late", "Late");
+  bar.append(late);
+  targetRegistry.register(
+    command({
+      bindings: [{ key: "l" }],
+      copy: { action: "Late", description: "Show the Late view.", hint: "Late" },
+      group: "view-tabs",
+      id: "view-tabs.l",
+      scope: "view-tabs",
+      surfaces: { help: "always" },
+      targeted: true,
+    }),
+  );
+  const lateHandle = targetRegistry.attachTarget("view-tabs.l", late);
+  check(
+    "attaching during a reveal mounts a badge at once",
+    late.querySelector(".kbd-badge") !== null,
+  );
+  lateHandle.detach();
+  check("detaching removes the badge", late.querySelector(".kbd-badge") === null);
+
+  // Beside placement: the badge sits in the nearest anchor, measured from it.
+  const header = element(tree, "div", { class: "file-header", "data-kbd-badge-anchor": true });
+  const copy = element(tree, "button", { class: "icon-btn file-header-copy" });
+  const clip = element(tree, "span", { class: "file-header-path" }, copy);
+  header.append(clip);
+  tree.body.append(header);
+  header.rect = { left: 100, top: 40, width: 600, height: 32 };
+  copy.rect = { left: 300, top: 44, width: 24, height: 24 };
+  targetRegistry.register(
+    command({
+      bindings: [{ key: "y" }],
+      copy: { action: "Copy", description: "Copy the path.", hint: "Copy" },
+      group: "controls",
+      id: "header.copy",
+      targeted: true,
+    }),
+  );
+  targetRegistry.attachTarget("header.copy", copy, { placement: "beside" });
+  const besideBadge = header.querySelector(".kbd-badge");
+  check(
+    "a beside badge mounts in the anchor, outside the clipping row",
+    besideBadge?.parentNode === header && copy.querySelector(".kbd-badge") === null,
+  );
+  equal(
+    "a beside badge is placed at the target's inline end and center",
+    [
+      besideBadge?.dataset.kbdPlacement,
+      besideBadge?.style.getPropertyValue("--kbd-badge-inline"),
+      besideBadge?.style.getPropertyValue("--kbd-badge-block"),
+    ],
+    ["beside", "224px", "16px"],
+  );
+  check("a beside target does not become a badge host", !copy.classList.contains("kbd-badge-host"));
+  rejects("an unknown placement is refused", () =>
+    targetRegistry.attachTarget("header.copy", copy, { placement: "over" }),
+  );
+  rejects("a target must be an element", () => targetRegistry.attachTarget("header.copy", null));
+  rejects("targeted must be a boolean", () =>
+    targetRegistry.register(command({ bindings: [{ key: "q" }], id: "q", targeted: "yes" })),
+  );
+
+  // An exclusive modal hides every badge behind it; closing it brings them back.
+  const closeModal = targetRegistry.activateScope("help", { exclusive: true });
+  check(
+    "an exclusive scope hides the badges",
+    tree.body.querySelectorAll(".kbd-badge").length === 0,
+  );
+  closeModal();
+  check("closing it brings them back", tree.body.querySelectorAll(".kbd-badge").length === 2);
+
+  targetRegistry.setRevealed(false);
+  check(
+    "ending the reveal removes every badge",
+    tree.body.querySelectorAll(".kbd-badge").length === 0,
+  );
+  check("ending the reveal leaves no host class", !rebuilt.classList.contains("kbd-badge-host"));
+  check(
+    "ending the reveal keeps the attributes",
+    rebuilt.getAttribute("aria-keyshortcuts") === "R",
+  );
+
+  // The key observer hears each key once its handler has returned, and each keyup.
+  const heard = [];
+  let handlerReturned = false;
+  targetRegistry.register(
+    command({
+      bindings: [{ key: "z" }],
+      handler: () => {
+        handlerReturned = true;
+        return true;
+      },
+      id: "z",
+    }),
+  );
+  const stopObserving = targetRegistry.observeKeys((event, handled) => {
+    heard.push(`${event.type} ${event.key} ${handled} ${handlerReturned}`);
+  });
+  check(
+    "the registry adds a keyup listener only while an observer listens",
+    tree.listeners.some((entry) => entry.type === "keyup" && entry.capture),
+  );
+  press("z");
+  press("Shift", { shiftKey: true });
+  tree.dispatchEvent(keyEvent("keyup", "Shift", { target: tree.body }));
+  equal("observers hear keys after dispatch, and keyups unhandled", heard, [
+    "keydown z true true",
+    "keydown Shift false true",
+    "keyup Shift false true",
+  ]);
+  stopObserving();
+  check(
+    "the keyup listener goes with the last observer",
+    !tree.listeners.some((entry) => entry.type === "keyup"),
+  );
+
+  stagedHandle.detach();
+  targetRegistry.dispose();
+  check("disposal leaves no attribute", !rebuilt.hasAttribute("aria-keyshortcuts"));
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;

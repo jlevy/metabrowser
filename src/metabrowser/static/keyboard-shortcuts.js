@@ -32,7 +32,23 @@
    * @property {boolean} [repeat]
    * @property {string} scope
    * @property {Readonly<Record<string, "active" | "always">>} surfaces
+   * @property {boolean} [targeted]
    * @property {(context: Record<string, unknown>) => boolean} [available]
+   */
+  /** @typedef {"beside" | "inline-end"} BadgePlacement */
+  /**
+   * One element a command acts on, and the badge it carries while revealed.
+   *
+   * @typedef {object} ShortcutTargetRecord
+   * @property {HTMLElement | null} badge
+   * @property {string} commandId
+   * @property {HTMLElement} element
+   * @property {BadgePlacement} placement
+   */
+  /**
+   * @typedef {object} ShortcutTargetHandle
+   * @property {() => void} detach
+   * @property {(element: HTMLElement) => void} retarget
    */
   /**
    * @typedef {object} ShortcutPresentation
@@ -101,6 +117,21 @@
       context: "Available outside text fields.",
       label: "Main tabs",
       order: 15,
+    }),
+    "view-tabs": Object.freeze({
+      context: "Available while the tabs are shown.",
+      label: "View tabs",
+      order: 16,
+    }),
+    controls: Object.freeze({
+      context: "Available while the control is shown.",
+      label: "Controls",
+      order: 18,
+    }),
+    filters: Object.freeze({
+      context: "Available while the Files tab is shown.",
+      label: "Filters",
+      order: 19,
     }),
     navigation: Object.freeze({
       context: "Available while a file-tree row has focus.",
@@ -251,6 +282,65 @@
       tagName === "textarea" ||
       tagName === "select" ||
       element.isContentEditable
+    );
+  }
+
+  // Where a badge sits: inside its target over the inline-end padding, or just past
+  // the target's inline end inside the nearest badge anchor, for an icon button or a
+  // target in a container that clips (docs/design-system.md, "Keyboard Commands and
+  // Help"). The styles are the `── Keyboard keys ──` blocks of styles.css.
+  /** @type {ReadonlySet<string>} */
+  const BADGE_PLACEMENTS = new Set(["beside", "inline-end"]);
+  const BADGE_ANCHOR_SELECTOR = "[data-kbd-badge-anchor]";
+  // Node.DOCUMENT_POSITION_FOLLOWING, spelled out so the registry needs no Node global.
+  const DOCUMENT_POSITION_FOLLOWING = 4;
+
+  /**
+   * Whether a target can take its key now: connected, not `disabled`, outside any
+   * `inert` subtree, and visible. Read at dispatch rather than tracked, because the
+   * shell hides whole panels through a style change no target hears about.
+   *
+   * `checkVisibility()` ignores `inert`, so a view staged in the shell's inert,
+   * transparent stage would otherwise count beside the one on screen; the inert walk
+   * runs on both paths. Without `checkVisibility()`, no ancestor may compute
+   * `display: none` and the target may not compute `visibility: hidden`, which it
+   * inherits from an ancestor unless it overrides it.
+   *
+   * @param {HTMLElement} element
+   */
+  function isTargetLive(element) {
+    if (
+      !element.isConnected ||
+      element.hasAttribute("disabled") ||
+      /** @type {{disabled?: unknown}} */ (element).disabled === true
+    ) {
+      return false;
+    }
+    for (let node = /** @type {HTMLElement | null} */ (element); node; node = node.parentElement) {
+      if (node.inert) {
+        return false;
+      }
+    }
+    if (typeof element.checkVisibility === "function") {
+      return element.checkVisibility({ visibilityProperty: true });
+    }
+    const view = element.ownerDocument.defaultView;
+    if (!view) {
+      return true;
+    }
+    for (let node = /** @type {HTMLElement | null} */ (element); node; node = node.parentElement) {
+      if (view.getComputedStyle(node).display === "none") {
+        return false;
+      }
+    }
+    return view.getComputedStyle(element).visibility !== "hidden";
+  }
+
+  /** @param {HTMLElement} left @param {HTMLElement} right */
+  function precedesInDocument(left, right) {
+    return (
+      typeof left.compareDocumentPosition === "function" &&
+      (left.compareDocumentPosition(right) & DOCUMENT_POSITION_FOLLOWING) !== 0
     );
   }
 
@@ -415,6 +505,9 @@
     if (descriptor.control !== undefined && typeof descriptor.control.connect !== "function") {
       throw new TypeError("Shortcut control binding requires connect()");
     }
+    if (descriptor.targeted !== undefined && typeof descriptor.targeted !== "boolean") {
+      throw new TypeError("Shortcut command targeted must be a boolean");
+    }
     return true;
   }
 
@@ -436,6 +529,14 @@
     let batchDepth = 0;
     /** @type {ShortcutEvent[]} */
     let batchedEvents = [];
+    /** Each command's attached targets, kept apart from registration: a command
+     * re-registered with new copy keeps the elements it acts on.
+     * @type {Map<string, ShortcutTargetRecord[]>} */
+    const targets = new Map();
+    /** @type {Set<(event: KeyboardEvent, handled: boolean) => void>} */
+    const keyObservers = new Set();
+    // Whether the key reveal shows: badges exist only then (static/key-reveal.js).
+    let revealed = false;
 
     /** @param {ShortcutEvent} event */
     function deliver(event) {
@@ -555,6 +656,10 @@
         order: descriptor.order,
         presentation,
       });
+      for (const record of targets.get(descriptor.id) || []) {
+        writeTargetShortcut(record);
+      }
+      followBadges();
       publish(Object.freeze({ commandId: descriptor.id, kind: "registration" }));
       let active = true;
       return () => {
@@ -563,8 +668,294 @@
         }
         active = false;
         commands.delete(descriptor.id);
+        for (const record of targets.get(descriptor.id) || []) {
+          writeTargetShortcut(record);
+        }
+        followBadges();
         publish(Object.freeze({ commandId: descriptor.id, kind: "registration" }));
       };
+    }
+
+    /**
+     * A target carries its command's `aria-keyshortcuts` for as long as both exist,
+     * so the key is announced at rest and not only while revealed.
+     *
+     * @param {ShortcutTargetRecord} record
+     */
+    function writeTargetShortcut(record) {
+      const aria = commands.get(record.commandId)?.presentation.bindings.ariaKeyshortcuts;
+      if (aria) {
+        record.element.setAttribute("aria-keyshortcuts", aria);
+      } else {
+        record.element.removeAttribute("aria-keyshortcuts");
+      }
+    }
+
+    /**
+     * The first live target of a command in document order: the one a key runs and
+     * the one that carries the badge. The others keep their `aria-keyshortcuts` and
+     * wait their turn.
+     *
+     * @param {string} commandId
+     */
+    function firstLiveTarget(commandId) {
+      /** @type {ShortcutTargetRecord | null} */
+      let first = null;
+      for (const record of targets.get(commandId) || []) {
+        if (
+          isTargetLive(record.element) &&
+          (!first || precedesInDocument(record.element, first.element))
+        ) {
+          first = record;
+        }
+      }
+      return first;
+    }
+
+    /**
+     * Whether a command would run now, as far as anything but the key can say: its
+     * scope is active, its `available()` holds, and a targeted command has a live
+     * target. A targeted command with no target at all is not live.
+     *
+     * @param {ShortcutEntry} entry
+     * @param {ReadonlySet<string>} activeScopes
+     */
+    function entryIsLive(entry, activeScopes) {
+      const descriptor = entry.descriptor;
+      return (
+        activeScopes.has(descriptor.scope) &&
+        (typeof descriptor.available !== "function" || descriptor.available({})) &&
+        (!descriptor.targeted || firstLiveTarget(descriptor.id) !== null)
+      );
+    }
+
+    /**
+     * Badges follow targets: while revealed, each live command's first live target
+     * carries one keycap, and every other target carries none. At rest no target
+     * carries one, so nothing about a target's text or layout changes then.
+     */
+    function reconcileBadges() {
+      const activeScopes = new Set(activeLayers());
+      for (const [commandId, records] of targets) {
+        const entry = commands.get(commandId);
+        const chosen =
+          revealed && entry && entryIsLive(entry, activeScopes) ? firstLiveTarget(commandId) : null;
+        for (const record of records) {
+          if (record === chosen && entry) {
+            mountBadge(record, entry);
+          } else {
+            unmountBadge(record);
+          }
+        }
+      }
+    }
+
+    // A change while revealed moves the badges at once; at rest there are none to move.
+    function followBadges() {
+      if (revealed) {
+        reconcileBadges();
+      }
+    }
+
+    /**
+     * One `kbd.kbd.kbd-badge`, hidden from assistive technology, which reads the
+     * target's `aria-keyshortcuts` instead. `inline-end` puts it inside the target,
+     * which becomes its containing block through `.kbd-badge-host`; `beside` puts it
+     * in the nearest badge anchor, at the target's inline end and vertical center,
+     * measured once as it mounts.
+     *
+     * @param {ShortcutTargetRecord} record
+     * @param {ShortcutEntry} entry
+     */
+    function mountBadge(record, entry) {
+      const anchor =
+        record.placement === "beside"
+          ? /** @type {HTMLElement | null} */ (record.element.closest(BADGE_ANCHOR_SELECTOR)) ||
+            record.element.parentElement
+          : record.element;
+      if (!anchor) {
+        unmountBadge(record);
+        return;
+      }
+      if (record.badge?.isConnected && record.badge.parentElement === anchor) {
+        return;
+      }
+      unmountBadge(record);
+      const badge = appendKey(hostDocument, anchor, entry.descriptor.bindings[0].key);
+      badge.className = "kbd kbd-badge";
+      badge.setAttribute("aria-hidden", "true");
+      badge.dataset.kbdPlacement = record.placement;
+      if (record.placement === "beside") {
+        const anchorBox = anchor.getBoundingClientRect();
+        const box = record.element.getBoundingClientRect();
+        const rtl = hostDocument.defaultView?.getComputedStyle(record.element).direction === "rtl";
+        const inline = rtl ? anchorBox.right - box.left : box.right - anchorBox.left;
+        badge.style.setProperty("--kbd-badge-inline", `${Math.round(inline)}px`);
+        badge.style.setProperty(
+          "--kbd-badge-block",
+          `${Math.round(box.top + box.height / 2 - anchorBox.top)}px`,
+        );
+      } else {
+        record.element.classList.add("kbd-badge-host");
+      }
+      record.badge = badge;
+    }
+
+    /** @param {ShortcutTargetRecord} record */
+    function unmountBadge(record) {
+      if (!record.badge) {
+        return;
+      }
+      record.badge.remove();
+      record.badge = null;
+      record.element.classList.remove("kbd-badge-host");
+    }
+
+    /**
+     * Record `element` as a target of `commandId`: what its key acts on and where its
+     * badge goes. The element carries the command's `aria-keyshortcuts` while
+     * attached. A component that rebuilds its markup calls `retarget()` with the new
+     * element; `detach()` removes the attribute, any badge, and the record, and is
+     * idempotent. During a reveal the badge follows at once.
+     *
+     * @param {string} commandId
+     * @param {HTMLElement} element
+     * @param {{placement?: BadgePlacement}} [targetOptions]
+     * @returns {Readonly<ShortcutTargetHandle>}
+     */
+    function attachTarget(commandId, element, targetOptions = {}) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      requireNonemptyString(commandId, "a target command id");
+      requireTargetElement(element);
+      const placement = targetOptions.placement ?? "inline-end";
+      if (!BADGE_PLACEMENTS.has(placement)) {
+        throw new TypeError(`Unknown badge placement: ${placement}`);
+      }
+      /** @type {ShortcutTargetRecord} */
+      const record = { badge: null, commandId, element, placement };
+      const records = targets.get(commandId) || [];
+      records.push(record);
+      targets.set(commandId, records);
+      writeTargetShortcut(record);
+      followBadges();
+      publish(Object.freeze({ commandId, kind: "target" }));
+      let attached = true;
+      return Object.freeze({
+        /** @param {HTMLElement} next */
+        retarget(next) {
+          requireTargetElement(next);
+          if (!attached || next === record.element) {
+            return;
+          }
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+          record.element = next;
+          writeTargetShortcut(record);
+          followBadges();
+          publish(Object.freeze({ commandId, kind: "target" }));
+        },
+        detach() {
+          if (!attached) {
+            return;
+          }
+          attached = false;
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+          const remaining = (targets.get(commandId) || []).filter((value) => value !== record);
+          if (remaining.length > 0) {
+            targets.set(commandId, remaining);
+          } else {
+            targets.delete(commandId);
+          }
+          followBadges();
+          publish(Object.freeze({ commandId, kind: "target" }));
+        },
+      });
+    }
+
+    /** @param {unknown} element */
+    function requireTargetElement(element) {
+      if (
+        !element ||
+        typeof (/** @type {{setAttribute?: unknown}} */ (element).setAttribute) !== "function"
+      ) {
+        throw new TypeError("A shortcut target must be an element");
+      }
+    }
+
+    /**
+     * Show or hide every badge, for the key reveal, and publish the change so the
+     * strip can show the reveal surface.
+     *
+     * @param {boolean} next
+     */
+    function setRevealed(next) {
+      if (disposed || revealed === Boolean(next)) {
+        return;
+      }
+      revealed = Boolean(next);
+      reconcileBadges();
+      publish(Object.freeze({ kind: "reveal" }));
+    }
+
+    /**
+     * Read every attached target's liveness again and move the badges, after a key
+     * the registry handled while revealed: a handler can show or hide a target
+     * through a style change that publishes nothing, as the Files tab's digit shows
+     * the filter bar. Publishes a `dispatch` event so the revealed strip follows.
+     */
+    function refreshBadges() {
+      if (disposed || !revealed) {
+        return;
+      }
+      reconcileBadges();
+      publish(Object.freeze({ kind: "dispatch" }));
+    }
+
+    /**
+     * Hear every key after the dispatch loop has decided it, as `(event, handled)`,
+     * whichever module registered first: the reveal learns of a key only once its
+     * handler has returned. While an observer is registered the registry also hears
+     * each `keyup`, passively, and passes it through as unhandled; it dispatches none.
+     *
+     * @param {(event: KeyboardEvent, handled: boolean) => void} observer
+     */
+    function observeKeys(observer) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      if (typeof observer !== "function") {
+        throw new TypeError("A key observer must be a function");
+      }
+      keyObservers.add(observer);
+      if (keyObservers.size === 1) {
+        hostDocument.addEventListener("keyup", handleKeyup, { capture: true, passive: true });
+      }
+      let observing = true;
+      return () => {
+        if (!observing) {
+          return;
+        }
+        observing = false;
+        keyObservers.delete(observer);
+        if (keyObservers.size === 0) {
+          hostDocument.removeEventListener("keyup", handleKeyup, true);
+        }
+      };
+    }
+
+    /** @param {KeyboardEvent} event @param {boolean} handled */
+    function notifyKeyObservers(event, handled) {
+      for (const observer of Array.from(keyObservers)) {
+        observer(event, handled);
+      }
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleKeyup(event) {
+      notifyKeyObservers(event, false);
     }
 
     /** @param {string} scope @param {{exclusive?: boolean}} [activationOptions] */
@@ -576,6 +967,7 @@
         token: Symbol(scope),
       };
       activations.push(activation);
+      followBadges();
       publish(Object.freeze({ kind: "scope", scope }));
       let active = true;
       return () => {
@@ -586,6 +978,7 @@
         const index = activations.findIndex((candidate) => candidate.token === activation.token);
         if (index >= 0) {
           activations.splice(index, 1);
+          followBadges();
           publish(Object.freeze({ kind: "scope", scope }));
         }
       };
@@ -599,22 +992,41 @@
       return descriptor.handler(context) === true;
     }
 
+    /**
+     * What a command acts on now, for its handler's `context.target`: its first live
+     * target, or null. Undefined for a targeted command with none, which does not run.
+     *
+     * @param {ShortcutCommand} descriptor
+     * @returns {HTMLElement | null | undefined}
+     */
+    function targetFor(descriptor) {
+      const target = targets.has(descriptor.id) ? firstLiveTarget(descriptor.id) : null;
+      return descriptor.targeted && !target ? undefined : (target?.element ?? null);
+    }
+
     /** @param {string} commandId @param {Record<string, unknown>} [context] */
     function invoke(commandId, context = {}) {
       const entry = commands.get(commandId);
       if (!entry || !activeLayers().includes(entry.descriptor.scope)) {
         return false;
       }
-      return runDescriptor(entry.descriptor, context);
+      const target = targetFor(entry.descriptor);
+      if (target === undefined) {
+        return false;
+      }
+      return runDescriptor(entry.descriptor, { target, ...context });
     }
 
     /**
      * One dispatch pass over the active layers, highest first. A descriptor
-     * whose handler declines leaves the event to the next match. Returns
-     * whether any live binding matched, handled or not.
+     * whose handler declines leaves the event to the next match, and a targeted
+     * descriptor with no live target does not match at all. Returns whether a
+     * handler acted, whether a live binding matched but every handler declined, or
+     * whether nothing matched.
      *
      * @param {KeyboardEvent} event
      * @param {{physical?: boolean}} matchOptions
+     * @returns {"handled" | "matched" | "none"}
      */
     function dispatch(event, matchOptions) {
       const editable = isEditableTarget(event.target);
@@ -632,25 +1044,35 @@
           ) {
             continue;
           }
+          // Visibility is read here, for the one command whose key matched.
+          const target = targetFor(descriptor);
+          if (target === undefined) {
+            continue;
+          }
           matched = true;
-          if (runDescriptor(descriptor, { event, trigger: null })) {
+          if (runDescriptor(descriptor, { event, target, trigger: null })) {
             event.preventDefault();
-            return true;
+            return "handled";
           }
         }
       }
-      return matched;
+      return matched ? "matched" : "none";
     }
 
     /** @param {KeyboardEvent} event */
     function handleKeydown(event) {
-      if (event.defaultPrevented || event.isComposing) {
-        return;
+      let outcome = "none";
+      if (!event.defaultPrevented && !event.isComposing) {
+        // The character typed decides first. Only a character that matched
+        // nothing, and is not itself a digit, falls back to its digit-row key.
+        outcome = dispatch(event, {});
+        if (outcome === "none" && !isDigitKey(event.key)) {
+          outcome = dispatch(event, { physical: true });
+        }
       }
-      // The character typed decides first. Only a character that matched
-      // nothing, and is not itself a digit, falls back to its digit-row key.
-      if (!dispatch(event, {}) && !isDigitKey(event.key)) {
-        dispatch(event, { physical: true });
+      // Observers hear the key once its handler has returned, handled or not.
+      if (keyObservers.size > 0) {
+        notifyKeyObservers(event, outcome === "handled");
       }
     }
 
@@ -659,9 +1081,37 @@
       return commands.get(commandId)?.presentation || null;
     }
 
-    /** @param {string} surface @param {{includeInactive?: boolean}} [snapshotOptions] */
+    /**
+     * Whether a registered command would run now; see `entryIsLive`.
+     *
+     * @param {string} commandId
+     */
+    function isLive(commandId) {
+      const entry = commands.get(commandId);
+      return entry !== undefined && entryIsLive(entry, new Set(activeLayers()));
+    }
+
+    /**
+     * The element a command would act on now, its first live target, or null.
+     *
+     * @param {string} commandId
+     */
+    function liveTarget(commandId) {
+      return firstLiveTarget(commandId)?.element ?? null;
+    }
+
+    /**
+     * A surface's commands by group. `live` keeps only the commands that would run
+     * now (`isLive`), which the `reveal` surface always does: it shows what the keys
+     * under a held Shift reach. Help never reads live, because opening it makes
+     * every target behind it `inert`.
+     *
+     * @param {string} surface
+     * @param {{includeInactive?: boolean, live?: boolean}} [snapshotOptions]
+     */
     function snapshot(surface, snapshotOptions = {}) {
       const activeScopes = new Set(activeLayers());
+      const live = snapshotOptions.live === true || surface === "reveal";
       /** @type {Map<string, ShortcutEntry[]>} */
       const grouped = new Map();
       for (const entry of commands.values()) {
@@ -670,7 +1120,8 @@
           !mode ||
           (!snapshotOptions.includeInactive &&
             mode === "active" &&
-            !activeScopes.has(entry.descriptor.scope))
+            !activeScopes.has(entry.descriptor.scope)) ||
+          (live && !entryIsLive(entry, activeScopes))
         ) {
           continue;
         }
@@ -736,6 +1187,18 @@
       }
       disposed = true;
       hostDocument.removeEventListener("keydown", handleKeydown, true);
+      if (keyObservers.size > 0) {
+        hostDocument.removeEventListener("keyup", handleKeyup, true);
+      }
+      keyObservers.clear();
+      revealed = false;
+      for (const records of targets.values()) {
+        for (const record of records) {
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+        }
+      }
+      targets.clear();
       commands.clear();
       activations.length = 0;
       subscribers.clear();
@@ -748,13 +1211,20 @@
         appendBinding(hostDocument, container, presentation),
       /** @param {HTMLElement} container @param {string} key */
       appendKey: (container, key) => appendKey(hostDocument, container, key),
+      attachTarget,
       batch,
       describeBindings,
       describeKey,
       dispose,
       invoke,
+      isLive,
+      isRevealed: () => revealed,
+      liveTarget,
+      observeKeys,
       present,
+      refreshBadges,
       register,
+      setRevealed,
       snapshot,
       subscribe,
     });
