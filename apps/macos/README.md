@@ -510,12 +510,19 @@ reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
-Every start asks for the runtime the app accepts at that moment (`FolderServer`): a
-folder’s first start, a restored folder’s start when its turn or its tab comes, Retry,
-Restart Server, and the restart after an upgrade.
+Every start asks for the runtime the app accepts (`FolderServer`): a folder’s first
+start, a restored folder’s start when its turn or its tab comes, Retry, Restart Server,
+and the restart after an upgrade.
+It asks before it stops anything, and again at the last moment before the child spawns,
+after the launch gate and any earlier server’s stop (`ServerSupervisor.mayLaunch`),
+beside a restored background folder’s root check; the second answer must be the runtime
+the command was built from, and one replaced meanwhile is built again from.
 While there is none, because a search found nothing or the runtime’s file changed and
-its check has not answered, a start waits and its windows say so, a restart stops
-nothing, and both go ahead once a runtime is accepted.
+its check has not answered, a start spawns nothing and its windows say so, a restart
+stops nothing if it has not yet, and both go ahead once a runtime is accepted.
+A folder the user opened or restarted waits on its own; a restore puts its root back at
+the front of its queue and pauses, so when a runtime is accepted each root is admitted
+again in its turn, in the restore’s order, with selected tabs first.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one
@@ -550,8 +557,10 @@ not read the `PATH` it added.
   the screen names.
 - **Which uv it runs:** the app runs a uv it found by itself only if every directory and
   link from `/` to the file, and the file, belong to this user or root, none is writable
-  by its group or by every account, and no access control entry grants a right to change
-  it. Each one refused is named on the screen and in the log with the reason; the steps
+  by its group or by every account, no access control entry grants a right to change it,
+  and every one of them could be examined, its access control list included: a failure
+  to read either refuses the uv.
+  Each one refused is named on the screen and in the log with the reason; the steps
   still count it as installed, since the user’s Terminal is what runs it.
   A standard Homebrew prefix is writable by the `admin` group, so its uv is refused,
   which costs only the question: uv’s default directory is the answer a Finder launch
@@ -596,9 +605,10 @@ Its number says only that it was built after 0.12.0: one built before the route 
   A change counts once two looks agree, which debounces a file caught in the middle of
   an install without proving the installer is done: the check reads the file again, and
   a later change is a new one.
-  From the first look that sees a change, no server starts from the old runtime until a
-  check, a Find Again, or a choice validates one, whichever finishes it; a choice being
-  validated is never overtaken by a check the app starts by itself.
+  Once a change has settled, or when a folder opens and its check sees the file changed,
+  no server starts from the old runtime until a check, a Find Again, or a choice
+  validates one, whichever finishes it; a choice being validated is never overtaken by a
+  check the app starts by itself.
   The check runs `metab --version` again.
   A version the app accepts replaces the old one, and if open folders run servers that
   the same `metab` started at another version, an alert offers to restart them; a folder
