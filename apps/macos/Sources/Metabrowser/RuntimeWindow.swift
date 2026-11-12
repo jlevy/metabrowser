@@ -11,6 +11,8 @@ import SwiftUI
     var isRunningDoctor = false
     var doctorOutput: String?
     var notice: String?
+    /// The first-run steps, once a search found no usable `metab`.
+    var guide: SetupGuide?
 }
 
 struct RuntimeActions {
@@ -28,13 +30,13 @@ struct RuntimeView: View {
         VStack(alignment: .leading, spacing: 14) {
             if let setup = model.setup {
                 found(setup)
-            } else if model.isSearching {
+            } else if let guide = model.guide {
+                missing(guide)
+            } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Looking for the metab command-line tool…")
                 }
-            } else {
-                missing
             }
             if let notice = model.notice {
                 Text(notice).foregroundStyle(.orange).textSelection(.enabled)
@@ -105,38 +107,12 @@ struct RuntimeView: View {
         }
     }
 
-    private var missing: some View {
+    private func missing(_ guide: SetupGuide) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let old = model.tried.first(where: { if case .tooOld = $0.result { true } else { false } }) {
-                Text("Metabrowser needs metab \(MetabRequirement.minimum) or later").font(.headline)
-                Text("\(old.path) is \(Self.describe(old.result)). Upgrade it, and Metabrowser continues by itself:")
-                    .fixedSize(horizontal: false, vertical: true)
-                command(MetabRequirement.upgradeCommand)
-            } else {
-                Text("Metabrowser needs the metab command-line tool").font(.headline)
-                Text("This app runs your own installation of Metabrowser and did not find one. Install it with uv, and Metabrowser continues by itself:")
-                    .fixedSize(horizontal: false, vertical: true)
-                command(RuntimeDiscovery.installCommand)
-            }
+            SetupGuideView(guide: guide)
             Link(
                 "Installation guide",
                 destination: URL(string: "https://github.com/jlevy/metabrowser/blob/main/docs/installation.md")!)
-        }
-    }
-
-    private func command(_ text: String) -> some View {
-        HStack {
-            Text(text)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-            Button("Copy") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-            }
         }
     }
 

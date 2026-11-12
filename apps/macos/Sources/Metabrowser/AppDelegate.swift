@@ -26,7 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
+    private var watchedPaths: [String] = []
     private var isOfferingRestart = false
+    /// The login shell's `PATH` from the last search that read it, for the first-run steps.
+    private var lastLoginPath: [String]?
+    private var guideRequests = 0
 
     // MARK: - Lifecycle
 
@@ -273,6 +277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .notFound:
             // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no usable metab in \(report.tried.count) places")
+            lastLoginPath = report.loginPath
+            await prepareGuide()
             showSettings(nil)
         case .rejected, .superseded:
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
@@ -283,6 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
+        runtimeModel.guide = nil
         openPendingFolders()
         offerRestart(for: found.runtime)
     }
@@ -387,15 +394,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// with no runtime, every place discovery finds `metab` without a shell. A watch is
     /// replaced only when the runtime changes, so a change it has seen once still settles.
     private func rewatch() {
-        let runtime = selection.setup?.runtime
-        guard watch == nil || runtime != watchedRuntime else { return }
-        watchedRuntime = runtime
-        if let runtime {
+        if let runtime = selection.setup?.runtime {
+            guard watch == nil || runtime != watchedRuntime else { return }
+            watchedRuntime = runtime
+            watchedPaths = []
             watch = SetupWatch(runtime: runtime)
-        } else {
-            let paths = RuntimeDiscovery.cheapCandidates(.live(saved: settings.load()?.runtime)).map(\.0)
-            watch = SetupWatch(waitingFor: paths, uv: [])
+            return
         }
+        let env = DiscoveryEnvironment.live(saved: settings.load()?.runtime)
+        var metab = RuntimeDiscovery.cheapCandidates(env).map(\.0)
+        if let bin = runtimeModel.guide?.binDirectory, !metab.contains(bin + "/metab") { metab.append(bin + "/metab") }
+        let uv = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
+        guard watch == nil || watchedRuntime != nil || metab + uv != watchedPaths else { return }
+        watchedRuntime = nil
+        watchedPaths = metab + uv
+        watch = SetupWatch(waitingFor: metab, uv: uv)
     }
 
     /// Skipped while a search or recheck runs, so a change it has not seen stays
@@ -405,8 +418,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch action {
         case .recheck: beginRecheck()
         case .discover: beginDiscovery()
-        case .replan: break
+        case .replan: Task { await prepareGuide() }
         }
+    }
+
+    /// Works out the first-run steps from the last search and what is installed now,
+    /// asking uv, when there is one, where it puts `metab`.
+    private func prepareGuide() async {
+        guideRequests += 1
+        let request = guideRequests
+        let env = DiscoveryEnvironment.live(saved: nil)
+        let uv = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
+            .first(where: FileChecks.isExecutableFile)
+        var binDirectory = RuntimeDiscovery.uvToolBinDirectory(env)
+        if let uv {
+            switch await UvToolDirectory.ask(uv: uv, env: env) {
+            case .directory(let directory):
+                binDirectory = directory
+            case .failed(let reason):
+                // The guide names the directory it waits in, so the user sees the guess.
+                AppLog.app.error(
+                    "\(uv, privacy: .public) did not say where it installs tools (\(reason, privacy: .public)); waiting in \(binDirectory, privacy: .public), uv's documented default"
+                )
+            }
+        }
+        // A runtime that arrived meanwhile, or a newer request, makes this one moot.
+        guard request == guideRequests, selection.setup == nil else { return }
+        let hasHomebrew = RuntimeDiscovery.homebrewBins.contains { FileChecks.isExecutableFile($0 + "/brew") }
+        runtimeModel.guide = SetupGuide(
+            tried: selection.tried, uv: uv, binDirectory: binDirectory, home: env.home, loginPath: lastLoginPath,
+            hasHomebrew: hasHomebrew)
+        rewatch()
     }
 
     private func beginRecheck() {

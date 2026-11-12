@@ -69,7 +69,10 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
     public var setup: RuntimeSetup?
     /// Every candidate looked at, in order, for the Settings window.
     public var tried: [CandidateOutcome]
-    public var consultedLoginShell: Bool
+    /// The login shell's `PATH`, when the search consulted the shell and it answered.
+    public var loginPath: [String]?
+
+    public var consultedLoginShell: Bool { loginPath != nil }
 }
 
 /// Finds the user's CLI install of `metab` once, at setup.
@@ -109,17 +112,16 @@ public nonisolated enum RuntimeDiscovery {
         var tools = resolveTools(loginPath: nil, isExecutable: env.isExecutable)
         let needsShell = runtime == nil || tools.gh == nil
             || !(tools.git.map { homebrewBins.contains(($0 as NSString).deletingLastPathComponent) } ?? false)
-        var consulted = false
+        var consulted: [String]?
         if needsShell, let loginPath = await loginShellPath(env) {
-            consulted = true
+            consulted = loginPath
             if runtime == nil {
                 runtime = await firstValid(loginPath.map { ($0 + "/metab", .loginShell) })
             }
             tools = resolveTools(loginPath: loginPath, isExecutable: env.isExecutable)
         }
         return DiscoveryReport(
-            setup: runtime.map { RuntimeSetup(runtime: $0, tools: tools) }, tried: tried,
-            consultedLoginShell: consulted)
+            setup: runtime.map { RuntimeSetup(runtime: $0, tools: tools) }, tried: tried, loginPath: consulted)
     }
 
     /// The candidates that cost only a file check, in order.

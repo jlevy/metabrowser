@@ -277,10 +277,10 @@ With a signed, notarized, and stapled release:
    the Internet, saying Apple checked it for malicious software.
    An app opened straight from the DMG or from Downloads runs from a randomized
    read-only copy (App Translocation); it works, but belongs in Applications.
-4. **Runtime.** The app runs the `metab` command-line tool and does not yet install it.
-   Without one, the first launch shows the install command,
-   `uv tool install metabrowser`, and every place it looked, and Find Again picks up the
-   new install.
+4. **Runtime.** The app runs the `metab` command-line tool and does not install it.
+   Without one, or with one older than 0.12.1, the first launch shows the commands still
+   missing ([The First Run Without metab](#the-first-run-without-metab)) and continues
+   by itself once `metab` is installed.
 5. **Privacy prompts.** Opening a folder in Desktop, Documents, Downloads, iCloud Drive,
    or on a removable or network volume asks once, in Metabrowser’s name, because the app
    is responsible for the server it starts.
@@ -303,7 +303,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/Setup/` | The `metab` version the app requires, fingerprints and watches of the files that decide the runtime, and the offer to restart servers after an upgrade. |
+| `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, and the offer to restart servers after an upgrade. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
@@ -394,10 +394,12 @@ can raise privacy prompts you never saw in Terminal.
 One install reached two ways is tried once.
 `~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
 account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
-launches only check that the saved `metab` is still executable, so they start no extra
-process. If nothing is found, Settings shows the install command and every place it
-looked. Settings also chooses another `metab` with an open panel, runs `metab --doctor`,
-and reveals the logs folder.
+launches only check that the saved `metab` is still executable and is the file that was
+validated ([The Version It Requires](#the-version-it-requires)), so they start no extra
+process. If nothing usable is found, Settings shows the steps that are missing
+([The First Run Without metab](#the-first-run-without-metab)) and every place it looked.
+Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
+reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
@@ -405,6 +407,37 @@ When Find Again and a choice overlap, the one started last wins: a search that f
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one
 instead of starting the `metab` that failed.
+
+### The First Run Without metab
+
+When a search finds no usable `metab`, Settings shows only the steps still missing, each
+a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.swift`):
+
+| Found | Steps shown |
+| --- | --- |
+| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then, in a new Terminal window, `uv tool install metabrowser` |
+| uv, no `metab` | `uv tool install metabrowser` |
+| A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
+| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'`, after installing uv if there is none |
+
+- **Finding uv:** where its installer puts it (`XDG_BIN_HOME`, `XDG_DATA_HOME/../bin`,
+  or `~/.local/bin`), `/opt/homebrew/bin`, `/usr/local/bin`, then the login shell’s
+  `PATH` from the search, so a file check suffices.
+- **Where `metab` will appear:** `uv tool dir --bin`, asked of the uv found, with uv’s
+  location variables passed through.
+  Without uv, or if uv fails to answer (logged), uv’s documented default, which the
+  screen names.
+- **Continuing by itself:** the app watches that directory, every place discovery looks
+  without a shell, and every place uv may be, once a second and when the app becomes
+  active. When `metab` appears or changes, it searches again, adopts the result, and
+  opens the folders that were waiting.
+  When uv appears, the steps shrink to the ones left.
+- **Terminal:** `~/.local/bin` is not on macOS’s default `PATH`. The app needs nothing
+  there, but Terminal does, so the screen suggests `uv tool update-shell` unless the
+  login shell’s `PATH` already has uv’s tool directory.
+
+The app never runs an installer itself.
+“Install for me” (`mb-34oi`) waits on the clean-account matrix (`mb-5fp7`).
 
 ### The Version It Requires
 
