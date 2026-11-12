@@ -12,17 +12,18 @@
 // for both engines), serves the repository root for the committed diff benchmark pages,
 // builds webkit-driver, the app package's WebKitDriver target, then runs each case as
 // pairs: Chrome then WebKit, then WebKit then Chrome, alternating, each sample a fresh
-// browser with a cold cache at the app's 1200 x 820 content size. Both
-// engines run probe.js, so they time the same intervals with the same code. Results go to
+// browser with a cold cache at the app's 1200 x 820 content size. Both engines run
+// probe.js, so they time the same intervals with the same code. Results go to
 // attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora), samples.jsonl
 // (every record), summary.json, and summary.md, the table docs/large-content-rendering.md
-// quotes.
+// quotes. Every process and listener a run starts is stopped when it ends, however it
+// ends (processes.mjs).
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
-// both under TIMER_FLOOR_MS is reported and not judged (summary.mjs). Needs macOS, Xcode's Swift,
-// Google Chrome, Node 24 (for its WebSocket), and a logged-in session; it keeps the
-// display awake while it runs.
+// both under TIMER_FLOOR_MS is reported and not judged, and a metric missing from any
+// pair is incomplete (summary.mjs). Needs macOS, Xcode's Swift, Google Chrome, Node 24
+// (for its WebSocket), and a logged-in session; it keeps the display awake while it runs.
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
