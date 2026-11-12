@@ -5,7 +5,7 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Draft. Epic `mb-1apq` tracks every item below as a bead.
-Phase 1 is in progress.
+Phase 1 is in progress, and the v1 milestone (`mb-s4y1`, below) is under way.
 
 ## Overview
 
@@ -233,10 +233,51 @@ Each phase is a pull-request boundary.
 Core `metab` work goes to `main`; native app work stays on the spike branch until the
 user decides to merge it.
 
+### Milestone: v1, a Usable App
+
+On 2026-11-11 the user asked for the spike to become a full, usable app that meets the
+tbd coding guidelines.
+`mb-s4y1` tracks that milestone.
+It draws its items from Phases 1, 2, and 5 and lands on the spike branch
+(jlevy/metabrowser#341), which merges only on the user’s word.
+
+The steps run in this order, which the beads record as dependencies:
+
+1. **CI** (`mb-x4fy`): a workflow that builds and tests the app on a macOS runner and
+   rehearses an ad hoc release with the DMG check, and a gate that keeps `publish.yml`
+   to the Python package’s `v<version>` release tags.
+   The user approved both for this milestone.
+2. **Review fixes** (`mb-o2kn`): every finding of the first review round on #341.
+3. **Coding guidelines** (`mb-nns2`): tbd has no Swift guideline, so its
+   language-neutral rules apply: general coding and comments, error handling, testing
+   and TDD (decision logic in `ShellCore`, with tests), filesystem, release engineering,
+   supply chain, and backward compatibility.
+4. **Robustness:** health checks before attaching and server stderr written to the log
+   (`mb-1poj`); servers left by a crashed app reaped at the next launch, until host
+   mode’s stdin-EOF exit (`mb-qzny`) replaces that (`mb-hwa9`); and the variant gaps in
+   the sources (`mb-9xl0`).
+5. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
+   and the disk-image notice (`mb-3n79`), as Phase 5 describes.
+6. **Everyday use:** opening a file (`mb-tssz`), Dock and File menu recents (`mb-cqxd`),
+   native tabs (`mb-ssed`), and lazy session restore (`mb-lc8c`).
+7. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
+   security, and correctness), and every finding is addressed, with follow-up rounds
+   until a round finds nothing new.
+8. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and run
+   on real folders, through every manual check the earlier steps record.
+
+Outside the milestone, each for a stated reason:
+
+- warm folders (`mb-e7im`), which wait on the tracker fix (`mb-z46o`);
+- host mode and the agent front door, which are Phase 3;
+- the app-private runtime (`mb-lrcd`), which is optional;
+- “Install for me” (`mb-34oi`), which waits on the clean-account matrix (`mb-5fp7`);
+- a Developer ID release (`mb-e9fm`), which needs the owner’s certificate.
+
 ### Phase 1: Identity, Titles, Icon, and a Downloadable Build
 
-- [ ] Folder identity model and `GET /api/identity`, with goldens (`mb-n9p6`), in review
-  in jlevy/metabrowser#353.
+- [ ] Folder identity model and `GET /api/identity`, with goldens (`mb-n9p6`), reviewed
+  and ready to merge in jlevy/metabrowser#353.
 - [ ] The page title is `<short name> • Metabrowser` (`mb-2agt`), in the same pull
   request.
 - [ ] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`).
@@ -245,7 +286,8 @@ user decides to merge it.
   (`mb-nnhs`).
 - [ ] Developer ID signing, notarization, a DMG, and a Homebrew cask (`mb-e9fm`).
 - [ ] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`).
-- [ ] A macOS CI job, with the release workflow pending approval (`mb-x4fy`).
+- [ ] A macOS CI job (`mb-x4fy`), approved for the v1 milestone; a signed release
+  workflow comes later.
 - [ ] tbd desktop guideline updates from what that pipeline teaches (`mb-s5ay`).
 
 ### Phase 2: Warm Switching in the Shell
@@ -362,14 +404,17 @@ The two standard setup flows come first; see the
 - Core pull requests merge to `main` after review and CI, and ship with the next `metab`
   release.
 - The app stays on the spike branch until the user decides to merge native code.
-- Releases are built locally until the CI workflow is approved, and published only on
-  the user’s explicit go-ahead: notarizing and publishing reach Apple and GitHub.
+- CI builds and tests the app once `mb-x4fy` lands.
+  Signed releases are built locally until a release workflow is approved, and published
+  only on the user’s explicit go-ahead: notarizing and publishing reach Apple and
+  GitHub.
 
 ## Open Questions
 
 - Which Developer ID certificate and notarization credentials should releases use?
   None is installed on the build Mac yet.
-- Should the release workflow be added under `.github/`?
+- Should a signed release workflow be added under `.github/`? The build-and-test
+  workflow is approved; signing and notarizing in CI need the credentials above.
 
 ## References
 
