@@ -171,9 +171,10 @@ For what each policy means, run `tbd guidelines agent-policy-grants`; to change 
 run `tbd policy`. Only the copy committed on the default branch is in effect; a branch
 or working-tree copy is a proposal, and `tbd policy show` reports the effective grants.
 
+- `github-editing`: granted
 - `subagents`: granted
 
-Recorded 2026-11-08.
+Recorded 2026-11-12.
 <!-- END TBD POLICY GRANTS -->
 <!-- END TBD INTEGRATION -->
 
