@@ -5,6 +5,10 @@ public nonisolated struct RecoveryBudget: Sendable {
     public let window: Duration
     private var recent: [ContinuousClock.Instant] = []
 
+    /// For a window whose web content process dies: a reload or two, then the status
+    /// view, so a page that kills its content process as it loads cannot reload forever.
+    public static var webContent: RecoveryBudget { RecoveryBudget(limit: 2, within: .seconds(30)) }
+
     public init(limit: Int, within window: Duration) {
         self.limit = limit
         self.window = window

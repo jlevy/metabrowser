@@ -27,17 +27,20 @@ import Testing
         #expect(await child.waitForExit() == 0)
     }
 
-    @Test func stdoutAndStderrReachTheLinesAndTheLog() async throws {
+    /// stdout reaches the lines and the log; stderr only the log. The two reach the log
+    /// by different paths, so their order there is not asserted.
+    @Test func stdoutReachesTheLinesAndBothReachTheLog() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = directory.appending(path: "server.log")
         let child = try SpawnedProcess(LaunchSpec(
             executable: "/bin/sh", arguments: ["-c", "echo out; echo err >&2; printf 'no newline'"],
             logURL: log))
-        #expect(await lines(of: child) == ["out", "err", "no newline"])
+        #expect(await lines(of: child) == ["out", "no newline"])
         #expect(await child.waitForExit() == 0)
-        #expect(child.recentOutput() == ["out", "err", "no newline"])
-        #expect(try String(contentsOf: log, encoding: .utf8) == "out\nerr\nno newline")
+        #expect(child.recentOutput().sorted() == ["err", "no newline", "out"])
+        let written = try String(contentsOf: log, encoding: .utf8)
+        #expect(written.split(separator: "\n").sorted() == ["err", "no newline", "out"])
         let mode = try FileManager.default.attributesOfItem(atPath: log.path)[.posixPermissions] as? Int
         #expect(mode == 0o600)
     }
@@ -61,6 +64,13 @@ import Testing
         let child = try SpawnedProcess(LaunchSpec(
             executable: "/bin/pwd", arguments: ["-P"], workingDirectory: directory.path))
         #expect(await lines(of: child) == [directory.path(percentEncoded: false).trimmingSuffix("/")])
+    }
+
+    /// The child must never run in another folder than the one it serves.
+    @Test func aWorkingDirectoryThatIsGoneFailsTheSpawn() {
+        #expect(throws: SpawnError.spawn(ENOENT)) {
+            try SpawnedProcess(LaunchSpec(executable: "/bin/pwd", workingDirectory: "/nonexistent-\(UUID().uuidString)"))
+        }
     }
 
     @Test func groupSignalReachesAGrandchild() async throws {

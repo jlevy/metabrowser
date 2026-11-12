@@ -80,28 +80,6 @@ import Testing
     }
 }
 
-@Suite struct RecentFoldersTests {
-    @Test func newestFirstWithoutDuplicatesAndBounded() {
-        var folders = RecentFolders(limit: 3)
-        for path in ["/a", "/b", "/c", "/a", "/d"] { folders.add(path) }
-        #expect(folders.paths == ["/d", "/a", "/c"])
-        folders.remove("/a")
-        #expect(folders.paths == ["/d", "/c"])
-        folders.clear()
-        #expect(folders.paths.isEmpty)
-    }
-
-    @Test func initialListKeepsItsOrder() {
-        #expect(RecentFolders(paths: ["/x", "/y", "/x"]).paths == ["/x", "/y"])
-    }
-
-    @Test func menuShowsOnlyFoldersThatExist() {
-        let folders = RecentFolders(paths: ["/gone", "/here"])
-        #expect(folders.existing { $0 == "/here" } == ["/here"])
-        #expect(folders.paths == ["/gone", "/here"])
-    }
-}
-
 @Suite struct ServerLogTests {
     @Test func fileNameIsReadableAndDistinctPerPath() {
         let first = ServerLog.fileName(for: URL(filePath: "/tmp/one/My Notes!"))
@@ -113,9 +91,11 @@ import Testing
         #expect(ServerLog.fileName(for: URL(filePath: "/")).hasPrefix("root-"))
     }
 
-    @Test func directoryIsUnderLibraryLogs() {
-        #expect(ServerLog.directory(home: URL(filePath: "/Volumes/Home")).path(percentEncoded: false)
-            == "/Volumes/Home/Library/Logs/Metabrowser/")
+    @Test func aFoldersLogIsInTheGivenFolder() {
+        let folder = URL(filePath: "/Volumes/Home/Library/Logs/Metabrowser Dev", directoryHint: .isDirectory)
+        let log = ServerLog.url(for: URL(filePath: "/tmp/notes"), in: folder)
+        #expect(log.deletingLastPathComponent().path(percentEncoded: false) == folder.path(percentEncoded: false))
+        #expect(log.lastPathComponent == ServerLog.fileName(for: URL(filePath: "/tmp/notes")))
     }
 
     @Test func prepareCreatesPrivateFilesAndTightensLooseOnes() throws {
@@ -149,7 +129,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = directory.appending(path: "x.log")
         try ServerLog.prepare(log)
-        ServerLog.append("started pid 7", to: log, now: Date(timeIntervalSince1970: 0))
+        try ServerLog.append("started pid 7", to: log, now: Date(timeIntervalSince1970: 0))
         #expect(try String(contentsOf: log, encoding: .utf8) == "[metabrowser-app 1970-01-01T00:00:00Z] started pid 7\n")
     }
 }

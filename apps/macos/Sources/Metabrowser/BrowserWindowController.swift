@@ -9,8 +9,12 @@ import WebKit
 final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     static let zoomKey = "pageZoom"
     static let inspectorKey = "WebInspectorEnabled"
+    /// Shared by every folder window, so macOS merges folders into one window's tabs.
+    static let tabbingIdentifier = "io.github.jlevy.metabrowser.folder"
 
-    let webView: DropAwareWebView
+    /// Replaced by a fresh view, which has no web process until it loads, when the tab
+    /// gives up its page (`discardPage`).
+    private(set) var webView: DropAwareWebView
     private weak var session: FolderSession?
     private var policy = NavigationPolicy()
     private let container: WebContainerView
@@ -19,21 +23,34 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let titleAccessory = TitleAccessoryController()
     /// Reveal the page, replacing the status view, once this window's load commits.
     private var revealOnCommit = false
-    /// The page to return to when the server comes back on a new port.
-    private var resumeURL: URL?
-    /// Reloads after the web content process dies: two within 30 s, then the status view.
-    private var contentRecoveries = RecoveryBudget(limit: 2, within: .seconds(30))
+    /// The page to load next: the one shown before the server restarted, before the tab
+    /// gave up its page, or that the window was opened to show.
+    private var resumePage: PageAddress?
+    /// The folder's server while it is ready.
+    private var endpoint: ServerEndpoint?
+    /// Whether the tab gave up its page's web view (`TabDiscardPolicy`). It loads the page
+    /// again when it is shown.
+    private(set) var isDiscarded = false
+    /// Reloads after the web content process dies, then the status view.
+    private var contentRecoveries = RecoveryBudget.webContent
     private static var cascadePoint = NSPoint.zero
+    /// A new window's content size: most of a 14-inch laptop's screen.
+    private static let initialSize = NSSize(width: 1200, height: 820)
+    /// Narrow enough to tile two windows side by side on a laptop screen, and wide
+    /// enough for the status view.
+    private static let minimumSize = NSSize(width: 480, height: 320)
 
     /// Pass `configuration` only from `createWebViewWith`, which requires the web view
-    /// it returns to be built from the configuration WebKit hands it.
-    init(session: FolderSession, configuration: WKWebViewConfiguration? = nil) {
+    /// it returns to be built from the configuration WebKit hands it. `page` is the page to
+    /// load once the server is ready, and a `discarded` window loads it only when shown.
+    init(
+        session: FolderSession, configuration: WKWebViewConfiguration? = nil, page: PageAddress? = nil,
+        discarded: Bool = false
+    ) {
         self.session = session
-        webView = DropAwareWebView(frame: .zero, configuration: configuration ?? WebConfiguration.make())
-        webView.isInspectable = Self.isInspectable
-        webView.allowsBackForwardNavigationGestures = true
-        webView.allowsMagnification = true
-        webView.pageZoom = Self.savedZoom
+        webView = Self.makeWebView(configuration ?? WebConfiguration.make())
+        resumePage = page
+        isDiscarded = discarded
 
         let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
         let statusView = NSHostingView(rootView: StatusView(
@@ -44,28 +61,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container = WebContainerView(webView: webView, statusView: statusView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            contentRect: NSRect(origin: .zero, size: Self.initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.contentView = container
-        window.minSize = NSSize(width: 480, height: 320)
+        window.minSize = Self.minimumSize
         window.titleVisibility = .hidden  // TitleAccessoryController draws the title
         window.addTitlebarAccessoryViewController(titleAccessory)
-        window.tabbingIdentifier = "folder:" + session.root.path(percentEncoded: false)
+        window.tabbingIdentifier = Self.tabbingIdentifier
         window.isReleasedWhenClosed = false
         window.center()
         Self.cascadePoint = window.cascadeTopLeft(from: Self.cascadePoint)
         super.init(window: window)
         window.delegate = self
 
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.onFolderDrop = { urls in
-            guard let app = NSApp.delegate as? AppDelegate else { return false }
-            urls.forEach(app.request)
-            return true
-        }
-        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
+        wire(webView)
         textFinder.findBarContainer = container
         textFinder.isIncrementalSearchingEnabled = true
         showTitle(session.title)
@@ -77,7 +87,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     required init?(coder: NSCoder) { fatalError("unused") }
 
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
-    /// `defaults write io.github.jlevy.metabrowser WebInspectorEnabled -bool true`.
+    /// `defaults write <bundle identifier> WebInspectorEnabled -bool true`.
     private static var isInspectable: Bool {
         #if DEBUG
             true
@@ -86,40 +96,123 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         #endif
     }
 
-    private static var savedZoom: Double {
-        let zoom = UserDefaults.standard.double(forKey: zoomKey)
-        return zoom > 0 ? zoom : 1
+    private static func makeWebView(_ configuration: WKWebViewConfiguration) -> DropAwareWebView {
+        let webView = DropAwareWebView(frame: .zero, configuration: configuration)
+        webView.isInspectable = isInspectable
+        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsMagnification = true
+        webView.pageZoom = PageZoom.restored(UserDefaults.standard.double(forKey: zoomKey))
+        return webView
+    }
+
+    private func wire(_ webView: DropAwareWebView) {
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.onFolderDrop = { urls in
+            guard let app = NSApp.delegate as? AppDelegate else { return false }
+            urls.forEach(app.request)
+            return true
+        }
+        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
     }
 
     // MARK: - Server state
 
     func showStarting() {
         rememberPage()
+        endpoint = nil
         status.phase = .starting
         container.showsStatus = true
     }
 
     func showFailure(_ failure: ServerFailure) {
         rememberPage()
+        endpoint = nil
         status.phase = .failed(failure)
         container.showsStatus = true
     }
 
-    /// Loads the server's entry page, or the page this window showed before the server
-    /// restarted, moved onto the new origin.
+    /// A restored folder in a protected location, whose server starts when this tab is
+    /// selected.
+    func showWaitingForSelection() {
+        status.phase = .waitingForSelection
+        container.showsStatus = true
+    }
+
+    /// Loads the page this window is to show, on the new origin, or the server's entry
+    /// page. A discarded tab only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
         policy.origin = endpoint.origin
-        let target = resumeURL.flatMap { NavigationPolicy.rebase($0, onto: endpoint.origin) } ?? endpoint.entryURL
-        resumeURL = nil
+        self.endpoint = endpoint
+        if isDiscarded { status.phase = .reloading }
         Task {
             await install(authorization, for: endpoint)
-            load(target)
+            guard self.endpoint == endpoint, !isDiscarded else { return }
+            loadResumePage(from: endpoint)
         }
     }
 
     /// For a window opened from a link: the page is loaded by WebKit or by `load`.
     func adoptServer(_ endpoint: ServerEndpoint?) {
         policy.origin = endpoint?.origin
+        self.endpoint = endpoint
+    }
+
+    /// Shows `page` now if the server is ready and still answers, or once it is ready.
+    func show(_ page: PageAddress) {
+        resumePage = page
+        isDiscarded = false
+        if let endpoint { loadResumePageOnceAnswered(from: endpoint) }
+    }
+
+    /// The page to save for the next launch.
+    var currentPage: PageAddress? {
+        currentServerURL.flatMap(PageAddress.init) ?? resumePage
+    }
+
+    /// Gives up the page's web view, which ends its WebContent process, and keeps the
+    /// page to load again from the folder's server when the tab is shown.
+    func discardPage() {
+        guard !isDiscarded else { return }
+        rememberPage()
+        isDiscarded = true
+        revealOnCommit = false
+        let discarded = webView
+        discarded.stopLoading()
+        discarded.navigationDelegate = nil
+        discarded.uiDelegate = nil
+        discarded.onFolderDrop = nil
+        webView = Self.makeWebView(WebConfiguration.make())
+        wire(webView)
+        container.replaceWebView(webView)
+        if endpoint != nil { status.phase = .reloading }
+        container.showsStatus = true
+    }
+
+    /// Loads the page again after `discardPage`: now if the server is ready and still
+    /// answers, or when it is ready.
+    private func revivePage() {
+        guard isDiscarded else { return }
+        isDiscarded = false
+        if let endpoint { loadResumePageOnceAnswered(from: endpoint) }
+    }
+
+    /// Loads from a server that was ready before this window asked, once it proves it
+    /// still answers: a live pid is not a working server. One that does not answer fails,
+    /// and every window of the folder says so.
+    private func loadResumePageOnceAnswered(from endpoint: ServerEndpoint) {
+        Task {
+            guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
+                  !isDiscarded
+            else { return }
+            loadResumePage(from: endpoint)
+        }
+    }
+
+    private func loadResumePage(from endpoint: ServerEndpoint) {
+        let target = resumePage.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL
+        resumePage = nil
+        load(target)
     }
 
     func load(_ url: URL) {
@@ -145,7 +238,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     private func rememberPage() {
-        if let url = currentServerURL { resumeURL = url }
+        if let page = currentServerURL.flatMap(PageAddress.init) { resumePage = page }
     }
 
     /// Names the window for everything that reads its title, and draws the visible one.
@@ -160,6 +253,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         titleAccessory.show(title, representing: window.representedURL)
         let named = "window title \(window.title), tab \(window.tab.title ?? ""), subtitle \(window.subtitle)"
         AppLog.app.debug("\(named, privacy: .public)")
+    }
+
+    /// Selecting a tab makes its window key.
+    func windowDidBecomeKey(_ notification: Notification) {
+        revivePage()
+        session?.windowShown(self)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -177,11 +276,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }
     @objc func reloadPage(_ sender: Any?) { webView.reload() }
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
-    @objc func zoomIn(_ sender: Any?) { setZoom(webView.pageZoom * 1.1) }
-    @objc func zoomOut(_ sender: Any?) { setZoom(webView.pageZoom / 1.1) }
+    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
 
     private func setZoom(_ zoom: Double) {
-        webView.pageZoom = min(3, max(0.5, zoom))
+        webView.pageZoom = zoom
         UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
     }
 
@@ -252,11 +351,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
-        let attachment = disposition?.lowercased().hasPrefix("attachment") ?? false
-        decisionHandler(response.canShowMIMEType && !attachment ? .allow : .download)
+        switch ResponsePolicy.decide(canShowMIMEType: response.canShowMIMEType, contentDisposition: disposition) {
+        case .show: decisionHandler(.allow)
+        case .download: decisionHandler(.download)
+        }
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        session?.pageChanged()
         guard revealOnCommit else { return }
         revealOnCommit = false
         container.showsStatus = false
@@ -366,6 +468,11 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         present(alert) { _ in completionHandler() }
     }
 
+    // The explicit selector keeps this reachable on every SDK. Earlier Xcode 26 SDKs
+    // declare the completion handler `@Sendable` rather than main-actor, so Swift does not
+    // take this method as the protocol's witness there, and without `@objc` WebKit would
+    // find no `confirm()` handler and answer Cancel.
+    @objc(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:)
     func webView(
         _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void

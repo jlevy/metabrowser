@@ -15,39 +15,59 @@ note() {
   echo "note: $*" >&2
 }
 
+# Runs "$@" with its output held back, and stops with that output if it fails, so a
+# chatty tool stays quiet without hiding why it failed.
+quietly() {
+  local output
+  output="$("$@" 2>&1)" || die "$1 failed: $output"
+}
+
 # The variant decides the bundle's identity. Two copies with one bundle identifier share
 # user defaults, privacy (TCC) grants, and LaunchServices registration, and a URL scheme
 # claimed twice has no defined target, so a development build never takes the release
 # identity. Every local build is dev, with the canary (gold-rimmed) icon; only the
 # release targets build release, the identity and published icon of official builds.
+# Both are named Metabrowser, so each builds into a folder of its own, and their images
+# and artifacts keep the variant in their file names:
 #
-#   release  Metabrowser.app, io.github.jlevy.metabrowser, Resources/AppIcon.icns
-#   dev      Metabrowser Dev.app, io.github.jlevy.metabrowser.dev, Resources/AppIcon-Dev.icns,
-#            and every URL scheme the property list declares with a -dev suffix
+#   release  build/release/Metabrowser.app, io.github.jlevy.metabrowser,
+#            Resources/AppIcon.icns, build/Metabrowser-VERSION-ARCH.dmg
+#   dev      build/dev/Metabrowser.app, io.github.jlevy.metabrowser.dev,
+#            Resources/AppIcon-Dev.icns, build/Metabrowser-Dev-VERSION-ARCH.dmg, and
+#            every URL scheme the property list declares with a -dev suffix
 #
-# Sets variant, product, bundle_id, icon_source, scheme_suffix, version, arch_label, app,
-# and dmg.
+# Sets variant, product, bundle_id, icon_source, scheme_suffix, artifact_label, version,
+# arch_label, app, and dmg.
 variant_settings() {
   variant="$1"
+  product="Metabrowser"
   case "$variant" in
     release)
-      product="Metabrowser"
       bundle_id="io.github.jlevy.metabrowser"
       icon_source="Resources/AppIcon.icns"
       scheme_suffix=""
       ;;
     dev)
-      product="Metabrowser Dev"
       bundle_id="io.github.jlevy.metabrowser.dev"
       icon_source="Resources/AppIcon-Dev.icns"
       scheme_suffix="-dev"
       ;;
     *) die "VARIANT must be release or dev, not '$variant'" ;;
   esac
+  artifact_label="$(artifact_label_of_variant "$variant")"
   version="$(read_version)" || exit 1
   arch_label="$(arch_label_for "${ARCHES:-arm64}")"
-  app="build/$product.app"
-  dmg="$(dmg_path "$product" "$version" "$arch_label")"
+  app="build/$variant/$product.app"
+  dmg="$(dmg_path "$variant" "$version" "$arch_label")"
+}
+
+# The start of a variant's image and artifact names: Metabrowser, or Metabrowser-Dev.
+artifact_label_of_variant() {
+  case "$1" in
+    release) echo Metabrowser ;;
+    dev) echo Metabrowser-Dev ;;
+    *) die "VARIANT must be release or dev, not '$1'" ;;
+  esac
 }
 
 # Prints the variant whose bundle identifier is $1, or nothing.
@@ -109,8 +129,22 @@ arch_label_for() {
   esac
 }
 
+# A variant's image: dmg_path VARIANT VERSION ARCH_LABEL.
 dmg_path() {
-  echo "build/${1// /-}-$2-$3.dmg"
+  echo "build/$(artifact_label_of_variant "$1")-$2-$3.dmg"
+}
+
+# The commit the build comes from, for the About box: HEAD's short hash, with -dirty when
+# apps/macos has uncommitted changes. Prints nothing outside a Git checkout.
+source_commit() {
+  local commit changes
+  commit="$(git rev-parse --short=7 HEAD 2>/dev/null)" || return 0
+  changes="$(git status --porcelain -- . 2>&1)" || die "git status failed: $changes"
+  if [[ -n "$changes" ]]; then
+    echo "$commit-dirty"
+  else
+    echo "$commit"
+  fi
 }
 
 # Signs a bundle or disk image: ad hoc ("-") without a timestamp, or with the given
@@ -138,12 +172,30 @@ require_no_entitlements() {
   fi
 }
 
+# The oldest macOS the app runs on: LSMinimumSystemVersion in Resources/Info.plist, the
+# release Package.swift deploys to (scripts/test-scripts.sh checks that they agree).
+app_minimum_macos() {
+  /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" Resources/Info.plist 2>/dev/null ||
+    die "Resources/Info.plist sets no LSMinimumSystemVersion"
+}
+
+# Homebrew's name for the macOS release $1, the form a cask's `depends_on macos:` takes
+# for its minimum (MacOSVersion::RELEASES in Homebrew). Homebrew names major releases
+# only. Add a release here when the app's minimum moves to it.
+homebrew_macos_name() {
+  case "$1" in
+    26 | 26.0) echo tahoe ;;
+    *) return 1 ;;
+  esac
+}
+
 # Writes the Homebrew cask for the release image $1 to $2 from packaging/: the version $3,
 # the image's checksum, and its architecture label $4 (arm64, x86_64, or universal), so
 # the cask downloads the image it was checksummed from. A universal image declares no
-# architecture. Then checks that the cask's URL names that image and carries its checksum.
+# architecture. Then checks that the cask's URL names that image and carries its checksum,
+# and that it requires the macOS the app does, so Homebrew installs it only where it runs.
 write_cask() {
-  local dmg="$1" cask="$2" version="$3" label="$4" sha256 url
+  local dmg="$1" cask="$2" version="$3" label="$4" sha256 url minimum release
   sha256="$(cut -d' ' -f1 "$dmg.sha256")"
   local -a arch_rule
   case "$label" in
@@ -158,6 +210,11 @@ write_cask() {
   url="${url//\#\{version\}/$version}"
   [[ "${url##*/}" == "$(basename "$dmg")" ]] || die "$cask downloads ${url##*/}, not $(basename "$dmg")"
   grep -qx "  sha256 \"$sha256\"" "$cask" || die "$cask does not carry the checksum of $(basename "$dmg")"
+  minimum="$(app_minimum_macos)" || exit 1
+  release="$(homebrew_macos_name "$minimum")" ||
+    die "homebrew_macos_name knows no name for macOS $minimum, the app's minimum; add Homebrew's"
+  grep -qx "  depends_on macos: :$release" "$cask" ||
+    die "$cask does not require macOS $minimum (:$release), the app's minimum; correct packaging/metabrowser-app.rb.template"
   ! grep -q '{{' "$cask" || die "$cask has an unfilled placeholder"
 }
 

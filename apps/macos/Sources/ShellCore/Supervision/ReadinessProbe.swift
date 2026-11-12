@@ -2,11 +2,15 @@ import Foundation
 
 /// Polls a loopback URL for a 2xx.
 public nonisolated enum HTTPReadiness {
+    /// One probe's limit, in seconds. A loopback server that is listening answers far
+    /// sooner; the caller's deadline bounds the whole wait.
+    static let requestTimeout: TimeInterval = 2
+
     /// Ephemeral, uncached, and never routed through a system proxy.
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [:]
-        configuration.timeoutIntervalForRequest = 2
+        configuration.timeoutIntervalForRequest = requestTimeout
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpShouldSetCookies = false
         return URLSession(configuration: configuration)

@@ -7,6 +7,8 @@ import WebKit
 /// The first window opens before the server starts and shows its progress; windows the
 /// page opens (`target=_blank`, Command-click) join it as tabs. When the last window
 /// closes, the server stops: a folder nobody is looking at keeps no process running.
+/// A restored folder's windows open before its server starts, which `FolderWindows`
+/// schedules.
 final class FolderSession: ManagedServer {
     let root: URL
     let logURL: URL
@@ -20,50 +22,77 @@ final class FolderSession: ManagedServer {
     private var identityRequest: Task<Void, Never>?
     /// The runtime the app would start now, which Retry and Restart Server use.
     private let currentSetup: () -> RuntimeSetup?
+    /// The runtime the server was last started from, which an upgrade compares with.
+    private(set) var runtime: Runtime
     var onAllWindowsClosed: ((FolderSession) -> Void)?
+    /// A window became key, which is how a tab is selected.
+    var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
+    /// A window opened or closed, or a page changed: what the saved session records.
+    var onLayoutChange: (() -> Void)?
 
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate, currentSetup: @escaping () -> RuntimeSetup?) {
         self.currentSetup = currentSetup
+        runtime = setup.runtime
         self.root = root
         title = WindowTitle(.localFolder(root))
-        let logURL = ServerLog.url(for: root)
+        let logURL = ServerLog.url(for: root, in: appIdentity.logsDirectory())
         self.logURL = logURL
-        do {
-            try ServerLog.prepare(logURL)
-        } catch {
-            AppLog.app.error("could not prepare \(logURL.path, privacy: .public): \(error, privacy: .public)")
-        }
         let launch = CLIServeLaunch()
         let spec = launch.spec(
             serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
-        supervisor = ServerSupervisor(spec: spec, launch: launch, gate: gate)
+        // Each launch prepares the log first, so a log that cannot be kept fails the
+        // launch, and the window says why. Each child is recorded while it runs, so the
+        // next launch ends it if this app crashes.
+        supervisor = ServerSupervisor(
+            spec: spec, launch: launch, gate: gate,
+            makeProcess: serverRecords.recording { spec in
+                if let logURL = spec.logURL { try ServerLog.prepare(logURL) }
+                return try SpawnedProcess(spec)
+            })
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
-            ServerLog.append(message, to: logURL)
             AppLog.server.info("\(name, privacy: .public): \(message, privacy: .public)")
+            do {
+                try ServerLog.append(message, to: logURL)
+            } catch {
+                // The event itself is in the unified log, on the line above.
+                AppLog.server.error("\(name, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
         }
         supervisor.onChange = { [weak self] state in self?.serverChanged(state) }
     }
 
     var folderName: String { FileManager.default.displayName(atPath: root.path(percentEncoded: false)) }
 
+    /// The folder's canonical path without a trailing slash, as `OpenTarget` and the saved
+    /// session name it.
+    var path: String { FolderSession.path(of: root) }
+
+    static func path(of root: URL) -> String {
+        var path = root.path(percentEncoded: false)
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return path
+    }
+
     /// Every server child not yet reaped; each pid is also its process group.
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
-    func start() {
-        let controller = makeWindow()
-        controller.showWindow(nil)
-        Task { await supervisor.start() }
+    /// Starts the server unless one is starting, running, or stopping, and returns once
+    /// that start is ready or has failed.
+    func startServer() async {
+        await supervisor.start()
     }
 
     /// Retry and Restart Server: a fresh server from the runtime chosen now, which may not
     /// be the one this folder started with. With no runtime (a search found none), the
     /// folder keeps its own.
     func retry() {
-        let spec = currentSetup().map {
+        let setup = currentSetup()
+        let spec = setup.map {
             supervisor.launch.spec(
                 serving: root, with: $0, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
         }
+        if let setup { runtime = setup.runtime }
         Task { await supervisor.restart(using: spec) }
     }
 
@@ -72,9 +101,23 @@ final class FolderSession: ManagedServer {
         await supervisor.shutDown()
     }
 
-    func showFrontWindow() {
+    /// Brings the folder's front window forward, showing `page` in it if one is given,
+    /// and checks that its server still answers: a hung one is stopped, and its windows
+    /// say so and offer Retry.
+    func showFrontWindow(page: PageAddress? = nil) {
         let front = windows.first { $0.window?.isVisible == true } ?? windows.first
+        if let page, let front {
+            front.show(page)  // which checks before it loads
+        } else {
+            Task { _ = await checkHealth() }
+        }
         front?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Whether the server still answers, asked before a window joins it
+    /// (`ServerSupervisor.checkHealth`).
+    func checkHealth() async -> HealthCheck {
+        await supervisor.checkHealth()
     }
 
     func revealLog() {
@@ -85,10 +128,22 @@ final class FolderSession: ManagedServer {
     func openWindow(at url: URL, besides parent: BrowserWindowController) {
         let controller = makeWindow()
         addTab(controller, besides: parent)
-        controller.load(url)
+        attach(controller, loading: url)
     }
 
-    /// `target=_blank` and `window.open`: WebKit loads the request into the view returned.
+    /// Loads `url` in a window joining a running server once the server proves it still
+    /// answers, since a live pid is not a working server. A server that does not answer
+    /// fails, which every window shows; one not ready yet loads every window when it is.
+    private func attach(_ controller: BrowserWindowController, loading url: URL) {
+        Task {
+            guard case .healthy = await checkHealth() else { return }
+            controller.load(url)
+        }
+    }
+
+    /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,
+    /// at once, so it cannot wait for a health check; the page asking for it was just
+    /// served.
     func openChildWindow(configuration: WKWebViewConfiguration, besides parent: BrowserWindowController) -> WKWebView {
         let controller = makeWindow(configuration: configuration)
         addTab(controller, besides: parent)
@@ -98,11 +153,26 @@ final class FolderSession: ManagedServer {
     func windowClosed(_ controller: BrowserWindowController) {
         windows.removeAll { $0 === controller }
         if windows.isEmpty { onAllWindowsClosed?(self) }
+        onLayoutChange?()
     }
 
-    private func makeWindow(configuration: WKWebViewConfiguration? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController(session: self, configuration: configuration)
+    func windowShown(_ controller: BrowserWindowController) {
+        onWindowShown?(self, controller)
+    }
+
+    func pageChanged() {
+        onLayoutChange?()
+    }
+
+    /// A window not yet shown. It loads `page`, or the entry page, once the server is
+    /// ready, and a `discarded` one only once it is shown.
+    func makeWindow(
+        configuration: WKWebViewConfiguration? = nil, page: PageAddress? = nil, discarded: Bool = false
+    ) -> BrowserWindowController {
+        let controller = BrowserWindowController(
+            session: self, configuration: configuration, page: page, discarded: discarded)
         windows.append(controller)
+        defer { onLayoutChange?() }
         controller.adoptServer(endpoint)
         if let failure { controller.showFailure(failure) }
         return controller
@@ -153,9 +223,6 @@ final class FolderSession: ManagedServer {
         switch answer {
         case .identity:
             AppLog.app.info("\(titled, privacy: .public) from /api/identity")
-        case .missingRoute:
-            // The fallback named in FolderIdentity.localFolder: a metab older than the route.
-            AppLog.app.info("\(titled, privacy: .public) from the folder's path: this metab has no /api/identity")
         case .failed(let reason):
             AppLog.app.error(
                 "\(titled, privacy: .public) from the folder's path: /api/identity failed, \(reason, privacy: .public)")

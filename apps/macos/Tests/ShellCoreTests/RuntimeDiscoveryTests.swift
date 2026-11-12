@@ -72,27 +72,27 @@ private func loginShellOutput(path: String) -> [String] {
         machine.executables = ["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"].reduce(into: homebrewTools) {
             $0.insert($1)
         }
-        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.0"]
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1"]
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.setup?.runtime == Runtime(
-            executable: "/Volumes/Home/.local/bin/metab", version: "0.12.0", source: .localBin))
+            executable: "/Volumes/Home/.local/bin/metab", version: "0.12.1", source: .localBin))
         #expect(report.setup?.tools == ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh"))
         #expect(!report.consultedLoginShell)
         #expect(calls.all == ["/Volumes/Home/.local/bin/metab --version"])
     }
 
-    @Test func brokenCandidatesAreRecordedAndSkipped() async {
+    @Test func brokenAndOlderCandidatesAreRecordedAndSkipped() async {
         var machine = Machine()
         machine.environment = ["METABROWSER_METAB": "/srv/metab"]
-        machine.executables = homebrewTools.union(["/srv/metab", "/opt/homebrew/bin/metab"])
-        machine.versions = ["/opt/homebrew/bin/metab": "metab 0.11.1"]
+        machine.executables = homebrewTools.union(["/srv/metab", "/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"])
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.0", "/opt/homebrew/bin/metab": "metab 0.13.0"]
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: Recorder()))
         #expect(report.setup?.runtime.executable == "/opt/homebrew/bin/metab")
         // ~/.local/bin is also uv's default tool directory, so it is tried once.
         #expect(report.tried.map(\.result) == [
-            .rejected("--version printed: Traceback (most recent call last):"), .missing,
-            .valid(version: "0.11.1"),
+            .rejected("--version printed: Traceback (most recent call last):"), .tooOld(version: "0.12.0"),
+            .valid(version: "0.13.0"),
         ])
     }
 
@@ -110,13 +110,13 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func loginShellFindsWhatTheCheapLocationsMiss() async {
         var machine = Machine()
         machine.executables = ["/Volumes/Home/bin/metab", "/Volumes/Home/bin/gh", "/usr/bin/git"]
-        machine.versions = ["/Volumes/Home/bin/metab": "metab 0.12.0"]
+        machine.versions = ["/Volumes/Home/bin/metab": "metab 0.12.1"]
         machine.loginOutput = loginShellOutput(path: "/Volumes/Home/bin:/usr/bin:/bin")
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.consultedLoginShell)
         #expect(report.setup?.runtime == Runtime(
-            executable: "/Volumes/Home/bin/metab", version: "0.12.0", source: .loginShell))
+            executable: "/Volumes/Home/bin/metab", version: "0.12.1", source: .loginShell))
         #expect(report.setup?.tools == ToolPaths(git: "/usr/bin/git", gh: "/Volumes/Home/bin/gh"))
         #expect(calls.all.contains { $0.hasPrefix("/bin/zsh -l -i -c ") })
     }
@@ -124,7 +124,7 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func missingGhAloneConsultsTheShellButKeepsTheRuntime() async {
         var machine = Machine()
         machine.executables = ["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/git"]
-        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.0"]
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1"]
         machine.loginOutput = loginShellOutput(path: "/usr/bin:/bin")
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: Recorder()))
         #expect(report.consultedLoginShell)
@@ -237,14 +237,5 @@ private func loginShellOutput(path: String) -> [String] {
         settings.save(RuntimeSetup(
             runtime: Runtime(executable: "bin/metab", version: "0.12.0", source: .chosen), tools: ToolPaths()))
         #expect(settings.usable(isExecutable: { _ in true }) == nil)
-    }
-
-    @Test func recentFoldersPersist() {
-        let store = RecentFolderStore(defaults: defaults())
-        var folders = store.folders
-        folders.add("/a")
-        folders.add("/b")
-        store.folders = folders
-        #expect(store.folders.paths == ["/b", "/a"])
     }
 }

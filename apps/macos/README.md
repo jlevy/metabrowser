@@ -1,14 +1,16 @@
 # Metabrowser for macOS
 
-**Status:** Spike. This is step 1 of Option D in the
+**Status:** Alpha preview: a development build, built from source and not yet a signed
+or notarized release, and it may change.
+This is step 1 of Option D in the
 [macOS app research brief](../../docs/project/research/research-2026-11-08-macos-app-packaging.md):
 a hand-written Swift app that uses an existing command-line install of `metab`.
 
 ## What It Is
 
 A native macOS app, written with AppKit and `WKWebView`, that finds your CLI install of
-`metab`, starts one server per folder you open, and shows each folder in its own window.
-It is a thin wrapper.
+`metab`, starts one server per folder you open, and shows each folder in its own window
+or tab. It is a thin wrapper.
 Everything Metabrowser shows comes from `metab`, the page talks to its server directly
 over HTTP and server-sent events, and the page never calls a shell API. The app adds
 only what a browser tab cannot give: a Dock icon, folders dropped on it or opened with
@@ -20,12 +22,16 @@ It has a [release pipeline](#building-a-release) (Developer ID signing, notariza
 DMG, and a draft Homebrew cask) that has not yet made a release, a
 [CI workflow](#continuous-integration) that builds, tests, and rehearses it, and no
 updater or URL scheme.
-It runs on arm64 Macs with macOS 15 or later.
+It runs on arm64 Macs with macOS 26 or later.
 [Gaps to Close](#gaps-to-close) maps what is missing to the brief.
 
 ## Build, Test, and Run
 
-You need macOS 15 or later, Xcode 26 (Swift 6.2 or later), and a CLI install:
+You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a `metab` the app
+accepts, 0.12.1 or later ([The Version It Requires](#the-version-it-requires)). Until
+0.12.1 is published, that is a source checkout’s: `make install` at the repository root
+builds `.venv/bin/metab`, and Settings > Choose metab… points the app at it (so does
+`open --env METABROWSER_METAB=…`). Once 0.12.1 is published, a CLI install does:
 
 ```shell
 uv tool install metabrowser
@@ -36,7 +42,7 @@ prints a skip message on systems other than macOS):
 
 ```shell
 make macos-test                      # unit tests (swift test) and the scripts' checks
-make macos-app                       # build, assemble, and sign build/Metabrowser Dev.app
+make macos-app                       # build, assemble, and sign build/dev/Metabrowser.app
 make macos-run FOLDER="$HOME/notes"  # build the app and open a folder with it
 make macos-dmg                       # build/Metabrowser-Dev-0.1.0-arm64.dmg, checked
 make macos-release                   # the official build; see Building a Release
@@ -66,15 +72,24 @@ The app versions separately from the Python package, which it runs but does not 
 
 ### Variants
 
-Every build is one of two variants, and the variant decides the bundle’s identity:
+Every build is one of two variants, and the variant decides the bundle’s identity.
+Both are named Metabrowser:
 
 |  | dev | release |
 | --- | --- | --- |
-| Bundle | `build/Metabrowser Dev.app` | `build/Metabrowser.app` |
+| Bundle | `build/dev/Metabrowser.app` | `build/release/Metabrowser.app` |
 | Bundle identifier | `io.github.jlevy.metabrowser.dev` | `io.github.jlevy.metabrowser` |
 | Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
+| About box | “Development build · 0.1.0 (2476) · 3c7b937” | “Release · 0.1.0 (2476) · 3c7b937” |
+| Server logs | `~/Library/Logs/Metabrowser Dev/` | `~/Library/Logs/Metabrowser/` |
+| Server records | `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` | `~/Library/Application Support/io.github.jlevy.metabrowser/servers/` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
+
+`scripts/build-app.sh` writes the variant and the commit into the bundle’s property list
+(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit with `-dirty` when
+`apps/macos` had uncommitted changes), and the app reads them (`AppIdentity`). A bundle
+without the release variant counts as a development build.
 
 The rule: **the canary icon is for development builds, and the published icon only for
 official releases.**
@@ -100,42 +115,188 @@ official releases.**
 A separate identity is what lets a development build run beside an installed release:
 two copies with one bundle identifier share user defaults, privacy grants, and
 LaunchServices registration, and a URL scheme claimed twice has no defined target.
+
+One name has a cost: both bundles are `Metabrowser.app`, so they cannot both sit in
+`/Applications` under that name.
+A development build normally runs from `build/dev/`, and the canary icon in the Dock and
+the About box’s first line tell it from an installed release; their logs and state go to
+separate folders, keyed by the variant.
+
 `scripts/build-icon.sh` regenerates both icons from the masters in `AppIcon/`; see
 [AppIcon/README.md](AppIcon/README.md).
 
 To run the tests against a real server too:
 
 ```shell
-cd apps/macos
-METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab swift test
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test
 ```
+
+The live tests check that `metab` against the version the app requires, so it must be
+0.12.1 or later.
 
 Where to look while it runs:
 
-- **Server log:** `~/Library/Logs/Metabrowser/<folder>-<hash>.log`, mode 0600. It holds
-  the server’s output, with the app’s lifecycle events interleaved: start command, pid,
+- **Server log:** `~/Library/Logs/Metabrowser Dev/<folder>-<hash>.log` for a development
+  build, and `~/Library/Logs/Metabrowser/` for a release, mode 0600. It holds the
+  server’s output, with the app’s lifecycle events interleaved: start command, pid,
   announced URL, readiness time, stop, and exit status.
-  File > Reveal Server Log opens it.
+  File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
 - **Web Inspector:** Safari’s Develop menu, in debug builds or after
   `defaults write io.github.jlevy.metabrowser.dev WebInspectorEnabled -bool true`.
 - **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
-  runtime and the recent folders, so the next launch runs discovery again.
+  runtime and the window preferences, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
+  Deleting `~/Library/Application Support/io.github.jlevy.metabrowser.dev/session.json`
+  forgets the last session, and File > Open Recent > Clear Menu the recent folders,
+  which macOS keeps.
+- **Server records:**
+  `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` holds one
+  `app-<pid>.json` per running app process with servers (see
+  [After a Crash](#after-a-crash)).
+
+### Checking by Hand
+
+What the unit tests cannot reach, against a built development app.
+Quit any other copy of the development build first: both have one bundle identifier.
+
+```shell
+app="$PWD/apps/macos/build/dev/Metabrowser.app"
+records="$HOME/Library/Application Support/io.github.jlevy.metabrowser.dev/servers"
+logs="$HOME/Library/Logs/Metabrowser Dev"
+folder="$(mktemp -d)"
+```
+
+1. **Which build.** `open -a "$app" "$folder"`, then Metabrowser > About Metabrowser.
+   Below the version is “Development build · VERSION (BUILD) · COMMIT”, the commit with
+   `-dirty` for uncommitted changes.
+   The Dock shows the canary icon, and Help > Reveal Logs Folder opens `$logs`.
+2. **Health check.** With the folder open, find its server (`pgrep -f -- "--no-open"`)
+   and stop it without ending it: `kill -STOP PID`. Bring the folder back (Command-click
+   a link in it, or open the folder again).
+   Within about 10 seconds (5 for the check, then the stop: a stopped process holds
+   SIGTERM until SIGKILL ends it) the window says “The server stopped answering” and
+   offers Retry, and Retry serves the folder again.
+3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
+   `INFO:` lines) beside its `Serving` line, which came through stdout.
+4. **After a crash.** `cat "$records"/app-*.json` lists the folder’s server.
+   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"` leaves it running
+   (`pgrep -fl -- "--no-open"`). `open -a "$app"`: within 5 seconds the server is gone,
+   the folder’s log ends with “ended the server pid PID …, with SIGTERM”, and the
+   crashed process’s records file is gone.
+5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server and no records
+   file.
+
+### Checking Files, Tabs, Recents, and Restore by Hand
+
+The decisions behind these are tested in `ShellCore`; what AppKit and macOS do with them
+is checked against the built app.
+Set `APP` to the development build and make some folders:
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+LOGS="$HOME/Library/Logs/Metabrowser Dev"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
+echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
+log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
+```
+
+1. **A file.** `open -a "$APP" /tmp/mb-check/a/notes.md` opens a window for `a` showing
+   `notes.md`. `open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md` in that same
+   window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
+   `open -a "$APP" /dev/null` shows an alert.
+   File > Open… chooses a file too.
+2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
+   above `a`; Clear Menu empties both.
+   `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
+3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
+   as tabs of the front window; set to Windows, opening `e` gives it a window, and
+   Window > Merge All Windows then merges every folder into one window.
+   With the setting on System Settings and Desktop & Dock > “Prefer tabs when opening
+   documents” at Always, a new folder opens as a tab.
+4. **Discarded pages.** With `a` to `e` as tabs of one window, select each in turn: the
+   app log says “discarding the page of background tab” for the tab shown longest ago
+   once four tabs are in the background, and
+   `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
+   Selecting that tab reloads its page, with no “Starting” text.
+5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
+   with `c`, and quit. `session.json` (see Start over) now lists them; the next launch
+   logs “restoring 2 window(s): 3 server(s) to start”, the windows and tabs come back,
+   and `grep -h 'started pid' "$LOGS"/{a,b,c}-*.log` with its timestamps shows `b`
+   started first, then `c`, then `a`, each after the one before it was ready.
+6. **Protected locations.** Add `~/Documents/mb-check` as a background tab, quit, and
+   launch again: that tab says Metabrowser opens it when you select it, and
+   `pgrep -fl 'Documents/mb-check'` finds no server until you select the tab.
+   Once Documents access is granted, no prompt appears either way.
+   To see that the restore raises none, the person at the Mac first resets that grant
+   (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
+   then checks that the prompt waits for the tab’s selection: the waiting tab still
+   shows the folder’s name and icon, and whether reading those can prompt is untested.
+7. **Off, and empty.** With Settings > “Reopen the last session’s folders when
+   Metabrowser opens” off, a launch restores nothing.
+   With it on, closing every window before quitting restores nothing.
+   After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
+
+### Checking the Setup Flows by Hand
+
+What a new user sees first is a window, which no unit test reaches.
+`scripts/check-setup-flows.sh` sets up each case on the built development app, says what
+to look for, and waits for Return between steps:
+
+```shell
+make install && make macos-app   # at the repository root
+cd apps/macos
+scripts/check-setup-flows.sh no-metab
+scripts/check-setup-flows.sh old-metab
+scripts/check-setup-flows.sh disk-image
+```
+
+Each run copies the app under its own bundle identifier,
+`io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
+saved runtime, recents, or LaunchServices entry, and opens it with a scratch `HOME` in
+which discovery finds only what the script puts there.
+It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
+this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
+copy with SIGTERM, reports any server left running as a failure, detaches its image,
+unregisters the copy, and deletes its defaults.
+It refuses to run where a `metab` in `/opt/homebrew/bin` or `/usr/local/bin` would be
+found first.
+
+| Case | What it checks |
+| --- | --- |
+| `no-metab` | No uv and no `metab`: both installs are shown, then only `uv tool install metabrowser` once uv appears, then the waiting folder opens by itself once `metab` does |
+| `old-metab` | A stand-in reporting 0.12.0: the upgrade command and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
+
+Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
+accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the path.
+
+### Checking Print and Drops by Hand
+
+`node webkit-gate/run.mjs --checks` scripts these in the app’s web view class
+([Measured in WebKit](../../docs/large-content-rendering.md#windowprint-and-drag-and-drop)
+has the results); this is the same check on the built development app,
+`build/dev/Metabrowser.app`, with a folder holding a Markdown file open:
+
+1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`.
+   Nothing happens today.
+2. **File > Print.** The print panel shows the document alone, without the shell.
+3. **A folder dragged from Finder onto the page** opens in a window of its own.
+4. **A file dragged onto the page** does nothing: WebKit asks to load its `file://` URL,
+   and the navigation policy cancels it.
 
 ### Continuous Integration
 
 `.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
 that changes `apps/macos`, the root `Makefile`, or the workflow.
 It uses no secrets and signs only ad hoc.
-It runs on two pinned runner images, each with its Xcode selected explicitly:
+It runs on one pinned runner image, with its Xcode selected explicitly:
 
 | Runner | Xcode | Why | Runs |
 | --- | --- | --- | --- |
-| `macos-26` | 26.6 (Swift 6.3) | The toolchain the app is developed and built with | Every step below |
-| `macos-15` | 26.0.1 (Swift 6.2) | The oldest macOS and Swift the app supports | Steps 1 to 3 |
+| `macos-26` | 26.6 (Swift 6.3) | The toolchain the app is built with, on the oldest macOS it supports | Every step below |
 
 1. `make install`, after setting up uv, Python, and Node as `ci.yml` does.
 2. `make macos-test` with `METABROWSER_SHELL_TEST_METAB` set to that environment’s
@@ -207,9 +368,10 @@ make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
    signature whose entitlements `codesign` cannot read.
 3. **App notarization:** `notarize.sh` zips the app with `ditto`, submits it with
    `notarytool submit --wait`, saves the notary log as
-   `build/notary-Metabrowser.app.json` (read it for warnings even after an Accepted
-   verdict), staples the ticket to the app, and runs `spctl --assess --type execute`. A
-   stapled app opens without reaching Apple, also after it is dragged out of the image.
+   `build/release/notary-Metabrowser.app.json` (read it for warnings even after an
+   Accepted verdict), staples the ticket to the app, and runs
+   `spctl --assess --type execute`. A stapled app opens without reaching Apple, also
+   after it is dragged out of the image.
 4. **Image:** `make-dmg.sh` stages the app, an `Applications` link, and the app’s icon
    as `.VolumeIcon.icns`, creates a read-write image to set the volume’s custom-icon
    flag, converts it to a compressed UDZO image, signs it, and writes its checksum.
@@ -223,17 +385,18 @@ make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
    `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and `-universal.dmg`
    (`ARCHES="arm64 x86_64"`) declares none.
    The release stops if the cask’s URL would name another image than the one
-   checksummed.
+   checksummed, or if its `depends_on macos:` admits a macOS older than the app’s
+   `LSMinimumSystemVersion`.
 
 The outputs, at 0.1.0:
 
 | File | Size |
 | --- | --- |
-| `build/Metabrowser.app` | about 0.9 MB |
-| `build/Metabrowser-0.1.0-arm64.dmg` | about 0.5 MB |
+| `build/release/Metabrowser.app` | about 1.5 MB |
+| `build/Metabrowser-0.1.0-arm64.dmg` | about 1.0 MB |
 | `build/Metabrowser-0.1.0-arm64.dmg.sha256` | one `shasum -a 256` line |
 | `build/metabrowser-app.rb` | the cask |
-| `build/notary-*.json` | the notary logs |
+| `build/notary-*.json`, `build/release/notary-*.json` | the notary logs, each beside the file it is for |
 
 Apple says most submissions finish within 5 minutes; `NOTARY_TIMEOUT` (default `30m`)
 bounds the wait.
@@ -272,11 +435,12 @@ With a signed, notarized, and stapled release:
    ticket, which needs no network, and asks once whether to open an app downloaded from
    the Internet, saying Apple checked it for malicious software.
    An app opened straight from the DMG or from Downloads runs from a randomized
-   read-only copy (App Translocation); it works, but belongs in Applications.
-4. **Runtime.** The app runs the `metab` command-line tool and does not yet install it.
-   Without one, the first launch shows the install command,
-   `uv tool install metabrowser`, and every place it looked, and Find Again picks up the
-   new install.
+   read-only copy (App Translocation); it works, but belongs in Applications, and a
+   launch notice says so ([The Launch Notice](#the-launch-notice)).
+4. **Runtime.** The app runs the `metab` command-line tool and does not install it.
+   Without one, or with one older than 0.12.1, the first launch shows the commands still
+   missing ([The First Run Without metab](#the-first-run-without-metab)) and continues
+   by itself once `metab` is installed.
 5. **Privacy prompts.** Opening a folder in Desktop, Documents, Downloads, iCloud Drive,
    or on a removable or network volume asks once, in Metabrowser’s name, because the app
    is responsible for the server it starts.
@@ -297,15 +461,18 @@ Do not hand one out as a release.
 | Path | Holds |
 | --- | --- |
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
+| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, stopping it, and the records that let the next launch end a crashed app’s servers. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
+| `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
+| `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session and its restore order, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
 | `Resources/Info.plist` | The bundle’s property list. |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
+| `scripts/check-setup-flows.sh` | The manual checks of the first-run screens and the launch notice ([Checking the Setup Flows by Hand](#checking-the-setup-flows-by-hand)). |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
 | `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js` both engines run, and `WebKitDriver.swift`, built with the app’s web view sources. Not part of the app. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
@@ -318,16 +485,23 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
 
 ### A Folder’s Server
 
-1. **Open.** File > Open Folder, File > Open Recent, a drop on the Dock icon or on a
-   window, Open With, and `open -a Metabrowser.app FOLDER` all arrive at one method.
-   The folder’s canonical path keys one session, so one root has one server and one
-   window (plus any tabs the page opens).
+1. **Open.** File > Open, File > Open Recent, the Dock menu’s recents, a drop on the
+   Dock icon or on a window, Open With, `open -a Metabrowser.app FOLDER`, and the last
+   session’s restore all arrive at one session per folder.
+   The folder’s canonical path keys it, so one root has one server, whatever number of
+   windows and tabs show it.
+   A file opens inside a folder (see
+   [Files, Tabs, Recents, and the Last Session](#files-tabs-recents-and-the-last-session)).
 2. **Spawn.** `ServerSupervisor` runs
    `metab ROOT --no-open --host 127.0.0.1 --port 8411` with `posix_spawn`: in its own
    process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is given
    (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and with the
    folder as its working directory, so `.env` lookup matches `metab .` in Terminal.
-   Its stdout and stderr go to the server log and to an in-memory tail.
+   Its stderr is the server log itself, opened before the spawn, so an app that stalls
+   cannot block the server through a full pipe.
+   Its stdout is a pipe the app reads for the announcement and appends to the log.
+   A log that cannot be prepared, opened, or rotated fails the launch with its path and
+   cause, and a log write that fails midway says so in the window’s output.
    Its stdin is a pipe the app holds open, ready to become the parent-death signal.
 3. **Ready.** The server prints `Serving ROOT at http://127.0.0.1:PORT/view/` before its
    socket listens, so the supervisor parses that line and then polls the URL for a 2xx,
@@ -340,11 +514,19 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    website data store, because Metabrowser keeps preferences in host-only cookies.
    A native “Starting” view covers the window until the page commits; its spinner
    appears only after 300 ms.
-5. **Fail.** If the server exits, never announces itself, or never answers, the window
-   shows the reason, the last lines of output, Retry, Reveal Logs, and Runtime Settings.
+5. **Check.** A window that joins a running server (a Command-click, and a folder opened
+   again or brought back from the Dock) first asks the server for its entry page, since
+   a live pid is not a working server.
+   A server that gives no 2xx within 5 seconds is hung, not busy: `GET /view/` measured
+   12 to 61 ms (see `SupervisorPolicy.healthDeadline`). It is stopped, and fails.
+   `target=_blank` windows are exempt: WebKit loads them at once, from a page the server
+   just answered.
+6. **Fail.** If the server exits, never announces itself, never answers, or stops
+   answering, the window shows the reason, the last lines of output (stdout and stderr,
+   read from this run’s part of the log), Retry, Reveal Logs, and Runtime Settings.
    Nothing restarts automatically.
    After Retry, each window returns to the page it showed, on the new port.
-6. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
+7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
    group, up to 5 seconds, then SIGKILL, up to 2 more seconds (a process stuck in
    uninterruptible I/O, such as a hung network mount, ignores even SIGKILL, and quit
    must not wait on it), then SIGKILL to anything left in the group.
@@ -371,6 +553,34 @@ authorization a window installs before loading (`WebAuthorization.cookie`).
 `CLIServeLaunch` implements it for today’s server; a host-mode launch replaces it
 without changing the supervisor or the windows.
 
+### After a Crash
+
+An orderly quit stops every server, but an app that crashes or is force-quit cannot, and
+today’s server does not exit when its stdin closes.
+So each app process records its servers, and the next launch ends the ones it left
+(`ServerRecords`, `OrphanReaper`):
+
+- **Recorded.** Each server is recorded once it has spawned: its pid, which is also its
+  process group, the kernel’s start time for it, and its folder.
+  The record leaves when the server has been released and has exited; a server given up
+  on in uninterruptible I/O stays recorded until it exits.
+- **One file per app process.** `servers/app-<pid>.json`, owner-only (0600 in a 0700
+  folder) in the variant’s Application Support folder, names the app process that owns
+  it, and is rewritten whole, with a temporary file and a rename, at each change.
+  The last server’s exit deletes it.
+  A second copy of the app with the same bundle identifier, such as a development build
+  run from another checkout, keeps its own file, and its live servers are never taken
+  for orphans: a file is an orphan’s only once its owner is no longer running.
+- **Reaped at launch.** In the background, each orphaned server whose leader still has
+  the recorded start time and group gets SIGTERM, then SIGKILL after 5 seconds; that
+  check, made before each signal, keeps a pid the kernel has since given to another
+  process from being signaled.
+  A server that outlasts SIGKILL becomes the new app’s record, for the next launch to
+  try again. Each ending goes to the unified log and to the folder’s server log.
+- **Not reached.** A group whose leader has exited is not signaled, since nothing then
+  holds its id for the app, and descendants in other groups are not reached either (see
+  [Gaps to Close](#gaps-to-close)).
+
 ### Finding the Runtime
 
 Setup runs on the first launch, and again from Settings > Find Again.
@@ -388,9 +598,12 @@ The login shell comes last and runs only when the earlier locations miss `metab`
 or `gh`. It runs your shell startup files in the app’s name, which can take seconds and
 can raise privacy prompts you never saw in Terminal.
 One install reached two ways is tried once.
-Setup saves the runtime and the absolute paths of `git` and `gh`; later launches only
-check that the saved `metab` is still executable, so they start no extra process.
-If nothing is found, Settings shows the install command and every place it looked.
+`~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
+account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
+launches only check that the saved `metab` is still executable and is the file that was
+validated ([The Version It Requires](#the-version-it-requires)), so they start no extra
+process. If nothing usable is found, Settings shows the steps that are missing
+([The First Run Without metab](#the-first-run-without-metab)) and every place it looked.
 Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
 reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
@@ -398,8 +611,96 @@ and what an open folder starts at its next Retry or File > Restart Server; until
 open folders keep their servers.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
-A Find Again that finds nothing leaves no runtime, so the next folder waits for one
-instead of starting the `metab` that failed.
+A Find Again that finds nothing leaves no runtime, saved or in use, so neither the next
+folder nor the next launch starts the `metab` that failed; the next folder waits for a
+runtime.
+
+### The First Run Without metab
+
+When a search finds no usable `metab`, Settings shows only the steps still missing, each
+a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.swift`):
+
+| Found | Steps shown |
+| --- | --- |
+| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then, in a new Terminal window, `uv tool install metabrowser` |
+| uv, no `metab` | `uv tool install metabrowser` |
+| A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
+| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'`, after installing uv if there is none |
+
+- **Finding uv:** where its installer puts it (`XDG_BIN_HOME`, `XDG_DATA_HOME/../bin`,
+  or `~/.local/bin`), `/opt/homebrew/bin`, `/usr/local/bin`, then the login shell’s
+  `PATH` from the search, so a file check suffices.
+- **Where `metab` will appear:** `uv tool dir --bin`, asked of the uv found, with uv’s
+  location variables passed through.
+  Without uv, or if uv fails to answer (logged), uv’s documented default, which the
+  screen names.
+- **Continuing by itself:** the app watches that directory, every place discovery looks
+  without a shell, and every place uv may be, once a second and when the app becomes
+  active. When `metab` appears or changes, it searches again, adopts the result, and
+  opens the folders that were waiting.
+  When uv appears, the steps shrink to the ones left.
+- **Terminal:** `~/.local/bin` is not on macOS’s default `PATH`. The app needs nothing
+  there, but Terminal does, so the screen suggests `uv tool update-shell` unless the
+  login shell’s `PATH` already has uv’s tool directory.
+
+The app never runs an installer itself.
+“Install for me” (`mb-34oi`) waits on the clean-account matrix (`mb-5fp7`).
+
+### The Version It Requires
+
+`MetabRequirement` (`Sources/ShellCore/Setup/MetabVersion.swift`) sets the oldest
+`metab` the app runs: 0.12.1, the first release with `GET /api/identity`. 0.12.0, the
+latest published release, lacks the route, and 0.12.1 is not published yet, so for now
+only a source checkout’s `metab` meets it.
+A development build of 0.12.1 (`0.12.1.dev214+8b0603f7`, which PEP 440 orders before
+0.12.1) counts as 0.12.1, or no checkout would run.
+Its number says only that it was built after 0.12.0: one built before the route reached
+`main` runs too, and its windows keep the names derived from their paths.
+
+- **Below the minimum,** discovery skips that `metab` and tries the next place.
+  If none qualifies, the app starts no server: Settings shows the version found, the
+  version needed, and `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy, and
+  folders wait. The command asks for a floor rather than an exact version, because uv
+  keeps the requirement in the tool’s receipt and a later `uv tool upgrade` would never
+  move past a pin. Choose metab… refuses an older `metab` the same way.
+- **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
+  inode, size, and modification time) from just before `metab --version` ran.
+  The app compares it with the file once a second and when the app becomes active, and
+  checks before each folder it opens.
+  A change counts once two looks agree, so a file caught in the middle of an install is
+  not read; a folder opened then waits for the check.
+  The check runs `metab --version` again.
+  A version the app accepts replaces the old one, and if open folders run servers that
+  the same `metab` started at another version, an alert offers to restart them.
+  Anything else leaves no runtime, and a search looks for another.
+- **What it cannot prevent:** an upgrade run in Terminal rewrites the environment the
+  running servers import from, before the app notices or the user agrees, so a server
+  can load new code beside old until it restarts (the
+  [setup flows brief](../../docs/project/research/research-2026-11-11-uv-and-macos-app-install.md),
+  Where This Breaks). An upgrade that changes only a dependency leaves `metab` itself
+  unchanged and goes unnoticed.
+
+### The Launch Notice
+
+A copy opened from its disk image runs from a read-only volume, and a quarantined copy
+opened where it was downloaded runs from a randomized read-only mirror (App
+Translocation). Neither can be replaced in place, and the first stops working when the
+image is ejected. macOS has no API to detect either, so `LaunchLocation`
+(`Sources/ShellCore/Setup/LaunchLocation.swift`) reads the bundle’s path and volume, as
+Sparkle does: a path containing `/AppTranslocation/` is translocated, and otherwise a
+volume that `statfs` reports read-only is a disk image.
+`URLResourceKey.volumeIsReadOnlyKey` is not used, since it reports the sealed system
+volume as writable.
+
+At launch such a copy shows “Move Metabrowser to Applications”, which says why and how:
+drag the app to Applications in Finder, then open it from there.
+Show in Finder opens the Applications folder and, on a disk image, selects the app in
+the image; for a translocated copy, whose path hides the original, it opens the
+Applications folder only.
+Continue goes on, and “Don’t remind me” stops the notice for that bundle identifier.
+The app moves nothing itself.
+A copy it made of a translocated app would keep its quarantine and be translocated again
+unless the app removed the attribute, which is a decision for a person.
 
 ### The Child’s Environment
 
@@ -423,9 +724,9 @@ Terminal launch.
 - **Title:** the folder’s short name in bold, then a bullet and “Metabrowser” in a
   secondary style (`fdu • Metabrowser`), so each window says at a glance which folder it
   shows. The names come from `GET /api/identity`, asked once the server is ready.
-  Until then, and from a `metab` without the route, the window names the folder from its
-  path as `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain
-  text, which the Window menu, Mission Control, the Dock, and accessibility read.
+  Until then, and if the route fails, the window names the folder from its path as
+  `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain text,
+  which the Window menu, Mission Control, the Dock, and accessibility read.
   A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
   and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
   The page’s `<title>` is not used.
@@ -457,6 +758,82 @@ Terminal launch.
   has both checks. If the web content process dies, the window reloads, at most twice in
   30 seconds, and then shows the status view.
 
+### Files, Tabs, Recents, and the Last Session
+
+- **A file opens in its folder.** `open -a Metabrowser.app FILE` and a file chosen in
+  File > Open show the file’s page in the most specific open folder that contains it, or
+  else in its own folder, as `metab FILE` serves the file’s folder (`OpenTarget`).
+  Symbolic links are resolved first, as `metab` resolves them, so a link opens where it
+  points. The page is the file’s view route, spelled as `metab` spells it
+  (`PageAddress.view`); a live test checks the spelling against the route `metab --path`
+  announces. `open -a` delivers a file although `Info.plist` declares only
+  `public.folder` (checked on macOS 26.5), so Finder’s Open With and the Dock still
+  offer the app for folders only.
+
+- **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows,
+  Move Tab to New Window, and dragging a tab combine any folders.
+  Settings > Open folders in places a newly opened folder: as a tab of the front folder
+  window, in a window of its own, or, by default, as System Settings > Desktop & Dock >
+  “Prefer tabs when opening documents” says (`FolderPlacement`). Windows a page opens
+  (`target=_blank`, Command-click) are tabs of their window, as before.
+
+- **Background tabs give up their pages.** Each window’s shown tab keeps its page; of
+  the background tabs, the three shown most recently keep theirs too.
+  Every other background tab gives up its web view, which ends its WebContent process,
+  and reloads its page from the folder’s running server when it is shown
+  (`TabDiscardPolicy`). The limit’s basis follows this list.
+
+- **Recents are macOS’s.** Opening a folder registers it with
+  `NSDocumentController.noteNewRecentDocumentURL`, and File > Open Recent lists
+  `recentDocumentURLs` each time it opens; the Dock menu shows the same list.
+  macOS keeps the membership, the order, and the length (System Settings > Desktop &
+  Dock > Recent documents, apps, and servers), and Clear Menu empties it: the app keeps
+  no list of its own. A file registers the folder it opened in.
+  A scratch bundle that declares only `public.folder` showed, on macOS 26.5, that a
+  folder is recorded and is still listed at the next launch.
+  This is the platform exemption the server-topology brief records; recent roots kept in
+  `metab`, with a route, are Phase 4 (`mb-a5ru`).
+
+- **The last session comes back.** The app saves its folder windows, front window first,
+  with each window’s tabs, shown tab, and frame and each tab’s folder and page, to
+  `~/Library/Application Support/<bundle identifier>/session.json`, mode 0600 in a 0700
+  folder, half a second after a window opens or closes, a tab is shown, or a page loads,
+  and once more at quit, before the servers stop.
+  A save writes a private temporary file beside the session and renames it over the old
+  one (`SessionStore`), so a launch after a crash finds the previous session or the new
+  one, never part of one.
+  The next launch recreates the windows and tabs, and only each window’s shown tab loads
+  its page. The servers start one at a time, each after the one before it is ready or has
+  failed: the front tab’s first, then those of the tabs the other windows show, front to
+  back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
+  A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
+  other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
+  folder that holds one, such as the home folder) starts only when one of its tabs is
+  selected, so a launch raises no privacy prompt for a folder nobody is looking at; the
+  front tab is selected, so it starts (`ProtectedLocations`). A folder that no longer
+  exists is dropped, except a protected one, which is not looked at until it is selected
+  and then says it is gone.
+  Settings > “Reopen the last session’s folders when Metabrowser opens” turns the
+  restore off; the session is still saved.
+  A session file that cannot be read is logged and ignored, and the next save replaces
+  it.
+
+The discard limit’s basis, measured on macOS 26.5.2 with
+`scripts/measure-web-views.swift` against this repository’s own server:
+
+| Measure | Result |
+| --- | --- |
+| WebContent processes for N web views | N, one each |
+| One view’s WebContent footprint, 8 s after loading | 120–143 MB on the folder page (4 views), 111–112 MB on a Markdown page (3 views); the server-topology brief measured 155–210 MB with real pages |
+| A released view’s WebContent process | gone within 1 s |
+| A view that never loaded | no WebContent process |
+| A fresh view loading the page from the warm server, to `didFinish` | 155–489 ms in 9 of 10 loads, and one of 3.7 s; in a run started 5 s after the server, while it was likely still walking the tree, two of five took 3.6 and 17.9 s |
+
+Three background pages hold at most about 0.6 GB at the brief’s upper figure.
+The limit is a conservative default, not a measured optimum: showing a discarded tab
+costs a reload of a few hundred milliseconds, and how often people return to a tab past
+the third is unmeasured.
+
 ### Why the Title Is a Title-Bar Accessory
 
 AppKit draws a system title in one font and one color, so the window hides it
@@ -484,8 +861,6 @@ AppKit draws a system title in one font and one color, so the window hides it
   to the title bar, which drags and double-clicks the window.
   In a narrow window, “• Metabrowser” goes first and whole, then the short name
   truncates (`WindowTitle.segments(fitting:)`).
-- **macOS 15 is unchecked.** There a plain window’s title is centered, and this one
-  stays at the leading edge.
 
 ### Pitfalls Found in the Live Run
 
@@ -500,6 +875,31 @@ the server. Each fix is commented at the code that would bring it back.
   written in a main-actor context is inferred main-actor, and Swift 6’s runtime check
   raises SIGTRAP when it runs on another queue.
   Handlers for other queues must be marked `@Sendable`.
+
+### Coding Guidelines
+
+The app follows tbd’s language-neutral guidelines (tbd has no Swift guideline): general
+coding and comment rules, error handling, testing and TDD, filesystem rules, release
+engineering, supply-chain hardening, and backward compatibility.
+Decision logic lives in `ShellCore` with tests, and the app target only connects it to
+AppKit and WebKit. What is left as it is, on purpose:
+
+- **Errors ignored with a reason.** Each remaining `try?` names why at its line: a
+  readiness probe that fails means not ready yet; the stdin line can fail only once the
+  child has exited, and that exit is reported; a saved setup this build cannot read
+  counts as none, so setup runs again; an unreadable volume ends the path menu at `/`;
+  and a staging directory left after a failed download is in the volume’s temporary
+  items, which macOS empties.
+- **Errors only logged, with a reason.** A server records file that cannot be read or
+  saved goes to the unified log and stops nothing: the server runs, and only the cleanup
+  after a crash is lost, which is how the app behaved before it kept records.
+  A lifecycle event that cannot be appended to a server log is in the unified log
+  already.
+- **Layout numbers in views.** SwiftUI paddings and spacings stay inline, as SwiftUI
+  code reads; numbers that set behavior (timeouts, limits, window and zoom sizes) are
+  named and say why.
+- **Regression tests name their defect.** A test written for a review finding says what
+  the code used to do, since that defect is why the test exists.
 
 ## Why It Lives in This Repository
 
@@ -534,26 +934,34 @@ Each gap points to the part of the brief that closes it.
 | --- | --- | --- |
 | **Session token and cookie exchange** | None: like the CLI, the server answers any local process. `WebAuthorization.cookie` is the slot. | Layering item 1; Security Models |
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
-| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
+| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app’s servers keep running until its next launch ends them (see [After a Crash](#after-a-crash)). | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
-| **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
-| **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |
+| **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |
 | **App-managed runtime** | None: a CLI install is required. | Recommendation 5.2; Wrapping uv |
 | **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized. | Recommendation 6 |
-| **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
+| **Updates** | None: `brew upgrade --cask`, no in-app update notice, and no Sparkle. A copy run from its disk image or translocated gets a launch notice, and moving it is left to the user in Finder. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
-| **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
 | **WebKit measurement gate** | Run on 2026-11-11 (`make macos-webkit-gate`), and **failed**: WebKit lays out the source view 1.6 to 5.8 times slower than Chrome, the binary view 1.4 to 2.7 times, and highlighting and the diff layout switch up to 1.5 times; it uses much less memory. The brief’s fallback is the owner’s decision. `window.print()` does nothing in the app, File > Print works, a dropped folder opens, and a dropped file does nothing. See [Measured in WebKit](../../docs/large-content-rendering.md#measured-in-webkit). | Recommendation 4 (`mb-gvtw`; owner acceptance stays `mb-etqi`) |
 | **Multi-root and attach** | One server per root; no attaching to an agent’s server, no state files, no `metabrowser://` hand-off from the CLI. | Use Cases Under Exploration; Sharing an Installation |
 | **Release CI** | `macos-app.yml` builds, tests, and rehearses the release with an ad hoc signature. No job signs and notarizes from secrets or drafts a release on a `macos-v*` tag, so a release is built by hand (`mb-e9fm`). | Next Steps |
 
 ## Known Limitations
 
-- Only folders open; a dropped file shows an alert.
+- Finder’s Open With and the Dock icon accept folders only; a file opens through
+  `open -a` or File > Open.
+- The restore recreates windows, tabs, frames, and pages, but not full screen, Spaces,
+  minimized windows, or each tab’s Back and Forward history.
+  A page reached by the page’s own history changes, without a load, is saved at the next
+  save or at quit.
+- A restored folder’s server starts once the one before it answers, not once that one
+  has finished walking its tree: `metab` reports no walk’s end, so the launch gate
+  schedules starts, not crawls.
+- The tab bar has no new-tab button: a new folder tab comes from File > Open with
+  Settings set to tabs, or from Merge All Windows.
 - Closing a folder’s last window stops its server, so reopening it starts a new one.
 - A restarted server comes back on a new port, and local storage is per origin, as with
   the CLI.

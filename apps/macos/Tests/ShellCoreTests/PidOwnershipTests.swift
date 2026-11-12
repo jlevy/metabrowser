@@ -133,6 +133,74 @@ private func ownedToTheEnd(_ children: [FakeProcess]) -> Bool {
     }
 }
 
+/// What `ChildOwnership` asks of the kernel, in order.
+private nonisolated enum KernelCall: Equatable, Sendable {
+    case signal(Int32)
+    case reap
+}
+
+/// The order of an exit's publication (review finding D1 on #341). The exit handler once
+/// resumed the exit waiters before it recorded the exit, so a waiter that released the
+/// child at once found it not yet exited: nothing reaped it then, and a signal sent next
+/// still reached its group. Each waiter here runs inside the announcement, the earliest a
+/// resumed waiter can run, so no test depends on how threads are scheduled.
+@Suite struct ChildOwnershipTests {
+    private func recording(_ calls: Recorder<KernelCall>) -> ChildOwnership {
+        ChildOwnership(
+            pid: 4242, sendToGroup: { _, signal in calls.append(.signal(signal)) },
+            reapZombie: { _ in calls.append(.reap) })
+    }
+
+    @Test func aWaiterThatReleasesAtOnceReapsAndSilencesTheGroup() {
+        let calls = Recorder<KernelCall>()
+        let ownership = recording(calls)
+        var reapedByRelease = false
+        ownership.exited {
+            ownership.release()
+            reapedByRelease = ownership.isReaped
+            ownership.signalGroup(SIGKILL)
+        }
+        #expect(reapedByRelease)
+        #expect(calls.all == [.reap])
+    }
+
+    @Test func aChildReleasedWhileRunningIsReapedBeforeItsExitIsAnnounced() {
+        let calls = Recorder<KernelCall>()
+        let ownership = recording(calls)
+        ownership.release()
+        #expect(calls.all.isEmpty)
+        var reapedBeforeAnnouncement = false
+        ownership.exited { reapedBeforeAnnouncement = ownership.isReaped }
+        #expect(reapedBeforeAnnouncement)
+        #expect(calls.all == [.reap])
+    }
+
+    /// The stop's sweep after the leader exits still reaches the group; only the reap
+    /// ends signalling.
+    @Test func theGroupHearsSignalsUntilTheReap() {
+        let calls = Recorder<KernelCall>()
+        let ownership = recording(calls)
+        ownership.signalGroup(SIGTERM)
+        ownership.exited {}
+        ownership.signalGroup(SIGKILL)
+        ownership.release()
+        ownership.signalGroup(SIGKILL)
+        #expect(calls.all == [.signal(SIGTERM), .signal(SIGKILL), .reap])
+    }
+
+    /// The exit handler can run twice for one exit, and a deallocated process releases
+    /// again: the child is still reaped once.
+    @Test func aChildIsReapedOnce() {
+        let calls = Recorder<KernelCall>()
+        let ownership = recording(calls)
+        ownership.exited {}
+        ownership.release()
+        ownership.exited {}
+        ownership.release()
+        #expect(calls.all == [.reap])
+    }
+}
+
 /// The same ownership on real children.
 @Suite struct SpawnedPidOwnershipTests {
     /// Whether `pid` is a child of this process that has exited and is not yet reaped.

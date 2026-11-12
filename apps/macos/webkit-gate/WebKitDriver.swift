@@ -29,7 +29,12 @@ struct Failure: Error, CustomStringConvertible {
 }
 
 func emit(_ object: [String: Any]) {
-    let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
+    let data: Data
+    do {
+        data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    } catch {
+        fail("could not encode the result as JSON: \(error)")
+    }
     FileHandle.standardOutput.write(data)
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
@@ -156,8 +161,13 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         let controller = configuration.userContentController
         switch mode {
         case "measure":
-            guard let path = arguments.first, let source = try? String(contentsOfFile: path, encoding: .utf8)
-            else { fail("measure needs a readable script path") }
+            guard let path = arguments.first else { fail("measure needs a script path") }
+            let source: String
+            do {
+                source = try String(contentsOfFile: path, encoding: .utf8)
+            } catch {
+                fail("cannot read the script \(path): \(error.localizedDescription)")
+            }
             controller.addUserScript(
                 WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         case "drop":
@@ -327,6 +337,7 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         }
         let seconds = Date().timeIntervalSince(started)
         let pdf = URL(fileURLWithPath: pdfPath)
+        // No file means nothing was printed, which the record reports as 0 bytes.
         let size = (try? pdf.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let document = PDFDocument(url: pdf)
         let pages = document?.pageCount ?? 0

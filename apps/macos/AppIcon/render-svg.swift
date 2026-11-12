@@ -13,8 +13,10 @@
 // display's color profile (the sister app's #1F2020 panel came back as #1C2222), so its output
 // depends on the Mac that runs it.
 //
-// Usage: render-svg [--internal PIXELS] MASTER.svg OUT.png PIXELS [OUT.png PIXELS ...]
-// Each PIXELS must divide the internal render size (2048 by default).
+// Usage: render-svg [--time-limit SECONDS] [--internal PIXELS] MASTER.svg OUT.png PIXELS [OUT.png PIXELS ...]
+// Each PIXELS must divide the internal render size (2048 by default). With --time-limit, the
+// kernel ends the renderer with SIGALRM once SECONDS pass, so a file that sends it into a
+// loop cannot hang its caller, and no watchdog process is needed to stop it.
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -800,13 +802,17 @@ func downsample(_ layer: Layer, to pixels: Int) throws -> Layer {
 // (the panel's fill against its masked border) from letting the rim show through, and keeps
 // filter radii in proportion at sizes where a 4-unit offset is a fraction of a pixel.
 var arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.count >= 2, arguments[0] == "--time-limit", let seconds = UInt32(arguments[1]), seconds > 0 {
+    alarm(seconds)
+    arguments.removeFirst(2)
+}
 var renderSize = 2048
 if arguments.count >= 2, arguments[0] == "--internal", let n = Int(arguments[1]) {
     renderSize = n
     arguments.removeFirst(2)
 }
 guard arguments.count >= 3, arguments.count % 2 == 1 else {
-    FileHandle.standardError.write(Data("usage: render-svg [--internal PIXELS] MASTER.svg OUT.png PIXELS [OUT.png PIXELS ...]\n".utf8))
+    FileHandle.standardError.write(Data("usage: render-svg [--time-limit SECONDS] [--internal PIXELS] MASTER.svg OUT.png PIXELS [OUT.png PIXELS ...]\n".utf8))
     exit(2)
 }
 do {

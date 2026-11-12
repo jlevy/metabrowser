@@ -5,10 +5,10 @@ import os
 /// What the supervisor needs from a running child. Tests substitute a fake.
 public nonisolated protocol ServerProcess: AnyObject, Sendable {
     var pid: pid_t { get }
-    /// Output lines, stdout and stderr interleaved as written. Finishes at EOF.
+    /// Lines of stdout, and of stderr too when there is no log. Finishes at EOF.
     /// Iterate it from one task only.
     var lines: AsyncStream<String> { get }
-    /// The newest output lines, for the error view.
+    /// The newest output lines, stdout and stderr both, for the error view.
     func recentOutput() -> [String]
     /// The wait status once the child has exited, or nil if the waiting task was
     /// cancelled first. The exited child is not reaped yet: it keeps its pid, and so its
@@ -20,7 +20,8 @@ public nonisolated protocol ServerProcess: AnyObject, Sendable {
     func waitForOutputEnd() async -> Void?
     /// Sends `signal` to the child's whole process group, until `release()`.
     func signalGroup(_ signal: Int32)
-    /// Gives up the child's pid: reaps it now if it has exited, or as soon as it does.
+    /// Gives up the child's pid: reaps it now if `waitForExit()` has returned, or else as
+    /// soon as the child's exit is observed.
     /// Once a child is reaped and its group is empty, the kernel can hand the same id to
     /// an unrelated process group, so `signalGroup` does nothing after this.
     func release()
@@ -38,15 +39,20 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
     /// A server's stdin stays open as a lifeline: the kernel closes it however this
     /// app exits.
     public var closesStdin: Bool
-    /// Output is appended here, created mode 0600 if missing.
+    /// Output is appended here, created mode 0600 if missing: stderr straight from the
+    /// child, so a stalled app cannot block the child through a full pipe, and stdout
+    /// through the app, which reads it for the announcement. Without a log, stderr
+    /// joins stdout on the pipe.
     public var logURL: URL?
     /// How many lines `ServerProcess.recentOutput()` keeps.
     public var tailLimit: Int
+    /// More lines than the error view shows.
+    public static let defaultTailLimit = 200
 
     public init(
         executable: String, arguments: [String] = [], environment: [String: String] = [:],
         workingDirectory: String? = nil, stdinLine: String? = nil, closesStdin: Bool = false,
-        logURL: URL? = nil, tailLimit: Int = 200
+        logURL: URL? = nil, tailLimit: Int = LaunchSpec.defaultTailLimit
     ) {
         self.executable = executable
         self.arguments = arguments
@@ -72,12 +78,15 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
 public nonisolated enum SpawnError: Error, Equatable, CustomStringConvertible {
     case relativeExecutable(String)
     case pipe(Int32)
+    /// The log could not be opened, so the child would have nowhere to write.
+    case log(path: String, code: Int32)
     case spawn(Int32)
 
     public var description: String {
         switch self {
         case .relativeExecutable(let path): "\(path) is not an absolute path"
         case .pipe(let code): "could not create a pipe: \(String(cString: strerror(code)))"
+        case .log(let path, let code): "could not open the server log \(path): \(String(cString: strerror(code)))"
         case .spawn(let code): String(cString: strerror(code))
         }
     }
@@ -99,7 +108,10 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     private let output: FileHandle  // must outlive init, or its descriptor closes
     private let exit = Latch<Int32>()
     private let outputEnd = Latch<Void>()
+    /// stdout, and stderr when there is no log: what the error view falls back to.
     private let tail: OutputTail
+    private let tailLimit: Int
+    private let log: ChildLog?
     private let exitSource: DispatchSourceProcess
     private let ownership: ChildOwnership
 
@@ -107,6 +119,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         // posix_spawn resolves a relative path after the working-directory change, so
         // `metab` could otherwise name a file inside the folder being served.
         guard spec.executable.hasPrefix("/") else { throw .relativeExecutable(spec.executable) }
+        let log = try spec.logURL.map(ChildLog.open)
         var stdinPipe: [Int32] = [-1, -1]
         var outputPipe: [Int32] = [-1, -1]
         guard pipe(&stdinPipe) == 0 else { throw .pipe(errno) }
@@ -137,11 +150,15 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_adddup2(&actions, stdinPipe[0], 0)
-        posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1)
-        posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 2)
+        // A file action that cannot be added (out of memory) would spawn a child without
+        // it, wired wrong or in the wrong folder, so it fails the spawn instead.
+        var actionsAdded = [
+            posix_spawn_file_actions_adddup2(&actions, stdinPipe[0], 0),
+            posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1),
+            posix_spawn_file_actions_adddup2(&actions, log?.handle.fileDescriptor ?? outputPipe[1], 2),
+        ]
         if let directory = spec.workingDirectory {
-            posix_spawn_file_actions_addchdir_np(&actions, directory)
+            actionsAdded.append(posix_spawn_file_actions_addchdir(&actions, directory))
         }
 
         let argv = ([spec.executable] + spec.arguments).map { strdup($0) } + [nil]
@@ -150,7 +167,8 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         defer { (argv + envp).forEach { free($0) } }
 
         var spawned: pid_t = 0
-        let rc = posix_spawn(&spawned, spec.executable, &actions, &attr, argv, envp)
+        let rc = actionsAdded.first { $0 != 0 }
+            ?? posix_spawn(&spawned, spec.executable, &actions, &attr, argv, envp)
         close(stdinPipe[0])
         close(outputPipe[1])
         guard rc == 0 else {
@@ -163,10 +181,12 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
         let stdinHandle = FileHandle(fileDescriptor: stdinPipe[1], closeOnDealloc: true)
         if let line = spec.stdinLine {
+            // A write to a fresh pipe fails only with EPIPE, once the child has exited,
+            // and that exit, with its output, is what the supervisor reports.
             try? stdinHandle.write(contentsOf: Data((line + "\n").utf8))
         }
         if spec.closesStdin {
-            try? stdinHandle.close()
+            try? stdinHandle.close()  // closing a pipe's write end has no failure to report
             lifeline = nil
         } else {
             lifeline = stdinHandle
@@ -174,10 +194,11 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
         let tail = OutputTail(limit: spec.tailLimit)
         self.tail = tail
+        tailLimit = spec.tailLimit
+        self.log = log
         let (lineStream, lineSink) = AsyncStream<String>.makeStream(
             bufferingPolicy: .bufferingNewest(spec.tailLimit))
         lines = lineStream
-        let log = spec.logURL.flatMap(Self.openLog)
         let splitter = LineSplitter()
         let ended = outputEnd
         let reader = FileHandle(fileDescriptor: outputPipe[0], closeOnDealloc: true)
@@ -195,36 +216,52 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
                 ended.resolve(())
                 return
             }
-            try? log?.write(contentsOf: chunk)
+            log?.append(chunk)
             splitter.append(chunk, emit: emit)
         }
 
         // kqueue EVFILT_PROC with NOTE_EXIT, then read the status with WNOWAIT, which
         // leaves the child a zombie: its pid, and so its group id, stays this child's
         // while the stop sweeps the group, and `release()` reaps it afterwards.
+        //
+        // NOTE_EXIT can arrive before the exited child is waitable, and it arrives once,
+        // so the event handler waits for the child to become waitable. The first look,
+        // for a child that exited before the source was armed, must not wait: the child
+        // may run for hours.
         let latch = exit
         let ownership = ChildOwnership(pid: child)
         self.ownership = ownership
         let source = DispatchSource.makeProcessSource(
             identifier: child, eventMask: .exit, queue: .global())
-        let observe: @Sendable () -> Void = {
-            var info = siginfo_t()
-            guard waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == child
-            else { return }
-            latch.resolve(Self.waitStatus(info))
+        let observe: @Sendable (_ waiting: Bool) -> Void = { waiting in
+            guard !latch.isResolved, let status = Self.observedExit(of: child, waiting: waiting) else { return }
+            ownership.exited { latch.resolve(status) }
             source.cancel()
-            ownership.exited()
         }
-        source.setEventHandler(handler: observe)
+        source.setEventHandler { observe(true) }
         source.resume()
         exitSource = source
-        DispatchQueue.global().async(execute: observe)  // it may have exited before arming
+        DispatchQueue.global().async { observe(false) }  // it may have exited before arming
     }
 
     /// A child nobody released, such as one a test spawned, is reaped when it exits.
     deinit { ownership.release() }
 
-    public func recentOutput() -> [String] { tail.snapshot }
+    /// From the log when there is one, since stderr goes only there.
+    public func recentOutput() -> [String] {
+        guard let log else { return tail.snapshot }
+        do {
+            return try log.recentLines(limit: tailLimit)
+        } catch {
+            return tail.snapshot + ["\(error), so these lines are stdout only"]
+        }
+    }
+
+    /// Records why the log ends early, for the recent output.
+    func noteLogFailure(_ reason: String) {
+        log?.noteFailure(reason)
+    }
+
     public func waitForExit() async -> Int32? { await exit.wait() }
     public func waitForOutputEnd() async -> Void? { await outputEnd.wait() }
     public var hasExited: Bool { exit.isResolved }
@@ -235,6 +272,19 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
     public func release() {
         ownership.release()
+    }
+
+    /// The wait status of `child` once it has exited, read with `WNOWAIT`, so the child
+    /// stays unreaped. Unless `waiting`, nil while the child runs; when `waiting`, the call
+    /// returns once the child is waitable, which closely follows NOTE_EXIT. Nil, too, if
+    /// `child` is no longer this process's to wait for.
+    static func observedExit(of child: pid_t, waiting: Bool) -> Int32? {
+        var info = siginfo_t()
+        let options = WEXITED | WNOWAIT | (waiting ? 0 : WNOHANG)
+        while waitid(P_PID, id_t(child), &info, options) != 0 {
+            guard errno == EINTR else { return nil }
+        }
+        return info.si_pid == child ? waitStatus(info) : nil
     }
 
     /// `waitid`'s account of an exit as the `waitpid` status `ExitStatus` decodes.
@@ -249,13 +299,6 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     /// What the kernel does for a child if this app crashes: the child reads EOF.
     public func closeLifeline() {
         try? lifeline?.close()
-    }
-
-    /// Appends, never truncates, and refuses to follow a symlink planted at the path.
-    private static func openLog(_ url: URL) -> FileHandle? {
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { return nil }
-        return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 }
 
@@ -277,9 +320,22 @@ nonisolated final class ChildOwnership: Sendable {
 
     private let pid: pid_t
     private let state = OSAllocatedUnfairLock(initialState: State())
+    private let sendToGroup: @Sendable (pid_t, Int32) -> Void
+    private let reapZombie: @Sendable (pid_t) -> Void
 
-    init(pid: pid_t) {
+    /// `sendToGroup` and `reapZombie` are the two system calls whose order ownership
+    /// decides; tests record them instead.
+    init(
+        pid: pid_t,
+        sendToGroup: @escaping @Sendable (pid_t, Int32) -> Void = { pid, signal in _ = kill(-pid, signal) },
+        reapZombie: @escaping @Sendable (pid_t) -> Void = { pid in
+            var status: Int32 = 0
+            _ = waitpid(pid, &status, 0)  // a zombie: returns at once
+        }
+    ) {
         self.pid = pid
+        self.sendToGroup = sendToGroup
+        self.reapZombie = reapZombie
     }
 
     var isReaped: Bool { state.withLock { $0.reaped } }
@@ -287,16 +343,20 @@ nonisolated final class ChildOwnership: Sendable {
     func signalGroup(_ signal: Int32) {
         state.withLock { state in
             guard !state.reaped else { return }
-            kill(-pid, signal)
+            sendToGroup(pid, signal)
         }
     }
 
-    /// The exit handler saw the child exit.
-    func exited() {
+    /// The exit handler saw the child exit, and `announce` resumes the exit waiters.
+    /// The exit is recorded, and the child reaped if it is already released, before
+    /// `announce` runs: a waiter that releases the child the moment `waitForExit()`
+    /// returns then reaps it at once, and no later signal reaches its group.
+    func exited(announce: () -> Void) {
         state.withLock { state in
             state.exited = true
             reapIfDone(&state)
         }
+        announce()
     }
 
     func release() {
@@ -308,8 +368,7 @@ nonisolated final class ChildOwnership: Sendable {
 
     private func reapIfDone(_ state: inout State) {
         guard state.exited, state.released, !state.reaped else { return }
-        var status: Int32 = 0
-        _ = waitpid(pid, &status, 0)  // a zombie: returns at once
+        reapZombie(pid)
         state.reaped = true
     }
 }

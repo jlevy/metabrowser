@@ -1,8 +1,8 @@
-# The native macOS app. See README.md. Needs macOS and Swift 6.2 or later (Xcode 26).
+# The native macOS app. See README.md. Needs macOS 26 and Swift 6.3 or later (Xcode 26).
 #
 #   make build                build the debug executable
 #   make test                 run the unit tests and the release scripts' checks
-#   make app                  assemble and sign build/Metabrowser Dev.app
+#   make app                  assemble and sign build/dev/Metabrowser.app
 #   make run FOLDER=path      build the app and open a folder with it
 #   make dmg                  build/Metabrowser-Dev-VERSION-arm64.dmg, checked, not notarized
 #   make release              the official build: build/Metabrowser-VERSION-arm64.dmg,
@@ -13,10 +13,11 @@
 #                             PAIRS=n and CASES=a,b pass through
 #   make clean                remove .build and build
 #
-# Every build is the dev variant (Metabrowser Dev, the canary icon) except `release`
-# and `notarize`, the official path, which build the release variant (Metabrowser, the
-# published icon). VARIANT=release or VARIANT=dev on the command line overrides that;
-# a VARIANT in the environment is ignored, so a leftover export cannot turn a
+# Every build is the dev variant (build/dev/Metabrowser.app, the canary icon) except
+# `release` and `notarize`, the official path, which build the release variant
+# (build/release/Metabrowser.app, the published icon). VARIANT=release or VARIANT=dev on
+# the command line overrides that; a VARIANT in the environment is ignored, so a leftover
+# export cannot turn a
 # development build into a release build. SIGN_IDENTITY, the notary credentials,
 # NOTARIZE, and ARCHES reach the scripts, which document them.
 
@@ -35,8 +36,10 @@ release_variant = $(or $(VARIANT),release)
 build:
 	$(SWIFT) build
 
+# The stress suite runs alone after the rest: see ExitObservationStressTests.swift.
 test:
-	$(SWIFT) test
+	$(SWIFT) test --skip ExitObservationStressTests
+	$(SWIFT) test --filter ExitObservationStressTests
 	scripts/test-scripts.sh
 
 app:

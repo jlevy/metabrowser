@@ -26,6 +26,8 @@ public nonisolated struct SupervisorPolicy: Sendable {
     public var startupTimeout: Duration = .seconds(60)
     /// `metab` sets uvicorn's graceful-shutdown timeout to 0, so SIGTERM returns fast.
     public var shutdownGrace: Duration = .seconds(5)
+    /// Between readiness probes: short, since the socket listens moments after the
+    /// announcement.
     public var probeInterval: Duration = .milliseconds(50)
     /// How long to let the output pipe drain after an exit, so the error view shows
     /// the child's last lines.
@@ -34,8 +36,29 @@ public nonisolated struct SupervisorPolicy: Sendable {
     /// (a hung network mount) ignores even SIGKILL until the I/O returns; quitting and
     /// logging out must not wait on it.
     public var killWait: Duration = .seconds(2)
+    /// How long a start that ended early (the child exited, or closed its output) waits
+    /// for the child's own exit before signaling it, so the failure reports the exit
+    /// status the child chose.
+    public var earlyExitWait: Duration = .seconds(1)
+    /// How long a ready server has to answer before a window attaches to it. Measured on
+    /// 2026-11-11 (a metab dev build, an Apple silicon Mac): `GET /view/` took 12 to 19 ms
+    /// on a warm server, and at most 61 ms in the first 10 seconds of a server on
+    /// `/usr/share` (15,730 files) with `/api/rollup` and `/api/recent` running. A server
+    /// silent this long is hung, not busy.
+    public var healthDeadline: Duration = .seconds(5)
 
     public init() {}
+}
+
+/// What a health check found.
+public nonisolated enum HealthCheck: Equatable, Sendable {
+    /// The server answered: attach to it here.
+    case healthy(ServerEndpoint)
+    /// The server is not ready: starting, stopping, stopped, failed, or it exited during
+    /// the check. A window attaches once it is ready.
+    case notReady
+    /// The server did not answer in time, so it was stopped, and it has failed.
+    case unresponsive
 }
 
 /// Owns one server child: start, readiness, and a bounded stop that leaves no orphan.
@@ -150,6 +173,42 @@ public final class ServerSupervisor {
         await halt()
     }
 
+    /// Whether the ready server still answers, asked before a window attaches to it: a
+    /// live process is not a working server, since a hung one keeps its pid. The server
+    /// gets `policy.healthDeadline` to answer its readiness URL with a 2xx. One that does
+    /// not is stopped and fails, so every window of the folder shows why and offers
+    /// Retry; nothing restarts by itself.
+    public func checkHealth() async -> HealthCheck {
+        guard case .ready(let endpoint) = state, let child = process else { return .notReady }
+        let current = generation
+        let url = launch.readinessURL(for: endpoint)
+        let probe = self.probe
+        let interval = policy.probeInterval
+        let answered = await firstResult(within: policy.healthDeadline, of: [
+            { @Sendable in
+                while !Task.isCancelled, !child.hasExited {
+                    if await probe(url) { return true }
+                    try? await Task.sleep(for: interval)  // cancelled: the deadline passed
+                }
+                return nil
+            },
+        ]) ?? false
+        // An exit is reported by `childExited`, with its status; a stop, a restart, or
+        // another check meanwhile has already decided what happens.
+        guard current == generation, case .ready = state, !child.hasExited else { return .notReady }
+        if answered { return .healthy(endpoint) }
+
+        generation += 1
+        let mine = generation
+        process = nil
+        let summary = "The server stopped answering: \(url.absoluteString) gave no 2xx within \(policy.healthDeadline)."
+        event("\(summary) Stopping it.")
+        _ = await retire(child).value
+        guard mine == generation else { return .unresponsive }
+        state = .failed(ServerFailure(summary: summary, recentOutput: child.recentOutput()))
+        return .unresponsive
+    }
+
     /// `stop()`, returning the generation it began, which a restart compares after the
     /// wait to see whether anything newer happened.
     @discardableResult
@@ -183,18 +242,19 @@ public final class ServerSupervisor {
         guard current == generation else { return }
 
         let started = clock.now
-        event("starting: \(spec.commandLine)")
+        // The first event follows the factory, which may prepare (and rotate) the log the
+        // events are written to.
         let child: any ServerProcess
         do {
             child = try makeProcess(spec)
         } catch {
             let summary = "Could not start \(spec.executable): \(error)."
-            event(summary)
+            event("could not start \(spec.commandLine): \(error)")
             state = .failed(ServerFailure(summary: summary, recentOutput: []))
             return
         }
         process = child
-        event("started pid \(child.pid) as the leader of its own process group")
+        event("started pid \(child.pid), the leader of its own process group: \(spec.commandLine)")
         // Exits before ready are this function's to report (the race below watches for
         // them); this task reports an exit after ready.
         Task { [weak self] in
@@ -258,7 +318,7 @@ public final class ServerSupervisor {
         generation += 1  // this exit is expected now; childExited must not report it
         let mine = generation
         if process === child { process = nil }
-        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : .seconds(1)).value
+        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : policy.earlyExitWait).value
         let summary: String
         if timedOut {
             summary = "The server did not \(what) within \(policy.startupTimeout)."

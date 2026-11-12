@@ -659,10 +659,9 @@ AppKit delivers for a drag from Finder.
   `Files` and handled neither, so WebKit’s default was to load the file: it asked to
   navigate to its `file://` URL, the policy cancelled that, and the page stayed put.
 
-To check the built app by hand: in a Markdown file’s view, press the header’s Print
-button (expect nothing today) and choose File > Print (expect the print panel and the
-document); drag a folder from Finder onto a window (expect a new window for it) and a
-file (expect nothing).
+The same check by hand on the built app is
+[Checking Print and Drops by Hand](../apps/macos/README.md#checking-print-and-drops-by-hand)
+in the app’s README.
 
 ## References
 
