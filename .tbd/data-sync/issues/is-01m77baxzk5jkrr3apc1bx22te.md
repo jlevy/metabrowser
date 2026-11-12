@@ -3,9 +3,9 @@ type: is
 id: is-01m77baxzk5jkrr3apc1bx22te
 title: "Address PR #364 review A: research, plan, and registry corrections"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
 dependencies: []
@@ -36,6 +36,10 @@ child_order_hints:
   - is-01m77bbpzrh1hf0bj8sekdam8h
   - is-01m77bbqmet9jch87p536rt03h
 created_at: 2026-11-12T07:42:41.649Z
-updated_at: 2026-11-12T07:43:07.913Z
+updated_at: 2026-11-12T08:11:09.300Z
+closed_at: 2026-11-12T08:11:09.298Z
+close_reason: Every review A finding (A1-A24) fixed and dispositioned; reply https://github.com/jlevy/metabrowser/pull/364#issuecomment-6818329192 at head 74d938b96b4e6f3d38b6cecfbdfec742af1324ee; CI run 43178607143 green.
+resolution: null
+duplicate_of: null
 ---
 Address review A (senior, round 1) on jlevy/metabrowser#364 at head 81b4d2b18dd0963f12f187b80355ad44d99acd92: A1 High; A2-A13 Medium; A14-A20 Low; suggestions A21-A24. Review: https://github.com/jlevy/metabrowser/pull/364#pullrequestreview-5870676879
