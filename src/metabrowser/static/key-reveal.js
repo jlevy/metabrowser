@@ -198,7 +198,17 @@
       }
     }
 
-    function onBlur() {
+    /**
+     * The window itself losing focus, never an element inside it: a key or a press that
+     * moves focus keeps the reveal and the press it is part of. This listener is not a
+     * capture listener, since one on the window hears every element's `blur` too.
+     *
+     * @param {FocusEvent} event
+     */
+    function onBlur(event) {
+      if (event.target !== hostWindow) {
+        return;
+      }
       pointerPressed = false;
       idle();
     }
@@ -218,7 +228,7 @@
     hostDocument.addEventListener("wheel", onWheel, passive);
     hostDocument.addEventListener("focusin", onFocusIn, passive);
     hostDocument.addEventListener("visibilitychange", onVisibilityChange, passive);
-    hostWindow.addEventListener("blur", onBlur, passive);
+    hostWindow.addEventListener("blur", onBlur, { passive: true });
     const stopObserving = shortcuts.observeKeys(observeKey);
 
     function dispose() {
@@ -235,7 +245,7 @@
       hostDocument.removeEventListener("wheel", onWheel, true);
       hostDocument.removeEventListener("focusin", onFocusIn, true);
       hostDocument.removeEventListener("visibilitychange", onVisibilityChange, true);
-      hostWindow.removeEventListener("blur", onBlur, true);
+      hostWindow.removeEventListener("blur", onBlur);
     }
 
     return Object.freeze({
