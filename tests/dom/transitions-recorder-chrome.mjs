@@ -86,9 +86,12 @@ const actions = {
   },
 };
 const buttons = document.getElementById("buttons");
-// Each action runs from a click; when its handler started is kept for the checks.
+// Each action runs from a click. Where its handler started is kept for the checks as a
+// position in the recorder's frame log (the array a debug measure returns as raw.frames):
+// on this one thread, every entry before it was logged before the handler, and every one
+// at or after it, after.
 for (const [name, fn] of Object.entries(actions)) {
-  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickHandledAt = performance.now(); fn(); }); buttons.appendChild(b);
+  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
 }
 // A synthetic pointerdown dispatched by the page itself when the pointer first moves over it.
 document.getElementById("go-reset").insertAdjacentHTML("beforebegin", '<button id="go-forged">forged</button>');
@@ -185,34 +188,41 @@ const pressAt = (r) =>
 // reached the page up to 22 ms after the press, and in 2 of 15 rafLoop transitions a frame
 // fell between them. That frame shows the page before the click handler ran, and the
 // recorder counts it from the press, as it should: one more frame to ready, blank on these
-// pages. These are the frames read after the press and before the click handler started.
+// pages.
+// Frames are ordered against the click by their position in the frame log, not by clock:
+// the log keeps a read's time rounded to 0.1 ms, which a read just before the handler can
+// share with the handler's own time. The recorder appends a frame to the log as it reads
+// it, so position orders each read against the handler exactly. A frame whose observation
+// never arrived is appended at the next frame instead, so it is left out.
+const readsAroundClick = async (r) => {
+  const mark = await d.evaluate("window.clickFrameMark");
+  const reads = r.raw.frames.map((f, i) => ({ f, i })).filter(({ f }) => f[1] !== null);
+  return { before: reads.filter(({ i }) => i < mark), after: reads.filter(({ i }) => i >= mark) };
+};
+// The frames read after the press and before the click handler started.
 async function framesBeforeClick(r) {
-  const handledAt = await d.evaluate("window.clickHandledAt");
-  return r.raw.frames.filter(
-    ([t, , readAt]) => t >= pressAt(r) && readAt !== null && readAt < handledAt,
-  ).length;
+  const { before } = await readsAroundClick(r);
+  return before.filter(({ f }) => f[0] >= pressAt(r)).length;
 }
-// The ready frame is the first frame read after the click handler started: the frame read
-// before it, if any, was read before the handler, to the recorder's 0.1 ms. This is
+// The ready frame is the first frame read after the click handler started. This is
 // checked on the frames themselves rather than through `framesToReady`, which counts
 // frames by their begin time from the press, and reads 0 when Chrome begins the ready
 // frame before the press's own time stamp (README, "Limits").
 async function assertReadyInFirstFrameAfterClick(r) {
-  const handledAt = await d.evaluate("window.clickHandledAt");
-  const i = r.raw.frames.findIndex(([t]) => t === r.raw.readyAt);
-  const prev = r.raw.frames.slice(0, i).findLast(([, , readAt]) => readAt !== null);
-  assert.ok(r.raw.readyRead > handledAt, "the ready frame was read before the click");
+  const { after } = await readsAroundClick(r);
+  const first = after[0]?.f;
   assert.ok(
-    !prev || prev[2] <= handledAt + 0.05,
-    `a frame read at ${prev?.[2]}, after the click at ${handledAt}, was not ready: ${JSON.stringify(r.frameStates)}`,
+    first && first[0] === r.raw.readyAt && first[2] === Math.round(r.raw.readyRead * 10) / 10,
+    `the first frame read after the click, ${JSON.stringify(first)}, is not the ready frame at ${r.raw.readyAt}: ${JSON.stringify(r.frameStates)}`,
   );
 }
 // Painted ready against Chrome's presentation of the click's next paint (Event Timing),
-// which is the ready frame on these pages. Chrome presents a frame after its main-thread
-// rendering ends, and painted ready is the first frame boundary after that end, so painted
-// ready is never more than a frame after the presentation. The 9 ms covers Chrome's
-// rounding of that time to 8 ms and the recorder's to 0.1 ms. An entry Chrome leaves out
-// was presented within its 16 ms threshold of the click.
+// which is the ready frame only where the click handler itself shows the subject, as on
+// every page that calls this; on the image page it is not. Chrome presents a frame after
+// its main-thread rendering ends, and painted ready is the first frame boundary after that
+// end, so painted ready is never more than a frame after the presentation. The 9 ms
+// covers Chrome's rounding of that time to 8 ms and the recorder's to 0.1 ms. An entry
+// Chrome leaves out was presented within its 16 ms threshold of the click.
 // The bound has one side. The presentation also includes compositor, raster, and GPU work
 // after the main thread, which painted ready leaves out (README, "Limits"), so it can come
 // later than painted ready by that much: for the long frame below, by 9 to 12 ms in five
