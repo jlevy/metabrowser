@@ -4,19 +4,22 @@
 // (`WebContainerView` and `DropAwareWebView`) and ShellCore's `WebConfiguration.swift`
 // and `NavigationPolicy.swift`, so the page runs in the app's web view class, built from
 // the app's configuration, and navigations are decided by the app's policy. It is a
-// measurement tool and never ships, which is why it may read one private property
-// (`_webProcessIdentifier`) to name the process whose memory run.mjs reads.
+// measurement tool and never ships, which is why it may use two private WebKit
+// interfaces: `_webProcessIdentifier`, to name the process whose memory run.mjs reads,
+// and window occlusion detection, turned off as Chrome's flags turn off its own.
 //
 //   webkit-driver measure URL SCRIPT   inject SCRIPT at document start, load URL, print
 //                                      the probe's record, then wait for a line on stdin
-//   webkit-driver print URL PDF        call window.print() as the page's own Print
-//                                      button does, then print through printOperation
+//   webkit-driver print URL PDF [N]    press the page's Print button, which calls
+//                                      window.print(), then print through printOperation
+//                                      as File > Print does, to PDF, at most N pages
 //   webkit-driver drop URL PATH...     drop file URLs on the web view, as a drag from
 //                                      Finder delivers them
 //
 // Each mode prints one JSON object on stdout and exits 0, or exits 1 with a message on
 // stderr. The window is 1200 x 820 points, the app's default content size.
 import AppKit
+import PDFKit
 import WebKit
 
 let contentSize = NSSize(width: 1200, height: 820)
@@ -34,6 +37,28 @@ func emit(_ object: [String: Any]) {
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("webkit-driver: \(message)\n".utf8))
     exit(1)
+}
+
+/// Resumes the print check when a modal print operation finishes. Nonisolated, because
+/// AppKit may call it from the thread it printed on.
+nonisolated final class PrintDone: NSObject, @unchecked Sendable {
+    private var continuation: CheckedContinuation<Bool, Never>?
+    /// AppKit holds the delegate only for the operation's lifetime, so this keeps it alive.
+    private var retained: PrintDone?
+
+    init(_ continuation: CheckedContinuation<Bool, Never>) {
+        self.continuation = continuation
+        super.init()
+        retained = self
+    }
+
+    @objc func printOperationDidRun(
+        _ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        continuation?.resume(returning: success)
+        continuation = nil
+        retained = nil
+    }
 }
 
 /// Records every page event the drop check listens for, posted by its user script.
@@ -251,6 +276,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     func checkPrint() async throws {
         guard let webView, let window else { return }
         let pdfPath = arguments.first ?? "webkit-gate-print.pdf"
+        // At most this many pages, a safety net for a document that never stops paginating.
+        let lastPage = arguments.count > 1 ? Int(arguments[1]) ?? 50 : 50
         let windowsBefore = NSApp.windows.count
         let called = try await webView.callAsyncJavaScript(
             """
@@ -271,6 +298,7 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
             "called": called as? String ?? "",
             "windows_before": windowsBefore,
             "windows_after": NSApp.windows.count,
+            "windows": NSApp.windows.map { "\(type(of: $0)) \"\($0.title)\" visible=\($0.isVisible)" },
             "sheet_attached": window.attachedSheet != nil,
             "modal_window": NSApp.modalWindow?.title ?? NSNull(),
             "print_selectors_webkit_asked_for": Self.printSelectorsAsked.sorted(),
@@ -280,19 +308,37 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         // shown in a panel.
         let info = NSPrintInfo.shared.copy() as! NSPrintInfo
         info.jobDisposition = .save
+        info.dictionary()[NSPrintInfo.AttributeKey.allPages] = false
+        info.dictionary()[NSPrintInfo.AttributeKey.firstPage] = 1
+        info.dictionary()[NSPrintInfo.AttributeKey.lastPage] = lastPage
         info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = URL(fileURLWithPath: pdfPath)
         let operation = webView.printOperation(with: info)
         operation.showsPrintPanel = false
         operation.showsProgressPanel = false
         operation.view?.frame = webView.bounds
-        let printed = operation.run()
+        // runModal(for:), as the app calls it: WebKit computes the pages asynchronously, and
+        // a synchronous run() here printed blank pages until it was stopped at 865 MB.
+        let started = Date()
+        let printed = await withCheckedContinuation { continuation in
+            let done = PrintDone(continuation)
+            operation.runModal(
+                for: window, delegate: done,
+                didRun: #selector(PrintDone.printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
+        }
+        let seconds = Date().timeIntervalSince(started)
         let pdf = URL(fileURLWithPath: pdfPath)
         let size = (try? pdf.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let pages = CGPDFDocument(pdf as CFURL)?.numberOfPages ?? 0
+        let document = PDFDocument(url: pdf)
+        let pages = document?.pageCount ?? 0
+        let firstPageText = document?.page(at: 0)?.string ?? ""
         emit([
             "engine": engineFacts(),
             "window_print": afterScript,
-            "print_operation": ["ran": printed, "pdf_bytes": size, "pdf_pages": pages],
+            "print_operation": [
+                "ran": printed, "pdf_bytes": size, "pdf_pages": pages, "page_limit": lastPage,
+                "first_page_text": String(firstPageText.prefix(160)),
+                "seconds": (seconds * 10).rounded() / 10,
+            ],
             "navigations": decisions,
         ])
         exit(0)
@@ -374,9 +420,14 @@ enum Entry {
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
+        // No App Nap while a sample runs, whatever covers the window: the app a reader
+        // uses is frontmost, and Chrome's flags keep its renderer at full speed too.
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical], reason: "WebKit measurement gate")
         let driver = Driver(mode: commandLine[1], url: target, arguments: Array(commandLine.dropFirst(3)))
         app.delegate = driver
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(600)) { fail("no result after 600 s") }
         app.run()
+        ProcessInfo.processInfo.endActivity(activity)
     }
 }

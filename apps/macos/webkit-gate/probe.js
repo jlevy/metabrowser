@@ -370,8 +370,10 @@
      * A diagnostic, not a gate case: the source view's growth sequence (2, 2, 4,
      * and 8 MiB) appended to a bare page, to separate the engine's text layout
      * from the shell. `single` appends each chunk as one text node in one
-     * `white-space: pre` element, as the source view does; `blocks` puts every
-     * 128 lines in a `content-visibility: auto` block, as the binary view does.
+     * `white-space: pre` element, as the source view does; `split` appends the
+     * same text as text nodes of at most 65,536 characters, the size the HTML
+     * parser splits text into; `blocks` puts every 128 lines in a
+     * `content-visibility: auto` block, as the binary view does.
      */
     async appendLayout() {
       await loaded();
@@ -399,6 +401,12 @@
             block.style.cssText = `content-visibility:auto;contain-intrinsic-size:auto ${slice.length * LINE_PX}px`;
             block.textContent = `${slice.join("\n")}\n`;
             fragment.append(block);
+          }
+          host.append(fragment);
+        } else if (config.mode === "split") {
+          const fragment = document.createDocumentFragment();
+          for (let index = 0; index < chunk.length; index += 65_536) {
+            fragment.append(document.createTextNode(chunk.slice(index, index + 65_536)));
           }
           host.append(fragment);
         } else {

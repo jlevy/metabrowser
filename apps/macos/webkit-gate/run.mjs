@@ -44,6 +44,8 @@ const PASS_RATIO = 1.3;
 // are both under five of those steps has no meaningful ratio. It is reported, not judged.
 const TIMER_FLOOR_MS = 5;
 const SAMPLE_TIMEOUT_MS = 300_000;
+// A safety bound on the print check, far past the few pages its document needs.
+const PRINT_PAGE_LIMIT = 50;
 // How long the probe waits for a view to change before it fails the sample.
 const DOM_TIMEOUT_MS = 120_000;
 const KIB = 1024;
@@ -135,9 +137,11 @@ function repeatToOneLine(text, bytes) {
 /**
  * Bytes shaped like an executable: a Mach-O magic number and a zero-filled header page,
  * which the server's NUL sniff classifies as binary, then 4 KiB pages of random bytes,
- * zero fill, or text, chosen by a fixed-seed xorshift generator.
+ * zero fill, or text, chosen by a fixed-seed xorshift generator. With `randomPercent` 0
+ * there are no random pages, so the bytes switch between text and byte codes so seldom
+ * that the binary view keeps its two-tone accent (DEFAULT_ACCENT_RUN_BUDGET).
  */
-function binaryCorpus(bytes, text, seed) {
+function binaryCorpus(bytes, text, seed, randomPercent = 45) {
   let state = seed >>> 0;
   const next = () => {
     state ^= state << 13;
@@ -153,7 +157,7 @@ function binaryCorpus(bytes, text, seed) {
   for (let page = 4 * KIB; page < bytes; page += 4 * KIB) {
     const end = Math.min(page + 4 * KIB, bytes);
     const kind = next() % 100;
-    if (kind < 45) {
+    if (kind < randomPercent) {
       for (let index = page; index < end; index += 1) {
         buffer[index] = next() & 0xff;
       }
@@ -163,6 +167,20 @@ function binaryCorpus(bytes, text, seed) {
     }
   }
   return buffer;
+}
+
+/**
+ * Short keys and many numbers, about 140,000 highlight.js spans in 512 KiB: the dense end
+ * of the 29,000 to 170,000 spans the 512 KiB bound was measured over.
+ */
+function denseJson() {
+  const records = [];
+  for (let index = 0; index < 12_000; index += 1) {
+    records.push(
+      `{"a":${index},"b":${index % 97}.5,"c":[${index % 7},${index % 11},${index % 13}],"d":true,"e":null},`,
+    );
+  }
+  return `[\n${records.join("\n")}\n]\n`;
 }
 
 async function writeCorpora(directory) {
@@ -176,9 +194,11 @@ async function writeCorpora(directory) {
     ),
     "binary-32mib.bin": binaryCorpus(32 * MIB, source, 0x9e3779b9),
     "binary-8mib.bin": binaryCorpus(8 * MIB, source, 0x85ebca6b),
+    "binary-accent-8mib.bin": binaryCorpus(8 * MIB, source, 0xc2b2ae35, 0),
     "highlight-512kib.yaml": repeatToLines(await trackedText("*.yml", "*.yaml"), 512 * KIB),
     "highlight-512kib.md": repeatToLines(await trackedText("docs/*.md"), 512 * KIB),
     "highlight-512kib.json": repeatToLines(await trackedText("tests/fixtures/*.json"), 512 * KIB),
+    "highlight-512kib-dense.json": repeatToLines(denseJson(), 512 * KIB),
     "highlight-512kib.ts": repeatToLines(
       await trackedText("src/metabrowser/static/*.js", "src/metabrowser/static/*.ts"),
       512 * KIB,
@@ -293,7 +313,7 @@ function freePort() {
 
 // ── Engines ─────────────────────────────────────────────────────
 
-/** Physical footprint of one process, total and without its graphics surfaces. */
+/** Physical footprint of one process, total and without its graphics surfaces, and its priority. */
 async function footprint(pid) {
   if (!pid) {
     return null;
@@ -304,7 +324,15 @@ async function footprint(pid) {
   for (const match of stdout.matchAll(/^\s*(\d+) B\s.*\(graphics\)\s*$/gm)) {
     graphics += Number(match[1]);
   }
-  return { pid, total_bytes: total, graphics_bytes: graphics, other_bytes: total - graphics };
+  // The scheduling priority, so a record shows whether the system had demoted the process.
+  const priority = (await run("ps", ["-o", "pri=", "-p", String(pid)])).stdout.trim();
+  return {
+    pid,
+    priority: Number(priority),
+    total_bytes: total,
+    graphics_bytes: graphics,
+    other_bytes: total - graphics,
+  };
 }
 
 async function buildDriver() {
@@ -351,7 +379,11 @@ const CHROME_FLAGS = [
   `--window-size=${WIDTH},${HEIGHT + 200}`,
 ];
 
-async function chromeSample(url, script, scratch) {
+/**
+ * Runs `use(connection, page)` in a fresh Chrome with a scratch profile, its page at the
+ * app's content size, then closes the browser and removes the profile.
+ */
+async function withChrome(scratch, use) {
   const profile = fs.mkdtempSync(path.join(scratch, "chrome-profile-"));
   const child = spawn(
     CHROME,
@@ -387,11 +419,35 @@ async function chromeSample(url, script, scratch) {
       mobile: false,
     });
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await page.send("Page.bringToFront");
-    const loadFired = page.once("Page.loadEventFired", () => true, SAMPLE_TIMEOUT_MS);
-    await page.send("Page.navigate", { url });
-    await loadFired;
+    return await use(connection, page);
+  } finally {
+    try {
+      await connection?.send("Browser.close", {}, undefined, 10_000);
+    } catch {
+      // The browser is killed below if it did not close.
+    }
+    connection?.close();
+    await Promise.race([exited, sleep(10_000)]);
+    if (child.exitCode === null) {
+      child.kill("SIGKILL");
+      await exited;
+    }
+    fs.rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+/** Navigates `page` to `url` and resolves after its load event. */
+async function navigate(page, url) {
+  const loadFired = page.once("Page.loadEventFired", () => true, SAMPLE_TIMEOUT_MS);
+  await page.send("Page.navigate", { url });
+  await loadFired;
+}
+
+function chromeSample(url, script, scratch) {
+  return withChrome(scratch, async (connection, page) => {
+    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: script });
+    await navigate(page, url);
     const evaluated = await page.send(
       "Runtime.evaluate",
       {
@@ -417,20 +473,21 @@ async function chromeSample(url, script, scratch) {
     const version = await connection.send("Browser.getVersion");
     record.engine = { name: "Chrome", product: version.product, revision: version.revision };
     return record;
-  } finally {
-    try {
-      await connection?.send("Browser.close", {}, undefined, 10_000);
-    } catch {
-      // The browser is killed below if it did not close.
-    }
-    connection?.close();
-    await Promise.race([exited, sleep(10_000)]);
-    if (child.exitCode === null) {
-      child.kill("SIGKILL");
-      await exited;
-    }
-    fs.rmSync(profile, { recursive: true, force: true });
-  }
+  });
+}
+
+/** Chrome's print of the same page to PDF, beside WebKit's, for the print check. */
+function chromePrint(url, pdfPath, scratch) {
+  return withChrome(scratch, async (_connection, page) => {
+    await navigate(page, url);
+    // The view renders after the load event; give it the time the WebKit check waits.
+    await sleep(3000);
+    const { data } = await page.send("Page.printToPDF", { preferCSSPageSize: true });
+    const bytes = Buffer.from(data, "base64");
+    fs.writeFileSync(pdfPath, bytes);
+    const pages = bytes.toString("latin1").match(/\/Type\s*\/Page[^s]/g)?.length ?? 0;
+    return { pdf: path.basename(pdfPath), pdf_bytes: bytes.length, pdf_pages: pages };
+  });
 }
 
 /** Runs webkit-driver and returns its first stdout line as JSON, after `onRecord`. */
@@ -486,6 +543,7 @@ const HIGHLIGHT_CORPORA = [
   { language: "yaml", file: "highlight-512kib.yaml" },
   { language: "markdown", file: "highlight-512kib.md" },
   { language: "json", file: "highlight-512kib.json" },
+  { language: "json", file: "highlight-512kib-dense.json" },
   { language: "typescript", file: "highlight-512kib.ts" },
 ];
 
@@ -511,14 +569,19 @@ const CASES = {
     config: { case: "binary" },
     metrics: viewMetrics,
   },
+  "binary-accent-8mib": {
+    url: (servers) => `${servers.metab}/view/binary-accent-8mib.bin`,
+    config: { case: "binary" },
+    metrics: viewMetrics,
+  },
   "highlight-512kib": {
     url: (servers) => `${servers.metab}/view/`,
     config: { case: "highlight", corpora: HIGHLIGHT_CORPORA },
     metrics: (record) => {
       const metrics = [];
       for (const sample of record.result.samples) {
-        metrics.push(gated(`${sample.language} highlight + layout (ms)`, sample.elapsed_ms));
-        metrics.push(counted(`${sample.language} token spans`, sample.token_spans));
+        metrics.push(gated(`${sample.file} highlight + layout (ms)`, sample.elapsed_ms));
+        metrics.push(counted(`${sample.file} token spans`, sample.token_spans));
       }
       return metrics;
     },
@@ -569,6 +632,17 @@ const CASES = {
     config: {
       case: "appendLayout",
       mode: "single",
+      corpusUrl: "/__gate/corpus/source-16mib.txt",
+      chunks: APPEND_CHUNKS,
+    },
+    metrics: appendMetrics,
+  },
+  "diagnostic-append-split": {
+    diagnostic: true,
+    url: (servers) => `${servers.static}/__gate/blank.html`,
+    config: {
+      case: "appendLayout",
+      mode: "split",
       corpusUrl: "/__gate/corpus/source-16mib.txt",
       chunks: APPEND_CHUNKS,
     },
@@ -733,9 +807,10 @@ function summarize(samples) {
 
 function markdown(summary, meta) {
   const lines = [
-    `Run ${meta.started} to ${meta.finished}: ${meta.machine}; macOS ${meta.macos};`,
+    `Run ${meta.started} to ${meta.finished ?? "(unfinished)"}: ${meta.machine}; macOS ${meta.macos};`,
     `${meta.chrome}; WebKit ${meta.webkit}; ${meta.metab}; commit ${meta.commit};`,
-    `load average ${meta.load_start.join(", ")} at the start and ${meta.load_end.join(", ")} at the end.`,
+    `load average ${meta.load_start.join(", ")} at the start` +
+      (meta.load_end ? ` and ${meta.load_end.join(", ")} at the end.` : "."),
     "",
   ];
   for (const { case: caseName, pairs, rows, failures } of summary) {
@@ -800,19 +875,27 @@ async function screenLocked() {
 
 const loadAverage = () => os.loadavg().map((value) => Math.round(value * 10) / 10);
 
-async function runChecks(driver, servers, corpus) {
+/**
+ * window.print() and File > Print in WebKit, Chrome's print of the same page, and drops
+ * of a file and a folder on the app's web view. The PDFs land beside the corpus.
+ */
+async function runChecks(driver, servers, corpus, scratch) {
+  const out = path.dirname(corpus);
+  const url = `${servers.metab}/view/print-check.md`;
   const print = await driverRun(driver, [
     "print",
-    `${servers.metab}/view/print-check.md`,
-    path.join(path.dirname(corpus), "print-check.pdf"),
+    url,
+    path.join(out, "print-webkit.pdf"),
+    String(PRINT_PAGE_LIMIT),
   ]);
+  const chromePrinted = await chromePrint(url, path.join(out, "print-chrome.pdf"), scratch);
   const drop = await driverRun(driver, [
     "drop",
     `${servers.metab}/view/`,
     path.join(corpus, "print-check.md"),
     path.join(corpus, "folder"),
   ]);
-  return { print, drop };
+  return { print, chrome_print: chromePrinted, drop };
 }
 
 /** Writes summary.json and summary.md for a run's samples and returns the Markdown. */
@@ -872,7 +955,7 @@ async function main() {
   fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   try {
     if (options.checks) {
-      const checks = await runChecks(driver, servers, corpus);
+      const checks = await runChecks(driver, servers, corpus, scratch);
       fs.writeFileSync(
         path.join(options.out, "checks.json"),
         `${JSON.stringify(checks, null, 2)}\n`,
