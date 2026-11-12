@@ -1341,13 +1341,14 @@
    * @param {string} revision
    */
   function handleCommitRowKeydown(event, row, revision) {
+    // Shift never changes a row key, as in the shortcut registry; Ctrl, Alt,
+    // and Meta leave the chord to the browser.
     if (
       !event.defaultPrevented &&
       !event.isComposing &&
       !event.altKey &&
       !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
+      !event.metaKey
     ) {
       switch (commitRowKey(event)) {
         case "ArrowUp":

@@ -1707,9 +1707,8 @@ async function run() {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
-      for (const letter of ["j", "k"]) {
-        const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+    for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+      for (const key of ["j", "k"]) {
         const chord = keyboardEvent(key, { [modifier]: true });
         rows[1].dispatch("keydown", chord);
         assertTrue(`keyboard: ${modifier} with ${key} is ignored`, !chord.defaultPrevented);
@@ -1721,9 +1720,26 @@ async function run() {
       internals.stateForTests().selectedId,
       SHA_B,
     );
-    // Let the final focus-following selection release its single active
-    // preparation slot before the next independent preparation case.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Shift never changes a row key: Shift with K, J, or an arrow moves and
+    // opens, as without it.
+    for (const [key, from, to, revision] of [
+      ["K", 1, 0, SHA_A],
+      ["J", 0, 1, SHA_B],
+      ["ArrowUp", 1, 0, SHA_A],
+      ["ArrowDown", 0, 1, SHA_B],
+    ]) {
+      const shifted = keyboardEvent(key, { shiftKey: true });
+      rows[from].dispatch("keydown", shifted);
+      assertTrue(`keyboard: Shift with ${key} is handled`, shifted.defaultPrevented);
+      assertTrue(`keyboard: Shift with ${key} moves focus`, document.activeElement === rows[to]);
+      assertEqual(
+        `keyboard: Shift with ${key} opens the commit`,
+        internals.stateForTests().selectedId,
+        revision,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────
