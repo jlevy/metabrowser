@@ -62,7 +62,8 @@ public nonisolated enum CommandRunner {
         // A background job the command started can hold the pipe open; take what has
         // arrived, then end the job with the rest of the group.
         _ = await firstResult(within: .milliseconds(300), of: [{ @Sendable in await child.waitForOutputEnd() }])
-        child.signalGroup(SIGKILL)
+        child.signalGroup(SIGKILL)  // the leader is not reaped yet, so the group is still its own
+        child.release()
         return CommandResult(status: timedOut ? nil : status, output: child.recentOutput(), timedOut: timedOut)
     }
 }

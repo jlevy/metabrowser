@@ -306,6 +306,9 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    group, up to 5 seconds, then SIGKILL, up to 2 more seconds (a process stuck in
    uninterruptible I/O, such as a hung network mount, ignores even SIGKILL, and quit
    must not wait on it), then SIGKILL to anything left in the group.
+   The server is reaped only after that last signal: until then its exited process keeps
+   its pid, which is also the group’s id, so no signal can reach another process that
+   was given the same id.
    Quitting stops every server, including servers of windows closed moments before,
    before the app exits, also when the quit comes from SIGTERM, SIGINT, or SIGHUP sent
    to the app.

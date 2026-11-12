@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// What the supervisor needs from a running child. Tests substitute a fake.
 public nonisolated protocol ServerProcess: AnyObject, Sendable {
@@ -9,15 +10,20 @@ public nonisolated protocol ServerProcess: AnyObject, Sendable {
     var lines: AsyncStream<String> { get }
     /// The newest output lines, for the error view.
     func recentOutput() -> [String]
-    /// The wait status once the child has exited and been reaped, or nil if the
-    /// waiting task was cancelled first.
+    /// The wait status once the child has exited, or nil if the waiting task was
+    /// cancelled first. The exited child is not reaped yet: it keeps its pid, and so its
+    /// process group id, until `release()`.
     func waitForExit() async -> Int32?
     /// Whether `waitForExit()` would return at once.
     var hasExited: Bool { get }
     /// Returns once every holder of the output pipe has closed it, or nil if cancelled.
     func waitForOutputEnd() async -> Void?
-    /// Sends `signal` to the child's whole process group.
+    /// Sends `signal` to the child's whole process group, until `release()`.
     func signalGroup(_ signal: Int32)
+    /// Gives up the child's pid: reaps it now if it has exited, or as soon as it does.
+    /// Once a child is reaped and its group is empty, the kernel can hand the same id to
+    /// an unrelated process group, so `signalGroup` does nothing after this.
+    func release()
 }
 
 /// One child to start: everything is explicit, nothing is inherited.
@@ -95,6 +101,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     private let outputEnd = Latch<Void>()
     private let tail: OutputTail
     private let exitSource: DispatchSourceProcess
+    private let ownership: ChildOwnership
 
     public init(_ spec: LaunchSpec) throws(SpawnError) {
         // posix_spawn resolves a relative path after the working-directory change, so
@@ -192,22 +199,30 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
             splitter.append(chunk, emit: emit)
         }
 
-        // kqueue EVFILT_PROC with NOTE_EXIT, then reap with waitpid so no zombie remains.
+        // kqueue EVFILT_PROC with NOTE_EXIT, then read the status with WNOWAIT, which
+        // leaves the child a zombie: its pid, and so its group id, stays this child's
+        // while the stop sweeps the group, and `release()` reaps it afterwards.
         let latch = exit
+        let ownership = ChildOwnership(pid: child)
+        self.ownership = ownership
         let source = DispatchSource.makeProcessSource(
             identifier: child, eventMask: .exit, queue: .global())
-        let reap: @Sendable () -> Void = {
-            var status: Int32 = 0
-            if waitpid(child, &status, WNOHANG) == child {
-                latch.resolve(status)
-                source.cancel()
-            }
+        let observe: @Sendable () -> Void = {
+            var info = siginfo_t()
+            guard waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == child
+            else { return }
+            latch.resolve(Self.waitStatus(info))
+            source.cancel()
+            ownership.exited()
         }
-        source.setEventHandler(handler: reap)
+        source.setEventHandler(handler: observe)
         source.resume()
         exitSource = source
-        DispatchQueue.global().async(execute: reap)  // it may have exited before arming
+        DispatchQueue.global().async(execute: observe)  // it may have exited before arming
     }
+
+    /// A child nobody released, such as one a test spawned, is reaped when it exits.
+    deinit { ownership.release() }
 
     public func recentOutput() -> [String] { tail.snapshot }
     public func waitForExit() async -> Int32? { await exit.wait() }
@@ -215,7 +230,20 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     public var hasExited: Bool { exit.isResolved }
 
     public func signalGroup(_ signal: Int32) {
-        kill(-pid, signal)
+        ownership.signalGroup(signal)
+    }
+
+    public func release() {
+        ownership.release()
+    }
+
+    /// `waitid`'s account of an exit as the `waitpid` status `ExitStatus` decodes.
+    static func waitStatus(_ info: siginfo_t) -> Int32 {
+        switch info.si_code {
+        case CLD_EXITED: (info.si_status & 0xff) << 8
+        case CLD_DUMPED: (info.si_status & 0x7f) | 0x80
+        default: info.si_status & 0x7f  // CLD_KILLED
+        }
     }
 
     /// What the kernel does for a child if this app crashes: the child reads EOF.
@@ -228,5 +256,60 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { return nil }
         return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+    }
+}
+
+/// Whether a `SpawnedProcess` still holds its child's pid, which is also the id of the
+/// child's process group.
+///
+/// The exit handler only observes the exit (`waitid` with `WNOWAIT`), so the exited
+/// leader stays a zombie that keeps its pid reserved, and with it the group id: a
+/// `kill(-pid, …)` meanwhile reaches the child's own group and nothing else, even after
+/// the leader exits while descendants remain. Reaping happens only once the owner has
+/// released the child and the child has exited, and signals stop at reaping, under one
+/// lock, so no signal can follow the reap.
+nonisolated final class ChildOwnership: Sendable {
+    private struct State {
+        var exited = false
+        var released = false
+        var reaped = false
+    }
+
+    private let pid: pid_t
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    init(pid: pid_t) {
+        self.pid = pid
+    }
+
+    var isReaped: Bool { state.withLock { $0.reaped } }
+
+    func signalGroup(_ signal: Int32) {
+        state.withLock { state in
+            guard !state.reaped else { return }
+            kill(-pid, signal)
+        }
+    }
+
+    /// The exit handler saw the child exit.
+    func exited() {
+        state.withLock { state in
+            state.exited = true
+            reapIfDone(&state)
+        }
+    }
+
+    func release() {
+        state.withLock { state in
+            state.released = true
+            reapIfDone(&state)
+        }
+    }
+
+    private func reapIfDone(_ state: inout State) {
+        guard state.exited, state.released, !state.reaped else { return }
+        var status: Int32 = 0
+        _ = waitpid(pid, &status, 0)  // a zombie: returns at once
+        state.reaped = true
     }
 }

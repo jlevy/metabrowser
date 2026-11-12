@@ -329,8 +329,11 @@ public final class ServerSupervisor {
                 }
             }
         }
-        child.signalGroup(SIGKILL)  // anything still in its group after the leader exited
+        // Anything still in its group after the leader exited. The exited leader is not
+        // reaped until `release()`, so its pid, and the group id, are still this child's.
+        child.signalGroup(SIGKILL)
         await settleOutput(child)
+        child.release()  // the last thing this child is sent; reaped once it has exited
         if let status { event("pid \(child.pid) stopped (\(ExitStatus(waitStatus: status)))") }
         return TerminationResult(status: status, signaled: signaled)
     }

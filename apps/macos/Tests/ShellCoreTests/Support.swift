@@ -14,7 +14,8 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     private let ignoresTerm: Bool
     /// Stands in for a process in uninterruptible I/O, which not even SIGKILL ends.
     private let ignoresKill: Bool
-    private let record = OSAllocatedUnfairLock(initialState: (signals: [Int32](), exitedBy: Int32?.none))
+    private let record = OSAllocatedUnfairLock(
+        initialState: (signals: [Int32](), exitedBy: Int32?.none, released: false, signalsAfterRelease: [Int32]()))
 
     init(pid: pid_t = 4242, ignoresTerm: Bool = false, ignoresKill: Bool = false) {
         self.pid = pid
@@ -25,6 +26,11 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
 
     var signals: [Int32] { record.withLock { $0.signals } }
     var exitedBy: Int32? { record.withLock { $0.exitedBy } }
+    /// Whether the supervisor gave up the pid, which for a real child is when it is reaped.
+    var isReleased: Bool { record.withLock { $0.released } }
+    /// Signals sent after `release()`: each could have reached an unrelated process group
+    /// that took over the reaped pid.
+    var signalsAfterRelease: [Int32] { record.withLock { $0.signalsAfterRelease } }
     var hasExited: Bool { exit.isResolved }
 
     func say(_ line: String) {
@@ -43,13 +49,22 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     func waitForOutputEnd() async -> Void? { await outputEnd.wait() }
 
     func signalGroup(_ signal: Int32) {
-        record.withLock { $0.signals.append(signal) }
+        let released = record.withLock { record in
+            record.signals.append(signal)
+            if record.released { record.signalsAfterRelease.append(signal) }
+            return record.released
+        }
+        guard !released else { return }
         guard !exit.isResolved else { return }
         if (signal == SIGKILL && !ignoresKill) || (signal == SIGTERM && !ignoresTerm) {
             record.withLock { $0.exitedBy = signal }
             finishOutput()
             exit.resolve(signal)  // a wait status whose low bits name the signal
         }
+    }
+
+    func release() {
+        record.withLock { $0.released = true }
     }
 
     private func finishOutput() {
@@ -89,3 +104,4 @@ func temporaryDirectory(_ name: String = #function) throws -> URL {
 func processExists(_ pid: pid_t) -> Bool {
     kill(pid, 0) == 0 || errno == EPERM
 }
+
