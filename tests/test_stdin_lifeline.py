@@ -427,11 +427,17 @@ with mock.patch(target, holder):
 
 
 def _group_gone_within(pgid: int, seconds: float = 5.0) -> bool:
+    """Whether no process of group *pgid* is left that this test could signal.
+
+    macOS answers ``EPERM`` while a killed member waits as a zombie to be reaped by
+    ``launchd``, its new parent: nothing in the group runs any more.
+    """
+
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         try:
             os.killpg(pgid, 0)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             return True
         time.sleep(0.02)
     return False
