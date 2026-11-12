@@ -35,26 +35,29 @@ struct LiveMetabTests {
                 workingDirectory: root.path, logURL: log),
             launch: launch)
         await subject.start()
-        guard case .ready(let endpoint) = subject.state else {
-            Issue.record("expected ready, got \(subject.state)")
-            return
+        // Everything after the start runs under stoppingAfterward, so a failed request or a
+        // cancelled run still stops the server before the folder is deleted.
+        let pid = try await stoppingAfterward(subject) {
+            guard case .ready(let endpoint) = subject.state else {
+                Issue.record("expected ready, got \(subject.state)")
+                return subject.pid
+            }
+            let (_, response) = try await URLSession.shared.data(from: endpoint.entryURL)
+            #expect((response as? HTTPURLResponse)?.statusCode == 200)
+            // The route, or, from a metab older than it, a 404 that leaves the fallback.
+            switch await IdentityClient.fetch(origin: endpoint.origin, authorization: launch.authorization(for: endpoint)) {
+            case .identity(let identity):
+                #expect(identity.shortName == root.lastPathComponent)
+                #expect(identity.kind == .folder)
+            case .missingRoute:
+                break
+            case .failed(let reason):
+                Issue.record("/api/identity failed: \(reason)")
+            }
+            return subject.pid
         }
-        let (_, response) = try await URLSession.shared.data(from: endpoint.entryURL)
-        #expect((response as? HTTPURLResponse)?.statusCode == 200)
-        // The route, or, from a metab older than it, a 404 that leaves the fallback.
-        switch await IdentityClient.fetch(origin: endpoint.origin, authorization: launch.authorization(for: endpoint)) {
-        case .identity(let identity):
-            #expect(identity.shortName == root.lastPathComponent)
-            #expect(identity.kind == .folder)
-        case .missingRoute:
-            break
-        case .failed(let reason):
-            Issue.record("/api/identity failed: \(reason)")
-        }
-        let pid = try #require(subject.pid)
-        await subject.stop()
         #expect(subject.state == .stopped)
-        #expect(!processExists(pid))
+        #expect(!processExists(try #require(pid)))
         #expect(try String(contentsOf: log, encoding: .utf8).contains("Serving "))
     }
 }

@@ -139,6 +139,45 @@ import Testing
 
 /// A real child under the supervisor: ready on its line, and gone after stop.
 @Suite struct SupervisedProcessTests {
+    private struct Interrupted: Error {}
+
+    private func fakeServer() -> ServerSupervisor {
+        let script = #"echo "Serving /tmp at http://127.0.0.1:9/view/"; exec sleep 30"#
+        return ServerSupervisor(
+            spec: LaunchSpec(executable: "/bin/sh", arguments: ["-c", script]),
+            launch: CLIServeLaunch(), probe: { _ in true })
+    }
+
+    /// The live test's cleanup, on a child that is still running when the body throws.
+    @Test func aBodyThatThrowsStillStopsTheServer() async throws {
+        let subject = fakeServer()
+        await subject.start()
+        let pid = try #require(subject.pid)
+        await #expect(throws: Interrupted.self) {
+            try await stoppingAfterward(subject) {
+                #expect(processExists(pid))
+                throw Interrupted()
+            }
+        }
+        #expect(subject.state == .stopped)
+        #expect(!processExists(pid))
+    }
+
+    @Test func aCancelledBodyStillStopsTheServer() async throws {
+        let subject = fakeServer()
+        await subject.start()
+        let pid = try #require(subject.pid)
+        let request = Task {
+            try await stoppingAfterward(subject) {
+                _ = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:9/view/")!)
+                try await Task.sleep(for: .seconds(30))
+            }
+        }
+        request.cancel()
+        await #expect(throws: (any Error).self) { try await request.value }
+        #expect(!processExists(pid))
+    }
+
     @Test func stopLeavesNoProcess() async throws {
         let script = #"echo "Serving /tmp at http://127.0.0.1:9/view/"; exec sleep 30"#
         var policy = SupervisorPolicy()

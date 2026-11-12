@@ -105,3 +105,18 @@ func processExists(_ pid: pid_t) -> Bool {
     kill(pid, 0) == 0 || errno == EPERM
 }
 
+/// Runs `body` against a started server and stops the server however `body` ends: on
+/// return, on a thrown error, and on cancellation, which URLSession reports as an
+/// error. Neither the supervisor nor `SpawnedProcess` ends a child on deallocation, so a
+/// test that skipped the stop would leave its server running.
+func stoppingAfterward<T>(_ server: ServerSupervisor, _ body: () async throws -> T) async throws -> T {
+    let result: T
+    do {
+        result = try await body()
+    } catch {
+        await server.stop()
+        throw error
+    }
+    await server.stop()
+    return result
+}
