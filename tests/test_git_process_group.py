@@ -881,10 +881,8 @@ def test_a_stop_leaves_an_unrelated_program_of_the_same_name(
 
 
 @pytest.mark.usefixtures("fresh_stop")
-def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """gh's spawn records the file its launch path resolves to, as Git's does."""
-
-    from metabrowser.builtin_plugins.github import gh as gh_module
+def _gh_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Put first on ``PATH`` a ``gh`` that links to a script of another name; return it."""
 
     target = tmp_path / "real" / "gh2.50"
     target.parent.mkdir()
@@ -894,7 +892,43 @@ def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.Mon
     bin_dir.mkdir()
     (bin_dir / "gh").symlink_to(target)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return target
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """gh's spawn records the file its launch path resolves to, as Git's does."""
+
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    target = _gh_link(tmp_path, monkeypatch)
     asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
+    assert os.path.realpath(target) in process_module._GROUP_STOP.programs
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_an_absolute_launch_needs_no_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The server's current directory may be removed under it.
+
+    A launch by an absolute path still runs, inheriting that directory, as
+    ``subprocess`` allows; so its identity must not need the directory either. gh's
+    ordinary spawn passes no cwd. Before, the lookup asked for the current directory
+    first and the spawn failed with it.
+    """
+
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    target = _gh_link(tmp_path, monkeypatch)
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    monkeypatch.chdir(gone)
+    gone.rmdir()
+    with pytest.raises(FileNotFoundError):
+        os.getcwd()
+    completed = asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
+    assert completed.returncode == 0
     assert os.path.realpath(target) in process_module._GROUP_STOP.programs
 
 
