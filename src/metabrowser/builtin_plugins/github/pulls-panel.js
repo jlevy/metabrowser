@@ -2807,6 +2807,8 @@ export function mountPullsPanel(container, ctx, mb) {
           focusedTree = number;
         },
         lastInput: () => lastInputAt,
+        held: (hold, heldMs, outcome) =>
+          mb.perf.measure(`githubPulls:${hold}Hold`, () => {}, { number, heldMs, outcome }),
       });
       trees.set(number, tree);
       const entry = painted.get(number);

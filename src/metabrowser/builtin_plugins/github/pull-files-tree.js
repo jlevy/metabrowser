@@ -498,13 +498,18 @@ export const FILES_POLL_MS = 1000;
 export const FILE_WALK_SETTLE_MS = 120;
 // How long a tree that opens with no rows waits for the cached list it reads at once before
 // it opens on its loading line, so a list the cache holds opens in one step at its height.
-// The cached route answered in 3.9 to 9.8 ms for three of this repository's pull requests
-// (curl, local server, load average 36, 2026-11-11); this bounds a busy server.
+// Measured 2026-11-12 in headless Chrome 152 against a local server on this repository,
+// from the `githubPulls:openingHold` span: the cached read answered 4 to 94 ms after the
+// click (median 23, p90 42, n 17), none at this bound. OPEN_WAIT_MS's 100 would have been
+// within 6 ms of that maximum on a machine at load average 5.
 export const FILES_OPEN_HOLD_MS = 150;
-// Rows that arrive this long after the reader's last press or key, into a tree that shows
-// none, are offered on its line rather than drawn, so a list a GitHub job fills seconds after
-// the click never pushes the rows below it without input. The layout-shift metric counts a
-// shift within 500 ms of an input as the input's.
+// Rows that arrive this long after the reader's last press or key, or after the tree opened,
+// are offered rather than drawn, so a list a GitHub job fills seconds after the click never
+// pushes the rows below it without input. It separates two measured cases by more than five
+// times each way: a cached list answered within 94 ms of the click (FILES_OPEN_HOLD_MS's
+// runs), and a list GitHub fills took 2 to 5 s (the 2026-11-11 research). It is also the
+// window in which Chrome's layout-shift entry counts a shift as the input's; WebKit has no
+// such entry, and growth inside it still moves the rows below, as the reader's own click.
 export const LATE_ROWS_MS = 500;
 
 /** What a failed listing says to a reader, in what they can do about it. */
@@ -581,8 +586,10 @@ export function fileListFailure(envelope, formatTime) {
  * stale list says nothing of being stale: it is being refreshed, or its notice says why not.
  *
  * `opening` is an expanded tree still waiting, briefly, for its first read, which the paint
- * keeps closed; `offer` is rows that came with no recent input, which the line offers instead
- * of drawing (`LATE_ROWS_MS`).
+ * keeps closed; `offer` is rows that came with no recent input, which the tree offers instead
+ * of drawing (`LATE_ROWS_MS`): the first rows into an empty tree, and any later change to a
+ * drawn one. It is on the line when the line is already shown, and `offerFloats` over the
+ * tree's top when it is not, so offering moves nothing either.
  *
  * @typedef {{
  *   number: number,
@@ -597,6 +604,7 @@ export function fileListFailure(envelope, formatTime) {
  *   live: string,
  *   opening: boolean,
  *   offer: string | null,
+ *   offerFloats: boolean,
  * }} FileTreeModel
  */
 
@@ -613,6 +621,8 @@ export function fileListFailure(envelope, formatTime) {
  *   formatTime: (iso: string) => string,
  *   opening?: boolean,
  *   withheld?: number,
+ *   drawn?: number,
+ *   floats?: boolean,
  * }} held
  * @returns {FileTreeModel}
  */
@@ -631,9 +641,18 @@ export function describeFileTree(envelope, held) {
     live: "",
     opening: held.opening === true,
     offer: null,
+    offerFloats: false,
   };
   if (held.withheld !== undefined && held.withheld > 0) {
-    model.offer = `Show ${plural(held.withheld, "file")}`;
+    const drawn = held.drawn ?? 0;
+    const more = held.withheld - drawn;
+    model.offer =
+      drawn === 0
+        ? `Show ${plural(held.withheld, "file")}`
+        : more > 0
+          ? `Show ${plural(more, "more file")}`
+          : `Show the updated list of ${plural(held.withheld, "file")}`;
+    model.offerFloats = drawn > 0 && held.floats === true;
     model.live = `${plural(held.withheld, "file")} listed`;
     return model;
   }
@@ -775,6 +794,7 @@ function isFilesEnvelope(value) {
  *   routable?(path: string): boolean,
  *   leave(): void,
  *   lastInput?(): number | null,
+ *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "bound" | "reader" | "closed"): void,
  * }} FileTreeDependencies
  */
 
@@ -846,8 +866,17 @@ export function createFileTreeController(deps, options) {
   let opening = false;
   /** @type {unknown} */
   let openTimer = null;
-  /** Rows held and offered on the line, not drawn: they came with no recent input. */
+  /** Rows held and offered, not drawn: they came with no recent input. */
   let withheld = false;
+  /** The held rows' offer floats over a drawn tree whose line was not shown. */
+  let offerFloats = false;
+  /** Whether the last paint showed the tree's line. */
+  let lineShown = false;
+  /** When the tree last opened, by `now()`: lateness counts from it before any input. */
+  /** @type {number | null} */
+  let openedAt = null;
+  /** When the held rows were first held, for the hold's span. @type {number | null} */
+  let heldSince = null;
 
   function live() {
     return expanded && shown && !disposed && deps.isVisible();
@@ -864,11 +893,21 @@ export function createFileTreeController(deps, options) {
       error,
       formatTime: deps.formatTime,
       opening,
-      ...(withheld ? { withheld: holder.rows().length } : {}),
+      ...(withheld
+        ? { withheld: holder.rows().length, drawn: tree?.files ?? 0, floats: offerFloats }
+        : {}),
     });
   }
 
-  function stopOpening() {
+  /**
+   * End the opening's wait, saying how long it held and why it ended.
+   *
+   * @param {"met" | "bound" | "closed"} outcome
+   */
+  function stopOpening(outcome) {
+    if (opening) {
+      deps.held?.("opening", openedAt === null ? 0 : deps.now() - openedAt, outcome);
+    }
     opening = false;
     if (openTimer !== null) {
       deps.cancel(openTimer);
@@ -876,16 +915,33 @@ export function createFileTreeController(deps, options) {
     }
   }
 
-  /** Whether rows arriving now came without a recent press or key. */
+  /**
+   * Whether rows arriving now came without a recent press or key. The tree's own opening is a
+   * reference too, so on a landing, where the address opened it with no input yet, rows that
+   * take longer than `LATE_ROWS_MS` are offered as well. A host that reports no input at all
+   * (`lastInput` absent) draws every row as it comes.
+   */
   function late() {
-    const last = deps.lastInput?.() ?? null;
-    return last !== null && deps.now() - last > LATE_ROWS_MS;
+    if (deps.lastInput === undefined) {
+      return false;
+    }
+    const last = deps.lastInput();
+    const reference =
+      last === null ? openedAt : openedAt === null ? last : Math.max(last, openedAt);
+    return reference !== null && deps.now() - reference > LATE_ROWS_MS;
   }
 
-  /** Draw the rows the line offered: the reader asked for them. */
-  function reveal() {
+  /**
+   * Draw the rows the tree offered: the reader asked for them.
+   *
+   * @param {"reader" | "closed"} [why]
+   */
+  function reveal(why = "reader") {
     if (withheld) {
       withheld = false;
+      offerFloats = false;
+      deps.held?.("lateRows", heldSince === null ? 0 : deps.now() - heldSince, why);
+      heldSince = null;
       rebuild();
       render();
     }
@@ -897,6 +953,7 @@ export function createFileTreeController(deps, options) {
       return;
     }
     const next = model();
+    lineShown = next.line !== null || next.loading || (next.offer !== null && !next.offerFloats);
     const key = JSON.stringify({ ...next, rows: null });
     if (key !== painted) {
       painted = key;
@@ -1035,8 +1092,13 @@ export function createFileTreeController(deps, options) {
         envelope = response.body;
         error = null;
         const changed = holder.accept(envelope);
-        // A tree drawn with no rows takes late rows only when the reader asks for them.
-        if (changed && (withheld || (rows.length === 0 && !opening && late()))) {
+        // Late rows wait for the reader: the first into an empty tree, and every later change
+        // to a drawn one, a list's further pages and a refresh that replaces it.
+        if (changed && (withheld || ((rows.length > 0 || !opening) && late()))) {
+          if (!withheld) {
+            offerFloats = rows.length > 0 && !lineShown;
+            heldSince = deps.now();
+          }
           withheld = true;
         } else if (changed) {
           rebuild();
@@ -1059,7 +1121,7 @@ export function createFileTreeController(deps, options) {
       }
     }
     // The first read answered: the tree paints open now, with its rows if the cache had them.
-    stopOpening();
+    stopOpening("met");
     render();
     if (!again) {
       askIfDue();
@@ -1300,12 +1362,13 @@ export function createFileTreeController(deps, options) {
       const opens = !expanded;
       if (opens) {
         expanded = true;
+        openedAt = deps.now();
         if (holder.rows().length === 0 && envelope === null && live()) {
           // Nothing is known yet: read the cache before painting open, briefly.
           opening = true;
           openTimer = deps.schedule(() => {
             openTimer = null;
-            opening = false;
+            stopOpening("bound");
             render();
           }, FILES_OPEN_HOLD_MS);
         }
@@ -1326,7 +1389,7 @@ export function createFileTreeController(deps, options) {
         return;
       }
       expanded = false;
-      stopOpening();
+      stopOpening("closed");
       clearTimer();
       cancelRequests();
       clearWalk();
@@ -1515,7 +1578,7 @@ export function createFileTreeController(deps, options) {
     anchor: () => anchor,
     dispose() {
       disposed = true;
-      stopOpening();
+      stopOpening("closed");
       clearTimer();
       clearWalk();
       cancelRequests();

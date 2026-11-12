@@ -71,6 +71,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   leave: () => void,
  *   focusedIn: () => void,
  *   lastInput?: () => number | null,
+ *   held?: (hold: "opening" | "lateRows", heldMs: number, outcome: string) => void,
  * }} host
  */
 export function mountFileTree(host) {
@@ -84,7 +85,8 @@ export function mountFileTree(host) {
     h("span", { class: "spinner spinner-sm" }),
   ]);
   const lineText = h("span");
-  // Rows that came with no recent input, offered on the line at its height (LATE_ROWS_MS).
+  // Rows that came with no recent input, offered at no cost in height (LATE_ROWS_MS): on the
+  // line when it is shown, and over the tree's top, floating, when it is not.
   const offer = h("button", { type: "button", class: "github-pull-text-action", hidden: "" });
   const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText, offer]);
   const notice = h("div", { class: "github-pull-files-notice-host" });
@@ -336,6 +338,7 @@ export function mountFileTree(host) {
   /** @param {FileTreeModel} next */
   function paint(next) {
     const focusedRetry = retryButton !== null && retryButton === document.activeElement;
+    const focusedOffer = offer === document.activeElement;
     const focused =
       removedFocus ??
       (focusedRetry ? retryButton : null) ??
@@ -358,7 +361,12 @@ export function mountFileTree(host) {
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
     offer.textContent = next.offer ?? "";
     offer.hidden = next.offer === null;
-    line.hidden = next.line === null && !next.loading && next.offer === null;
+    offer.classList.toggle("github-pull-files-offer-floating", next.offerFloats);
+    const offerHome = next.offerFloats ? group : line;
+    if (offer.parentNode !== offerHome) {
+      offerHome.append(offer);
+    }
+    line.hidden = next.line === null && !next.loading && (next.offer === null || next.offerFloats);
     spinner.hidden = !next.loading;
     // The names breathe as paint; the rows stay fully usable, so the group is not marked busy.
     group.classList.toggle("mb-refreshing-group", next.refreshing);
@@ -397,6 +405,18 @@ export function mountFileTree(host) {
       live.textContent = next.live;
     }
     paintWindow();
+    // A pressed offer goes as its rows are drawn: focus moves to the tree's anchor, as Right
+    // takes it, and to the pull request's row when the tree has none.
+    if (focusedOffer && offer.hidden) {
+      const anchor = controller.anchor();
+      const arriving = anchor === null ? null : drawnElement(anchor);
+      if (arriving === null) {
+        host.leave();
+      } else {
+        arriving.focus({ preventScroll: true });
+        arriving.scrollIntoView({ block: "nearest" });
+      }
+    }
     // Transfer only focus this replacement removed; an unrelated control keeps its focus.
     // The settled anchor is drawn even when it was outside the previous row window.
     if (focused !== null && !focused.isConnected && document.activeElement === document.body) {
@@ -463,6 +483,7 @@ export function mountFileTree(host) {
       routable: (path) => host.href(path) !== null,
       leave: host.leave,
       ...(host.lastInput === undefined ? {} : { lastInput: host.lastInput }),
+      ...(host.held === undefined ? {} : { held: host.held }),
     },
     {
       number: host.number,

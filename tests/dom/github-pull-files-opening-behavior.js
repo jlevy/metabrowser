@@ -34,6 +34,7 @@ function story(tree, answers, input) {
   let next = 1;
   const painted = [];
   let shown = "closed";
+  let lastModel = null;
   const reads = [];
   const controller = tree.createFileTreeController(
     {
@@ -62,12 +63,13 @@ function story(tree, answers, input) {
       isVisible: () => true,
       formatTime: (iso) => iso,
       render(model) {
+        lastModel = model;
         // What the paint shows: closed while opening, else the line and the rows.
         shown =
           !model.expanded || model.opening
             ? "closed"
             : model.offer !== null
-              ? `offer: ${model.offer}`
+              ? `${model.rows.length} rows, offer: ${model.offer}`
               : model.rows.length > 0
                 ? `${model.rows.length} rows`
                 : model.loading
@@ -94,6 +96,7 @@ function story(tree, answers, input) {
     painted,
     reads,
     frame,
+    last: () => lastModel,
     async advance(target) {
       for (;;) {
         const due = [...timers.entries()]
@@ -161,6 +164,73 @@ async function run() {
     facts.promptRows = prompt.painted;
   }
 
+  // A list GitHub fills a page a second: the reader opens the first rows the line offers,
+  // and then does nothing. Every later page waits on the line too, so the drawn tree never
+  // grows by itself; the reader's press draws them all.
+  {
+    const input = { at: 0 };
+    const pages = [
+      recorded.absent,
+      recorded["filling 0"],
+      recorded["filling 1"],
+      recorded["filling 2"],
+      recorded.filled,
+    ].map((envelope) => structuredClone(envelope));
+    const fill = story(tree, pages, input);
+    fill.controller.expand();
+    fill.frame();
+    await settle();
+    fill.frame();
+    await fill.advance(2 * tree.FILES_POLL_MS);
+    input.at = 2 * tree.FILES_POLL_MS + 200;
+    await fill.advance(input.at);
+    fill.controller.reveal();
+    fill.frame();
+    await fill.advance(6 * tree.FILES_POLL_MS);
+    const drawnWhileIdle = fill.controller.snapshot().rows;
+    input.at = 6 * tree.FILES_POLL_MS + 100;
+    fill.controller.reveal();
+    fill.frame();
+    facts.fill = {
+      painted: fill.painted,
+      drawnWhileIdle,
+      drawnAfterPress: fill.controller.snapshot().rows,
+    };
+  }
+
+  // A landing whose address opened the tree, with no press or key yet: the tree's opening is
+  // the reference, so rows that come later than that are offered as well.
+  {
+    const input = { at: null };
+    const landing = story(tree, [recorded.absent, recorded.comparison], input);
+    landing.controller.expand();
+    landing.frame();
+    await settle();
+    landing.frame();
+    await landing.advance(tree.FILES_POLL_MS);
+    facts.landing = landing.painted;
+  }
+
+  // A drawn list that is complete shows no line; a refresh that changes it later floats its
+  // offer over the tree's top, so offering it moves nothing either.
+  {
+    const input = { at: 0 };
+    const changed = structuredClone(recorded.comparison);
+    changed.generation = "0".repeat(31) + "4";
+    changed.fetched += 1;
+    changed.rows = [
+      ...changed.rows,
+      { ...changed.rows[0], path: "docs/added.md", display: "docs/added.md" },
+    ];
+    const refreshed = story(tree, [structuredClone(recorded.comparison), changed], input);
+    refreshed.controller.expand();
+    refreshed.frame();
+    await settle();
+    refreshed.frame();
+    await refreshed.advance(recorded.comparison.fresh_for_s * 1000);
+    facts.refreshed = { painted: refreshed.painted, floats: refreshed.last().offerFloats };
+  }
+
   // A server that does not answer within the bound: the tree opens on its loading line.
   {
     const input = { at: 0 };
@@ -176,7 +246,7 @@ async function run() {
 }
 
 run()
-  .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+  .then((result) => process.stdout.write(`${JSON.stringify(result, null, 2)}\n`))
   .catch((error) => {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;

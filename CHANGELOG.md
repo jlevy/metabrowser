@@ -25,13 +25,17 @@ All notable changes to Metabrowser are documented here.
 - In the Pulls tab, a pull request’s changed files open in one step at their full height
   when Metabrowser holds the list.
   A list GitHub takes a while to return is offered on the tree’s line as **Show N
-  files** instead of being drawn by itself, so the rows below never move while you are
-  not interacting with the list.
+  files** instead of being drawn by itself, and so are its later pages (**Show N more
+  files**) and a refresh that changes a list already shown, which floats over the tree’s
+  top: the rows below never move while you are not interacting with the list.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle
   adds `firstScreen()`, a promise that settles once none of those files is still
   waiting. A page can keep the comparison out of sight until then.
+  Each hold of the pull request page records a span with how long it held and why it
+  ended (`githubPull:firstPaintHold`, `githubPull:changesHold`,
+  `githubPulls:openingHold`, and `githubPulls:lateRowsHold`).
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

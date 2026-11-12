@@ -259,15 +259,38 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
 
     Opening waits ``FILES_OPEN_HOLD_MS`` for the cached list it reads at once, so a list the
     cache holds goes from closed to its rows in one step, where it went through its loading
-    line first. Rows a GitHub job brings ``LATE_ROWS_MS`` past the reader's last press or key
-    are offered on the line, at its height, and drawn when the reader asks; before, they
-    pushed the rows below without input. Rows inside the input's window are drawn as before.
+    line first. Rows a GitHub job brings ``LATE_ROWS_MS`` past the reader's last press or key,
+    or past the tree's opening on a landing with no input yet, are offered and drawn when the
+    reader asks; before, they pushed the rows below without input. That holds for every later
+    change to a drawn tree as well (review A3): a list's further pages wait on its line, and a
+    complete list a refresh changes floats its offer over the tree's top, so offering moves
+    nothing. Rows inside the input's window are drawn as before.
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
         "cached": ["closed", "4 rows"],
-        "lateRows": ["closed", "loading line", "offer: Show 2 files", "4 rows"],
+        "lateRows": ["closed", "loading line", "0 rows, offer: Show 2 files", "4 rows"],
         "promptRows": ["closed", "loading line", "4 rows"],
+        "fill": {
+            # Before review A3 the drawn tree grew to 203 and 256 rows with no input.
+            "painted": [
+                "closed",
+                "loading line",
+                "0 rows, offer: Show 100 files",
+                "103 rows",
+                "103 rows, offer: Show 100 more files",
+                "103 rows, offer: Show 149 more files",
+                "256 rows",
+            ],
+            "drawnWhileIdle": 103,
+            "drawnAfterPress": 256,
+        },
+        # Before review A4 a landing drew late rows: there was no input to count from.
+        "landing": ["closed", "loading line", "0 rows, offer: Show 2 files"],
+        "refreshed": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file"],
+            "floats": True,
+        },
         "slowRead": ["closed", "loading line"],
     }
 
@@ -308,6 +331,9 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
                 for phase in ("asked", "running", "settled")
             },
         },
+        # Late rows offered on the line: pressing the offer from the keyboard draws them and
+        # leaves focus on the tree's anchor, not on the document body (review A2).
+        {"scenario": "offer pressed", "focus": "a.py"},
     ]
 
 

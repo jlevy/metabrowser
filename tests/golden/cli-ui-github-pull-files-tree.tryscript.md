@@ -574,3 +574,64 @@ $ node tests/dom/github-pull-files-tree-session.js
 }
 ? 0
 ```
+
+## A Tree Opens Once and Never Grows Without Input
+
+A row’s tree waits `FILES_OPEN_HOLD_MS` for the cached list it reads at once, so a list
+the cache holds opens in one step (`cached`). Rows that come `LATE_ROWS_MS` after the
+reader’s last press or key, or after the tree’s opening on a landing, are offered rather
+than drawn: the first into an empty tree (`lateRows`, `landing`), a list’s further pages
+on its line (`fill`), and a refreshed complete list over the tree’s top, floating
+(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`).
+
+```console
+$ node tests/dom/github-pull-files-opening-behavior.js
+{
+  "cached": [
+    "closed",
+    "4 rows"
+  ],
+  "lateRows": [
+    "closed",
+    "loading line",
+    "0 rows, offer: Show 2 files",
+    "4 rows"
+  ],
+  "promptRows": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "fill": {
+    "painted": [
+      "closed",
+      "loading line",
+      "0 rows, offer: Show 100 files",
+      "103 rows",
+      "103 rows, offer: Show 100 more files",
+      "103 rows, offer: Show 149 more files",
+      "256 rows"
+    ],
+    "drawnWhileIdle": 103,
+    "drawnAfterPress": 256
+  },
+  "landing": [
+    "closed",
+    "loading line",
+    "0 rows, offer: Show 2 files"
+  ],
+  "refreshed": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show 1 more file"
+    ],
+    "floats": true
+  },
+  "slowRead": [
+    "closed",
+    "loading line"
+  ]
+}
+? 0
+```

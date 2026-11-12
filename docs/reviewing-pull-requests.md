@@ -72,8 +72,9 @@ Click a PR row to open the PR and toggle its changed files.
 Right expands the tree, and Left collapses it.
 The tree shows cached files immediately when available and automatically lists them when
 needed. A list that GitHub takes a while to return is offered on the tree’s line as
-**Show N files** rather than drawn by itself, so the rows below never move while you are
-not interacting with the list.
+**Show N files** rather than drawn by itself, and so are its later pages (**Show N more
+files**) and a refresh that changes a list already shown, which floats over the tree’s
+top, so the rows below never move while you are not interacting with the list.
 Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows without changing which trees are
 expanded. Enter opens the focused PR. Space expands or collapses its changed files in

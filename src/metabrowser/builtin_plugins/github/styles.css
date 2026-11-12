@@ -572,6 +572,22 @@
 .github-pull-files-rows {
   position: relative;
 }
+/* A changed file list offered over a drawn tree whose line is not shown: it floats at the
+   tree's top, so offering it moves no row (LATE_ROWS_MS in pull-files-tree.js). */
+.github-pull-files {
+  position: relative;
+}
+.github-pull-files-offer-floating {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 12px;
+  padding: 0 6px;
+  border-radius: var(--radius-tag);
+  background: var(--bg);
+  font-size: var(--ui-small-font-size);
+  line-height: var(--ui-row-height);
+}
 .github-pull-file-row,
 .github-pull-folder-row {
   position: absolute;
