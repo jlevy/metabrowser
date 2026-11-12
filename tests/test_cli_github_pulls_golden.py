@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import sqlite3
 import sys
 from collections.abc import Callable
 from dataclasses import replace
@@ -30,7 +31,7 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import gh, pull_list, pulls
-from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -519,15 +520,43 @@ def test_golden_pull_list_failures(
 
     slug = origin_identity(CANONICAL).slug
     pulls_directory = session.home / "sources" / slug / "pulls"
+    command = f"`echo '{{}}' | metab {CANONICAL} --api {CLEAR} --data -`"
+    session.say("A cache that refuses a write says why, and the command that clears it.")
     pulls_directory.chmod(0o500)
     try:
         unwritable = session.post({"retry": True})
+        session.say("While the directory itself refuses writes, so does that command.")
+        refused_clear = session.clear()
     finally:
         pulls_directory.chmod(0o700)
     assert unwritable.exit_code == 1
-    assert _after(unwritable)["last_refresh"]["outcome"] == "cache_unwritable"
+    last = _after(unwritable)["last_refresh"]
+    assert last["outcome"] == "cache_unwritable"
+    assert command in last["message"]
+    assert refused_clear.exit_code == 1
+    assert refused_clear.payload()["code"] == "cache_unwritable"
     session.answer(online)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
+
+    session.say(
+        "A catalog a newer Metabrowser wrote is left as it is and named, before any page "
+        "is asked for; the command it names clears it, and the list is fetched again."
+    )
+    with sqlite3.connect(pulls_directory / "catalog.sqlite3") as db:
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        newer = json.loads(value) | {"projection_version": CATALOG_PROJECTION + 1}
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(newer | {"added": None}),))
+    refused_newer = session.post({"retry": True})
+    assert refused_newer.exit_code == 1
+    last = _after(refused_newer)["last_refresh"]
+    assert last["outcome"] == "newer_cache" and command in last["message"]
+    assert "gh api graphql" not in session.blocks[-1].rsplit("--- gh ---\n", 1)[1]
+    cleared = session.clear()
+    assert cleared.exit_code == 0 and cleared.payload()["cleared"] > 0
+    assert not (pulls_directory / "catalog.sqlite3").exists()
+    rebuilt = _after(session.post({"retry": True}))
+    assert rebuilt["last_refresh"]["outcome"] == "succeeded"
+    assert rebuilt["fetched"] == baseline["fetched"]
 
     session.say("An environment token cannot resolve its login while offline.")
     offline_account = {

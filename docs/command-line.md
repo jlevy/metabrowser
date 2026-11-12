@@ -555,7 +555,12 @@ echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-c
 
 In a checkout, run it as `metab .` instead, since the address would clone a repository
 that has no store yet.
-It prints how many files it `cleared`.
+It prints how many files it `cleared`. A refresh that cannot write the cache ends
+`cache_unwritable`, and one that finds a list a newer Metabrowser wrote ends
+`newer_cache` without asking GitHub for anything; both messages name the repository,
+why, and this command.
+A list the running Metabrowser cannot use otherwise, damaged or from another schema, is
+replaced at the next refresh and needs no command.
 
 Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
 Use a current maintained release and verify the active account with
@@ -582,7 +587,8 @@ commit if the mirror has it, and the `pull_request` line says why:
 | `gh_failed` | An answer from `gh` could not be read |
 | `fetch_failed`, `git_failed` | Git failed |
 | `record_too_large` | The record is over the size a record may have |
-| `cache_unwritable` | The record could not be written to the cache |
+| `cache_unwritable` | The cache refused the write; the message says why and names the command that clears the repository’s GitHub cache |
+| `newer_cache` | A newer Metabrowser wrote the repository’s list of pull requests; the message says to upgrade or names that command |
 
 Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
 are listed in the record’s `unavailable`, and the rest of the record stands.

@@ -61,6 +61,7 @@ type PullDataState = Literal[
     "git_failed",
     "record_too_large",
     "cache_unwritable",
+    "newer_cache",
     "not_github",
 ]
 
@@ -78,6 +79,31 @@ class PullDataError(Exception):
         self.reset_at = reset_at
 
 
+# The route that discards everything this plugin caches for one repository.
+CACHE_CLEAR_ROUTE: Final = "/api/plugin/github/cache-clear"
+
+
+def cache_clear_command(source: str, *, checkout: bool) -> str:
+    """The command a reader pastes to clear *source*'s GitHub cache.
+
+    *source* is the repository's ``https://github.com/<owner>/<repo>``. Beside a checkout
+    the command serves the checkout, ``.``, rather than the address, which would clone the
+    repository when no store is attached; the message says to run it there.
+    """
+
+    served = "." if checkout else source
+    return f"echo '{{}}' | metab {served} --api {CACHE_CLEAR_ROUTE} --data -"
+
+
+def _name(source: str) -> str:
+    return source.removeprefix("https://github.com/")
+
+
+def _run_clear(source: str, *, checkout: bool) -> str:
+    where = f" in a checkout of {_name(source)}" if checkout else ""
+    return f"run `{cache_clear_command(source, checkout=checkout)}`{where}"
+
+
 def cache_failure_reason(exc: BaseException) -> str:
     """Why the cache refused, in words that name no path.
 
@@ -89,6 +115,34 @@ def cache_failure_reason(exc: BaseException) -> str:
     if isinstance(exc, OSError):
         return exc.strerror or "the file system refused it"
     return str(exc).rstrip(".") or type(exc).__name__
+
+
+def cache_unwritable(
+    what: str, exc: BaseException, *, source: str, checkout: bool
+) -> PullDataError:
+    """``cache_unwritable`` for *what*, saying why and the command that clears the cache."""
+
+    return PullDataError(
+        "cache_unwritable",
+        f"{what} could not be written to the cache: {cache_failure_reason(exc)}. "
+        f"To clear the GitHub cache of {_name(source)}, "
+        f"{_run_clear(source, checkout=checkout)}, then retry",
+    )
+
+
+def newer_cache(what: str, declared: str, *, source: str, checkout: bool) -> PullDataError:
+    """``newer_cache``: a newer Metabrowser wrote *what*, and this one leaves it as it is.
+
+    *declared* is what it says it is, against what this release reads.
+    """
+
+    return PullDataError(
+        "newer_cache",
+        f"{what} in the cache was written by a newer Metabrowser ({declared}), and this "
+        "one leaves it as it is. Upgrade metab to read it, or "
+        f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+        f"{_name(source)} and fetch it again with this one",
+    )
 
 
 def utc_stamp(moment: datetime) -> str:
@@ -268,6 +322,7 @@ async def read_list(
 
 
 __all__ = [
+    "CACHE_CLEAR_ROUTE",
     "EXTRA_PAGE_REQUESTS",
     "READ_FAILURES",
     "ListRead",
@@ -277,9 +332,12 @@ __all__ = [
     "UnreadableItemError",
     "active_account",
     "as_dict",
+    "cache_clear_command",
     "cache_failure_reason",
+    "cache_unwritable",
     "get_response",
     "login_of",
+    "newer_cache",
     "read_list",
     "readable_items",
     "response_json",
