@@ -507,8 +507,8 @@ It answers `200` with `cleared`, the number of files removed, and `source`; a ca
 refuses answers `cache_unwritable` (409) with why, and no GitHub repository `not_github`
 (409). It holds the source’s alias lock, which every writer of those files takes.
 The `cache_unwritable` message of the pull-request list, a record, a changed-file list,
-the lightweight previews, or stack metadata, and the list’s `newer_cache`, name this
-route as the command to paste:
+the lightweight previews, or stack metadata, and the list’s `newer_cache` and
+`unknown_cache`, name this route as the command to paste:
 `echo '{}' | metab <address> --api /api/plugin/github/cache-clear --data -`, with
 `metab .` in a checkout instead, where the address would clone a repository that has no
 store.

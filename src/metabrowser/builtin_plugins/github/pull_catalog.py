@@ -4,17 +4,21 @@ The SQLite database belongs to the GitHub plugin, not a served repository. GET o
 it read-only. A page's rows, counts and resume cursor commit together under the existing
 source-alias lock; no network operation runs while that lock is held.
 
-A catalog this release cannot use is one of two things, and a writer tells them apart
-before it touches either. One a newer Metabrowser wrote declares it: a schema, checkpoint
-schema, or row projection past this release's (:class:`NewerCatalogError`). Several
-builds can share one cache, so a writer leaves it as it is and the refresh says to
-upgrade; replacing it would have the two builds rebuild each other's catalog page by
-page for as long as both run. Anything else, a damaged file, a schema with objects of
-its own, or a checkpoint outside the model, is :class:`CatalogUnusableError`, and since
-the catalog is disposable a writer replaces it with an empty one under the lock, as a
-cached record another schema wrote is fetched again. Readers do neither and answer
-nothing. ``tests/test_github_pull_list.py`` pins the shape each version names, so a
-change to the tables, the checkpoint, or a row fails there until it raises one.
+A catalog this release cannot use is replaced only once every version it declares has
+been read (:func:`_declarations`) and none is past this release's. One a newer
+Metabrowser wrote says so: a schema, checkpoint schema, or row projection past this
+release's (:class:`NewerCatalogError`). Several builds can share one cache, so a writer
+leaves it as it is and the refresh says to upgrade; replacing it would have the two
+builds rebuild each other's catalog page by page for as long as both run. One whose
+versions cannot all be read safely, a write-ahead-log database, a checkpoint table of
+another definition, or damage where the versions are kept, is left as it is too
+(:class:`UnknownCatalogError`): nothing says it may go. Only the rest, a file that is not
+SQLite, a schema with objects of its own, or a checkpoint outside the model, is
+:class:`CatalogUnusableError`, and since the catalog is disposable a writer replaces it
+with an empty one under the lock, as a cached record another schema wrote is fetched
+again. Readers do neither and answer nothing. ``tests/test_github_pull_list.py`` pins the
+shape each version names, so a change to the tables, the checkpoint, or a row fails
+there until it raises one.
 """
 
 from __future__ import annotations
@@ -55,6 +59,12 @@ CATALOG_PROJECTION = 2
 _SIDECARS: Final = ("-journal", "-wal", "-shm")
 # SQLite's primary result codes for a file that is not a database or is damaged.
 _DAMAGED_CODES: Final = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
+# A write-ahead-log catalog's main file is read into memory to see what it declares.
+# On synthetic catalogs of 900-byte rows, reading the file and its checkpoint there took
+# a median 1.9 ms (at most 5.5) at 8.6 MiB and 8.6 ms (at most 34.5) at 34.5 MiB, 7 runs
+# each at a load average of 21 (2026-11-12). A real catalog is about 1.1 KB a pull
+# request, so 32 MiB holds about 30,000; a larger one is left as it is, unread.
+_INSPECT_MAX_BYTES: Final = 32 * 1024 * 1024
 PAGE_SIZE = 100
 MAX_WINDOW = 1000
 MAX_CATALOG_MEMBERS = 8
@@ -90,11 +100,34 @@ _SCHEMA = (
 
 
 class CatalogUnusableError(ValueError):
-    """The catalog cannot be used as it is, and nothing in it says a newer release wrote it."""
+    """The catalog cannot be used, and its versions were read: none is past this release's.
+
+    It alone lets a writer replace the catalog.
+    """
 
 
 class NewerCatalogError(ValueError):
     """A newer Metabrowser wrote the catalog; ``str()`` says what it declares."""
+
+
+class UnknownCatalogError(ValueError):
+    """The catalog's versions cannot all be read safely, so it is left as it is.
+
+    ``str()`` says why. ``wal`` marks a write-ahead-log database, whose main file can
+    still be read for what it declares (:func:`_refuse_newer_in_copy`).
+    """
+
+    def __init__(self, why: str, *, wal: bool = False) -> None:
+        super().__init__(why)
+        self.wal: bool = wal
+
+
+def _damaged(exc: sqlite3.Error) -> bool:
+    # Extended result codes keep the primary code in their low byte.
+    return exc.sqlite_errorcode & 0xFF in _DAMAGED_CODES
+
+
+_DAMAGED_VERSIONS: Final = "the catalog is damaged where its versions are kept"
 
 
 def failure_line(exc: BaseException) -> str:
@@ -197,8 +230,12 @@ def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_resu
             raise CatalogUnusableError("the catalog is not an SQLite database")
         if header and header[18:20] != b"\x01\x01":
             # The header holds ``user_version`` too, so a newer schema is known unopened.
+            # The checkpoint is not: SQLite would need the journal mode no release writes.
             _refuse_newer("catalog schema", int.from_bytes(header[60:64]), CATALOG_SCHEMA)
-            raise CatalogUnusableError("the catalog is not a rollback-journal database")
+            raise UnknownCatalogError(
+                "the catalog is not in the rollback-journal mode this release writes",
+                wal=header[18:20] == b"\x02\x02",
+            )
         if not header and not write:
             raise CatalogUnusableError("the catalog is empty")
         return fd, os.fstat(fd)
@@ -240,29 +277,106 @@ def _database(
         os.close(fd)
 
 
+def _declarations(db: sqlite3.Connection) -> tuple[object, object]:
+    """``user_version`` and the raw checkpoint, after refusing a version past this release's.
+
+    Every version a catalog declares is read here, before anything about it is judged, so
+    no catalog that says a newer release wrote it is taken for a damaged one. The
+    checkpoint is read only from a table of this release's own definition, which a
+    ``SELECT`` reads without running anything the catalog defines; a table of another
+    definition is :class:`UnknownCatalogError`, and no checkpoint table declares nothing.
+    """
+    version: object = db.execute("PRAGMA user_version").fetchone()[0]
+    _refuse_newer("catalog schema", version, CATALOG_SCHEMA)
+    defined = db.execute("SELECT sql FROM sqlite_schema WHERE name='checkpoint' LIMIT 2").fetchall()
+    if not defined:
+        return version, None
+    if defined != [(_SCHEMA[0][3],)]:
+        raise UnknownCatalogError("the catalog's checkpoint table is not one this release reads")
+    row = db.execute("SELECT value FROM checkpoint WHERE id=1").fetchone()
+    value: object = row[0] if row is not None else None
+    _refuse_newer_checkpoint(value)
+    return version, value
+
+
 def _state(db: sqlite3.Connection) -> CatalogState | None:
     """The checkpoint, or ``None`` for none, after admitting the exact schema.
 
-    Raises :class:`NewerCatalogError` for a version past this release's and
-    :class:`CatalogUnusableError` for anything else this release cannot use.
+    Raises :class:`NewerCatalogError` for a version past this release's,
+    :class:`UnknownCatalogError` when the versions cannot be read, damage there included,
+    and only then :class:`CatalogUnusableError` for anything else this release cannot use.
     """
-    version = db.execute("PRAGMA user_version").fetchone()[0]
+    try:
+        version, value = _declarations(db)
+        schema = db.execute(
+            "SELECT type,name,tbl_name,sql FROM sqlite_schema LIMIT ?", (len(_SCHEMA) + 1,)
+        ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        if _damaged(exc):
+            raise UnknownCatalogError(_DAMAGED_VERSIONS) from exc
+        raise
     if version != CATALOG_SCHEMA:
-        _refuse_newer("catalog schema", version, CATALOG_SCHEMA)
         raise CatalogUnusableError("unknown catalog schema")
-    schema = db.execute(
-        "SELECT type,name,tbl_name,sql FROM sqlite_schema LIMIT ?", (len(_SCHEMA) + 1,)
-    ).fetchall()
     if set(schema) != set(_SCHEMA):
         raise CatalogUnusableError("unsupported catalog schema")
-    row = db.execute("SELECT value FROM checkpoint WHERE id=1").fetchone()
-    if row is None:
+    if value is None:
         return None
+    if not isinstance(value, str):
+        raise CatalogUnusableError("the catalog's checkpoint is not text")
     try:
-        return CatalogState.model_validate_json(row[0])
+        return CatalogState.model_validate_json(value)
     except ValidationError as exc:
-        _refuse_newer_checkpoint(row[0])
         raise CatalogUnusableError("the catalog's checkpoint is outside its model") from exc
+
+
+def _refuse_newer_in_copy(home: Path, relative: str) -> None:
+    """Raise :class:`NewerCatalogError` when a write-ahead-log catalog's file declares one.
+
+    The file is read into memory, at most :data:`_INSPECT_MAX_BYTES`, with its header set
+    to rollback mode, and read there as the catalog is on disk, bounded the same way. Its
+    log and shared-memory files are never opened, and nothing on disk changes. What
+    cannot be read this way declares nothing, and the caller leaves the catalog as it is.
+    """
+    try:
+        fd = open_private_file(home, relative, os.O_RDONLY, shared="refuse")
+    except (OSError, PrivateStorageError):
+        return
+    data = bytearray()
+    try:
+        size = os.fstat(fd).st_size
+        if size > _INSPECT_MAX_BYTES:
+            return
+        while len(data) < size:
+            chunk = os.pread(fd, size - len(data), len(data))
+            if not chunk:
+                break
+            data += chunk
+    except OSError:
+        return
+    finally:
+        os.close(fd)
+    if len(data) < 100:
+        return
+    data[18:20] = b"\x01\x01"
+    copy = sqlite3.connect(":memory:")
+    try:
+        copy.deserialize(bytes(data))
+        copy.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 32 * 1024)
+        copy.execute("PRAGMA trusted_schema=OFF")
+        copy.execute("PRAGMA query_only=ON")
+        steps = 0
+
+        def bounded_read() -> int:
+            nonlocal steps
+            steps += 1000
+            return int(steps > 100_000)
+
+        copy.set_progress_handler(bounded_read, 1000)
+        _declarations(copy)
+    except (sqlite3.Error, UnknownCatalogError):
+        return
+    finally:
+        copy.close()
 
 
 def _refuse_newer_checkpoint(value: object) -> None:
@@ -282,18 +396,32 @@ def _refuse_newer_checkpoint(value: object) -> None:
         _refuse_newer("row projection", fields.get("projection_version"), CATALOG_PROJECTION)
 
 
-def newer_catalog(home: Path, slug: str) -> str | None:
-    """What a newer Metabrowser's catalog here declares, or ``None``. Blocking and bounded.
+type CatalogRefusal = tuple[Literal["newer", "unknown"], str]
 
-    It reads as :func:`read_catalog` does, creating and changing nothing, so a refresh can
-    stop before it asks GitHub for a page it could not publish.
+
+def catalog_refusal(home: Path, slug: str) -> CatalogRefusal | None:
+    """Why no write may touch the catalog here, or ``None``. Blocking and bounded.
+
+    ``newer`` with what a newer Metabrowser's catalog declares, or ``unknown`` with why its
+    versions cannot be read. It reads as :func:`read_catalog` does, creating and changing
+    nothing, so a refresh can stop before it asks GitHub for a page it could not publish.
     """
     try:
         with _database(home, slug) as db:
             _state(db)
     except NewerCatalogError as exc:
-        return str(exc)
-    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return "newer", str(exc)
+    except UnknownCatalogError as exc:
+        if exc.wal:
+            try:
+                _refuse_newer_in_copy(home, _relative(slug))
+            except NewerCatalogError as newer:
+                return "newer", str(newer)
+        return "unknown", str(exc)
+    except sqlite3.DatabaseError as exc:
+        # Opening reads the schema; damage there leaves the versions unread too.
+        return ("unknown", _DAMAGED_VERSIONS) if _damaged(exc) else None
+    except (FileNotFoundError, PrivateStorageError, OSError, ValueError):
         return None
     return None
 
@@ -596,9 +724,11 @@ def publish_page(
 
     The caller uses run_lock_section, so a cancelled lock waiter cannot publish later.
     An account/repository change replaces the disposable catalog in one transaction.
-    A catalog this release cannot use is replaced with an empty one first, and logged; a
-    publisher that expected a checkpoint is then superseded, and rereads. A newer
-    release's catalog raises :class:`NewerCatalogError` and is left as it is.
+    A catalog this release cannot use, once its versions are read and none is newer, is
+    replaced with an empty one first, and logged; a publisher that expected a checkpoint
+    is then superseded, and rereads. A newer release's catalog raises
+    :class:`NewerCatalogError`, and one whose versions cannot be read
+    :class:`UnknownCatalogError`; both are left as they are.
     """
     if proposed.source != repository.source:
         raise ValueError("a catalog publication belongs to its source")
@@ -612,7 +742,12 @@ def publish_page(
         _initialize(repository)
         try:
             return _commit(repository, expected, proposed, rows)
+        except UnknownCatalogError as exc:
+            if exc.wal:
+                _refuse_newer_in_copy(repository.home, _relative(repository.slug))
+            raise
         except CatalogUnusableError as exc:
+            # Only here, once its versions were read and none is newer, is it replaced.
             log.warning(
                 "replacing the pull-request catalog of %s, which this release cannot use "
                 "(%s); its list is fetched again",
@@ -629,12 +764,18 @@ def _commit(
     proposed: CatalogState,
     rows: tuple[PullListRow, ...],
 ) -> bool:
-    """One page's transaction. A file SQLite finds damaged is :class:`CatalogUnusableError`."""
+    """One page's transaction.
 
+    Damage SQLite finds once the versions are read is :class:`CatalogUnusableError`;
+    before, it is :class:`UnknownCatalogError`.
+    """
+
+    classified = False
     try:
         with _database(repository.home, repository.slug, write=True) as db, db:
             db.execute("BEGIN IMMEDIATE")
             current = _state(db)
+            classified = True
             current_key = (current.epoch, current.revision) if current else None
             expected_key = (expected.epoch, expected.revision) if expected else None
             if current_key != expected_key:
@@ -696,7 +837,9 @@ def _commit(
             )
             return True
     except sqlite3.DatabaseError as exc:
-        # Extended result codes keep the primary code in their low byte.
-        if exc.sqlite_errorcode & 0xFF in _DAMAGED_CODES:
-            raise CatalogUnusableError(f"the catalog is damaged: {exc}") from exc
-        raise
+        if not _damaged(exc):
+            raise
+        # Damage found before the versions were read cannot say none is newer.
+        if not classified:
+            raise UnknownCatalogError(_DAMAGED_VERSIONS) from exc
+        raise CatalogUnusableError(f"the catalog is damaged: {exc}") from exc

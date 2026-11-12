@@ -10,9 +10,11 @@ All notable changes to Metabrowser are documented here.
   schema, is rebuilt at the next refresh, and the server log says why.
   A list a newer Metabrowser wrote is left as it is for that build, and the refresh ends
   with the new outcome `newer_cache`, without asking GitHub for anything, and says to
-  upgrade. A cache that refuses a write still ends `cache_unwritable`, but the message of
-  the list, a pull request’s record, its changed files, the previews, and stack metadata
-  now says why and names the repository and the command that clears its GitHub cache.
+  upgrade. A list whose versions cannot be read, such as a write-ahead-log database, is
+  left as it is too, and the refresh ends with the new outcome `unknown_cache`. A cache
+  that refuses a write still ends `cache_unwritable`, but the message of the list, a
+  pull request’s record, its changed files, the previews, and stack metadata now says
+  why and names the repository and the command that clears its GitHub cache.
   That command is the new `POST /api/plugin/github/cache-clear`:
   `echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -`,
   or `metab .` in a checkout.

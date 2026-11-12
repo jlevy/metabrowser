@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -32,6 +33,7 @@ from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     CatalogState,
+    UnknownCatalogError,
     catalog_row,
     catalog_search,
     catalog_window,
@@ -594,7 +596,7 @@ def test_a_newer_releases_catalog_is_named_left_alone_and_cleared_by_its_command
 
 @pytest.mark.parametrize(
     "damage",
-    ["unknown-field", "garbage", "bad-checkpoint", "foreign-table", "trigger", "wal"],
+    ["unknown-field", "garbage", "bad-checkpoint", "foreign-table", "trigger", "no-checkpoint"],
 )
 def test_a_catalog_this_release_cannot_use_is_replaced_by_the_next_write(
     repository: ListedRepository,
@@ -626,7 +628,7 @@ def test_a_catalog_this_release_cannot_use_is_replaced_by_the_next_write(
                     "BEGIN DELETE FROM pulls WHERE number <> NEW.number; END"
                 )
             else:
-                assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+                db.execute("DROP TABLE checkpoint")
     assert read_catalog(repository.home, repository.slug) is None
     _provider(monkeypatch, [generated_item(1), generated_item(2), generated_item(3)])
     state = asyncio.run(refresh_pull_list(repository, "all"))
@@ -641,6 +643,144 @@ def test_a_catalog_this_release_cannot_use_is_replaced_by_the_next_write(
         "replacing the pull-request catalog of https://github.com/octo/demo, which this "
         "release cannot use (CatalogUnusableError: "
     )
+
+
+def _catalog_files(repository: ListedRepository) -> dict[str, bytes]:
+    """The catalog and every sidecar beside it, byte for byte."""
+
+    path = _path(repository)
+    return {
+        suffix: Path(f"{path}{suffix}").read_bytes()
+        for suffix in ("", "-wal", "-shm", "-journal")
+        if Path(f"{path}{suffix}").exists()
+    }
+
+
+def _to_wal(repository: ListedRepository, *, live_log: dict[str, object] | None = None) -> None:
+    """Turn the catalog into a write-ahead-log database, as no release of this one writes.
+
+    With *live_log*, those checkpoint fields are written to the log and not the file, and
+    the three files are taken while that writer still has them open, as a newer build's
+    would be found while it runs or after it was killed.
+    """
+
+    path = _path(repository)
+    if live_log is None:
+        with contextlib.closing(sqlite3.connect(path)) as db:
+            assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        assert not Path(f"{path}-wal").exists()
+        return
+    writer_copy = path.with_name("writer.sqlite3")
+    writer_copy.write_bytes(path.read_bytes())
+    writer = sqlite3.connect(writer_copy)
+    try:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        (value,) = writer.execute("SELECT value FROM checkpoint").fetchone()
+        writer.execute("UPDATE checkpoint SET value=?", (json.dumps(json.loads(value) | live_log),))
+        writer.commit()
+        for suffix in ("", "-wal", "-shm"):
+            taken = Path(f"{path}{suffix}")
+            taken.write_bytes(Path(f"{writer_copy}{suffix}").read_bytes())
+            taken.chmod(0o600)
+    finally:
+        writer.close()
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{writer_copy}{suffix}").unlink(missing_ok=True)
+    assert Path(f"{path}-wal").stat().st_size > 0
+
+
+@pytest.mark.parametrize(
+    ("fields", "declared"),
+    [
+        ({"projection_version": CATALOG_PROJECTION + 1}, "row projection"),
+        ({"schema_version": 2}, "checkpoint schema"),
+    ],
+)
+@pytest.mark.parametrize("log", ["checkpointed", "live"])
+def test_a_write_ahead_log_catalog_that_declares_a_newer_version_is_never_replaced(
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+    fields: dict[str, object],
+    declared: str,
+    log: str,
+) -> None:
+    """Admission's refusal of a journal mode does not permit replacing the catalog.
+
+    A file whose checkpoint declares the newer version is read in memory and named
+    ``newer_cache``. One whose newer checkpoint is still in its log cannot be read without
+    that log, so it is ``unknown_cache``: either way GitHub is not asked, and no byte of
+    the catalog or its sidecars changes, through the refresh or through a direct write.
+    """
+
+    _seed(repository, [generated_item(1)])
+    if log == "checkpointed":
+        _newer_checkpoint(repository, **fields, added_field=None)
+        _to_wal(repository)
+    else:
+        _to_wal(repository, live_log={**fields, "added_field": None})
+    before = _catalog_files(repository)
+    calls = _provider(monkeypatch, [generated_item(1), generated_item(2)])
+    with pytest.raises(PullDataError) as caught:
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    message = str(caught.value)
+    if log == "checkpointed":
+        assert caught.value.state == "newer_cache"
+        assert f"({declared} " in message
+    else:
+        assert caught.value.state == "unknown_cache"
+        assert "(the catalog is not in the rollback-journal mode this release writes)" in message
+    assert "--api /api/plugin/github/cache-clear --data -" in message
+    assert calls == []
+    assert _catalog_files(repository) == before
+
+    proposed = CatalogState(
+        projection_version=CATALOG_PROJECTION,
+        source=repository.source,
+        repository_id="R_demo",
+        reader=f"gh:{READER}",
+        fetched_at=STAMP,
+        count_at=STAMP,
+    )
+    refused = pull_catalog.NewerCatalogError if log == "checkpointed" else UnknownCatalogError
+    with pytest.raises(refused):
+        publish_page(repository, None, proposed, (_row(generated_item(2))[0],))
+    assert _catalog_files(repository) == before
+
+
+@pytest.mark.parametrize(
+    "unread", ["wal", "checkpoint-definition", "damaged-versions", "large-wal"]
+)
+def test_a_catalog_whose_versions_cannot_be_read_is_left_alone_and_named(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, unread: str
+) -> None:
+    """Nothing says it may go, so nothing replaces it; its message names the clear."""
+
+    _seed(repository, [generated_item(1)])
+    path = _path(repository)
+    if unread in {"wal", "large-wal"}:
+        if unread == "large-wal":
+            # The checkpoint says newer, but a file past the bound is not read.
+            _newer_checkpoint(repository, projection_version=CATALOG_PROJECTION + 1)
+            monkeypatch.setattr(pull_catalog, "_INSPECT_MAX_BYTES", path.stat().st_size - 1)
+        _to_wal(repository)
+    elif unread == "checkpoint-definition":
+        with sqlite3.connect(path) as db:
+            db.execute("ALTER TABLE checkpoint ADD COLUMN extra TEXT")
+    else:
+        # Page 1 holds the schema the versions are found by; break its b-tree header.
+        data = bytearray(path.read_bytes())
+        data[100:108] = b"\xff" * 8
+        path.write_bytes(bytes(data))
+    before = _catalog_files(repository)
+    calls = _provider(monkeypatch, [generated_item(1), generated_item(2)])
+    with pytest.raises(PullDataError) as caught:
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert caught.value.state == "unknown_cache", str(caught.value)
+    assert "Upgrade metab if a newer one wrote it" in str(caught.value)
+    assert calls == []
+    assert _catalog_files(repository) == before
+    assert pull_catalog.catalog_refusal(repository.home, repository.slug) is not None
 
 
 def test_a_catalog_the_cache_refuses_is_not_replaced_and_names_the_command(

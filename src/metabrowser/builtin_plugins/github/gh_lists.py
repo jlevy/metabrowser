@@ -62,6 +62,7 @@ type PullDataState = Literal[
     "record_too_large",
     "cache_unwritable",
     "newer_cache",
+    "unknown_cache",
     "not_github",
 ]
 
@@ -140,6 +141,18 @@ def newer_cache(what: str, declared: str, *, source: str, checkout: bool) -> Pul
         "newer_cache",
         f"{what} in the cache was written by a newer Metabrowser ({declared}), and this "
         "one leaves it as it is. Upgrade metab to read it, or "
+        f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+        f"{_name(source)} and fetch it again with this one",
+    )
+
+
+def unknown_cache(what: str, why: str, *, source: str, checkout: bool) -> PullDataError:
+    """``unknown_cache``: *what*'s versions cannot be read, so this one leaves it as it is."""
+
+    return PullDataError(
+        "unknown_cache",
+        f"{what} in the cache cannot be checked for the Metabrowser that wrote it ({why}), "
+        "so this one leaves it as it is. Upgrade metab if a newer one wrote it, or "
         f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
         f"{_name(source)} and fetch it again with this one",
     )
@@ -342,5 +355,6 @@ __all__ = [
     "readable_items",
     "response_json",
     "unconditional_304",
+    "unknown_cache",
     "utc_stamp",
 ]

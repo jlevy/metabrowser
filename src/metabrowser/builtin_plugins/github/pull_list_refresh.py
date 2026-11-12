@@ -31,6 +31,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     login_of,
     newer_cache,
     readable_items,
+    unknown_cache,
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -39,8 +40,9 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     CatalogState,
     CatalogUnusableError,
     NewerCatalogError,
+    UnknownCatalogError,
+    catalog_refusal,
     failure_line,
-    newer_catalog,
     publish_page,
     read_catalog,
 )
@@ -311,6 +313,10 @@ async def _publish(
         raise newer_cache(
             _LIST, str(exc), source=repository.source, checkout=repository.checkout
         ) from exc
+    except UnknownCatalogError as exc:
+        raise unknown_cache(
+            _LIST, str(exc), source=repository.source, checkout=repository.checkout
+        ) from exc
     except (PrivateStorageError, OSError, sqlite3.Error, CatalogUnusableError) as exc:
         # The job's own catch records only the message, so the cause is logged here.
         log.warning(
@@ -323,12 +329,19 @@ async def _publish(
         ) from exc
 
 
-async def _stop_at_newer_catalog(repository: ListedRepository) -> None:
-    """Stop before GitHub is asked for a page no publication could keep."""
+async def _stop_at_kept_catalog(repository: ListedRepository) -> None:
+    """Stop before GitHub is asked for a page no publication could keep.
 
-    declared = await asyncio.to_thread(newer_catalog, repository.home, repository.slug)
-    if declared is not None:
-        raise newer_cache(_LIST, declared, source=repository.source, checkout=repository.checkout)
+    That is a catalog a newer release wrote, or one whose versions cannot be read, which
+    a writer leaves as it is.
+    """
+
+    refusal = await asyncio.to_thread(catalog_refusal, repository.home, repository.slug)
+    if refusal is None:
+        return
+    kind, why = refusal
+    refuse = newer_cache if kind == "newer" else unknown_cache
+    raise refuse(_LIST, why, source=repository.source, checkout=repository.checkout)
 
 
 def _rate_limit_retry_at(now: datetime, previous: PullRefreshStamp | None) -> str:
@@ -363,7 +376,7 @@ async def refresh_pull_list(
     try:
         repository = await claim_source(repository)
         source_claimed = True
-        await _stop_at_newer_catalog(repository)
+        await _stop_at_kept_catalog(repository)
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
