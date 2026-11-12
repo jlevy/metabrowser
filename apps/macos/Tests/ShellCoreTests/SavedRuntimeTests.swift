@@ -21,7 +21,7 @@ import Testing
         settings.save(a)
         let selection = RuntimeSelection(settings: settings, setup: a)
         let search = selection.startSearch()
-        #expect(selection.finishSearch(search, with: DiscoveryReport(setup: nil, tried: [], consultedLoginShell: false))
+        #expect(selection.finishSearch(search, with: DiscoveryReport(setup: nil, tried: []))
             == .notFound)
         #expect(settings.load() == nil)
         #expect(settings.usable(isExecutable: { _ in true }) == nil)

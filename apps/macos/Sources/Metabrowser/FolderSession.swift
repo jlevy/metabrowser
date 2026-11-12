@@ -22,6 +22,8 @@ final class FolderSession: ManagedServer {
     private var identityRequest: Task<Void, Never>?
     /// The runtime the app would start now, which Retry and Restart Server use.
     private let currentSetup: () -> RuntimeSetup?
+    /// The runtime the server was last started from, which an upgrade compares with.
+    private(set) var runtime: Runtime
     var onAllWindowsClosed: ((FolderSession) -> Void)?
     /// A window became key, which is how a tab is selected.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
@@ -30,6 +32,7 @@ final class FolderSession: ManagedServer {
 
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate, currentSetup: @escaping () -> RuntimeSetup?) {
         self.currentSetup = currentSetup
+        runtime = setup.runtime
         self.root = root
         title = WindowTitle(.localFolder(root))
         let logURL = ServerLog.url(for: root, in: appIdentity.logsDirectory())
@@ -84,10 +87,12 @@ final class FolderSession: ManagedServer {
     /// be the one this folder started with. With no runtime (a search found none), the
     /// folder keeps its own.
     func retry() {
-        let spec = currentSetup().map {
+        let setup = currentSetup()
+        let spec = setup.map {
             supervisor.launch.spec(
                 serving: root, with: $0, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
         }
+        if let setup { runtime = setup.runtime }
         Task { await supervisor.restart(using: spec) }
     }
 
@@ -218,9 +223,6 @@ final class FolderSession: ManagedServer {
         switch answer {
         case .identity:
             AppLog.app.info("\(titled, privacy: .public) from /api/identity")
-        case .missingRoute:
-            // The fallback named in FolderIdentity.localFolder: a metab older than the route.
-            AppLog.app.info("\(titled, privacy: .public) from the folder's path: this metab has no /api/identity")
         case .failed(let reason):
             AppLog.app.error(
                 "\(titled, privacy: .public) from the folder's path: /api/identity failed, \(reason, privacy: .public)")

@@ -29,15 +29,11 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
         #expect(identity.fullName == "github.com/jlevy/metabrowser@main")
     }
 
-    @Test func aMetabWithoutTheRouteFallsBackToTheFolder() {
-        let answer = IdentityClient.answer(status: 404, body: json(#"{"detail": "Not Found"}"#))
-        #expect(answer == .missingRoute)
-        let fallback = FolderIdentity.localFolder(URL(filePath: "/Volumes/Home/wrk/github/fdu"), home: "/Volumes/Home")
-        #expect(answer.identity(or: fallback) == fallback)
-    }
-
+    /// A 404 is a failure like any other: every `metab` the app runs has the route
+    /// (`MetabRequirement`), so the app keeps no separate path for one without it.
     @Test func anythingElseFailsAndFallsBack() {
         let cases: [(Int, String)] = [
+            (404, #"{"detail": "Not Found"}"#),
             (500, fduJSON),
             (200, "not json"),
             (200, #"{"short_name": "fdu"}"#),

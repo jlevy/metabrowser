@@ -33,6 +33,10 @@ public final class RuntimeSelection {
 
     public private(set) var setup: RuntimeSetup?
     public private(set) var isSearching = false
+    /// Whether the current runtime is being checked again, because its file changed or
+    /// its version is one this app no longer accepts. Folders asked for meanwhile wait,
+    /// so none starts the file that changed before the check says what it is.
+    public private(set) var isRechecking = false
     /// What the last search that counted looked at.
     public private(set) var tried: [CandidateOutcome] = []
     /// Folders asked for while there was no runtime, in the order asked.
@@ -48,7 +52,7 @@ public final class RuntimeSelection {
     /// The runtime to open `folder` with, or nil after adding it to the folders waiting
     /// for one.
     public func setupForOpening(_ folder: URL) -> RuntimeSetup? {
-        if let setup { return setup }
+        if let setup, !isRechecking { return setup }
         if !waitingFolders.contains(folder) { waitingFolders.append(folder) }
         return nil
     }
@@ -63,6 +67,7 @@ public final class RuntimeSelection {
     /// same run-loop turn waits for it.
     public func startSearch() -> Ticket {
         isSearching = true
+        isRechecking = false
         return next()
     }
 
@@ -81,17 +86,46 @@ public final class RuntimeSelection {
     /// Starts validating a chosen file, which overtakes any search still running.
     public func startChoice() -> Ticket {
         isSearching = false
+        isRechecking = false
         return next()
     }
 
     /// `tools` supplies the tool paths when there is no current setup to keep them from.
+    /// `fingerprint` is the chosen file's, taken before it was validated.
     public func finishChoice(
-        _ ticket: Ticket, path: String, result: CandidateResult, tools: () -> ToolPaths
+        _ ticket: Ticket, path: String, result: CandidateResult, fingerprint: FileFingerprint? = nil,
+        tools: () -> ToolPaths
     ) -> Outcome {
         guard ticket.number == latest else { return .superseded }
         guard case .valid(let version) = result else { return .rejected(result) }
         return adopt(RuntimeSetup(
-            runtime: Runtime(executable: path, version: version, source: .chosen), tools: setup?.tools ?? tools()))
+            runtime: Runtime(executable: path, version: version, source: .chosen, fingerprint: fingerprint),
+            tools: setup?.tools ?? tools()))
+    }
+
+    /// Starts checking the current runtime again, which a search or choice started later
+    /// overtakes. Call it only while there is a runtime.
+    public func startRecheck() -> Ticket {
+        isRechecking = true
+        return next()
+    }
+
+    /// A valid result keeps the runtime's executable, source, and tools, with the new
+    /// version and `fingerprint`, taken before it was validated. Anything else leaves no
+    /// runtime, and the caller searches again.
+    public func finishRecheck(_ ticket: Ticket, fingerprint: FileFingerprint?, result: CandidateResult) -> Outcome {
+        guard ticket.number == latest else { return .superseded }
+        isRechecking = false
+        guard let current = setup else { return .notFound }
+        tried = [CandidateOutcome(path: current.runtime.executable, source: current.runtime.source, result: result)]
+        guard case .valid(let version) = result else {
+            setup = nil
+            return .notFound
+        }
+        var runtime = current.runtime
+        runtime.version = version
+        runtime.fingerprint = fingerprint
+        return adopt(RuntimeSetup(runtime: runtime, tools: current.tools))
     }
 
     private func next() -> Ticket {

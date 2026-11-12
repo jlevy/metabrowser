@@ -41,6 +41,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
     private var isTerminating = false
+    /// The runtime's file, or where `metab` may appear while there is none.
+    private var watch: SetupWatch?
+    private var watchedRuntime: Runtime?
+    private var watchedPaths: [String] = []
+    private var isOfferingRestart = false
+    /// The login shell's `PATH` from the last search that read it, for the first-run steps.
+    private var lastLoginPath: [String]?
+    private var guideRequests = 0
 
     // MARK: - Lifecycle
 
@@ -56,16 +64,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if selection.setup == nil {
             restoreAfterDiscovery = true
             beginDiscovery()
+        } else if let runtime = selection.setup?.runtime,
+                  !runtime.isCurrent(fingerprint: FileFingerprint.of(runtime.executable)) {
+            // A saved runtime whose file changed, or whose version this build does not
+            // accept, is checked before the restored folders start it.
+            restoreAfterDiscovery = true
+            beginRecheck()
         } else {
             restoreLastSession()
         }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LaunchLocationNotice.showIfNeeded()
         if let setup = selection.setup {
             AppLog.app.info("using saved runtime \(setup.runtime.executable, privacy: .public)")
             openPendingFolders()
         }
+        startWatching()
+    }
+
+    /// Coming back from Terminal, where an install or upgrade most likely ran.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        lookForRuntimeChanges()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -179,6 +200,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isTerminating else { return }
         isTerminating = true
         AppLog.app.info("received signal \(signalNumber); quitting")
+        // AppKit does not quit while a sheet or modal alert waits for an answer, such as
+        // the offer to restart after an upgrade, and a signal has nobody to answer it.
+        for window in NSApp.windows {
+            if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .abort) }
+        }
+        if NSApp.modalWindow != nil { NSApp.abortModal() }
         NSApp.terminate(nil)
     }
 
@@ -218,9 +245,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             session.showFrontWindow(page: target.page)
             return
         }
+        if let current = selection.setup?.runtime, !selection.isRechecking,
+           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
+            beginRecheck()
+        }
         // A request waiting for a runtime is resolved again when one is found.
         guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: root) else {
-            if !selection.isSearching { showSettings(nil) }
+            if !selection.isSearching && !selection.isRechecking { showSettings(nil) }
             return
         }
         folderWindows.place(session.makeWindow(page: target.page))
@@ -303,7 +334,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showPanelAfterDiscovery = false
         case .notFound:
             // Folders already open keep their servers; new ones wait for a runtime.
-            AppLog.app.error("no metab found in \(report.tried.count) places")
+            AppLog.app.error("no usable metab in \(report.tried.count) places")
+            lastLoginPath = report.loginPath
+            await prepareGuide()
             showSettings(nil)
         case .rejected, .superseded:
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
@@ -314,18 +347,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
+        runtimeModel.guide = nil
         if restoreAfterDiscovery {
             restoreAfterDiscovery = false
             restoreLastSession()
         }
         openPendingFolders()
+        offerRestart(for: found.runtime)
     }
 
-    /// The Settings window shows what `selection` holds.
+    /// The Settings window shows what `selection` holds, and the watch follows it.
     private func presentRuntime() {
         runtimeModel.setup = selection.setup
         runtimeModel.isSearching = selection.isSearching
         runtimeModel.tried = selection.tried
+        rewatch()
     }
 
     @objc func showSettings(_ sender: Any?) {
@@ -363,8 +399,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runtimeModel.notice = nil
         let ticket = selection.startChoice()
         presentRuntime()
+        let fingerprint = FileFingerprint.of(path)
         let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        let outcome = selection.finishChoice(ticket, path: path, result: result) {
+        let outcome = selection.finishChoice(ticket, path: path, result: result, fingerprint: fingerprint) {
             RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
         }
         presentRuntime()
@@ -372,6 +409,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .adopted(let found):
             adopted(found)
             runtimeModel.notice = "Folders already open keep their server until you restart it with File > Restart Server or Retry."
+        case .rejected(.tooOld(let version)):
+            runtimeModel.notice = "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
         case .rejected(let rejected):
             runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
         case .notFound, .superseded:
@@ -390,6 +429,151 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             timeout: RuntimeDiscovery.doctorTimeout)
         runtimeModel.isRunningDoctor = false
         runtimeModel.doctorOutput = result.transcript(timeout: RuntimeDiscovery.doctorTimeout).joined(separator: "\n")
+    }
+
+    // MARK: - Watching the Runtime
+
+    /// Looks at the watched files every `SetupWatch.interval` for the app's lifetime.
+    private func startWatching() {
+        rewatch()
+        Task { [weak self] in
+            while true {
+                do {
+                    try await Task.sleep(for: SetupWatch.interval, tolerance: SetupWatch.interval / 2)
+                } catch {
+                    return  // cancelled, which only ending the app does
+                }
+                self?.lookForRuntimeChanges()
+            }
+        }
+    }
+
+    /// Watches the runtime's file against the fingerprint it was validated with, or,
+    /// with no runtime, every place discovery finds `metab` without a shell. A watch is
+    /// replaced only when the runtime changes, so a change it has seen once still settles.
+    private func rewatch() {
+        if let runtime = selection.setup?.runtime {
+            guard watch == nil || runtime != watchedRuntime else { return }
+            watchedRuntime = runtime
+            watchedPaths = []
+            watch = SetupWatch(runtime: runtime)
+            return
+        }
+        let env = DiscoveryEnvironment.live(saved: settings.load()?.runtime)
+        var metab = RuntimeDiscovery.cheapCandidates(env).map(\.0)
+        if let bin = runtimeModel.guide?.binDirectory, !metab.contains(bin + "/metab") { metab.append(bin + "/metab") }
+        let uv = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
+        guard watch == nil || watchedRuntime != nil || metab + uv != watchedPaths else { return }
+        watchedRuntime = nil
+        watchedPaths = metab + uv
+        watch = SetupWatch(waitingFor: metab, uv: uv)
+    }
+
+    /// Skipped while a search or recheck runs, so a change it has not seen stays
+    /// pending in the watch until the next look.
+    private func lookForRuntimeChanges() {
+        guard !selection.isSearching, !selection.isRechecking, let action = watch?.look() else { return }
+        switch action {
+        case .recheck: beginRecheck()
+        case .discover: beginDiscovery()
+        case .replan: Task { await prepareGuide() }
+        }
+    }
+
+    /// Works out the first-run steps from the last search and what is installed now,
+    /// asking uv, when there is one, where it puts `metab`.
+    private func prepareGuide() async {
+        guideRequests += 1
+        let request = guideRequests
+        let env = DiscoveryEnvironment.live(saved: nil)
+        let uv = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
+            .first(where: FileChecks.isExecutableFile)
+        var binDirectory = RuntimeDiscovery.uvToolBinDirectory(env)
+        if let uv {
+            switch await UvToolDirectory.ask(uv: uv, env: env) {
+            case .directory(let directory):
+                binDirectory = directory
+            case .failed(let reason):
+                // The guide names the directory it waits in, so the user sees the guess.
+                AppLog.app.error(
+                    "\(uv, privacy: .public) did not say where it installs tools (\(reason, privacy: .public)); waiting in \(binDirectory, privacy: .public), uv's documented default"
+                )
+            }
+        }
+        // A runtime that arrived meanwhile, or a newer request, makes this one moot.
+        guard request == guideRequests, selection.setup == nil else { return }
+        let hasHomebrew = RuntimeDiscovery.homebrewBins.contains { FileChecks.isExecutableFile($0 + "/brew") }
+        let guide = SetupGuide(
+            tried: selection.tried, uv: uv, binDirectory: binDirectory, home: env.home, loginPath: lastLoginPath,
+            hasHomebrew: hasHomebrew)
+        AppLog.app.info(
+            "first-run steps: \(guide.steps.map(\.command).joined(separator: "; "), privacy: .public); waiting for metab in \(binDirectory, privacy: .public)"
+        )
+        runtimeModel.guide = guide
+        rewatch()
+    }
+
+    private func beginRecheck() {
+        guard let previous = selection.setup, !selection.isRechecking, !selection.isSearching else { return }
+        let ticket = selection.startRecheck()
+        Task { await recheckRuntime(previous, ticket) }
+    }
+
+    /// Runs `--version` on the runtime again. A new compatible version is adopted, with
+    /// an offer to restart the servers started from the old one; anything else leaves no
+    /// runtime, and a search looks for another.
+    private func recheckRuntime(_ previous: RuntimeSetup, _ ticket: RuntimeSelection.Ticket) async {
+        let path = previous.runtime.executable
+        AppLog.app.info("\(path, privacy: .public) changed; checking its version again")
+        let fingerprint = FileFingerprint.of(path)
+        let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
+        let outcome = selection.finishRecheck(ticket, fingerprint: fingerprint, result: result)
+        presentRuntime()
+        switch outcome {
+        case .adopted(let found):
+            adopted(found)
+        case .notFound:
+            AppLog.app.error(
+                "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
+            )
+            beginDiscovery()
+        case .rejected, .superseded:
+            AppLog.app.info("a recheck finished after a newer search or choice; its result is dropped")
+        }
+    }
+
+    /// Offers to restart the open servers that `current`'s executable started at another
+    /// version. Restarting them is the user's choice: a restart reloads every window.
+    ///
+    /// The offer is a sheet, not `runModal`: this runs inside a main-actor task, and a
+    /// modal loop entered from a main-queue job stops every other main-actor job,
+    /// quitting included, until the alert closes.
+    private func offerRestart(for current: Runtime) {
+        guard !isOfferingRestart else { return }
+        let folders = sessions.openServers.compactMap { $0 as? FolderSession }
+        let outdated = RuntimeUpgrade.outdated(folders.map(\.runtime), current: current).map { folders[$0] }
+        guard let window = outdated.lazy.compactMap({ $0.windows.first?.window }).first else { return }
+        let prompt = RuntimeUpgrade.prompt(outdated: outdated.map(\.runtime), current: current)
+        isOfferingRestart = true
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        alert.addButton(withTitle: "Restart Servers")
+        alert.addButton(withTitle: "Not Now")
+        window.makeKeyAndOrderFront(nil)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            isOfferingRestart = false
+            guard response == .alertFirstButtonReturn else {
+                AppLog.app.info("restart after the upgrade declined; File > Restart Server restarts a folder")
+                return
+            }
+            // Chosen now, not when the sheet opened: an upgrade or restart may have run since.
+            let latest = selection.setup?.runtime ?? current
+            sessions.openServers.compactMap { $0 as? FolderSession }
+                .filter { !RuntimeUpgrade.outdated([$0.runtime], current: latest).isEmpty }
+                .forEach { $0.retry() }
+        }
     }
 
     // MARK: - About and Help

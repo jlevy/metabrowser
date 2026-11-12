@@ -5,12 +5,23 @@ Metabrowser requires Python 3.12 or newer and is distributed through PyPI.
 ## Install uv
 
 Install uv with the
-[official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+[official installation instructions](https://docs.astral.sh/uv/getting-started/installation/);
+on macOS and Linux that is the standalone installer:
+
+```shell
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 On macOS, Homebrew is also supported:
 
 ```shell
 brew install uv
 ```
+
+By default the standalone installer puts uv in `~/.local/bin`, the directory where
+`uv tool install` puts commands such as `metab`, and adds it to your shell’s `PATH` for
+new terminals. Homebrew does neither: after `brew install uv` and `uv tool install`, run
+`uv tool update-shell` once and open a new terminal, or the shell does not find `metab`.
 
 Install a supported Python when needed:
 
@@ -56,6 +67,77 @@ Released versions are on [PyPI](https://pypi.org/project/metabrowser/);
 Metabrowser installs KPress as a required dependency, at the exact version recorded in
 `pyproject.toml` and `uv.lock`. Do not install a second KPress checkout beside the
 package or override it with a workspace source.
+
+## The macOS App
+
+The native macOS app is an alpha preview: a development build that you build from
+source, not yet a signed or notarized release, and it may change.
+It is a thin shell over `metab`: it finds your `metab`, starts one server per folder you
+open, and shows each folder in its own window.
+It installs nothing itself.
+[apps/macos/README.md](../apps/macos/README.md) describes how it works.
+
+It needs:
+
+- macOS 26 or later on Apple silicon;
+- Xcode 26 with Swift 6.3 or later, to build it;
+- `metab` 0.12.1 or later, which the app finds and runs.
+
+0.12.1 is not yet on PyPI, so for now the `metab` comes from a source checkout.
+From the repository root:
+
+```shell
+make install
+make macos-app
+```
+
+`make macos-app` prints where it put the app; open it from there, or build and open a
+folder in one step with `make macos-run FOLDER=path/to/folder`. In Settings, Choose
+metab… points the app at this checkout’s `.venv/bin/metab`.
+
+Once 0.12.1 is published, the standard setup is the CLI first,
+`uv tool install metabrowser`, and then the app.
+The app finds `metab` in uv’s tool directory, `~/.local/bin`, without needing it on
+`PATH`, so `uv tool update-shell` is only for your terminal.
+
+### What the App Shows Without a Usable metab
+
+If the app finds no `metab` it accepts, Settings opens and lists only the steps still
+missing, each with a Copy button:
+
+- without uv, uv’s standalone installer (and `brew install uv` when Homebrew is
+  installed), then `uv tool install metabrowser` in a new terminal;
+- with uv, `uv tool install metabrowser`;
+- with a broken install in uv’s tool directory,
+  `uv tool install --reinstall metabrowser`.
+
+The app keeps watching for `metab`, and when it appears, opens the folders you asked for
+by itself.
+
+If the `metab` it finds is older than 0.12.1, the app starts no server and shows the
+version it found and the command to upgrade:
+
+```shell
+uv tool install --upgrade 'metabrowser>=0.12.1'
+```
+
+That names a minimum rather than an exact version, so a later `uv tool upgrade` can move
+past it. If `metab` is upgraded while the app runs, the app notices the new version and
+offers to restart the servers it started from the old one.
+An upgrade run in a terminal reaches those servers before the app notices, so restart
+them when it asks.
+
+### Disk Images and the Homebrew Cask
+
+The repository’s release pipeline builds a disk image and a Homebrew cask, but nothing
+has been released, so neither is available to download yet.
+A disk image you build yourself (`make macos-dmg`) is signed only for the Mac that built
+it.
+
+Drag the app from a disk image to Applications and open it from there.
+A copy opened from the disk image, or from the folder it was downloaded to, runs from a
+read-only location and cannot be updated; the app says so when it starts and offers to
+show it in Finder, and moving it is up to you.
 
 ## Git and GitHub Setup
 
