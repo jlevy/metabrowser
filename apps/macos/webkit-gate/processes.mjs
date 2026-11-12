@@ -1,6 +1,8 @@
 // The gate's child processes and their cleanup. Each process is owned from the moment it
-// starts, by a Cleanup that run.mjs runs however the run ends, so a failure anywhere,
-// startup included, leaves nothing running and nothing holding the command open.
+// starts, by a Cleanup that run.mjs runs when the run ends, and that cleanUpBeforeExit
+// runs when an uncaught exception or a signal ends it first, so a failure anywhere,
+// startup included, leaves nothing running and nothing holding the command open. Only
+// SIGKILL gets past both, and metab ends even then, when its stdin closes.
 // processes.test.mjs covers it with shell scripts standing in for metab.
 import { spawn } from "node:child_process";
 import http from "node:http";
@@ -24,11 +26,19 @@ export class Cleanup {
   #steps = [];
 
   /**
-   * Adds `step`, a function that stops one thing, to run when `run` is called.
+   * Adds `step`, a function that stops one thing, to run when `run` is called. Returns
+   * a function that takes it back, for a thing stopped some other way first.
    * @param {() => unknown} step
+   * @returns {() => void}
    */
   add(step) {
     this.#steps.push(step);
+    return () => {
+      const index = this.#steps.indexOf(step);
+      if (index >= 0) {
+        this.#steps.splice(index, 1);
+      }
+    };
   }
 
   /**
@@ -47,6 +57,60 @@ export class Cleanup {
     }
     return errors;
   }
+}
+
+// Each signal that ends the harness, with the exit status a shell gives it (128 + number).
+const EXIT_SIGNALS = /** @type {const} */ ([
+  ["SIGHUP", 129],
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+]);
+
+/**
+ * Runs `cleanup` before the process ends by an uncaught exception, an unhandled
+ * rejection, or SIGHUP, SIGINT, or SIGTERM, then exits: 1 after an error, or the signal's
+ * status. So a crash anywhere, even in a callback no `finally` surrounds, stops what the
+ * harness owns, Chrome included, which has no stdin to lose. Only SIGKILL gets past it.
+ * Returns a function that removes the handlers, for when the run has cleaned up itself.
+ * @param {Cleanup} cleanup
+ * @returns {() => void}
+ */
+export function cleanUpBeforeExit(cleanup) {
+  let stopping = false;
+  /**
+   * @param {string} reason
+   * @param {number} status
+   */
+  const stop = async (reason, status) => {
+    if (stopping) {
+      // A second failure while stopping: what is left cannot be stopped in order.
+      process.exit(status);
+    }
+    stopping = true;
+    console.error(`webkit-gate: ${reason}; stopping what the run started`);
+    for (const error of await cleanup.run()) {
+      console.error(
+        `webkit-gate: while stopping: ${(error instanceof Error && error.stack) || error}`,
+      );
+    }
+    process.exit(status);
+  };
+  /** @param {unknown} error */
+  const onError = (error) => stop(String((error instanceof Error && error.stack) || error), 1);
+  /** @type {[NodeJS.Signals, () => void][]} */
+  const signals = EXIT_SIGNALS.map(([signal, status]) => [signal, () => stop(signal, status)]);
+  process.on("uncaughtException", onError);
+  process.on("unhandledRejection", onError);
+  for (const [signal, handler] of signals) {
+    process.on(signal, handler);
+  }
+  return () => {
+    process.off("uncaughtException", onError);
+    process.off("unhandledRejection", onError);
+    for (const [signal, handler] of signals) {
+      process.off(signal, handler);
+    }
+  };
 }
 
 /**

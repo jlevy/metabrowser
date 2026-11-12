@@ -17,7 +17,11 @@
 // go to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora),
 // samples.jsonl (every record), summary.json, and summary.md, the table
 // docs/large-content-rendering.md quotes. Every process and listener a run starts is
-// stopped when it ends, however it ends (processes.mjs).
+// stopped when the run ends: normally, by an error, by an uncaught exception, or by
+// SIGHUP, SIGINT, or SIGTERM (processes.mjs). A harness killed outright stops nothing
+// itself: metab ends with its stdin, as webkit-driver does while measuring, a driver
+// check runs on to its own end, at most 600 s, and a Chrome sample in progress is left
+// running.
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
@@ -32,7 +36,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
-import { Cleanup, startMetab, terminate, within } from "./processes.mjs";
+import { Cleanup, cleanUpBeforeExit, startMetab, terminate, within } from "./processes.mjs";
 import { BENCHMARK_ASSETS, startStatic } from "./static-server.mjs";
 import { markdown, summarize } from "./summary.mjs";
 
@@ -320,19 +324,28 @@ const CHROME_FLAGS = [
 
 /**
  * Runs `use(connection, page)` in a fresh Chrome with a scratch profile, its page at the
- * app's content size, then closes the browser and removes the profile.
+ * app's content size, then closes the browser and removes the profile. `cleanup` owns the
+ * browser while it runs, so a crash anywhere in the harness still stops it.
  * @template T
  * @param {string} scratch
+ * @param {Cleanup} cleanup
  * @param {(connection: Connection, page: Session) => Promise<T>} use
  * @returns {Promise<T>}
  */
-async function withChrome(scratch, use) {
+async function withChrome(scratch, cleanup, use) {
   const profile = fs.mkdtempSync(path.join(scratch, "chrome-profile-"));
   const child = spawn(
     CHROME,
     [...CHROME_FLAGS, `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"],
     { stdio: "ignore" },
   );
+  // Chrome has no stdin to lose when the harness dies, so the run owns it from here: a
+  // crash stops it and removes its profile, as the finally below does for every ordinary
+  // ending.
+  const release = cleanup.add(async () => {
+    await terminate(child);
+    fs.rmSync(profile, { recursive: true, force: true });
+  });
   const exited = new Promise((resolve) => child.on("exit", resolve));
   // Set by the error listener, so typed as the union rather than narrowed to null.
   let spawnError = /** @type {Error | null} */ (null);
@@ -388,6 +401,7 @@ async function withChrome(scratch, use) {
       await terminate(child);
     }
     fs.rmSync(profile, { recursive: true, force: true });
+    release();
   }
 }
 
@@ -408,10 +422,11 @@ async function navigate(page, url) {
  * @param {string} url
  * @param {string} script
  * @param {string} scratch
+ * @param {Cleanup} cleanup
  * @returns {Promise<ProbeRecord>}
  */
-function chromeSample(url, script, scratch) {
-  return withChrome(scratch, async (connection, page) => {
+function chromeSample(url, script, scratch, cleanup) {
+  return withChrome(scratch, cleanup, async (connection, page) => {
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await navigate(page, url);
     const evaluated = await page.send(
@@ -448,9 +463,10 @@ function chromeSample(url, script, scratch) {
  * @param {string} url
  * @param {string} pdfPath
  * @param {string} scratch
+ * @param {Cleanup} cleanup
  */
-function chromePrint(url, pdfPath, scratch) {
-  return withChrome(scratch, async (_connection, page) => {
+function chromePrint(url, pdfPath, scratch, cleanup) {
+  return withChrome(scratch, cleanup, async (_connection, page) => {
     await navigate(page, url);
     // The view renders after the load event; give it the time the WebKit check waits.
     await sleep(3000);
@@ -464,14 +480,17 @@ function chromePrint(url, pdfPath, scratch) {
 
 /**
  * Runs webkit-driver and returns its first stdout line as JSON, after `onRecord`.
+ * `cleanup` owns the driver while it runs.
  * @param {string} driver
  * @param {string[]} args
+ * @param {Cleanup} cleanup
  * @param {(record: ProbeRecord) => Promise<void>} [onRecord]
  * @returns {Promise<ProbeRecord>}
  */
-function driverRun(driver, args, onRecord = async () => {}) {
+function driverRun(driver, args, cleanup, onRecord = async () => {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(driver, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const release = cleanup.add(() => terminate(child));
     let stdout = "";
     let stderr = "";
     /** @type {ProbeRecord} */
@@ -496,10 +515,12 @@ function driverRun(driver, args, onRecord = async () => {}) {
     });
     child.on("error", (error) => {
       clearTimeout(timer);
+      release();
       reject(new Error(`webkit-driver did not start: ${error.message}`, { cause: error }));
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
+      release();
       if (code === 0 && record !== null) {
         resolve(record);
       } else {
@@ -515,11 +536,12 @@ function driverRun(driver, args, onRecord = async () => {}) {
  * @param {string} url
  * @param {string} script
  * @param {string} scratch
+ * @param {Cleanup} cleanup
  */
-async function webkitSample(driver, url, script, scratch) {
+async function webkitSample(driver, url, script, scratch, cleanup) {
   const scriptPath = path.join(scratch, "probe-injected.js");
   fs.writeFileSync(scriptPath, script);
-  return driverRun(driver, ["measure", url, scriptPath], async (record) => {
+  return driverRun(driver, ["measure", url, scriptPath], cleanup, async (record) => {
     record.footprint = await footprint(record.web_process_pid);
   });
 }
@@ -788,23 +810,32 @@ const loadAverage = () => os.loadavg().map((value) => Math.round(value * 10) / 1
  * @param {Servers} servers
  * @param {string} corpus
  * @param {string} scratch
+ * @param {Cleanup} cleanup
  */
-async function runChecks(driver, servers, corpus, scratch) {
+async function runChecks(driver, servers, corpus, scratch, cleanup) {
   const out = path.dirname(corpus);
   const url = `${servers.metab}/view/print-check.md`;
-  const print = await driverRun(driver, [
-    "print",
+  const print = await driverRun(
+    driver,
+    ["print", url, path.join(out, "print-webkit.pdf"), String(PRINT_PAGE_LIMIT)],
+    cleanup,
+  );
+  const chromePrinted = await chromePrint(
     url,
-    path.join(out, "print-webkit.pdf"),
-    String(PRINT_PAGE_LIMIT),
-  ]);
-  const chromePrinted = await chromePrint(url, path.join(out, "print-chrome.pdf"), scratch);
-  const drop = await driverRun(driver, [
-    "drop",
-    `${servers.metab}/view/`,
-    path.join(corpus, "print-check.md"),
-    path.join(corpus, "folder"),
-  ]);
+    path.join(out, "print-chrome.pdf"),
+    scratch,
+    cleanup,
+  );
+  const drop = await driverRun(
+    driver,
+    [
+      "drop",
+      `${servers.metab}/view/`,
+      path.join(corpus, "print-check.md"),
+      path.join(corpus, "folder"),
+    ],
+    cleanup,
+  );
   return { print, chrome_print: chromePrinted, drop };
 }
 
@@ -857,8 +888,10 @@ async function main() {
       throw new Error(`unknown case ${name}; cases: ${Object.keys(CASES).join(", ")}`);
     }
   }
-  // Every process and listener the run starts is stopped here, however the run ends.
+  // Every process and listener the run starts is stopped here when the run ends, or by
+  // cleanUpBeforeExit when an uncaught exception or a signal ends the harness first.
   const cleanup = new Cleanup();
+  const restoreDefaults = cleanUpBeforeExit(cleanup);
   try {
     await measure(options, caseNames, cleanup);
   } finally {
@@ -868,6 +901,7 @@ async function main() {
       );
       process.exitCode = 1;
     }
+    restoreDefaults();
   }
 }
 
@@ -911,7 +945,7 @@ async function measure(options, caseNames, cleanup) {
   };
   fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   if (options.checks) {
-    const checks = await runChecks(driver, servers, corpus, scratch);
+    const checks = await runChecks(driver, servers, corpus, scratch, cleanup);
     fs.writeFileSync(path.join(options.out, "checks.json"), `${JSON.stringify(checks, null, 2)}\n`);
     console.log(JSON.stringify(checks, null, 2));
     return;
@@ -946,8 +980,8 @@ async function measure(options, caseNames, cleanup) {
         try {
           record =
             engine === "chrome"
-              ? await chromeSample(url, script, scratch)
-              : await webkitSample(driver, url, script, scratch);
+              ? await chromeSample(url, script, scratch, cleanup)
+              : await webkitSample(driver, url, script, scratch, cleanup);
           metrics = definition.metrics(record);
         } catch (caught) {
           error = String((caught instanceof Error && caught.message) || caught);
