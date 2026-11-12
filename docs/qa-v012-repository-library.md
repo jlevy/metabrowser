@@ -926,9 +926,10 @@ line. Open that address with the browser’s developer tools open.
     Click while holding Shift, or scroll: the keycaps go.
     Check 14 looks at how they are drawn.
 
-    Three constants are set by hand, not yet by measurement, and this check measures
-    them. Paste each snippet into the developer tools console, in Chrome and then Safari,
-    and note the largest number it logs.
+    Two constants are set by hand, not yet by measurement, and a third from Chrome’s
+    rows alone; this check measures all three.
+    Paste each snippet into the developer tools console, in Chrome and then Safari, and
+    note the largest number it logs.
 
     - `REVEAL_HOLD_MS` in `static/key-reveal.js`, now 200. Paste
       `let s; addEventListener("keydown", (e) => { if (e.key === "Shift") s = e.timeStamp; else if (s !== undefined) { console.log(e.key, Math.round(e.timeStamp - s)); s = undefined; } }, true);`
@@ -938,14 +939,17 @@ line. Open that address with the browser’s developer tools open.
       `let o; addEventListener("pointermove", (e) => { o ??= [e.clientX, e.clientY]; console.log(Math.round(Math.hypot(e.clientX - o[0], e.clientY - o[1]))); }, true);`
       then rest a hand on the mouse for five seconds, reload, and do the same on a
       trackpad. The constant should be just above the largest drift logged.
-    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 8. Drag the navigation
+    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 7. Drag the navigation
       pane to its narrowest, open a file of a mirror’s pin, hold Shift at 100% and 200%
       zoom, and count the rows the revealed strip takes.
+      The cap should be the most items that keep the strip within the panel’s bottom
+      quarter at 100% zoom.
       Headless Chrome 152 measured them beside the constant: at the 180px minimum, five
-      to seven items take four rows and all eight take five, 167px, which is 27% of the
-      panel in a 1280 by 800 window at 100% zoom and 73% at 200%. No count keeps the
-      strip within the panel’s bottom quarter at 200% zoom, so the cap waits on a
-      decision about what it should keep the strip within.
+      to seven items take four rows, 135px, which is 21% of the panel in a 1280 by 800
+      window at 100% zoom, and all eight take five, 167px, which is 27%. So the strip
+      lists seven, and Branch, the eighth, stays in Help.
+      At 200% zoom even two items cover 31% of the panel, so no cap meets the rule
+      there; the strip shows only while Shift is held, so the cap targets 100% zoom.
       Record Safari’s rows beside the constant.
 
     Record each measurement beside its constant.

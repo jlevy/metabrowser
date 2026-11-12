@@ -11,21 +11,23 @@
   // At rest no strip shows them, so they cost nothing then.
   const REVEAL_EVENT_KINDS = new Set(["dispatch", "reveal", "target"]);
   // The most items the revealed strip lists; later ones in the surface order drop first
-  // and stay in Help. PROVISIONAL: measured in Chrome, not yet chosen. The most the
-  // `reveal` surface lists at once is eight, on a file of a mirror's pin with a hosted
-  // origin (Help, Quick Search, Files, Commits, Pulls, Up, Copy, Branch). Each row of the
-  // revealed layer is 32px, a 20px keycap with 3px above and below it and a 6px gap, so
-  // the layer is 32px a row plus 7: 13px of padding and border, less the last gap. How
-  // many items a row holds depends on the face's label widths, so the count cannot be
-  // read off the stylesheet. Headless Chrome 152, at the navigation pane's 180px minimum:
-  // two items take two rows (71px), three or four take three (103px), five to seven take
-  // four (135px), and eight take five (167px); at the default 300px, eight take three
-  // (103px). A 1280 by 800 window gives the panel 629px at 100% zoom, so seven cover 21%
-  // of it and eight 27%; at 200% zoom it has 229px, and even two cover 31%. So no cap
-  // keeps the strip within the panel's bottom quarter at 200% zoom, and the reveal check
-  // in docs/qa-v012-repository-library.md leaves the choice open. What remains: the same
-  // widths in Safari, and a decision on the rule the cap serves.
-  const REVEAL_STRIP_MAX_ITEMS = 8;
+  // and stay in Help. Seven is the most that keeps the strip within the panel's bottom
+  // quarter with the navigation pane at its 180px minimum and the page at 100% zoom, the
+  // rule the reveal check in docs/qa-v012-repository-library.md measures it against. The
+  // most the `reveal` surface lists at once is eight, on a file of a mirror's pin with a
+  // hosted origin (Help, Quick Search, Files, Commits, Pulls, Up, Copy, Branch), so there
+  // Branch drops. Each row of the revealed layer is 32px, a 20px keycap with 3px above
+  // and below it and a 6px gap, so the layer is 32px a row plus 7: 13px of padding and
+  // border, less the last gap. How many items a row holds depends on the face's label
+  // widths, so the count cannot be read off the stylesheet. Headless Chrome 152, at the
+  // 180px minimum: two items take two rows (71px), three or four take three (103px), five
+  // to seven take four (135px), and eight take five (167px); at the default 300px, eight
+  // take three (103px). A 1280 by 800 window gives the panel 629px at 100% zoom, so seven
+  // cover 21% of it and eight 27%. At 200% zoom the panel has 229px and even two items
+  // cover 31%, so no cap meets the rule there; the layer is a transient overlay, shown
+  // only while Shift is held, so the cap targets 100% zoom. Safari's rows are not yet
+  // measured.
+  const REVEAL_STRIP_MAX_ITEMS = 7;
   /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
