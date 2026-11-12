@@ -33,11 +33,11 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 36 checks passed\n"
+    assert result.stdout == "transitions instrument: 44 checks passed\n"
 
 
 @pytest.mark.parametrize(
-    ("group", "count"), [("frames", 4), ("frames2", 3), ("content", 8), ("network", 1)]
+    ("group", "count"), [("frames", 5), ("frames2", 3), ("content", 10), ("network", 2)]
 )
 def test_transition_recorder_in_chrome(group: str, count: int) -> None:
     chrome = require_chrome()

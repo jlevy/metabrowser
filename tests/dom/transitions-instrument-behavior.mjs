@@ -65,10 +65,11 @@ check("request classes", () => {
 });
 
 /** Replay a recorded event sequence and return each request's disposition by URL. */
+// An event may name its session third ("P" the page, "W" a worker); the default is "S".
 const replay = (events) => {
   const log = networkLog();
-  for (const [method, params] of events) {
-    applyNetworkEvent(log, method, params, "page", "S");
+  for (const [method, params, sid = "S"] of events) {
+    applyNetworkEvent(log, method, params, sid === "W" ? "worker" : "page", sid);
   }
   return Object.fromEntries(log.net.map((e) => [e.url.replace(B, ""), disposition(e)]));
 };
@@ -105,6 +106,41 @@ check("a 304 the browser answered to its own cache is revalidated", () => {
     finished("1", 180),
   ]);
   assert.equal(d["/static/revalidate.js"], "revalidated");
+});
+check("a worker's 304 is revalidated though its ExtraInfo arrives on the page's session", () => {
+  // As Chrome reports a dedicated worker's request: the request and its response on the
+  // worker's session, both ExtraInfo events on the page's, in either order.
+  const at = (sid, [method, params]) => [method, params, sid];
+  const d = replay([
+    at("W", sent("w1", "/plugin-static/markdown/after.js")),
+    at("P", [
+      "Network.requestWillBeSentExtraInfo",
+      { requestId: "w1", headers: { "If-None-Match": "x" } },
+    ]),
+    at("P", [
+      "Network.responseReceivedExtraInfo",
+      { requestId: "w1", statusCode: 304, headers: {} },
+    ]),
+    at("W", received("w1", 200)),
+    at("W", finished("w1", 198)),
+    at("P", [
+      "Network.responseReceivedExtraInfo",
+      { requestId: "w2", statusCode: 304, headers: {} },
+    ]),
+    at("W", sent("w2", "/plugin-static/markdown/before.js")),
+    at("W", received("w2", 200)),
+    at("W", sent("w3", "/plugin-static/markdown/full.js")),
+    at("P", [
+      "Network.responseReceivedExtraInfo",
+      { requestId: "w3", statusCode: 200, headers: {} },
+    ]),
+    at("W", received("w3", 200)),
+  ]);
+  assert.deepEqual(d, {
+    "/plugin-static/markdown/after.js": "revalidated",
+    "/plugin-static/markdown/before.js": "revalidated",
+    "/plugin-static/markdown/full.js": "network",
+  });
 });
 check("ExtraInfo arriving before its request still counts", () => {
   const d = replay([
@@ -298,6 +334,34 @@ check("a frame without a read carries the previous state and is uncredited", () 
   assert.equal(a.blankFrames, 1);
 });
 
+check("blank frames that still show the origin's prompt are reported apart", () => {
+  const frames = grid(["E", "E", "U", "U"]);
+  const a = accountFrames({
+    frames,
+    origin: 99,
+    windowEnd: frames.at(-1)[0],
+    readyAt: frames[2][0],
+    readyRead: frames[2][2],
+    readyNext: frames[3][0],
+    initialCode: "E",
+  });
+  assert.equal(a.blankFrames, 2);
+  assert.equal(a.blankFramesOriginPrompt, 2);
+  // Old content that lingers is not blank, and nothing is the origin's prompt.
+  const b = accountFrames({
+    ...a,
+    frames: grid(["U", "", "U"]),
+    origin: 99,
+    windowEnd: 200,
+    readyAt: 100 + 2 * I,
+    readyRead: 102 + 2 * I,
+    readyNext: null,
+    initialCode: "U",
+  });
+  assert.equal(b.blankFrames, 1);
+  assert.equal(b.blankFramesOriginPrompt, 0);
+});
+
 // ---------------------------------------------------------------------- region movement
 
 const REG = {
@@ -422,7 +486,7 @@ const transition = (id, over = {}) => ({
 });
 const row = (condition, run, over = {}) => ({
   schema: "transition-navigation/v1",
-  scenario_revision: 3,
+  scenario_revision: 4,
   exp: "exp-900",
   series: "s1",
   condition,
@@ -452,9 +516,9 @@ const row = (condition, run, over = {}) => ({
   ...over,
 });
 /** Three control and three candidate runs, pair by pair; `edit(row, k)` mutates each. */
-const series = (editA = () => {}, editB = () => {}) => {
+const series = (editA = () => {}, editB = () => {}, pairs = 3) => {
   const rows = [];
-  for (let k = 1; k <= 3; k++) {
+  for (let k = 1; k <= pairs; k++) {
     const a = row("a", k);
     editA(a, k);
     rows.push(a);
@@ -798,6 +862,120 @@ check("an A/A split pairs runs in order and exits on gaps only", () => {
   assert.equal(res.pairs, 3);
   assert.equal(find(res, "files.a", "painted_ready_ms").outcome, "result");
   assert.equal(res.exitCode, 0);
+});
+check("a zero control under overlapping ranges goes through the pair rule", () => {
+  // Review B's fixture: 0 in every control run, non-zero in five candidate runs of six.
+  const six = (id, over) =>
+    series(
+      () => {},
+      (r, k) => setT(r, id, over(k)),
+      6,
+    );
+  for (const [key, over] of [
+    ["blank_frames", (k) => ({ blankFrames: k === 1 ? 0 : 1 })],
+    ["long_task_max_ms", (k) => ({ longTasks: { maxMs: k <= 2 ? 0 : 60 } })],
+    ["placeholder_visible_frames", (k) => ({ placeholderVisibleFrames: k === 1 ? 0 : 3 })],
+  ]) {
+    const res = cmp(six("files.a", over));
+    const e = find(res, "files.a", key);
+    assert.equal(e.overlap, true, key);
+    assert.equal(e.outcome, "explain", `${key}: ${e.verdict}`);
+    assert.equal(e.wrongWay, true, key);
+    assert.equal(res.exitCode, 1, key);
+  }
+  // Both medians 0, a long task in two candidate runs: the pairs give the direction.
+  const tie = find(
+    cmp(six("files.a", (k) => ({ longTasks: { maxMs: k <= 2 ? 70 : 0 } }))),
+    "files.a",
+    "long_task_max_ms",
+  );
+  assert.equal(tie.direction, "higher");
+  assert.equal(tie.outcome, "explain");
+  assert.equal(tie.wrongWay, true);
+  // Separated ranges from a zero control are still a result, on the ranges alone.
+  const apart = find(cmp(six("files.a", () => ({ blankFrames: 1 }))), "files.a", "blank_frames");
+  assert.equal(apart.outcome, "result");
+  assert.match(apart.verdict, /zero control/);
+});
+check("one pair beyond the tolerance under overlapping ranges is listed with its pair", () => {
+  const res = cmp(
+    series(
+      (r, k) => setT(r, "files.a", { paintedReadyMs: [40, 60, 50][k - 1] }),
+      (r, k) => setT(r, "files.a", { paintedReadyMs: [70, 55, 45][k - 1] }),
+    ),
+  );
+  const e = find(res, "files.a", "painted_ready_ms");
+  assert.equal(e.overlap, true);
+  assert.equal(e.outcome, "pair");
+  assert.equal(e.wrongWay, false);
+  assert.match(e.verdict, /ranges overlap; one pair of 3 is higher .*s1#1/);
+});
+check("a declared milestone missing on both sides is a gap", () => {
+  const res = cmp(
+    series(
+      (r) => setT(r, "files.a", { milestones: { prDescriptionFinal: null } }),
+      (r) => setT(r, "files.a", { milestones: { prDescriptionFinal: null } }),
+    ),
+  );
+  assert.ok(
+    res.gaps.some(
+      (g) => g.metric === "pr_description_final_ms" && /present in none/.test(g.reason),
+    ),
+    JSON.stringify(res.gaps),
+  );
+  assert.equal(res.exitCode, 1);
+});
+check("the corpus refs must match across the runs", () => {
+  refuses(
+    () =>
+      cmp(
+        series(
+          (r) => {
+            r.corpus.refs = "1111";
+          },
+          (r) => {
+            r.corpus.refs = "2222";
+          },
+        ),
+      ),
+    /corpus refs/,
+  );
+});
+check("a settle time beyond the candidate's window is marked", () => {
+  const res = cmp(
+    series(
+      (r) => setT(r, "files.a", { settledMs: 300, windowMs: 450 }),
+      (r) => setT(r, "files.a", { settledMs: 100, windowMs: 250 }),
+    ),
+  );
+  const e = find(res, "files.a", "settled_ms");
+  assert.equal(e.windowCut, true);
+  assert.match(e.verdict, /after the candidate's shortest window \(250\.0 ms\) closed/);
+});
+check("an older revision compares with itself, with a note, and not with this one", () => {
+  const old = cmp(
+    series(
+      (r) => {
+        r.scenario_revision = 3;
+      },
+      (r) => {
+        r.scenario_revision = 3;
+      },
+    ),
+  );
+  assert.ok(old.notes.some((n) => /revision 3, compared with each other.*worker/.test(n)));
+  refuses(
+    () =>
+      cmp(
+        series(
+          () => {},
+          (r) => {
+            r.scenario_revision = 3;
+          },
+        ),
+      ),
+    /scenario revision/,
+  );
 });
 check("chance separation", () => {
   assert.equal(chanceApart(3, 3), 0.1);

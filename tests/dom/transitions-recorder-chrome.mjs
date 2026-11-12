@@ -53,6 +53,10 @@ const actions = {
   // The next pull request replaces the page: the old host goes, and 50 ms later the new
   // one, with a taller header, takes its place.
   prB: () => { pane.querySelector(".pull-request-host").remove(); setTimeout(() => pane.prepend(pullHost(351, 203)), 50); },
+  // A build that retains surfaces: the old page stays mounted, hidden, ahead of the new one.
+  prRetain: () => { pane.querySelector(".pull-request-host").style.display = "none"; pane.querySelector(".pull-request-host").after(pullHost(351, 203)); },
+  // 500 text nodes that are not displayed, ahead of the one that is.
+  hiddenAhead: () => { const w = document.createElement("div"); for (let i = 0; i < 500; i++) { const s = document.createElement("span"); s.style.display = "none"; s.textContent = "hidden " + i; w.appendChild(s); } const p = document.createElement("p"); p.textContent = "the visible subject"; w.appendChild(p); view.replaceChildren(w); view.dataset.subject = "hiddenAhead"; },
   late: () => setTimeout(() => show("late"), 300),
   rafLoop: () => { show("rafLoop"); const end = performance.now() + 600; const loop = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { requestAnimationFrame(loop); } }; requestAnimationFrame(loop); },
   taskLoop: () => { show("taskLoop"); const end = performance.now() + 600; const ch = new MessageChannel(); ch.port1.onmessage = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { ch.port2.postMessage(0); } }; ch.port2.postMessage(0); },
@@ -72,6 +76,11 @@ const actions = {
     window.etag = r.headers.get("etag") || window.etag; await r.text();
     window.fetched = (window.fetched || 0) + 1; show("fetch" + window.fetched);
   },
+  // A module worker that imports a module and fetches a file, all revalidated on a revisit.
+  worker: () => {
+    const w = new Worker("/worker.js", { type: "module" });
+    w.onmessage = () => { window.workers = (window.workers || 0) + 1; show("worker" + window.workers); w.terminate(); };
+  },
 };
 const buttons = document.getElementById("buttons");
 for (const [name, fn] of Object.entries(actions)) {
@@ -81,6 +90,9 @@ for (const [name, fn] of Object.entries(actions)) {
 document.getElementById("go-reset").insertAdjacentHTML("beforebegin", '<button id="go-forged">forged</button>');
 document.getElementById("go-forged").addEventListener("mousemove", () => { if (!window.forged) { window.forged = true; document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); } });
 document.getElementById("go-forged").addEventListener("click", () => show("forged"));
+// The subject shows while the pointer hovers, before the press that starts the transition.
+document.getElementById("go-reset").insertAdjacentHTML("beforebegin", '<button id="go-hoverShow">hover shows</button>');
+document.getElementById("go-hoverShow").addEventListener("mouseenter", () => show("hoverShow"));
 window.keys = [];
 addEventListener("keydown", (e) => { window.keys.push([e.key, e.repeat]); if (e.key === "ArrowDown" && !e.repeat) { show("held"); } });
 </script></body></html>`;
@@ -90,6 +102,14 @@ const PNG = Buffer.from(
   "base64",
 );
 const hits = {};
+// Served with an ETag and no-cache, so a second read is a 304 on the wire.
+const REVALIDATED = {
+  "/static/revalidate.js": `/* body */${"x".repeat(2000)}`,
+  "/api/data": `/* body */${"x".repeat(2000)}`,
+  "/worker.js": `import "./worker-dep.js";\nconst r = await fetch("/static/worker-data.js");\nawait r.text();\npostMessage("done");\n`,
+  "/worker-dep.js": `/* a dependency ${"z".repeat(2000)} */`,
+  "/static/worker-data.js": `/* worker data */${"w".repeat(2000)}`,
+};
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   hits[u.pathname] ??= [];
@@ -102,7 +122,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
       res.end(PNG);
     }, 700);
-  } else if (u.pathname === "/static/revalidate.js" || u.pathname === "/api/data") {
+  } else if (REVALIDATED[u.pathname] !== undefined) {
     hits[u.pathname].push(conditional ? 304 : 200);
     if (conditional) {
       res.writeHead(304, { etag: '"v1"', "cache-control": "no-cache" });
@@ -113,7 +133,7 @@ const server = http.createServer((req, res) => {
         etag: '"v1"',
         "cache-control": "no-cache",
       });
-      res.end(`/* body */${"x".repeat(2000)}`);
+      res.end(REVALIDATED[u.pathname]);
     }
   } else if (u.pathname === "/static/fresh.js") {
     hits[u.pathname].push(200);
@@ -176,6 +196,24 @@ try {
   await sleep(500);
 
   if (group === "frames") {
+    await check("a subject shown during the hover, before the press, refuses", async () => {
+      await d.click("#go-reset");
+      await sleep(200);
+      const r = await d.measure({
+        id: "hoverShow",
+        subject: "hoverShow",
+        input: { kind: "hover-click", selector: "#go-hoverShow", hoverMs: 200 },
+        ready: subjectReady("hoverShow"),
+        converged: `() => ""`,
+        timeoutMs: 5000,
+      });
+      assert.ok(
+        r.refusals.some(([g, m]) => g === "ready_before_input" && /frame before the input/.test(m)),
+        JSON.stringify(r.refusals),
+      );
+      await d.park();
+      await sleep(300);
+    });
     await check("a predicate that holds before the input refuses", async () => {
       await d.click("#go-reset");
       await sleep(200);
@@ -208,7 +246,10 @@ try {
         },
       );
     }
-    await check("a stall after the ready frame does not count", async () => {
+    // Chrome reports the frame after this stall on the frame grid, so this page cannot tell
+    // painted ready from the next frame's begin time; the browserless presentedAt checks
+    // and the long-frame check below are the ones that do.
+    await check("a long task after the ready frame is not counted", async () => {
       const r = await measure("stall");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
       assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
@@ -274,6 +315,31 @@ try {
       assert.equal(r.movementNetPx, 37);
       assert.equal(r.movementPathPx, 37);
       assert.ok(r.movementPx <= 19, `largest step ${r.movementPx}`);
+    });
+    await check("content behind 500 hidden text nodes is found", async () => {
+      const r = await measure("hiddenAhead", { timeoutMs: 5000 });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.blankFrames, 0);
+      assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
+    });
+    await check("a hidden retained page is not taken for the one on screen", async () => {
+      await d.click("#go-reset");
+      await sleep(200);
+      await d.click("#go-prA");
+      await sleep(300);
+      const r = await d.measure({
+        id: "prRetain",
+        subject: "#351",
+        input: { kind: "click", selector: "#go-prRetain" },
+        ready: `() => { const h = document.querySelector('#preview-pane > .pull-request-host[data-number="351"]'); return !!h && window.__tr.hasUseful(h); }`,
+        converged: `() => ""`,
+        settleMs: 400,
+        timeoutMs: 5000,
+      });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.deepEqual(r.regions.prTabs.present, [true, true]);
+      assert.deepEqual(r.regions.prTabs.net, [0, 66, 0, 0]);
+      await sleep(300);
     });
     await check("a replaced page with a taller header moves the tab bar below it", async () => {
       await d.click("#go-reset");
@@ -354,6 +420,32 @@ try {
         "/api/data": "revalidated",
       });
       assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
+    });
+    await check("a worker's requests answered by a 304 are revalidated", async () => {
+      const spec = (n) => ({
+        id: `w${n}`,
+        subject: "w",
+        input: { kind: "click", selector: "#go-worker" },
+        ready: subjectReady(`worker${n}`),
+        converged: `() => ""`,
+        timeoutMs: 10000,
+      });
+      const first = await d.measure(spec(1));
+      assert.equal(first.ok, true, JSON.stringify(first.refusals));
+      await sleep(300);
+      const second = await d.measure(spec(2));
+      assert.equal(second.ok, true, JSON.stringify(second.refusals));
+      for (const p of ["/worker.js", "/worker-dep.js", "/static/worker-data.js"]) {
+        assert.deepEqual(hits[p], [200, 304], `${p} answered ${hits[p]}`);
+      }
+      const by = Object.fromEntries(
+        second.requests.list.map((x) => [x.u, `${x.k ?? "page"} ${x.d}`]),
+      );
+      assert.deepEqual(by, {
+        "/worker.js": "page revalidated",
+        "/worker-dep.js": "w revalidated",
+        "/static/worker-data.js": "w revalidated",
+      });
     });
   } else {
     throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
