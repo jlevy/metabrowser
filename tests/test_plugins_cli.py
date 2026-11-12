@@ -4,7 +4,8 @@ Drives ``metab --plugins / --plugin NAME / --doctor`` via Typer's
 CliRunner. Confirms the discovered set, the JSON output shape, and the
 doctor's exit-code contract on broken plugins and a damaged cache contract.
 ``tests/golden/cli-plugins.tryscript.md`` records the doctor's whole answer, text and
-JSON, on a clean installation.
+JSON, on a clean installation, and ``tests/golden/cli-plugins-view-keys.tryscript.md``
+its view key report on operator plugins.
 """
 
 from __future__ import annotations
