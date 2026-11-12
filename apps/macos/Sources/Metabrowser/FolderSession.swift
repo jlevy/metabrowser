@@ -79,9 +79,12 @@ final class FolderSession: ManagedServer {
         await supervisor.shutDown()
     }
 
+    /// Brings the folder back, and checks that its server still answers: a hung one is
+    /// stopped, and its windows say so and offer Retry.
     func showFrontWindow() {
         let front = windows.first { $0.window?.isVisible == true } ?? windows.first
         front?.window?.makeKeyAndOrderFront(nil)
+        Task { _ = await supervisor.checkHealth() }
     }
 
     func revealLog() {
@@ -92,10 +95,22 @@ final class FolderSession: ManagedServer {
     func openWindow(at url: URL, besides parent: BrowserWindowController) {
         let controller = makeWindow()
         addTab(controller, besides: parent)
-        controller.load(url)
+        attach(controller, loading: url)
     }
 
-    /// `target=_blank` and `window.open`: WebKit loads the request into the view returned.
+    /// Loads `url` in a window joining a running server once the server proves it still
+    /// answers, since a live pid is not a working server. A server that does not answer
+    /// fails, which every window shows; one not ready yet loads every window when it is.
+    private func attach(_ controller: BrowserWindowController, loading url: URL) {
+        Task {
+            guard case .healthy = await supervisor.checkHealth() else { return }
+            controller.load(url)
+        }
+    }
+
+    /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,
+    /// at once, so it cannot wait for a health check; the page asking for it was just
+    /// served.
     func openChildWindow(configuration: WKWebViewConfiguration, besides parent: BrowserWindowController) -> WKWebView {
         let controller = makeWindow(configuration: configuration)
         addTab(controller, besides: parent)

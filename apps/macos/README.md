@@ -324,7 +324,11 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is given
    (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and with the
    folder as its working directory, so `.env` lookup matches `metab .` in Terminal.
-   Its stdout and stderr go to the server log and to an in-memory tail.
+   Its stderr is the server log itself, opened before the spawn, so an app that stalls
+   cannot block the server through a full pipe.
+   Its stdout is a pipe the app reads for the announcement and appends to the log.
+   A log that cannot be prepared, opened, or rotated fails the launch with its path and
+   cause, and a log write that fails midway says so in the window’s output.
    Its stdin is a pipe the app holds open, ready to become the parent-death signal.
 3. **Ready.** The server prints `Serving ROOT at http://127.0.0.1:PORT/view/` before its
    socket listens, so the supervisor parses that line and then polls the URL for a 2xx,
@@ -337,11 +341,19 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    website data store, because Metabrowser keeps preferences in host-only cookies.
    A native “Starting” view covers the window until the page commits; its spinner
    appears only after 300 ms.
-5. **Fail.** If the server exits, never announces itself, or never answers, the window
-   shows the reason, the last lines of output, Retry, Reveal Logs, and Runtime Settings.
+5. **Check.** A window that joins a running server (a Command-click, and a folder opened
+   again or brought back from the Dock) first asks the server for its entry page, since
+   a live pid is not a working server.
+   A server that gives no 2xx within 5 seconds is hung, not busy: `GET /view/` measured
+   12 to 61 ms (see `SupervisorPolicy.healthDeadline`). It is stopped, and fails.
+   `target=_blank` windows are exempt: WebKit loads them at once, from a page the server
+   just answered.
+6. **Fail.** If the server exits, never announces itself, never answers, or stops
+   answering, the window shows the reason, the last lines of output (stdout and stderr,
+   read from this run’s part of the log), Retry, Reveal Logs, and Runtime Settings.
    Nothing restarts automatically.
    After Retry, each window returns to the page it showed, on the new port.
-6. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
+7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
    group, up to 5 seconds, then SIGKILL, up to 2 more seconds (a process stuck in
    uninterruptible I/O, such as a hung network mount, ignores even SIGKILL, and quit
    must not wait on it), then SIGKILL to anything left in the group.
@@ -553,7 +565,7 @@ Each gap points to the part of the brief that closes it.
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
 | **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
-| **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
+| **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
 | **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
