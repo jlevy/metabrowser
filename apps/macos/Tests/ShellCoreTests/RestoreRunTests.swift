@@ -138,6 +138,14 @@ private final class RestoreHarness {
         return outcome
     }
 
+    /// Closes every tab of `path`, as its session's last window closing does: the fleet
+    /// retires its server and the restore forgets the root (`FolderWindows.folderClosed`).
+    func close(_ path: String) {
+        tabs.removeAll { $0 == path }
+        if let closed = folder(path) { fleet.retire(closed) }
+        run.folderClosed(path)
+    }
+
     func stopAll() async { await fleet.stopAll() }
 }
 
@@ -539,6 +547,38 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         await restore.select(folders.a)
         #expect(restore.served.all == [folders.notes, folders.a, folders.b])
         try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        await restore.stopAll()
+    }
+}
+
+/// A restored start that completes after its last tab closed (review C1 on #377,
+/// mb-zki1). The close forgot the root and shut its server down while its start waited at
+/// the launch gate, so nothing spawned, but the cancelled start still reported that it
+/// launched, and the restore recorded the root as started: a session opened for that
+/// folder later was taken for a restored one when its tab was selected.
+@Suite struct ClosedWhileWaitingTests {
+    @Test func aRootClosedAtTheGateIsForgottenAndAReopenedFolderIsNotARestoredOne() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home, gated: [folders.a])
+        let a = try #require(restore.folder(folders.a))
+        await restore.gate.acquire()
+        let running = Task { await restore.run.start() }
+        #expect(await eventually { restore.served.all == [folders.notes] && a.server.supervisor.state == .starting })
+        restore.close(folders.a)
+        restore.gate.release()
+        await running.value
+        #expect(restore.served.all == [folders.notes], "the closed folder spawned nothing")
+        #expect(!restore.run.queue.started.contains(folders.a))
+        #expect(!restore.run.queue.selected.contains(folders.a))
+        // Opened again, as File > Open does, and its tab selected.
+        let reopened = try #require(await restore.open(folders.a))
+        #expect(reopened !== a)
+        await restore.select(folders.a)
+        #expect(!restore.run.queue.started.contains(folders.a))
+        #expect(!restore.run.queue.selected.contains(folders.a))
+        #expect(reopened.launchCheck == nil, "not a restored root, so no restore check")
+        #expect(restore.served.all == [folders.notes, folders.a])
         await restore.stopAll()
     }
 }

@@ -239,9 +239,12 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         pending.insert(root, at: pending.prefix { ahead.contains($0) }.count)
     }
 
-    /// `root`, taken with `next`, started.
+    /// `root`, taken with `next`, started. A start that `remove` (or another settle)
+    /// already ended is not this one: a root whose tabs all closed while its start waited
+    /// is forgotten, even if that start then reports it launched.
     public mutating func finish(_ root: String) {
-        if root == outstanding { settle() }
+        guard root == outstanding else { return }
+        settle()
         started.insert(root)
     }
 
