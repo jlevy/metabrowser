@@ -40,6 +40,8 @@ private struct StartingView: View {
     let folderPath: String
     /// A start that finishes quickly never flashes a spinner.
     @State private var showsSpinner = false
+    /// Below this, a delay reads as instant, and a spinner would only flash.
+    private static let spinnerDelay: Duration = .milliseconds(300)
 
     var body: some View {
         VStack(spacing: 12) {
@@ -49,7 +51,7 @@ private struct StartingView: View {
         }
         .padding(32)
         .task {
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: Self.spinnerDelay)  // cancelled: the view went away
             showsSpinner = true
         }
     }
@@ -62,8 +64,11 @@ private struct FailureView: View {
     let revealLogs: () -> Void
     let showSettings: () -> Void
 
+    /// The newest lines fit the view; Reveal Logs shows the rest.
+    private static let shownLines = 120
+
     private var output: String {
-        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(120).joined(separator: "\n")
+        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(Self.shownLines).joined(separator: "\n")
     }
 
     var body: some View {

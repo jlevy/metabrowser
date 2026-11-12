@@ -395,8 +395,9 @@ and what an open folder starts at its next Retry or File > Restart Server; until
 open folders keep their servers.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
-A Find Again that finds nothing leaves no runtime, so the next folder waits for one
-instead of starting the `metab` that failed.
+A Find Again that finds nothing leaves no runtime, saved or in use, so neither the next
+folder nor the next launch starts the `metab` that failed; the next folder waits for a
+runtime.
 
 ### The Child’s Environment
 
@@ -491,6 +492,31 @@ the server. Each fix is commented at the code that would bring it back.
   written in a main-actor context is inferred main-actor, and Swift 6’s runtime check
   raises SIGTRAP when it runs on another queue.
   Handlers for other queues must be marked `@Sendable`.
+
+### Coding Guidelines
+
+The app follows tbd’s language-neutral guidelines (tbd has no Swift guideline): general
+coding and comment rules, error handling, testing and TDD, filesystem rules, release
+engineering, supply-chain hardening, and backward compatibility.
+Decision logic lives in `ShellCore` with tests, and the app target only connects it to
+AppKit and WebKit. What is left as it is, on purpose:
+
+- **Code the next milestone steps replace.** `AppDelegate.request(_:)` decides whether a
+  dropped or opened URL is served, and `DropAwareWebView` accepts only folders; opening
+  a file (`mb-tssz`) rewrites both.
+  The File > Open Recent menu and its `RecentFolders` list give way to the system’s
+  recent documents (`mb-cqxd`).
+- **Errors ignored with a reason.** Each remaining `try?` names why at its line: a
+  readiness probe that fails means not ready yet; the stdin line can fail only once the
+  child has exited, and that exit is reported; a saved setup this build cannot read
+  counts as none, so setup runs again; an unreadable volume ends the path menu at `/`;
+  and a staging directory left after a failed download is in the volume’s temporary
+  items, which macOS empties.
+- **Layout numbers in views.** SwiftUI paddings and spacings stay inline, as SwiftUI
+  code reads; numbers that set behavior (timeouts, limits, window and zoom sizes) are
+  named and say why.
+- **Regression tests name their defect.** A test written for a review finding says what
+  the code used to do, since that defect is why the test exists.
 
 ## Why It Lives in This Repository
 
