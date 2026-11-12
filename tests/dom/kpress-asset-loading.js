@@ -54,6 +54,12 @@ function makeElement(tagName) {
   };
 }
 
+// While holding, an appended stylesheet or script waits to load until released, to
+// observe what is in flight at once.
+let holding = false;
+/** @type {Map<string, () => void>} */
+const held = new Map();
+
 const fakeParent = {
   appendChild(element) {
     appended.push({
@@ -66,7 +72,9 @@ const fakeParent = {
       async: element.async,
       textContent: element.textContent,
     });
-    if (typeof element.onload === "function") {
+    if (holding && typeof element.onload === "function") {
+      held.set(element.href || element.src, () => element.onload());
+    } else if (typeof element.onload === "function") {
       element.onload();
     }
     return element;
@@ -208,9 +216,23 @@ sandbox.metabrowser
     assert(!requested.searchParams.has("theme_mode"), "theme_mode must stay host-local");
     assert(!requested.searchParams.has("resolved_theme"), "resolved_theme must stay host-local");
 
-    const links = appended.filter((el) => el.tagName === "LINK");
+    const links = appended.filter((el) => el.tagName === "LINK" && el.rel === "stylesheet");
     const scripts = appended.filter((el) => el.tagName === "SCRIPT");
     assert(links.length === 1, `expected one stylesheet, got ${links.length}`);
+    // Every script entry point, toc.js included, is fetched beside the stylesheet.
+    const preloads = appended
+      .filter((el) => el.tagName === "LINK" && el.rel !== "stylesheet")
+      .map((el) => `${el.rel}:${el.href}`);
+    assert(
+      JSON.stringify(preloads) ===
+        JSON.stringify([
+          "modulepreload:/kpress-static/v0.3.0/js/theme.js",
+          "modulepreload:/kpress-static/v0.3.0/js/code-copy.js",
+          "modulepreload:/kpress-static/v0.3.0/js/toc.js",
+          "preload:/kpress-static/v0.3.0/katex/katex.min.js",
+        ]),
+      `unexpected preloads: ${preloads.join(", ")}`,
+    );
     assert(links[0].rel === "stylesheet", "stylesheet rel was not set");
     assert(
       links[0].href === "/kpress-static/v0.3.0/css/document.css",
@@ -272,12 +294,57 @@ sandbox.metabrowser
       );
     }
 
-    process.stdout.write(
-      `${JSON.stringify({
-        requestedUrl: requestedUrls[0],
-        appended,
-        html: payload.html,
-      })}\n`,
-    );
+    const rendered = appended.slice();
+    return heldLoad().then((held) => {
+      process.stdout.write(
+        `${JSON.stringify({
+          requestedUrl: requestedUrls[0],
+          appended: rendered,
+          held,
+          html: payload.html,
+        })}\n`,
+      );
+    });
   })
   .catch((err) => fail(err?.stack ? err.stack : String(err)));
+
+/** What is in flight at each step of a load whose stylesheets and scripts are held. */
+async function heldLoad() {
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  const since = appended.length;
+  const fresh = () =>
+    appended
+      .slice(since)
+      .map((el) => `${el.tagName === "LINK" ? el.rel : "script"}:${el.href || el.src}`);
+  holding = true;
+  const done = sandbox.metabrowser.loadKpressAssets({
+    schema_version: "kpress-asset-manifest-v2",
+    import_map: {},
+    assets: [
+      { id: "css/a.css", public_url: "/k/a.css", entry_point: true, loading: "stylesheet" },
+      { id: "js/m1.js", public_url: "/k/m1.js", entry_point: true, loading: "module" },
+      { id: "css/b.css", public_url: "/k/b.css", entry_point: true, loading: "stylesheet" },
+      { id: "katex/k.js", public_url: "/k/k.js", entry_point: true, loading: "classic" },
+      { id: "js/m2.js", public_url: "/k/m2.js", entry_point: true, loading: "module" },
+    ],
+  });
+  const steps = {};
+  await tick();
+  steps.atStart = fresh();
+  held.get("/k/b.css")();
+  await tick();
+  steps.afterSecondStylesheet = fresh();
+  held.get("/k/a.css")();
+  await tick();
+  steps.afterBothStylesheets = fresh();
+  held.get("/k/m1.js")();
+  await tick();
+  steps.afterFirstScript = fresh();
+  held.get("/k/k.js")();
+  await tick();
+  held.get("/k/m2.js")();
+  await done;
+  steps.atEnd = fresh();
+  holding = false;
+  return steps;
+}

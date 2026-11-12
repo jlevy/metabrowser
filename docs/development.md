@@ -180,10 +180,13 @@ one load and a repeat costs nothing.
 
 **A library that installs a global** loads through `static/asset-loader.js`. The server
 publishes named bundles as `window.METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)`
-appends that bundle’s scripts with `async = false` so they run in order — a Chart.js
-plugin is inert without `Chart`. `plugin-sdk.js` republishes it as
-`metabrowser.ensureAsset`, so a plugin reaches the loader through the documented SDK
-rather than a private global.
+preloads every script of that bundle at once, then appends each with `async = false`
+after the one before it has run, so they run in order — a Chart.js plugin is inert
+without `Chart`, and its `requires` gate reads the global the core installed.
+`loadKpressAssets` does the same for KPress: its stylesheets and script preloads start
+together, and its scripts run in manifest order once the stylesheets have settled.
+`plugin-sdk.js` republishes it as `metabrowser.ensureAsset`, so a plugin reaches the
+loader through the documented SDK rather than a private global.
 
 **An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
 `plugin-sdk.js` shows: import the module, capture its named export, and hold it.

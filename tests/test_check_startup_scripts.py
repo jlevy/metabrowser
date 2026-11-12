@@ -159,36 +159,43 @@ def test_a_module_script_stops_the_check() -> None:
 @pytest.mark.parametrize(
     ("block", "requested"),
     [
-        # A script that asks the asset loader for a bundle as it runs.
+        # A script that asks the asset loader for a bundle as it runs. The loader
+        # preloads a bundle's scripts and then appends the first.
         (
             '<script>window.MetabrowserAssets.ensureAsset("pull-route");</script>',
-            ("script", "/static/pull-route.js"),
+            [("link rel=preload", "/static/pull-route.js"), ("script", "/static/pull-route.js")],
         ),
         # One that waits for DOMContentLoaded and asks then: still before it ends.
         (
             '<script>document.addEventListener("DOMContentLoaded", () => {'
             ' window.MetabrowserAssets.ensureAsset("sdk-views"); });</script>',
-            ("script", "/static/plugin-sdk-views.js"),
+            [
+                ("link rel=preload", "/static/plugin-sdk-views.js"),
+                ("script", "/static/plugin-sdk-views.js"),
+            ],
         ),
         # One that appends the element itself, and one that only preloads.
         (
             '<script>var s = document.createElement("script");'
             ' s.src = "/static/git-panel.js"; document.head.appendChild(s);</script>',
-            ("script", "/static/git-panel.js"),
+            [("script", "/static/git-panel.js")],
         ),
         (
             '<script>var l = document.createElement("link");'
             ' l.setAttribute("rel", "modulepreload");'
             ' l.setAttribute("href", "/plugin-static/text/index.js");'
             " document.head.append(l);</script>",
-            ("link rel=modulepreload", "/plugin-static/text/index.js"),
+            [("link rel=modulepreload", "/plugin-static/text/index.js")],
         ),
-        ('<script>import("/plugin-static/text/index.js");</script>', None),
+        (
+            '<script>import("/plugin-static/text/index.js");</script>',
+            [("import()", "/plugin-static/text/index.js")],
+        ),
     ],
     ids=["asset-loader", "on-DOMContentLoaded", "appended-script", "preload", "import"],
 )
 def test_a_script_that_asks_for_a_script_at_startup_fails_the_check(
-    block: str, requested: tuple[str, str] | None
+    block: str, requested: list[tuple[str, str]]
 ) -> None:
     # No tag shows these requests and the gate counts every one of them. The session
     # runs the shell's own scripts and reports each; the check refuses it by name.
@@ -198,11 +205,11 @@ def test_a_script_that_asks_for_a_script_at_startup_fails_the_check(
 
     asked = check.script_requests(_block_after_app(html, block), check.FOLDER_ADDRESS)
 
-    expected = requested or ("import()", "/plugin-static/text/index.js")
-    assert [(request.how, request.url_path) for request in asked] == [expected]
+    assert [(request.how, request.url_path) for request in asked] == requested
     found = check.problems(scripts, check.load_limits(), {check.FOLDER_ADDRESS: asked})
-    assert len(found) == 1
-    assert f"at /view/ requests {expected[1]} ({expected[0]})" in found[0]
+    assert len(found) == len(requested)
+    for (how, url_path), problem in zip(requested, found, strict=True):
+        assert f"at /view/ requests {url_path} ({how})" in problem
 
 
 def test_a_shell_whose_scripts_throw_stops_the_check() -> None:

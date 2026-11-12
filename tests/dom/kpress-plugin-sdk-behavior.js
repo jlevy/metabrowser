@@ -479,15 +479,19 @@ async function check_failed_kpress_assets_retry() {
     },
   ];
 
+  // A script's fetch starts through a preload, appended once; what loads, and is
+  // retried, is the element that follows it.
+  const loadable = () =>
+    appended.filter((element) => !["preload", "modulepreload"].includes(element.rel));
   for (const asset of retryableAssets) {
-    const firstAppend = appended.length;
+    const firstAppend = loadable().length;
     const firstLoad = loadKpressAssets(assetManifest([asset])).then(
       () => ({ rejected: false }),
       () => ({ rejected: true }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const firstElement = appended.at(-1);
-    if (appended.length !== firstAppend + 1 || typeof firstElement?.onerror !== "function") {
+    const firstElement = loadable().at(-1);
+    if (loadable().length !== firstAppend + 1 || typeof firstElement?.onerror !== "function") {
       return { ok: false, detail: `${asset.id} did not append a loadable element` };
     }
     firstElement.onerror();
@@ -495,11 +499,11 @@ async function check_failed_kpress_assets_retry() {
       return { ok: false, detail: `${asset.id} failure did not reject` };
     }
 
-    const secondAppend = appended.length;
+    const secondAppend = loadable().length;
     const secondLoad = loadKpressAssets(assetManifest([asset]));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const secondElement = appended.at(-1);
-    if (appended.length !== secondAppend + 1 || typeof secondElement?.onload !== "function") {
+    const secondElement = loadable().at(-1);
+    if (loadable().length !== secondAppend + 1 || typeof secondElement?.onload !== "function") {
       return { ok: false, detail: `${asset.id} was not appended again for retry` };
     }
     secondElement.onload();

@@ -10,8 +10,8 @@
 // The server publishes the bundles as window.METABROWSER_ASSET_BUNDLES:
 // a name maps to the ordered scripts that define it. An entry can promise the
 // global it provides or be gated on a global its predecessor installs (a
-// Chart.js plugin is inert without Chart). Order matters, so the scripts load
-// in sequence.
+// Chart.js plugin is inert without Chart). Order matters, so the scripts run
+// in sequence, though all are fetched at once.
 //
 // ensureAsset(name) resolves when the bundle's globals are present. It is
 // safe to call from every render: a loaded bundle resolves immediately and
@@ -165,6 +165,18 @@
     if (!Array.isArray(entries) || entries.length === 0) {
       return Promise.reject(new Error(`Unknown asset bundle: ${name}`));
     }
+    // Preloaded together, appended in turn below, so a gate still sees the
+    // global its predecessor installed.
+    const preloads = entries
+      .filter((entry) => !loadedScripts.has(entry.src) && !loadingScripts.has(entry.src))
+      .map((entry) => {
+        const link = global.document.createElement("link");
+        link.setAttribute("rel", "preload");
+        link.setAttribute("as", "script");
+        link.setAttribute("href", entry.src);
+        global.document.head.appendChild(link);
+        return link;
+      });
     const pending = entries
       .reduce(
         (chain, entry) =>
@@ -186,6 +198,9 @@
       })
       .finally(() => {
         loading.delete(name);
+        for (const link of preloads) {
+          link.remove();
+        }
       });
     loading.set(name, pending);
     return pending;

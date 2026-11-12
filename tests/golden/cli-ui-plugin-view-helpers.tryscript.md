@@ -32,6 +32,8 @@ $ node tests/dom/plugin-view-helpers-session.js
   "withoutACompositor": {
     "helpersBefore": "0 of 15",
     "requestedTogether": [
+      "link rel=preload /static/plugin-sdk-views.js",
+      "link rel=preload /static/vendor/mustache.min.js",
       "link rel=stylesheet /plugin-static/fixture-kind/styles.css",
       "link rel=modulepreload <the plugin's module>",
       "script /static/plugin-sdk-views.js",
@@ -76,6 +78,7 @@ $ node tests/dom/plugin-view-helpers-session.js
     },
     "retry": {
       "requested": [
+        "link rel=preload /static/plugin-sdk-views.js",
         "script /static/plugin-sdk-views.js"
       ],
       "loading": "resolved",
@@ -99,6 +102,7 @@ $ node tests/dom/plugin-view-helpers-session.js
     },
     "retry": {
       "requested": [
+        "link rel=preload /static/vendor/mustache.min.js",
         "script /static/vendor/mustache.min.js"
       ],
       "loading": "resolved",

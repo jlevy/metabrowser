@@ -536,6 +536,10 @@ function createShell(pathname, network, options = {}) {
 
   /** A <script> the page appended: the production file a turn later, or a refusal. */
   function requestScript(script) {
+    // The asset loader fetches a bundle through preloads; only the script runs.
+    if (script.getAttribute?.("rel") === "preload") {
+      return script;
+    }
     const name = String(script.src).replace("/static/", "");
     scriptRequests.push(name);
     function respond() {
