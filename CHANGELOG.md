@@ -34,6 +34,10 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- A pull request’s page answers to `C` for Conversation, `G` for Changes, and `H` for
+  Checks, and shows those keys on its tabs while Shift is held.
+  A key moves the address as a click on the tab does, so Back returns to the tab before.
+
 - Plugin SDK: `metabrowser.shortcuts.attach(element, spec)` gives a control of a plugin
   view a letter key, listed in Help and badged while Shift is held, and returns a handle
   with `retarget()` and `detach()`; an `AbortSignal` in the spec detaches it too.
