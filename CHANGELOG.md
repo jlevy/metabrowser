@@ -34,6 +34,18 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- Every keyboard shortcut is a single key, and Shift no longer changes what any of them
+  does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls; `1`, `2`, and `3`
+  still do, and the browser keeps Command and Ctrl with a digit for its own tabs.
+  A pull request’s stack moves from `⇧J` and `⇧K` to `N`, toward the stack’s top, and
+  `P`, toward its base, so `J` and `K` on a focused Pulls row always move the row.
+  In the file tree, `⇧↑` and `⇧↓` move one row, as `↑` and `↓` do, and Home and End
+  still jump to the first and last row.
+  Shift with `T`, `J`, `K`, an arrow, or a digit now acts as the key alone, even where
+  Shift+`1` types `!`, and `/` opens Quick Search on layouts that type it with Shift.
+  In a text field, Shift with an arrow still selects text.
+  The removed keys shipped in 0.12.0 and have no aliases.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file

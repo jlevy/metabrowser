@@ -212,7 +212,6 @@ glyph itself.
 | `/` | `/` | Slash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
 | Digit key | The digit | The digit | The digit |
-| Command modifier | `⌘` | Command | `Meta` |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
 | `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
 | `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
@@ -224,6 +223,11 @@ glyph itself.
 | `End` | `End` | End | `End` |
 | `Delete` | `Delete` | Delete | `Delete` |
 | `F2` | `F2` | F2 | `F2` |
+| `Shift`, a single key only | `Shift` | Shift | `Shift` |
+
+`Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
+`appendKey()`, which renders a key that is not a binding, such as one named in a
+sentence. No binding may use it.
 
 The `.kbd` text transform produces the visible caps treatment; source markup keeps the
 mixed-case label in this table.
@@ -235,31 +239,38 @@ instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a charact
 punctuation binding when the physical chord varies by keyboard layout.
 Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
 producing that character.
-When modifier bindings are introduced, the formatter owns both platform labels and ARIA
-serialization; no call site chooses between names such as Control, Command, or Meta.
 Adding a key that is not in this vocabulary requires adding its display, spoken, and
 ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
 The sidebar orders Files, Commits, and Pulls in that order.
-Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Commits, and `⌘3` for Pulls.
+Help shows the fixed shortcuts: `1` for Files, `2` for Commits, and `3` for Pulls.
 A missing tab keeps its number reserved.
-Use the number alone outside text fields and dialogs when the browser uses the Command
-chord for its own tab bar.
+The digits work outside text fields and dialogs, with or without Shift.
+Command and Ctrl with a digit stay the browser’s, which switches its own tabs with them.
 
 #### Binding Grammar and Accessibility
 
+- Every shortcut is a single key.
+  No binding uses Ctrl, Alt, or Meta, and the registry rejects a binding that states any
+  modifier policy, Shift included.
+- Shift never changes what a key means: a letter matches in either case, a named key
+  such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
+  matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
+  `1`. A character that is another binding’s key keeps it: German Shift+`7` types `/`
+  and is Quick Search.
+- Punctuation matches the character typed, so `?` and `/` stay distinct even where they
+  share a key, and `/` works on layouts that type it with Shift.
 - Alternative bindings use the word “or”: `T` or `/`.
-- Simultaneous keys use a plus sign: `Ctrl` + `F`.
 - Ordered key sequences are not supported and must not be implied by adjacent keycaps.
 - Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
 
 The visual and spoken forms are both generated.
 An isolated key may use its natural-case `<kbd>` text as its accessible name.
-A group of alternatives or a chord exposes one visually hidden phrase such as “T or
-slash” or “Control plus F” and hides its visual punctuation and keycaps from assistive
-technology, avoiding duplicate or ambiguous announcements.
+A group of alternatives exposes one visually hidden phrase such as “T or slash” or “Down
+arrow or J” and hides its visual punctuation and keycaps from assistive technology,
+avoiding duplicate or ambiguous announcements.
 An actionable control keeps its action as the accessible name and receives the
 formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
 physical shortcut accurately.
@@ -1119,8 +1130,9 @@ The menu shows titles, ordinals, and PR numbers, ordered from stack top to base,
 the current member marked.
 Its links are created only when opened.
 Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
-On a selected PR, ⇧J moves toward the stack base and ⇧K toward the top; Help uses the
-shared Shift key glyph.
+On a selected PR, `N` opens the next member toward the stack top and `P` the previous
+one toward its base, with or without Shift; Help lists them in its Pull request stack
+group. A focused Pulls row keeps `J` and `K` for its own rows.
 Editors, dialogs, unknown membership, and inactive pages keep their normal keyboard
 behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
@@ -1293,8 +1305,10 @@ History follows the rule all three collections share: a key’s open replaces th
 as the file tree’s arrow keys and Git’s K and J do.
 Clicking a different row or pressing Enter on it pushes a history entry.
 Space toggles the focused pull request’s changed files in place.
-Help reads the `pull-requests` group of the shortcut registry, and no surface here names
-a key.
+`J` and `K` move the rows with or without Shift; walking a pull request’s stack is `N`
+and `P` ([The Pull Request Page](#the-pull-request-page)). Help reads the
+`pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
+names a key.
 
 ## Keyboard Commands and Help
 
@@ -1308,14 +1322,18 @@ Widget behavior that belongs to a focused control, such as arrow navigation with
 menu or radiogroup, stays on that component’s root.
 If that behavior is advertised in Help or another hint surface, its presentation still
 comes from a registered descriptor.
-Document-level commands ignore editable controls, composition, previously handled
-events, and modifiers they did not declare.
+Document-level commands ignore editable controls, composition, and previously handled
+events. They never match while Ctrl, Alt, or Meta is held, and inside a text field Shift
+with a named key belongs to the field.
 They prevent browser behavior only after an enabled handler reports that it acted.
 
 A command may opt back into an editable target only for a key that field does not
 already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
 them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
 leaves the user unable to reach the start or end of what they typed.
+For the same reason, Shift with a named key stays the field’s even for a command that
+opted in: Shift+`↑` and Shift+`↓` extend the selection in Quick Search’s query, while
+plain `↑`, `↓`, and `Enter` still move through and open results.
 When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
 
@@ -1327,9 +1345,11 @@ exists, otherwise the first row.
 All other rows remain programmatically focusable with `tabindex="-1"`, so Tab enters and
 leaves the collection once instead of stopping on every item.
 
-While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
-row and open it. K and J are aliases for Arrow Up and Arrow Down with the same guards;
-they never act from a text field and get no first-row or last-row meaning.
+While a row has focus, Arrow Up and Arrow Down without Ctrl, Alt, or Meta move to the
+adjacent mounted row and open it; Shift changes nothing, so Shift+Arrow moves one row.
+K and J are aliases for Arrow Up and Arrow Down with the same guards, in either case and
+with or without Shift; they never act from a text field and get no first-row or last-row
+meaning. In the file tree, the first-row and last-row keys are Home and End alone.
 Key repeat remains enabled for fast traversal.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
@@ -1379,7 +1399,8 @@ its Tab order and vertical navigation cannot silently fork this contract.
 Every presented command declares:
 
 - a stable identifier and scope;
-- semantic bindings, including explicit modifier and repeat policy;
+- semantic bindings, each one key with no modifier policy, and an explicit repeat
+  policy;
 - a group identifier whose heading, context sentence, and order come from one group
   registry;
 - one sentence-case action label with no terminal punctuation;
