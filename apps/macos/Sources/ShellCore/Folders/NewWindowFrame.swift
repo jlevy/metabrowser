@@ -2,10 +2,13 @@ import CoreGraphics
 
 /// Where a new folder window opens, and how large, on the screen it opens on.
 ///
-/// A new window is about 80% of the screen's usable height, whatever the screen's size,
-/// and wider than tall up to a cap. The first one is centered as AppKit's `center()`
-/// centers a window; each next one steps down and to the right of the one before, and
-/// starts over at the first position once a step would put any of it off the screen.
+/// A new window is 80% of the screen's usable height, whatever the screen's size, and
+/// 90% of its usable width up to a cap; neither is less than the window's minimum size.
+/// No shape is promised: the window follows the screen's, so on a portrait display it is
+/// taller than wide. The first window is centered as AppKit's `center()` centers a
+/// window; each next one steps down and to the right of the window placed last, while
+/// that one is open (`LastPlacedWindow`), and starts over at the first position once a
+/// step would put any of it off the screen.
 ///
 /// Frames are in AppKit's screen coordinates, whose y axis points up, and `visible` is
 /// the screen's `visibleFrame`: without the menu bar, and without the Dock when it shows.
@@ -56,5 +59,28 @@ public nonisolated enum NewWindowFrame {
             if visible.contains(stepped) { return stepped }
         }
         return first(size: size, visible: visible)
+    }
+}
+
+/// The window a new one steps from (`NewWindowFrame.next`): the one placed last, while it
+/// is open. It is forgotten when it closes, not only when it is freed, since a closed
+/// window can outlive its closing, held by a task still waiting on it, and a new window
+/// would then step from where it was.
+public struct LastPlacedWindow<Window: AnyObject> {
+    private weak var placed: Window?
+
+    public init() {}
+
+    /// The window placed last, if it is open and still exists.
+    public var window: Window? { placed }
+
+    /// `window` was just placed as a new window.
+    public mutating func place(_ window: Window) {
+        placed = window
+    }
+
+    /// `window` closed. Any other window's closing leaves the window placed last as it is.
+    public mutating func close(_ window: Window) {
+        if placed === window { placed = nil }
     }
 }

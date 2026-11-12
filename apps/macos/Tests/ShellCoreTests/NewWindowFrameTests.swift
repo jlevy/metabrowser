@@ -105,3 +105,40 @@ import Testing
         #expect(NewWindowFrame.next(size: size, visible: external, after: moved) == moved.offsetBy(dx: 29, dy: -29))
     }
 }
+
+@Suite struct LastPlacedWindowTests {
+    /// Stands in for an `NSWindow`: a window is an object, held by whatever still uses it.
+    private final class Window {}
+
+    @Test func aWindowClosedWhileSomethingStillHoldsItIsNoLongerTheOneToStepFrom() {
+        var last = LastPlacedWindow<Window>()
+        let first = Window(), second = Window()
+        last.place(first)
+        last.place(second)
+        #expect(last.window === second)
+        // Closed while a task waiting on it still holds it: the review's case, which a
+        // weak reference alone kept as the window to step from.
+        last.close(second)
+        #expect(last.window == nil)
+        withExtendedLifetime(second) {}
+    }
+
+    @Test func anotherWindowsClosingKeepsTheWindowPlacedLast() {
+        var last = LastPlacedWindow<Window>()
+        let earlier = Window(), latest = Window()
+        last.place(earlier)
+        last.place(latest)
+        last.close(earlier)
+        #expect(last.window === latest)
+    }
+
+    @Test func aFreedWindowIsForgottenWithoutClosing() {
+        var last = LastPlacedWindow<Window>()
+        do {
+            let window = Window()
+            last.place(window)
+            #expect(last.window === window)
+        }
+        #expect(last.window == nil)
+    }
+}

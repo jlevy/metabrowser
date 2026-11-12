@@ -82,9 +82,8 @@ final class TitleBarTitleView: NSView {
     func show(_ title: WindowTitle, representing url: URL?) {
         self.title = title
         self.url = url
-        logo.url = url
         toolTip = title.subtitle
-        logo.toolTip = title.subtitle
+        logo.represent(url, title: title)
         updateWidth()
         needsLayout = true
     }
@@ -298,7 +297,7 @@ final class TitleBarLogoView: NSImageView, NSDraggingSource {
 
     var onPathMenu: (() -> Void)?
     /// The folder the logo stands for, or nil.
-    var url: URL?
+    private(set) var url: URL?
     private var pressed: NSEvent?
 
     init() {
@@ -306,11 +305,39 @@ final class TitleBarLogoView: NSImageView, NSDraggingSource {
         imageScaling = .scaleProportionallyUpOrDown
         isEditable = false
         unregisterDraggedTypes()
+        // The view, not its image cell, is the accessibility element, so what it says
+        // and does is set here, never read from whichever image it draws: the cell named
+        // itself "AppIcon" in light mode and nothing in dark (measured on macOS 26.5).
+        cell?.setAccessibilityElement(false)
+        setAccessibilityRole(.image)
         updateImage()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
+
+    /// Makes the logo stand for the local folder `url`, which `title` names, or, for nil,
+    /// for nothing. A folder's logo is an accessibility element named for the folder,
+    /// whose help says what it does; a logo that stands for nothing is decoration, left
+    /// out, since the title beside it already says Metabrowser.
+    func represent(_ url: URL?, title: WindowTitle) {
+        self.url = url
+        toolTip = title.subtitle
+        setAccessibilityElement(url != nil)
+        setAccessibilityLabel(url == nil ? nil : "Folder: \(title.identity.shortName)")
+        setAccessibilityHelp(
+            url == nil
+                ? nil
+                : "\(title.identity.fullName). Drag it to copy or alias the folder in another app. "
+                + "Command-click, right-click, or Show Menu opens the folder's path menu.")
+    }
+
+    /// VoiceOver's Show Menu opens the path menu, as Command-click does.
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard url != nil, let onPathMenu else { return false }
+        onPathMenu()
+        return true
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

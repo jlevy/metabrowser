@@ -927,8 +927,8 @@ Terminal launch.
   and never under the 480 by 320 minimum, on the screen with the key window
   (`NewWindowFrame`). The first is centered as AppKit’s `center()` centers a window,
   with a quarter of the free height above it; each next one steps 29 points down and
-  right, AppKit’s cascade step, and starts over at the first position before any part of
-  it would leave the screen.
+  right, AppKit’s cascade step, from the window placed last if that one is still open,
+  and starts over at the first position before any part of it would leave the screen.
   A restored window keeps its saved frame, and a new tab takes the frame of the window
   it joins (both checked on macOS 26.5 against a copy of the built app).
   On a laptop the rule can open a window shorter than before, when every window opened
@@ -1149,6 +1149,12 @@ AppKit draws a system title in one font and one color, so the window hides it
   own icon. Command-click or right-click on the logo or the title opens the path menu.
   A cached mirror’s window shows the logo with neither, and clicks on it move the
   window.
+- **The logo says what it is.** To assistive apps a folder’s logo is an image labeled
+  with the folder’s short name, as “Folder: fdu”, whose help gives the path, the drag,
+  and the path menu, and VoiceOver’s Show Menu opens the path menu.
+  A logo that stands for nothing is left out as decoration, since the title beside it
+  says Metabrowser. The view sets these itself: the image cell it replaces as the element
+  named itself “AppIcon” in light mode and nothing in dark.
 - **It behaves like a system title.** It dims when its window is not the main window of
   the active app (the tertiary label color, which an inactive system title measured
   close to), and AppKit dims the logo with it.

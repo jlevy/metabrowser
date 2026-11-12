@@ -37,8 +37,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
     /// The window placed last, which the next one steps down and right from, while it
-    /// is open (`NewWindowFrame`).
-    private weak static var lastPlaced: NSWindow?
+    /// is open (`NewWindowFrame`, `LastPlacedWindow`).
+    private static var lastPlaced = LastPlacedWindow<NSWindow>()
     /// Narrow enough to tile two windows side by side on a laptop screen, and wide
     /// enough for the status view.
     private static let minimumSize = NSSize(width: 480, height: 320)
@@ -96,9 +96,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let visible = screen.visibleFrame
         let size = NewWindowFrame.size(visible: visible, minimum: minimumSize)
-        let frame = NewWindowFrame.next(size: size, visible: visible, after: lastPlaced?.frame)
+        let frame = NewWindowFrame.next(size: size, visible: visible, after: lastPlaced.window?.frame)
         window.setFrame(frame, display: false)
-        lastPlaced = window
+        lastPlaced.place(window)
     }
 
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
@@ -304,6 +304,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func windowWillClose(_ notification: Notification) {
+        // A task waiting on this window may keep it alive past its closing.
+        if let window { Self.lastPlaced.close(window) }
         pages.cancelAll()
         textFinder.client = nil
         textFinder.findBarContainer = nil
