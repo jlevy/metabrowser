@@ -665,8 +665,9 @@ node explorations/performance-loop/transitions.mjs compare .bench/transitions/ex
 ```
 
 It needs Node 24 and Chrome (`CHROME_BIN` overrides the macOS default) and adds no
-dependency. A run of every journey took about seven minutes at a load average near 8,
-half of it the warm-up pass.
+dependency. A run of every journey took about eight minutes at a load average near 12,
+half of it the warm-up pass, and a condition’s first run takes longer while its warm-up
+fills the GitHub cache.
 `--journeys` narrows a diagnostic run; `--headed` shows the window; `--no-warmup`
 measures a cold server and is not the standard regime.
 
@@ -747,9 +748,10 @@ carries `scenario_revision`, and `compare` skips a metric either side lacks:
   replacements followed, how many rows below the selection were replaced, and whether
   the selection was;
 - region groups beside the page figure: `tree` (the selected row and the root folder
-  below `src`, counted only while each stays the same element) and `palette` (the
-  dialog, the result list, and the selected option), with the largest step in pixels
-  and, for the tree, the number of frames in which a row moved;
+  below `src`, counted only while each stays the same element, in the tree’s scroll
+  coordinates so that scrolling the tree is not movement) and `palette` (the dialog, the
+  result list, and the selected option), with the largest step in pixels and, for the
+  tree, the number of frames in which a row moved;
 - cache disposition per request, from DevTools events, by route family (`static`,
   `plugin_static`, `kpress_static`, `data`, `document`): `network` for a response with
   its body, `revalidated` for a 304, `cache` when the memory or disk cache answered with

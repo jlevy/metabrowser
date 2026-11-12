@@ -19,7 +19,9 @@ export { sleep };
 // `group` keeps figures apart: the page group (the default) is `movementPx`, and every
 // other group reports under `movementByGroup`, so adding a group never changes the page
 // figure. A `sameNode` region counts a step only while the selector keeps matching the
-// same element; a different element is a replacement, not a movement.
+// same element; a different element is a replacement, not a movement. A `scroller`
+// region is measured in that scroll container's content coordinates, so scrolling it is
+// not movement, as Layout Instability does not count scrolling either.
 export const REGIONS = {
   navTabs: { selector: ".nav-tab-bar", track: ["x", "y", "w", "h"] },
   filterBar: { selector: "#nav-filter-bar", track: ["x", "y", "w", "h"] },
@@ -52,12 +54,14 @@ export const REGIONS = {
     track: ["y"],
     group: "tree",
     sameNode: true,
+    scroller: "#tree-content",
   },
   treeRowTests: {
     selector: '#tab-files .tree-item.tree-folder[data-path="tests"]',
     track: ["y"],
     group: "tree",
     sameNode: true,
+    scroller: "#tree-content",
   },
   paletteDialog: {
     selector: ".search-palette-overlay:not([hidden]) .search-palette-dialog",
@@ -329,7 +333,19 @@ function recorderMain(config) {
     if (r.width === 0 && r.height === 0) {
       return null;
     }
-    const b = [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+    let sx = 0;
+    let sy = 0;
+    if (spec.scroller) {
+      const sc = document.querySelector(spec.scroller);
+      sx = sc ? sc.scrollLeft : 0;
+      sy = sc ? sc.scrollTop : 0;
+    }
+    const b = [
+      Math.round(r.x + sx),
+      Math.round(r.y + sy),
+      Math.round(r.width),
+      Math.round(r.height),
+    ];
     if (spec.sameNode) {
       b.push(nodeId(el));
     }
