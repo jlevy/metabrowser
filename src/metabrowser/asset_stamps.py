@@ -4,9 +4,9 @@ A response a browser holds is used without a request only while it is fresh, and
 application's own scripts, stylesheets, and fonts are fresh forever at an address that
 changes whenever they do. Three classes of asset get such an address:
 
-- ``/static/<file>?v=<stamp>``: one file, stamped by ``strif.file_mtime_hash`` (its
-  name, size, and modification time), the token ``_static_asset_url`` in ``server.py``
-  writes. :class:`StampedStaticFiles` serves it.
+- ``/static/<file>?v=<digest>``: one file, stamped by the digest of its own bytes, which
+  the static directory's :class:`TreeStamp` records and ``_static_asset_url`` in
+  ``server.py`` writes. :class:`StampedStaticFiles` serves it.
 - ``/plugin-static/<plugin>/@<digest>/<file>``: every file of one plugin's directory.
 - ``/kpress-static/@<digest>/v<version>/<file>``: every file of the KPress package.
 
@@ -53,7 +53,6 @@ from typing import TYPE_CHECKING
 
 from starlette.datastructures import QueryParams
 from starlette.staticfiles import StaticFiles
-from strif import file_mtime_hash
 
 from metabrowser.http_caching import stamped_asset_cache_control
 
@@ -63,10 +62,14 @@ if TYPE_CHECKING:
 
 LOG = logging.getLogger(__name__)
 
-# The trees stamped today: 66 KPress files of 1.05 MB, and 45 files in the largest
-# built-in plugin (github). Measured 2026-11-11, a loaded laptop: a stat walk of all
-# eleven built-in plugins, 133 files, took 4.9 ms, and of KPress 1.2 ms, which is why a
-# release stamps once and only a live tree walks per page.
+# The bounds on one tree, past which it is not stamped and its assets keep unstamped,
+# revalidated addresses. Review B of #372 measured them on a loaded laptop at 640e008d
+# (load average 4 to 6): stamping a fresh tree at both bounds, 2,000 files of 64 MiB,
+# took 170 ms (n=1), and re-stating it for a page as a live tree 26.7 ms at the median
+# (n=10); the trees stamped today took 5.5 ms (the built-in plugins) and 5.0 ms (KPress)
+# fresh, 1.31 ms to re-stat. A release stamps at serve start, before any page, and a
+# live tree re-stats in a thread, so the bound keeps a page's added wait under about
+# 30 ms; a tree past it is found once and not walked again in the process.
 MAX_TREE_FILES = 2000
 MAX_TREE_BYTES = 64 * 1024 * 1024
 
@@ -86,30 +89,42 @@ def content_digest(body: bytes) -> str:
     return hashlib.blake2b(body, digest_size=16).hexdigest()
 
 
+# What a stamp compares of a file's stat: a rewrite that restores the modification time,
+# as npm's fixed 1985 time does, still moves the change time (review C of #372, C2).
+_FileStat = tuple[int, int, int, int]
+
+
+def _file_stat(stat: os.stat_result) -> _FileStat:
+    return (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+
+
 @dataclass(frozen=True, slots=True)
 class TreeStamp:
     """One tree's stamp, and what it was taken from."""
 
     digest: str
-    # Relative POSIX path -> (size, mtime_ns), the stat each file had when it was read.
-    files: Mapping[str, tuple[int, int]]
-    # The content digest of every file, for a reader that does not resolve the path itself.
+    # Relative POSIX path -> its stat when it was read: size, mtime, ctime, inode.
+    files: Mapping[str, _FileStat]
+    # Relative POSIX path -> the content digest of its bytes.
+    digests: Mapping[str, str]
+    # Every file's content digest, for a reader that does not resolve the path itself.
     contents: frozenset[str]
 
     def holds(self, rel: str, stat: os.stat_result) -> bool:
         """Whether the file at *rel*, which now has *stat*, is the one this stamp read."""
-        return self.files.get(rel) == (stat.st_size, stat.st_mtime_ns)
+        return self.files.get(rel) == _file_stat(stat)
 
     def holds_content(self, body: bytes) -> bool:
         """Whether *body* is the content of one of the files this stamp read."""
         return content_digest(body) in self.contents
 
 
-_Signature = tuple[tuple[str, int, int], ...]
+_Signature = tuple[tuple[str, _FileStat], ...]
 
 
 def _skipped_dir(name: str) -> bool:
-    return name == "__pycache__" or name.startswith(".")
+    # A `node_modules` under an operator's plugin directory is its tooling, not its assets.
+    return name in ("__pycache__", "node_modules") or name.startswith(".")
 
 
 def _skipped_file(name: str) -> bool:
@@ -117,8 +132,8 @@ def _skipped_file(name: str) -> bool:
 
 
 def _signature(root: Path, max_files: int) -> _Signature | None:
-    """Every stamped file under *root* with its size and time, sorted; None past the bound."""
-    found: list[tuple[str, int, int]] = []
+    """Every stamped file under *root* with its stat, sorted; None past the bound."""
+    found: list[tuple[str, _FileStat]] = []
     for directory, dirs, files in os.walk(root):
         dirs[:] = sorted(name for name in dirs if not _skipped_dir(name))
         for name in files:
@@ -129,20 +144,18 @@ def _signature(root: Path, max_files: int) -> _Signature | None:
                 stat = os.stat(full)
             except OSError:
                 continue
-            found.append((Path(full).relative_to(root).as_posix(), stat.st_size, stat.st_mtime_ns))
+            found.append((Path(full).relative_to(root).as_posix(), _file_stat(stat)))
             if len(found) > max_files:
                 return None
     found.sort()
     return tuple(found)
 
 
-def _hash_tree(root: Path, signature: _Signature, max_bytes: int) -> TreeStamp | None:
-    if sum(size for _rel, size, _mtime in signature) > max_bytes:
-        return None
+def _hash_tree(root: Path, signature: _Signature) -> TreeStamp | None:
     tree = hashlib.blake2b(digest_size=8)
-    files: dict[str, tuple[int, int]] = {}
-    contents: set[str] = set()
-    for rel, size, mtime_ns in signature:
+    files: dict[str, _FileStat] = {}
+    digests: dict[str, str] = {}
+    for rel, stat in signature:
         try:
             body = (root / rel).read_bytes()
         except OSError:
@@ -151,13 +164,18 @@ def _hash_tree(root: Path, signature: _Signature, max_bytes: int) -> TreeStamp |
             return None
         digest = content_digest(body)
         tree.update(f"{rel}\0{digest}\n".encode("utf-8", errors="surrogatepass"))
-        files[rel] = (size, mtime_ns)
-        contents.add(digest)
-    return TreeStamp(digest=tree.hexdigest(), files=files, contents=frozenset(contents))
+        files[rel] = stat
+        digests[rel] = digest
+    return TreeStamp(
+        digest=tree.hexdigest(),
+        files=files,
+        digests=digests,
+        contents=frozenset(digests.values()),
+    )
 
 
 class StampedTree:
-    """One directory whose files are served under a content-keyed path segment."""
+    """One directory whose files are served under a content-keyed address."""
 
     def __init__(
         self,
@@ -173,14 +191,16 @@ class StampedTree:
         self._max_bytes = max_bytes
         self._lock = threading.Lock()
         self._taken = False
+        # A tree found past a bound is not walked again: a live one would otherwise cost
+        # its whole walk on every page and give up each time (review B of #372, B5).
+        self._past_bound = False
         self._signature: _Signature | None = None
         self._latest: TreeStamp | None = None
-        self._warned = False
 
     @property
     def settled(self) -> bool:
         """Whether :meth:`stamp` would return without touching the disk."""
-        return self._taken and not self.live
+        return self._past_bound or (self._taken and not self.live)
 
     def stamp(self) -> TreeStamp | None:
         """The stamp a page rendered now names, or None for a tree that cannot be stamped.
@@ -194,19 +214,21 @@ class StampedTree:
             if self.settled:
                 return self._latest
             signature = _signature(self.root, self._max_files)
-            if signature is None:
+            if signature is None or sum(stat[0] for _rel, stat in signature) > self._max_bytes:
+                self._past_bound = True
                 self._latest = None
-            elif self._latest is None or signature != self._signature:
-                self._latest = _hash_tree(self.root, signature, self._max_bytes)
+                LOG.warning(
+                    "metabrowser assets under %s are past the stamping bound of %s files "
+                    "or %s bytes; they are served at unstamped addresses and revalidated",
+                    self.root,
+                    self._max_files,
+                    self._max_bytes,
+                )
+                return None
+            if self._latest is None or signature != self._signature:
+                self._latest = _hash_tree(self.root, signature)
             self._signature = signature
             self._taken = True
-            if self._latest is None and signature is not None and not self._warned:
-                self._warned = True
-                LOG.warning(
-                    "metabrowser assets under %s are past the stamping bound; "
-                    "they are served at unstamped addresses and revalidated",
-                    self.root,
-                )
             return self._latest
 
     def latest(self) -> TreeStamp | None:
@@ -218,22 +240,22 @@ class StampedTree:
         return self._latest
 
 
-def static_file_stamp(path: Path) -> str | None:
-    """The ``?v=`` token of one static file now, or None when it cannot be read."""
-    try:
-        return file_mtime_hash(path)
-    except OSError:
-        return None
-
-
 class StampedStaticFiles(StaticFiles):
-    """``/static``, immutable at the address that names a file's current stamp.
+    """``/static``, immutable at the address that names a file's current bytes.
 
-    The shell writes every static URL with ``?v=`` (``_static_asset_url`` in
-    ``server.py``). A request whose stamp is the file's stamp now is answered
+    The shell writes every static URL with ``?v=`` and the digest of the file's bytes
+    from *tree*'s stamp (``_static_asset_url`` in ``server.py``). A request whose ``v`` is
+    that digest, for a file that still has the stat it was read with, is answered
     ``immutable``; a missing or different one -- an older page, or a hand-written URL --
-    is ``no-cache``, so it is revalidated rather than kept under the wrong address.
+    is ``no-cache``, so it is revalidated rather than kept under the wrong address. The
+    digest names bytes, not a name, size, and time, so a packager that normalizes times
+    cannot give two releases one address (review C of #372, C3).
     """
+
+    def __init__(self, *, directory: Path, tree: StampedTree) -> None:
+        super().__init__(directory=directory)
+        self._tree = tree
+        self._root = directory.resolve()
 
     def file_response(
         self,
@@ -244,7 +266,14 @@ class StampedStaticFiles(StaticFiles):
     ) -> Response:
         response = super().file_response(full_path, stat_result, scope, status_code)
         requested = QueryParams(scope.get("query_string", b"")).get("v")
-        current = requested is not None and requested == static_file_stamp(Path(full_path))
+        stamp = self._tree.latest() if requested is not None else None
+        current = False
+        if stamp is not None:
+            try:
+                rel = Path(full_path).resolve().relative_to(self._root).as_posix()
+            except ValueError:
+                rel = ""
+            current = requested == stamp.digests.get(rel) and stamp.holds(rel, stat_result)
         # Set on the 304 too: a revalidation's answer refreshes the headers a browser holds.
         response.headers["cache-control"] = stamped_asset_cache_control(current=current)
         return response
@@ -258,5 +287,4 @@ __all__ = [
     "TreeStamp",
     "content_digest",
     "split_stamp",
-    "static_file_stamp",
 ]

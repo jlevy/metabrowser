@@ -327,8 +327,9 @@ def serve_until_interrupted(
         kpress_adapter.prepare_browser_assets()
     except (ImportError, kpress_adapter.KPressAssetNotFoundError) as exc:
         raise CLIError(f"KPress cannot provide the browser shell's assets: {exc}") from exc
-    # The same for the plugins' asset stamps: read their files now, not on the first page.
-    server.prepare_plugin_asset_stamps()
+    # The same for the static and plugin asset stamps: read their files now, not on the
+    # first page.
+    server.prepare_asset_stamps()
 
     try:
         actual_port = find_available_local_port(host, port_search_range(port))

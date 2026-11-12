@@ -233,10 +233,10 @@ def test_a_live_tree_rehashes_only_after_a_stat_moved(
     hashed = 0
     real = asset_stamps._hash_tree  # pyright: ignore[reportPrivateUsage]
 
-    def counted(root: Path, signature: tuple[tuple[str, int, int], ...], max_bytes: int) -> object:
+    def counted(root: Path, signature: tuple[tuple[str, tuple[int, int, int, int]], ...]) -> object:
         nonlocal hashed
         hashed += 1
-        return real(root, signature, max_bytes)
+        return real(root, signature)
 
     monkeypatch.setattr(asset_stamps, "_hash_tree", counted)
     tree = StampedTree(tmp_path, live=True)
@@ -257,6 +257,79 @@ def test_a_tree_past_the_bound_is_not_stamped(tmp_path: Path) -> None:
     answer = _plugin_client(plugin, tree).get(f"{prefix}/index.js")
     assert answer.headers["cache-control"] == "no-cache"
     assert StampedTree(tmp_path, live=True, max_bytes=4).stamp() is None
+
+
+def test_a_rewrite_that_restores_size_and_time_is_not_the_stamped_file(tmp_path: Path) -> None:
+    """Review C of #372, C2: a same-size replacement with its modification time restored,
+    as npm's fixed 1985 time gives, still moves the change time, so it is revalidated and
+    the next stamp names its bytes."""
+    plugin = _fixture_plugin(tmp_path)
+    tree = StampedTree(tmp_path, live=True)
+    prefix = plugin_asset_prefix("fixture", tree)
+    client = _plugin_client(plugin, tree)
+    part = tmp_path / "part.js"
+    times = (499_187_700_000_000_000, 499_187_700_000_000_000)
+    os.utime(part, ns=times)
+    prefix = plugin_asset_prefix("fixture", tree)
+    part.write_text("export const part = 9;\n")  # the same size as before
+    os.utime(part, ns=times)
+    answer = client.get(f"{prefix}/part.js")
+    assert answer.text == "export const part = 9;\n"
+    assert answer.headers["cache-control"] == "no-cache"
+    assert plugin_asset_prefix("fixture", tree) != prefix
+
+
+def test_tooling_under_a_plugin_directory_is_not_part_of_its_stamp(tmp_path: Path) -> None:
+    (tmp_path / "index.js").write_text("x\n")
+    (tmp_path / "node_modules" / "dep").mkdir(parents=True)
+    (tmp_path / "node_modules" / "dep" / "index.js").write_text("y\n")
+    stamp = StampedTree(tmp_path, live=True).stamp()
+    assert stamp is not None and set(stamp.files) == {"index.js"}
+
+
+def test_a_live_tree_past_the_bound_is_walked_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review B of #372, B5: it used to be walked, and given up on, for every page."""
+    from metabrowser import asset_stamps
+
+    for index in range(4):
+        (tmp_path / f"{index}.js").write_text("x\n")
+    walks = 0
+    real = asset_stamps._signature  # pyright: ignore[reportPrivateUsage]
+
+    def counted(root: Path, max_files: int) -> object:
+        nonlocal walks
+        walks += 1
+        return real(root, max_files)
+
+    monkeypatch.setattr(asset_stamps, "_signature", counted)
+    tree = StampedTree(tmp_path, live=True, max_files=3)
+    assert tree.stamp() is None and tree.stamp() is None
+    assert walks == 1 and tree.settled
+
+
+def test_a_static_file_is_stamped_by_its_bytes(tmp_path: Path) -> None:
+    """Review C of #372, C3: a name, size, and time token gave two releases one address
+    when a packager normalizes times; the digest of the bytes cannot."""
+    from metabrowser.asset_stamps import StampedStaticFiles
+
+    (tmp_path / "app.js").write_text("one();\n")
+    tree = StampedTree(tmp_path, live=True)
+    stamp = tree.stamp()
+    assert stamp is not None
+    client = TestClient(StampedStaticFiles(directory=tmp_path, tree=tree))
+    digest = stamp.digests["app.js"]
+    assert client.get(f"/app.js?v={digest}").headers["cache-control"] == IMMUTABLE
+    times = (499_187_700_000_000_000, 499_187_700_000_000_000)
+    (tmp_path / "app.js").write_text("two();\n")  # same size, same name
+    os.utime(tmp_path / "app.js", ns=times)
+    stale = client.get(f"/app.js?v={digest}")
+    assert stale.text == "two();\n"
+    assert stale.headers["cache-control"] == "no-cache"
+    fresh = tree.stamp()
+    assert fresh is not None and fresh.digests["app.js"] != digest
+    assert client.get(f"/app.js?v={fresh.digests['app.js']}").headers["cache-control"] == IMMUTABLE
 
 
 def test_only_a_well_formed_stamp_segment_is_a_stamp() -> None:
@@ -289,9 +362,15 @@ def test_kpress_css_off_the_current_stamp_is_revalidated(client: TestClient) -> 
         answer = client.get(url)
         assert answer.status_code == 200, url
         assert answer.headers["cache-control"] == "no-cache", url
-    # Fonts are kept hard at any address, as before.
+    # A font at the version-keyed address, with no stamp, is kept hard as it always was;
+    # under a stamp that is not current it is revalidated like the rest (review C, C4).
     font = client.get(f"/kpress-static/{version}/fonts/pt-serif-latin-400-normal.woff2")
     assert font.headers["cache-control"] == IMMUTABLE
+    old_stamp = client.get(
+        f"/kpress-static/@0123456789abcdef/{version}/fonts/pt-serif-latin-400-normal.woff2"
+    )
+    assert old_stamp.status_code == 200
+    assert old_stamp.headers["cache-control"] == "no-cache"
 
 
 def test_the_shell_and_kpress_renders_name_the_same_stamped_assets(client: TestClient) -> None:

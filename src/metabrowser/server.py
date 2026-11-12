@@ -52,7 +52,6 @@ from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
-from urllib.parse import quote
 
 from starlette.applications import Starlette
 from starlette.datastructures import MutableHeaders
@@ -74,7 +73,7 @@ from strif import file_mtime_hash
 from metabrowser import __version__, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
-from metabrowser.asset_stamps import StampedStaticFiles, split_stamp
+from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
@@ -111,6 +110,7 @@ from metabrowser.gz_io import (
 from metabrowser.http_caching import (
     BUILD_TAG,
     build_scoped_etag,
+    editable_install,
     etag_headers,
     matches_if_none_match,
     stamped_asset_cache_control,
@@ -541,6 +541,8 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 # without restarting the server because the next shell names a new stamp.
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
+# The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
+_STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -1262,14 +1264,16 @@ def _display_root_str() -> str:
 
 
 def _static_asset_url(rel_path: str) -> str:
-    """Return a local static URL with an mtime-based cache buster."""
+    """A local static URL stamped with the digest of the file's bytes.
 
-    target = STATIC_DIR / rel_path
-    try:
-        version = quote(str(file_mtime_hash(target)), safe="")
-    except OSError:
-        return f"/static/{rel_path}"
-    return f"/static/{rel_path}?v={version}"
+    The digest is from the stamp :func:`_shell_asset_prefixes` took for this page, or, in a
+    process that has not rendered one, a stamp taken now. A file the stamp does not name
+    gets the unstamped address, which is revalidated.
+    """
+
+    stamp = _STATIC_TREE.latest() or _STATIC_TREE.stamp()
+    digest = stamp.digests.get(rel_path) if stamp is not None else None
+    return f"/static/{rel_path}" if digest is None else f"/static/{rel_path}?v={digest}"
 
 
 # Interface-font sets offered by the settings dropdown. The first entry is the
@@ -1378,6 +1382,9 @@ async def index(
     as a startup script. *pull_list* is set by the list's route. At either address a
     repository's shell draws the Pulls tab in front, so its first paint is not the Files tree.
     """
+    # Every asset address on the page names the stamps taken here, in a thread for a live
+    # tree, so this comes before the first one is written.
+    plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
 
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
@@ -1784,7 +1791,6 @@ async def index(
     # should not wait for Markdown, structured-data, diff, and log modules
     # before its first tree row. The manifest remains the source of every URL;
     # core does not special-case plugin names.
-    plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
     plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
@@ -3667,15 +3673,18 @@ async def kpress_static_asset(request: Request) -> Response:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
     is_font = rel.rsplit(".", 1)[-1].lower() in {"woff2", "woff", "ttf", "otf"}
-    # Fonts are cached hard at any address. They are large, stable for a given KPress
-    # version, and not edited during local development. Metabrowser is opened often, so
-    # an immutable cache means repeat visits pay zero font bytes and skip the
-    # revalidation round-trip before first paint. CSS and JS are, at a current stamp; at
-    # an old or missing one they are revalidated against the content-addressed ETag: a
-    # 304 when unchanged, fresh bytes the moment an asset changes.
+    # Immutable at the current stamp, and revalidated at an old one against the
+    # content-addressed ETag: a 304 when unchanged, fresh bytes the moment an asset
+    # changes. A font at an address with no stamp at all, the version-keyed one a KPress
+    # past the stamping bound is named by, is still kept hard, as it always was: it is
+    # large, stable for a KPress version, and never edited in development. Under an old
+    # stamp it is not, or a page from before an in-place upgrade would keep the new font
+    # under the old stamp's address (review C of #372, C4).
     headers = {
         "ETag": asset.etag,
-        "Cache-Control": stamped_asset_cache_control(current=current or is_font),
+        "Cache-Control": stamped_asset_cache_control(
+            current=current or (is_font and stamp_digest is None)
+        ),
     }
     if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
@@ -4151,16 +4160,18 @@ def _plugin_asset_prefixes() -> dict[str, str]:
     }
 
 
-def prepare_plugin_asset_stamps() -> None:
-    """Stamp every plugin's tree, so the first page names its assets without reading them.
+def prepare_asset_stamps() -> None:
+    """Stamp the static tree and every plugin's, so the first page reads none of them.
 
     Serve calls this before Uvicorn starts, beside ``kpress_adapter.prepare_browser_assets``.
     """
+    _STATIC_TREE.stamp()
     _plugin_asset_prefixes()
 
 
 async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
-    """The plugin and KPress asset prefixes a shell names, without a walk on the event loop.
+    """The plugin and KPress asset prefixes a shell names, and the static tree's stamp,
+    without a walk on the event loop.
 
     A released tree is stamped once and answers at once. A live one -- an editable install
     or an operator's plugin directory -- takes its stamp again for every page, a ``stat``
@@ -4168,10 +4179,13 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
     """
 
     def prefixes() -> tuple[dict[str, str], str]:
+        _STATIC_TREE.stamp()
         return _plugin_asset_prefixes(), kpress_adapter.kpress_asset_url_prefix()
 
-    settled = kpress_adapter.kpress_asset_prefix_settled() and all(
-        tree.settled for tree in _PLUGIN_ASSET_TREES.values()
+    settled = (
+        _STATIC_TREE.settled
+        and kpress_adapter.kpress_asset_prefix_settled()
+        and all(tree.settled for tree in _PLUGIN_ASSET_TREES.values())
     )
     return prefixes() if settled else await asyncio.to_thread(prefixes)
 
@@ -4359,7 +4373,9 @@ routes = [
     Route("/raw", raw_file),
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
-    Mount("/static", app=StampedStaticFiles(directory=STATIC_DIR), name="static"),
+    Mount(
+        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+    ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
     # modes, separate resource bounds.
