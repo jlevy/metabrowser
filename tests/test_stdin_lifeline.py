@@ -66,6 +66,37 @@ def test_the_watcher_reads_everything_and_calls_back_once_at_eof() -> None:
     os.close(read_end)
 
 
+def test_a_nonblocking_stdin_that_is_empty_for_now_has_not_ended() -> None:
+    """A stdin inherited with ``O_NONBLOCK`` reads ``EAGAIN`` while its writer is alive.
+
+    That is a pipe with nothing in it yet, not an end, so the watcher waits for it to be
+    readable and goes on reading; only the writer's close stops the server.
+    """
+
+    read_end, write_end = os.pipe()
+    # Only the read end: the test's own writes below block, as a parent's would.
+    os.set_blocking(read_end, False)
+    calls: list[int] = []
+    done = threading.Event()
+
+    def on_eof() -> None:
+        calls.append(1)
+        done.set()
+
+    watcher = watch_for_eof(on_eof, fd=read_end)
+    try:
+        # A watcher that takes EAGAIN for the end calls back at once; this one waits.
+        assert not done.wait(0.3)
+        os.write(write_end, b"x" * (1 << 20))
+        assert not done.is_set()
+    finally:
+        os.close(write_end)
+    assert done.wait(_EXIT_TIMEOUT_S)
+    watcher.join(_EXIT_TIMEOUT_S)
+    assert calls == [1]
+    os.close(read_end)
+
+
 def test_a_stdin_that_is_not_open_is_refused_before_serving() -> None:
     read_end, write_end = os.pipe()
     os.close(read_end)
