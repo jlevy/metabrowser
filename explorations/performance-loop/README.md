@@ -644,6 +644,126 @@ It is not accepted by `record`: the initial-load ledger and its budgets use a di
 schema. Run at least three visible-Chrome captures for each condition, alternate
 condition order, and keep the repository and selected subjects unchanged.
 
+### Transition Navigation Scenario
+
+Use this scenario when the hypothesis is about how a UI transition looks: whether a main
+tab switch, a revisit, a pull request page, or a view tab paints its destination at
+once, without a blank or loading frame, and without moving content that is already on
+screen. It is the instrument for the transition campaign (`mb-mpo0`), and
+[exp-058](experiments/exp-058-transition-baseline.md) is its baseline.
+
+One series runs every journey on one or two builds of `metab` against a frozen checkout:
+
+```shell
+node explorations/performance-loop/transitions.mjs run --exp exp-NNN \
+  --corpus /path/to/frozen-checkout --runs 5 \
+  --condition control=/envs/control/.venv/bin/metab \
+  --condition candidate=/envs/candidate/.venv/bin/metab
+node explorations/performance-loop/transitions.mjs summarize .bench/transitions/exp-NNN/runs.jsonl
+node explorations/performance-loop/transitions.mjs compare .bench/transitions/exp-NNN/runs.jsonl \
+  --control control --candidate candidate
+```
+
+It needs Node 24 and Chrome (`CHROME_BIN` overrides the macOS default) and adds no
+dependency. A run of every journey took about seven minutes at a load average near 8,
+half of it the warm-up pass.
+`--journeys` narrows a diagnostic run; `--headed` shows the window; `--no-warmup`
+measures a cold server and is not the standard regime.
+
+**The regime.** Each run starts a fresh server from the condition’s `metab` on a free
+port in 8890–8899, waits for its inventory to complete, runs every journey once
+unrecorded, then runs them again measured.
+Each journey opens its own fresh Chrome profile, so the browser is cold (empty HTTP
+cache, new document) while the server is warm: whatever it caches in memory or in its
+state directory holds what the warm-up pass asked for.
+Each condition keeps one cache and configuration directory
+(`.bench/transitions/<exp>/state/<label>/`, passed as `--cache-dir` and `--config-dir`)
+across its runs, so GitHub records are read from cache and network variance stays out of
+the measured pass. The server still refreshes the pull request catalog on its own
+schedule, so that work can overlap a run.
+Two conditions alternate within each pair: the first `--condition` leads odd pairs and
+the second leads even ones (`--order fixed` keeps the given order).
+The viewport is 1440×900 at device scale 1, headless by default, and input is trusted
+CDP pointer and key events; driver-owned scrolling and the hit test happen before the
+clock starts.
+
+**Subjects are named by identity.** The Commits list walks the checkout’s trunk refs and
+the Pulls list follows GitHub, so both move while the corpus files stay frozen.
+`SUBJECTS` in `transitions-journeys.mjs` names every file by path, every commit by full
+ID, and every pull request by number, and a subject that is not listed refuses the run
+instead of measuring a neighbor.
+Each row records the trunk commit and the catalog totals it saw.
+
+| Journey | Transitions |
+| --- | --- |
+| `landing` | Cold landing on a Markdown file, then a reload |
+| `files` | Eight cold file clicks across kinds, four revisits, history back and forward, hover then click |
+| `keyboard` | ArrowDown to three cold neighbors, ArrowUp to two revisits |
+| `views` | View tab first visit and two revisits for Markdown, JSON, and a folder’s Overview and Treemap |
+| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected |
+| `commits` | Commits first show, three cold commits, two revisits, hover then click |
+| `pulls` | Pulls first show, list to pull request, its tabs first and again, pull request to pull request cold, revisit, and after a hover, history back, and Changes to another pull request |
+| `tree` | Folder expand, collapse, re-expand, and a nested expand |
+
+**What each transition records.** Painted ready is measured from the input event’s own
+`timeStamp` (the first `pointerdown`, `keydown`, or `popstate`; navigation start for a
+landing) to the start of the frame after the first frame that showed the exact requested
+subject with useful content and no mounted placeholder.
+The recorder samples in a task posted from `requestAnimationFrame`, after that frame’s
+layout and paint, and credits a frame only when no DOM change followed its rAF; an
+uncredited frame reads no geometry, so the recorder never forces a layout.
+Beside it, per transition:
+
+- blank frames (the preview showed no useful content, a prompt included), frames with a
+  visible placeholder in the preview, and frames with one in the active navigation
+  panel; a placeholder clipped by a collapsed or scrolled ancestor does not count;
+- the movement of each named region (`REGIONS` in `transitions-recorder.mjs`), as the
+  largest frame-to-frame `dx`, `dy`, `dw`, and `dh` of its post-layout box, and
+  `region_movement_px`, the largest of the components each region tracks;
+- Layout Instability entries with value, `hadRecentInput`, and their sources;
+- requests by class (`data`, `plugin`, `static`, `kpress`, `background` for the Pulls
+  catalog walk, `stream`, `document`, `other`), from the page and its workers, and
+  duplicate requests for the selected subject per route;
+- top-level preview nodes replaced, Long Tasks, Long Animation Frames, Event Timing, the
+  application’s own `…ToReady` spans, and the DOM node count.
+
+**Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
+`compare` leave it out, when any of these fails anywhere in its measured pass:
+
+- `build_identity`: the version line the server renders equals `metab --version` for the
+  condition, and the server says it serves the corpus on the port the run chose;
+- `visibility` and `viewport`: `visibilityState` stayed `visible` in every frame, and
+  the viewport was at least 1440×900 at every transition;
+- `raf`: at least two animation frames arrived after each input;
+- `page_exceptions` and `rendered_errors`: no uncaught exception in the page or its
+  workers, and no visible `role="alert"` or `.preview-error` in the preview or the
+  active navigation panel;
+- `converged`: each transition became ready within its timeout and, after settling, the
+  route, selected row, rendered subject, active tab, and mounted owner all agree;
+- `input_observed`, `hit_test`, `target_missing`, `subject_missing`, and `setup`: the
+  trusted input reached the page, a press at the target’s center lands on it, and every
+  subject and setup step was found.
+
+**How a round uses it.** Run the control and the candidate in one series, at least five
+runs each, then `compare`. It refuses fewer than three valid runs per condition, runs on
+different corpus commits, and a condition that pools two builds; it notes a mixed
+harness or Chrome version and an A/A comparison.
+For each transition and metric it prints the medians, the ranges, and for times the
+candidate-to-control ratio, then lists every metric whose ranges do not overlap.
+A time is a result only when its ranges are apart and the ratio is beyond `--tolerance`
+(1.3 by default, the rough cut on this loaded machine; it must be below 2). Counts are
+judged on their ranges alone.
+Prefer counts: blank frames, requests, replacements, and movement do not depend on the
+load average, and times do.
+Write the verdict with the accept rule below, and say what did not move.
+
+**Limits.** Headless Chrome only; the native app’s WebKit is not measured.
+Painted ready is an upper bound quantized to one frame, and a product
+`requestAnimationFrame` callback that mutates the DOM after the recorder’s can delay the
+credited frame by one.
+The Pulls catalog walk runs for about the first minute of every page load and overlaps
+most journeys; its requests are counted as `background`, not as data.
+
 ### Start-Up Work, in Pairs
 
 Every probe above starts once a tree is being served.
