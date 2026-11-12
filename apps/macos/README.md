@@ -1,6 +1,8 @@
 # Metabrowser for macOS
 
-**Status:** Spike. This is step 1 of Option D in the
+**Status:** Alpha preview: a development build, built from source and not yet a signed
+or notarized release, and it may change.
+This is step 1 of Option D in the
 [macOS app research brief](../../docs/project/research/research-2026-11-08-macos-app-packaging.md):
 a hand-written Swift app that uses an existing command-line install of `metab`.
 
