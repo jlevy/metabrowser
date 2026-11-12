@@ -34,6 +34,12 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
+  request’s Changes, exactly as its layout control does: where Split does not fit, `L`
+  chooses it with its sideways scroll, and the choice is remembered.
+  While Shift is held, the key shows on the layout it would choose.
+  Help lists it under Controls.
+
 - A pull request’s page answers to `C` for Conversation, `G` for Changes, and `H` for
   Checks, and shows those keys on its tabs while Shift is held.
   A key moves the address as a click on the tab does, so Back returns to the tab before.
