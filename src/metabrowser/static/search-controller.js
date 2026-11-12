@@ -25,6 +25,13 @@
   const LOCAL_FILE_PROVIDER_PRIORITY = 10;
   /** Keep a small overflow before pruning so insertion does not sort every match. */
   const RETAINED_RESULT_MULTIPLIER = 2;
+  /**
+   * Results are grouped by kind, in this order. Files answer from memory and pull
+   * requests from the server about 110 ms later, so the later group is appended
+   * below the rows already painted rather than ranked in among them, where it
+   * replaced the rows under the reader's selection.
+   */
+  const RESULT_KINDS = /** @type {const} */ (["file", "pull"]);
 
   /** @param {string} path */
   function knownFileDisplayPath(path) {
@@ -137,6 +144,7 @@
    * @typedef {object} MetabrowserSearchProvider
    * @property {"fallback" | "immediate"} [activation]
    * @property {string} id
+   * @property {"file" | "pull"} [kind] The kind of result it returns; files when unset.
    * @property {number} [priority]
    * @property {(request: MetabrowserSearchRequest, context: MetabrowserSearchContext,
    *   signal: AbortSignal) => MetabrowserSearchBatch | Promise<MetabrowserSearchBatch>} search
@@ -545,6 +553,7 @@
 
     return Object.freeze({
       id: PULL_PROVIDER_ID,
+      kind: /** @type {const} */ ("pull"),
       priority: PULL_PROVIDER_PRIORITY,
       search,
       supports,
@@ -575,8 +584,11 @@
    *   priority: number,
    * }>} registrations
    * @param {number} maxResults
+   * @param {ReadonlySet<string>} kinds The kinds the request's providers return. Each
+   *   has a fixed share of maxResults from the request's start, so a group that
+   *   answers later fills its own share and never displaces another group's rows.
    */
-  function composeResults(batches, registrations, maxResults) {
+  function composeResults(batches, registrations, maxResults, kinds) {
     /** @type {Map<string, MetabrowserSearchResult>} */
     const byIdentity = new Map();
     for (const [providerId, batch] of batches) {
@@ -624,10 +636,16 @@
         codeUnitCompare(left.providerId, right.providerId)
       );
     });
-    return {
-      resultLimitTruncated: allResults.length > maxResults,
-      results: Object.freeze(allResults.slice(0, maxResults)),
-    };
+    // A provider that returns a kind it did not declare still stays within the cap.
+    const groups = new Set([...kinds, ...allResults.map((result) => result.kind)]);
+    const share = Math.max(1, Math.floor(maxResults / Math.max(1, groups.size)));
+    let resultLimitTruncated = false;
+    const results = RESULT_KINDS.flatMap((kind) => {
+      const group = allResults.filter((result) => result.kind === kind);
+      resultLimitTruncated ||= group.length > share;
+      return group.slice(0, share);
+    });
+    return { resultLimitTruncated, results: Object.freeze(results) };
   }
 
   /** @param {{maxResults?: number}} [options] */
@@ -749,9 +767,14 @@
       /** @type {Map<string, string>} */
       const errors = new Map();
 
+      /** The kinds the started providers return, which fix each group's share. */
+      function startedKinds() {
+        return new Set(started.map(({ provider }) => provider.kind ?? "file"));
+      }
+
       /** @param {"searching" | "complete"} phase */
       function publishComposition(phase) {
-        const composition = composeResults(batches, registrations, maxResults);
+        const composition = composeResults(batches, registrations, maxResults, startedKinds());
         const batchMetadata = started.flatMap(({ provider }) => {
           const batch = batches.get(provider.id);
           return batch
@@ -862,7 +885,12 @@
       if (controller.signal.aborted || active?.requestId !== requestId) {
         return null;
       }
-      const immediateComposition = composeResults(batches, registrations, maxResults);
+      const immediateComposition = composeResults(
+        batches,
+        registrations,
+        maxResults,
+        startedKinds(),
+      );
       const immediateCoverageIncomplete =
         immediate.length === 0 ||
         errors.size > 0 ||

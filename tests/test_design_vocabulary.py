@@ -499,6 +499,20 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     for name in ("app.js", "tree-expansion.js"):
         source = (STATIC / name).read_text(encoding="utf-8")
         assert "tree-children-collapsed" in source, f"{name} lost the collapse class"
+    # A reveal the reader did not ask for lands in place. The rule must come
+    # after the travel it cancels, which has the same specificity.
+    instant = _rule(styles, ".tree-children-instant")
+    assert "transition: none" in instant, "the instant disclosure travels"
+    assert styles.index(".tree-children-instant {") > styles.index(".tree-children {")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    reveal = app[app.index("async function revealInTree(") :]
+    reveal = reveal[: reveal.index("\n}\n")]
+    assert "setFolderExpanded(folder, true, { instant: true })" in reveal, (
+        "navigation's reveal of a path animates the folders it opens"
+    )
+    toggle = app[app.index("async function toggleTreeFolder(") :]
+    toggle = toggle[: toggle.index("\n}\n")]
+    assert "instant" not in toggle, "a folder the reader clicked lands without travel"
 
 
 def test_inline_change_stats_are_bold() -> None:

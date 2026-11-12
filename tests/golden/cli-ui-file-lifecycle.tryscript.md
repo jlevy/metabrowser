@@ -181,6 +181,10 @@ pull-request page that could not load, never the prompt to select a file or the 
 that no plugin renders the page.
 Asking again fetches only what failed.
 
+A held arrow key replaces the address on every repeat, but reads and renders only the
+file it stops on: when the repeats stop, or at once when the key is let go.
+A single press opens its file at once.
+
 ```console
 $ node tests/dom/preview-pane-state-session.js
 {
@@ -994,6 +998,49 @@ $ node tests/dom/preview-pane-state-session.js
           ]
         }
       }
+    },
+    "heldKeyWalk": {
+      "afterPress": [
+        "a.md: default view"
+      ],
+      "afterRelease": [
+        "a.md: default view",
+        "f.md: default view",
+        "h.md: default view"
+      ],
+      "afterSettle": [
+        "a.md: default view",
+        "f.md: default view"
+      ],
+      "beforeRelease": [
+        "a.md: default view",
+        "f.md: default view"
+      ],
+      "fetches": {
+        "a.md": 1,
+        "b.md": 0,
+        "c.md": 0,
+        "d.md": 0,
+        "e.md": 0,
+        "f.md": 1,
+        "g.md": 0,
+        "h.md": 1
+      },
+      "keys": [
+        "press a.md: address /view/a.md",
+        "repeat b.md: address /view/b.md",
+        "repeat c.md: address /view/c.md",
+        "repeat d.md: address /view/d.md",
+        "repeat e.md: address /view/e.md",
+        "repeat f.md: address /view/f.md"
+      ],
+      "releaseKeys": [
+        "repeat g.md: address /view/g.md",
+        "repeat h.md: address /view/h.md"
+      ],
+      "whileHeld": [
+        "a.md: default view"
+      ]
     }
   }
 }

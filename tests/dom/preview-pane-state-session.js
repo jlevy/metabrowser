@@ -2,7 +2,7 @@
 //
 // The module scenarios call the pane lifecycle and failure classifiers in
 // navigation.js directly. The `shell` scenarios run the app.js functions that
-// compose them (selectFile, applyNavigationTarget, navigateToPath,
+// compose them (selectFile, applyNavigationTarget, navigateToPath, openTreeRow,
 // activateNavPanel, the inventory stream's onopen, and the startup settle),
 // extracted verbatim and executed with the real navigation module and
 // controller, so that wiring cannot regress behind a source-string assertion.
@@ -372,6 +372,7 @@ const SHELL_FUNCTIONS = [
   "addressedView",
   "applyNavigationTarget",
   "navigateToPath",
+  "openTreeRow",
 ];
 
 const shellSource = [
@@ -711,6 +712,8 @@ function createShell(pathname, network, options = {}) {
     catalogFeedCanStart: false,
     inventoryEventSource: null,
     pageConnections: { suspended: () => false },
+    // The Files tree's keyboard layer, which only a held-key scenario installs.
+    treeKeyboard: null,
     lastInventorySnapshot: null,
     quickFileCatalogFeed: {
       release() {},
@@ -1608,6 +1611,61 @@ async function onDemandCodeRefused() {
   };
 }
 
+async function heldKeyWalk() {
+  // A held arrow key moves the selection and replaces the address on every
+  // repeat, and the file the walk stops on is the only one read and rendered:
+  // when the repeats stop, or at once when the key is let go. A single press
+  // opens at once. The walk is tree-keyboard-navigation.js's, and each key does
+  // what its focusAndOpen does: step the walk, then open the row.
+  const shell = createShell("/view/", (requested) =>
+    Promise.resolve(jsonResponse({ kind: "text", path: requested })),
+  );
+  await shell.sandbox.navigationController.start();
+  await settle();
+  const scriptPath = path.join(staticDir, "tree-keyboard-navigation.js");
+  vm.runInContext(fs.readFileSync(scriptPath, "utf8"), shell.sandbox, { filename: scriptPath });
+  const walk = shell.sandbox.MetabrowserTreeKeyboardNavigation.createWalk();
+  shell.sandbox.treeKeyboard = { walking: walk.walking };
+
+  async function key(pathName, repeat) {
+    walk.step(pathName, repeat);
+    shell.sandbox.openTreeRow({ dataset: { path: pathName } });
+    await settle();
+    return `${repeat ? "repeat" : "press"} ${pathName}: address ${shell.sandbox.location.pathname}`;
+  }
+  const renderedBefore = shell.renderedViews.length;
+  const keys = [await key("a.md", false)];
+  const afterPress = shell.renderedViews.slice(renderedBefore);
+  for (const name of ["b.md", "c.md", "d.md", "e.md", "f.md"]) {
+    keys.push(await key(name, true));
+  }
+  const whileHeld = shell.renderedViews.slice(renderedBefore);
+  // The quiet period after the last repeat elapses.
+  shell.elapseLoadingDelay();
+  await settle();
+  const afterSettle = shell.renderedViews.slice(renderedBefore);
+  const releaseKeys = [await key("g.md", true), await key("h.md", true)];
+  const beforeRelease = shell.renderedViews.slice(renderedBefore);
+  // Letting the key go is what the tree's keyup does.
+  walk.end();
+  await settle();
+  return {
+    afterPress,
+    afterRelease: shell.renderedViews.slice(renderedBefore),
+    afterSettle,
+    beforeRelease,
+    fetches: Object.fromEntries(
+      ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md"].map((name) => [
+        name,
+        shell.fetches(name),
+      ]),
+    ),
+    keys,
+    releaseKeys,
+    whileHeld,
+  };
+}
+
 async function shell() {
   const pulls = createShell("/pulls", refusedFetch);
   const preview = pulls.sandbox.document.getElementById("preview-pane");
@@ -1643,6 +1701,7 @@ async function shell() {
     coldAnchoredAddress: await coldAnchoredAddress(),
     pullRouteLoadsOnDemand: await pullRouteLoadsOnDemand(),
     onDemandCodeRefused: await onDemandCodeRefused(),
+    heldKeyWalk: await heldKeyWalk(),
   };
 }
 

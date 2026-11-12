@@ -256,8 +256,30 @@ function group(document, id) {
   return value;
 }
 
+// A held key's walk settles on a timer. These stand in for the page's, and a
+// scenario runs them when it says that much time passed.
+const timers = new Map();
+let nextTimer = 1;
+function runTimers() {
+  const due = Array.from(timers.values());
+  timers.clear();
+  for (const callback of due) {
+    callback();
+  }
+}
+
 const document = new FakeDocument();
-const sandbox = { document, queueMicrotask };
+const sandbox = {
+  clearTimeout: (id) => timers.delete(id),
+  document,
+  queueMicrotask,
+  setTimeout: (callback) => {
+    const id = nextTimer;
+    nextTimer += 1;
+    timers.set(id, callback);
+    return id;
+  },
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -686,9 +708,113 @@ for (const [label, focusedKey] of [
   earlyShortcuts.dispose();
 }
 
-if (failures.length > 0) {
-  console.error(failures.join("\n"));
-  process.exitCode = 1;
-} else {
-  console.log("OK tree keyboard navigation behavior");
+/** Whether *promise* has settled once pending callbacks ran. */
+async function settled(promise) {
+  let done = false;
+  void promise.then(() => {
+    done = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  return done;
 }
+
+// A held arrow key walks: every repeat selects its row and opens its address at
+// once, so the shell can update the selection and route, and only the row the
+// walk stops on is read and rendered. The shell's navigation waits on
+// walking(path) before it reads the file; a single press is never held.
+async function walkSession() {
+  const walkDocument = new FakeDocument();
+  const walkContainer = walkDocument.createElement("nav");
+  const walkRoot = walkDocument.createElement("div");
+  walkRoot.setAttribute("role", "tree");
+  walkContainer.append(walkRoot);
+  walkDocument.body.append(walkContainer);
+  const rows = ["a", "b", "c", "d", "e", "f", "g", "h"].map((name) =>
+    treeItem(walkDocument, "file", `file:${name}.md`, `${name}.md`),
+  );
+  walkRoot.append(...rows);
+  const walkShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: walkDocument });
+  /** Each open, with whether its navigation is held by a walk. */
+  const opened = [];
+  const walkNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: walkContainer,
+    document: walkDocument,
+    navigate(row) {
+      opened.push([row.dataset.path, walkNavigator.walking(row.dataset.path) !== null]);
+    },
+    setFolderExpanded() {},
+    shortcuts: walkShortcuts,
+  });
+  rows[0].focus();
+  walkContainer.dispatch("focusin", { target: rows[0] });
+
+  const press = (repeat) => {
+    const keyEvent = keyboardEvent("ArrowDown", walkDocument.activeElement, { repeat });
+    walkDocument.dispatch(keyEvent);
+    return keyEvent.defaultPrevented;
+  };
+  check("a single press is handled", press(false));
+  equal("a single press opens its row at once", opened, [["b.md", false]]);
+  check("a single press leaves no timer", timers.size === 0);
+
+  for (let index = 0; index < 5; index += 1) {
+    press(true);
+  }
+  equal("each repeat opens its row's address, held by the walk", opened.slice(1), [
+    ["c.md", true],
+    ["d.md", true],
+    ["e.md", true],
+    ["f.md", true],
+    ["g.md", true],
+  ]);
+  check("the walk follows the selection", walkDocument.activeElement === rows[6]);
+  check("rows the walk passed are no longer held", walkNavigator.walking("d.md") === null);
+  const stopped = walkNavigator.walking("g.md");
+  check("the row the walk is on is held", stopped !== null);
+  check("the walk holds its row while the key repeats", !(await settled(stopped)));
+  check("one timer waits for the next repeat", timers.size === 1);
+  runTimers();
+  check("the walk opens its row once the repeats stop", await settled(stopped));
+  check("a settled walk holds nothing", walkNavigator.walking("g.md") === null);
+
+  press(true);
+  const released = walkNavigator.walking("h.md");
+  check("a new repeat starts a walk", released !== null);
+  walkContainer.dispatch("keyup", { key: "ArrowDown", target: rows[7] });
+  check("releasing the key opens the row at once", await settled(released));
+  check("a release leaves no timer", timers.size === 0);
+
+  const upEvent = keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true });
+  walkDocument.dispatch(upEvent);
+  const interrupted = walkNavigator.walking("g.md");
+  check("Up repeats walk too", interrupted !== null);
+  press(false);
+  check("a single press ends the walk it interrupts", await settled(interrupted));
+  equal("the interrupting press is not held", opened.at(-1), ["h.md", false]);
+
+  const upAgain = keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true });
+  walkDocument.dispatch(upAgain);
+  const disposedWalk = walkNavigator.walking("g.md");
+  walkNavigator.dispose();
+  check("dispose ends the walk", await settled(disposedWalk));
+  check("dispose leaves no timer", timers.size === 0);
+  walkShortcuts.dispose();
+  check(
+    "the walk's settle period is the Pulls panel's",
+    sandbox.MetabrowserTreeKeyboardNavigation.WALK_SETTLE_MS === 120,
+  );
+}
+
+walkSession()
+  .catch((error) => {
+    failures.push(`walk session threw: ${error?.stack || error}`);
+  })
+  .then(() => {
+    if (failures.length > 0) {
+      console.error(failures.join("\n"));
+      process.exitCode = 1;
+    } else {
+      console.log("OK tree keyboard navigation behavior");
+    }
+  });

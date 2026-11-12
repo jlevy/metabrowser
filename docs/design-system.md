@@ -702,6 +702,12 @@ A native `details` keeps its state in `open` and takes the same recipe on
 `::details-content`, as a pull request hunk’s earlier lines do.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
 
+Only a toggle the reader asked for travels.
+When navigation reveals a path, as a link, Back, or Quick Search does, the tree opens
+the folders on the way with `.tree-children-instant`, which lands them in place.
+Animated, a deep reveal moved the rows below it 43–131 px a frame with no input.
+The reader’s next toggle of that folder travels again.
+
 ## Notices and Partial Content
 
 ### Notices
@@ -1331,6 +1337,10 @@ While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent m
 row and open it. K and J are aliases for Arrow Up and Arrow Down with the same guards;
 they never act from a text field and get no first-row or last-row meaning.
 Key repeat remains enabled for fast traversal.
+In the file tree, as in the Pulls tab, a held key selects each row and replaces the
+address as it reaches it, but opens only the row it stops on: when the key is let go, or
+120 ms after its last repeat.
+A single press opens its row at once.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
@@ -1451,6 +1461,13 @@ The empty prefix lists recent PRs, digits match number prefixes, and words match
 Use the same arrow, Enter, and Escape behavior for every result type.
 Keep the active option selected by identity as providers return, and open the result
 through its normal navigation route.
+
+File results lead, and pull requests follow as their own group.
+Files answer from memory and pull requests from the server about 110 ms later, so the
+later group is appended below the painted rows instead of ranked in among them, and a
+late answer never moves a file row or the selection.
+Each group the search runs has an equal share of the result cap, fixed when the search
+starts, so a full file group does not crowd out pull requests.
 
 ## Icons and Icon Buttons
 

@@ -114,16 +114,19 @@
   }
 
   /**
-   * Apply one disclosure state to both halves of a rendered folder.
+   * Apply one disclosure state to both halves of a rendered folder. An instant
+   * one, which the reader did not ask for, lands without travel.
    *
    * @param {HTMLElement} row
    * @param {HTMLElement} children
    * @param {boolean} expanded
+   * @param {boolean} [instant]
    */
-  function setFolderExpanded(row, children, expanded) {
+  function setFolderExpanded(row, children, expanded, instant = false) {
     // Class-driven so the stylesheet owns the travel (the shared
     // disclosure motion); inline display would jump-cut.
     children.classList.toggle("tree-children-collapsed", !expanded);
+    children.classList.toggle("tree-children-instant", instant);
     row.classList.toggle("expanded", expanded);
     row.classList.toggle("collapsed", !expanded);
   }

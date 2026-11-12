@@ -538,8 +538,9 @@
       renderResults();
       listbox.scrollTop = scrollTop;
       if (previousIndex >= 0 && activeIndex !== previousIndex) {
-        // A late provider can rank ahead of a selected row. Keep the same
-        // result selected and in view as its position changes.
+        // A late group is appended after the file rows, but a file catalog
+        // refresh can grow the files ahead of a selected pull request. Keep
+        // the same result selected and in view as its position changes.
         syncActiveOption(true);
       }
       renderStatus();

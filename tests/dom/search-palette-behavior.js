@@ -1252,10 +1252,15 @@ async function pullSearchSession() {
   ]);
   key("ArrowDown");
   const beforeMerge = currentChoice();
-  let selectedAfterInsertion = null;
+  const selectedIndexBeforeMerge = listbox.children.findIndex(
+    (row) => row.getAttribute("aria-selected") === "true",
+  );
+  let selectedIndexAfterInsertion = null;
   const unsubscribe = controller.subscribe((state) => {
     if (state.phase === "searching" && state.results.some((result) => result.kind === "pull")) {
-      selectedAfterInsertion = listbox.children[2];
+      selectedIndexAfterInsertion = listbox.children.findIndex(
+        (row) => row.getAttribute("aria-selected") === "true",
+      );
     }
   });
   delayed.resolve(reply([readyPull], { complete: false, refreshing: true }));
@@ -1268,11 +1273,15 @@ async function pullSearchSession() {
   const mixed = choices();
   const afterMerge = currentChoice();
   equal("a late PR preserves the selected file", afterMerge, beforeMerge);
-  equal("one file and one PR of the same rank both stay near the top", mixed, [
+  // Pull requests are their own group after the files, so the PR that answers
+  // later is appended below the painted file rows and never moves one.
+  equal("a late PR is appended after the file rows", mixed, [
     "render.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
     "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged",
   ]);
+  equal("a late PR leaves every painted file row in place", mixed.slice(0, 2), firstPaint);
+  const mixedPull = mixed[2];
   const pullOption = listbox.querySelector(".search-palette-option-pull");
   check(
     "the title renders as text, even with tag-like content",
@@ -1280,10 +1289,14 @@ async function pullSearchSession() {
   );
   const titleHighlight = pullOption.querySelector("mark").textContent;
   const details = pullOption.querySelector(".search-palette-description").textContent;
-  check("a late insertion keeps the selected row in view", selectedAfterInsertion?.scrollCalls > 0);
+  equal(
+    "a late PR leaves the selected file row where it was",
+    selectedIndexAfterInsertion,
+    selectedIndexBeforeMerge,
+  );
 
-  key("ArrowUp");
-  equal("the first cached PR can be selected during backfill", currentChoice(), mixed[1]);
+  key("ArrowDown");
+  equal("the first cached PR can be selected during backfill", currentChoice(), mixedPull);
   catalog.observeRecent([{ path: "z/render-guide.md", type: "file" }]);
   catalog.observeRecent([{ path: "z/render-notes.md", type: "file" }]);
   await waitMs(220);
@@ -1300,11 +1313,12 @@ async function pullSearchSession() {
   const truncatedStatus = progress.textContent;
   equal("newly cached PRs update the standing title query", grown, [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
-    mixed[1],
+    "Pull request #124, Render the latest state, Closed",
+    mixedPull,
   ]);
-  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixed[1]);
+  const grownPull = grown[2];
+  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixedPull);
   check(
     "the API result cap reaches the palette independently of its scan scope",
     truncatedStatus.includes("Showing the top matches.") && !truncatedStatus.includes("older"),
@@ -1319,7 +1333,7 @@ async function pullSearchSession() {
     "the deferred refresh finds newly indexed files",
     afterFileGrowth.includes("z/render-guide.md") && afterFileGrowth.includes("z/render-notes.md"),
   );
-  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixed[1]);
+  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixedPull);
 
   const limitedComplete = searchCompletes();
   type("older");
@@ -1335,7 +1349,7 @@ async function pullSearchSession() {
   type("#");
   const recentsSignal = await recentsRecheckStarted.promise;
   const recents = choices();
-  equal("a lone hash immediately shows the recent cached PRs", recents, [grown[1], mixed[1]]);
+  equal("a lone hash immediately shows the recent cached PRs", recents, [grownPull, mixedPull]);
   check("the lone hash does not highlight the title", listbox.querySelector("mark") === null);
 
   const prefixComplete = searchCompletes();
@@ -1343,12 +1357,12 @@ async function pullSearchSession() {
   key("Enter");
   equal("an obsolete row cannot open while the query changes", opened, []);
   const prefixSignal = await prefixRecheckStarted.promise;
-  equal("the numeric prefix shows cached matches while refreshing", choices(), [mixed[1]]);
+  equal("the numeric prefix shows cached matches while refreshing", choices(), [mixedPull]);
   const staleRequestAborted = recentsSignal.aborted;
   check("typing a prefix aborts the recent PR read", staleRequestAborted);
   recentsRecheck.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
   await settle();
-  equal("a superseded result cannot repaint the palette", choices(), [mixed[1]]);
+  equal("a superseded result cannot repaint the palette", choices(), [mixedPull]);
   prefixRecheck.resolve(
     reply([{ number: 12, title: "Exact number", state: "draft" }, newerPull, readyPull]),
   );
@@ -1357,10 +1371,10 @@ async function pullSearchSession() {
   const selectedAfterPrefixGrowth = currentChoice();
   equal("the exact PR precedes the other numeric prefix matches", prefix, [
     "Pull request #12, Exact number, Draft",
-    grown[1],
-    mixed[1],
+    grownPull,
+    mixedPull,
   ]);
-  equal("prefix growth keeps the same selected PR", selectedAfterPrefixGrowth, mixed[1]);
+  equal("prefix growth keeps the same selected PR", selectedAfterPrefixGrowth, mixedPull);
   check("number queries do not highlight titles", listbox.querySelector("mark") === null);
   check("the active prefix was not aborted", !prefixSignal.aborted);
 
@@ -1384,7 +1398,7 @@ async function pullSearchSession() {
   type("#123");
   await numberComplete;
   const exact = choices();
-  equal("a hash number limits the search to PRs", exact, [mixed[1]]);
+  equal("a hash number limits the search to PRs", exact, [mixedPull]);
   key("Enter");
   await settle();
   check(
@@ -1397,7 +1411,10 @@ async function pullSearchSession() {
   type("123");
   await bareComplete;
   const bare = choices();
-  equal("bare digits keep file matches and include the exact PR", bare, ["notes/123.md", mixed[1]]);
+  equal("bare digits keep file matches and include the exact PR", bare, [
+    "notes/123.md",
+    mixedPull,
+  ]);
   const barePull = listbox.querySelector(".search-palette-option-pull");
   barePull.dispatchEvent(fakeEvent("click", { target: barePull }));
   await settle();

@@ -1315,7 +1315,12 @@ type MetabrowserTreeExpansion = {
     maxVisibleRows: number,
     pageSize: number,
   ): Set<string>;
-  setFolderExpanded(row: HTMLElement, children: HTMLElement, expanded: boolean): void;
+  setFolderExpanded(
+    row: HTMLElement,
+    children: HTMLElement,
+    expanded: boolean,
+    instant?: boolean,
+  ): void;
   toggleFolderExpanded(row: HTMLElement, children: HTMLElement): boolean;
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
@@ -2254,9 +2259,18 @@ type MetabrowserTreeKeyboardApi = Readonly<{
   setSelectedPath(path: string | null | undefined): void;
   synchronize(snapshot?: MetabrowserTreeMutationSnapshot | null): Array<HTMLElement>;
   visibleRows(): Array<HTMLElement>;
+  walking(path: string): Promise<void> | null;
+}>;
+
+/** A held arrow key's walk through a tree: see tree-keyboard-navigation.js#createWalk. */
+type MetabrowserTreeWalk = Readonly<{
+  end(): void;
+  step(path: string | null, repeat: boolean): void;
+  walking(path: string): Promise<void> | null;
 }>;
 
 type MetabrowserTreeKeyboardRuntime = Readonly<{
+  WALK_SETTLE_MS: number;
   create(options: {
     activate(
       row: HTMLElement,
@@ -2267,6 +2281,7 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
     setFolderExpanded(row: HTMLElement, expanded: boolean): void | Promise<void>;
     shortcuts: MetabrowserShortcutRegistry;
   }): MetabrowserTreeKeyboardApi;
+  createWalk(): MetabrowserTreeWalk;
   firstChildRow(row: HTMLElement): HTMLElement | null;
   parentRow(row: HTMLElement): HTMLElement | null;
   readVisibleRows(container: HTMLElement): Array<HTMLElement>;

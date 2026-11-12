@@ -5,7 +5,8 @@ sandbox: false
 # Golden Test for Quick Search
 
 The production search controller and palette display file matches while a PR title
-lookup is pending. The selected file stays selected when the PR arrives.
+lookup is pending. Pull requests are their own group after the files, so the PR that
+arrives later is appended below them and the selected file stays where it was.
 The result shows the title, number, and state and opens with Enter or a click.
 A title query shows cached PRs while the catalog refreshes and keeps the selected PR as
 more results arrive.
@@ -34,16 +35,16 @@ $ node tests/dom/quick-search-pulls-session.js
   ],
   "mixed": [
     "render.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
-    "src/renderer.js"
+    "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "afterMerge": "src/renderer.js",
   "titleHighlight": "render",
   "details": "#123 · Merged",
   "grown": [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
+    "Pull request #124, Render the latest state, Closed",
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "selectedAfterGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
@@ -51,11 +52,11 @@ $ node tests/dom/quick-search-pulls-session.js
   "mixedKeptReading": true,
   "afterFileGrowth": [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
     "z/render-guide.md",
-    "z/render-notes.md"
+    "z/render-notes.md",
+    "Pull request #124, Render the latest state, Closed",
+    "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "selectedAfterFileGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
   "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",

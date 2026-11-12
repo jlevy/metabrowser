@@ -5067,6 +5067,14 @@ pre.code-block.metabrowser-source-lines > code {
   height: 0;
   visibility: hidden;
 }
+/* A disclosure the reader did not ask for, such as navigation revealing a
+   deep path, lands in place: animated, it moved the rows below 43-131 px a
+   frame with no input (Chrome 152). tree-expansion.js sets this class in the
+   same task as the height, so the style change that sees the new height sees
+   no transition, and the reader's next toggle clears it. */
+.tree-children-instant {
+  transition: none;
+}
 
 /* Container rows: a file that is also folder-like. Its chevron sits in
    the same 16px alignment box a folder's does, so names line up at every

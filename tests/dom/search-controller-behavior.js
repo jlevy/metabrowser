@@ -271,6 +271,69 @@ async function main() {
   check("one truncated provider keeps composition truncated", composed.truncated === true);
   compositionController.dispose();
 
+  // Files answer first and pull requests later. Each kind the request runs has a
+  // fixed share of the rows from its start, and files lead, so the late group is
+  // appended below the painted rows: it never moves a file row or displaces one.
+  const groupedController = sandbox.MetabrowserSearch.createController({ maxResults: 4 });
+  let answerPulls = () => {};
+  groupedController.registerProvider({
+    id: "files",
+    priority: 10,
+    search: async () => ({
+      complete: true,
+      providerId: "files",
+      results: ["a.md", "b.md", "c.md", "d.md"].map((name, index) => fileResult(name, 4 - index)),
+      truncated: false,
+    }),
+  });
+  groupedController.registerProvider({
+    id: "pulls",
+    kind: "pull",
+    priority: 15,
+    search: () =>
+      new Promise((resolve) => {
+        answerPulls = () =>
+          resolve({
+            complete: true,
+            providerId: "pulls",
+            results: [7, 8, 9].map((number, index) => ({
+              id: `pull:${number}`,
+              kind: "pull",
+              label: `PR ${number}`,
+              matchRanges: [],
+              number,
+              providerId: "pulls",
+              score: 4 - index,
+              state: "open",
+            })),
+            truncated: false,
+          });
+      }),
+  });
+  const rows = (state) =>
+    state.results.map((result) => (result.kind === "file" ? result.path : `#${result.number}`));
+  const groupedStates = [];
+  const unsubscribeGrouped = groupedController.subscribe((state) => {
+    groupedStates.push(rows(state));
+  });
+  const groupedSearch = groupedController.search({ match: "fuzzy", query: "x", target: "all" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const beforePulls = groupedStates.at(-1);
+  answerPulls();
+  const grouped = await groupedSearch;
+  unsubscribeGrouped();
+  equal("files paint their share before pull requests answer", beforePulls, ["a.md", "b.md"]);
+  equal("pull requests are appended after the files", rows(grouped), ["a.md", "b.md", "#7", "#8"]);
+  check(
+    "a late group never moves a painted row",
+    groupedStates.every((state, index) =>
+      groupedStates.slice(index + 1).every((later) => state.every((row, at) => later[at] === row)),
+    ),
+    JSON.stringify(groupedStates),
+  );
+  check("a group past its share marks the composition truncated", grouped.truncated === true);
+  groupedController.dispose();
+
   let fallbackCalls = 0;
   const fallbackController = sandbox.MetabrowserSearch.createController();
   let invalidActivationRejected = false;

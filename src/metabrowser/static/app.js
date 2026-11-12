@@ -2867,7 +2867,7 @@ function setFolderExpanded(row, expanded, options) {
   ) {
     return;
   }
-  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded);
+  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded, !!options.instant);
   row.setAttribute("aria-expanded", String(expanded));
   if (options.synchronize !== false) {
     synchronizeTreeNow();
@@ -5806,6 +5806,17 @@ function createFilePreviewStage(preview) {
   return stage;
 }
 
+// The stage is shown once the faces its layout asked for land, at most FONT_WAIT_MS
+// later. Cold, PT Serif landed 13-30 ms after layout and, swapped in after the
+// stage was shown, moved the body 21-23 px (Chrome 152, load average 20-28).
+var FONT_WAIT_MS = 100;
+function stagedFontsSettled() {
+  var fonts = document.fonts;
+  return fonts?.status === "loading"
+    ? Promise.race([fonts.ready, new Promise((done) => setTimeout(done, FONT_WAIT_MS))])
+    : null;
+}
+
 /**
  * @param {Record<string, any>} data
  * @param {string | undefined} preferredViewId
@@ -6056,6 +6067,10 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
+        const fontsSettled = stagedFontsSettled();
+        if (fontsSettled) {
+          await fontsSettled;
+        }
         if (!renderIsCurrent()) {
           return false;
         }
@@ -7955,6 +7970,11 @@ async function applyNavigationTarget(target, context) {
     };
   }
   await revealInTree(path, { isCurrent: context.isCurrent, scroll: !keepFilesScroll });
+  // A held arrow key opens only the row its walk stops on.
+  var walk = treeKeyboard?.walking(path);
+  if (walk) {
+    await walk;
+  }
   var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;
   if (!context.isCurrent()) {
     return { status: "cancelled" };
@@ -7998,7 +8018,8 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
           }
         }
         if (children.classList.contains("tree-children-collapsed")) {
-          await setFolderExpanded(folder, true);
+          // The reader asked for the row, not the disclosure: no travel.
+          await setFolderExpanded(folder, true, { instant: true });
         }
       }
     }

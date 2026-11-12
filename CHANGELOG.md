@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Less moves on its own.
+  The first document after a cold start appears in its reading font instead of swapping
+  the serif in after it is shown.
+  Navigation that opens folders to reveal a file opens them in place, while a folder the
+  reader toggles still slides open.
+  A held arrow key in the file tree moves the selection and the address on every repeat
+  and opens only the file it stops on.
+  In Quick Search, pull requests follow the file results as their own group, so their
+  later arrival never moves a file row or the selection.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file

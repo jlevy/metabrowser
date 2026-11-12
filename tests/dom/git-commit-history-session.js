@@ -400,6 +400,7 @@ async function createPage(start, options = {}) {
     var navigationController = null;
     var activeNavPanelId = "files";
     var mainTabIntent = 0;
+    var treeKeyboard = null;
     var mainTabs = {
       takeFilesScroll: () => false,
       remember() {},
