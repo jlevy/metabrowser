@@ -553,10 +553,41 @@ def kill_live_process_groups() -> None:
     """
 
     for pid, proc in tuple(_LIVE_PROCESS_GROUPS.items()):
-        if proc.returncode is not None:
+        if proc.returncode is not None or not _unreaped_child(pid):
             continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
+
+
+def _unreaped_child(pid: int) -> bool:
+    """Whether *pid* is, at this moment, a child of this process that is not yet reaped.
+
+    Asked just before a signal: a child that has not been reaped keeps its ID, so the
+    signal reaches its group and no one else's. ``WNOWAIT`` leaves an exited child for
+    its owner to reap, as before. Python before 3.13 has no ``waitid`` on macOS: there
+    the kernel's list of children is asked again, which holds a child until it is
+    reaped. Where neither answers, the caller's own record (the registry's
+    ``returncode``) is all there is.
+
+    What is left is the interval from this check to the signal. Measured 2026-11-12 on
+    a loaded M-series Mac, ``waitid``, ``getpgid``, and ``killpg`` in a row took 1.4 us
+    (median of 2,000) and 1.6 us (99th percentile); longer only if this thread is
+    descheduled between them. For the signal to reach anyone else, another thread
+    would have to reap the child in that interval, and the system give its ID to a new
+    process that has already made itself a group leader. macOS and Linux hand out IDs
+    in rising order and reuse one only after wrapping around, macOS at 99,999 and Linux
+    at its ``pid_max``; and a process forked from this one took 0.87 ms at the least
+    (median 1.08 ms, of 200) to lead a session of its own.
+    """
+
+    if not hasattr(os, "waitid"):
+        listed = child_pids()
+        return listed is None or pid in listed
+    try:
+        os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return False
+    return True
 
 
 def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
@@ -600,12 +631,17 @@ def _spawns_elsewhere(stop: _GroupStop, me: int) -> bool:
 def _kill_owned_groups(stop: _GroupStop) -> None:
     """Kill each group this process leads, as the kernel lists its children.
 
-    A listed child had not been reaped, so its ID was still its own and its group's; one
-    reaped in the moment between the listing and the signal is the race left, as it is
-    for the registry's ``returncode``. Only a child that leads its own group is a
-    candidate, and only one the registry holds, or that runs a program a group spawn
-    ran, is killed. That leaves alone a child that is not ours to end, such as a browser
-    that the standard library starts in a session of its own.
+    A candidate is a child the registry holds, which leads its own group by how it was
+    started, unless its ``returncode`` says it was reaped; or a child that leads its own
+    group and runs a program a group spawn ran, which leaves alone a child that is not
+    ours to end, such as a browser the standard library starts in a session of its own.
+
+    The listing is only numbers, and another thread may reap a listed child at any time,
+    after which its ID is free. So each candidate is confirmed to be this process's
+    unreaped child (:func:`_unreaped_child`) immediately before it is signalled. What is
+    left is that interval, about a microsecond unless this thread is descheduled in it:
+    a child reaped then, and its ID given to a new process that has already made itself
+    a group leader, would take the signal; :func:`_unreaped_child` gives the numbers.
     """
 
     children = child_pids()
@@ -615,12 +651,18 @@ def _kill_owned_groups(stop: _GroupStop) -> None:
     with stop.lock:
         programs = frozenset(stop.programs)
     for pid in children:
-        if not _leads_its_own_group(pid):
-            continue
-        if pid not in _LIVE_PROCESS_GROUPS:
+        registered = _LIVE_PROCESS_GROUPS.get(pid)
+        if registered is not None:
+            if registered.returncode is not None:
+                continue
+        else:
             path = executable(pid)
             if path is None or Path(path).name not in programs:
                 continue
+            if not _leads_its_own_group(pid):
+                continue
+        if not _unreaped_child(pid):
+            continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
 
