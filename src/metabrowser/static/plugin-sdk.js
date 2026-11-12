@@ -12,23 +12,11 @@
 //     getRegisteredView(kindId, viewId)
 //     listViewsForKind(kindId)
 //
-//   View lifecycle contract:
-//     render(container, ctx)
-//       Called when the preview pane mounts this view. Plugin owns
-//       container's innerHTML and may attach DOM listeners, fetch data,
-//       paint charts. May return a Promise; the shell awaits it for
-//       error surfacing.
-//     dispose(container) [optional]
-//       Called when the preview pane is *replaced* — specifically when
-//       (1) a different file is opened, (2) the same file is reloaded
-//       after a file-change event, or (3) an error/loading state
-//       overwrites the pane. Use it to detach window-level listeners,
-//       abort in-flight fetches, clear timers/SSE streams, and destroy
-//       Chart.js instances or other resources that would otherwise
-//       outlive their container.
-//       dispose is *not* called on tab switches within the same file
-//       — those toggle CSS display only; the container's DOM persists,
-//       and so does any state the plugin captured in closures over it.
+//   View lifecycle ("Registration and Lifecycle" in docs/plugins.md):
+//     render(container, ctx)             — own container; may return a Promise, or a
+//                                          handle with ready and dispose()
+//     dispose(container)                 — the pane was replaced, never on a tab switch:
+//                                          release listeners, requests, and timers
 //
 //   Rendering:
 //     render(template, data)             — Mustache.render with auto-escape
