@@ -553,8 +553,10 @@ Times are medians of five pairs; a ratio is WebKit’s value over Chrome’s in 
 The three small intraline cases ran under 5 ms in both engines and are reported, not
 judged. The 8 MiB binary’s other scroll positions fell under the floor too; at the
 middle, one pair read 10 ms against 2.1 ms.
-Every view rendered the same number of elements in both engines, and the tallest scroll
-height, 11,772,035 px for the 32 MiB binary, was the same in both.
+Every view rendered the same number of elements in both engines but one: the 2 MiB
+one-line file’s count varied by one or two elements from sample to sample in each
+engine, 401 to 402 in Chrome and 401 to 403 in WebKit (medians 401 and 402). The tallest
+scroll height, 11,772,035 px for the 32 MiB binary, was the same in both.
 
 Renderer footprints without graphics memory were 0.14 to 0.48 of Chrome’s in every view.
 With the lightest page, a 2 MiB one-line file, WebKit’s web content process came to 149

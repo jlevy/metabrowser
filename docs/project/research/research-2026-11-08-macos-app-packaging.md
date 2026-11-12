@@ -1329,6 +1329,13 @@ What it changes here:
 - **Drag and drop:** a folder dropped on a page opens, and a dropped file is cancelled
   as a `file://` navigation.
 
+The last two are observations from before jlevy/metabrowser#359, which fixed both: the
+page’s Print button now reaches File > Print’s path (`mb-j3eu`), and a dropped file
+opens at its page (`mb-3h2m`). A later check run, with the app’s print bridge in the
+gate’s driver, found the Print request reaching that path and a dropped file handed to
+the app’s open path
+([`window.print()` and Drag and Drop](../../large-content-rendering.md#windowprint-and-drag-and-drop)).
+
 ## References
 
 - Metabrowser: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),
