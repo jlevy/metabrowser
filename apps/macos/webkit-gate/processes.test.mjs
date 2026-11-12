@@ -218,12 +218,20 @@ test("a released step does not run", async () => {
 });
 
 /**
- * A harness that owns a sleeping child through Cleanup, with cleanUpBeforeExit installed,
- * and then runs `then`: it prints the child's pid once both are in place.
+ * A harness that owns a sleeping child through Cleanup, with cleanUpBeforeExit installed
+ * (its remover is `restore`), and then runs `then`: it prints the child's pid once both
+ * are in place. A `resistant` child ignores SIGTERM, so only SIGKILL, after the 300 ms
+ * grace for closing its stdin and another for SIGTERM, stops it.
  * @param {string} then
+ * @param {{ resistant?: boolean }} [options]
  */
-function harnessOwningAChild(then) {
+function harnessOwningAChild(then, { resistant = false } = {}) {
   const module = new URL("./processes.mjs", import.meta.url).href;
+  const child = resistant
+    ? `spawn("/bin/sh", ["-c", "trap '' TERM; echo ready; while :; do sleep 0.05; done"],
+         { stdio: ["pipe", "pipe", "ignore"] });
+       await new Promise((resolve) => child.stdout.once("data", resolve));`
+    : `spawn("/bin/sleep", ["600"], { stdio: ["pipe", "ignore", "ignore"] });`;
   return spawn(
     process.execPath,
     [
@@ -232,14 +240,47 @@ function harnessOwningAChild(then) {
       `const { Cleanup, cleanUpBeforeExit, terminate } = await import(${JSON.stringify(module)});
        const { spawn } = await import("node:child_process");
        const cleanup = new Cleanup();
-       const child = spawn("/bin/sleep", ["600"], { stdio: ["pipe", "ignore", "ignore"] });
-       cleanup.add(() => terminate(child, { graceMs: 200 }));
-       cleanUpBeforeExit(cleanup);
+       const child = ${child}
+       cleanup.add(() => terminate(child, { graceMs: 300 }));
+       const restore = cleanUpBeforeExit(cleanup);
        console.log("ready " + child.pid);
        ${then}`,
     ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
+}
+
+/**
+ * Resolves once `stream` has carried `text`.
+ * @param {import("node:stream").Readable} stream
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+function carried(stream, text) {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    const timer = setTimeout(
+      () => reject(new Error(`no "${text}" within ${READY_TIMEOUT_MS} ms: ${output}`)),
+      READY_TIMEOUT_MS,
+    );
+    stream.on("data", (data) => {
+      output += data;
+      if (output.includes(text)) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+}
+
+/**
+ * Kills `pid` if it is still running, for a test's own cleanup.
+ * @param {number} pid
+ */
+function killIfAlive(pid) {
+  if (pid > 0 && alive(pid)) {
+    process.kill(pid, "SIGKILL");
+  }
 }
 
 /**
@@ -287,5 +328,76 @@ test("SIGTERM to the harness stops what it owns before it exits", async () => {
     assert.equal(await gone(pid, 5_000), true, "the child outlived SIGTERM to the harness");
   } finally {
     stop(harness);
+  }
+});
+
+test("a run called while another is in progress waits for it, and its errors go to the first", async () => {
+  const cleanup = new processes.Cleanup();
+  /** @type {(value?: unknown) => void} */
+  let finish = () => {};
+  const slow = new Promise((resolve) => {
+    finish = resolve;
+  });
+  /** @type {string[]} */
+  const order = [];
+  cleanup.add(() => {
+    throw new Error("a step failed");
+  });
+  cleanup.add(async () => {
+    await slow;
+    order.push("slow step");
+  });
+  const first = cleanup.run();
+  const second = cleanup.run().then((errors) => {
+    order.push("second run");
+    return errors;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  finish();
+  const [firstErrors, secondErrors] = await Promise.all([first, second]);
+  assert.deepEqual(order, ["slow step", "second run"]);
+  assert.equal(firstErrors.length, 1);
+  assert.deepEqual(secondErrors, [], "the first run reports what failed");
+});
+
+test("a second SIGTERM waits for the first one's cleanup to stop a resistant child", async () => {
+  const harness = harnessOwningAChild("setInterval(() => {}, 1000);", { resistant: true });
+  let pid = 0;
+  try {
+    const owned = await ownedChild(harness);
+    pid = owned.pid;
+    const stopping = carried(harness.stderr, "stopping what the run started");
+    harness.kill("SIGTERM");
+    await stopping;
+    harness.kill("SIGTERM");
+    assert.deepEqual(await owned.exited, { code: 143, signal: null });
+    assert.equal(await gone(pid, 5_000), true, "the child outlived the second SIGTERM");
+  } finally {
+    stop(harness);
+    killIfAlive(pid);
+  }
+});
+
+test("a signal during the run's own cleanup waits for it, then exits with the signal's status", async () => {
+  const harness = harnessOwningAChild(
+    `setTimeout(async () => {
+       console.log("cleaning");
+       await cleanup.run();
+       restore();
+     }, 100);
+     setInterval(() => {}, 1000);`,
+    { resistant: true },
+  );
+  let pid = 0;
+  try {
+    const owned = await ownedChild(harness);
+    pid = owned.pid;
+    await carried(harness.stdout, "cleaning");
+    harness.kill("SIGTERM");
+    assert.deepEqual(await owned.exited, { code: 143, signal: null });
+    assert.equal(await gone(pid, 5_000), true, "the child outlived the signal during cleanup");
+  } finally {
+    stop(harness);
+    killIfAlive(pid);
   }
 });

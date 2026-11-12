@@ -24,6 +24,8 @@ const STOP_GRACE_MS = 5_000;
 export class Cleanup {
   /** @type {(() => unknown)[]} */
   #steps = [];
+  /** @type {Promise<unknown[]> | null} */
+  #running = null;
 
   /**
    * Adds `step`, a function that stops one thing, to run when `run` is called. Returns
@@ -42,10 +44,23 @@ export class Cleanup {
   }
 
   /**
-   * Runs every step, even after one fails, and returns the errors the steps threw.
+   * Runs every step, even after one fails, and returns the errors the steps threw. A call
+   * made while a run is in progress settles when that run does, with no errors: they are
+   * the first call's to report. So the run's own cleanup and a signal's can overlap.
    * @returns {Promise<unknown[]>}
    */
-  async run() {
+  run() {
+    if (this.#running) {
+      return this.#running.then(() => []);
+    }
+    this.#running = this.#drain().finally(() => {
+      this.#running = null;
+    });
+    return this.#running;
+  }
+
+  /** @returns {Promise<unknown[]>} */
+  async #drain() {
     /** @type {unknown[]} */
     const errors = [];
     for (let step = this.#steps.pop(); step !== undefined; step = this.#steps.pop()) {
@@ -70,7 +85,10 @@ const EXIT_SIGNALS = /** @type {const} */ ([
  * Runs `cleanup` before the process ends by an uncaught exception, an unhandled
  * rejection, or SIGHUP, SIGINT, or SIGTERM, then exits: 1 after an error, or the signal's
  * status. So a crash anywhere, even in a callback no `finally` surrounds, stops what the
- * harness owns, Chrome included, which has no stdin to lose. Only SIGKILL gets past it.
+ * harness owns, Chrome included, which has no stdin to lose. A later signal or error, or
+ * one that arrives during the run's own cleanup, waits for the same cleanup, and the
+ * first one's status stands; terminate's escalation bounds the wait. Only SIGKILL gets
+ * past it.
  * Returns a function that removes the handlers, for when the run has cleaned up itself.
  * @param {Cleanup} cleanup
  * @returns {() => void}
@@ -83,8 +101,10 @@ export function cleanUpBeforeExit(cleanup) {
    */
   const stop = async (reason, status) => {
     if (stopping) {
-      // A second failure while stopping: what is left cannot be stopped in order.
-      process.exit(status);
+      // The first stop exits once the cleanup it started is done; cutting that short
+      // would leave a child that is still between SIGTERM and SIGKILL.
+      console.error(`webkit-gate: ${reason}; still stopping what the run started`);
+      return;
     }
     stopping = true;
     console.error(`webkit-gate: ${reason}; stopping what the run started`);
