@@ -9,6 +9,8 @@
 #                             Developer ID signed, notarized, and stapled
 #   make release NOTARIZE=0   rehearse the release with an ad hoc signature
 #   make notarize [FILE=path] notarize and staple the release DMG, or FILE
+#   make webkit-gate          the WebKit measurement gate against Chrome (webkit-gate/run.mjs);
+#                             PAIRS=n and CASES=a,b pass through
 #   make clean                remove .build and build
 #
 # Every build is the dev variant (Metabrowser Dev, the canary icon) except `release`
@@ -28,7 +30,7 @@ endif
 dev_variant = $(or $(VARIANT),dev)
 release_variant = $(or $(VARIANT),release)
 
-.PHONY: build test app run dmg release notarize clean
+.PHONY: build test app run dmg release notarize clean webkit-gate
 
 build:
 	$(SWIFT) build
@@ -53,6 +55,9 @@ release:
 notarize:
 	set -e; source scripts/common.sh; variant_settings $(release_variant); \
 	scripts/notarize.sh $(if $(FILE),"$(FILE)","$$dmg")
+
+webkit-gate:
+	node webkit-gate/run.mjs $(if $(PAIRS),--pairs $(PAIRS)) $(if $(CASES),--cases $(CASES))
 
 clean:
 	rm -rf .build build

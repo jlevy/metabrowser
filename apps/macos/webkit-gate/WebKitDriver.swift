@@ -1,0 +1,382 @@
+// The WebKit half of the measurement gate: a window holding the app's own web view.
+//
+// run.mjs compiles this file together with the app's `WebContainerView.swift`
+// (`WebContainerView` and `DropAwareWebView`) and ShellCore's `WebConfiguration.swift`
+// and `NavigationPolicy.swift`, so the page runs in the app's web view class, built from
+// the app's configuration, and navigations are decided by the app's policy. It is a
+// measurement tool and never ships, which is why it may read one private property
+// (`_webProcessIdentifier`) to name the process whose memory run.mjs reads.
+//
+//   webkit-driver measure URL SCRIPT   inject SCRIPT at document start, load URL, print
+//                                      the probe's record, then wait for a line on stdin
+//   webkit-driver print URL PDF        call window.print() as the page's own Print
+//                                      button does, then print through printOperation
+//   webkit-driver drop URL PATH...     drop file URLs on the web view, as a drag from
+//                                      Finder delivers them
+//
+// Each mode prints one JSON object on stdout and exits 0, or exits 1 with a message on
+// stderr. The window is 1200 x 820 points, the app's default content size.
+import AppKit
+import WebKit
+
+let contentSize = NSSize(width: 1200, height: 820)
+
+struct Failure: Error, CustomStringConvertible {
+    let description: String
+}
+
+func emit(_ object: [String: Any]) {
+    let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+}
+
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("webkit-driver: \(message)\n".utf8))
+    exit(1)
+}
+
+/// Records every page event the drop check listens for, posted by its user script.
+final class PageEvents: NSObject, WKScriptMessageHandler {
+    var events: [Any] = []
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        events.append(message.body)
+    }
+}
+
+/// A dragging session as AppKit hands one to a drop target, for file URLs on a private
+/// pasteboard. WebKit reads the pasteboard, location, and operation mask from it.
+final class FileDrag: NSObject, NSDraggingInfo {
+    let pasteboard: NSPasteboard
+    let location: NSPoint
+    let destination: NSWindow
+    let sequence: Int
+
+    init(urls: [URL], at location: NSPoint, in window: NSWindow, sequence: Int) {
+        pasteboard = NSPasteboard(name: NSPasteboard.Name("metabrowser-webkit-gate-\(sequence)"))
+        pasteboard.clearContents()
+        pasteboard.writeObjects(urls as [NSURL])
+        self.location = location
+        destination = window
+        self.sequence = sequence
+    }
+
+    var draggingDestinationWindow: NSWindow? { destination }
+    var draggingSourceOperationMask: NSDragOperation { [.copy, .link, .generic] }
+    var draggingLocation: NSPoint { location }
+    var draggedImageLocation: NSPoint { location }
+    var draggedImage: NSImage? { nil }
+    var draggingPasteboard: NSPasteboard { pasteboard }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { sequence }
+    var draggingFormation: NSDraggingFormation {
+        get { .default }
+        set {}
+    }
+    var animatesToDestination: Bool {
+        get { false }
+        set {}
+    }
+    var numberOfValidItemsForDrop: Int {
+        get { pasteboard.pasteboardItems?.count ?? 0 }
+        set {}
+    }
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    func enumerateDraggingItems(
+        options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+        classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+        using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {}
+    func resetSpringLoading() {}
+}
+
+final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+    let mode: String
+    let url: URL
+    let arguments: [String]
+    var window: NSWindow?
+    var webView: DropAwareWebView?
+    var policy = NavigationPolicy()
+    let pageEvents = PageEvents()
+    /// Navigations the policy decided, in order, for the checks to report.
+    var decisions: [[String: String]] = []
+    var folderDrops: [[String]] = []
+    var loaded = false
+    var occlusionDetectionDisabled = false
+    /// UI-delegate selectors naming printing that WebKit asked this delegate about. The
+    /// app's delegate implements the same public methods as this one, so it answers the
+    /// same way: no.
+    nonisolated(unsafe) static var printSelectorsAsked: Set<String> = []
+
+    nonisolated override func responds(to selector: Selector!) -> Bool {
+        if let selector, NSStringFromSelector(selector).lowercased().contains("print") {
+            Self.printSelectorsAsked.insert(NSStringFromSelector(selector))
+        }
+        return super.responds(to: selector)
+    }
+
+    init(mode: String, url: URL, arguments: [String]) {
+        self.mode = mode
+        self.url = url
+        self.arguments = arguments
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let configuration = WebConfiguration.make()
+        // A fresh store per run, like the scratch profile Chrome gets, so neither engine
+        // starts with a warm HTTP cache. The rest of the configuration is the app's.
+        configuration.websiteDataStore = .nonPersistent()
+        let controller = configuration.userContentController
+        switch mode {
+        case "measure":
+            guard let path = arguments.first, let source = try? String(contentsOfFile: path, encoding: .utf8)
+            else { fail("measure needs a readable script path") }
+            controller.addUserScript(
+                WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        case "drop":
+            controller.add(pageEvents, name: "gate")
+            controller.addUserScript(
+                WKUserScript(source: Self.dropListener, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        default:
+            break
+        }
+
+        let webView = DropAwareWebView(frame: .zero, configuration: configuration)
+        // The counterpart of Chrome's --disable-backgrounding-occluded-windows, which run.mjs
+        // passes: the page keeps its frames and priority when other windows or the lock
+        // screen cover this one. WebKit SPI, used only by this tool.
+        if webView.responds(to: Selector(("_setWindowOcclusionDetectionEnabled:"))) {
+            webView.setValue(false, forKey: "windowOcclusionDetectionEnabled")
+            occlusionDetectionDisabled = true
+        }
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.onFolderDrop = { [weak self] urls in
+            self?.folderDrops.append(urls.map(\.path))
+            return true
+        }
+        let container = WebContainerView(webView: webView, statusView: NSView())
+        container.showsStatus = false
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize), styleMask: [.titled, .closable],
+            backing: .buffered, defer: false)
+        window.contentView = container
+        // Above other windows, so the page is never occluded and WebKit never throttles it.
+        window.level = .floating
+        if let screen = NSScreen.main {
+            let frame = screen.visibleFrame
+            window.setFrameTopLeftPoint(NSPoint(x: frame.minX, y: frame.maxY))
+        }
+        window.title = "WebKit measurement gate"
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        self.window = window
+        self.webView = webView
+
+        var origin = URLComponents()
+        origin.scheme = url.scheme
+        origin.host = url.host(percentEncoded: false)
+        origin.port = url.port
+        policy.origin = origin.url
+        webView.load(URLRequest(url: url))
+    }
+
+    // MARK: The app's navigation decisions
+
+    func webView(
+        _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+    ) {
+        let linkClick = action.navigationType == .linkActivated
+        let decision = policy.decide(
+            action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true, isLinkClick: linkClick,
+            shouldDownload: action.shouldPerformDownload,
+            wantsNewWindow: linkClick && action.modifierFlags.contains(.command))
+        decisions.append([
+            "url": action.request.url?.absoluteString ?? "",
+            "type": String(action.navigationType.rawValue),
+            "decision": String(describing: decision),
+        ])
+        // The app opens a browser or another window here; this tool only records it.
+        decisionHandler(decision == .allow ? .allow : .cancel)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard !loaded else { return }
+        loaded = true
+        Task { @MainActor in
+            do {
+                switch mode {
+                case "measure": try await measure()
+                case "print": try await checkPrint()
+                case "drop": try await checkDrop()
+                default: fail("unknown mode \(mode)")
+                }
+            } catch {
+                fail(String(describing: error))
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        fail("load failed: \(error.localizedDescription)")
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        fail("the web content process terminated")
+    }
+
+    // MARK: Modes
+
+    func measure() async throws {
+        guard let webView else { return }
+        let value = try await webView.callAsyncJavaScript(
+            "return JSON.stringify(await globalThis.__webkitGate.done);", arguments: [:], in: nil, contentWorld: .page)
+        guard let text = value as? String, let data = text.data(using: .utf8),
+              let record = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw Failure(description: "the probe returned no record") }
+        var output = record
+        output["engine"] = engineFacts()
+        output["web_process_pid"] = webView.value(forKey: "_webProcessIdentifier") as? Int ?? NSNull()
+        emit(output)
+        // run.mjs reads the web process's footprint now, then closes stdin.
+        _ = FileHandle.standardInput.readDataToEndOfFile()
+        exit(0)
+    }
+
+    /// `window.print()` the way the shell's Print button calls it, then the app's menu path.
+    func checkPrint() async throws {
+        guard let webView, let window else { return }
+        let pdfPath = arguments.first ?? "webkit-gate-print.pdf"
+        let windowsBefore = NSApp.windows.count
+        let called = try await webView.callAsyncJavaScript(
+            """
+            const visible = () => {
+              const button = document.querySelector(".file-header-print");
+              return button && !button.hidden && !button.disabled && !button.closest("[hidden]") ? button : null;
+            };
+            for (let waited = 0; !visible() && waited < 15000; waited += 100) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            const button = visible();
+            if (button) { button.click(); return "the Print button (.file-header-print)"; }
+            window.print();
+            return "window.print() directly: no Print button appeared";
+            """, arguments: [:], in: nil, contentWorld: .page)
+        try await Task.sleep(for: .seconds(3))
+        let afterScript: [String: Any] = [
+            "called": called as? String ?? "",
+            "windows_before": windowsBefore,
+            "windows_after": NSApp.windows.count,
+            "sheet_attached": window.attachedSheet != nil,
+            "modal_window": NSApp.modalWindow?.title ?? NSNull(),
+            "print_selectors_webkit_asked_for": Self.printSelectorsAsked.sorted(),
+        ]
+
+        // File > Print in the app: printOperation(with:), here saved to a PDF instead of
+        // shown in a panel.
+        let info = NSPrintInfo.shared.copy() as! NSPrintInfo
+        info.jobDisposition = .save
+        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = URL(fileURLWithPath: pdfPath)
+        let operation = webView.printOperation(with: info)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        operation.view?.frame = webView.bounds
+        let printed = operation.run()
+        let pdf = URL(fileURLWithPath: pdfPath)
+        let size = (try? pdf.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let pages = CGPDFDocument(pdf as CFURL)?.numberOfPages ?? 0
+        emit([
+            "engine": engineFacts(),
+            "window_print": afterScript,
+            "print_operation": ["ran": printed, "pdf_bytes": size, "pdf_pages": pages],
+            "navigations": decisions,
+        ])
+        exit(0)
+    }
+
+    /// Drags each path onto the middle of the page and drops it, one at a time.
+    func checkDrop() async throws {
+        guard let webView, let window else { return }
+        var drops: [[String: Any]] = []
+        let point = webView.convert(NSPoint(x: webView.bounds.midX, y: webView.bounds.midY), to: nil)
+        for (index, path) in arguments.enumerated() {
+            let urlBefore = webView.url?.absoluteString ?? ""
+            let decisionsBefore = decisions.count
+            let foldersBefore = folderDrops.count
+            let eventsBefore = pageEvents.events.count
+            let drag = FileDrag(urls: [URL(fileURLWithPath: path)], at: point, in: window, sequence: 1000 + index)
+            let entered = webView.draggingEntered(drag)
+            // WebKit answers a drag update from the web process asynchronously, so ask
+            // again after the page has had time to see dragenter and dragover.
+            var updated = webView.draggingUpdated(drag)
+            for _ in 0..<10 {
+                try await Task.sleep(for: .milliseconds(100))
+                updated = webView.draggingUpdated(drag)
+            }
+            let prepared = webView.prepareForDragOperation(drag)
+            let performed = webView.performDragOperation(drag)
+            webView.concludeDragOperation(drag)
+            try await Task.sleep(for: .seconds(2))
+            drops.append([
+                "path": path,
+                "dragging_entered": entered.rawValue,
+                "dragging_updated": updated.rawValue,
+                "prepare": prepared,
+                "perform": performed,
+                "page_events": Array(pageEvents.events[eventsBefore...]),
+                "navigations": Array(decisions[decisionsBefore...]),
+                "folder_drops": Array(folderDrops[foldersBefore...]),
+                "url_before": urlBefore,
+                "url_after": webView.url?.absoluteString ?? "",
+            ])
+        }
+        emit(["engine": engineFacts(), "drops": drops])
+        exit(0)
+    }
+
+    /// Listens without handling: a page that does not call preventDefault() gets
+    /// WebKit's default drop.
+    static let dropListener = """
+        for (const type of ["dragenter", "dragover", "drop"]) {
+          addEventListener(type, (event) => {
+            if (type === "dragover" && window.__gateSawOver) { return; }
+            if (type === "dragover") { window.__gateSawOver = true; }
+            const files = event.dataTransfer ? Array.from(event.dataTransfer.files).map((f) => f.name) : [];
+            const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : [];
+            const message = { type, files, types, defaultPrevented: event.defaultPrevented };
+            window.webkit.messageHandlers.gate.postMessage(message);
+          }, true);
+        }
+        """
+
+    func engineFacts() -> [String: Any] {
+        let webKit = Bundle(for: WKWebView.self)
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        return [
+            "name": "WKWebView",
+            "webkit_bundle_version": webKit.infoDictionary?["CFBundleVersion"] as? String ?? "",
+            "macos": "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+            "occlusion_detection_disabled": occlusionDetectionDisabled,
+        ]
+    }
+}
+
+@main
+enum Entry {
+    static func main() {
+        let commandLine = CommandLine.arguments
+        guard commandLine.count >= 3, let target = URL(string: commandLine[2]) else {
+            fail("usage: webkit-driver measure|print|drop URL [ARGS...]")
+        }
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        let driver = Driver(mode: commandLine[1], url: target, arguments: Array(commandLine.dropFirst(3)))
+        app.delegate = driver
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(600)) { fail("no result after 600 s") }
+        app.run()
+    }
+}
