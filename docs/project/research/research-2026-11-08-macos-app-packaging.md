@@ -179,7 +179,7 @@ of non-vendored JavaScript, still with no Node build step.
 - **Browser APIs.** The UI uses no Chromium-only API. A shell must handle
   `target=_blank` links, modifier-click “open in new tab”, Back and Forward over
   `pushState`, `window.print()`, `navigator.clipboard.writeText`, and one SSE stream per
-  window. The UI binds plain keys and ⌘1–⌘3, leaving ⌘L, ⌘K, ⌘F, ⌘P, and ⌘[ ⌘] free for
+  window. The UI binds only plain keys, leaving ⌘1–⌘3, ⌘L, ⌘K, ⌘F, ⌘P, and ⌘[ ⌘] free for
   the shell.
 - **Engine evidence is Chromium-only.** Every large-content bound was measured in Chrome
   151 and 152 over CDP ([rendering large content](../../large-content-rendering.md)).

@@ -449,6 +449,16 @@ async function main() {
   const destination = document.createElement("button");
   document.body.append(destination);
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+  // The palette gets the real registry with its subscription recorded, so the
+  // hint-row checks can also deliver an event kind the row does not display.
+  const paletteSubscribers = [];
+  const paletteShortcuts = Object.freeze({
+    ...shortcuts,
+    subscribe(listener) {
+      paletteSubscribers.push(listener);
+      return shortcuts.subscribe(listener);
+    },
+  });
   // Everything the palette asked the classifier to describe. Only a thrown
   // open is unclassified; a settled outcome already carries its message.
   const describedFailures = [];
@@ -505,7 +515,7 @@ async function main() {
       return { focusTarget: destination, status: "opened" };
     },
     resolveFocusFallback: () => initialFocus,
-    shortcuts,
+    shortcuts: paletteShortcuts,
   });
 
   const overlay = document.body.querySelector(".search-palette-overlay");
@@ -546,6 +556,59 @@ async function main() {
       .join(" "),
   );
   palette.close(false);
+
+  // The hint row rebuilds only on the registry events it displays, the
+  // strip's rule: a registration, or a scope change that shows or hides the
+  // active commands. Any other kind rebuilds nothing; `target` stands in for
+  // one. Counting the row's one write says how often it rebuilt.
+  check(
+    "the palette subscribes to the registry once",
+    paletteSubscribers.length === 1,
+    String(paletteSubscribers.length),
+  );
+  let hintRebuilds = 0;
+  const replaceHint = hint.replaceChildren.bind(hint);
+  hint.replaceChildren = (...children) => {
+    hintRebuilds += 1;
+    replaceHint(...children);
+  };
+  const deliverToPalette = (event) => {
+    for (const listener of paletteSubscribers) {
+      listener(Object.freeze(event));
+    }
+  };
+  deliverToPalette({ kind: "target" });
+  deliverToPalette({ kind: "batch", kinds: Object.freeze(["target"]) });
+  check(
+    "an event the hint row does not display rebuilds nothing",
+    hintRebuilds === 0,
+    String(hintRebuilds),
+  );
+  deliverToPalette({ kind: "batch", kinds: Object.freeze(["target", "scope"]) });
+  check("a batch with a scope change rebuilds the row once", hintRebuilds === 1);
+  shortcuts.batch(() => {
+    shortcuts.register({
+      bindings: [{ key: "x" }],
+      copy: { action: "Probe", description: "Probe the hint row.", hint: "Probe" },
+      group: "anywhere",
+      handler: () => true,
+      id: "test.hint-probe",
+      order: 90,
+      scope: "global",
+      surfaces: { help: "always" },
+    })();
+  });
+  check("a batch of registrations rebuilds the row once", hintRebuilds === 2);
+  palette.open();
+  check(
+    "opening rebuilds the row for its active commands",
+    hintRebuilds > 2 && hint.querySelectorAll("kbd").length === 4,
+    String(hintRebuilds),
+  );
+  const rebuildsWhileOpen = hintRebuilds;
+  palette.close(false);
+  check("closing rebuilds the row", hintRebuilds > rebuildsWhileOpen);
+  hint.replaceChildren = replaceHint;
 
   const editableTargets = ["input", "textarea", "select"].map((tag) => document.createElement(tag));
   const contentEditable = document.createElement("div");
@@ -694,7 +757,8 @@ async function main() {
   // Inside the query, Shift with a selection key belongs to the field:
   // Shift+Up and Shift+Down extend the text selection, as in any single-line
   // field, and leave the active result where it is. Shift+Enter and
-  // Shift+Escape are not selection keys, so they still act (checked below).
+  // Shift+Escape are not selection keys, so they still act: Shift+Enter is
+  // checked beside Enter below, and Shift+Escape beside Escape.
   for (const key of ["ArrowUp", "ArrowDown"]) {
     const shifted = fakeEvent("keydown", { key, shiftKey: true, target: input });
     input.dispatchEvent(shifted);
@@ -733,6 +797,32 @@ async function main() {
   check("Enter delegates navigation", openedPaths.length === 1, JSON.stringify(openedPaths));
   check("successful navigation closes the palette", overlay.hidden === true);
   check("successful navigation focuses its destination", document.activeElement === destination);
+
+  // Shift+Enter selects no text, so in the query it opens the active result
+  // exactly as Enter does.
+  initialFocus.focus();
+  palette.open();
+  input.value = "app";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const activeRowText =
+    Array.from(listbox.children).find((row) => row.getAttribute("aria-selected") === "true")
+      ?.textContent ?? "";
+  const openedBeforeShiftEnter = openedPaths.length;
+  const shiftedEnter = fakeEvent("keydown", { key: "Enter", shiftKey: true, target: input });
+  input.dispatchEvent(shiftedEnter);
+  await settle();
+  check(
+    "Shift+Enter opens the active result",
+    shiftedEnter.defaultPrevented &&
+      openedPaths.length === openedBeforeShiftEnter + 1 &&
+      activeRowText.includes(String(openedPaths.at(-1)).split("/").pop()),
+    JSON.stringify({ activeRowText, opened: openedPaths.slice(openedBeforeShiftEnter) }),
+  );
+  check(
+    "Shift+Enter closes the palette and focuses its destination",
+    overlay.hidden === true && document.activeElement === destination,
+  );
 
   initialFocus.focus();
   palette.open();
