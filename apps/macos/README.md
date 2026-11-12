@@ -167,6 +167,11 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 6. **Protected locations.** Add `~/Documents/mb-check` as a background tab, quit, and
    launch again: that tab says Metabrowser opens it when you select it, and
    `pgrep -fl 'Documents/mb-check'` finds no server until you select the tab.
+   Once Documents access is granted, no prompt appears either way.
+   To see that the restore raises none, the person at the Mac first resets that grant
+   (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
+   then checks that the prompt waits for the tab’s selection: the waiting tab still
+   shows the folder’s name and icon, and whether reading those can prompt is untested.
 7. **Off, and empty.** With Settings > “Reopen the last session’s folders when
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
