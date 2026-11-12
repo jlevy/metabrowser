@@ -745,6 +745,46 @@ def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:
     assert len(set(hues)) == 3, f"ref kinds must differ by hue, got {hues}"
 
 
+def _hue_gap(first: float, second: float) -> float:
+    gap = abs(first - second) % 360
+    return min(gap, 360 - gap)
+
+
+def test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple() -> None:
+    """A branch is blue, the other branch kind a blue-green, and each reads on its ground.
+
+    Every branch a pull request shows is a remote chip, so remote is the branch blue, and
+    `HEAD`'s lane takes it too. Neither branch ink may sit near the purple of a merged
+    pull request: the remote ink once sat 5 degrees of hue from it. Each ink is text on
+    `--git-ref-bg`, and the solid trunk form swaps the two, so one ratio covers both.
+    """
+    light, dark = _theme_blocks()
+    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    plugin_light = next(body for selector, body in rules if selector == ":root")
+    plugin_dark = next(body for selector, body in rules if selector == '[data-theme="dark"]')
+    for theme, block, plugin in (("light", light, plugin_light), ("dark", dark, plugin_dark)):
+        ground = _declared(block, "--git-ref-bg")
+        for kind in ("remote", "local", "tag"):
+            ink = _declared(block, f"--git-ref-{kind}")
+            assert _contrast(ink, ground) >= 4.5, (
+                f"--git-ref-{kind} reads at {_contrast(ink, ground):.2f}:1 in the {theme} theme"
+            )
+        merged = _oklch_channels(plugin["--github-pull-merged"])[2]
+        remote = _oklch_channels(_declared(block, "--git-ref-remote"))[2]
+        local = _oklch_channels(_declared(block, "--git-ref-local"))[2]
+        assert 220 <= remote <= 270, f"the branch color is blue, not hue {remote}"
+        for name, hue in (("remote", remote), ("local", local)):
+            assert _hue_gap(hue, merged) >= 30, f"--git-ref-{name} is a merged pull request's hue"
+        assert _hue_gap(remote, local) >= 30, "the two branch kinds must be clearly apart"
+    graph = (STATIC / "git-graph.js").read_text(encoding="utf-8")
+    history = (REPO_ROOT / "src/metabrowser/git/history.py").read_text(encoding="utf-8")
+    assert 'const HEAD_LANE_COLOR = "var(--git-ref-remote)";' in graph
+    assert '_HEAD_LANE_COLOR = "var(--git-ref-remote)"' in history
+    for page in ("pull-page.js", "pulls-panel.js"):
+        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / page).read_text(encoding="utf-8")
+        assert 'kind: "remote"' in source, f"{page}'s branches lost the remote chip"
+
+
 def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     """A tag is a different kind of thing from a branch, and trunk is
     the branch worth finding: each carries a form, so the vocabulary
@@ -1258,11 +1298,12 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
 
 
 def _oklch_channels(value: str) -> tuple[float, float, float]:
-    """Lightness (0 to 1), chroma, and hue of one `oklch(L% C H)` declaration."""
+    """Lightness (0 to 1), chroma, and hue of one `oklch(L% C H)` or `oklch(L C H)`."""
 
-    found = re.fullmatch(r"oklch\(([\d.]+)% ([\d.]+) ([\d.]+)\)", value.strip())
+    found = re.fullmatch(r"oklch\(([\d.]+)(%?) ([\d.]+) ([\d.]+)\)", value.strip())
     assert found is not None, value
-    return float(found[1]) / 100, float(found[2]), float(found[3])
+    lightness = float(found[1]) / 100 if found[2] else float(found[1])
+    return lightness, float(found[3]), float(found[4])
 
 
 def _relative_luminance(lightness: float, chroma: float, hue: float) -> float:
@@ -1666,11 +1707,8 @@ def test_file_status_ink_is_shared_and_legible() -> None:
     assert "color: var(--muted)" in _rule(styles, ".file-change-status[data-file-status]")
     for block in (light, dark):
         for role in ("added", "deleted", "modified", "renamed"):
+            # A literal, never a ref color: a ref kind's hue is chosen for the chips.
             color = _declared(block, f"--git-status-{role}")
-            if role == "renamed":
-                color = _declared(block, "--git-ref-local")
-                parts = color.removeprefix("oklch(").removesuffix(")").split()
-                color = f"oklch({float(parts[0]) * 100}% {parts[1]} {parts[2]})"
             for ground in ("--bg", "--sidebar-bg", "--hover-bg"):
                 assert _contrast(color, _declared(block, ground)) >= 4.5
     for relative in (

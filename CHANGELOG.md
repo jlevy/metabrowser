@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Branch chips are blue.
+  A pull request’s base and head, the branches in the Pulls list, a mirror’s branches,
+  and the branch selector no longer share the purple of a merged pull request.
+  A checkout’s own local branches, in its history, are a blue-green instead of blue, and
+  the history line of the branch you are on stays blue.
+
 - A folder’s File Overview is shorter.
   Under the Files, Ignored, and Total bars it shows a legend of the five largest file
   types, each a dot in its color with its name and share, plus **Other** for the rest,
