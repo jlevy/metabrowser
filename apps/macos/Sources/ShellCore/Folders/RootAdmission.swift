@@ -57,6 +57,8 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
         // A home folder in a protected place cannot be looked at to classify anything.
         guard !isInside(home), let table = mounts ?? mountPoints() else { return .deferred(saved) }
         let barriers = mountBarriers(table)
+        // Nor one on a mount the walk would not enter: its stat could wait on a share.
+        if barriers.contains(where: { ProtectedLocations.isWithin(home, $0) }) { return .deferred(saved) }
         var fd = Darwin.open("/", O_SEARCH | O_CLOEXEC)
         guard fd >= 0 else { return .deferred(saved) }
         defer { close(fd) }
@@ -106,17 +108,41 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
         }
     }
 
+    /// `getfsstat(2)`: with no buffer, the number of mounts; with one, fills it and
+    /// returns how many it filled, at most its capacity.
+    public typealias MountEnumerator = (UnsafeMutablePointer<Darwin.statfs>?, Int32, Int32) -> Int32
+
+    /// Spare entries allocated past the last count, so a mount added between counting
+    /// and filling still fits.
+    static let mountTableSpare = 16
+    /// Fills tried before a table that keeps filling its buffer is given up on.
+    static let mountTableAttempts = 4
+
     /// Every mount point, from the kernel's table without asking any volume (`MNT_NOWAIT`),
-    /// or nil if the table cannot be read.
-    public static func mountPoints() -> [String]? {
-        let count = getfsstat(nil, 0, MNT_NOWAIT)
-        guard count > 0 else { return nil }
-        var entries = Array(repeating: Darwin.statfs(), count: Int(count))
-        let filled = entries.withUnsafeMutableBufferPointer { buffer in
-            getfsstat(buffer.baseAddress, Int32(MemoryLayout<Darwin.statfs>.stride * buffer.count), MNT_NOWAIT)
+    /// or nil if the whole table cannot be read. A fill that uses the whole buffer may
+    /// have left mounts out, so it is read again into a larger one, a bounded number of
+    /// times.
+    public static func mountPoints(fsstat: MountEnumerator = { getfsstat($0, $1, $2) }) -> [String]? {
+        var capacity = Int(fsstat(nil, 0, MNT_NOWAIT))
+        guard capacity > 0 else { return nil }
+        for _ in 0..<mountTableAttempts {
+            capacity += mountTableSpare
+            var entries = Array(repeating: Darwin.statfs(), count: capacity)
+            let filled = entries.withUnsafeMutableBufferPointer { buffer in
+                fsstat(buffer.baseAddress, Int32(MemoryLayout<Darwin.statfs>.stride * buffer.count), MNT_NOWAIT)
+            }
+            guard filled > 0 else { return nil }
+            guard Int(filled) < capacity else {
+                capacity *= 2
+                continue
+            }
+            return names(entries.prefix(Int(filled)))
         }
-        guard filled > 0 else { return nil }
-        return entries.prefix(Int(filled)).map { entry in
+        return nil
+    }
+
+    private static func names(_ entries: ArraySlice<Darwin.statfs>) -> [String] {
+        entries.map { entry in
             withUnsafeBytes(of: entry.f_mntonname) { bytes in
                 String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
             }

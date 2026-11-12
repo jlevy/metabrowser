@@ -192,6 +192,14 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         deferred.append(root)
     }
 
+    /// `root`, just taken with `next`, found no runtime to start from: it is next again,
+    /// so once a runtime is accepted it is admitted again in its turn, keeps its place,
+    /// and a selection can still put another root before it.
+    public mutating func putBack(_ root: String) {
+        guard !pending.contains(root), !deferred.contains(root) else { return }
+        pending.insert(root, at: 0)
+    }
+
     /// Every tab of `root` closed before its server started.
     public mutating func remove(_ root: String) {
         pending.removeAll { $0 == root }
