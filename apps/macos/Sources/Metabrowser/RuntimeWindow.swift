@@ -107,21 +107,16 @@ struct RuntimeView: View {
 
     private var missing: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Metabrowser needs the metab command-line tool").font(.headline)
-            Text("This app runs your own installation of Metabrowser and did not find one. Install it with uv, then click Find Again:")
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Text(RuntimeDiscovery.installCommand)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(RuntimeDiscovery.installCommand, forType: .string)
-                }
+            if let old = model.tried.first(where: { if case .tooOld = $0.result { true } else { false } }) {
+                Text("Metabrowser needs metab \(MetabRequirement.minimum) or later").font(.headline)
+                Text("\(old.path) is \(Self.describe(old.result)). Upgrade it, and Metabrowser continues by itself:")
+                    .fixedSize(horizontal: false, vertical: true)
+                command(MetabRequirement.upgradeCommand)
+            } else {
+                Text("Metabrowser needs the metab command-line tool").font(.headline)
+                Text("This app runs your own installation of Metabrowser and did not find one. Install it with uv, and Metabrowser continues by itself:")
+                    .fixedSize(horizontal: false, vertical: true)
+                command(RuntimeDiscovery.installCommand)
             }
             Link(
                 "Installation guide",
@@ -129,10 +124,27 @@ struct RuntimeView: View {
         }
     }
 
+    private func command(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            Button("Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
+        }
+    }
+
     static func describe(_ result: CandidateResult) -> String {
         switch result {
         case .valid(let version): "metab \(version)"
         case .missing: "not found"
+        case .tooOld(let version): "metab \(version), older than \(MetabRequirement.minimum)"
         case .rejected(let reason): reason
         }
     }

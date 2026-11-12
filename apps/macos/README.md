@@ -25,7 +25,11 @@ It runs on arm64 Macs with macOS 26 or later.
 
 ## Build, Test, and Run
 
-You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a CLI install:
+You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a `metab` the app
+accepts, 0.12.1 or later ([The Version It Requires](#the-version-it-requires)). Until
+0.12.1 is published, that is a source checkout’s: `make install` at the repository root
+builds `.venv/bin/metab`, and Settings > Choose metab… points the app at it (so does
+`open --env METABROWSER_METAB=…`). Once 0.12.1 is published, a CLI install does:
 
 ```shell
 uv tool install metabrowser
@@ -105,9 +109,11 @@ LaunchServices registration, and a URL scheme claimed twice has no defined targe
 To run the tests against a real server too:
 
 ```shell
-cd apps/macos
-METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab swift test
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test
 ```
+
+The live tests check that `metab` against the version the app requires, so it must be
+0.12.1 or later.
 
 Where to look while it runs:
 
@@ -297,6 +303,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
+| `Sources/ShellCore/Setup/` | The `metab` version the app requires, fingerprints and watches of the files that decide the runtime, and the offer to restart servers after an upgrade. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
@@ -385,11 +392,12 @@ The login shell comes last and runs only when the earlier locations miss `metab`
 or `gh`. It runs your shell startup files in the app’s name, which can take seconds and
 can raise privacy prompts you never saw in Terminal.
 One install reached two ways is tried once.
-Setup saves the runtime and the absolute paths of `git` and `gh`; later launches only
-check that the saved `metab` is still executable, so they start no extra process.
-If nothing is found, Settings shows the install command and every place it looked.
-Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
-reveals the logs folder.
+`~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
+account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
+launches only check that the saved `metab` is still executable, so they start no extra
+process. If nothing is found, Settings shows the install command and every place it
+looked. Settings also chooses another `metab` with an open panel, runs `metab --doctor`,
+and reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
@@ -397,6 +405,40 @@ When Find Again and a choice overlap, the one started last wins: a search that f
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one
 instead of starting the `metab` that failed.
+
+### The Version It Requires
+
+`MetabRequirement` (`Sources/ShellCore/Setup/MetabVersion.swift`) sets the oldest
+`metab` the app runs: 0.12.1, the first release with `GET /api/identity`. 0.12.0, the
+latest published release, lacks the route, and 0.12.1 is not published yet, so for now
+only a source checkout’s `metab` meets it.
+A development build of 0.12.1 (`0.12.1.dev214+8b0603f7`, which PEP 440 orders before
+0.12.1) counts as 0.12.1, or no checkout would run.
+Its number says only that it was built after 0.12.0: one built before the route reached
+`main` runs too, and its windows keep the names derived from their paths.
+
+- **Below the minimum,** discovery skips that `metab` and tries the next place.
+  If none qualifies, the app starts no server: Settings shows the version found, the
+  version needed, and `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy, and
+  folders wait. The command asks for a floor rather than an exact version, because uv
+  keeps the requirement in the tool’s receipt and a later `uv tool upgrade` would never
+  move past a pin. Choose metab… refuses an older `metab` the same way.
+- **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
+  inode, size, and modification time) from just before `metab --version` ran.
+  The app compares it with the file once a second and when the app becomes active, and
+  checks before each folder it opens.
+  A change counts once two looks agree, so a file caught in the middle of an install is
+  not read; a folder opened then waits for the check.
+  The check runs `metab --version` again.
+  A version the app accepts replaces the old one, and if open folders run servers that
+  the same `metab` started at another version, an alert offers to restart them.
+  Anything else leaves no runtime, and a search looks for another.
+- **What it cannot prevent:** an upgrade run in Terminal rewrites the environment the
+  running servers import from, before the app notices or the user agrees, so a server
+  can load new code beside old until it restarts (the
+  [setup flows brief](../../docs/project/research/research-2026-11-11-uv-and-macos-app-install.md),
+  Where This Breaks). An upgrade that changes only a dependency leaves `metab` itself
+  unchanged and goes unnoticed.
 
 ### The Child’s Environment
 
@@ -420,9 +462,9 @@ Terminal launch.
 - **Title:** the folder’s short name in bold, then a bullet and “Metabrowser” in a
   secondary style (`fdu • Metabrowser`), so each window says at a glance which folder it
   shows. The names come from `GET /api/identity`, asked once the server is ready.
-  Until then, and from a `metab` without the route, the window names the folder from its
-  path as `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain
-  text, which the Window menu, Mission Control, the Dock, and accessibility read.
+  Until then, and if the route fails, the window names the folder from its path as
+  `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain text,
+  which the Window menu, Mission Control, the Dock, and accessibility read.
   A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
   and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
   The page’s `<title>` is not used.
@@ -528,7 +570,6 @@ Each gap points to the part of the brief that closes it.
 | **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
-| **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |

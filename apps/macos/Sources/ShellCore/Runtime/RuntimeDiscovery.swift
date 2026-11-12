@@ -13,12 +13,14 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
     public var isExecutable: @Sendable (String) -> Bool
     public var canonicalPath: @Sendable (String) -> String
     public var run: CommandRunner.Run
+    public var fingerprint: @Sendable (String) -> FileFingerprint?
 
     public init(
         home: String, environment: [String: String], saved: Runtime?, shell: String?,
         isExecutable: @escaping @Sendable (String) -> Bool,
         canonicalPath: @escaping @Sendable (String) -> String,
-        run: @escaping CommandRunner.Run
+        run: @escaping CommandRunner.Run,
+        fingerprint: @escaping @Sendable (String) -> FileFingerprint? = { _ in nil }
     ) {
         self.home = home
         self.environment = environment
@@ -27,15 +29,19 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
         self.isExecutable = isExecutable
         self.canonicalPath = canonicalPath
         self.run = run
+        self.fingerprint = fingerprint
     }
 
+    /// `home` is `HOME` when the app has one, as uv reads it to place `~/.local/bin`, so
+    /// discovery looks where uv installs; a Finder launch's `HOME` is the account's own.
     public static func live(saved: Runtime?) -> DiscoveryEnvironment {
         let environment = ProcessInfo.processInfo.environment
+        let home = environment["HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil } ?? NSHomeDirectory()
         return DiscoveryEnvironment(
-            home: NSHomeDirectory(), environment: environment, saved: saved,
+            home: home, environment: environment, saved: saved,
             shell: environment["SHELL"] ?? passwordDatabaseShell(),
             isExecutable: FileChecks.isExecutableFile, canonicalPath: FileChecks.canonicalPath,
-            run: CommandRunner.live)
+            run: CommandRunner.live, fingerprint: FileFingerprint.of)
     }
 
     private static func passwordDatabaseShell() -> String? {
@@ -47,6 +53,8 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
 public nonisolated enum CandidateResult: Equatable, Sendable {
     case valid(version: String)
     case missing
+    /// A working `metab` older than `MetabRequirement.minimum`.
+    case tooOld(version: String)
     case rejected(String)
 }
 
@@ -87,10 +95,11 @@ public nonisolated enum RuntimeDiscovery {
             for (path, source) in candidates {
                 let canonical = env.isExecutable(path) ? env.canonicalPath(path) : path
                 guard seen.insert(canonical).inserted else { continue }
+                let fingerprint = env.fingerprint(path)
                 let result = await validate(path, env)
                 tried.append(CandidateOutcome(path: path, source: source, result: result))
                 if case .valid(let version) = result {
-                    return Runtime(executable: path, version: version, source: source)
+                    return Runtime(executable: path, version: version, source: source, fingerprint: fingerprint)
                 }
             }
             return nil
@@ -140,7 +149,8 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --version` with the same minimal environment a server gets.
+    /// Runs `metab --version` with the same minimal environment a server gets, and holds
+    /// the version to `MetabRequirement`.
     public static func validate(_ path: String, _ env: DiscoveryEnvironment) async -> CandidateResult {
         guard env.isExecutable(path) else { return .missing }
         let spec = LaunchSpec(
@@ -152,7 +162,10 @@ public nonisolated enum RuntimeDiscovery {
         guard result.succeeded, let version = parseVersion(result.output) else {
             return .rejected("--version printed: \(result.output.last ?? "nothing")")
         }
-        return .valid(version: version)
+        guard let parsed = MetabVersion(version) else {
+            return .rejected("--version printed a version this app cannot read: \(version)")
+        }
+        return MetabRequirement.accepts(parsed) ? .valid(version: version) : .tooOld(version: version)
     }
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.
