@@ -83,6 +83,80 @@ import Testing
         #expect(spawned.count == 0)
     }
 
+    /// Review E2 on #363: closing a folder's last window retires its session, which keeps
+    /// its claim until its server has stopped (`ServerFleet.retire`), and the folder can
+    /// be opened again before then. The claim tried only the folder's log and one named
+    /// for this process, so with both held, by another copy of the app or by an earlier
+    /// session still stopping, the reopened folder's launch failed with "another process
+    /// holds it", and nothing retried once the old claim was let go.
+    ///
+    /// Each child here ignores SIGTERM and stops only when the test lets it, so the old
+    /// sessions are still stopping, and still writing, when the folder is opened again.
+    @Test(arguments: [true, false])
+    func aFolderReopenedWhileItsServerStopsLaunchesIntoALogOfItsOwn(anotherCopyHoldsTheFoldersLog: Bool)
+        async throws
+    {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let release = folder.appending(path: "release").path(percentEncoded: false)
+        var policy = policy()
+        policy.shutdownGrace = .seconds(60)  // each stop ends when the test lets its child go
+        let fleet = ServerFleet()
+        func stopAll() async {
+            FileManager.default.createFile(atPath: release, contents: nil)
+            await fleet.stopAll()
+        }
+
+        /// A session of the folder: its log, and a server whose child names itself `name`.
+        func session(_ name: String) -> (log: FolderLog, server: ServerSupervisor) {
+            let script = """
+                trap '' TERM
+                echo '\(servingLine)'
+                echo 'output of \(name)' >&2
+                while [ ! -e '\(release)' ]; do sleep 0.05; done
+                echo '\(name) stopped' >&2
+                """
+            let log = FolderLog(root: root, directory: folder)
+            let server = ServerSupervisor(
+                spec: LaunchSpec(executable: "/bin/sh", arguments: ["-c", script]), launch: CLIServeLaunch(),
+                policy: policy, makeProcess: log.processFactory(), probe: { _ in true })
+            return (log, server)
+        }
+
+        let other = anotherCopyHoldsTheFoldersLog ? try ServerLogLease.claim(for: root, in: folder, owner: 1) : nil
+        let names = anotherCopyHoldsTheFoldersLog ? ["first", "reopened"] : ["first", "second", "reopened"]
+        var sessions: [(name: String, log: FolderLog)] = []
+        for name in names {
+            let (log, server) = session(name)
+            fleet.insert(server, for: root.path)  // retires the session before it, which keeps stopping
+            sessions.append((name, log))
+            await server.start()  // once: no Retry
+            guard case .ready = server.state else {
+                Issue.record("\(name) did not launch: \(server.state)")
+                await stopAll()
+                return
+            }
+        }
+        #expect(fleet.stoppingCount == names.count - 1)  // every earlier session is still stopping
+        let logs = sessions.map(\.log.url)
+        #expect(Set(logs).count == logs.count)
+        if let other { #expect(!logs.contains(other.url)) }
+
+        await stopAll()  // the earlier children write their last line while the reopened one runs
+        for session in sessions {
+            let written = try String(contentsOf: session.log.url, encoding: .utf8)
+            let output = written.split(separator: "\n").map(String.init)
+                .filter { !$0.hasPrefix(ServerLog.appLinePrefix) }
+            #expect(Set(output) == [servingLine, "output of \(session.name)", "\(session.name) stopped"])
+        }
+        // Once their servers have stopped and nothing keeps the sessions, their names are
+        // free again, so the names a copy uses do not run out over a long run.
+        let first = logs[0]
+        sessions.removeAll()
+        #expect(await eventually { (try? ServerLogLease.claim(for: root, in: folder))?.url == first })
+        withExtendedLifetime(other) {}
+    }
+
     /// A claim that holds is kept for every later launch of the session, and each launch
     /// writes where the claim points, even a spec built with another path.
     @Test func everyLaunchWritesTheClaimedLog() async throws {

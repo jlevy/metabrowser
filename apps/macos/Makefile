@@ -41,7 +41,7 @@ build:
 # stress suite's spawns, which each stall it for seconds on a loaded runner: see
 # ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
 # ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
-webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests
+webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests
 #
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and

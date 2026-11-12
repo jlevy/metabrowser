@@ -1,7 +1,8 @@
 import Foundation
 
-/// A folder's server log for one app process: claimed with a `ServerLogLease` so that a
-/// second running copy of the app serving the same folder writes a log of its own.
+/// A folder's server log for one session of the folder: claimed with a `ServerLogLease` so
+/// that a second running copy of the app serving the same folder, or an earlier session of
+/// it whose server is still stopping, writes a log of its own.
 ///
 /// No server launches into a log this app has not claimed. Each launch claims the log
 /// if no claim holds yet, and a claim that fails fails the launch, so the window shows

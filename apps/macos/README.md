@@ -148,9 +148,11 @@ Where to look while it runs:
   File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
   A second running copy of the same variant (a development build from another checkout)
   that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
-  window shows the other server’s output (`ServerLogLease`). Each launch claims its log
-  before it spawns (`FolderLog`): a claim that fails fails the launch, the window says
-  why, and Retry claims again.
+  window shows the other server’s output (`ServerLogLease`). A folder opened again while
+  the server of its closed windows is still stopping takes the first of those names that
+  is free, then `<folder>-<hash>.app-<pid>-2.log` and on, so two servers never write one
+  log. Each launch claims its log before it spawns (`FolderLog`): a claim that fails
+  fails the launch, the window says why, and Retry claims again.
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
@@ -565,6 +567,10 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    website data store, because Metabrowser keeps preferences in host-only cookies.
    A native “Starting” view covers the window until the page commits; its spinner
    appears only after 300 ms.
+   Only the navigation the window submitted last can reveal the page or replace the view
+   with a page error (`PageReveal`). When the server restarts, fails, or waits, the
+   window stops that navigation, and a commit or failure WebKit had already sent for it
+   changes nothing, so it cannot hide the server’s failure and Retry.
 5. **Check.** A window that joins a running server (a Command-click, and a folder opened
    again or brought back from the Dock) first asks the server for its entry page, since
    a live pid is not a working server.
