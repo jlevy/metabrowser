@@ -17,6 +17,7 @@ show: a refresh that completes, the requests it made, and a list that is ``curre
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
@@ -554,6 +555,26 @@ def test_golden_pull_list_failures(
     cleared = session.clear()
     assert cleared.exit_code == 0 and cleared.payload()["cleared"] > 0
     assert not (pulls_directory / "catalog.sqlite3").exists()
+    rebuilt = _after(session.post({"retry": True}))
+    assert rebuilt["last_refresh"]["outcome"] == "succeeded"
+    assert rebuilt["fetched"] == baseline["fetched"]
+
+    session.say(
+        "A catalog whose versions cannot be read, here a write-ahead-log database, which no "
+        "release writes, is left as it is and named the same way; the command clears it."
+    )
+    catalog = pulls_directory / "catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(catalog)) as db:
+        assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+    kept = catalog.read_bytes()
+    refused_unknown = session.post({"retry": True})
+    assert refused_unknown.exit_code == 1
+    last = _after(refused_unknown)["last_refresh"]
+    assert last["outcome"] == "unknown_cache" and command in last["message"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip() == ""
+    assert catalog.read_bytes() == kept
+    cleared = session.clear()
+    assert cleared.exit_code == 0 and cleared.payload()["cleared"] > 0
     rebuilt = _after(session.post({"retry": True}))
     assert rebuilt["last_refresh"]["outcome"] == "succeeded"
     assert rebuilt["fetched"] == baseline["fetched"]
