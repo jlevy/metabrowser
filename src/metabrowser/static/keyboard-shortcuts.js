@@ -285,10 +285,11 @@
     );
   }
 
-  // Where a badge sits: inside its target over the inline-end padding, or just past
-  // the target's inline end inside the nearest badge anchor, for an icon button or a
-  // target in a container that clips (docs/design-system.md, "Keyboard Commands and
-  // Help"). The styles are the `── Keyboard keys ──` blocks of styles.css.
+  // Where a badge sits: inside its target over the inline-end padding, or `beside`:
+  // over the target's own inline end but positioned through the nearest badge anchor,
+  // for an icon button or a target in a container that clips, so the badge covers its
+  // own control rather than the text after it (docs/design-system.md, "Keyboard
+  // Commands and Help"). The styles are the `── Keyboard keys ──` blocks of styles.css.
   /** @type {ReadonlySet<string>} */
   const BADGE_PLACEMENTS = new Set(["beside", "inline-end"]);
   const BADGE_ANCHOR_SELECTOR = "[data-kbd-badge-anchor]";
