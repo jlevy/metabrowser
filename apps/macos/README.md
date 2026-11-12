@@ -985,9 +985,12 @@ Terminal launch.
   just before its server spawns, after the launch gate and any earlier child’s
   termination (`ServerSupervisor.mayLaunch`); one that changed while it waited is not
   spawned and waits for its tab instead.
-  Selecting a tab clears the check, even for a server already waiting at the gate; such
-  a start was admitted when its turn came, so a link put on its path during that wait is
-  followed by the server under the saved spelling.
+  Selecting a tab clears the check.
+  A tab selected while its root’s start already waits at the gate was not resolved when
+  its turn came, so that start gets a check of its own at the moment of spawning
+  instead: that its saved path still names its own folder.
+  One that now leads to another folder spawns nothing and is resolved as a selected
+  root, its tabs moving to that folder’s session before any child spawns.
   The server takes a path, so a process that changes the path between that last check
   and the server resolving it, about a process start later, can still win; the deferral
   is the app’s own policy, and macOS enforces its privacy grants regardless.

@@ -168,6 +168,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     public var isEmpty: Bool { pending.isEmpty && deferred.isEmpty }
 
+    /// Whether `root` is the one `next` returned last and its start is not yet settled.
+    public func isOutstanding(_ root: String) -> Bool { outstanding == root }
+
     /// The next root to start, outstanding until its start is settled. A background root
     /// that `stillOpen` no longer admits waits for its tab instead, and the next one is
     /// tried.

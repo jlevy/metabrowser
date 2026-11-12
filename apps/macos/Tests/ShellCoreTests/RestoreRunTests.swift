@@ -10,7 +10,7 @@ private final class TestFolder: RestoredFolder, ManagedServer {
     let root: String
     let server: FolderServer
 
-    init(root: String, runtime: @escaping () -> RuntimeSetup?, served: Recorder<String>) {
+    init(root: String, runtime: @escaping () -> RuntimeSetup?, served: Recorder<String>, gate: LaunchGate? = nil) {
         self.root = root
         let launch = CLIServeLaunch()
         let url = URL(filePath: root, directoryHint: .isDirectory)
@@ -20,7 +20,7 @@ private final class TestFolder: RestoredFolder, ManagedServer {
         policy.shutdownGrace = .milliseconds(100)
         policy.probeInterval = .milliseconds(5)
         let supervisor = ServerSupervisor(
-            spec: spec(RestoreHarness.setup), launch: launch, policy: policy,
+            spec: spec(RestoreHarness.setup), launch: launch, policy: policy, gate: gate,
             makeProcess: { spec in
                 var root = spec.arguments[0]  // a folder URL's path, which ends in a slash
                 while root.count > 1, root.hasSuffix("/") { root.removeLast() }
@@ -53,6 +53,9 @@ private final class RestoreHarness {
 
     let home: String
     let fleet = ServerFleet()
+    /// The launch gate the roots in `gated` wait at, as behind another server starting.
+    let gate = LaunchGate()
+    private let gated: Set<String>
     /// The root each spawned child serves, in spawn order.
     let served = Recorder<String>()
     /// The runtime the app has: what a server starts from, and what a session needs.
@@ -62,7 +65,8 @@ private final class RestoreHarness {
     private(set) var deferredAtLaunch: Set<String> = []
     private(set) var run: RestoreRun!
 
-    init(_ saved: SavedSession, home: String) {
+    init(_ saved: SavedSession, home: String, gated: Set<String> = []) {
+        self.gated = gated
         self.home = home
         let admitted = saved.admitted { RootAdmission.admit($0, home: home) }
         deferredAtLaunch = admitted.deferred
@@ -109,7 +113,9 @@ private final class RestoreHarness {
 
     @discardableResult
     func make(_ path: String) -> TestFolder {
-        let made = TestFolder(root: path, runtime: { [unowned self] in self.runtime }, served: served)
+        let made = TestFolder(
+            root: path, runtime: { [unowned self] in self.runtime }, served: served,
+            gate: gated.contains(path) ? gate : nil)
         fleet.insert(made, for: path)
         return made
     }
@@ -369,5 +375,56 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         subject.redirect("/b", to: "/open", isOpen: true)
         #expect(subject.pending == ["/elsewhere"])
         #expect(!subject.selected.contains("/open"))
+    }
+}
+
+/// A tab selected while its root's start waited at the launch gate (review A2 on #377,
+/// mb-x5yz). The selection cleared the root's check, but the queue does not hand out a
+/// root whose start is outstanding again, so its saved path was never resolved: when the
+/// gate opened, the saved spelling spawned, serving the folder it now leads to under the
+/// saved key, and opening that folder or a file in it started a second server.
+@Suite struct SelectedWhileWaitingTests {
+    /// The review's sequence: background A waits behind another server at the gate, A is
+    /// replaced by a link to B, A's tab is selected, then the gate opens.
+    @Test func aRootThatNowLeadsElsewhereJoinsThatFolderBeforeAnyChildSpawns() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home, gated: [folders.a])
+        let a = try #require(restore.folder(folders.a))
+        await restore.gate.acquire()  // another folder's server is starting
+        let running = Task { await restore.run.start() }
+        #expect(await eventually { restore.served.all == [folders.notes] && a.server.supervisor.state == .starting })
+        try folders.relink(folders.a, to: folders.b)
+        await restore.select(folders.a)
+        restore.gate.release()
+        await running.value
+        #expect(restore.served.all == [folders.notes, folders.b])
+        #expect(restore.tabs == [folders.notes, folders.b], "the saved session names the folder")
+        #expect(restore.roots == [folders.notes, folders.b].sorted())
+        let joined = try #require(restore.folder(folders.b))
+        for path in [folders.b, folders.b + "/plan.md", folders.a + "/plan.md"] {
+            let shown = await restore.open(path)
+            #expect(shown === joined, "\(path)")
+        }
+        #expect(restore.served.all == [folders.notes, folders.b])
+        await restore.stopAll()
+    }
+
+    /// A root selected at the gate whose path still names its folder starts once, as saved.
+    @Test func aRootThatStillNamesItsFolderStartsOnceAsSaved() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home, gated: [folders.a])
+        let a = try #require(restore.folder(folders.a))
+        await restore.gate.acquire()
+        let running = Task { await restore.run.start() }
+        #expect(await eventually { restore.served.all == [folders.notes] && a.server.supervisor.state == .starting })
+        await restore.select(folders.a)
+        restore.gate.release()
+        await running.value
+        #expect(restore.served.all == [folders.notes, folders.a])
+        #expect(restore.tabs == [folders.notes, folders.a])
+        #expect(restore.events.isEmpty)
+        await restore.stopAll()
     }
 }

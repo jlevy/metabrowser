@@ -90,8 +90,9 @@ final class FolderWindows {
     /// give up their pages.
     func windowShown(_ controller: BrowserWindowController, of session: FolderSession) {
         noteShown(controller)
-        // A selection starts the folder as the user's choice, even one already waiting at
-        // the launch gate (`RestoreRun.select`).
+        // A selection starts the folder as the user's choice. A restored start already
+        // waiting at the launch gate gets a check that its path still names its folder
+        // instead, so one that now leads elsewhere moves its tabs first (`RestoreRun.select`).
         session.launchCheck = nil
         if restoreRun?.select(session.path) == true { startRestoredServers() }
         discardBackgroundPages()

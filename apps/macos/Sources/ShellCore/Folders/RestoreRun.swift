@@ -98,6 +98,12 @@ public final class RestoreRun {
             switch await session.startRestored() {
             case .launched:
                 queue.finish(path)
+            case .refusedByRoot where queue.selected.contains(path):
+                // Its tab was selected while it waited at the gate, and its path led to
+                // another folder when it would have spawned (`select`): it is next again,
+                // as the user's choice, and resolved like any selected start, so its tabs
+                // move before anything spawns.
+                queue.putBack(path)
             case .refusedByRoot:
                 queue.hold(path)
                 onEvent(.changedWhileWaiting(path))
@@ -115,13 +121,20 @@ public final class RestoreRun {
         onEvent(.waitingForRuntime(queue.pending))
     }
 
-    /// A tab of `path` was selected: it starts as the user's choice, even if it is already
-    /// waiting at the launch gate, and next if it is waiting to start. Returns whether it
-    /// waits to start, so a run must go on.
+    /// A tab of `path` was selected: it starts as the user's choice, next if it is waiting
+    /// to start. Returns whether it waits to start, so a run must go on.
+    ///
+    /// One whose start already waits at the launch gate was handed out before it was
+    /// selected, so it was not resolved: its background check gives way to one made at the
+    /// moment of spawning, that its saved path still names its own folder. One that now
+    /// leads to another folder spawns nothing, and the run resolves it as a selected root,
+    /// moving its tabs first (`start`).
     @discardableResult
     public func select(_ path: String) -> Bool {
-        folder(path)?.launchCheck = nil
-        return queue.select(path)
+        let waits = queue.select(path)
+        let resolve = self.resolve
+        folder(path)?.launchCheck = queue.isOutstanding(path) ? { resolve(path) == nil } : nil
+        return waits
     }
 
     /// Every tab of `path` closed.
