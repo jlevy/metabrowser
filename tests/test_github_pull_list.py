@@ -1581,23 +1581,40 @@ def test_incompatible_sqlite_schema_is_refused_by_reads_and_replaced_by_a_write(
     assert read_catalog(repository.home, repository.slug) is None
 
 
-def _shape(value: object) -> str:
-    """A digest of a schema, without the prose a docstring change would move."""
+# JSON Schema keywords whose value names schemas, rather than being one, and keywords
+# whose value is data, kept whole whatever its keys are.
+_SCHEMA_MAPS = frozenset({"properties", "$defs", "definitions", "patternProperties"})
+_SCHEMA_DATA = frozenset({"default", "const", "enum", "examples", "required"})
 
-    def bare(node: object) -> object:
-        if isinstance(node, dict):
-            items: dict[str, object] = node  # pyright: ignore[reportUnknownVariableType]
-            return {
-                key: bare(item)
-                for key, item in items.items()
-                if key not in {"description", "title"}
-            }
+
+def _shape(value: object) -> str:
+    """A digest of a schema, without the prose a docstring change would move.
+
+    ``title`` and ``description`` are dropped from schema objects only: under
+    ``properties`` a ``title`` is a field's name, and that field's schema stays in.
+    """
+
+    def schema(node: object) -> object:
         if isinstance(node, list | tuple):
             members: list[object] = list(node)  # pyright: ignore[reportUnknownArgumentType]
-            return [bare(item) for item in members]
-        return node
+            return [schema(item) for item in members]
+        if not isinstance(node, dict):
+            return node
+        items: dict[str, object] = node  # pyright: ignore[reportUnknownVariableType]
+        kept: dict[str, object] = {}
+        for key, item in items.items():
+            if key in {"title", "description"}:
+                continue
+            if key in _SCHEMA_MAPS and isinstance(item, dict):
+                named: dict[str, object] = item  # pyright: ignore[reportUnknownVariableType]
+                kept[key] = {name: schema(sub) for name, sub in named.items()}
+            elif key in _SCHEMA_DATA:
+                kept[key] = item
+            else:
+                kept[key] = schema(item)
+        return kept
 
-    return hashlib.sha256(json.dumps(bare(value), sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(schema(value), sort_keys=True).encode()).hexdigest()[:16]
 
 
 def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
@@ -1620,7 +1637,7 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
     } == {
         "tables, CATALOG_SCHEMA": (1, "5f1b61292a43cde0"),
         "checkpoint, CHECKPOINT_SCHEMA": (1, "e74f6ea5853f5c34"),
-        "rows, CATALOG_PROJECTION": (2, "1ceb9c2ac541ce36"),
+        "rows, CATALOG_PROJECTION": (2, "327ef662914d936d"),
     }
     # A checkpoint writes the version it names, or an older release cannot see it.
     assert CatalogState.model_fields["schema_version"].default == pull_catalog.CHECKPOINT_SCHEMA
