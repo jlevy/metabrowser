@@ -750,6 +750,93 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
+### WKWebView Probe
+
+The native app renders in `WKWebView`, and WebKit caches, schedules, and throttles
+differently from Chrome, so a claim about the app’s requests or readiness needs WebKit
+evidence. `wkprobe.mjs` drives a real `WKWebView` on macOS against a fresh server from a
+given `metab`:
+
+```shell
+node explorations/performance-loop/wkprobe.mjs run --corpus /path/to/frozen-checkout \
+  --runs 3 --name NAME \
+  --condition control=/envs/control/.venv/bin/metab \
+  --condition candidate=/envs/candidate/.venv/bin/metab
+node explorations/performance-loop/wkprobe.mjs summarize .bench/wkprobe/NAME/runs.jsonl
+node explorations/performance-loop/wkprobe.mjs compare .bench/wkprobe/NAME/runs.jsonl \
+  --control control --candidate candidate
+```
+
+**Runs need an unlocked screen with the display awake.** A locked screen, a sleeping
+display, or a session moved off the console hides every page, and a hidden page never
+finishes its first view.
+The probe shows a 160×100 window at 2% opacity in the screen’s bottom-left corner, above
+other windows and click-through, holding a web view of the full 1440×900 viewport; the
+page lays out at that viewport and only a corner is drawn.
+`--wait-for-screen SECONDS` waits for an unlocked screen before the first run.
+
+**How it is built.** `wkprobe.swift` is one Swift file, compiled by `swiftc` the first
+time a source and compiler pair is seen, into `.bench/wkprobe/bin/`. There is no Xcode
+project and no signing.
+The wrapper embeds an Info.plist naming the bundle identifier
+`org.metabrowser.perf.wkprobe`, so WebKit files everything under that one name in
+`~/Library/WebKit`, `~/Library/Caches`, and `~/Library/HTTPStorages`. Each run removes
+its website data stores and then every `~/Library` entry with that identifier, and
+`wkprobe.mjs clean` does the same by hand.
+
+**Ground truth.** WebKit reports no subresource loads to the app, so a logging reverse
+proxy in front of the server is the page’s origin and records every request that reached
+the network: method, path, status, and conditional headers.
+A 304 is a revalidation and any other response a network fetch.
+A resource the page’s Resource Timing lists with no matching proxy request in the same
+step came from WebKit’s cache.
+WebKit’s own sizes cannot say so, because a disk-cache hit after a relaunch can report a
+non-zero `transferSize`. Counts are reported by family: `document`, `static`,
+`plugin_static`, `kpress_static`, and `data`. Every step is bracketed by `/__mark`
+requests to the proxy, which is how each request is attributed to its step.
+
+**Scenarios.** Each run starts the server with the condition’s state directory
+(`.bench/wkprobe/NAME/state/LABEL/`, so GitHub data comes from cache), loads
+`/view/README.md` once from a throwaway ephemeral store to warm the server, and then,
+with one new persistent data store on one fixed proxy origin:
+
+| Scenario | What it does |
+| --- | --- |
+| `cold` | The first load in the new store |
+| `reload` | `WKWebView.reload()` in the same process |
+| `relaunch` | A new probe process on the same store and origin, as the app relaunches |
+| `hidden-then-show` | A new process loads into a window that has never been ordered in, waits for the first view to mount (the subject rendered and the shell tools ready), waits 5 s more to see whether it becomes ready while hidden, then shows the window and times show-to-ready |
+
+Ready is the transition scenario’s subject test: the exact path rendered, the pending
+modifier cleared, and content without a placeholder in the active view.
+It is polled from the native side every 10 ms, so a hidden page’s throttled timers do
+not slow the clock. A relaunch’s revalidations depend on time: assets without
+`Cache-Control` are fresh for a tenth of the age their `Last-Modified` gives them, so
+each row records that age and the seconds between the first launch and the relaunch.
+
+**Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
+`compare` leave it out, when:
+
+- `screen`: the screen was locked, the display asleep, or the session off the console,
+  before the run or before or after any step;
+- `visibility`: a visible scenario saw `visibilityState` other than `visible`, or
+  `hidden-then-show` was not hidden before the show and visible after it;
+- `build_identity`: the version line the server or the page renders differs from
+  `metab --version`;
+- `converged`: a scenario never became ready, or the hidden first view never mounted;
+- `raf`: a visible scenario ran fewer than 30 animation frames per second;
+- `viewport`, `page_exceptions`, `rendered_errors`, `webcontent_terminated`,
+  `navigation`, `probe`, and `marks`: the page was not the requested size, threw, showed
+  an alert, lost its web content process or a navigation, the probe wrote no result, or
+  the proxy did not log a step’s marks.
+
+`compare` applies [the accept rule](#the-accept-rule): at least three valid runs per
+condition, ranges that do not overlap, and for a time a ratio beyond `--tolerance` (1.3
+by default; it must be below 2). Counts are judged on their ranges.
+It refuses runs on different corpus commits and notes a mixed WebKit version or harness
+commit. `--no-preflight` runs with the screen locked so the other guards can be
+exercised; every scenario is then refused by its own screen guard.
+
 ### Attributing Stateful-Navigation Delay
 
 Use this sequence when an interaction feels late even though one measured application
