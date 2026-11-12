@@ -625,6 +625,14 @@ typed("P reaches the view tab while no stack is open", { key: "p" }, "preview");
 typed("Shift+P reaches the view tab too", { key: "P", shiftKey: true }, "preview");
 stackOpen = true;
 typed("the global P outranks the view tab while a stack is open", { key: "p" }, "stack");
+// A permanent scope is always active in its fixed place, so activating one, which
+// would lift view-tabs above global and hand the stack's P to the view tab, is refused.
+for (const permanent of ["global", "view-tabs"]) {
+  rejects(`activating the permanent ${permanent} scope is refused`, () =>
+    layouts.activateScope(permanent),
+  );
+}
+typed("the global P still outranks the view tab after the refusal", { key: "p" }, "stack");
 stackOpen = false;
 rejects("two P bindings in one scope still fail", () =>
   layouts.register(

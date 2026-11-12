@@ -961,6 +961,11 @@
     /** @param {string} scope @param {{exclusive?: boolean}} [activationOptions] */
     function activateScope(scope, activationOptions = {}) {
       requireNonemptyString(scope, "an activation scope");
+      if (PERMANENT_SCOPES.includes(scope)) {
+        // Always active already, in a fixed order: activating one would lift it above
+        // `global`, so a view tab's P would outrank the stack's.
+        throw new TypeError(`A permanent scope cannot be activated: ${scope}`);
+      }
       const activation = {
         exclusive: Boolean(activationOptions.exclusive),
         scope,
