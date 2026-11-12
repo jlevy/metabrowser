@@ -821,6 +821,11 @@ async function headerShape(page) {
   text.scrollHeight = 40;
   title.events.get("pointerenter")();
   assert.equal(title.dataset.tipText, undefined);
+  // Two lines that fit overhang their box by a descender's pixels, and are not cut short.
+  text.scrollHeight = 62;
+  text.clientHeight = 60;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, undefined, "a whole two-line title has no tooltip");
   handle.dispose();
 }
 
