@@ -692,6 +692,9 @@ handle?.detach(); // idempotent; call it from dispose()
   element that is not an `HTMLElement`, a key that is not one letter, an unknown group,
   a missing `activate`, an option the SDK decides, such as `bindings`, or an id attached
   already with another key, group, or copy.
+  An attachment made before the shell’s keyboard support loads is checked when it loads,
+  and a malformed one is then logged with `console.error`, under the same prefix,
+  instead of thrown.
 - A letter the shell reserves is refused without an error, so a view keeps working if
   the shell reserves another letter later.
   The reserved letters are `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`, the letters
@@ -945,7 +948,7 @@ Before publishing a plugin:
 3. Exercise default and lazy-mounted tabs, including any post-mount syntax enhancement.
 4. Verify `dispose` stops listeners, streams, timers, and chart instances.
 5. Verify every `shortcuts.attach()` attachment detaches in `dispose`, and that using
-   the view prints no `shortcuts.attach:` warning in the browser console.
+   the view prints no `shortcuts.attach:` warning or error in the browser console.
 6. Test path validation and malformed data-hook inputs.
 7. Build the wheel and confirm all static assets are present.
 8. Browse data with the plugin absent to verify core fallbacks remain usable.
