@@ -33,19 +33,24 @@ swiftc -O AppIcon/render-svg.swift -o "$work/render-svg"
 
 # The renderer must refuse every file in AppIcon/rejects/, each with the reason its first
 # line names, and promptly: an unsupported attribute once rendered without one, and a
-# malformed path once hung the renderer instead of stopping it.
+# malformed path once hung the renderer instead of stopping it. The renderer's own alarm
+# (--time-limit) ends a hang, so the check starts no watchdog process, which could outlive
+# the check or signal a pid the kernel had handed to another process.
+time_limit=10
 for fixture in AppIcon/rejects/*.svg; do
   reason="$(sed -n '1s/^<!-- render-svg refuses: \(.*\) -->$/\1/p' "$fixture")"
   [[ -n "$reason" ]] || { echo "$fixture: its first line must be <!-- render-svg refuses: REASON -->" >&2; exit 1; }
-  "$work/render-svg" --internal 16 "$fixture" "$work/rejected.png" 16 2>"$work/rejected.txt" &
-  renderer=$!
-  (sleep 10 && kill -9 "$renderer" 2>/dev/null) &
-  watchdog=$!
-  if wait "$renderer"; then
+  status=0
+  "$work/render-svg" --time-limit "$time_limit" --internal 16 "$fixture" "$work/rejected.png" 16 \
+    2>"$work/rejected.txt" || status=$?
+  if ((status == 0)); then
     echo "$fixture: render-svg accepted it; it must refuse it: $reason" >&2
     exit 1
   fi
-  kill "$watchdog" 2>/dev/null || true
+  if ((status == 128 + 14)); then  # SIGALRM
+    echo "$fixture: render-svg ran past ${time_limit}s; it must refuse it promptly: $reason" >&2
+    exit 1
+  fi
   grep -qF -- "$reason" "$work/rejected.txt" || {
     echo "$fixture: render-svg must refuse it with \"$reason\", not: $(cat "$work/rejected.txt")" >&2
     exit 1
