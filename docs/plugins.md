@@ -174,7 +174,16 @@ asking until the stamp changes.
 Reach your plugin’s other files with relative URLs (`import "./part.js"`,
 `new URL("./worker.js", import.meta.url)`, `url(icon.svg)` in CSS), which inherit the
 stamp. An absolute `/plugin-static/<name>/<file>` URL still works, but is revalidated on
-every use. `src/metabrowser/asset_stamps.py` documents the policy.
+every use, and a module reached both that way and by a relative URL is two module
+instances, each with its own module-level state, so use one form for a module.
+A relative URL cannot reach another plugin’s files: `../other/x.js` resolves inside your
+own plugin’s namespace.
+A top-level directory named `@` and sixteen hexadecimal digits cannot be addressed.
+`src/metabrowser/asset_stamps.py` documents the policy.
+
+The KPress helpers (`fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`) are
+installed by `plugin-sdk-views.js`, which the shell loads before any plugin’s code runs.
+A test that runs your plugin outside the shell loads it beside `plugin-sdk.js`.
 
 ### Kind Rules
 
