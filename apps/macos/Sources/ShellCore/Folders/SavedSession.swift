@@ -142,8 +142,11 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots waiting for one of their tabs to be selected.
     public private(set) var deferred: [String] = []
     /// The roots whose tab was selected, the front tab's among them: they start as the
-    /// user's choice, without being checked again.
+    /// user's choice, without the background check, before their turn or after it.
     public private(set) var selected: Set<String> = []
+    /// The roots whose restored start launched, which a later selection still marks as
+    /// selected.
+    public private(set) var started: Set<String> = []
     /// The root `next` returned last, while its start is outstanding, until `finish`,
     /// `putBack`, `hold`, or `remove` settles it.
     private var outstanding: String?
@@ -189,8 +192,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     /// A tab of `root` was selected: it starts next. Returns false if `root` is not
     /// waiting to start, because its start is outstanding, it has started, or it is not
-    /// part of the restore. A root whose start is outstanding is recorded as selected, so
-    /// if it is put back it starts as the user's choice, without being checked again.
+    /// part of the restore. A root whose start is outstanding, or that has started, is
+    /// recorded as selected, so if it is put back or requeued it starts as the user's
+    /// choice, without the background check.
     @discardableResult
     public mutating func select(_ root: String) -> Bool {
         if root == outstanding {
@@ -198,7 +202,10 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
             selectedWhileOutstanding.append(root)
             return false
         }
-        guard pending.contains(root) || deferred.contains(root) else { return false }
+        guard pending.contains(root) || deferred.contains(root) else {
+            if started.contains(root) { selected.insert(root) }
+            return false
+        }
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
         pending.insert(root, at: 0)
@@ -235,14 +242,25 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// `root`, taken with `next`, started.
     public mutating func finish(_ root: String) {
         if root == outstanding { settle() }
+        started.insert(root)
     }
 
-    /// Every tab of `root` closed before its server started.
+    /// `root`, selected, had a later start refused at the moment of spawning, as a restart
+    /// whose saved path now leads to another folder is: it starts next again, as the
+    /// user's choice, so it is resolved again. One not selected waits for its tab (`hold`).
+    public mutating func requeue(_ root: String) {
+        guard selected.contains(root), root != outstanding, !pending.contains(root) else { return }
+        deferred.removeAll { $0 == root }
+        pending.insert(root, at: 0)
+    }
+
+    /// Every tab of `root` closed, before its server started or after.
     public mutating func remove(_ root: String) {
         if root == outstanding { settle() }
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
         selected.remove(root)
+        started.remove(root)
     }
 
     /// The user chose to start `saved`, whose path now leads to the folder `canonical`

@@ -108,9 +108,10 @@ final class FolderSession: ManagedServer {
         return outcome
     }
 
-    /// For a restored background folder, the root check made just before its server would
-    /// spawn, after the launch gate and beside the runtime check (`FolderServer`); nil
-    /// once one of its tabs is selected, which starts it as the user's choice.
+    /// For a restored folder, the root check made just before its server would spawn,
+    /// after the launch gate and beside the runtime check (`FolderServer`, `RestoreRun`):
+    /// a background one's admission, and once one of its tabs is selected, that its
+    /// saved path still names its own folder.
     var launchCheck: (() -> Bool)? {
         get { server.rootCheck }
         set { server.rootCheck = newValue }

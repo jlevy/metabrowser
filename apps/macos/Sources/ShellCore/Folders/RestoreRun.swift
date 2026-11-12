@@ -18,11 +18,15 @@ public protocol RestoredFolder: AnyObject {
 /// A background root is admitted again when its turn comes, and once more just before
 /// its server spawns (`RestoredFolder.launchCheck`), since it can change while the roots
 /// before it start and while it waits at the launch gate; one that no longer is admitted
-/// waits for its tab. A selected root starts as the user's choice, without the check,
+/// waits for its tab. A selected root starts as the user's choice, without that check,
 /// but its saved path is resolved first (`RootActivation`): one that now leads to another
 /// folder moves its tabs to that folder's session, the open one or a new one, and that
 /// folder starts in its place, so a folder keeps one session and one server however its
-/// tabs were saved (`RestoreQueue.redirect`). A root that finds no runtime goes back to
+/// tabs were saved (`RestoreQueue.redirect`). Its check from then on, for this start and
+/// every later restart, is that its saved path still names its own folder: a start that
+/// finds otherwise spawns nothing, and the root is resolved again as the user's choice,
+/// at its turn (`start`) or, for a later restart, at once (`rootRefused`). A root that
+/// finds no runtime goes back to
 /// the front of the queue and the restore pauses until `runtimeAccepted()`, so each root
 /// is still admitted again in its turn, in order, with selected tabs first.
 ///
@@ -91,6 +95,8 @@ public final class RestoreRun {
                     continue
                 }
                 queue.redirect(path, to: canonical, isOpen: isOpen)
+                // Its tabs, shown by the user's choice, now show that folder.
+                if queue.selected.contains(canonical) { folder(canonical)?.launchCheck = namesItself(canonical) }
                 onEvent(.moved(path, to: canonical))
                 continue
             }
@@ -99,8 +105,8 @@ public final class RestoreRun {
             case .launched:
                 queue.finish(path)
             case .refusedByRoot where queue.selected.contains(path):
-                // Its tab was selected while it waited at the gate, and its path led to
-                // another folder when it would have spawned (`select`): it is next again,
+                // Selected, and its path led to another folder when it would have spawned,
+                // as when its tab is selected while it waits at the gate: it is next again,
                 // as the user's choice, and resolved like any selected start, so its tabs
                 // move before anything spawns.
                 queue.putBack(path)
@@ -124,17 +130,23 @@ public final class RestoreRun {
     /// A tab of `path` was selected: it starts as the user's choice, next if it is waiting
     /// to start. Returns whether it waits to start, so a run must go on.
     ///
-    /// One whose start already waits at the launch gate was handed out before it was
-    /// selected, so it was not resolved: its background check gives way to one made at the
-    /// moment of spawning, that its saved path still names its own folder. One that now
-    /// leads to another folder spawns nothing, and the run resolves it as a selected root,
-    /// moving its tabs first (`start`).
+    /// Its background check gives way to the check every selected root keeps, made at the
+    /// moment of spawning: that its saved path still names its own folder. That covers a
+    /// start already waiting at the launch gate, which was handed out before it was
+    /// selected and so was not resolved, and every later restart. A folder not part of
+    /// the restore is left unchecked.
     @discardableResult
     public func select(_ path: String) -> Bool {
         let waits = queue.select(path)
-        let resolve = self.resolve
-        folder(path)?.launchCheck = queue.isOutstanding(path) ? { resolve(path) == nil } : nil
+        folder(path)?.launchCheck = queue.selected.contains(path) ? namesItself(path) : nil
         return waits
+    }
+
+    /// The check of a selected root: its saved path still names its own folder, or
+    /// nothing that can be served, which its server then reports (`RootActivation`).
+    private func namesItself(_ path: String) -> () -> Bool {
+        let resolve = self.resolve
+        return { resolve(path) == nil }
     }
 
     /// Every tab of `path` closed.
@@ -142,11 +154,20 @@ public final class RestoreRun {
         queue.remove(path)
     }
 
-    /// A restored background folder's restart, such as one after an upgrade, was refused
-    /// by its root check: its server stays stopped until one of its tabs is selected,
-    /// which starts it through the queue as the user's choice.
-    public func rootRefused(_ path: String) {
-        queue.hold(path)
+    /// A restored folder's restart, such as Restart Server or the one after an upgrade, was
+    /// refused by its root check. A background one's server stays stopped until one of its
+    /// tabs is selected, which starts it through the queue as the user's choice. A selected
+    /// one's saved path now leads to another folder: it starts next as the user's choice,
+    /// resolved, so its tabs move to that folder's session, which starts in its place.
+    /// Returns whether a run must go on.
+    @discardableResult
+    public func rootRefused(_ path: String) -> Bool {
+        guard queue.selected.contains(path) else {
+            queue.hold(path)
+            return false
+        }
+        queue.requeue(path)
+        return true
     }
 
     /// A runtime was accepted. Returns whether the restore was waiting for one, so a run
@@ -159,7 +180,7 @@ public final class RestoreRun {
 
     /// The next root to start. A background root is admitted again now and gets the check
     /// made just before its server spawns; one that no longer is admitted waits for its
-    /// tab. A selected root is not checked.
+    /// tab. A selected root gets the check that its saved path still names its folder.
     private func next() -> String? {
         let admit = self.admit
         let waiting = Set(queue.deferred)
@@ -168,7 +189,7 @@ public final class RestoreRun {
             onEvent(.changedBeforeItsTurn(path))
         }
         if let next, let session = folder(next) {
-            session.launchCheck = queue.selected.contains(next) ? nil : { admit(next) == .open(next) }
+            session.launchCheck = queue.selected.contains(next) ? namesItself(next) : { admit(next) == .open(next) }
         }
         return next
     }

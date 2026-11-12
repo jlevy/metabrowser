@@ -701,10 +701,15 @@ stops nothing if it has not yet, and both go ahead once a runtime is accepted.
 A folder the user opened or restarted waits on its own; a restore puts its root back at
 the front of its queue and pauses, so when a runtime is accepted each root is admitted
 again in its turn, in the restore’s order, with selected tabs first, including a tab
-selected while that root was waiting to start, which then starts it without the check.
-A restored background folder keeps its root check after it starts, so a later restart
-that finds its root changed, such as the one after an upgrade, spawns nothing; the
-folder waits for one of its tabs to be selected, which starts it once.
+selected while that root was waiting to start, which then starts it without the
+background check.
+A restored background folder keeps its root check after it starts, so a
+later restart that finds its root changed, such as the one after an upgrade, spawns
+nothing; the folder waits for one of its tabs to be selected, which starts it once.
+A restored folder whose tab was selected instead keeps the check that its saved path
+still names its own folder, so a restart after it was relinked moves its tabs to the
+folder it now leads to (see
+[Files, Tabs, Recents, and the Last Session](#files-tabs-recents-and-the-last-session)).
 A folder records the runtime it started from only once its child is created.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
@@ -985,12 +990,13 @@ Terminal launch.
   just before its server spawns, after the launch gate and any earlier child’s
   termination (`ServerSupervisor.mayLaunch`); one that changed while it waited is not
   spawned and waits for its tab instead.
-  Selecting a tab clears the check.
-  A tab selected while its root’s start already waits at the gate was not resolved when
-  its turn came, so that start gets a check of its own at the moment of spawning
-  instead: that its saved path still names its own folder.
-  One that now leads to another folder spawns nothing and is resolved as a selected
-  root, its tabs moving to that folder’s session before any child spawns.
+  Selecting a tab replaces the check with the one every selected root keeps, for its
+  start and every later restart: that its saved path still names its own folder.
+  That covers a start already waiting at the gate, handed out before its tab was
+  selected and so not resolved, and a Restart Server after the folder was relinked.
+  A start or restart that finds the path now leads to another folder spawns nothing and
+  is resolved as a selected root, its tabs moving to that folder’s session, which starts
+  in its place, before any child spawns.
   The server takes a path, so a process that changes the path between that last check
   and the server resolving it, about a process start later, can still win; the deferral
   is the app’s own policy, and macOS enforces its privacy grants regardless.

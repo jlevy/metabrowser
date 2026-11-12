@@ -129,6 +129,15 @@ private final class RestoreHarness {
         if run.select(path) { await run.start() }
     }
 
+    /// Restart Server, Retry, or the restart after an upgrade, as `FolderSession` settles it:
+    /// a restart its root check refused goes to the restore (`FolderWindows.rootRefused`).
+    func restart(_ path: String) async -> FolderServer.Outcome? {
+        guard let folder = folder(path) else { return nil }
+        let outcome = await folder.server.restart()
+        if outcome == .refusedByRoot, run.rootRefused(path) { await run.start() }
+        return outcome
+    }
+
     func stopAll() async { await fleet.stopAll() }
 }
 
@@ -367,6 +376,24 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(subject.next(stillOpen: { _ in false }) == "/c")
     }
 
+    /// mb-652n: a root that started and is selected later counts as selected, so a later
+    /// refused restart puts it first again; one never selected is not requeued.
+    @Test func aStartedRootSelectedLaterIsRequeuedAsTheUsersChoice() {
+        var subject = queue()
+        #expect(subject.next() == "/a")
+        subject.finish("/a")
+        #expect(subject.started.contains("/a"))
+        let selectedA = subject.select("/a")
+        #expect(!selectedA, "it has started: nothing waits")
+        #expect(subject.selected.contains("/a"))
+        subject.requeue("/a")
+        subject.requeue("/b")  // not selected
+        #expect(subject.pending == ["/a", "/b"])
+        #expect(subject.next(stillOpen: { _ in false }) == "/a")
+        let selectedZ = subject.select("/z")
+        #expect(!selectedZ && !subject.selected.contains("/z"), "not part of the restore")
+    }
+
     @Test func aFolderWithNoSessionStartsNextAndAnOpenOneOutsideTheRestoreIsLeftAsItIs() {
         var subject = queue()
         subject.redirect("/a", to: "/elsewhere", isOpen: false)
@@ -425,6 +452,93 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         #expect(restore.served.all == [folders.notes, folders.a])
         #expect(restore.tabs == [folders.notes, folders.a])
         #expect(restore.events.isEmpty)
+        await restore.stopAll()
+    }
+}
+
+/// A restart of a restored folder whose path was relinked after it started (review B1 on
+/// #377, mb-652n). The check a selection at the gate installed outlived that start, so a
+/// later Restart Server was refused by it, and a selected root's refusal was held as if
+/// it waited for its tab: it was in neither the pending nor the waiting roots, and
+/// selecting it again started nothing, so the server stayed stopped.
+@Suite struct RestartAfterRelinkTests {
+    /// Ends at one session and one server for B, which the tabs and the saved session name,
+    /// and which opening B or a file in it, directly or through A, reuses.
+    private func expectOneServerForB(_ restore: RestoreHarness, _ folders: Folders, tabs: [String]) async throws {
+        #expect(restore.tabs == tabs)
+        #expect(restore.roots == [folders.notes, folders.b].sorted())
+        #expect(restore.fleet.childPIDs.count == 2, "one server for notes and one for B")
+        let joined = try #require(restore.folder(folders.b))
+        for path in [folders.b, folders.b + "/plan.md", folders.a + "/plan.md"] {
+            let shown = await restore.open(path)
+            #expect(shown === joined, "\(path)")
+        }
+    }
+
+    /// The review's sequence: A selected while its start waits at the gate starts as
+    /// saved; then A is relinked to B and Restart Server is chosen.
+    @Test func aRootSelectedAtTheGateIsResolvedWhenARestartFindsItRelinked() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home, gated: [folders.a])
+        let a = try #require(restore.folder(folders.a))
+        await restore.gate.acquire()
+        let running = Task { await restore.run.start() }
+        #expect(await eventually { restore.served.all == [folders.notes] && a.server.supervisor.state == .starting })
+        await restore.select(folders.a)
+        restore.gate.release()
+        await running.value
+        #expect(restore.served.all == [folders.notes, folders.a])
+        try folders.relink(folders.a, to: folders.b)
+        #expect(await restore.restart(folders.a) == .refusedByRoot)
+        #expect(restore.served.all == [folders.notes, folders.a, folders.b])
+        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        await restore.stopAll()
+    }
+
+    /// The front tab, selected from the start, the same way.
+    @Test func theFrontTabIsResolvedWhenARestartFindsItRelinked() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.a, folders.notes]), home: folders.home)
+        await restore.run.start()
+        #expect(restore.served.all == [folders.a, folders.notes])
+        try folders.relink(folders.a, to: folders.b)
+        #expect(await restore.restart(folders.a) == .refusedByRoot)
+        #expect(restore.served.all == [folders.a, folders.notes, folders.b])
+        try await expectOneServerForB(restore, folders, tabs: [folders.b, folders.notes])
+        await restore.stopAll()
+    }
+
+    /// A background root that started, then had its tab selected, the same way.
+    @Test func aRootSelectedAfterItStartedIsResolvedWhenARestartFindsItRelinked() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home)
+        await restore.run.start()
+        #expect(restore.served.all == [folders.notes, folders.a])
+        await restore.select(folders.a)
+        try folders.relink(folders.a, to: folders.b)
+        #expect(await restore.restart(folders.a) == .refusedByRoot)
+        #expect(restore.served.all == [folders.notes, folders.a, folders.b])
+        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
+        await restore.stopAll()
+    }
+
+    /// A background root nobody selected waits for its tab, as before, and is resolved
+    /// when it is selected.
+    @Test func aRootNeverSelectedWaitsForItsTabThenJoinsB() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home)
+        await restore.run.start()
+        try folders.relink(folders.a, to: folders.b)
+        #expect(await restore.restart(folders.a) == .refusedByRoot)
+        #expect(restore.served.all == [folders.notes, folders.a])
+        #expect(restore.run.queue.deferred == [folders.a])
+        await restore.select(folders.a)
+        #expect(restore.served.all == [folders.notes, folders.a, folders.b])
+        try await expectOneServerForB(restore, folders, tabs: [folders.notes, folders.b])
         await restore.stopAll()
     }
 }

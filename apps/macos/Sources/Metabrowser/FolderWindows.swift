@@ -337,10 +337,11 @@ final class FolderWindows {
         oldWindow.close()
     }
 
-    /// A restored background folder's restart, such as one after an upgrade, was refused
-    /// by its root check (`RestoreRun.rootRefused`).
+    /// A restored folder's restart, such as Restart Server or the one after an upgrade, was
+    /// refused by its root check (`RestoreRun.rootRefused`): a selected one is resolved at
+    /// once, which moves its tabs to the folder its path now leads to.
     func rootRefused(_ session: FolderSession) {
-        restoreRun?.rootRefused(session.path)
+        if restoreRun?.rootRefused(session.path) == true { startRestoredServers() }
     }
 
     /// A runtime was accepted: a restore that paused for want of one carries on.
