@@ -148,6 +148,30 @@ def test_keyboard_keys_render_caps_bold_and_bordered() -> None:
     assert "--kbd-font-weight: var(--weight-bold);" in css
 
 
+def test_badge_keycap_modifies_the_base_rule_after_it() -> None:
+    """A Shift reveal badge is a `.kbd` modifier: declared after the base rule, paint only.
+
+    The badge inherits the keycap's type, caps, and radius from the token rule above it and
+    changes only its fill, border, text color, and shadow (the `── Keyboard keys ──` blocks).
+    """
+    rules = _rules(_read_styles())
+    selectors = [selector for selector, _body in rules]
+    assert selectors.index(".kbd") < selectors.index(".kbd-badge")
+    assert next(selector for selector in selectors if ".kbd" in selector) == ".kbd"
+    badge = rules[selectors.index(".kbd-badge")][1]
+    for owned in (
+        "font-family",
+        "font-size",
+        "font-weight",
+        "letter-spacing",
+        "text-transform",
+        "border-radius",
+        "padding",
+        "min-width",
+    ):
+        assert not re.search(rf"(?:^|;)\s*{owned}\s*:", badge), f".kbd-badge restyles {owned}"
+
+
 def test_palette_filename_and_parent_path_share_one_size() -> None:
     """A result row reads as one line of navigation, not a heading over fine print."""
     rules = dict(_rules(_read_styles()))

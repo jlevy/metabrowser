@@ -1708,3 +1708,342 @@ def test_branch_copy_plate_has_readable_interactive_ink() -> None:
     assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
     rules = dict(_rules_of(STATIC / "styles.css"))
     assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"
+
+
+# ── The Shift reveal's paint ────────────────────────────────────────
+#
+# Which badges mount and what the revealed strip lists are pinned browserlessly by the
+# reveal session (`shell.key-reveal`). What they look like is paint, `shell.key-badge-paint`
+# in the architecture map: these checks pin, by stylesheet text, the parts of it a
+# stylesheet states, against the markup the registry, the reveal machine, and Help write.
+
+_KEY_REVEAL_YELLOW_HUE = 98.1
+# What a badge is drawn over, by target: the tab bars, the main-pane headers, and the
+# filter bar are --sidebar-bg; the commit view's heading is --bg; a resting filter chip is
+# --viz-surface; a hovered control or an open menu's trigger is --hover-bg; a trigger
+# holding a value is --highlight-bg over the filter bar.
+_BADGE_GROUNDS = ("--bg", "--sidebar-bg", "--viz-surface", "--hover-bg", "--highlight-bg")
+_MIX_OVER_TRANSPARENT = re.compile(
+    r"color-mix\(in srgb, var\((?P<token>--[\w-]+)\) (?P<percent>[\d.]+)%, transparent\)"
+)
+
+
+def _theme_tokens() -> dict[str, dict[str, str]]:
+    """Every custom property each theme resolves: the light root, and the dark override on it."""
+
+    rules = _rules_of(STATIC / "styles.css")
+    light: dict[str, str] = {}
+    dark: dict[str, str] = {}
+    for selector, declarations in rules:
+        if selector == ":root":
+            light.update(declarations)
+        elif selector == '[data-theme="dark"]':
+            dark.update(declarations)
+    return {"light": light, "dark": {**light, **dark}}
+
+
+def _resolved(tokens: dict[str, str], token: str) -> str:
+    """A token's value with `var()` aliases followed to the declaration that states a color."""
+
+    value = tokens[token]
+    seen = {token}
+    while (alias := re.fullmatch(r"var\((--[\w-]+)\)", value)) is not None:
+        assert alias[1] not in seen, f"{token} aliases itself"
+        seen.add(alias[1])
+        value = tokens[alias[1]]
+    return value
+
+
+def _translucent(value: str) -> tuple[str, float]:
+    """An `oklch(L% C H / A)` color as its opaque `oklch(L% C H)` and its alpha."""
+
+    found = re.fullmatch(r"oklch\(([\d.]+% [\d.]+ [\d.]+)(?: / ([\d.]+))?\)", value.strip())
+    assert found is not None, value
+    return f"oklch({found[1]})", float(found[2] or 1)
+
+
+def _over(ink: tuple[float, ...], ground: tuple[float, ...], opacity: float) -> tuple[float, ...]:
+    """*ink* at *opacity* over *ground*, blended in gamma-encoded sRGB as a browser does."""
+
+    return tuple(
+        opacity * front + (1 - opacity) * back for front, back in zip(ink, ground, strict=True)
+    )
+
+
+def _srgb_luminance(channels: tuple[float, ...]) -> float:
+    linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _ground(tokens: dict[str, str], token: str) -> tuple[float, ...]:
+    """The sRGB a surface token paints, a translucent mix composited over the filter bar."""
+
+    value = _resolved(tokens, token)
+    mix = _MIX_OVER_TRANSPARENT.fullmatch(value)
+    if mix is not None:
+        ink = _srgb(_resolved(tokens, mix["token"]))
+        return _over(ink, _srgb(_resolved(tokens, "--sidebar-bg")), float(mix["percent"]) / 100)
+    return _srgb(value)
+
+
+def _key_reveal_contrast(tokens: dict[str, str]) -> dict[str, float]:
+    """The ratios the reveal paints: its text on the strip's yellow, and a badge at its worst."""
+
+    text = _srgb_luminance(_srgb(_resolved(tokens, "--kbd-badge-color")))
+    strip = _srgb(_resolved(tokens, "--key-reveal-bg"))
+    fill, alpha = _translucent(_resolved(tokens, "--kbd-badge-bg"))
+    badge = min(
+        _ratio(text, _srgb_luminance(_over(_srgb(fill), _ground(tokens, ground), alpha)))
+        for ground in _BADGE_GROUNDS
+    )
+    # A keycap on the strip is a badge's fill over the strip's own yellow.
+    keycap = _ratio(text, _srgb_luminance(_over(_srgb(fill), strip, alpha)))
+    return {
+        "badge": badge,
+        "keycap": keycap,
+        "muted": _ratio(
+            _srgb_luminance(_srgb(_resolved(tokens, "--muted"))), _srgb_luminance(strip)
+        ),
+        "strip": _ratio(text, _srgb_luminance(strip)),
+    }
+
+
+def _first_rules() -> dict[str, dict[str, str]]:
+    """Each selector of the shell stylesheet with its first rule: the one outside an at-rule
+    override such as reduced motion or print, which follow it."""
+
+    found: dict[str, dict[str, str]] = {}
+    for selector, declarations in _rules_of(STATIC / "styles.css"):
+        found.setdefault(selector, declarations)
+    return found
+
+
+def _at_rule_rules(prelude: str) -> list[tuple[str, dict[str, str]]]:
+    """(one selector, declarations) for each rule inside every `prelude { … }` block."""
+
+    css = re.sub(
+        r"/\*.*?\*/", "", (STATIC / "styles.css").read_text(encoding="utf-8"), flags=re.DOTALL
+    )
+    found: list[tuple[str, dict[str, str]]] = []
+    start = 0
+    while (at := css.find(prelude, start)) >= 0:
+        opening = css.index("{", at)
+        depth = 0
+        for index in range(opening, len(css)):
+            depth += {"{": 1, "}": -1}.get(css[index], 0)
+            if depth == 0:
+                found.extend(
+                    (selector.strip(), dict(_declarations(body)))
+                    for selectors, body in _style_rules(css[opening + 1 : index])
+                    for selector in _split_top(selectors, ",")
+                )
+                break
+        start = opening + 1
+    return found
+
+
+def test_key_reveal_tokens_are_the_row_flash_yellow_in_both_themes() -> None:
+    """The reveal is the live-row yellow (docs/design-system.md, "Badge Targets and the Shift Reveal").
+
+    The strip's layer is `--row-flash-bg` itself; a badge is that color, partly transparent
+    so the label under its leading edge shows through; its border is a deeper tone of the
+    same hue, with more chroma and a step toward the text, so a keycap keeps its edge on the
+    yellow strip; and its text is the body text. Each is oklch at the yellow's hue in both
+    themes, which is what `test_themed_colors_keep_their_hue` reads as one color.
+    """
+
+    themes = _theme_tokens()
+    root = next(body for selector, body in _rules_of(STATIC / "styles.css") if selector == ":root")
+    dark = next(
+        body
+        for selector, body in _rules_of(STATIC / "styles.css")
+        if selector == '[data-theme="dark"]'
+    )
+    assert root["--key-reveal-bg"] == "var(--row-flash-bg)"
+    assert root["--kbd-badge-color"] == "var(--text)"
+    for token in ("--kbd-badge-bg", "--kbd-badge-border"):
+        assert token in root and token in dark, f"{token} must be defined in both themes"
+    for theme, tokens in themes.items():
+        yellow = _oklch_channels(_resolved(tokens, "--key-reveal-bg"))
+        assert yellow[2] == _KEY_REVEAL_YELLOW_HUE, f"the {theme} reveal left the row-flash hue"
+        fill, alpha = _translucent(tokens["--kbd-badge-bg"])
+        assert _oklch_channels(fill) == yellow, f"the {theme} badge is not the reveal's yellow"
+        assert 0 < alpha < 1, f"the {theme} badge must be translucent, not {alpha}"
+        border, border_alpha = _translucent(tokens["--kbd-badge-border"])
+        lightness, chroma, hue = _oklch_channels(border)
+        assert border_alpha == 1 and hue == _KEY_REVEAL_YELLOW_HUE
+        assert chroma > yellow[1], f"the {theme} badge border is no deeper than its fill"
+        ink = _oklch_channels(_resolved(tokens, "--text"))[0]
+        assert abs(lightness - ink) < abs(yellow[0] - ink), (
+            f"the {theme} badge border does not step from the fill toward the text"
+        )
+
+
+def test_key_reveal_text_meets_contrast_in_both_themes() -> None:
+    """Everything the reveal paints keeps 4.5:1, and the ratios beside the tokens are these.
+
+    A badge's keycap is measured as composited: its translucent fill over each surface a
+    target sits on. The revealed strip's labels and keycaps are measured on its yellow, which
+    is why they are `--text`: `--muted` does not reach 4.5:1 there.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    measured = {theme: _key_reveal_contrast(tokens) for theme, tokens in _theme_tokens().items()}
+    for theme, ratios in measured.items():
+        for surface in ("badge", "keycap", "strip"):
+            assert ratios[surface] >= 4.5, f"the {theme} {surface} reads {ratios[surface]:.2f}:1"
+        assert ratios["muted"] < 4.5, f"--muted reads on the {theme} yellow; the note is stale"
+    recorded = re.findall(r"(light|dark)\s+strip\s+([\d.]+):1\s+badge\s+([\d.]+):1", styles)
+    assert {theme for theme, _strip, _badge in recorded} == {"light", "dark"}
+    for theme, strip, badge in recorded:
+        assert (strip, badge) == (
+            f"{measured[theme]['strip']:.2f}",
+            f"{measured[theme]['badge']:.2f}",
+        ), f"the {theme} ratios recorded beside the tokens have drifted"
+    muted = re.search(
+        r"--muted reads ([\d.]+):1\s+on\s+the\s+light\s+yellow\s+and\s+([\d.]+):1", styles
+    )
+    assert muted is not None
+    assert (muted[1], muted[2]) == (
+        f"{measured['light']['muted']:.2f}",
+        f"{measured['dark']['muted']:.2f}",
+    )
+
+
+def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
+    """A badge is a `.kbd` that changes only its paint, ignores the pointer, and moves no box.
+
+    The registry mounts `kbd.kbd.kbd-badge` with `data-kbd-placement`; `inline-end` makes the
+    target `.kbd-badge-host`, and `beside` writes the target's inline end and vertical center,
+    measured from the nearest `[data-kbd-badge-anchor]`, as two custom properties. The host
+    and the anchor become containing blocks through zero-specificity rules, so an element
+    that already declares a position keeps it.
+    """
+
+    registry = (STATIC / "keyboard-shortcuts.js").read_text(encoding="utf-8")
+    for written in (
+        'badge.className = "kbd kbd-badge";',
+        "badge.dataset.kbdPlacement = record.placement;",
+        'classList.add("kbd-badge-host")',
+        '"--kbd-badge-inline"',
+        '"--kbd-badge-block"',
+        'const BADGE_ANCHOR_SELECTOR = "[data-kbd-badge-anchor]";',
+    ):
+        assert written in registry, f"the registry no longer writes {written}"
+    assert 'const ROOT_ATTRIBUTE = "data-key-reveal";' in (STATIC / "key-reveal.js").read_text(
+        encoding="utf-8"
+    )
+    selected = _first_rules()
+    badge = selected[".kbd-badge"]
+    assert badge["position"] == "absolute"
+    assert badge["pointer-events"] == "none"
+    assert badge["background"] == "var(--kbd-badge-bg)"
+    assert badge["border-color"] == "var(--kbd-badge-border)"
+    assert badge["color"] == "var(--kbd-badge-color)"
+    assert badge["box-shadow"] == "var(--shadow-sm)"
+    keycap = {"font", "font-family", "font-size", "font-weight", "letter-spacing", "line-height"}
+    keycap |= {"text-transform", "border-radius", "border-width", "padding", "min-width"}
+    assert not keycap & set(badge), f"a badge restyles the keycap: {sorted(keycap & set(badge))}"
+    inline_end = selected['.kbd-badge[data-kbd-placement="inline-end"]']
+    assert inline_end["inset-inline-end"] == "0"
+    assert (inline_end["top"], inline_end["translate"]) == ("50%", "0 -50%")
+    beside = selected['.kbd-badge[data-kbd-placement="beside"]']
+    assert beside["inset-inline-start"] == "calc(var(--kbd-badge-inline) + 2px)"
+    assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
+    assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
+    assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
+    # The anchors layer 3 declares: the file header, the folder header, the commit heading.
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert app.count('class="file-header" data-kbd-badge-anchor') == 1
+    assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
+    git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    assert '<div class="git-commit-header" data-kbd-badge-anchor>' in git_panel
+
+
+def test_hover_revealed_targets_show_while_keys_are_revealed() -> None:
+    """A target that appears only on hover appears for the reveal, so its badge is not alone.
+
+    Both copy buttons are `.icon-btn-reveal`, transparent until hover or focus; a badge inside
+    one would inherit that, and a badge beside one would point at nothing. A target carries
+    `aria-keyshortcuts` while attached, which no other reveal-on-hover button does, and the
+    reveal restores `pointer-events` with the opacity, as every reveal trigger must
+    ("Reveal on Hover Keeps Keyboard Reach").
+    """
+
+    revealed = _first_rules()["[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts]"]
+    assert revealed == {"opacity": "1", "pointer-events": "auto"}
+    writes = re.compile(r"""setAttribute\(\s*"aria-keyshortcuts"|aria-keyshortcuts=""")
+    writers = {
+        source.name for source in _browser_sources() if writes.search(source.read_text("utf-8"))
+    }
+    # The registry for targets; Help for the strip's buttons; the overlay for a close button.
+    assert writers == {"keyboard-shortcuts.js", "keyboard-help.js", "overlay-layer.js"}, writers
+    for name in writers - {"keyboard-shortcuts.js"}:
+        assert "icon-btn-reveal" not in (STATIC / name).read_text(encoding="utf-8"), name
+
+
+def test_key_reveal_fades_in_hides_at_once_and_respects_reduced_motion() -> None:
+    """The badges and the strip fade in over the short interval, appear at once under reduced
+    motion, and go at once: they leave the document when the reveal ends, so nothing animates
+    them out."""
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    rules = _first_rules()
+    for selector in (".kbd-badge", ".nav-shortcut-reveal"):
+        assert rules[selector]["animation"] == "key-reveal-in var(--transition-fast)", selector
+    keyframes = re.search(r"@keyframes key-reveal-in \{(.*?)\n\}", styles, re.DOTALL)
+    assert keyframes is not None
+    assert set(re.findall(r"([a-z-]+):", keyframes[1])) == {"opacity"}, "opacity only"
+    assert re.search(r"\bfrom \{\s*opacity: 0;\s*\}", keyframes[1]), "from transparent, to rest"
+    reduced = _at_rule_rules("@media (prefers-reduced-motion: reduce)")
+    for selector in (".kbd-badge", ".nav-shortcut-reveal"):
+        assert (selector, {"animation": "none"}) in reduced, f"reduced motion keeps {selector}"
+    assert (
+        "[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts]",
+        {"transition": "none"},
+    ) in reduced
+    # The reveal machine removes the badges and the layer rather than hiding them.
+    registry = (STATIC / "keyboard-shortcuts.js").read_text(encoding="utf-8")
+    assert "record.badge.remove();" in registry
+    assert "revealLayer.remove();" in (STATIC / "keyboard-help.js").read_text(encoding="utf-8")
+
+
+def test_key_reveal_never_prints() -> None:
+    printed = _at_rule_rules("@media print")
+    for selector in (".kbd-badge", ".nav-shortcut-reveal", ".nav-shortcut-hints"):
+        assert any(
+            candidate == selector and body.get("display") == "none" for candidate, body in printed
+        ), f"{selector} prints"
+
+
+def test_revealed_strip_overlays_the_panel_without_reflowing_it() -> None:
+    """The strip's host keeps its resting size; the reveal layer grows upward over the panel.
+
+    Help appends the layer to `#nav-shortcut-hints` while revealed. Positioned against the
+    host's bottom edge and out of flow, it covers the resting strip and as much of the tree,
+    history, or pull list above as its items need, and the panel neither reflows nor
+    scrolls. It declares no z-index, so the panel's pinned headers and open menus, which do,
+    stay above it, and rows, which do not, stay under it.
+    """
+
+    help_source = (STATIC / "keyboard-help.js").read_text(encoding="utf-8")
+    assert 'revealLayer.className = "nav-shortcut-reveal";' in help_source
+    assert "options.hintHost.append(revealLayer);" in help_source
+    rules = _first_rules()
+    host = rules[".nav-shortcut-hints"]
+    assert (host["position"], host["flex"]) == ("relative", "0 0 auto")
+    layer = rules[".nav-shortcut-reveal"]
+    assert layer["position"] == "absolute"
+    assert (layer["inset-inline"], layer["bottom"]) == ("0", "0")
+    assert "top" not in layer and "height" not in layer, "the layer grows with its items"
+    assert layer["min-height"] == "calc(100% + 1px)", "it covers the host and its top border"
+    assert (layer["background"], layer["color"]) == ("var(--key-reveal-bg)", "var(--text)")
+    assert "z-index" not in layer
+    assert rules[".nav-shortcut-reveal[hidden]"] == {"display": "none"}
+    keycap = rules[".nav-shortcut-reveal .kbd"]
+    assert keycap == {
+        "background": "var(--kbd-badge-bg)",
+        "border-color": "var(--kbd-badge-border)",
+        "color": "var(--kbd-badge-color)",
+    }
+    assert rules[".nav-shortcut-reveal .shortcut-binding-separator"] == {"color": "var(--text)"}
