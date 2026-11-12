@@ -142,7 +142,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1)
         posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 2)
         if let directory = spec.workingDirectory {
-            posix_spawn_file_actions_addchdir_np(&actions, directory)
+            posix_spawn_file_actions_addchdir(&actions, directory)
         }
 
         let argv = ([spec.executable] + spec.arguments).map { strdup($0) } + [nil]
