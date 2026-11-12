@@ -61,7 +61,10 @@ const actions = {
   rafLoop: () => { show("rafLoop"); const end = performance.now() + 600; const loop = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { requestAnimationFrame(loop); } }; requestAnimationFrame(loop); },
   taskLoop: () => { show("taskLoop"); const end = performance.now() + 600; const ch = new MessageChannel(); ch.port1.onmessage = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { ch.port2.postMessage(0); } }; ch.port2.postMessage(0); },
   stall: () => { show("stall"); requestAnimationFrame(() => setTimeout(() => spin(300), 0)); },
-  heavy: () => { const f = document.createDocumentFragment(); for (let i = 0; i < 40000; i++) { const d = document.createElement("div"); d.textContent = "row " + i; f.appendChild(d); } view.replaceChildren(f); view.dataset.subject = "heavy"; },
+  // A long ready frame whose own rendering runs 40 ms past the recorder's post-layout read,
+  // as paint and commit do: a ResizeObserver created after the recorder's is called after
+  // its read, in the same frame.
+  heavy: () => { const f = document.createDocumentFragment(); for (let i = 0; i < 40000; i++) { const d = document.createElement("div"); d.textContent = "row " + i; f.appendChild(d); } view.replaceChildren(f); view.dataset.subject = "heavy"; requestAnimationFrame(() => { const ro = new ResizeObserver(() => { ro.disconnect(); spin(40); }); ro.observe(document.documentElement); }); },
   flicker: () => { show("flicker"); setTimeout(() => { const l = document.createElement("div"); l.className = "loading"; view.replaceChildren(l); setTimeout(() => show("flicker", "flicker subject again"), 150); }, 100); },
   prompt: () => { const p = document.createElement("div"); p.className = "preview-empty"; p.textContent = "Select something."; view.replaceChildren(p); view.dataset.subject = "prompt"; },
   image: () => { const img = new Image(); img.width = 300; img.height = 200; img.src = "/slow.png?" + Math.random(); view.replaceChildren(img); view.dataset.subject = "image"; },
@@ -303,11 +306,28 @@ try {
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
       const presented = r.eventPresentedMs.click;
       assert.ok(presented > 30, `the heavy frame was presented at ${presented}`);
-      assert.ok(r.paintedReadyMs >= presented - 9, `${r.paintedReadyMs} vs ${presented}`);
-      assert.ok(
-        r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
-        `${r.paintedReadyMs} vs ${presented}`,
+      // Chrome's Long Animation Frame entry for the ready frame, the one that spans its
+      // read, ends when the frame's main-thread rendering did. The page's work after the
+      // read puts that more than a frame past the read, so a painted ready taken from the
+      // read alone, or from the frame's begin time, falls short of it.
+      const read = r.raw.readyRead;
+      const loaf = r.raw.loafs.find(
+        ([start, duration, , renderStart]) =>
+          renderStart > 0 && start <= read && start + duration >= read,
       );
+      assert.ok(loaf, `no Long Animation Frame spans the read: ${JSON.stringify(r.raw.loafs)}`);
+      const renderedMs = loaf[0] + loaf[1] - pressAt(r);
+      assert.ok(
+        renderedMs - r.readyMs > r.frameIntervalMs,
+        `read at ${r.readyMs}, rendering ended at ${renderedMs}`,
+      );
+      // Painted ready is the first frame boundary after that end, to the recorder's 0.1 ms.
+      assert.ok(
+        r.paintedReadyMs >= renderedMs - 0.1 &&
+          r.paintedReadyMs <= renderedMs + r.frameIntervalMs + 0.1,
+        `painted ready ${r.paintedReadyMs}, rendering ended at ${renderedMs}`,
+      );
+      assertPaintedByPresentation(r);
     });
     await check("blank and placeholder frames after ready are counted", async () => {
       const r = await measure("flicker");
