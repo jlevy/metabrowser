@@ -65,13 +65,14 @@ import Testing
 
     @Test func groupSignalReachesAGrandchild() async throws {
         let child = try SpawnedProcess(LaunchSpec(
-            executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $!; wait"]))
+            executable: "/bin/sh", arguments: ["-c", "sleep \(survivorSeconds) & echo $!; wait"]))
         var grandchild: pid_t?
         for await line in child.lines {
             grandchild = pid_t(line)
             break
         }
         let pid = try #require(grandchild)
+        defer { kill(pid, SIGKILL) }
         #expect(getpgid(pid) == child.pid)
         child.signalGroup(SIGTERM)
         _ = await child.waitForExit()
@@ -125,12 +126,16 @@ import Testing
         let clock = ContinuousClock()
         let started = clock.now
         let result = await CommandRunner.run(
-            LaunchSpec(executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $!"]), timeout: .seconds(5))
+            LaunchSpec(executable: "/bin/sh", arguments: ["-c", "sleep \(survivorSeconds) & echo $!"]),
+            timeout: .seconds(5))
         #expect(result.succeeded)
         #expect(started.duration(to: clock.now) < .seconds(15))
         let job = pid_t(result.output.first ?? "")
         #expect(job != nil)
-        if let job { #expect(await eventually { !processExists(job) }) }
+        if let job {
+            defer { kill(job, SIGKILL) }
+            #expect(await eventually { !processExists(job) })
+        }
     }
 
     @Test func launchErrorIsReported() async {
