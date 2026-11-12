@@ -675,9 +675,8 @@ handle?.retarget(nextToggle); // the control was rebuilt as another element
 handle?.detach(); // idempotent; call it from dispose()
 ```
 
-- A view may attach at any time, before the shell’s keyboard support has loaded
-  included; the key takes effect once it has, and again after the page is restored from
-  history.
+- A view may attach at any time, even before the shell’s keyboard support has loaded:
+  the key takes effect once it has, and keeps working when the shell rebuilds it.
 - The key is live only while its element is connected, visible, enabled, and outside an
   `inert` subtree, which the shell reads when the key is pressed.
   A view staged by a retained navigation is inert, so its keys wait for the view to be
