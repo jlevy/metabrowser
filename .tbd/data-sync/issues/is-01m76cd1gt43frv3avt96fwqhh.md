@@ -5,7 +5,7 @@ title: Reap servers orphaned by a crashed app at the next launch
 kind: task
 status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -18,7 +18,7 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T22:42:04.953Z
-updated_at: 2026-11-12T01:48:49.867Z
+updated_at: 2026-11-12T05:55:20.270Z
 started_at: 2026-11-12T00:37:52.890Z
 closed_at: 2026-11-12T01:48:49.866Z
 close_reason: "Done on claude/v1-robustness (3e39a21e): one owner-only records file per app process in the variant's Application Support/servers folder (pid, group, kernel start time, folder), written atomically; at launch OrphanReaper signals only groups whose leader still matches the recorded start time and group, and never a live copy's servers. Lifecycle tests with injected process factories and a fake process table, plus live tests. Pushed at 8f45a32e."
@@ -26,3 +26,7 @@ resolution: null
 duplicate_of: null
 ---
 Until host mode's stdin-EOF exit (mb-qzny) lands, a crashed or force-quit app leaves its servers running. Record each server's pid, process-group id, and start time in an owner-only state file under the app's support directory; at launch, signal only groups whose leader still matches the recorded start time (guarding pid reuse), then remove the file. Lifecycle tests with injected process factories.
+
+## Notes
+
+Superseded within the same PR (#362, round 1): review found that a reaper cannot bind kill() to the process it checked on macOS, so the records file and OrphanReaper were removed (6599e0d9). The outcome this bead asked for, no server outliving a crashed app, now comes from metab --exit-on-eof (aa48fbe0): the app starts every server with it and holds its stdin, so the kernel ends each server however the app ends. Test: LiveMetabTests.aServerWhoseAppIsGoneStopsByItself.

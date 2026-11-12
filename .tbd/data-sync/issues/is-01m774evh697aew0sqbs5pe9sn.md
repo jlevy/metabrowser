@@ -3,9 +3,9 @@ type: is
 id: is-01m774evh697aew0sqbs5pe9sn
 title: "Address PR #361 review D: launch admission at spawn, held restores, ACL failure, preflight, fixture race"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 6
+version: 7
 labels: []
 dependencies: []
 child_order_hints:
@@ -15,6 +15,10 @@ child_order_hints:
   - is-01m774exhxm4sg72staq90wb2q
   - is-01m774eymqkq65hx6rejspsjp9
 created_at: 2026-11-12T05:42:30.181Z
-updated_at: 2026-11-12T05:42:33.367Z
+updated_at: 2026-11-12T05:53:48.530Z
+closed_at: 2026-11-12T05:53:48.529Z
+close_reason: Review D fixed at 962565b0; disposition reply posted.
+resolution: null
+duplicate_of: null
 ---
 Review D (follow-up, round 2) at ca663169: https://github.com/jlevy/metabrowser/pull/361#pullrequestreview-5869088038
