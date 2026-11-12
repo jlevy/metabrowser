@@ -503,7 +503,7 @@ Do not hand one out as a release.
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
 | `scripts/check-setup-flows.sh` | The manual checks of the first-run screens and the launch notice ([Checking the Setup Flows by Hand](#checking-the-setup-flows-by-hand)). |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
-| `webkit-gate/` | The WebKit measurement gate: `run.mjs`; the in-page `probe.js` both engines run; `summary.mjs`, its verdicts; `processes.mjs`, which owns every process and listener a run starts; and `driver/WebKitDriver.swift`, the package’s `WebKitDriver` target, built against `ShellCore` and `ShellViews`. No product ships it; `make test` builds it and runs the Node tests beside these modules. |
+| `webkit-gate/` | The WebKit measurement gate: `run.mjs`; the in-page `probe.js` both engines run; `summary.mjs`, its verdicts; `processes.mjs`, which owns every process and listener a run starts; and `driver/WebKitDriver.swift`, the package’s `WebKitDriver` target, built against `ShellCore` and `ShellViews`. No product ships it; `make test` builds it and runs the Node tests beside these modules, and `make lint-check` lints them with Biome and type-checks them strictly (`webkit-gate/tsconfig.json`, and `probe.js` under the root `tsconfig.json`). |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit.

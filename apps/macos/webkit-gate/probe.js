@@ -25,9 +25,25 @@
 //   - Scroll work: started inside a requestAnimationFrame callback and read in
 //     a task queued from it, so it is the rendering update the scroll caused,
 //     without waiting for vsync.
+/**
+ * The case to run, as run.mjs writes it: `case` and `timeoutMs` always, and the fields
+ * that case's entry in run.mjs's CASES sets. Each method in `cases` below reads only its
+ * own case's fields.
+ * @typedef {{
+ *   case: string, timeoutMs?: number,
+ *   corpora: { language: string, file: string }[],
+ *   corpusUrl: string, chunks: number[], mode: "single" | "split" | "blocks",
+ *   resultKey: string, errorKey: string
+ * }} ProbeConfig
+ */
 (() => {
-  const config = globalThis.__webkitGateConfig;
-  if (!config || window.top !== window || globalThis.__webkitGate) {
+  const gate = /**
+   * @type {typeof globalThis & {
+   *   __webkitGateConfig?: ProbeConfig, __webkitGate?: { done: Promise<unknown> }
+   * }}
+   */ (globalThis);
+  const config = gate.__webkitGateConfig;
+  if (!config || window.top !== window || gate.__webkitGate) {
     return;
   }
 
@@ -155,9 +171,14 @@
 
   /** Median interval between animation frames, which differs by engine and display. */
   async function frameInterval(/** @type {number} */ frames = 30) {
+    /** @type {number[]} */
     const stamps = [];
     for (let index = 0; index <= frames; index += 1) {
-      stamps.push(await new Promise((resolve) => requestAnimationFrame(resolve)));
+      stamps.push(
+        await /** @type {Promise<number>} */ (
+          new Promise((resolve) => requestAnimationFrame(resolve))
+        ),
+      );
     }
     const steps = stamps.slice(1).map((stamp, index) => stamp - stamps[index]);
     steps.sort((a, b) => a - b);
@@ -477,5 +498,5 @@
   // The driver awaits `done` and reports a rejection; this only keeps it from
   // being logged as unhandled before then.
   done.catch(() => {});
-  globalThis.__webkitGate = { done };
+  gate.__webkitGate = { done };
 })();

@@ -11,7 +11,11 @@ import * as processes from "./processes.mjs";
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "webkit-gate-processes-"));
 after(() => fs.rmSync(work, { recursive: true, force: true }));
 
-/** A stand-in for metab: it records its arguments and pid beside itself, then runs `body`. */
+/**
+ * A stand-in for metab: it records its arguments and pid beside itself, then runs `body`.
+ * @param {string} name
+ * @param {string} body
+ */
 function fake(name, body) {
   const file = path.join(work, name);
   fs.writeFileSync(
@@ -27,6 +31,7 @@ function fake(name, body) {
 const SERVING = `echo "Serving fake at http://127.0.0.1:$3/view/"
 case " $* " in *" --exit-on-eof "*) cat > /dev/null ;; *) exec sleep 600 ;; esac`;
 
+/** @param {number} pid */
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -36,6 +41,10 @@ const alive = (pid) => {
   }
 };
 
+/**
+ * @param {number} pid
+ * @param {number} ms
+ */
 async function gone(pid, ms) {
   for (let waited = 0; waited < ms; waited += 50) {
     if (!alive(pid)) {
@@ -46,13 +55,19 @@ async function gone(pid, ms) {
   return !alive(pid);
 }
 
+/** @param {string} file */
 const pidOf = (file) => Number(fs.readFileSync(`${file}.pid`, "utf8"));
 
 // A fixture prints its readiness line within a second here; the bound is for a loaded
 // runner, and a fixture that misses it fails its test instead of hanging the suite.
 const READY_TIMEOUT_MS = 10_000;
 
-/** Resolves once `child` prints `text`; rejects if it exits first or `READY_TIMEOUT_MS` pass. */
+/**
+ * Resolves once `child` prints `text`; rejects if it exits first or `READY_TIMEOUT_MS` pass.
+ * @param {import("node:child_process").ChildProcess & { stdout: import("node:stream").Readable }} child
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
 function printed(child, text) {
   return new Promise((resolve, reject) => {
     let output = "";
@@ -74,7 +89,10 @@ function printed(child, text) {
   });
 }
 
-/** Kills `child` if a failed test left it running. */
+/**
+ * Kills `child` if a failed test left it running.
+ * @param {import("node:child_process").ChildProcess} child
+ */
 function stop(child) {
   if (child.exitCode === null && child.signalCode === null) {
     child.kill("SIGKILL");
@@ -171,6 +189,7 @@ test("terminate returns at once for a child that never started", async () => {
 
 test("Cleanup runs every step, newest first, and returns the errors", async () => {
   const cleanup = new processes.Cleanup();
+  /** @type {string[]} */
   const order = [];
   cleanup.add(() => order.push("first"));
   cleanup.add(() => {
@@ -180,7 +199,7 @@ test("Cleanup runs every step, newest first, and returns the errors", async () =
   const errors = await cleanup.run();
   assert.deepEqual(order, ["last", "first"]);
   assert.deepEqual(
-    errors.map((error) => error.message),
+    errors.map((error) => (error instanceof Error ? error.message : String(error))),
     ["a step failed"],
   );
   assert.deepEqual(await cleanup.run(), [], "a second run has nothing left to do");

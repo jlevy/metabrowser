@@ -2,6 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "files": {
     "includes": [
+      "apps/macos/webkit-gate/**",
       "src/metabrowser/static/**",
       "src/metabrowser/builtin_plugins/**",
       "tests/dom/**",

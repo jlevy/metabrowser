@@ -13,20 +13,32 @@ import path from "node:path";
 const METAB_START_TIMEOUT_MS = 60_000;
 const STOP_GRACE_MS = 5_000;
 
+/**
+ * @typedef {import("node:child_process").ChildProcess} ChildProcess
+ * @typedef {import("node:net").AddressInfo} AddressInfo
+ */
+
 /** Things to stop, run newest first, once. */
 export class Cleanup {
+  /** @type {(() => unknown)[]} */
   #steps = [];
 
-  /** Adds `step`, a function that stops one thing, to run when `run` is called. */
+  /**
+   * Adds `step`, a function that stops one thing, to run when `run` is called.
+   * @param {() => unknown} step
+   */
   add(step) {
     this.#steps.push(step);
   }
 
-  /** Runs every step, even after one fails, and returns the errors the steps threw. */
+  /**
+   * Runs every step, even after one fails, and returns the errors the steps threw.
+   * @returns {Promise<unknown[]>}
+   */
   async run() {
+    /** @type {unknown[]} */
     const errors = [];
-    while (this.#steps.length > 0) {
-      const step = this.#steps.pop();
+    for (let step = this.#steps.pop(); step !== undefined; step = this.#steps.pop()) {
       try {
         await step();
       } catch (error) {
@@ -37,9 +49,16 @@ export class Cleanup {
   }
 }
 
-/** Resolves true if `promise` settles within `ms`, else false, and clears its timer. */
+/**
+ * Resolves true if `promise` settles within `ms`, else false, and clears its timer.
+ * @param {Promise<unknown>} promise
+ * @param {number} ms
+ * @returns {Promise<boolean>}
+ */
 export async function within(promise, ms) {
+  /** @type {NodeJS.Timeout | undefined} */
   let timer;
+  /** @type {Promise<boolean>} */
   const expired = new Promise((resolve) => {
     timer = setTimeout(resolve, ms, false);
   });
@@ -50,6 +69,7 @@ export async function within(promise, ms) {
   }
 }
 
+/** @param {ChildProcess} child */
 const hasExited = (child) => child.exitCode !== null || child.signalCode !== null;
 
 /**
@@ -57,17 +77,24 @@ const hasExited = (child) => child.exitCode !== null || child.signalCode !== nul
  * which ends a server started with `--exit-on-eof`, then SIGTERM, then SIGKILL, each
  * given `graceMs`.
  * A child that never started (its spawn failed) has nothing to stop.
+ * @param {ChildProcess} child
+ * @param {{ graceMs?: number }} [options]
  */
 export async function terminate(child, { graceMs = STOP_GRACE_MS } = {}) {
   if (child.pid === undefined || hasExited(child)) {
     return;
   }
   const exited = new Promise((resolve) => child.once("exit", resolve));
-  const steps = [
-    child.stdin && (() => child.stdin.end()),
+  const stdin = child.stdin;
+  /** @type {(() => unknown)[]} */
+  const steps = [];
+  if (stdin) {
+    steps.push(() => stdin.end());
+  }
+  steps.push(
     () => child.kill("SIGTERM"),
     () => child.kill("SIGKILL"),
-  ].filter(Boolean);
+  );
   for (const step of steps) {
     if (hasExited(child)) {
       return;
@@ -86,6 +113,10 @@ export async function terminate(child, { graceMs = STOP_GRACE_MS } = {}) {
  * held open here, so it stops when this process ends, even when it is killed outright.
  * A server that exits or misses `timeoutMs` before announcing its URL is stopped before
  * this rejects.
+ * @param {string} binary
+ * @param {string} root
+ * @param {string} scratch
+ * @param {{ cleanup: Cleanup, timeoutMs?: number }} options
  */
 export async function startMetab(
   binary,
@@ -114,9 +145,12 @@ export async function startMetab(
   // stop that was wanted.
   child.stdin.on("error", () => {});
   let log = "";
-  let onData = null;
+  /** @type {(data: Buffer) => void} */
+  let onData = () => {};
+  /** @type {NodeJS.Timeout | undefined} */
   let timer;
   try {
+    /** @type {string} */
     const origin = await new Promise((resolve, reject) => {
       onData = (data) => {
         log += data;
@@ -151,12 +185,14 @@ export async function startMetab(
   }
 }
 
+/** @returns {Promise<number>} */
 export function freePort() {
   return new Promise((resolve, reject) => {
     const server = http.createServer();
     server.on("error", reject);
     server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
+      // A server listening on a TCP port reports its address as an AddressInfo.
+      const { port } = /** @type {AddressInfo} */ (server.address());
       server.close(() => resolve(port));
     });
   });

@@ -58,6 +58,7 @@ def _repository_markdown() -> list[str]:
 
 DOC_PATHS = _repository_markdown()
 BIOME_PATHS = [
+    "apps/macos/webkit-gate",
     "src/metabrowser/static",
     "src/metabrowser/builtin_plugins",
     "tests/dom",
@@ -67,7 +68,9 @@ BIOME_PATHS = [
     "tsconfig.json",
     "tsconfig.legacy.json",
 ]
-TSC_CONFIGS = ["tsconfig.json", "tsconfig.legacy.json"]
+# apps/macos/webkit-gate/tsconfig.json is the WebKit gate's Node modules, strict, with
+# Node's types; its in-page probe.js is a browser module under tsconfig.json.
+TSC_CONFIGS = ["tsconfig.json", "tsconfig.legacy.json", "apps/macos/webkit-gate/tsconfig.json"]
 
 
 reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.

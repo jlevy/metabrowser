@@ -759,6 +759,10 @@ No new file may enter it as an ordinary implementation shortcut, and a file leav
 once its JSDoc contracts are complete.
 To see the work remaining for a file, run
 `npx --no-install tsc --noEmit -p tsconfig.legacy.json --noImplicitAny`.
+`apps/macos/webkit-gate/tsconfig.json` checks the WebKit gate’s Node modules with the
+same strictness and Node’s types (`@types/node`); its in-page `probe.js` is a browser
+module under `tsconfig.json`. Their verdicts inform the app’s engine decision, so a
+developer tool is held to the same gates as shipped code.
 
 Biome checks every shipped browser module, including the legacy application shell, with
 the recommended rule set.

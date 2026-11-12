@@ -4,9 +4,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { markdown, summarize } from "./summary.mjs";
 
+/**
+ * @typedef {import("./summary.mjs").CaseSummary} CaseSummary
+ * @typedef {import("./summary.mjs").Engine} Engine
+ * @typedef {import("./summary.mjs").Sample} Sample
+ */
+
 const OPEN = "open (ms)";
 
-/** One measured sample; `error` makes it a failed one, which records no metrics. */
+/**
+ * One measured sample; `error` makes it a failed one, which records no metrics.
+ * @param {Engine} engine
+ * @param {number | null} pair
+ * @param {Record<string, number>} values
+ * @param {{ error?: string | null, caseName?: string }} [options]
+ * @returns {Sample}
+ */
 function sample(engine, pair, values, { error = null, caseName = "source" } = {}) {
   return {
     case: caseName,
@@ -20,7 +33,10 @@ function sample(engine, pair, values, { error = null, caseName = "source" } = {}
   };
 }
 
-/** Both engines in each of `ids`, WebKit at `ratio` times Chrome's 100 ms. */
+/**
+ * Both engines in each of `ids`, WebKit at `ratio` times Chrome's 100 ms.
+ * @param {number[]} ids
+ */
 function measured(ids, ratio = 1.1, caseName = "source") {
   return ids.flatMap((pair) => [
     sample("chrome", pair, { [OPEN]: 100 }, { caseName }),
@@ -28,6 +44,7 @@ function measured(ids, ratio = 1.1, caseName = "source") {
   ]);
 }
 
+/** @param {CaseSummary[]} summary */
 function row(summary, name = OPEN, caseName = "source") {
   const found = summary.find((entry) => entry.case === caseName)?.rows.find((r) => r.name === name);
   assert.ok(found, `no row ${name} in ${caseName}`);
