@@ -11,16 +11,22 @@ import Testing
         origin: URL(string: "http://127.0.0.1:8412")!, entryURL: URL(string: "http://127.0.0.1:8412/view/")!)
 
     /// Answers until `hang()`, then never, the way a hung server's socket accepts and
-    /// stays silent.
+    /// stays silent; `probing` resolves once a probe is waiting on the hung server, and
+    /// `answer(_:)` ends every waiting probe with that answer.
     private final class Server: Sendable {
         private let hung = Latch<Void>()
+        let probing = Latch<Void>()
+        private let answered = Latch<Bool>()
+        let probes = Recorder<Int>()
         func hang() { hung.resolve(()) }
+        func answer(_ ok: Bool) { answered.resolve(ok) }
 
         var probe: ServerSupervisor.ReadinessProbe {
-            { [hung] _ in
+            { [hung, probing, answered, probes] _ in
                 guard hung.isResolved else { return true }
-                try? await Task.sleep(for: .seconds(30))
-                return false
+                probes.append(1)
+                probing.resolve(())
+                return await answered.wait() ?? false  // nil: the check's deadline passed
             }
         }
     }
@@ -34,9 +40,11 @@ import Testing
         return policy
     }
 
-    private func ready(_ child: FakeProcess, probe: @escaping ServerSupervisor.ReadinessProbe) async -> ServerSupervisor {
+    private func ready(
+        _ child: FakeProcess, probe: @escaping ServerSupervisor.ReadinessProbe, deadline: Duration = .milliseconds(200)
+    ) async -> ServerSupervisor {
         let subject = ServerSupervisor(
-            spec: LaunchSpec(executable: "/usr/bin/false"), launch: CLIServeLaunch(), policy: policy(),
+            spec: LaunchSpec(executable: "/usr/bin/false"), launch: CLIServeLaunch(), policy: policy(deadline: deadline),
             makeProcess: { _ in child }, probe: probe)
         child.say(servingLine)
         await subject.start()
@@ -91,24 +99,24 @@ import Testing
         #expect(subject.state == .stopped)
     }
 
-    /// The exit is the failure to report, with its status, not an unanswered probe.
+    /// The exit is the failure to report, with its status, not an unanswered probe. The
+    /// child exits while a probe is waiting on it, and is stopped and reported once.
     @Test func aServerThatExitsDuringTheCheckFailsAsAnExit() async {
         let child = FakeProcess()
         let server = Server()
         let subject = await ready(child, probe: server.probe)
+        var failures: [ServerFailure] = []
+        subject.onChange = { if case .failed(let failure) = $0 { failures.append(failure) } }
         server.hang()
-        var events: [String] = []
-        subject.onEvent = { events.append($0) }
         let checking = Task { await subject.checkHealth() }
+        #expect(await server.probing.wait() != nil)  // the check is waiting on its probe
         child.exitOnItsOwn(code: 1)
         #expect(await checking.value == .notReady)
-        let failed = await eventually { if case .failed = subject.state { true } else { false } }
-        #expect(failed, "events: \(events)")
-        guard case .failed(let failure) = subject.state else {
-            Issue.record("expected a failure, got \(subject.state)")
-            return
-        }
-        #expect(failure.summary.contains("stopped unexpectedly (exit status 1)"))
+        #expect(await eventually { !failures.isEmpty })
+        #expect(failures.count == 1)
+        #expect(failures.first?.summary.contains("stopped unexpectedly (exit status 1)") == true)
+        #expect(child.signals == [SIGKILL])  // the sweep after the exit, and nothing from the check
+        #expect(child.isReleased)
     }
 
     /// Two windows attaching at once to a hung server stop it once and report it once.
@@ -125,5 +133,25 @@ import Testing
         #expect(results.contains(.unresponsive))
         #expect(failures == 1)
         #expect(child.signals.filter { $0 == SIGTERM }.count == 1)
+    }
+
+    /// A check that starts while another is waiting joins it: one probe, one outcome. A
+    /// second, separate probe could time out after the first succeeded and stop a server
+    /// that had just answered.
+    @Test func aCheckThatStartsDuringAnotherSharesItsAnswer() async {
+        let child = FakeProcess()
+        let server = Server()
+        let subject = await ready(child, probe: server.probe, deadline: .seconds(10))
+        server.hang()
+        let first = Task { await subject.checkHealth() }
+        #expect(await server.probing.wait() != nil)
+        let second = Task { await subject.checkHealth() }
+        #expect(await eventually { subject.healthCheckWaiters == 2 })
+        server.answer(true)
+        #expect(await first.value == .healthy(endpoint))
+        #expect(await second.value == .healthy(endpoint))
+        #expect(server.probes.count == 1)
+        #expect(child.signals.isEmpty)
+        #expect(subject.state == .ready(endpoint))
     }
 }

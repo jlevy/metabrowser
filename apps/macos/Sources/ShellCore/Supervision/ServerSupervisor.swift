@@ -97,6 +97,11 @@ public final class ServerSupervisor {
     private var generation = 0
     private var isShutDown = false
     private var terminations: [ObjectIdentifier: Termination] = [:]
+    /// The health check in flight, which a check that starts meanwhile joins, and the
+    /// generation it checks.
+    private var healthCheck: (generation: Int, answer: Task<Bool, Never>)?
+    /// How many callers are waiting on `healthCheck`, for tests that order checks.
+    private(set) var healthCheckWaiters = 0
 
     private struct Termination {
         let child: any ServerProcess
@@ -178,21 +183,25 @@ public final class ServerSupervisor {
     /// gets `policy.healthDeadline` to answer its readiness URL with a 2xx. One that does
     /// not is stopped and fails, so every window of the folder shows why and offers
     /// Retry; nothing restarts by itself.
+    ///
+    /// Checks of one child do not overlap: a check that starts while another is in flight
+    /// waits for that one's answer, so a probe that times out cannot stop a server that
+    /// another probe just heard from.
     public func checkHealth() async -> HealthCheck {
         guard case .ready(let endpoint) = state, let child = process else { return .notReady }
         let current = generation
         let url = launch.readinessURL(for: endpoint)
-        let probe = self.probe
-        let interval = policy.probeInterval
-        let answered = await firstResult(within: policy.healthDeadline, of: [
-            { @Sendable in
-                while !Task.isCancelled, !child.hasExited {
-                    if await probe(url) { return true }
-                    try? await Task.sleep(for: interval)  // cancelled: the deadline passed
-                }
-                return nil
-            },
-        ]) ?? false
+        let answer: Task<Bool, Never>
+        if let inFlight = healthCheck, inFlight.generation == current {
+            answer = inFlight.answer
+        } else {
+            answer = probeForHealth(url, child: child)
+            healthCheck = (current, answer)
+        }
+        healthCheckWaiters += 1
+        let answered = await answer.value
+        healthCheckWaiters -= 1
+        if healthCheck?.answer == answer { healthCheck = nil }
         // An exit is reported by `childExited`, with its status; a stop, a restart, or
         // another check meanwhile has already decided what happens.
         guard current == generation, case .ready = state, !child.hasExited else { return .notReady }
@@ -207,6 +216,24 @@ public final class ServerSupervisor {
         guard mine == generation else { return .unresponsive }
         state = .failed(ServerFailure(summary: summary, recentOutput: child.recentOutput()))
         return .unresponsive
+    }
+
+    /// Probes `url` until it answers with a 2xx, the child exits, or the deadline passes.
+    private func probeForHealth(_ url: URL, child: any ServerProcess) -> Task<Bool, Never> {
+        let probe = self.probe
+        let interval = policy.probeInterval
+        let deadline = policy.healthDeadline
+        return Task {
+            await firstResult(within: deadline, of: [
+                { @Sendable in
+                    while !Task.isCancelled, !child.hasExited {
+                        if await probe(url) { return true }
+                        try? await Task.sleep(for: interval)  // cancelled: the deadline passed
+                    }
+                    return nil
+                },
+            ]) ?? false
+        }
     }
 
     /// `stop()`, returning the generation it began, which a restart compares after the
