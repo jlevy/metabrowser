@@ -10,6 +10,27 @@ function check(name, condition, detail = "failed") {
   }
 }
 
+/**
+ * A legend that names no family, with the totals of `breakdown`.
+ *
+ * The route sends a legend with every breakdown, and the model refuses one
+ * without it. These fixtures pin rows rather than the legend, which the route
+ * owns, so they carry the plainest legend consistent with their populations.
+ */
+function unnamedLegend(breakdown) {
+  const view = (population, measure) => {
+    const total = breakdown.metrics[population][measure];
+    return { total, named: [], other: total };
+  };
+  return {
+    schema: "file-type-legend-v1",
+    limit: 5,
+    minimum_share_percent: 1,
+    files: { all: view("all", "files"), unignored: view("unignored", "files") },
+    bytes: { all: view("all", "bytes"), unignored: view("unignored", "bytes") },
+  };
+}
+
 async function importSource(relative) {
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   return import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
@@ -26,6 +47,13 @@ async function importSource(relative) {
     "src/metabrowser/builtin_plugins/folder/treemap-model.js",
   );
 
+  /** The row fixtures' normalizer: each breakdown carries an unnamed legend. */
+  const normalize = (raw) =>
+    modelModule.normalizeRollupEnvelope(
+      raw?.file_type_breakdown && !("file_type_legend" in raw)
+        ? { ...raw, file_type_legend: unnamedLegend(raw.file_type_breakdown) }
+        : raw,
+    );
   const formatters = {
     formatFileCount: (value) => `${value} ${value === 1 ? "file" : "files"}`,
     formatInteger: String,
@@ -91,7 +119,7 @@ async function importSource(relative) {
       remaining_types: { metrics: metrics(0, 0), extensions: [], others: null },
     },
   };
-  const normalized = modelModule.normalizeRollupEnvelope(raw);
+  const normalized = normalize(raw);
   check(
     "breakdown preserves the registry schema version",
     normalized.registry?.schemaVersion === 4,
@@ -143,7 +171,7 @@ async function importSource(relative) {
     ],
     groupForFile: () => "other",
   };
-  const breakdownEnvelope = modelModule.normalizeRollupEnvelope({
+  const breakdownEnvelope = normalize({
     ...raw,
     node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
     file_type_breakdown: {
@@ -245,11 +273,11 @@ async function importSource(relative) {
     schemaMismatch = error instanceof TypeError;
   }
   check("breakdown rejects a mismatched browser registry schema", schemaMismatch);
-  const failed = modelModule.normalizeRollupEnvelope({ ...raw, index_status: "failed" });
+  const failed = normalize({ ...raw, index_status: "failed" });
   const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters, baseRuntime);
   check("failed index is terminal", failedModel.scanning === false);
   check("failed index has a distinct flag", failedModel.indexFailed === true);
-  const scanningWithTotals = modelModule.normalizeRollupEnvelope({
+  const scanningWithTotals = normalize({
     ...raw,
     index_status: "scanning",
   });
@@ -267,7 +295,7 @@ async function importSource(relative) {
   check("scanning rollups carry counted rows", scanningModel.rows.length > 0);
 
   // With nothing counted yet, "empty" would be a claim the crawl cannot make.
-  const scanningNothingYet = modelModule.normalizeRollupEnvelope({
+  const scanningNothingYet = normalize({
     ...raw,
     index_status: "scanning",
     node: { total_files: 0, total_size: 0, unignored_files: 0, unignored_size: 0 },
@@ -295,7 +323,7 @@ async function importSource(relative) {
       extensions: [`.x${index}`],
     })),
   };
-  const manyFamilies = modelModule.normalizeRollupEnvelope({
+  const manyFamilies = normalize({
     ...raw,
     node: { total_files: 78, total_size: 78, unignored_files: 78, unignored_size: 78 },
     file_type_breakdown: {
@@ -345,7 +373,7 @@ async function importSource(relative) {
       byFiles.rows[0].children[10].label === "2 more" &&
       byFiles.rows[0].children[10].children.length === 2,
   );
-  const failedWithoutTotals = modelModule.normalizeRollupEnvelope({
+  const failedWithoutTotals = normalize({
     ...raw,
     index_status: "failed",
     node: null,
@@ -355,7 +383,7 @@ async function importSource(relative) {
     "failed index without totals is not a pending skeleton",
     modelModule.buildFileTypeSummaryModel(failedWithoutTotals, true, formatters).state === "failed",
   );
-  const completedWithoutTotals = modelModule.normalizeRollupEnvelope({
+  const completedWithoutTotals = normalize({
     ...raw,
     index_status: "done",
     node: null,
@@ -376,7 +404,7 @@ async function importSource(relative) {
     ) === "<0.1%",
   );
 
-  const empty = modelModule.normalizeRollupEnvelope({
+  const empty = normalize({
     ...raw,
     node: { total_files: 0, total_size: 0, unignored_files: 0, unignored_size: 0 },
     file_type_breakdown: {
@@ -389,7 +417,7 @@ async function importSource(relative) {
     "empty model",
     modelModule.buildFileTypeSummaryModel(empty, false, formatters, baseRuntime).state === "empty",
   );
-  const ignoredOnly = modelModule.normalizeRollupEnvelope({
+  const ignoredOnly = normalize({
     ...raw,
     node: { total_files: 2, total_size: 10, unignored_files: 0, unignored_size: 0 },
     file_type_breakdown: {
@@ -531,7 +559,7 @@ async function importSource(relative) {
     formatPercent: (value) => `${value}%`,
   };
   const rollupOf = (extensions, totalFiles, totalBytes) => {
-    const envelope = modelModule.normalizeRollupEnvelope({
+    const envelope = normalize({
       ...raw,
       node: {
         total_files: totalFiles,
@@ -599,13 +627,22 @@ async function importSource(relative) {
     JSON.stringify({ visibleCount: fatVisible.length }),
   );
 
-  // The compact summary's legend. Eight families in four groups, plus the two
-  // rollups of files no family claims, with Other types the largest bucket of
-  // all by files: the legend names families only.
+  // The compact summary's legend, as the route answers it. Which families it
+  // names is the route's (tests/test_file_type_legend.py pins the rule); the
+  // model picks the measure and population on screen and names and paints each
+  // entry. The fixture is the File Overview session's, whose legend that rule
+  // produced: eight families in four groups, Other types the largest bucket by
+  // files, and a mostly ignored JSON tree.
+  const manyTypesRollup = JSON.parse(
+    fs.readFileSync(
+      path.join(repoRoot, "tests/dom/fixtures/file-overview-many-types-rollup.json"),
+      "utf8",
+    ),
+  );
   const legendRuntime = {
-    schemaVersion: 4,
-    revision: 7,
-    fingerprint: "registry-seven",
+    schemaVersion: 1,
+    revision: 1,
+    fingerprint: "session",
     groups: [
       { id: "code", label: "Code" },
       { id: "docs", label: "Documentation" },
@@ -623,74 +660,17 @@ async function importSource(relative) {
       { id: "log", label: "Log files", groupId: "other", extensions: [".log"] },
     ],
   };
-  // [id, files, bytes, unignored files, unignored bytes]
-  const legendFamilies = [
-    ["typescript", 60, 200, 60, 200],
-    ["python", 33, 150, 33, 150],
-    ["javascript", 25, 120, 25, 120],
-    ["rust", 8, 5, 8, 5],
-    ["markdown", 150, 300, 150, 300],
-    ["json", 240, 100, 40, 20],
-    ["yaml", 170, 50, 170, 50],
-    ["log", 21, 25, 21, 25],
-  ];
-  const legendEnvelope = (families, noExtension, remaining) => {
-    const sum = (index) =>
-      [
-        ...families.map((family) => family[index]),
-        noExtension[index - 1],
-        remaining[index - 1],
-      ].reduce((total, value) => total + value, 0);
-    const familyEntry = ([id, files, bytes, unignoredFiles, unignoredBytes]) => ({
-      id,
-      metrics: metrics(files, bytes, unignoredFiles, unignoredBytes),
-      extensions: [
-        {
-          extension: legendRuntime.families.find((family) => family.id === id).extensions[0],
-          metrics: metrics(files, bytes, unignoredFiles, unignoredBytes),
-        },
-      ],
-    });
-    return modelModule.normalizeRollupEnvelope({
-      path: "",
-      index_status: "done",
-      truncated: false,
-      file_type_breakdown: {
-        schema: "file-type-breakdown-v1",
-        registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
-        metrics: metrics(sum(1), sum(2), sum(3), sum(4)),
-        groups: legendRuntime.groups
-          .map((group) => ({
-            id: group.id,
-            families: families
-              .filter(
-                ([id]) =>
-                  legendRuntime.families.find((family) => family.id === id).groupId === group.id,
-              )
-              .map(familyEntry),
-          }))
-          .filter((group) => group.families.length > 0),
-        no_extension: { metrics: metrics(...noExtension), filenames: [], others: null },
-        remaining_types: { metrics: metrics(...remaining), extensions: [], others: null },
-      },
-    });
-  };
-  const legendRollup = legendEnvelope(legendFamilies, [40, 20, 40, 20], [253, 30, 253, 30]);
-  const legendOf = (envelope, showIgnored, metric, runtime = legendRuntime) =>
-    modelModule.buildFileTypeSummaryModel(envelope, showIgnored, formatters, runtime, metric);
-  const legendKeys = (model) => model.legend.map((entry) => entry.key).join(",");
+  const legendRollup = modelModule.normalizeRollupEnvelope(manyTypesRollup);
+  const legendOf = (envelope, showIgnored, metric) =>
+    modelModule.buildFileTypeSummaryModel(envelope, showIgnored, formatters, legendRuntime, metric);
+  const legendText = (model) =>
+    model.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | ");
   const byFilesLegend = legendOf(legendRollup, true, "files");
   check(
-    "the legend names the five largest families across groups, then Other",
-    legendKeys(byFilesLegend) ===
-      "family:json,family:yaml,family:markdown,family:typescript,family:python,legend:other",
-    legendKeys(byFilesLegend),
-  );
-  check(
-    "the legend states each share as the Details rows do, and Other as the rest",
-    byFilesLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | ") ===
+    "the legend states the route's families by name and share, then Other",
+    legendText(byFilesLegend) ===
       "JSON 24% | YAML 17% | Markdown 15% | TypeScript 6% | Python 3.3% | Other 34.7%",
-    byFilesLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | "),
+    legendText(byFilesLegend),
   );
   check(
     "the legend's values add up to the population the caption names",
@@ -699,19 +679,18 @@ async function importSource(relative) {
     JSON.stringify({ files: byFilesLegend.files, caption: byFilesLegend.caption }),
   );
   check(
-    "No extension and Other types are never named, however large",
-    byFilesLegend.legend.every((entry) => entry.kind === "family" || entry.key === "legend:other"),
-  );
-  check(
-    "Other takes the neutral, as on the population bars",
+    "a family is painted with its own key, and Other with the neutral",
     byFilesLegend.legend.at(-1).paletteKey === "" &&
-      byFilesLegend.legend.slice(0, -1).every((entry) => entry.paletteKey === entry.key),
+      byFilesLegend.legend.at(-1).kind === "other" &&
+      byFilesLegend.legend
+        .slice(0, -1)
+        .every((entry) => entry.kind === "family" && entry.paletteKey === entry.key),
   );
   const unfoldedFamilies = new Set(
     byFilesLegend.rows.filter((row) => row.kind === "family").map((row) => row.key),
   );
   check(
-    "every type the legend names is a row Details shows unfolded",
+    "every type the route's legend names is a row Details shows unfolded",
     byFilesLegend.legend
       .filter((entry) => entry.kind === "family")
       .every((entry) => unfoldedFamilies.has(entry.key)),
@@ -719,63 +698,84 @@ async function importSource(relative) {
   );
   check(
     "the legend follows the measure",
-    legendKeys(legendOf(legendRollup, true, "size")) ===
-      "family:markdown,family:typescript,family:python,family:javascript,family:json,legend:other",
-    legendKeys(legendOf(legendRollup, true, "size")),
+    legendText(legendOf(legendRollup, true, "size")) ===
+      "Markdown 30% | TypeScript 20% | Python 15% | JavaScript 12% | JSON 10% | Other 13%",
+    legendText(legendOf(legendRollup, true, "size")),
   );
-  const unignoredLegend = legendOf(legendRollup, false, "files");
   check(
     "the legend follows Show ignored",
-    legendKeys(unignoredLegend) ===
-      "family:yaml,family:markdown,family:typescript,family:json,family:python,legend:other" &&
-      unignoredLegend.legend.reduce((total, entry) => total + entry.value, 0) ===
-        unignoredLegend.files,
-    legendKeys(unignoredLegend),
+    legendText(legendOf(legendRollup, false, "files")) ===
+      "YAML 21.3% | Markdown 18.8% | TypeScript 7.5% | JSON 5% | Python 4.1% | Other 43.4%",
+    legendText(legendOf(legendRollup, false, "files")),
   );
-  const floorLegend = legendOf(
-    legendEnvelope(
-      [
-        ["python", 995, 995, 995, 995],
-        ["rust", 5, 5, 5, 5],
-      ],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
-    ),
-    true,
-    "files",
-  );
-  check(
-    "a family at or under the share floor is Other, however much room is left",
-    floorLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | ") ===
-      "Python 99.5% | Other 0.5%",
-    floorLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | "),
-  );
-  const wholeLegend = legendOf(
-    legendEnvelope([["python", 10, 10, 10, 10]], [0, 0, 0, 0], [0, 0, 0, 0]),
-    true,
-    "files",
-  );
+  const withLegend = (legend) =>
+    modelModule.normalizeRollupEnvelope({ ...manyTypesRollup, file_type_legend: legend });
+  const routeLegend = manyTypesRollup.file_type_legend;
+  const covered = {
+    ...routeLegend,
+    files: {
+      ...routeLegend.files,
+      all: { total: 1000, named: [{ family: "json", value: 1000 }], other: 0 },
+    },
+  };
   check(
     "named types that cover everything leave no Other",
-    legendKeys(wholeLegend) === "family:python" && wholeLegend.legend[0].percent === "100%",
-    legendKeys(wholeLegend),
+    legendText(legendOf(withLegend(covered), true, "files")) === "JSON 100%",
+    legendText(legendOf(withLegend(covered), true, "files")),
   );
-  const zeroBytesLegend = legendOf(
-    legendEnvelope([["python", 10, 0, 10, 0]], [0, 0, 0, 0], [0, 0, 0, 0]),
-    true,
-    "size",
+  /** @param {() => unknown} build */
+  const refuses = (build) => {
+    try {
+      build();
+      return false;
+    } catch (error) {
+      return error instanceof TypeError;
+    }
+  };
+  check(
+    "a family the registry does not know is refused",
+    refuses(() =>
+      legendOf(
+        withLegend({
+          ...routeLegend,
+          files: {
+            ...routeLegend.files,
+            all: { total: 1000, named: [{ family: "cobol", value: 10 }], other: 990 },
+          },
+        }),
+        true,
+        "files",
+      ),
+    ),
   );
   check(
-    "a population of zero bytes has nothing to name by size",
-    zeroBytesLegend.state === "zero-bytes" && zeroBytesLegend.legend.length === 0,
-    `${zeroBytesLegend.state} ${legendKeys(zeroBytesLegend)}`,
+    "a legend counting another population than the breakdown's is refused",
+    refuses(() =>
+      legendOf(
+        withLegend({
+          ...routeLegend,
+          files: { ...routeLegend.files, all: { total: 999, named: [], other: 999 } },
+        }),
+        true,
+        "files",
+      ),
+    ),
+  );
+  check(
+    "a breakdown without its legend is refused",
+    refuses(() =>
+      modelModule.normalizeRollupEnvelope({ ...manyTypesRollup, file_type_legend: undefined }),
+    ),
+  );
+  check(
+    "an unknown legend schema is refused",
+    refuses(() => withLegend({ ...routeLegend, schema: "file-type-legend-v2" })),
   );
   check(
     "a model with no totals has no legend",
     modelModule.buildFileTypeSummaryModel(null, true, formatters, legendRuntime).legend.length ===
       0,
   );
-  check("the legend names at most five types", modelModule.LEGEND_TYPE_LIMIT === 5);
 
   if (failures.length) {
     console.error(`folder overview model FAILURES:\n- ${failures.join("\n- ")}`);

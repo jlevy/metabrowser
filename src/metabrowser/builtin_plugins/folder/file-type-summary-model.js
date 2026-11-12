@@ -182,6 +182,64 @@ function normalizeBreakdown(raw) {
 }
 
 /** @param {unknown} raw */
+function normalizeLegend(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new TypeError("file-type legend must be an object");
+  }
+  const value = /** @type {Record<string, unknown>} */ (raw);
+  if (value.schema !== "file-type-legend-v1") {
+    throw new TypeError("unsupported file-type legend schema");
+  }
+  /** @param {unknown} candidate */
+  const count = (candidate) =>
+    Number.isInteger(candidate) && /** @type {number} */ (candidate) >= 0;
+  /** @param {unknown} rawView @param {string} label */
+  const view = (rawView, label) => {
+    const item = /** @type {Record<string, unknown> | null} */ (
+      rawView && typeof rawView === "object" ? rawView : null
+    );
+    if (!item || !count(item.total) || !count(item.other) || !Array.isArray(item.named)) {
+      throw new TypeError(`file-type legend ${label} is invalid`);
+    }
+    return Object.freeze({
+      total: /** @type {number} */ (item.total),
+      other: /** @type {number} */ (item.other),
+      named: Object.freeze(
+        item.named.map((rawEntry) => {
+          const entry = /** @type {Record<string, unknown> | null} */ (
+            rawEntry && typeof rawEntry === "object" ? rawEntry : null
+          );
+          if (!entry || typeof entry.family !== "string" || !count(entry.value)) {
+            throw new TypeError(`file-type legend ${label} entry is invalid`);
+          }
+          return Object.freeze({
+            family: entry.family,
+            value: /** @type {number} */ (entry.value),
+          });
+        }),
+      ),
+    });
+  };
+  /** @param {unknown} rawMeasure @param {string} label */
+  const populations = (rawMeasure, label) => {
+    const item = /** @type {Record<string, unknown> | null} */ (
+      rawMeasure && typeof rawMeasure === "object" ? rawMeasure : null
+    );
+    if (!item) {
+      throw new TypeError(`file-type legend ${label} is invalid`);
+    }
+    return Object.freeze({
+      all: view(item.all, `${label} all`),
+      unignored: view(item.unignored, `${label} unignored`),
+    });
+  };
+  return Object.freeze({
+    files: populations(value.files, "files"),
+    bytes: populations(value.bytes, "bytes"),
+  });
+}
+
+/** @param {unknown} raw */
 export function normalizeRollupEnvelope(raw) {
   if (!raw || typeof raw !== "object") {
     throw new TypeError("rollup envelope must be an object");
@@ -195,6 +253,8 @@ export function normalizeRollupEnvelope(raw) {
   const breakdown = value.file_type_breakdown
     ? normalizeBreakdown(value.file_type_breakdown)
     : null;
+  // The route sends the legend with every breakdown and never one without.
+  const legend = breakdown ? normalizeLegend(value.file_type_legend) : null;
   return Object.freeze({
     path: typeof value.path === "string" ? value.path : "",
     indexStatus: typeof value.index_status === "string" ? value.index_status : "pending",
@@ -202,6 +262,7 @@ export function normalizeRollupEnvelope(raw) {
     maxFiles: integer(value.max_files),
     truncated: value.truncated === true,
     breakdown,
+    legend,
     registry: breakdown?.registry ?? null,
     groups: breakdown?.groups ?? Object.freeze([]),
     specialTypes: breakdown
@@ -267,19 +328,12 @@ const VISIBLE_ROWS_PER_SUBSECTION = 10;
  * and bytes, so an entry can be worth a row in one and not the other — which
  * is right, because it is a claim about what is being measured rather than
  * about the entry.
+ *
+ * The route's compact legend names a family only above this same share
+ * (LEGEND_MINIMUM_SHARE_PERCENT in file_type_legend.py), so it never names one
+ * these rows fold away; tests/test_file_type_legend.py holds the two equal.
  */
 const MINIMUM_VISIBLE_SHARE = 1;
-
-/**
- * How many types the compact summary names before the rest become Other.
- *
- * A reading bound, not a cost bound: the legend is at most this many short
- * items plus Other whatever the folder holds, so there is no cost to measure.
- * Five is what GitHub's Languages box shows, and the number the Overview was
- * asked for: enough to say what a folder mostly is in a line or two, with
- * Details below it for everything else.
- */
-export const LEGEND_TYPE_LIMIT = 5;
 
 /** @param {ReadonlyArray<any>} rows @param {"files" | "size"} metric */
 function sortRows(rows, metric) {
@@ -421,7 +475,7 @@ function buildRegistryRows(
   metric,
 ) {
   if (!population || !envelope.breakdown || !envelope.registry) {
-    return { rows: [], families: [] };
+    return [];
   }
   if (
     runtime.schemaVersion !== envelope.registry.schemaVersion ||
@@ -604,58 +658,60 @@ function buildRegistryRows(
       ),
     );
   }
-  return {
-    rows: bounded,
-    // Every populated family, before any group folds its tail into "N more":
-    // the legend ranks families across groups, so it needs the ones a group
-    // folded too.
-    families: populatedRows.filter((row) => row.kind === "family"),
-  };
+  return bounded;
 }
 
 /**
- * The compact summary's legend: the folder's largest named types, then Other.
+ * The compact summary's legend, for the measure and population on screen.
  *
- * The rule, from the data model:
+ * Which families it names, in what order, and how much is left for Other are
+ * the route's: `/api/rollup` answers `file_type_legend` for every measure and
+ * population (see file_type_legend.py for the rule), so this only picks the
+ * one the controls select and gives each entry its name, color, and share.
  *
- * - The candidates are file-type families, from every group. No extension and
- *   Other types are not candidates: they are the files no family claims, so
- *   they have no name to put in a legend and no color of their own.
- * - They rank by the selected measure, in the population the caption names,
- *   with the order and tie-breaks of the Details table (`sortRows`).
- * - A family is named only above `MINIMUM_VISIBLE_SHARE`, the floor below which
- *   Details folds a row into "N more", and at most `LEGEND_TYPE_LIMIT` are. So
- *   every named entry is also a row Details shows unfolded.
- * - Whatever the named entries leave of the population is one neutral Other
- *   entry, so the legend's values add up to the caption's.
- *
- * @param {ReadonlyArray<any>} families
+ * @param {ReturnType<typeof normalizeRollupEnvelope>} envelope
  * @param {"files" | "size"} metric
+ * @param {boolean} showIgnored
  * @param {NonNullable<ReturnType<typeof selectPopulation>>} population
+ * @param {MetabrowserPublicFileTypeTaxonomyRuntime} runtime
  * @param {Intl.NumberFormat} percentFormatter
  */
-export function buildFileTypeLegend(families, metric, population, percentFormatter) {
-  /** @param {{files: number, bytes: number}} row */
-  const measure = (row) => (metric === "files" ? row.files : row.bytes);
-  /** @param {{fileShare: number, byteShare: number}} row */
-  const share = (row) => (metric === "files" ? row.fileShare : row.byteShare);
+export function buildFileTypeLegend(
+  envelope,
+  metric,
+  showIgnored,
+  population,
+  runtime,
+  percentFormatter,
+) {
+  if (!envelope.legend) {
+    throw new TypeError("file-type summary requires the rollup's legend");
+  }
+  const view =
+    envelope.legend[metric === "files" ? "files" : "bytes"][showIgnored ? "all" : "unignored"];
   const total = metric === "files" ? population.files : population.bytes;
-  const entries = sortRows(families, metric)
-    .filter((row) => share(row) > MINIMUM_VISIBLE_SHARE)
-    .slice(0, LEGEND_TYPE_LIMIT)
-    .map((row) =>
-      Object.freeze({
-        key: /** @type {string} */ (row.key),
-        label: /** @type {string} */ (row.label),
-        paletteKey: /** @type {string} */ (row.paletteKey),
-        kind: /** @type {"family" | "other"} */ ("family"),
-        value: measure(row),
-        percent: /** @type {string} */ (metric === "files" ? row.filePercent : row.bytePercent),
-        share: share(row),
-      }),
-    );
-  const rest = total - entries.reduce((sum, entry) => sum + entry.value, 0);
-  if (rest > 0) {
+  if (view.total !== total) {
+    throw new TypeError("file-type legend does not match the rollup population");
+  }
+  const familyLabels = new Map(runtime.families.map((family) => [family.id, family.label]));
+  /** @type {Array<{key: string, label: string, paletteKey: string, kind: "family" | "other", value: number, percent: string, share: number}>} */
+  const entries = view.named.map((entry) => {
+    const label = familyLabels.get(entry.family);
+    if (label === undefined) {
+      throw new TypeError(`unknown file-type family in legend: ${entry.family}`);
+    }
+    return Object.freeze({
+      key: `family:${entry.family}`,
+      label,
+      // The same key the family's rows and population segments are painted with.
+      paletteKey: `family:${entry.family}`,
+      kind: /** @type {const} */ ("family"),
+      value: entry.value,
+      percent: formatPercent(entry.value, total, percentFormatter),
+      share: percentShare(entry.value, total),
+    });
+  });
+  if (view.other > 0) {
     entries.push(
       Object.freeze({
         key: "legend:other",
@@ -663,10 +719,10 @@ export function buildFileTypeLegend(families, metric, population, percentFormatt
         // The neutral, as on the population bars, where the files no family
         // claims are painted the same way.
         paletteKey: OTHER_KEY,
-        kind: /** @type {"family" | "other"} */ ("other"),
-        value: rest,
-        percent: formatPercent(rest, total, percentFormatter),
-        share: percentShare(rest, total),
+        kind: /** @type {const} */ ("other"),
+        value: view.other,
+        percent: formatPercent(view.other, total, percentFormatter),
+        share: percentShare(view.other, total),
       }),
     );
   }
@@ -714,7 +770,7 @@ export function buildFileTypeSummaryModel(
   if (!envelope.breakdown || !runtime) {
     throw new TypeError("file-type summary requires File Rollup Format data");
   }
-  const { rows, families } = buildRegistryRows(
+  const rows = buildRegistryRows(
     envelope,
     showIgnored,
     population,
@@ -732,7 +788,14 @@ export function buildFileTypeSummaryModel(
   const base = {
     metric: selectedMetric,
     rows,
-    legend: buildFileTypeLegend(families, selectedMetric, population, percentFormatter),
+    legend: buildFileTypeLegend(
+      envelope,
+      selectedMetric,
+      showIgnored,
+      population,
+      runtime,
+      percentFormatter,
+    ),
     groups: groupDescriptors,
     // The legend's and the rows' percentages match exactly one of the tally rows above
     // them, and which one follows Show ignored. The count is in the measure the rows

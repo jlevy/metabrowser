@@ -188,6 +188,20 @@ const COMPLETE_ROLLUP = {
     no_extension: { metrics: ZERO, filenames: [], others: null },
     remaining_types: { metrics: ZERO, extensions: [], others: null },
   },
+  // What the route's rule derives from that breakdown: Python is all of it.
+  file_type_legend: {
+    schema: "file-type-legend-v1",
+    limit: 5,
+    minimum_share_percent: 1,
+    files: {
+      all: { total: 3, named: [{ family: "python", value: 3 }], other: 0 },
+      unignored: { total: 2, named: [{ family: "python", value: 2 }], other: 0 },
+    },
+    bytes: {
+      all: { total: 3000, named: [{ family: "python", value: 3000 }], other: 0 },
+      unignored: { total: 2000, named: [{ family: "python", value: 2000 }], other: 0 },
+    },
+  },
 };
 
 const FILE_TYPES = {
@@ -215,50 +229,12 @@ const FILE_TYPES = {
 /**
  * A folder of many types, shaped like a large repository's: eight families in four
  * groups, files no family claims, and a JSON tree that is mostly ignored. By files Other
- * types is the largest bucket of all, and by bytes the order is another one.
+ * types is the largest bucket of all, and by bytes the order is another one. Its legend
+ * is the route's: tests/test_file_type_legend.py checks the rule produced it.
  */
-const MANY_TYPES_ROLLUP = (() => {
-  // [family, extension, files, bytes, unignored files, unignored bytes]
-  const families = [
-    ["typescript", ".ts", 60, 200, 60, 200],
-    ["python", ".py", 33, 150, 33, 150],
-    ["javascript", ".js", 25, 120, 25, 120],
-    ["rust", ".rs", 8, 5, 8, 5],
-    ["markdown", ".md", 150, 300, 150, 300],
-    ["json", ".json", 240, 100, 40, 20],
-    ["yaml", ".yaml", 170, 50, 170, 50],
-    ["log", ".log", 21, 25, 21, 25],
-  ];
-  const measure = (files, bytes, unignoredFiles, unignoredBytes) => ({
-    all: { files, bytes },
-    unignored: { files: unignoredFiles, bytes: unignoredBytes },
-  });
-  const group = (id) => ({
-    id,
-    families: families
-      .filter(([family]) => FILE_TYPES.families.find((f) => f.id === family).groupId === id)
-      .map(([family, extension, ...counts]) => ({
-        id: family,
-        metrics: measure(...counts),
-        extensions: [{ extension, metrics: measure(...counts) }],
-      })),
-  });
-  return {
-    path: "docs",
-    index_status: "done",
-    indexed_files: 1000,
-    max_files: 500000,
-    truncated: false,
-    file_type_breakdown: {
-      schema: "file-type-breakdown-v1",
-      registry: { schema_version: 1, revision: 1, fingerprint: "session" },
-      metrics: measure(1000, 1000, 800, 920),
-      groups: ["code", "docs", "data", "other"].map(group),
-      no_extension: { metrics: measure(40, 20, 40, 20), filenames: [], others: null },
-      remaining_types: { metrics: measure(253, 30, 253, 30), extensions: [], others: null },
-    },
-  };
-})();
+const MANY_TYPES_ROLLUP = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "fixtures/file-overview-many-types-rollup.json"), "utf8"),
+);
 
 const rollupError = (status) =>
   new window.MetabrowserRequestErrors.RequestError("Could not load folder totals.", {

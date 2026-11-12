@@ -1784,10 +1784,13 @@ its bold name, and its muted share.
 A caption naming the population the shares are of, such as “Share of Total (9,169
 files)”, labels the legend and the table for assistive technology only; on screen the
 bars and the Show ignored checkbox already say which population it is.
-The legend names at most five families (`LEGEND_TYPE_LIMIT`), from every group, ranked
-by the selected measure in the population the caption names, and only above the 1% share
-floor at which the table folds a row into **N more**, so every named family is also a
-row the table shows unfolded.
+Which families the legend names is data, so `/api/rollup` decides it, as
+`file_type_legend`, for every measure and population at once; the browser picks the one
+its controls select and only names, paints, and formats it.
+The legend names at most five families (`LEGEND_TYPE_LIMIT` in `file_type_legend.py`),
+from every group, ranked by the selected measure in the population the caption names,
+and only above the 1% share floor at which the table folds a row into **N more**, so
+every named family is also a row the table shows unfolded.
 It never names **No extension** or **Other types**, which are the files no family
 claims.
 Whatever the named families leave is one neutral **Other** entry, so the legend’s

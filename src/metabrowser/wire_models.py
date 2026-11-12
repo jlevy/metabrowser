@@ -334,6 +334,36 @@ class FileTypeBreakdown(TypedDict):
     remaining_types: FileTypeRemainingBreakdown
 
 
+class FileTypeLegendEntry(TypedDict):
+    """One family the compact File Overview legend names, and its value."""
+
+    family: str
+    value: int
+
+
+class FileTypeLegendView(TypedDict):
+    """The legend for one measure in one population; see ``file_type_legend``."""
+
+    total: int
+    named: list[FileTypeLegendEntry]
+    other: int
+
+
+class FileTypeLegendPopulations(TypedDict):
+    all: FileTypeLegendView
+    unignored: FileTypeLegendView
+
+
+class FileTypeLegend(TypedDict):
+    """The compact File Overview legend, for every measure and population."""
+
+    schema: Literal["file-type-legend-v1"]
+    limit: int
+    minimum_share_percent: int
+    files: FileTypeLegendPopulations
+    bytes: FileTypeLegendPopulations
+
+
 class RollupResult(TypedDict):
     """Inventory rollup before route metadata is attached."""
 
@@ -350,6 +380,7 @@ class RollupEnvelope(TypedDict):
     node: RollupDirNode | None
     ext_tallies: list[ExtensionTallyRow]
     file_type_breakdown: FileTypeBreakdown | None
+    file_type_legend: FileTypeLegend | None
     index_status: str
     indexed_files: int
     max_files: int
@@ -632,6 +663,9 @@ def validate_rollup_result(result: Mapping[str, Any]) -> None:
     validate_file_type_breakdown(result["file_type_breakdown"], node)
 
 
+_MISSING = object()
+
+
 def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
     """Assert route metadata plus either a valid result or an empty cold envelope."""
 
@@ -645,19 +679,44 @@ def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
     node = envelope.get("node")
     rows = envelope.get("ext_tallies")
     file_type_breakdown = envelope.get("file_type_breakdown")
+    file_type_legend = envelope.get("file_type_legend", _MISSING)
+    assert file_type_legend is not _MISSING, "a rollup envelope carries file_type_legend"
     assert isinstance(rows, list)
     if node is None:
         assert rows == [], "a cold rollup cannot advertise tallies"
         assert file_type_breakdown is None
+        assert file_type_legend is None
         return
     validate_rollup_result(
         {"node": node, "ext_tallies": rows, "file_type_breakdown": file_type_breakdown}
+    )
+    assert isinstance(file_type_breakdown, dict)
+    validate_file_type_legend(file_type_legend, cast("Mapping[str, Any]", file_type_breakdown))
+
+
+def validate_file_type_legend(raw: object, breakdown: Mapping[str, Any]) -> None:
+    """Assert a legend is the one the route's rule derives from its breakdown.
+
+    The rule itself is pinned case by case in ``tests/test_file_type_legend.py``;
+    this holds every route answer to it, so an envelope cannot carry a legend that
+    disagrees with the breakdown beside it.
+    """
+
+    from metabrowser.file_type_legend import build_file_type_legend
+
+    assert isinstance(raw, dict), "file-type legend must be an object"
+    assert raw == build_file_type_legend(cast("FileTypeBreakdown", breakdown)), (
+        "file-type legend does not follow from its breakdown"
     )
 
 
 __all__ = [
     "DirNode",
     "ExtensionTallyRow",
+    "FileTypeLegend",
+    "FileTypeLegendEntry",
+    "FileTypeLegendPopulations",
+    "FileTypeLegendView",
     "FileNode",
     "NavigationTallies",
     "RollupDirNode",
@@ -667,6 +726,7 @@ __all__ = [
     "RollupResult",
     "validate_extension_tallies",
     "validate_file_type_breakdown",
+    "validate_file_type_legend",
     "validate_rollup_envelope",
     "validate_rollup_node",
     "validate_rollup_result",
