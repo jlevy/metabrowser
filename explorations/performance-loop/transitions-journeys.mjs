@@ -1,14 +1,14 @@
 // Journeys and readiness predicates for the transition-navigation/v1 scenario.
 //
 // Every subject is named by identity (a path, a full commit ID, a pull request number),
-// never by list position, because the Commits list follows the shared checkout's trunk
-// refs and the Pulls list follows GitHub: both move while the corpus files stay frozen.
-// A subject that cannot be found refuses the run rather than measuring a neighbor.
+// never by list position. The Commits list follows the corpus's own refs, which a
+// standalone clone keeps still, and the Pulls list follows GitHub, which moves: newer pull
+// requests push the merged subjects down the Closed list. A list row that is not mounted
+// is scrolled to before the clock starts, and where each subject sat is recorded. A
+// subject that cannot be found refuses the run rather than measuring a neighbor.
 import { Refusal, sleep } from "./transitions-recorder.mjs";
 
 const J = JSON.stringify;
-
-export const SCENARIO = "transition-navigation/v1";
 
 export const SUBJECTS = {
   landing: "README.md",
@@ -64,8 +64,13 @@ export const SUBJECTS = {
 };
 
 // ---------------------------------------------------------------------------
-// In-page predicates. `ready` sources are `() => boolean`, evaluated in a credited
-// frame; `converged` sources are `() => string`, "" when everything agrees.
+// In-page predicates. `ready` sources are `() => boolean`, evaluated in every frame after
+// its layout; `converged` sources are `() => string`, "" when everything agrees.
+//
+// A ready predicate names the exact subject on the surface the reader is looking at: the
+// route, the active main tab, and a rendered surface, so a surface kept mounted but hidden
+// (a retained file or commit view under another main tab) cannot satisfy it. It must be
+// false before the input; the recorder refuses a transition whose predicate already holds.
 
 const fileRow = (p) => `#tab-files .tree-item[data-path=${J(p)}]`;
 const folderRow = (p) => `#tab-files .tree-item.tree-folder[data-path=${J(p)}]`;
@@ -77,18 +82,21 @@ const pullTab = (n, tab) =>
   `#preview-pane > .pull-request-host .tab-bar a.tab-btn[href="/pull/${n}${tab ? `/${tab}` : ""}"]`;
 
 const activeNav = `(document.querySelector(".nav-tab-bar .tab-btn.active") || {}).dataset?.tab`;
+const fileRoute = (p, folder) => `/view/${p}${folder ? "/" : ""}`;
+const onRoute = (route) => `decodeURIComponent(location.pathname) === ${J(route)}`;
 
-const fileReady = (p) => `() => {
+const fileReady = (p, folder = false) => `() => {
+  if (!(${onRoute(fileRoute(p, folder))}) || ${activeNav} !== "files") { return false; }
   const pane = document.getElementById("preview-pane");
-  if (!pane || pane.dataset.renderedPath !== ${J(p)}) { return false; }
+  if (!pane || pane.dataset.renderedPath !== ${J(p)} || !window.__tr.rendered(pane)) { return false; }
   const a = pane.querySelector(':scope > [data-active-view="true"]');
-  return !!a && !window.__tr.hasPlaceholder(a) && window.__tr.hasUseful(a);
+  return !!a && window.__tr.rendered(a) && !window.__tr.hasPlaceholder(a) && window.__tr.hasUseful(a);
 }`;
 
 const fileConverged = (p, folder = false) => `() => {
   const issues = [];
   const pane = document.getElementById("preview-pane");
-  if (!(${fileReady(p)})()) { issues.push("content not ready"); }
+  if (!(${fileReady(p, folder)})()) { issues.push("content not ready"); }
   if (pane.classList.contains("preview-navigation-pending")) { issues.push("pending"); }
   const route = decodeURIComponent(location.pathname);
   const want = "/view/" + ${J(p)} + (${folder} ? "/" : "");
@@ -102,17 +110,19 @@ const fileConverged = (p, folder = false) => `() => {
   return issues.join("; ");
 }`;
 
-const viewReady = (v) => `() => {
+const viewReady = (v, p, folder) => `() => {
+  if (!(${onRoute(fileRoute(p, folder))}) || ${activeNav} !== "files") { return false; }
   const pane = document.getElementById("preview-pane");
-  const a = pane && pane.querySelector(':scope > [data-tab-content="${v}"]');
-  if (!a || a.dataset.activeView !== "true" || getComputedStyle(a).display === "none") { return false; }
+  if (!pane || pane.dataset.renderedPath !== ${J(p)}) { return false; }
+  const a = pane.querySelector(':scope > [data-tab-content="${v}"]');
+  if (!a || a.dataset.activeView !== "true" || !window.__tr.rendered(a)) { return false; }
   return !window.__tr.hasPlaceholder(a) && window.__tr.hasUseful(a);
 }`;
 
-const viewConverged = (v, p) => `() => {
+const viewConverged = (v, p, folder) => `() => {
   const issues = [];
   const pane = document.getElementById("preview-pane");
-  if (!(${viewReady(v)})()) { issues.push("view not ready"); }
+  if (!(${viewReady(v, p, folder)})()) { issues.push("view not ready"); }
   if (pane.dataset.renderedPath !== ${J(p)}) { issues.push("rendered " + pane.dataset.renderedPath); }
   const btn = document.querySelector(${J(viewTab(v))});
   if (!btn || !btn.classList.contains("active")) { issues.push("tab button not active"); }
@@ -125,11 +135,12 @@ const viewConverged = (v, p) => `() => {
 // tab's prompt by design.
 const listReady = (tab, rowSelector, promptSelector) => `() => {
   const panel = document.querySelector('#tree-content > [data-tab-content="${tab}"]');
-  if (!panel || getComputedStyle(panel).display === "none") { return false; }
-  if (panel.querySelectorAll(${J(rowSelector)}).length === 0) { return false; }
+  if (!panel || !window.__tr.rendered(panel)) { return false; }
+  if (panel.querySelectorAll(${J(rowSelector)}).length === 0 || !window.__tr.hasUseful(panel)) { return false; }
   if (${activeNav} !== ${J(tab)}) { return false; }
   const pane = document.getElementById("preview-pane");
-  return !!pane.querySelector(${J(promptSelector)}) && !window.__tr.hasPlaceholder(panel);
+  const prompt = pane && pane.querySelector(${J(promptSelector)});
+  return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel);
 }`;
 
 const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `() => {
@@ -141,11 +152,18 @@ const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `()
 }`;
 
 const commitReady = (rev) => `() => {
+  if (location.pathname !== "/commit/" + ${J(rev)} || ${activeNav} !== "git") { return false; }
   const pane = document.getElementById("preview-pane");
   const v = pane && pane.querySelector(":scope > .git-commit-stage > .git-commit-view");
-  if (!v || v.dataset.revision !== ${J(rev)}) { return false; }
+  if (!v || v.dataset.revision !== ${J(rev)} || !window.__tr.rendered(v)) { return false; }
+  // The commit's view is on screen, and its diff is mounted and laid out with content; a
+  // long message can push the diff below the fold, so the diff need not be on screen.
   const diff = v.querySelector(".git-commit-diff");
-  return !!diff && diff.childElementCount > 0 && !window.__tr.hasPlaceholder(v) && window.__tr.hasUseful(diff);
+  if (!diff || diff.childElementCount === 0 || !window.__tr.rendered(diff)) { return false; }
+  const text = document.createTreeWalker(diff, NodeFilter.SHOW_TEXT);
+  let filled = false;
+  for (let n = text.nextNode(); n && !filled; n = text.nextNode()) { filled = n.nodeValue.trim() !== ""; }
+  return filled && !window.__tr.hasPlaceholder(v) && window.__tr.hasUseful(v);
 }`;
 
 const commitConverged = (rev) => `() => {
@@ -162,10 +180,10 @@ const commitConverged = (rev) => `() => {
 const pullPath = (n, tab) => `/pull/${n}${tab ? `/${tab}` : ""}`;
 
 const pullReady = (n, tab = "") => `() => {
-  if (location.pathname !== ${J(pullPath(n, tab))}) { return false; }
+  if (location.pathname !== ${J(pullPath(n, tab))} || ${activeNav} !== "pulls") { return false; }
   const pane = document.getElementById("preview-pane");
   const host = pane && pane.querySelector(":scope > .pull-request-host");
-  if (!host || host.dataset.corePreview !== "false") { return false; }
+  if (!host || host.dataset.corePreview !== "false" || !window.__tr.rendered(host)) { return false; }
   const title = host.querySelector(".github-pull-title");
   if (!title || !/#${n}\\b/.test(title.textContent || "")) { return false; }
   const active = host.querySelector(".tab-bar .tab-btn.active");
@@ -199,7 +217,7 @@ const folderExpandedReady = (p, expanded) => `() => {
   } else if (row.getAttribute("aria-expanded") === "true") {
     return false;
   }
-  return (${fileReady(p)})();
+  return (${fileReady(p, true)})();
 }`;
 
 const folderConverged = (p, expanded) => `() => {
@@ -262,13 +280,23 @@ const commitRequest = (rev) => [
 // ---------------------------------------------------------------------------
 // Journey plumbing.
 
-/** Wrap a driver so each measurement lands in `rows` with its journey name. */
+/**
+ * Wrap a driver so each measurement lands in `rows` with its journey name. A refused
+ * transition stops the journey (the run is invalid from that point) unless
+ * `options.keepGoing`, which a diagnostic run sets to see every refusal.
+ */
 function context(d, base, journey, rows, options) {
+  const facts = options.facts ?? {};
   const measure = async (spec) => {
+    const load1 = options.loadavg ? options.loadavg() : null;
     const row = await d.measure({ journey, ...spec });
+    row.load1 = load1;
     rows.push(row);
     if (options.log) {
       options.log(row);
+    }
+    if (!row.ok && !options.keepGoing) {
+      throw new Refusal("stopped", `${row.id} refused; the pass stops at its first refusal`);
     }
     await d.park();
     // Time spent waiting for milestones comes out of the gap, so the next transition
@@ -294,14 +322,55 @@ function context(d, base, journey, rows, options) {
     await d.park();
     await sleep(settleMs);
   };
-  const requireRow = async (selector, what) => {
-    const found = await d.waitFor(`!!document.querySelector(${J(selector)})`, 20000);
+  // A subject row, mounted. A virtualized list mounts only the rows near its viewport, so
+  // when `scroller` is given and the row is absent, the list is scrolled from the top one
+  // screen at a time, before any clock starts, until the row mounts or the list ends.
+  // Where the row sat (its offset in the list's content, and the screens scrolled) is
+  // recorded under the journey's facts, so a list that moved shows in the record.
+  const requireRow = async (selector, what, scroller = null) => {
+    const sel = J(selector);
+    let found = await d.waitFor(`!!document.querySelector(${sel})`, scroller ? 5000 : 20000);
+    let screens = 0;
+    if (!found && scroller) {
+      const sc = J(scroller);
+      await d.evaluate(
+        `(() => { const s = document.querySelector(${sc}); if (s) { s.scrollTop = 0; } })()`,
+      );
+      for (let i = 0; i < 60 && !found; i++) {
+        found = await d.waitFor(`!!document.querySelector(${sel})`, 1500);
+        if (found) {
+          break;
+        }
+        const moved = await d.evaluate(
+          `(() => { const s = document.querySelector(${sc}); if (!s) { return false; } const before = s.scrollTop; s.scrollTop = before + Math.max(200, s.clientHeight * 0.8); return s.scrollTop > before; })()`,
+        );
+        screens += 1;
+        if (!moved) {
+          found = await d.waitFor(`!!document.querySelector(${sel})`, 1500);
+          break;
+        }
+      }
+    }
     if (!found) {
       throw new Refusal("subject_missing", `${what} is not listed`);
     }
+    if (scroller) {
+      facts[what] = {
+        ...(await d.evaluate(`(() => {
+          const s = document.querySelector(${J(scroller)});
+          const r = document.querySelector(${sel});
+          if (!s || !r) { return {}; }
+          return { offsetPx: Math.round(r.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop) };
+        })()`)),
+        screens,
+      };
+    }
   };
-  return { d, base, measure, setupClick, land, requireRow };
+  return { d, base, measure, setupClick, land, requireRow, facts };
 }
+
+// The scroll container of every navigation panel.
+const NAV_SCROLLER = "#tree-content";
 
 const click = (selector) => ({ kind: "click", selector });
 const hoverClick = (selector, hoverMs = 400) => ({ kind: "hover-click", selector, hoverMs });
@@ -434,7 +503,7 @@ async function views(ctx) {
     ctx.d.evaluate(
       `Array.from(document.querySelectorAll("#preview-pane > .tab-bar > .tab-btn")).map((b) => b.dataset.tab)`,
     );
-  const cycle = async (label, p) => {
+  const cycle = async (label, p, folder = false) => {
     const names = await tabs();
     if (names.length < 2) {
       throw new Refusal("subject_missing", `${p} offers views ${names.join(",")}`);
@@ -445,8 +514,8 @@ async function views(ctx) {
         id,
         subject: `${p} ${v}`,
         input: click(viewTab(v)),
-        ready: viewReady(v),
-        converged: viewConverged(v, p),
+        ready: viewReady(v, p, folder),
+        converged: viewConverged(v, p, folder),
         settleMs,
       });
     await go(`views.${label}.first`, b, 700);
@@ -461,7 +530,7 @@ async function views(ctx) {
   const folder = SUBJECTS.viewsFolder;
   await ctx.setupClick(folderRow(folder), folderExpandedReady(folder, true), `${folder}/`);
   await sleep(1500);
-  await cycle("folder", folder);
+  await cycle("folder", folder, true);
 }
 
 const commitsList = listReady("git", ".git-graph-row", ":scope > .preview-empty");
@@ -486,7 +555,7 @@ async function closedPulls(ctx, numbers) {
     "Closed pull requests",
   );
   for (const n of numbers) {
-    await ctx.requireRow(pullRow(n), `pull request #${n}`);
+    await ctx.requireRow(pullRow(n), `pull request #${n}`, NAV_SCROLLER);
   }
   await sleep(1500);
 }
@@ -513,6 +582,7 @@ async function mainTabs(ctx) {
       input: click(navTab("git")),
       ready: commitsList,
       converged: commitsListConverged,
+      emptyState: true,
       settleMs,
       timeoutMs: 30000,
     });
@@ -523,6 +593,7 @@ async function mainTabs(ctx) {
       input: click(navTab("pulls")),
       ready: pullsList,
       converged: pullsListConverged,
+      emptyState: true,
       settleMs,
       timeoutMs: 30000,
     });
@@ -539,7 +610,7 @@ async function mainTabs(ctx) {
 
   // Give Commits and Pulls a selected subject, then repeat the round trip.
   await ctx.setupClick(navTab("git"), commitsList, "Commits");
-  await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`);
+  await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   await ctx.setupClick(commitRow(rev), commitReady(rev), `commit ${rev.slice(0, 8)}`);
   await ctx.setupClick(navTab("pulls"), pullsList, "Pulls");
   await closedPulls(ctx, [pr]);
@@ -587,12 +658,13 @@ async function commits(ctx) {
     input: click(navTab("git")),
     ready: commitsList,
     converged: commitsListConverged,
+    emptyState: true,
     settleMs: 900,
     timeoutMs: 30000,
   });
   await sleep(1500);
   for (const rev of [...C.cold, C.hover]) {
-    await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`);
+    await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   }
   const visit = (id, rev, input = click(commitRow(rev))) =>
     ctx.measure({
@@ -625,6 +697,7 @@ async function pulls(ctx) {
     input: click(navTab("pulls")),
     ready: pullsList,
     converged: pullsListConverged,
+    emptyState: true,
     settleMs: 1500,
     timeoutMs: 30000,
   });

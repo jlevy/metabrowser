@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { execFileSync, spawn } from "node:child_process";
 // transition-navigation/v1: the stateful-navigation scenario for UI transitions.
 //
 //   node explorations/performance-loop/transitions.mjs run --exp exp-058 \
-//     --corpus /path/to/frozen/checkout --condition control=/path/to/metab --runs 5
+//     --corpus /path/to/standalone/clone --condition control=/path/to/metab --runs 6
 //   node explorations/performance-loop/transitions.mjs summarize .bench/transitions/exp-058/runs.jsonl
 //   node explorations/performance-loop/transitions.mjs compare .bench/transitions/exp-058/runs.jsonl \
 //     --control control --candidate candidate
@@ -13,21 +14,33 @@
 // kept across its runs, so GitHub data is read from cache. A run that cannot prove it
 // measured the requested subjects is written with `valid: false` and its refusals, and
 // summarize and compare leave it out. See README.md, "Transition Navigation Scenario".
-import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { JOURNEYS, runJourney, SCENARIO, SUBJECTS } from "./transitions-journeys.mjs";
+import { JOURNEYS, runJourney, SUBJECTS } from "./transitions-journeys.mjs";
 import { driver, launchBrowser, REGIONS, Refusal, sleep } from "./transitions-recorder.mjs";
+import {
+  CompareRefusal,
+  compareRuns,
+  formatComparison,
+  parseRows,
+  SCENARIO,
+  SCENARIO_REVISION,
+  sampleRow,
+  summarize,
+  summarizeJson,
+} from "./transitions-stats.mjs";
 
 const HERE = import.meta.dirname;
 const REPO = path.resolve(HERE, "../..");
-const BENCH = path.join(REPO, ".bench", "transitions");
+// TRANSITIONS_BENCH moves the state, log, and profile directories, for the tests.
+const BENCH = process.env.TRANSITIONS_BENCH
+  ? path.resolve(process.env.TRANSITIONS_BENCH)
+  : path.join(REPO, ".bench", "transitions");
 const PORTS = [8890, 8899];
-const MIN_RUNS = 3;
-const SCENARIO_REVISION = 2;
 
 const REGIME = {
   server:
@@ -44,7 +57,8 @@ function git(cwd, ...args) {
   try {
     return execFileSync("git", ["-C", cwd, ...args], {
       encoding: "utf8",
-      timeout: 10000,
+      timeout: 20000,
+      maxBuffer: 256 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch (_error) {
@@ -75,7 +89,7 @@ function killAll() {
     }
   }
 }
-for (const signal of ["SIGINT", "SIGTERM"]) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
     killAll();
     process.exit(130);
@@ -85,7 +99,42 @@ process.on("exit", killAll);
 
 // --------------------------------------------------------------------------- provenance
 
-/** Identity of one `metab` build: its version line and, for a checkout, commit and state. */
+/**
+ * The content of a checkout's working tree beyond its commit: a hash of the diff against
+ * HEAD and of every untracked, unignored file. Read-only: nothing is written to the
+ * checkout or its object store.
+ */
+function workingTreeContent(source) {
+  const diff = git(source, "--no-optional-locks", "diff", "HEAD", "--binary");
+  const untracked = git(
+    source,
+    "--no-optional-locks",
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+  );
+  if (diff === null || untracked === null) {
+    return null;
+  }
+  const h = createHash("sha256").update(diff);
+  for (const rel of untracked.split("\0").filter(Boolean).sort()) {
+    h.update(`\0${rel}\0`);
+    try {
+      h.update(fs.readFileSync(path.join(source, rel)));
+    } catch (_error) {
+      h.update("unreadable");
+    }
+  }
+  return `sha256:${h.digest("hex").slice(0, 16)}`;
+}
+
+/**
+ * Identity of one `metab` build: its version line and, for an editable checkout, its
+ * commit, whether it is dirty, and the content of a dirty tree, so two different
+ * uncommitted states never pool as one build. A wheel install is identified by the hash
+ * of its RECORD, which lists every installed file's own hash.
+ */
 function buildProvenance(metab) {
   const version = execFileSync(metab, ["--version"], {
     encoding: "utf8",
@@ -95,6 +144,7 @@ function buildProvenance(metab) {
   const venv = path.dirname(path.dirname(metab));
   let source = null;
   let editable = false;
+  let record = null;
   const libs = path.join(venv, "lib");
   if (fs.existsSync(libs)) {
     for (const py of fs.readdirSync(libs)) {
@@ -114,19 +164,26 @@ function buildProvenance(metab) {
             source = decodeURIComponent(new URL(info.url).pathname);
           }
         }
+        const recordFile = path.join(site, entry, "RECORD");
+        if (fs.existsSync(recordFile)) {
+          record = createHash("sha256")
+            .update(fs.readFileSync(recordFile))
+            .digest("hex")
+            .slice(0, 16);
+        }
       }
     }
   }
   const commit = source ? git(source, "rev-parse", "HEAD") : null;
   const status = source ? git(source, "--no-optional-locks", "status", "--porcelain") : null;
-  return {
-    metab,
-    version,
-    editable,
-    source,
-    commit,
-    dirty: status === null ? null : status.length > 0,
-  };
+  const dirty = status === null ? null : status.length > 0;
+  let content = null;
+  if (dirty) {
+    content = workingTreeContent(source);
+  } else if (!editable && record) {
+    content = `record:${record}`;
+  }
+  return { metab, version, editable, source, commit, dirty, content };
 }
 
 function corpusProvenance(corpus) {
@@ -135,8 +192,12 @@ function corpusProvenance(corpus) {
     path: corpus,
     commit: git(corpus, "rev-parse", "HEAD"),
     dirty: status === null ? null : status.length > 0,
-    // The Commits list walks HEAD and the trunk refs, which the shared checkout moves.
+    // The Commits list walks HEAD and the trunk refs; a standalone clone keeps them still.
     trunk: git(corpus, "rev-parse", "--verify", "--quiet", "origin/main"),
+    refs: (() => {
+      const refs = git(corpus, "for-each-ref", "--format=%(objectname) %(refname)");
+      return refs === null ? null : createHash("sha256").update(refs).digest("hex").slice(0, 16);
+    })(),
   };
 }
 
@@ -147,6 +208,8 @@ function harnessProvenance() {
     dirty: status === null ? null : status.length > 0,
   };
 }
+
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // --------------------------------------------------------------------------- server
 
@@ -189,6 +252,20 @@ const unescapeHtml = (s) =>
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
+function killGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch (_error) {
+    try {
+      child.kill(signal);
+    } catch (_ignored) {
+      // Already gone.
+    }
+  }
+}
+
+const INVENTORY_DEADLINE_MS = 180000;
+
 async function startServer({ metab, corpus, home, logPath }) {
   const cache = path.join(home, "cache");
   const config = path.join(home, "config");
@@ -215,32 +292,55 @@ async function startServer({ metab, corpus, home, logPath }) {
   } finally {
     fs.closeSync(fd);
   }
-  const base = `http://127.0.0.1:${port}`;
-  let progress = null;
-  for (let i = 0; i < 1800; i++) {
-    if (child.exitCode !== null) {
-      throw new Error(`server exited: ${fs.readFileSync(logPath, "utf8").slice(-1500)}`);
-    }
-    try {
-      progress = await getJson(`${base}/api/index/progress`, 5000);
-      if (progress.complete) {
-        break;
+  let spawnError = null;
+  child.once("error", (error) => {
+    spawnError = error;
+  });
+  const server = { child, port, base: `http://127.0.0.1:${port}` };
+  try {
+    let progress = null;
+    // The deadline is wall clock: each poll is bounded by what remains of it.
+    const deadline = started + INVENTORY_DEADLINE_MS;
+    while (Date.now() < deadline) {
+      if (spawnError) {
+        throw new Error(`server could not start: ${spawnError.message}`);
       }
-    } catch (_error) {
-      // Not listening yet.
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`server exited: ${fs.readFileSync(logPath, "utf8").slice(-1500)}`);
+      }
+      try {
+        progress = await getJson(
+          `${server.base}/api/index/progress`,
+          Math.max(500, Math.min(5000, deadline - Date.now())),
+        );
+        if (progress.complete) {
+          break;
+        }
+      } catch (_error) {
+        // Not listening yet.
+      }
+      await sleep(100);
     }
-    await sleep(100);
+    if (!progress?.complete) {
+      throw new Error(
+        `server did not finish its inventory within ${INVENTORY_DEADLINE_MS / 1000} s`,
+      );
+    }
+    const readyMs = Date.now() - started;
+    const html = await (
+      await fetch(`${server.base}/view/`, { signal: AbortSignal.timeout(30000) })
+    ).text();
+    const match = html.match(/<div class="menu-version">([^<]*)<\/div>/);
+    const served = match ? unescapeHtml(match[1]).trim() : null;
+    const log = fs.readFileSync(logPath, "utf8");
+    const servingLine = log.split("\n").find((l) => l.startsWith("Serving ")) ?? null;
+    return { ...server, readyMs, progress, served, servingLine };
+  } catch (error) {
+    // The server is ours from the spawn on: a failed start stops it here, so it cannot
+    // keep the port or its state directory into the condition's next run.
+    await stopServer(server);
+    throw error;
   }
-  if (!progress?.complete) {
-    throw new Error("server did not finish its inventory within 180 s");
-  }
-  const readyMs = Date.now() - started;
-  const html = await (await fetch(`${base}/view/`)).text();
-  const match = html.match(/<div class="menu-version">([^<]*)<\/div>/);
-  const served = match ? unescapeHtml(match[1]).trim() : null;
-  const log = fs.readFileSync(logPath, "utf8");
-  const servingLine = log.split("\n").find((l) => l.startsWith("Serving ")) ?? null;
-  return { child, port, base, readyMs, progress, served, servingLine };
 }
 
 async function stopServer(server) {
@@ -248,20 +348,12 @@ async function stopServer(server) {
     return;
   }
   const { child } = server;
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch (_error) {
-    // Already gone.
-  }
+  killGroup(child, "SIGTERM");
   for (let i = 0; i < 100 && child.exitCode === null && child.signalCode === null; i++) {
     await sleep(100);
   }
   if (child.exitCode === null && child.signalCode === null) {
-    try {
-      process.kill(-child.pid, "SIGKILL");
-    } catch (_error) {
-      // Already gone.
-    }
+    killGroup(child, "SIGKILL");
   }
   for (let i = 0; i < 50 && !(await portFree(server.port)); i++) {
     await sleep(100);
@@ -300,29 +392,34 @@ function logTransition(row) {
   const extra = [
     ...Object.entries(row.milestones ?? {}).map(([k, v]) => ` ${k} ${fmt(v).trim()}`),
     row.list ? ` listBelowSel ${row.list.rowsReplacedBelowSelection}` : "",
-    row.movementByGroup?.tree ? ` tree ${row.movementByGroup.tree}` : "",
-    row.movementByGroup?.palette ? ` palette ${row.movementByGroup.palette}` : "",
+    row.movementByGroup?.tree?.path ? ` tree ${row.movementByGroup.tree.path}` : "",
+    row.movementByGroup?.palette?.path ? ` palette ${row.movementByGroup.palette.path}` : "",
     row.requests.postBytes ? ` post ${row.requests.postBytes}B` : "",
     row.inputSpanMs ? ` afterLast ${fmt(row.readyAfterLastInputMs).trim()}` : "",
   ].join("");
   console.log(
-    `  ${flag} ${row.id.padEnd(40)} ready ${fmt(row.paintedReadyMs)} blank ${String(row.blankFrames).padStart(2)} ph ${row.placeholderVisibleFrames} data ${req.data ?? 0} plug ${req.plugin ?? 0} kp ${req.kpress ?? 0} dup ${row.requests.subjectDuplicates} top ${row.previewTop.removed} moved ${row.movementPx} shift ${row.shifts.count}${extra}${row.ok ? "" : `  ${row.refusals.map((r) => r.join(": ")).join(" | ")}`}`,
+    `  ${flag} ${row.id.padEnd(40)} ready ${fmt(row.paintedReadyMs)} settled ${fmt(row.settledMs)} blank ${String(row.blankFrames).padStart(2)} ph ${row.placeholderVisibleFrames} data ${req.data ?? 0} plug ${req.plugin ?? 0} kp ${req.kpress ?? 0} dup ${row.requests.subjectDuplicates} top ${row.previewTop.removed} moved ${row.movementPathPx} shift ${row.shifts.count}${extra}${row.ok ? "" : `  ${row.refusals.map((r) => r.join(": ")).join(" | ")}`}`,
   );
 }
 
-async function pass({ base, journeys, headed, profileRoot, expectedVersion, quiet }) {
+async function pass({ base, journeys, headed, profileRoot, expectedVersion, quiet, keepGoing }) {
   const out = [];
   for (const name of journeys) {
     const rows = [];
-    const journey = { name, ok: true, error: null, refusals: [], transitions: rows };
+    const facts = {};
+    const journey = { name, ok: true, error: null, refusals: [], transitions: rows, facts };
     const profileDir = path.join(profileRoot, `${process.pid}-${name}-${Date.now()}`);
     let browser = null;
     try {
-      browser = await launchBrowser({ profileDir, headed });
-      track(browser.chrome);
+      browser = await launchBrowser({ profileDir, headed, onSpawn: track });
       journey.chrome = browser.version.product;
       const d = driver(browser);
-      await runJourney(name, d, base, rows, { log: quiet ? null : logTransition });
+      await runJourney(name, d, base, rows, {
+        log: quiet ? null : logTransition,
+        keepGoing,
+        facts,
+        loadavg: () => loadavg()[0],
+      });
       const served = await d.evaluate(
         `(document.querySelector(".menu-version") || {}).textContent || null`,
       );
@@ -359,18 +456,23 @@ async function pass({ base, journeys, headed, profileRoot, expectedVersion, quie
       }
     }
     journey.ok = journey.refusals.length === 0;
-    if (!quiet) {
+    if (!quiet || !journey.ok) {
       console.log(
         `  journey ${name}: ${rows.length} transitions${journey.ok ? "" : `, REFUSED: ${journey.refusals.map((r) => r.join(": ")).join(" | ")}`}`,
       );
     }
     out.push(journey);
+    // The run is invalid from its first refusal on, so the pass stops there.
+    if (!journey.ok && !keepGoing) {
+      break;
+    }
   }
   return out;
 }
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
+  const { keepGoing, subset } = options;
   const expDir = path.join(BENCH, exp);
   const home = path.join(expDir, "state", condition.label);
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -380,8 +482,9 @@ async function oneRun(options) {
   fs.mkdirSync(profileRoot, { recursive: true });
   const row = {
     schema: SCENARIO,
-    // 2 adds milestones, lists, region groups, cache disposition, POST bytes, and the
-    // palette, skim, and reveal journeys; no revision 1 field changed meaning.
+    // 3 redefines the clocks and the frame accounting (every frame read after its own
+    // layout, painted ready at the ready frame's presentation, counts over the whole
+    // window); revision 2 rows do not compare with it.
     scenario_revision: SCENARIO_REVISION,
     exp,
     series,
@@ -400,11 +503,15 @@ async function oneRun(options) {
     },
     viewport: "1440x900",
     headed,
+    regime_flags: { headed, no_warmup: !warmup, journey_subset: subset, keep_going: keepGoing },
     regime: REGIME,
     regions: Object.fromEntries(Object.entries(REGIONS).map(([k, v]) => [k, v.track])),
     journeys_requested: journeys,
     refusals: [],
   };
+  if (row.build.dirty === true && !row.build.content) {
+    row.refusals.push(["build_identity", "a dirty build whose content could not be identified"]);
+  }
   console.log(
     `\n== ${exp} ${condition.label} run ${runIndex} (pair ${pairIndex}) load ${row.load_start.join(" ")}`,
   );
@@ -423,14 +530,14 @@ async function oneRun(options) {
     if (server.served !== row.build.version) {
       row.refusals.push([
         "build_identity",
-        `server reports ${server.served}, ${condition.metab} --version says ${row.build.version}`,
+        `server reports ${server.served}, ${path.basename(condition.metab)} --version says ${row.build.version}`,
       ]);
     }
     if (!server.servingLine?.includes(`${corpus} at http://127.0.0.1:${server.port}/`)) {
-      row.refusals.push(["build_identity", `unexpected serving line ${server.servingLine}`]);
+      row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
     }
     row.facts = await serverFacts(server.base);
-    if (warmup) {
+    if (warmup && (keepGoing || row.refusals.length === 0)) {
       console.log("  warm-up pass (unrecorded)");
       const warm = await pass({
         base: server.base,
@@ -439,6 +546,7 @@ async function oneRun(options) {
         profileRoot,
         expectedVersion: row.build.version,
         quiet: true,
+        keepGoing,
       });
       row.warmup = warm.map((j) => ({
         name: j.name,
@@ -446,26 +554,55 @@ async function oneRun(options) {
         transitions: j.transitions.length,
         refusals: j.refusals.slice(0, 6),
       }));
+      // A warm-up that refused leaves the server in an unknown state: the run is refused.
+      for (const j of warm) {
+        for (const [guard, detail] of j.refusals.slice(0, 3)) {
+          row.refusals.push([`warmup_${guard}`, `${j.name}: ${detail}`]);
+        }
+      }
     }
-    console.log("  measured pass");
-    row.journeys = await pass({
-      base: server.base,
-      journeys,
-      headed,
-      profileRoot,
-      expectedVersion: row.build.version,
-      quiet: false,
-    });
-    row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
-    for (const j of row.journeys) {
-      for (const [guard, detail] of j.refusals) {
-        row.refusals.push([guard, `${j.name}: ${detail}`]);
+    if (keepGoing || row.refusals.length === 0) {
+      console.log("  measured pass");
+      row.journeys = await pass({
+        base: server.base,
+        journeys,
+        headed,
+        profileRoot,
+        expectedVersion: row.build.version,
+        quiet: false,
+        keepGoing,
+      });
+      row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
+      for (const j of row.journeys) {
+        for (const [guard, detail] of j.refusals) {
+          row.refusals.push([guard, `${j.name}: ${detail}`]);
+        }
       }
     }
   } catch (error) {
     row.refusals.push(["run_error", String(error.stack || error).slice(0, 2000)]);
   } finally {
     await stopServer(server);
+  }
+  // Provenance again at the end: an editable build serves its files live and a corpus
+  // can be moved under the server, and either would make this run a mixture.
+  row.build_end = buildProvenance(condition.metab);
+  row.corpus_end = corpusProvenance(corpus);
+  for (const k of ["version", "commit", "dirty", "content"]) {
+    if (row.build_end[k] !== row.build[k]) {
+      row.refusals.push([
+        "build_changed",
+        `${k} was ${row.build[k]} at start, ${row.build_end[k]} at end`,
+      ]);
+    }
+  }
+  for (const k of ["commit", "dirty", "trunk", "refs"]) {
+    if (!sameJson(row.corpus_end[k], row.corpus[k])) {
+      row.refusals.push([
+        "corpus_changed",
+        `${k} was ${row.corpus[k]} at start, ${row.corpus_end[k]} at end`,
+      ]);
+    }
   }
   row.load_end = loadavg();
   row.finished_at = new Date().toISOString();
@@ -488,6 +625,7 @@ async function cmdRun(argv) {
       out: { type: "string" },
       headed: { type: "boolean", default: false },
       "no-warmup": { type: "boolean", default: false },
+      "keep-going": { type: "boolean", default: false },
       order: { type: "string", default: "alternate" },
     },
   });
@@ -495,9 +633,16 @@ async function cmdRun(argv) {
     throw new Error("--exp exp-NNN is required");
   }
   if (!values.corpus) {
-    throw new Error("--corpus PATH is required: a frozen checkout to serve");
+    throw new Error("--corpus PATH is required: a standalone clone to serve");
   }
   const corpus = path.resolve(values.corpus);
+  const corpus0 = corpusProvenance(corpus);
+  if (!corpus0.commit) {
+    throw new Error(`${corpus} is not a Git checkout; the corpus needs a commit identity`);
+  }
+  if (corpus0.dirty !== false) {
+    throw new Error(`${corpus} has uncommitted changes; serve a clean corpus`);
+  }
   const conditions = (values.condition ?? []).map((spec) => {
     const at = spec.indexOf("=");
     if (at <= 0) {
@@ -529,19 +674,27 @@ async function cmdRun(argv) {
       throw new Error(`unknown journey ${j}; known: ${Object.keys(JOURNEYS).join(",")}`);
     }
   }
+  const subset = !sameJson(journeys, Object.keys(JOURNEYS));
+  // A diagnostic run writes beside the standard file, never into it, unless --out says so.
+  const standard = !subset && !values.headed && !values["no-warmup"] && !values["keep-going"];
   const outFile = values.out
     ? path.resolve(values.out)
-    : path.join(BENCH, values.exp, "runs.jsonl");
+    : path.join(BENCH, values.exp, standard ? "runs.jsonl" : "diagnostic.jsonl");
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   const series = new Date().toISOString().replace(/[:.]/g, "-");
   console.log(
-    `${SCENARIO} ${values.exp} series ${series}: ${runs} run(s) x ${conditions.map((c) => c.label).join(", ")}, journeys ${journeys.join(",")}, ${values.headed ? "headed" : "headless"}, writing ${path.relative(REPO, outFile)}`,
+    `${SCENARIO} r${SCENARIO_REVISION} ${values.exp} series ${series}: ${runs} run(s) x ${conditions.map((c) => c.label).join(", ")}, journeys ${journeys.join(",")}, ${values.headed ? "headed" : "headless"}, writing ${path.relative(REPO, outFile)}`,
   );
+  if (!standard) {
+    console.log(
+      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals"].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+    );
+  }
   let refused = 0;
   // Run numbers continue across series written to the same file, one sequence per label.
   const runCount = {};
   if (fs.existsSync(outFile)) {
-    for (const row of readRows(outFile)) {
+    for (const row of parseRows(fs.readFileSync(outFile, "utf8"), outFile)) {
       runCount[row.condition] = Math.max(runCount[row.condition] ?? 0, row.run ?? 0);
     }
   }
@@ -562,6 +715,8 @@ async function cmdRun(argv) {
         journeys,
         headed: values.headed,
         warmup: !values["no-warmup"],
+        keepGoing: values["keep-going"],
+        subset,
       });
       fs.appendFileSync(outFile, `${JSON.stringify(row)}\n`);
       if (!row.valid) {
@@ -573,273 +728,10 @@ async function cmdRun(argv) {
   return refused === 0 ? 0 : 1;
 }
 
-// --------------------------------------------------------------------------- statistics
+// --------------------------------------------------------------------------- reading
 
-const METRICS = [
-  { key: "painted_ready_ms", kind: "time", get: (t) => t.paintedReadyMs },
-  { key: "blank_frames", kind: "count", get: (t) => t.blankFrames },
-  { key: "placeholder_visible_frames", kind: "count", get: (t) => t.placeholderVisibleFrames },
-  {
-    key: "nav_placeholder_visible_frames",
-    kind: "count",
-    get: (t) => t.navPlaceholderVisibleFrames,
-  },
-  { key: "requests_data", kind: "count", get: (t) => t.requests.byClass.data ?? 0 },
-  { key: "requests_plugin", kind: "count", get: (t) => t.requests.byClass.plugin ?? 0 },
-  { key: "requests_static", kind: "count", get: (t) => t.requests.byClass.static ?? 0 },
-  { key: "requests_kpress", kind: "count", get: (t) => t.requests.byClass.kpress ?? 0 },
-  { key: "requests_background", kind: "count", get: (t) => t.requests.byClass.background ?? 0 },
-  { key: "subject_duplicates", kind: "count", get: (t) => t.requests.subjectDuplicates },
-  { key: "preview_top_replaced", kind: "count", get: (t) => t.previewTop.removed },
-  { key: "shift_count", kind: "count", get: (t) => t.shifts.count },
-  { key: "shift_sum_no_input", kind: "value", get: (t) => t.shifts.sumNoInput },
-  { key: "region_movement_px", kind: "count", get: (t) => t.movementPx },
-  { key: "long_task_max_ms", kind: "time", get: (t) => t.longTasks.maxMs },
-  { key: "dom_nodes_end", kind: "count", get: (t) => t.dom.end },
-  // Scenario revision 2. A row from revision 1 has none of these, and compare skips a
-  // metric either side lacks.
-  { key: "input_span_ms", kind: "time", get: (t) => t.inputSpanMs },
-  { key: "ready_after_last_input_ms", kind: "time", get: (t) => t.readyAfterLastInputMs },
-  { key: "shell_tools_ready_ms", kind: "time", get: (t) => t.milestones?.shellToolsReady },
-  { key: "styled_markdown_ms", kind: "time", get: (t) => t.milestones?.styledMarkdown },
-  { key: "pr_header_ms", kind: "time", get: (t) => t.milestones?.prHeader },
-  { key: "pr_description_shown_ms", kind: "time", get: (t) => t.milestones?.prDescriptionShown },
-  { key: "pr_description_final_ms", kind: "time", get: (t) => t.milestones?.prDescriptionFinal },
-  { key: "tree_movement_px", kind: "count", get: (t) => t.movementByGroup?.tree },
-  { key: "tree_movement_frames", kind: "count", get: (t) => t.movementStepsByGroup?.tree },
-  { key: "palette_movement_px", kind: "count", get: (t) => t.movementByGroup?.palette },
-  {
-    key: "list_rows_replaced_below_selection",
-    kind: "count",
-    get: (t) => t.list?.rowsReplacedBelowSelection,
-  },
-  { key: "list_row_replacements", kind: "count", get: (t) => t.list?.rowReplacements },
-  { key: "file_envelope_requests", kind: "count", get: (t) => t.requests.fileEnvelopes },
-  { key: "post_body_bytes", kind: "count", get: (t) => t.requests.postBytes },
-  ...["static", "plugin_static", "kpress_static", "data", "document"].flatMap((family) =>
-    ["network", "revalidated", "cache"].map((d) => ({
-      key: `${family}_${d}`,
-      kind: "count",
-      get: (t) => (t.requests.byFamily ? (t.requests.byFamily[family]?.[d] ?? 0) : undefined),
-    })),
-  ),
-];
-
-function median(xs) {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-function readRows(file) {
-  const rows = [];
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    if (line.trim()) {
-      const row = JSON.parse(line);
-      if (row.schema !== SCENARIO) {
-        throw new Error(`${file} holds a ${row.schema} row; this reads ${SCENARIO}`);
-      }
-      rows.push(row);
-    }
-  }
-  return rows;
-}
-
-/** Valid runs per condition, refusing to pool runs of different builds under one label. */
-function groupConditions(rows, { allowMixed = false } = {}) {
-  const out = new Map();
-  for (const row of rows) {
-    if (!out.has(row.condition)) {
-      out.set(row.condition, { label: row.condition, valid: [], refused: [] });
-    }
-    const c = out.get(row.condition);
-    (row.valid ? c.valid : c.refused).push(row);
-  }
-  for (const c of out.values()) {
-    const identities = new Set(
-      c.valid.map((r) => `${r.build.version} ${r.build.commit} ${r.build.dirty}`),
-    );
-    if (identities.size > 1 && !allowMixed) {
-      throw new Error(
-        `condition ${c.label} pools ${identities.size} builds: ${[...identities].join(" / ")}`,
-      );
-    }
-  }
-  return out;
-}
-
-/** transition id -> metric key -> values across the condition's valid runs. */
-function collect(condition) {
-  const byId = new Map();
-  for (const run of condition.valid) {
-    for (const journey of run.journeys ?? []) {
-      for (const t of journey.transitions) {
-        if (!byId.has(t.id)) {
-          byId.set(t.id, { id: t.id, subjects: new Set(), values: {} });
-        }
-        const entry = byId.get(t.id);
-        entry.subjects.add(t.subject);
-        for (const m of METRICS) {
-          const v = m.get(t);
-          if (v !== null && v !== undefined) {
-            entry.values[m.key] ??= [];
-            entry.values[m.key].push(v);
-          }
-        }
-      }
-    }
-  }
-  return byId;
-}
-
-function stat(xs) {
-  if (!xs?.length) {
-    return null;
-  }
-  return { n: xs.length, median: median(xs), min: Math.min(...xs), max: Math.max(...xs) };
-}
-
-// Times are frame-clock readings quantized to about 16.7 ms, so whole milliseconds.
-function fmtNum(v, kind) {
-  if (kind === "value") {
-    return v.toFixed(4);
-  }
-  if (kind === "time") {
-    return String(Math.round(v));
-  }
-  return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
-}
-
-const firstLine = (s) => String(s).split("\n")[0].slice(0, 200);
+const readRows = (file) => parseRows(fs.readFileSync(file, "utf8"), file);
 const print = (lines) => process.stdout.write(`${lines.join("\n")}\n`);
-
-function fmtStat(s, kind) {
-  if (!s) {
-    return "n/a";
-  }
-  if (kind === "time") {
-    return `${fmtNum(s.median, kind)} (${fmtNum(s.min, kind)}–${fmtNum(s.max, kind)})`;
-  }
-  return s.min === s.max ? fmtNum(s.min, kind) : `${fmtNum(s.min, kind)}–${fmtNum(s.max, kind)}`;
-}
-
-const metric = (key) => METRICS.find((m) => m.key === key);
-
-function loadRange(runs) {
-  const all = runs.flatMap((r) => [r.load_start?.[0], r.load_end?.[0]]).filter((v) => v != null);
-  return all.length ? `${Math.min(...all)}–${Math.max(...all)}` : "n/a";
-}
-
-const TABLES = [
-  {
-    title: "Time and frames",
-    columns: [
-      ["painted_ready_ms", "Painted ready ms, median (range)"],
-      ["blank_frames", "Blank frames"],
-      ["placeholder_visible_frames", "Visible placeholder frames"],
-      ["nav_placeholder_visible_frames", "Nav placeholder frames"],
-      ["long_task_max_ms", "Longest task ms, median (range)"],
-    ],
-  },
-  {
-    title: "Requests",
-    columns: [
-      ["requests_data", "Data"],
-      ["requests_plugin", "Plugin modules"],
-      ["requests_static", "Static"],
-      ["requests_kpress", "KPress"],
-      ["requests_background", "Background"],
-      ["subject_duplicates", "Subject duplicates"],
-    ],
-  },
-  {
-    title: "Stability and DOM",
-    columns: [
-      ["preview_top_replaced", "Preview top nodes replaced"],
-      ["shift_count", "Layout shifts"],
-      ["shift_sum_no_input", "Shift without input"],
-      ["region_movement_px", "Region movement px"],
-      ["dom_nodes_end", "DOM nodes after"],
-    ],
-  },
-  // Revision 2 tables list only the transitions that have a value in them.
-  {
-    title: "Milestones",
-    sparse: true,
-    columns: [
-      ["shell_tools_ready_ms", "Shell tools ready ms"],
-      ["styled_markdown_ms", "Styled Markdown ms"],
-      ["pr_header_ms", "PR header ms"],
-      ["pr_description_shown_ms", "PR description shown ms"],
-      ["pr_description_final_ms", "PR description final ms"],
-    ],
-  },
-  {
-    title: "Input, lists, and groups",
-    sparse: true,
-    columns: [
-      ["input_span_ms", "Input span ms"],
-      ["ready_after_last_input_ms", "Ready after last input ms"],
-      ["file_envelope_requests", "File envelopes"],
-      ["post_body_bytes", "POST body bytes"],
-      ["list_rows_replaced_below_selection", "List rows replaced below selection"],
-      ["list_row_replacements", "List row replacements"],
-      ["tree_movement_px", "Tree movement px"],
-      ["tree_movement_frames", "Tree movement frames"],
-      ["palette_movement_px", "Palette movement px"],
-    ],
-    // A row only when something here differs from a single-input transition's defaults.
-    keep: (v) =>
-      v.list_row_replacements !== undefined ||
-      ["input_span_ms", "post_body_bytes", "tree_movement_px", "palette_movement_px"].some((k) =>
-        v[k]?.some((x) => x > 0),
-      ),
-  },
-  {
-    title: "Cache disposition (network / revalidated / cache)",
-    sparse: true,
-    families: ["static", "plugin_static", "kpress_static", "data", "document"],
-    keep: (_v, id) => id.startsWith("landing.") || id.startsWith("reveal."),
-  },
-];
-
-function summaryTables(condition) {
-  const byId = collect(condition);
-  const lines = [];
-  for (const table of TABLES) {
-    const columns = table.families
-      ? table.families.map((f) => [f, f.replace("_", "-")])
-      : table.columns;
-    const cell = (entry, key) => {
-      if (!table.families) {
-        return fmtStat(stat(entry.values[key]), metric(key).kind);
-      }
-      const parts = ["network", "revalidated", "cache"].map((d) =>
-        fmtStat(stat(entry.values[`${key}_${d}`]), "count"),
-      );
-      return parts.every((p) => p === "n/a") ? "n/a" : parts.join(" / ");
-    };
-    const rows = [];
-    for (const entry of byId.values()) {
-      const cells = columns.map(([key]) => cell(entry, key));
-      if (table.sparse && cells.every((c) => c === "n/a")) {
-        continue;
-      }
-      if (table.keep && !table.keep(entry.values, entry.id)) {
-        continue;
-      }
-      rows.push(`| \`${entry.id}\` | ${cells.join(" | ")} |`);
-    }
-    if (table.sparse && rows.length === 0) {
-      continue;
-    }
-    lines.push(`#### ${table.title}`, "");
-    lines.push(`| Transition | ${columns.map((c) => c[1]).join(" | ")} |`);
-    lines.push(`| --- | ${columns.map(() => "---:").join(" | ")} |`);
-    lines.push(...rows, "");
-  }
-  return lines;
-}
 
 function cmdSummarize(argv) {
   const { values, positionals } = parseArgs({
@@ -852,56 +744,15 @@ function cmdSummarize(argv) {
     },
   });
   if (positionals.length !== 1) {
-    throw new Error("summarize RUNS.jsonl");
+    throw new CompareRefusal("summarize RUNS.jsonl");
   }
-  const conditions = groupConditions(readRows(positionals[0]), {
-    allowMixed: values["allow-mixed"],
-  });
-  const selected = [...conditions.values()].filter(
-    (c) => !values.condition || c.label === values.condition,
-  );
+  const options = { condition: values.condition ?? null, allowMixed: values["allow-mixed"] };
+  const rows = readRows(positionals[0]);
   if (values.format === "json") {
-    const out = {};
-    for (const c of selected) {
-      out[c.label] = Object.fromEntries(
-        [...collect(c).values()].map((e) => [
-          e.id,
-          {
-            subjects: [...e.subjects],
-            ...Object.fromEntries(Object.entries(e.values).map(([k, v]) => [k, stat(v)])),
-          },
-        ]),
-      );
-    }
-    console.log(JSON.stringify(out, null, 1));
-    return 0;
+    console.log(JSON.stringify(summarizeJson(rows, options), null, 1));
+  } else {
+    print(summarize(rows, options));
   }
-  const out = [];
-  for (const c of selected) {
-    const builds = [...new Set(c.valid.map((r) => r.build.version))];
-    out.push(`### Condition \`${c.label}\``, "");
-    out.push(
-      `${c.valid.length} valid run(s), ${c.refused.length} refused; build ${builds.join(", ") || "n/a"}; load average (1 min) ${loadRange(c.valid)} at run start and end.`,
-      "",
-    );
-    for (const r of c.refused) {
-      out.push(
-        `- refused run ${r.run} (${r.series}): ${r.refusals
-          .slice(0, 3)
-          .map((x) => firstLine(x.join(": ")))
-          .join(" | ")}`,
-      );
-    }
-    const drift = [...collect(c).values()].filter((e) => e.subjects.size > 1);
-    for (const e of drift) {
-      out.push(`- subject drift in \`${e.id}\`: ${[...e.subjects].join(", ")}`);
-    }
-    if (c.refused.length || drift.length) {
-      out.push("");
-    }
-    out.push(...summaryTables(c));
-  }
-  print(out);
   return 0;
 }
 
@@ -915,149 +766,32 @@ function cmdCompare(argv) {
       tolerance: { type: "string", default: "1.3" },
       format: { type: "string", default: "markdown" },
       aa: { type: "string" },
+      expect: { type: "string", multiple: true },
     },
   });
   if (positionals.length !== 1) {
-    throw new Error("compare RUNS.jsonl --control LABEL --candidate LABEL | --aa LABEL");
+    throw new CompareRefusal("compare RUNS.jsonl --control LABEL --candidate LABEL | --aa LABEL");
   }
-  const tolerance = Number.parseFloat(values.tolerance);
-  if (!(tolerance > 1 && tolerance < 2)) {
-    throw new Error("--tolerance must be above 1 and below 2 (1.3 rough cut; never 2x)");
-  }
-  let rows = readRows(positionals[0]);
-  if (values.aa) {
-    // An A/A comparison: one condition's runs in recorded order, odd against even, which
-    // measures the instrument's own resolution on that build.
-    rows = rows
-      .filter((r) => r.condition === values.aa && r.valid)
-      .map((r, i) => ({ ...r, condition: `${values.aa}.${i % 2 === 0 ? "odd" : "even"}` }));
-    values.control = `${values.aa}.odd`;
-    values.candidate = `${values.aa}.even`;
-  }
-  const conditions = groupConditions(rows);
-  const labels = [...conditions.keys()];
-  const A = conditions.get(values.control ?? labels[0]);
-  const B = conditions.get(values.candidate ?? labels[1]);
-  if (!A || !B || A === B) {
-    throw new Error(`need two distinct conditions; found ${labels.join(", ")}`);
-  }
-  for (const c of [A, B]) {
-    if (c.valid.length < MIN_RUNS) {
-      throw new Error(
-        `condition ${c.label} has ${c.valid.length} valid run(s); compare needs ${MIN_RUNS}`,
-      );
-    }
-  }
-  const all = [...A.valid, ...B.valid];
-  const corpora = new Set(all.map((r) => r.corpus.commit));
-  if (corpora.size !== 1) {
-    throw new Error(`the conditions were measured on different corpora: ${[...corpora]}`);
-  }
-  const notes = [];
-  const revisions = new Set(all.map((r) => r.scenario_revision ?? 1));
-  if (revisions.size > 1) {
-    notes.push(
-      `runs come from scenario revisions ${[...revisions].join(" and ")}; metrics one revision lacks are not compared`,
-    );
-  }
-  const harnesses = new Set(all.map((r) => r.harness.commit));
-  if (harnesses.size > 1) {
-    notes.push(`runs used ${harnesses.size} harness commits: ${[...harnesses].join(", ")}`);
-  }
-  const chromes = new Set(all.flatMap((r) => (r.journeys ?? []).map((j) => j.chrome)));
-  if (chromes.size > 1) {
-    notes.push(`runs used ${chromes.size} Chrome versions: ${[...chromes].join(", ")}`);
-  }
-  const idA = `${A.valid[0].build.version} ${A.valid[0].build.commit} ${A.valid[0].build.dirty}`;
-  const idB = `${B.valid[0].build.version} ${B.valid[0].build.commit} ${B.valid[0].build.dirty}`;
-  if (idA === idB) {
-    notes.push(
-      values.aa
-        ? `A/A comparison of ${values.aa}: odd-numbered valid runs against even-numbered ones`
-        : "both conditions report the same build identity: this is an A/A comparison",
-    );
-  }
-  const ca = collect(A);
-  const cb = collect(B);
-  const findings = [];
-  const rowsOut = [];
-  const every = [];
-  for (const [id, ea] of ca) {
-    const eb = cb.get(id);
-    if (!eb) {
-      continue;
-    }
-    for (const m of METRICS) {
-      const sa = stat(ea.values[m.key]);
-      const sb = stat(eb.values[m.key]);
-      if (!sa || !sb) {
-        continue;
-      }
-      const overlap = !(sb.min > sa.max || sb.max < sa.min);
-      const ratio = sa.median > 0 ? sb.median / sa.median : null;
-      let verdict = "no detected difference";
-      if (!overlap) {
-        const direction = sb.median > sa.median ? "higher" : "lower";
-        if (m.kind === "time") {
-          const beyond = ratio !== null && (ratio >= tolerance || ratio <= 1 / tolerance);
-          verdict = beyond
-            ? `${direction}, beyond the ${tolerance}x tolerance`
-            : `${direction}, ranges apart but within the ${tolerance}x tolerance (not a result)`;
-        } else {
-          verdict = `${direction}, ranges apart`;
-        }
-        findings.push({ id, metric: m.key, kind: m.kind, sa, sb, ratio, verdict });
-      }
-      every.push({ id, metric: m.key, control: sa, candidate: sb, ratio, overlap, verdict });
-      if (m.key === "painted_ready_ms") {
-        rowsOut.push({ id, sa, sb, ratio, overlap, verdict });
-      }
-    }
-  }
+  const result = compareRuns(readRows(positionals[0]), {
+    control: values.control,
+    candidate: values.candidate,
+    aa: values.aa,
+    tolerance: Number.parseFloat(values.tolerance),
+    expect: values.expect ?? [],
+  });
   if (values.format === "json") {
+    const { control, candidate, ...rest } = result;
     console.log(
       JSON.stringify(
-        { control: A.label, candidate: B.label, tolerance, notes, findings, all: every },
-        null,
+        { control: control.label, candidate: candidate.label, ...rest },
+        (_k, v) => (v === Number.POSITIVE_INFINITY ? "Infinity" : v),
         1,
       ),
     );
-    return 0;
-  }
-  const out = [
-    `### \`${B.label}\` against \`${A.label}\``,
-    "",
-    `${A.valid.length} and ${B.valid.length} valid runs (${A.refused.length} and ${B.refused.length} refused). Load average (1 min) ${loadRange(A.valid)} and ${loadRange(B.valid)}. Tolerance ${tolerance}x for times; counts are judged on their ranges.`,
-    "",
-  ];
-  for (const n of notes) {
-    out.push(`- ${n}`);
-  }
-  if (notes.length) {
-    out.push("");
-  }
-  out.push(
-    `| Transition | ${A.label} painted ready ms | ${B.label} painted ready ms | Ratio | Verdict |`,
-    "| --- | ---: | ---: | ---: | --- |",
-  );
-  for (const r of rowsOut) {
-    out.push(
-      `| \`${r.id}\` | ${fmtStat(r.sa, "time")} | ${fmtStat(r.sb, "time")} | ${r.ratio === null ? "n/a" : `${r.ratio.toFixed(2)}x`} | ${r.verdict} |`,
-    );
-  }
-  out.push("");
-  if (!findings.length) {
-    out.push("No metric has non-overlapping ranges between the two conditions.");
   } else {
-    out.push(`Metrics with non-overlapping ranges (${findings.length}):`, "");
-    for (const f of findings) {
-      out.push(
-        `- \`${f.id}\` ${f.metric}: ${fmtStat(f.sa, f.kind)} → ${fmtStat(f.sb, f.kind)}${f.ratio !== null && f.kind === "time" ? ` (${f.ratio.toFixed(2)}x)` : ""}; ${f.verdict}`,
-      );
-    }
+    print(formatComparison(result));
   }
-  print(out);
-  return 0;
+  return result.exitCode;
 }
 
 /** Keep only what summarize and compare read, so a round can commit its samples. */
@@ -1068,60 +802,9 @@ function cmdSamples(argv) {
     options: { out: { type: "string" } },
   });
   if (positionals.length !== 1 || !values.out) {
-    throw new Error("samples RUNS.jsonl --out FILE");
+    throw new CompareRefusal("samples RUNS.jsonl --out FILE");
   }
-  const keep = (t) => ({
-    id: t.id,
-    subject: t.subject,
-    ok: t.ok,
-    paintedReadyMs: t.paintedReadyMs,
-    blankFrames: t.blankFrames,
-    placeholderVisibleFrames: t.placeholderVisibleFrames,
-    navPlaceholderVisibleFrames: t.navPlaceholderVisibleFrames,
-    movementPx: t.movementPx,
-    requests: {
-      byClass: t.requests.byClass,
-      subjectDuplicates: t.requests.subjectDuplicates,
-      byFamily: t.requests.byFamily,
-      fileEnvelopes: t.requests.fileEnvelopes,
-      postBytes: t.requests.postBytes,
-    },
-    previewTop: { removed: t.previewTop.removed },
-    shifts: { count: t.shifts.count, sumNoInput: t.shifts.sumNoInput },
-    longTasks: { maxMs: t.longTasks.maxMs },
-    dom: { end: t.dom.end },
-    // Revision 2; absent from a revision 1 row, and left absent here.
-    inputSpanMs: t.inputSpanMs,
-    readyAfterLastInputMs: t.readyAfterLastInputMs,
-    milestones: t.milestones,
-    movementByGroup: t.movementByGroup,
-    movementStepsByGroup: t.movementStepsByGroup,
-    list: t.list
-      ? {
-          rowReplacements: t.list.rowReplacements,
-          rowsReplacedBelowSelection: t.list.rowsReplacedBelowSelection,
-        }
-      : undefined,
-  });
-  const lines = readRows(positionals[0]).map((r) => {
-    const { journeys, warmup: _warmup, regime: _regime, regions: _regions, ...rest } = r;
-    const scrub = (p) => (typeof p === "string" ? path.basename(p) : p);
-    return JSON.stringify({
-      ...rest,
-      build: { ...rest.build, metab: scrub(rest.build.metab), source: scrub(rest.build.source) },
-      corpus: { ...rest.corpus, path: scrub(rest.corpus.path) },
-      server: rest.server
-        ? { ...rest.server, serving_line: undefined, log: undefined }
-        : rest.server,
-      journeys: (journeys ?? []).map((j) => ({
-        name: j.name,
-        ok: j.ok,
-        chrome: j.chrome,
-        refusals: j.refusals,
-        transitions: j.transitions.map(keep),
-      })),
-    });
-  });
+  const lines = readRows(positionals[0]).map((r) => JSON.stringify(sampleRow(r)));
   fs.writeFileSync(values.out, `${lines.join("\n")}\n`);
   console.log(`wrote ${lines.length} row(s) to ${values.out}`);
   return 0;
@@ -1132,11 +815,15 @@ function cmdSamples(argv) {
 const USAGE = `usage:
   transitions.mjs run --exp exp-NNN --corpus PATH --condition LABEL=PATH/TO/metab
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
-                      [--headed] [--no-warmup] [--order alternate|fixed] [--out FILE]
+                      [--headed] [--no-warmup] [--keep-going] [--order alternate|fixed]
+                      [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
+                      [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
   transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
+compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or
+an expectation not met (an A/A only on a gap), and 2 when it refuses.
 journeys: ${Object.keys(JOURNEYS).join(", ")}
 subjects: ${JSON.stringify(SUBJECTS).slice(0, 120)}...`;
 
