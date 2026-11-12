@@ -5,7 +5,7 @@ title: Swift app code meets the tbd coding guidelines
 kind: task
 status: in_progress
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -40,7 +40,11 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T22:42:04.510Z
-updated_at: 2026-11-12T00:37:52.072Z
+updated_at: 2026-11-12T01:52:58.209Z
 started_at: 2026-11-12T00:37:52.070Z
 ---
 No Swift guideline exists in tbd, so apply the language-neutral ones to apps/macos: general-coding-rules, general-comment-rules, error-handling-rules (no swallowed errors; preserve causes; handle only what the layer can), general-testing-rules and general-tdd-guidelines (decision logic in ShellCore with tests; app-target code thin), filesystem-rules (atomic writes, safe paths), release-engineering-rules and supply-chain-hardening for scripts, backward-compatibility-rules (no speculative layers). Record anything deliberately left, with its reason, in apps/macos/README.md.
+
+## Notes
+
+2026-11-11: the pass is done for the code as of #341 (bc6477a5) plus the robustness layer own changes (#362, claude/v1-robustness 8f45a32e); README Coding Guidelines lists what it leaves on purpose. The everyday (#359) and setup (#361) layers arrived later; the final independent review (mb-niod) covers them against the same guidelines, and this bead closes then.
