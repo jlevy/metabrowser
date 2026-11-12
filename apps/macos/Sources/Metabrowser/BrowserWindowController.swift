@@ -23,9 +23,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let titleAccessory = TitleAccessoryController()
     /// Reveal the page, replacing the status view, once this window's load commits.
     private var revealOnCommit = false
-    /// The page to load next: the one shown before the server restarted, before the tab
-    /// gave up its page, or that the window was opened to show.
-    private var resumePage: PageAddress?
+    /// The page to load next: one asked for (a file opened here, a restored tab's page),
+    /// else the one shown before the server restarted or the tab gave up its page.
+    private var next: NextPage
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
     /// Whether the tab gave up its page's web view (`TabDiscardPolicy`). It loads the page
@@ -44,7 +44,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     ) {
         self.session = session
         webView = Self.makeWebView(configuration ?? WebConfiguration.make())
-        resumePage = page
+        next = NextPage(requested: page)
         isDiscarded = discarded
 
         let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
@@ -148,7 +148,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         Task {
             await install(authorization, for: endpoint)
             guard self.endpoint == endpoint, !isDiscarded else { return }
-            loadResumePage(from: endpoint)
+            loadNextPage(from: endpoint)
         }
     }
 
@@ -160,14 +160,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     /// Shows `page` now if the server is ready, or once it is.
     func show(_ page: PageAddress) {
-        resumePage = page
+        next.request(page)
         isDiscarded = false
-        if let endpoint { loadResumePage(from: endpoint) }
+        if let endpoint { loadNextPage(from: endpoint) }
     }
 
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
-        currentServerURL.flatMap(PageAddress.init) ?? resumePage
+        next.saved(showing: currentServerURL.flatMap(PageAddress.init))
     }
 
     /// Gives up the page's web view, which ends its WebContent process, and keeps the
@@ -193,12 +193,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private func revivePage() {
         guard isDiscarded else { return }
         isDiscarded = false
-        if let endpoint { loadResumePage(from: endpoint) }
+        if let endpoint { loadNextPage(from: endpoint) }
     }
 
-    private func loadResumePage(from endpoint: ServerEndpoint) {
-        let target = resumePage.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL
-        resumePage = nil
+    private func loadNextPage(from endpoint: ServerEndpoint) {
+        let target = next.take().flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL
         load(target)
     }
 
@@ -225,7 +224,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     private func rememberPage() {
-        if let page = currentServerURL.flatMap(PageAddress.init) { resumePage = page }
+        if let page = currentServerURL.flatMap(PageAddress.init) { next.remember(shown: page) }
     }
 
     /// Names the window for everything that reads its title, and draws the visible one.
