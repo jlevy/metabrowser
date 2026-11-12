@@ -22,9 +22,10 @@ All notable changes to Metabrowser are documented here.
   answered `immutable` while the stamp is current, and revalidated otherwise.
   A plugin’s relative imports, workers, and stylesheet references inherit the stamp; an
   absolute `/plugin-static/<name>/<file>` URL still works and is revalidated.
-  An image preview’s `/raw` address carries the file’s identity and is kept the same
-  way, and `/raw` now answers `If-None-Match` and `If-Modified-Since` with `304` instead
-  of sending the file again.
+  `/raw` is never kept as fresh, since its headers belong to the trust profile that
+  served it: it now answers a matching `If-None-Match` with `304` instead of sending the
+  file again, under a tag that names the profile, so a copy stored while one profile
+  served the folder is never reused under another (see `SECURITY.md`).
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

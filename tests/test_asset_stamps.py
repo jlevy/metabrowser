@@ -19,6 +19,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter, server
 from metabrowser.asset_stamps import StampedTree, split_stamp
+from metabrowser.capabilities import DEFAULT_CAPABILITIES, Capabilities, set_capabilities
 from metabrowser.plugin_loader.discovery import LoadedPlugin
 from metabrowser.plugin_loader.manifest import PLUGIN_SDK_VERSION, PluginManifest
 from metabrowser.plugin_loader.static_assets import (
@@ -308,44 +309,71 @@ def test_the_shell_and_kpress_renders_name_the_same_stamped_assets(client: TestC
 # ── /raw ───────────────────────────────────────────────────────
 
 
-def _raw_fixture(tmp_path: Path) -> tuple[TestClient, str]:
+def _raw_fixture(tmp_path: Path) -> TestClient:
     (tmp_path / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    (tmp_path / "x.js").write_text("alert(1);\n")
     server._set_root_dir(tmp_path)
-    client = TestClient(server.app)
-    envelope = client.get("/api/file", params={"path": "pic.png"}).json()
-    assert envelope["type"] == "image"
-    return client, envelope["mtime_hash"]
+    return TestClient(server.app)
 
 
-def test_raw_answers_its_validators_with_304(tmp_path: Path) -> None:
-    """A revalidated image used to be sent again whole."""
-    client, _identity = _raw_fixture(tmp_path)
+def test_raw_answers_its_tag_with_304_and_is_always_revalidated(tmp_path: Path) -> None:
+    """A revalidated image used to be sent again whole; now a 304, never a fresh copy."""
+    client = _raw_fixture(tmp_path)
     first = client.get("/raw", params={"path": "pic.png"})
     assert first.status_code == 200
     assert first.headers["cache-control"] == "no-cache"
     etag = first.headers["etag"]
-    by_tag = client.get("/raw", params={"path": "pic.png"}, headers={"if-none-match": etag})
-    assert by_tag.status_code == 304
-    assert by_tag.content == b""
-    assert by_tag.headers["etag"] == etag
+    again = client.get("/raw", params={"path": "pic.png"}, headers={"if-none-match": etag})
+    assert again.status_code == 304
+    assert again.content == b""
+    assert again.headers["etag"] == etag
+    assert again.headers["cache-control"] == "no-cache"
+    # A date cannot name the trust profile the headers came from, so it earns no 304.
     since = {"if-modified-since": first.headers["last-modified"]}
-    assert client.get("/raw", params={"path": "pic.png"}, headers=since).status_code == 304
-    # If-None-Match decides when present, whatever If-Modified-Since says.
-    mismatched = {"if-none-match": '"other"', **since}
-    assert client.get("/raw", params={"path": "pic.png"}, headers=mismatched).status_code == 200
-    older = {"if-modified-since": "Mon, 01 Jan 2001 00:00:00 GMT"}
-    assert client.get("/raw", params={"path": "pic.png"}, headers=older).status_code == 200
+    assert client.get("/raw", params={"path": "pic.png"}, headers=since).status_code == 200
+    # No address of a reader's file is kept without asking, whatever it carries.
+    for query in ({"path": "pic.png", "v": "anything"}, {"path": "pic.png"}):
+        assert client.get("/raw", params=query).headers["cache-control"] == "no-cache"
 
 
-def test_raw_at_the_envelopes_identity_is_immutable(tmp_path: Path) -> None:
-    client, identity = _raw_fixture(tmp_path)
-    stamped = client.get("/raw", params={"path": "pic.png", "v": identity})
-    assert stamped.status_code == 200
-    assert stamped.headers["cache-control"] == "private, max-age=31536000, immutable"
-    stale = client.get("/raw", params={"path": "pic.png", "v": "pic_png_1_2_old"})
-    assert stale.headers["cache-control"] == "no-cache"
-    # An edit gives the file a new identity, so the old address is revalidated.
-    (tmp_path / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"1" * 80)
-    after = client.get("/raw", params={"path": "pic.png", "v": identity})
-    assert after.headers["cache-control"] == "no-cache"
-    assert after.content.endswith(b"1" * 80)
+def test_raw_never_answers_one_trust_profile_with_anothers_response(tmp_path: Path) -> None:
+    """Review C of #372, C1: a response stored under one profile must not be revalidated
+    under another, or its headers -- the sandbox policy and, for a script, the type --
+    are the other profile's."""
+    client = _raw_fixture(tmp_path)
+    trusted = client.get("/raw", params={"path": "x.js"})
+    assert trusted.headers["content-type"].startswith("text/javascript")
+    assert "allow-scripts" in trusted.headers["content-security-policy"]
+    set_capabilities(Capabilities(active_content=False, mutations=False))
+    try:
+        held = {"if-none-match": trusted.headers["etag"]}
+        untrusted = client.get("/raw", params={"path": "x.js"}, headers=held)
+        assert untrusted.status_code == 200, "a 304 would keep the trusted type and policy"
+        assert untrusted.headers["content-type"].startswith("text/plain")
+        assert "allow-scripts" not in untrusted.headers["content-security-policy"]
+        assert untrusted.headers["etag"] != trusted.headers["etag"]
+        assert untrusted.headers["cache-control"] == "no-cache"
+        # The other direction is refused as well.
+        set_capabilities(DEFAULT_CAPABILITIES)
+        back = {"if-none-match": untrusted.headers["etag"]}
+        assert client.get("/raw", params={"path": "x.js"}, headers=back).status_code == 200
+    finally:
+        set_capabilities(DEFAULT_CAPABILITIES)
+
+
+def test_raw_moves_its_tag_when_a_rewrite_keeps_size_and_modification_time(
+    tmp_path: Path,
+) -> None:
+    """Review C of #372, C2: npm unpacks every file at one fixed time, so a same-size
+    replacement keeps name, size, and mtime; its change time still moves the tag."""
+    client = _raw_fixture(tmp_path)
+    logo = tmp_path / "logo.svg"
+    logo.write_text("<svg>version 1</svg>")
+    os.utime(logo, ns=(499_187_700_000_000_000, 499_187_700_000_000_000))
+    first = client.get("/raw", params={"path": "logo.svg"})
+    logo.write_text("<svg>version 2</svg>")
+    os.utime(logo, ns=(499_187_700_000_000_000, 499_187_700_000_000_000))
+    held = {"if-none-match": first.headers["etag"]}
+    answer = client.get("/raw", params={"path": "logo.svg"}, headers=held)
+    assert answer.status_code == 200
+    assert answer.text == "<svg>version 2</svg>"

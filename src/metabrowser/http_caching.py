@@ -44,8 +44,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections import OrderedDict
-from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -214,35 +214,36 @@ def stamped_asset_cache_control(*, current: bool) -> str:
     return f"public, {IMMUTABLE_CACHE_CONTROL}" if current else "no-cache"
 
 
+# One entity tag of an If-None-Match list, weak or strong (RFC 9110 section 8.8.3).
+_ENTITY_TAG = re.compile(r'\s*(?:W/)?("[^"]*")\s*(?:,|$)')
+
+
 def matches_if_none_match(request: Request, etag: str) -> bool:
     """Whether the client already holds ``etag``.
+
+    RFC 9110 section 13.1.2: the header is ``*`` or a list of tags, compared weakly, so
+    ``W/"x"`` matches ``"x"``. ``*`` matches, since every caller answers it only for a
+    representation it has. A malformed list matches nothing, the safe direction.
 
     Header names are case-insensitive and Starlette normalizes them, but the
     call sites did not agree on the spelling; reading it here means they no
     longer have to.
     """
-    return request.headers.get("if-none-match", "") == etag
-
-
-def not_modified(request: Request, etag: str, last_modified: float) -> bool:
-    """Whether a conditional request may be answered 304, as RFC 9110 section 13.2.2 orders.
-
-    ``If-None-Match`` decides when it is present. Only without it does
-    ``If-Modified-Since`` count, compared in whole seconds, the resolution
-    ``Last-Modified`` has; a date that cannot be parsed is ignored, as the RFC says.
-    """
-    if request.headers.get("if-none-match", None) is not None:
-        return matches_if_none_match(request, etag)
-    since = request.headers.get("if-modified-since", None)
-    if not since:
+    header = request.headers.get("if-none-match", "").strip()
+    if not header:
         return False
-    try:
-        parsed = parsedate_to_datetime(since)
-    except (TypeError, ValueError, IndexError):
-        return False
-    if parsed.tzinfo is None:
-        return False
-    return int(last_modified) <= parsed.timestamp()
+    if header == "*":
+        return True
+    ours = etag.removeprefix("W/")
+    position = 0
+    while position < len(header):
+        found = _ENTITY_TAG.match(header, position)
+        if found is None:
+            return False
+        if found.group(1) == ours:
+            return True
+        position = found.end()
+    return False
 
 
 __all__ = [
@@ -253,7 +254,6 @@ __all__ = [
     "etag_headers",
     "immutable_headers",
     "matches_if_none_match",
-    "not_modified",
     "stamped_asset_cache_control",
     "store_tag",
 ]

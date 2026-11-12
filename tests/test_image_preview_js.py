@@ -69,7 +69,7 @@ def test_image_preview_session() -> None:
             "committed": True,
             "firstDetached": True,
             "secondAlt": "next/diagram #2.svg",
-            "secondRawUrl": "/raw?path=next%2Fdiagram%20%232.svg&v=diagram_2_svg_42_1700000000000000000_x",
+            "secondRawUrl": "/raw?path=next%2Fdiagram%20%232.svg",
             "staleCommitRejected": True,
             "staleCommitPreservedReplacement": True,
             "status": "mounted",

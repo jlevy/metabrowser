@@ -49,7 +49,6 @@ import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
-from email.utils import formatdate
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
@@ -113,9 +112,7 @@ from metabrowser.http_caching import (
     BUILD_TAG,
     build_scoped_etag,
     etag_headers,
-    immutable_headers,
     matches_if_none_match,
-    not_modified,
     stamped_asset_cache_control,
     store_tag,
 )
@@ -3778,6 +3775,24 @@ def _raw_target_from_request(request: Request) -> Path | None:
     return resolve_session_identity(request.query_params.get("path", ""))
 
 
+def _raw_identity(mtime_hash: str, stat: os.stat_result, *, passthrough: bool) -> str:
+    """What a ``/raw`` validator names: the file, the representation, and the trust profile.
+
+    The file is named by its ``mtime_hash`` (name, size, modification time) with its change
+    time and inode, so a same-size rewrite that restores the modification time -- npm
+    unpacks every file at one fixed time -- still moves the tag. The response headers are
+    the trust profile's, so the profile and the sandbox policy are named too; the build,
+    which shapes both, is in every tag (``build_scoped_etag``).
+    """
+    active = get_capabilities().active_content
+    profile = "active" if active else "inert"
+    representation = "gzip" if passthrough else "identity"
+    return (
+        f"{mtime_hash}:{stat.st_ctime_ns}:{stat.st_ino}:{representation}:{profile}:"
+        f"{raw_sandbox_csp(active_content=active)}"
+    )
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -3816,28 +3831,20 @@ async def raw_file(request: Request) -> Response:
     if not artifact.is_compressed or passthrough:
         try:
             stat = target.stat()
-            identity = file_mtime_hash(target)
+            mtime_hash = file_mtime_hash(target)
         except OSError:
             return PlainTextResponse("Not found", status_code=404)
-        # The on-disk bytes are the body, so the file names the validator. A passthrough
-        # body is another representation of it, so its tag differs.
-        etag = _etag_for(f"{identity}:gzip" if passthrough else identity)
-        # The image view writes the envelope's `mtime_hash` into its address as `v`, so
-        # that address names these bytes, and a browser keeps them without asking; an
-        # edit gives the next envelope a new one. `private`: it is the reader's file.
-        # Every other address is revalidated, now with a real 304.
-        headers = (
-            immutable_headers(etag)
-            if request.query_params.get("v") == identity
-            else etag_headers(etag)
-        )
+        etag = _etag_for(_raw_identity(mtime_hash, stat, passthrough=passthrough))
+        # Revalidated on every use, never kept as fresh: the body is the reader's file and
+        # its headers are the trust profile's (_RawTrustHeaderMiddleware), so a response a
+        # browser keeps without asking could answer for another profile on the same host
+        # and port. A 304 answers only the tag, which names the profile; a date cannot,
+        # so If-Modified-Since alone is answered in full. See SECURITY.md.
+        headers = etag_headers(etag)
         if passthrough:
             headers["Vary"] = "Accept-Encoding"
-        if not_modified(request, etag, stat.st_mtime):
-            return Response(
-                status_code=304,
-                headers={**headers, "Last-Modified": formatdate(stat.st_mtime, usegmt=True)},
-            )
+        if matches_if_none_match(request, etag):
+            return Response(status_code=304, headers=headers)
         if passthrough:
             headers |= artifact.passthrough_headers()
         return FileResponse(target, media_type=media_type, headers=headers, stat_result=stat)

@@ -141,6 +141,15 @@ events, but cannot read those bytes.
 When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
 still renders markup and loads subresources, but executes nothing.
 
+Those headers belong to the profile that sent them, so no `/raw` response is kept as
+fresh: every one is `Cache-Control: no-cache`, and a browser asks again before each use.
+Its `ETag` names the file (its name, size, modification and change times, and inode),
+the representation, the trust profile, the sandbox policy, and the build, and only a
+matching `If-None-Match` is answered `304`. `If-Modified-Since` alone gets the whole
+response, because a date cannot say which profile made the copy a browser holds.
+So a response stored while one profile served the folder is never reused, unasked or by
+a 304, after another profile serves it on the same host and port.
+
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
 application origin, and refuses `Origin: null` and foreign origins.

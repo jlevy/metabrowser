@@ -212,13 +212,10 @@ function assert(condition, message) {
   const secondContainer = document.createElement("section");
   const secondStage = lifecycle.begin();
   const secondPath = "next/diagram #2.svg";
-  // The file envelope's identity, which the address carries so the server can answer it
-  // immutable.
-  const secondEnvelope = { mtime_hash: "diagram_2_svg_42_1700000000000000000_x" };
   const secondStatus = await compositor.mount(
     secondContainer,
     renderer,
-    { kind: "image", path: secondPath, raw: secondEnvelope },
+    { kind: "image", path: secondPath },
     secondStage.disposers,
   );
   const secondImage = secondContainer.children[0];
@@ -312,11 +309,6 @@ function assert(condition, message) {
   assert(
     firstMount.rawUrl === "/raw?path=images%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.png",
     "renderer did not encode the raw-file path",
-  );
-  assert(
-    replacement.secondRawUrl ===
-      "/raw?path=next%2Fdiagram%20%232.svg&v=diagram_2_svg_42_1700000000000000000_x",
-    "renderer did not stamp the raw address with the envelope's identity",
   );
   assert(!firstMount.hasInlineHandler, "renderer emitted an inline event handler");
   assert(rendererInnerHtmlWrites === 0, "image renderer constructed markup with innerHTML");

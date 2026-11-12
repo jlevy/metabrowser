@@ -34,7 +34,6 @@ from metabrowser.http_caching import (
     editable_install,
     etag_headers,
     matches_if_none_match,
-    not_modified,
     stamped_asset_cache_control,
     store_tag,
 )
@@ -244,21 +243,17 @@ def _conditional(**headers: str) -> Request:
     return cast("Request", _ConditionalRequest(**headers))
 
 
-def test_if_none_match_decides_before_if_modified_since() -> None:
-    """RFC 9110 section 13.2.2: a present If-None-Match is the whole question."""
+def test_if_none_match_is_a_list_compared_weakly() -> None:
+    """RFC 9110 section 13.1.2: `*`, or any tag of a list, compared weakly."""
     tag = build_scoped_etag("file")
-    modified = 1_700_000_000.0
-    after = "Wed, 15 Nov 2023 00:00:00 GMT"  # later than *modified*
-    before = "Sat, 01 Jan 2000 00:00:00 GMT"
-    assert not_modified(_conditional(if_none_match=tag), tag, modified)
-    assert not not_modified(
-        _conditional(if_none_match='"other"', if_modified_since=after), tag, modified
-    )
-    assert not_modified(_conditional(if_modified_since=after), tag, modified)
-    assert not not_modified(_conditional(if_modified_since=before), tag, modified)
-    # Unparseable dates are ignored, as the RFC says.
-    assert not not_modified(_conditional(if_modified_since="soon"), tag, modified)
-    assert not not_modified(_conditional(), tag, modified)
+    assert matches_if_none_match(_conditional(if_none_match=tag), tag)
+    assert matches_if_none_match(_conditional(if_none_match=f'"a", {tag}, "b"'), tag)
+    assert matches_if_none_match(_conditional(if_none_match=f"W/{tag}"), tag)
+    assert matches_if_none_match(_conditional(if_none_match="*"), tag)
+    assert not matches_if_none_match(_conditional(if_none_match='"a", "b"'), tag)
+    # A malformed list matches nothing: the client gets the body, the safe direction.
+    assert not matches_if_none_match(_conditional(if_none_match=f"junk {tag}"), tag)
+    assert not matches_if_none_match(_conditional(), tag)
 
 
 def test_only_a_current_stamp_earns_immutable() -> None:
