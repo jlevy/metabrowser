@@ -249,3 +249,26 @@ def test_the_wire_validator_holds_an_envelope_to_the_rule() -> None:
     tampered["files"]["all"]["other"] += 1
     with pytest.raises(AssertionError, match="does not follow from its breakdown"):
         validate_file_type_legend(tampered, MANY)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("files", "all", "other"),
+        ("bytes", "unignored", "total"),
+        ("files", "unignored", "named", 0, "value"),
+    ],
+)
+def test_the_wire_validator_refuses_a_boolean_count(path: tuple[str | int, ...]) -> None:
+    """True equals 1 in Python, and the browser's normalizer refuses it."""
+
+    breakdown = _breakdown({"code": [("python", _metrics(1, 1))]})
+    legend = json.loads(json.dumps(build_file_type_legend(breakdown)))
+    # Every count on these paths is 1 or 0, so the boolean compares equal to it.
+    target: Any = legend
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = bool(target[path[-1]])
+    assert legend == build_file_type_legend(breakdown)
+    with pytest.raises(AssertionError):
+        validate_file_type_legend(legend, breakdown)

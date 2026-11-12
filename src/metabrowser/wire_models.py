@@ -704,10 +704,29 @@ def validate_file_type_legend(raw: object, breakdown: Mapping[str, Any]) -> None
 
     from metabrowser.file_type_legend import build_file_type_legend
 
+    # The shape first, and its counts as integers that are not booleans: Python's
+    # equality takes True for 1, so the comparison below alone would accept a value
+    # the browser's normalizer refuses.
     assert isinstance(raw, dict), "file-type legend must be an object"
+    assert set(raw) == {"schema", "limit", "minimum_share_percent", "files", "bytes"}
+    assert _is_count(raw["limit"]) and _is_count(raw["minimum_share_percent"])
+    for measure in ("files", "bytes"):
+        populations = raw[measure]
+        assert isinstance(populations, dict) and set(populations) == {"all", "unignored"}
+        for view in populations.values():
+            assert isinstance(view, dict) and set(view) == {"total", "named", "other"}
+            assert _is_count(view["total"]) and _is_count(view["other"])
+            assert isinstance(view["named"], list)
+            for entry in view["named"]:
+                assert isinstance(entry, dict) and set(entry) == {"family", "value"}
+                assert isinstance(entry["family"], str) and _is_count(entry["value"])
     assert raw == build_file_type_legend(cast("FileTypeBreakdown", breakdown)), (
         "file-type legend does not follow from its breakdown"
     )
+
+
+def _is_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 __all__ = [
