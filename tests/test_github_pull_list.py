@@ -748,9 +748,35 @@ def test_a_write_ahead_log_catalog_that_declares_a_newer_version_is_never_replac
     assert _catalog_files(repository) == before
 
 
-@pytest.mark.parametrize(
-    "unread", ["wal", "checkpoint-definition", "damaged-versions", "large-wal"]
-)
+_UNREAD = [
+    "wal",
+    "large-wal",
+    "checkpoint-definition",
+    "quoted-checkpoint",
+    "view-named-checkpoint",
+    "trigger-named-checkpoint",
+    "checkpoint-not-json",
+    "checkpoint-not-object",
+    "checkpoint-blob",
+    "version-not-an-int",
+    "damaged-versions",
+]
+
+
+def _rename_checkpoint(path: Path, name: str) -> None:
+    """Rename the checkpoint table; SQLite refuses a rename to its own name in other case."""
+
+    with contextlib.closing(sqlite3.connect(path)) as db, db:
+        db.execute("ALTER TABLE checkpoint RENAME TO staged")
+        db.execute(f'ALTER TABLE staged RENAME TO "{name}"')
+
+
+def _set_checkpoint(path: Path, value: object) -> None:
+    with contextlib.closing(sqlite3.connect(path)) as db, db:
+        db.execute("UPDATE checkpoint SET value=?", (value,))
+
+
+@pytest.mark.parametrize("unread", _UNREAD)
 def test_a_catalog_whose_versions_cannot_be_read_is_left_alone_and_named(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, unread: str
 ) -> None:
@@ -767,6 +793,25 @@ def test_a_catalog_whose_versions_cannot_be_read_is_left_alone_and_named(
     elif unread == "checkpoint-definition":
         with sqlite3.connect(path) as db:
             db.execute("ALTER TABLE checkpoint ADD COLUMN extra TEXT")
+    elif unread == "quoted-checkpoint":
+        # The same name, quoted: its definition no longer reads as this release's.
+        _rename_checkpoint(path, "checkpoint")
+    elif unread == "view-named-checkpoint":
+        _newer_checkpoint(repository, projection_version=CATALOG_PROJECTION + 1)
+        with contextlib.closing(sqlite3.connect(path)) as db, db:
+            db.execute("ALTER TABLE checkpoint RENAME TO kept")
+            db.execute("CREATE VIEW checkpoint AS SELECT id, value FROM kept")
+    elif unread == "trigger-named-checkpoint":
+        with contextlib.closing(sqlite3.connect(path)) as db, db:
+            db.execute("CREATE TRIGGER checkpoint AFTER INSERT ON pulls BEGIN SELECT 1; END")
+    elif unread == "checkpoint-not-json":
+        _set_checkpoint(path, "not JSON")
+    elif unread == "checkpoint-not-object":
+        _set_checkpoint(path, "[3]")
+    elif unread == "checkpoint-blob":
+        _set_checkpoint(path, b'{"projection_version": 3}')
+    elif unread == "version-not-an-int":
+        _newer_checkpoint(repository, projection_version="3")
     else:
         # Page 1 holds the schema the versions are found by; break its b-tree header.
         data = bytearray(path.read_bytes())
@@ -781,6 +826,48 @@ def test_a_catalog_whose_versions_cannot_be_read_is_left_alone_and_named(
     assert calls == []
     assert _catalog_files(repository) == before
     assert pull_catalog.catalog_refusal(repository.home, repository.slug) is not None
+
+
+@pytest.mark.parametrize("name", ["CHECKPOINT", "Checkpoint", "checkPOINT"])
+@pytest.mark.parametrize("route", ["refresh", "publish"])
+def test_a_newer_checkpoint_in_another_letter_case_is_never_replaced(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, name: str, route: str
+) -> None:
+    """SQLite resolves ``checkpoint`` ignoring case, so discovery does too.
+
+    A table spelled ``"CHECKPOINT"`` holding a newer projection is found, is not this
+    release's exact table, and so is ``unknown_cache``: never "no checkpoint", which would
+    have let the write replace it.
+    """
+
+    _seed(repository, [generated_item(1)])
+    _newer_checkpoint(repository, projection_version=CATALOG_PROJECTION + 1, added=None)
+    path = _path(repository)
+    _rename_checkpoint(path, name)
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        tables = db.execute("SELECT name FROM sqlite_schema WHERE type='table'").fetchall()
+        assert sorted(table for (table,) in tables) == sorted(["pulls", name])
+    before = _catalog_files(repository)
+    calls = _provider(monkeypatch, [generated_item(1), generated_item(2)])
+    if route == "refresh":
+        with pytest.raises(PullDataError) as caught:
+            asyncio.run(refresh_pull_list(repository, "all", retry=True))
+        assert caught.value.state == "unknown_cache"
+        assert "checkpoint table is not one this release reads" in str(caught.value)
+        assert "--api /api/plugin/github/cache-clear --data -" in str(caught.value)
+    else:
+        proposed = CatalogState(
+            projection_version=CATALOG_PROJECTION,
+            source=repository.source,
+            repository_id="R_demo",
+            reader=f"gh:{READER}",
+            fetched_at=STAMP,
+            count_at=STAMP,
+        )
+        with pytest.raises(UnknownCatalogError):
+            publish_page(repository, None, proposed, (_row(generated_item(2))[0],))
+    assert calls == []
+    assert _catalog_files(repository) == before
 
 
 def test_a_catalog_the_cache_refuses_is_not_replaced_and_names_the_command(

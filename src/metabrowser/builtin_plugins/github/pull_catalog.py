@@ -10,10 +10,12 @@ Metabrowser wrote says so: a schema, checkpoint schema, or row projection past t
 release's (:class:`NewerCatalogError`). Several builds can share one cache, so a writer
 leaves it as it is and the refresh says to upgrade; replacing it would have the two
 builds rebuild each other's catalog page by page for as long as both run. One whose
-versions cannot all be read safely, a write-ahead-log database, a checkpoint table of
-another definition, or damage where the versions are kept, is left as it is too
-(:class:`UnknownCatalogError`): nothing says it may go. Only the rest, a file that is not
-SQLite, a schema with objects of its own, or a checkpoint outside the model, is
+versions cannot all be read safely is left as it is too (:class:`UnknownCatalogError`):
+nothing says it may go. That is a write-ahead-log database; anything named checkpoint, in
+any letter case, but this release's exact table; a checkpoint that is not a JSON object
+of text, or that gives a version as anything but a whole number; and damage or an error
+where the versions are kept. Only the rest, a file that is not SQLite, a schema with
+objects of its own, or a checkpoint outside the model, is
 :class:`CatalogUnusableError`, and since the catalog is disposable a writer replaces it
 with an empty one under the lock, as a cached record another schema wrote is fetched
 again. Readers do neither and answer nothing. ``tests/test_github_pull_list.py`` pins the
@@ -59,6 +61,19 @@ CATALOG_PROJECTION = 2
 _SIDECARS: Final = ("-journal", "-wal", "-shm")
 # SQLite's primary result codes for a file that is not a database or is damaged.
 _DAMAGED_CODES: Final = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
+# And for a condition of the moment, which says nothing about what the file declares.
+_TRANSIENT_CODES: Final = frozenset(
+    {
+        sqlite3.SQLITE_BUSY,
+        sqlite3.SQLITE_LOCKED,
+        sqlite3.SQLITE_NOMEM,
+        sqlite3.SQLITE_IOERR,
+        sqlite3.SQLITE_CANTOPEN,
+        sqlite3.SQLITE_PERM,
+        sqlite3.SQLITE_READONLY,
+        sqlite3.SQLITE_FULL,
+    }
+)
 # A write-ahead-log catalog's main file is read into memory to see what it declares.
 # On synthetic catalogs of 900-byte rows, reading the file and its checkpoint there took
 # a median 1.9 ms (at most 5.5) at 8.6 MiB and 8.6 ms (at most 34.5) at 34.5 MiB, 7 runs
@@ -283,17 +298,21 @@ def _declarations(db: sqlite3.Connection) -> tuple[object, object]:
     Every version a catalog declares is read here, before anything about it is judged, so
     no catalog that says a newer release wrote it is taken for a damaged one. The
     checkpoint is read only from a table of this release's own definition, which a
-    ``SELECT`` reads without running anything the catalog defines; a table of another
-    definition is :class:`UnknownCatalogError`, and no checkpoint table declares nothing.
+    ``SELECT`` reads without running anything the catalog defines. It is found as SQLite
+    resolves the name, ignoring ASCII case, in ``main``, the one schema these connections
+    have: any object so named that is not that exact table, whatever its kind or
+    spelling, is :class:`UnknownCatalogError`, and only no such object declares nothing.
     """
-    version: object = db.execute("PRAGMA user_version").fetchone()[0]
+    version: object = db.execute("PRAGMA main.user_version").fetchone()[0]
     _refuse_newer("catalog schema", version, CATALOG_SCHEMA)
-    defined = db.execute("SELECT sql FROM sqlite_schema WHERE name='checkpoint' LIMIT 2").fetchall()
+    defined = db.execute(
+        "SELECT type, sql FROM main.sqlite_schema WHERE name = 'checkpoint' COLLATE NOCASE LIMIT 2"
+    ).fetchall()
     if not defined:
         return version, None
-    if defined != [(_SCHEMA[0][3],)]:
+    if defined != [("table", _SCHEMA[0][3])]:
         raise UnknownCatalogError("the catalog's checkpoint table is not one this release reads")
-    row = db.execute("SELECT value FROM checkpoint WHERE id=1").fetchone()
+    row = db.execute("SELECT value FROM main.checkpoint WHERE id=1").fetchone()
     value: object = row[0] if row is not None else None
     _refuse_newer_checkpoint(value)
     return version, value
@@ -309,20 +328,23 @@ def _state(db: sqlite3.Connection) -> CatalogState | None:
     try:
         version, value = _declarations(db)
         schema = db.execute(
-            "SELECT type,name,tbl_name,sql FROM sqlite_schema LIMIT ?", (len(_SCHEMA) + 1,)
+            "SELECT type,name,tbl_name,sql FROM main.sqlite_schema LIMIT ?", (len(_SCHEMA) + 1,)
         ).fetchall()
     except sqlite3.DatabaseError as exc:
-        if _damaged(exc):
-            raise UnknownCatalogError(_DAMAGED_VERSIONS) from exc
-        raise
+        # A condition of the moment says nothing about the catalog; anything else leaves
+        # its versions unread.
+        if exc.sqlite_errorcode & 0xFF in _TRANSIENT_CODES:
+            raise
+        why = _DAMAGED_VERSIONS if _damaged(exc) else f"its versions could not be read: {exc}"
+        raise UnknownCatalogError(why) from exc
     if version != CATALOG_SCHEMA:
         raise CatalogUnusableError("unknown catalog schema")
     if set(schema) != set(_SCHEMA):
         raise CatalogUnusableError("unsupported catalog schema")
     if value is None:
         return None
-    if not isinstance(value, str):
-        raise CatalogUnusableError("the catalog's checkpoint is not text")
+    if not isinstance(value, str):  # _refuse_newer_checkpoint refused any other already
+        raise UnknownCatalogError("the catalog's checkpoint is not text")
     try:
         return CatalogState.model_validate_json(value)
     except ValidationError as exc:
@@ -383,17 +405,30 @@ def _refuse_newer_checkpoint(value: object) -> None:
     """Raise :class:`NewerCatalogError` when a checkpoint declares a newer version.
 
     Only the two version fields are read, so a checkpoint is judged by what it says it is
-    and not by fields this release has never seen. *value* is at most the connection's
-    32 KiB value limit.
+    and not by fields this release has never seen. One whose versions cannot be read, not
+    a JSON object of text or with a version that is not a whole number, is
+    :class:`UnknownCatalogError`: it may be a later encoding. *value* is at most the
+    connection's 32 KiB value limit; ``None`` is no checkpoint.
     """
-    try:
-        declared = json.loads(value) if isinstance(value, str) else None
-    except ValueError:
+    if value is None:
         return
-    if isinstance(declared, dict):
-        fields: dict[str, object] = declared  # pyright: ignore[reportUnknownVariableType]
-        _refuse_newer("checkpoint schema", fields.get("schema_version"), CHECKPOINT_SCHEMA)
-        _refuse_newer("row projection", fields.get("projection_version"), CATALOG_PROJECTION)
+    if not isinstance(value, str):
+        raise UnknownCatalogError("the catalog's checkpoint is not text")
+    try:
+        declared = json.loads(value)
+    except ValueError:
+        raise UnknownCatalogError("the catalog's checkpoint is not JSON") from None
+    if not isinstance(declared, dict):
+        raise UnknownCatalogError("the catalog's checkpoint is not a JSON object")
+    fields: dict[str, object] = declared  # pyright: ignore[reportUnknownVariableType]
+    for key, what, supported in (
+        ("schema_version", "checkpoint schema", CHECKPOINT_SCHEMA),
+        ("projection_version", "row projection", CATALOG_PROJECTION),
+    ):
+        found = fields.get(key)
+        if key in fields and type(found) is not int:
+            raise UnknownCatalogError(f"the catalog's checkpoint gives its {what} as {found!r}")
+        _refuse_newer(what, found, supported)
 
 
 type CatalogRefusal = tuple[Literal["newer", "unknown"], str]

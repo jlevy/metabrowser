@@ -942,8 +942,10 @@ cache.
 Replacing it instead would have the two builds rebuild each other’s catalog for as
 long as both run. One whose versions cannot all be read safely is left as it is too, and
 the refresh ends `unknown_cache` the same way: a write-ahead-log file, which no release
-writes and whose log SQLite would have to open, a checkpoint table of another
-definition, or damage where the versions are kept.
+writes and whose log SQLite would have to open; any object named `checkpoint`, found as
+SQLite resolves the name, ignoring letter case, that is not this release’s exact table;
+a checkpoint that is not a JSON object of text, or that gives a version as anything but
+a whole number; or damage or an error where the versions are kept.
 A write-ahead-log file is still read for what it declares, in memory with its header set
 to rollback mode and its log and shared-memory files unopened, up to 32 MiB; one whose
 file declares a newer version is `newer_cache`. Anything else, an empty remnant, a file
