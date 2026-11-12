@@ -7,7 +7,7 @@
 // app.js would do is played here: it renders each file's header and view tab bar from
 // the server's answer, stages it in an inert layer, and commits it, calling the keymap
 // where app.js does; and it stands in for the activation paths (selectPreviewTab,
-// openFilterMenu, the selector's handle, copyFromControl, the Up navigation), recording
+// the filter trigger, the selector's handle, copyFromControl, the Up navigation), recording
 // what each was asked. A stand-in commit view lends its Copy revision through the bridge
 // git-panel.js uses, and a stand-in pull request page offers hasStack() and moveStack().
 //
@@ -259,40 +259,20 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let headerCopyBridge = null;
   const stack = { inStack: false };
 
-  const committedBar = () =>
-    preview.children.find((child) => child.classList.contains("tab-bar")) ?? null;
+  const committedBar = () => keymap?.committedBar() ?? null;
 
-  /** app.js committedHeaderControls, on this page's markup. */
-  function headerControls() {
-    const header = preview.children.find((child) => child.classList.contains("file-header"));
-    let parent = null;
-    let copy = null;
-    if (header?.classList.contains("folder-header")) {
-      parent = header.querySelector(".folder-up[data-nav-dir]:not([disabled])");
-    } else if (header) {
-      parent = header.querySelectorAll(".folder-breadcrumb [data-nav-dir]").at(-1) ?? null;
-      copy = header.querySelector(".file-header-copy");
-    }
-    if (!copy && headerCopyBridge && preview.contains(headerCopyBridge)) {
-      copy = headerCopyBridge;
-    }
-    return { copy, parent };
-  }
-
+  // app.js shellKeymapShell: where the shell's controls are, and the paths they run.
   const shell = Object.freeze({
     copyFromControl(control) {
       did.push(`copied ${control.getAttribute("data-mb-copy-text")}`);
       return true;
     },
-    filterTrigger: (key) => filterBar.querySelector(`[data-chip-menu-toggle="${key}"]`),
-    headerControls,
-    openFilterMenu(key) {
-      did.push(`opened the ${key} menu`);
-      return true;
-    },
+    filterBar: () => filterBar,
+    lentCopy: () => headerCopyBridge,
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
     },
+    pane: () => preview,
     selectPreviewTab(bar, tabId) {
       for (const button of bar.querySelectorAll(".tab-btn")) {
         const on = button.dataset.tab === tabId;
@@ -303,13 +283,14 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       return true;
     },
     sourceSelector: () => selector,
-    viewTabBar: committedBar,
+    toggleFilterMenu(key, open) {
+      did.push(`${open ? "opened" : "closed"} the ${key} menu`);
+    },
   });
 
   /** The end of every install of main-pane content: app.js finishRetainedPullPage. */
   function installed() {
-    keymap?.syncViewTabs(committedBar());
-    keymap?.syncHeader();
+    keymap?.syncPane();
   }
 
   /** renderFolderHeader and the file header, as app.js renders them. */
@@ -834,6 +815,11 @@ const PARTS = {
     const steps = [];
     const plain = plainPage();
     steps.push(plain.record("a plain folder shows Files only"));
+    steps.push(
+      plain.record("X opens the file type filter", {
+        pressed: { key: "x", handled: plain.press("x") },
+      }),
+    );
 
     plain.open(files["README.md"]);
     steps.push(

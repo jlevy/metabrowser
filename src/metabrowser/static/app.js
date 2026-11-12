@@ -957,9 +957,7 @@ var quickFileCatalogFeed = null;
 var shortcutRegistry = null;
 var keyboardHelp = null;
 var treeKeyboard = null;
-/** @type {MetabrowserPublicShellKeymapApi | null} */
 var shellKeymap = null;
-/** @type {MetabrowserPublicKeyRevealApi | null} */
 var keyReveal = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
@@ -3750,7 +3748,6 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       flushPull: () => pullPageHost?.page()?.flush?.(),
-      // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
@@ -3787,62 +3784,22 @@ function initNavTabs() {
   });
 }
 
-/**
- * The view tab bar the main pane shows: its own child, never one in the inert stage.
- * @param {HTMLElement | null} [preview]
- * @returns {HTMLElement | null}
- */
-function committedViewTabBar(preview = document.getElementById("preview-pane")) {
-  return /** @type {HTMLElement | null} */ (
-    Array.from(preview?.children ?? []).find((child) => child.classList.contains("tab-bar")) ?? null
-  );
-}
-
-/** The commit view's Copy revision, which git-panel.js lends the header's Copy key. */
-/** @type {HTMLElement | null} */
+// The commit view's Copy revision, lent to `Y`.
 var headerCopyBridge = null;
 
-/**
- * The committed main-pane header's controls for Up and Copy. Up is the folder header's
- * Up button, which has no parent to open at the root, or for a file the crumb of its
- * folder; Copy is the file header's Copy path, or the commit view's Copy revision.
- */
-function committedHeaderControls() {
-  var preview = document.getElementById("preview-pane");
-  var header = Array.from(preview?.children ?? []).find((child) =>
-    child.classList.contains("file-header"),
-  );
-  /** @type {HTMLElement | null} */
-  var parent = null;
-  /** @type {HTMLElement | null} */
-  var copy = null;
-  if (header?.classList.contains("folder-header")) {
-    parent = queryHtml(".folder-up[data-nav-dir]:not([disabled])", header);
-  } else if (header) {
-    var crumbs = queryHtmlAll(".folder-breadcrumb [data-nav-dir]", header);
-    parent = crumbs.length > 0 ? crumbs[crumbs.length - 1] : null;
-    copy = queryHtml(".file-header-copy", header);
-  }
-  if (!copy && headerCopyBridge && preview?.contains(headerCopyBridge)) {
-    copy = headerCopyBridge;
-  }
-  return { copy, parent };
-}
-
-/** What the shell keymap's commands reach their controls through; see shell-keymap.js.
+/** What the shell keymap reaches the shell through; see shell-keymap.js.
  * @returns {MetabrowserPublicShellKeymapShell} */
 function shellKeymapShell() {
   return Object.freeze({
     copyFromControl: (/** @type {HTMLElement} */ element) =>
       window.MetabrowserPluginHost?.copyFromControl(element) ?? false,
-    filterTrigger: (/** @type {string} */ key) =>
-      queryHtml(`#nav-filter-bar [data-chip-menu-toggle="${key}"]`),
-    headerControls: committedHeaderControls,
-    openFilterMenu,
+    filterBar: () => document.getElementById("nav-filter-bar"),
+    lentCopy: () => headerCopyBridge,
     openFolder: navigateToFolder,
+    pane: () => document.getElementById("preview-pane"),
     selectPreviewTab,
     sourceSelector: () => sourceRefSelector,
-    viewTabBar: () => committedViewTabBar(),
+    toggleFilterMenu,
   });
 }
 
@@ -3851,10 +3808,8 @@ function finishRetainedPullPage() {
   const dispose = retainedPullPageDispose;
   retainedPullPageDispose = null;
   dispose?.();
-  // Every install of new main-pane content ends here, so the keys that act on it follow:
-  // the view tab letters of the bar now committed, or none, and the header's Up and Copy.
-  shellKeymap?.syncViewTabs(committedViewTabBar());
-  shellKeymap?.syncHeader();
+  // Every main-pane install ends here; the view tab and header keys follow it.
+  shellKeymap?.syncPane();
 }
 
 /** Stage a route-backed plugin in the existing connected, inert preview staging layer.
@@ -3944,11 +3899,8 @@ window.MetabrowserShell = Object.freeze({
   stagePreviewNode,
   shortcuts: () => shortcutRegistry,
   sourceFreshness,
-  /**
-   * Lend the header's Copy key the commit view's Copy revision, once its staged view has
-   * committed; the returned disposer gives it back when the view is replaced.
-   * @param {HTMLElement} button
-   */
+  /** The commit view lends its Copy revision to `Y`; the disposer takes it back. */
+  /** @param {HTMLElement} button */
   attachHeaderCopy: (button) => {
     headerCopyBridge = button;
     shellKeymap?.syncHeader();
@@ -4759,7 +4711,6 @@ function renderNavFilterBar() {
         })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
-  // The rebuild replaced the triggers that the file type and modified-within keys badge.
   shellKeymap?.syncFilters();
 }
 
@@ -4785,42 +4736,13 @@ function applyDrawerOpenState() {
   }
 }
 
-/**
- * Open or close one filter dropdown, as its trigger does. At most one is open.
- *
- * @param {string} key
- * @param {boolean} open
- */
+/** @param {string} key @param {boolean} open A filter trigger's click. */
 function toggleFilterMenu(key, open) {
   filterOpenMenu = open ? key : null;
   renderNavFilterBar();
   if (key === "recency" && open) {
     scheduleRootSummaryRefresh();
   }
-}
-
-/**
- * Open one filter dropdown, as its trigger's click does, and move focus to its
- * checked row, or else its first, so the menu's arrow keys work next. The file type
- * and modified-within keys run this. Reports whether the menu is there to open: a
- * Git pin has no modified-within menu.
- *
- * @param {string} key `types` or `recency`
- */
-function openFilterMenu(key) {
-  if (!queryHtml(`#nav-filter-bar [data-chip-menu-toggle="${key}"]`)) {
-    return false;
-  }
-  toggleFilterMenu(key, true);
-  var menu = queryHtml(`#nav-filter-bar .chip-menu[data-chip-menu="${key}"] .chip-menu-panel`);
-  var row =
-    menu?.querySelector('.chip-menu-item[aria-checked="true"]') ??
-    menu?.querySelector(".chip-menu-item");
-  if (!(row instanceof HTMLElement)) {
-    return false;
-  }
-  row.focus();
-  return true;
 }
 
 function initFilterBar() {
@@ -6044,9 +5966,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var pluginRenders = [];
         if (views && views.length > 0) {
           if (views.length > 1) {
-            // A tablist, as the navigation and pull request tab bars are. A view's
-            // declared letter rides its button for the shell keymap, which reads it
-            // only once the bar is committed to the pane.
             html += '<div class="tab-bar" role="tablist">';
             for (let i = 0; i < views.length; i++) {
               const view = views[i];
@@ -6189,12 +6108,11 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         stopFolderHeaderSubscription();
         if (
           !stagedPluginLifecycle.commit(() => {
-            const previousBar = committedViewTabBar(preview);
+            const previousBar = shellKeymap?.committedBar() ?? null;
             preview.replaceChildren(...replacementNodes);
-            // The view tab letters move with the bar the pane commits, here and never
-            // while it is staged; a cancelled stage registered nothing, so nothing of
-            // the keymap goes into stagedPluginDisposers, which cancel() also runs.
-            shellKeymap?.commitViewTabs(previousBar, committedViewTabBar(preview));
+            // Here, never while staged: a cancelled stage registers nothing, so nothing
+            // goes into stagedPluginDisposers, which cancel() also runs.
+            shellKeymap?.commitViewTabs(previousBar, shellKeymap.committedBar());
             finishRetainedPullPage();
             options.onCommit?.();
           })
@@ -6307,15 +6225,7 @@ function showPreviewTab(path, tabId) {
   }
 }
 
-/**
- * Select one tab of a view tab bar: mark its button, show its content, mount a view
- * not shown before, and tell the shell which view is active. The tab's click, its
- * letter key, and showPreviewTab share this path, and none of them moves focus.
- * Reports whether the bar has that tab.
- *
- * @param {HTMLElement} bar
- * @param {string} tabId
- */
+/** A view tab's click, letter, and showPreviewTab. @param {HTMLElement} bar @param {string} tabId */
 function selectPreviewTab(bar, tabId) {
   var container = bar.parentElement;
   /** @type {HTMLElement | null} */
@@ -8253,8 +8163,6 @@ function initKeyboardInfrastructure() {
     setFolderExpanded: setRowExpanded,
     shortcuts: shortcutRegistry,
   });
-  // Both read what rendered before the registry existed: the keymap the committed view
-  // tabs, header, filters, and selector; the reveal nothing, until Shift is held.
   if (window.MetabrowserShellKeymap) {
     shellKeymap = window.MetabrowserShellKeymap.createShellKeymap({
       shell: shellKeymapShell(),
@@ -8499,13 +8407,10 @@ async function startSourceRefSelector() {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
-  // Kept, not discarded: the branch or tag key runs the button's path through it.
   sourceRefSelector = window.MetabrowserSourceRefSelector?.mount(element) ?? null;
   shellKeymap?.syncSource();
 }
 
-/** The mounted branch and tag selector of a served mirror's pin; null until it mounts.
- * @type {MetabrowserSourceRefSelectorMount | null} */
 var sourceRefSelector = null;
 
 // app.js is the last core script in the body, so the tree container and every

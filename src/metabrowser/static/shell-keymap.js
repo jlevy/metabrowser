@@ -85,6 +85,51 @@
     const conditional = new Map();
     let disposed = false;
 
+    /** The main pane's own children, never what the inert stage holds. */
+    const committed = () => Array.from(shell.pane()?.children ?? []);
+
+    /** The view tab bar the main pane shows. */
+    function committedBar() {
+      return /** @type {HTMLElement | null} */ (
+        committed().find((child) => child.classList.contains("tab-bar")) ?? null
+      );
+    }
+
+    /**
+     * The committed header's controls for Up and Copy. Up is the folder header's Up
+     * button, which has no parent to open at the root, or for a file the crumb of its
+     * folder; Copy is the file header's Copy path, or the commit view's Copy revision,
+     * which the shell lends while that view is shown.
+     */
+    function headerControls() {
+      const header = committed().find((child) => child.classList.contains("file-header"));
+      /** @type {HTMLElement | null} */
+      let parent = null;
+      /** @type {HTMLElement | null} */
+      let copy = null;
+      if (header?.classList.contains("folder-header")) {
+        parent = header.querySelector(".folder-up[data-nav-dir]:not([disabled])");
+      } else if (header) {
+        parent =
+          Array.from(
+            header.querySelectorAll(".folder-breadcrumb [data-nav-dir]"),
+            (crumb) => /** @type {HTMLElement} */ (crumb),
+          ).at(-1) ?? null;
+        copy = header.querySelector(".file-header-copy");
+      }
+      const lent = shell.lentCopy();
+      if (!copy && lent && shell.pane()?.contains(lent)) {
+        copy = lent;
+      }
+      return { copy, parent };
+    }
+
+    /** @param {string} key A filter dropdown, `types` or `recency`. */
+    const filterTrigger = (key) =>
+      /** @type {HTMLElement | null} */ (
+        shell.filterBar()?.querySelector(`[data-chip-menu-toggle="${key}"]`) ?? null
+      );
+
     /** @param {Record<string, unknown>} context */
     const targetOf = (context) =>
       context.target && typeof context.target === "object"
@@ -186,7 +231,7 @@
       if (disposed) {
         return;
       }
-      const controls = shell.headerControls();
+      const controls = headerControls();
       shortcuts.batch(() => {
         parentTarget = place(parentTarget, "header.parent", controls.parent);
         copyTarget = place(copyTarget, "header.copy", controls.copy);
@@ -219,13 +264,34 @@
       conditional.set(id, { release, target: shortcuts.attachTarget(id, element) });
     }
 
+    /**
+     * A filter key's activation: open the dropdown through its trigger's own path, the
+     * shell's, then focus its checked row, or else its first, so the menu's arrow keys
+     * work next. The focus half lives here, on demand, rather than in app.js.
+     *
+     * @param {string} key `types` or `recency`
+     */
+    function openFilterMenu(key) {
+      shell.toggleFilterMenu(key, true);
+      const menu = shell
+        .filterBar()
+        ?.querySelector(`.chip-menu[data-chip-menu="${key}"] .chip-menu-panel`);
+      const row = /** @type {HTMLElement | null} */ (
+        menu?.querySelector('.chip-menu-item[aria-checked="true"]') ??
+          menu?.querySelector(".chip-menu-item") ??
+          null
+      );
+      row?.focus();
+      return true;
+    }
+
     /** Read the filter triggers again, after the filter bar rebuilds its markup. */
     function syncFilters() {
       if (disposed) {
         return;
       }
       shortcuts.batch(() => {
-        holdWhilePresent("filter.type", shell.filterTrigger("types"), () =>
+        holdWhilePresent("filter.type", filterTrigger("types"), () =>
           registerCommand({
             copy: {
               action: "File type",
@@ -233,14 +299,14 @@
               hint: "File type",
             },
             group: "filters",
-            handler: () => shell.openFilterMenu("types"),
+            handler: () => openFilterMenu("types"),
             id: "filter.type",
             key: "x",
             order: 10,
             surfaces: { help: "always" },
           }),
         );
-        holdWhilePresent("filter.recency", shell.filterTrigger("recency"), () =>
+        holdWhilePresent("filter.recency", filterTrigger("recency"), () =>
           registerCommand({
             copy: {
               action: "Modified within",
@@ -248,7 +314,7 @@
               hint: "Modified",
             },
             group: "filters",
-            handler: () => shell.openFilterMenu("recency"),
+            handler: () => openFilterMenu("recency"),
             id: "filter.recency",
             key: "a",
             order: 20,
@@ -401,9 +467,17 @@
       disposed = true;
     }
 
+    /** Follow whatever the main pane installed: its view tab letters and its header. */
+    function syncPane() {
+      shortcuts.batch(() => {
+        syncViewTabs(committedBar());
+        syncHeader();
+      });
+    }
+
     // Replay what rendered before the registry existed, on first build and on rebuild.
     shortcuts.batch(() => {
-      syncViewTabs(shell.viewTabBar());
+      syncViewTabs(committedBar());
       syncHeader();
       syncFilters();
       syncSource();
@@ -411,9 +485,11 @@
 
     return Object.freeze({
       commitViewTabs,
+      committedBar,
       dispose,
       syncFilters,
       syncHeader,
+      syncPane,
       syncSource,
       syncViewTabs,
     });

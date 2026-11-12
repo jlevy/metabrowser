@@ -411,12 +411,7 @@
     );
   }
 
-  /**
-   * Copy what a copy control names, as a click on it does: the named entry to the
-   * delegate below, for a key that runs the control without a click. Only a control
-   * page code owns qualifies, as for the click. Reports whether it copied.
-   * @param {Element | null | undefined} element
-   */
+  /** A copy key's path to the delegate below; an owned control only. @param {Element | null | undefined} element */
   function copyFromControl(element) {
     var control = /** @type {(Element & {dataset?: DOMStringMap}) | null | undefined} */ (element);
     if (!control?.dataset?.mbCopy || !isOwnedDelegate(control)) {

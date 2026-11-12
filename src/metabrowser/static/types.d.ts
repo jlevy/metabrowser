@@ -2310,23 +2310,28 @@ type MetabrowserKeyRevealRuntime = Readonly<{
  */
 type MetabrowserShellKeymapShell = Readonly<{
   copyFromControl(element: HTMLElement): boolean;
-  /** A filter dropdown's trigger, `types` or `recency`; null when the bar has none. */
-  filterTrigger(key: string): HTMLElement | null;
-  /** The committed main-pane header's Up target and Copy control; null for none. */
-  headerControls(): { copy: HTMLElement | null; parent: HTMLElement | null };
-  openFilterMenu(key: string): boolean;
+  /** The navigation pane's filter bar, whose triggers the filter keys badge. */
+  filterBar(): HTMLElement | null;
+  /** The commit view's Copy revision while that view lends it; see `attachHeaderCopy`. */
+  lentCopy(): HTMLElement | null;
   openFolder(dir: string): void;
+  /** The main pane, whose own children are what it has committed. */
+  pane(): HTMLElement | null;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   sourceSelector(): Readonly<{ activate(): unknown; button: HTMLElement }> | null;
-  /** The view tab bar committed to the main pane, never one still staged. */
-  viewTabBar(): HTMLElement | null;
+  /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
+  toggleFilterMenu(key: string, open: boolean): void;
 }>;
 
 type MetabrowserShellKeymapApi = Readonly<{
   commitViewTabs(previousBar: HTMLElement | null, nextBar: HTMLElement | null): void;
+  /** The view tab bar the main pane has committed, never one still staged. */
+  committedBar(): HTMLElement | null;
   dispose(): void;
   syncFilters(): void;
   syncHeader(): void;
+  /** Follow what the main pane installed: its view tab letters and its header. */
+  syncPane(): void;
   syncSource(): void;
   syncViewTabs(bar: HTMLElement | null): void;
 }>;

@@ -62,6 +62,31 @@ $ node tests/dom/key-reveal-session.js
       "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
     },
     {
+      "step": "X opens the file type filter",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["X","filter.type","File type"],
+        ["A","filter.recency","Modified within"]
+      ],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "pressed": {
+        "key": "x",
+        "handled": true
+      },
+      "did": ["opened the types menu"]
+    },
+    {
       "step": "a Markdown file has Document and Source",
       "reveal": "idle",
       "rootMarked": false,

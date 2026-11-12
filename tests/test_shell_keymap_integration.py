@@ -49,13 +49,19 @@ def test_the_view_tab_bar_is_a_tablist_carrying_each_declared_key() -> None:
 
 
 def test_a_filter_key_opens_its_menu_through_the_triggers_path() -> None:
+    """The trigger's click and the filter keys share toggleFilterMenu, extracted from the
+    filter bar's closure; the keymap's openFilterMenu then focuses the menu's row."""
+
     js = _read_app_js()
     init = _function_source(js, "initFilterBar")
     assert "onMenuToggle: toggleFilterMenu," in init
-    open_menu = _function_source(js, "openFilterMenu")
-    assert "toggleFilterMenu(key, true)" in open_menu
+    assert "    toggleFilterMenu,\n" in _function_source(js, "shellKeymapShell")
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    open_menu = keymap[keymap.index("function openFilterMenu(") :]
+    open_menu = open_menu[: open_menu.index("\n    }\n")]
+    assert "shell.toggleFilterMenu(key, true)" in open_menu
     assert '.chip-menu-item[aria-checked="true"]' in open_menu
-    assert "row.focus()" in open_menu
+    assert "row?.focus()" in open_menu
     assert ".click()" not in open_menu
 
 
@@ -83,9 +89,10 @@ def test_the_view_tab_letters_follow_only_a_committed_bar() -> None:
     commit = render[commit_start:commit_end]
     replaced = commit.index("preview.replaceChildren(...replacementNodes);")
     committed = commit.index(
-        "shellKeymap?.commitViewTabs(previousBar, committedViewTabBar(preview));"
+        "shellKeymap?.commitViewTabs(previousBar, shellKeymap.committedBar());"
     )
-    assert commit.index("const previousBar = committedViewTabBar(preview);") < replaced < committed
+    assert commit.index("const previousBar = shellKeymap?.committedBar() ?? null;") < replaced
+    assert replaced < committed
     assert render.count("commitViewTabs") == 1
     assert "shellKeymap" not in render[:commit_start]
     assert "stagedPluginDisposers.push" not in render
@@ -93,8 +100,7 @@ def test_the_view_tab_letters_follow_only_a_committed_bar() -> None:
 
 def test_every_main_pane_install_brings_the_keys_along() -> None:
     finish = _function_source(_read_app_js(), "finishRetainedPullPage")
-    assert "shellKeymap?.syncViewTabs(committedViewTabBar());" in finish
-    assert "shellKeymap?.syncHeader();" in finish
+    assert "shellKeymap?.syncPane();" in finish
 
 
 def test_the_keyboard_infrastructure_owns_the_reveal_and_the_keymap() -> None:
@@ -110,11 +116,14 @@ def test_the_keyboard_infrastructure_owns_the_reveal_and_the_keymap() -> None:
 
 def test_header_controls_are_read_from_the_committed_pane_and_anchor_their_badges() -> None:
     js = _read_app_js()
-    controls = _function_source(js, "committedHeaderControls")
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    controls = keymap[keymap.index("function headerControls()") :]
+    controls = controls[: controls.index("\n    }\n")]
     assert '".folder-up[data-nav-dir]:not([disabled])"' in controls
     assert '".folder-breadcrumb [data-nav-dir]"' in controls
     assert '".file-header-copy"' in controls
-    assert "headerCopyBridge" in controls
+    assert "shell.lentCopy()" in controls
+    assert "lentCopy: () => headerCopyBridge," in _function_source(js, "shellKeymapShell")
     assert '<div class="file-header folder-header" data-kbd-badge-anchor>' in js
     assert '<div class="file-header" data-kbd-badge-anchor>' in js
     filters = _function_source(js, "renderNavFilterBar")
