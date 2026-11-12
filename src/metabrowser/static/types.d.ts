@@ -2324,7 +2324,8 @@ type MetabrowserShellKeymapShell = Readonly<{
 }>;
 
 type MetabrowserShellKeymapApi = Readonly<{
-  commitViewTabs(previousBar: HTMLElement | null, nextBar: HTMLElement | null): void;
+  /** Follow the bar the main pane commits, and its header, in one publication. */
+  commitViewTabs(nextBar: HTMLElement | null): void;
   /** The view tab bar the main pane has committed, never one still staged. */
   committedBar(): HTMLElement | null;
   dispose(): void;

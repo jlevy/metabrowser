@@ -6108,11 +6108,10 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         stopFolderHeaderSubscription();
         if (
           !stagedPluginLifecycle.commit(() => {
-            const previousBar = shellKeymap?.committedBar() ?? null;
             preview.replaceChildren(...replacementNodes);
             // Here, never while staged: a cancelled stage registers nothing, so nothing
             // goes into stagedPluginDisposers, which cancel() also runs.
-            shellKeymap?.commitViewTabs(previousBar, shellKeymap.committedBar());
+            shellKeymap?.commitViewTabs(shellKeymap.committedBar());
             finishRetainedPullPage();
             options.onCommit?.();
           })

@@ -423,24 +423,25 @@
     }
 
     /**
-     * The view tab letters follow the bar the main pane commits: release the outgoing
-     * bar's letters, then hold the incoming bar's, in one publication. The shell calls
-     * this inside view composition's `commit()` and never while a view is staged, so a
-     * cancelled stage has registered nothing, and the bar still on screen keeps its keys.
-     * Replacing the pane with something that has no bar passes `null`.
+     * The view tab letters, and the header committed with them, follow the bar the main
+     * pane commits, in one publication. The letters held are the outgoing bar's, so
+     * `syncViewTabs()` diffs them against the incoming bar's: a letter both declare under
+     * the same label keeps its command and moves its target, and only a letter that
+     * comes, goes, or changes label publishes a `registration`. A move between two files
+     * of one kind therefore registers nothing. The shell calls this inside view
+     * composition's `commit()` and never while a view is staged, so a cancelled stage
+     * has registered nothing, and the bar still on screen keeps its keys. Replacing the
+     * pane with something that has no bar passes `null`.
      *
-     * @param {HTMLElement | null} previousBar
      * @param {HTMLElement | null} nextBar
      */
-    function commitViewTabs(previousBar, nextBar) {
+    function commitViewTabs(nextBar) {
       if (disposed) {
         return;
       }
       shortcuts.batch(() => {
-        for (const key of declaredTabs(previousBar).keys()) {
-          releaseViewTab(key);
-        }
         syncViewTabs(nextBar);
+        syncHeader();
       });
     }
 
@@ -467,12 +468,13 @@
       disposed = true;
     }
 
-    /** Follow whatever the main pane installed: its view tab letters and its header. */
+    /**
+     * Follow whatever the main pane installed: its view tab letters and its header.
+     * After `commitViewTabs()` in the same commit, every target is already in place, so
+     * this moves nothing and publishes nothing.
+     */
     function syncPane() {
-      shortcuts.batch(() => {
-        syncViewTabs(committedBar());
-        syncHeader();
-      });
+      commitViewTabs(committedBar());
     }
 
     // Replay what rendered before the registry existed, on first build and on rebuild.
