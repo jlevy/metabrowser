@@ -134,11 +134,16 @@ public nonisolated struct SavedTab: Codable, Equatable, Sendable {
 /// tabs show it. A root in a protected location starts only once one of its tabs is
 /// selected, so a restore raises no privacy prompt for a folder nobody is looking at;
 /// the front tab is selected, so it starts even there. A selected tab starts next.
+/// A background root is checked again when its turn comes (`next(stillOpen:)`), since
+/// its folder can change while the roots before it start.
 public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots to start, in order.
     public private(set) var pending: [String] = []
-    /// The protected roots waiting for one of their tabs to be selected.
+    /// The roots waiting for one of their tabs to be selected.
     public private(set) var deferred: [String] = []
+    /// The roots whose tab was selected, the front tab's among them: they start as the
+    /// user's choice, without being checked again.
+    public private(set) var selected: Set<String> = []
 
     public init(_ session: SavedSession, isProtected: (String) -> Bool) {
         let shown = session.windows.compactMap { window in
@@ -150,14 +155,22 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
                 deferred.append(root)
             } else {
                 pending.append(root)
+                if index == 0 { selected.insert(root) }
             }
         }
     }
 
     public var isEmpty: Bool { pending.isEmpty && deferred.isEmpty }
 
-    public mutating func next() -> String? {
-        pending.isEmpty ? nil : pending.removeFirst()
+    /// The next root to start. A background root that `stillOpen` no longer admits waits
+    /// for its tab instead, and the next one is tried.
+    public mutating func next(stillOpen: (String) -> Bool = { _ in true }) -> String? {
+        while !pending.isEmpty {
+            let root = pending.removeFirst()
+            if selected.contains(root) || stillOpen(root) { return root }
+            deferred.append(root)
+        }
+        return nil
     }
 
     /// A tab of `root` was selected: it starts next. Returns false if `root` is not
@@ -167,6 +180,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         guard pending.contains(root) || deferred.contains(root) else { return false }
         remove(root)
         pending.insert(root, at: 0)
+        selected.insert(root)
         return true
     }
 
@@ -174,6 +188,7 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     public mutating func remove(_ root: String) {
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
+        selected.remove(root)
     }
 }
 

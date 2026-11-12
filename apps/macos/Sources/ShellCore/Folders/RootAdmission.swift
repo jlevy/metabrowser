@@ -1,104 +1,93 @@
 import Darwin
 import Foundation
 
-/// What is at a path, without following it if it is a symbolic link.
-public nonisolated enum PathEntry: Equatable, Sendable {
-    case directory
-    /// A symbolic link, and the target it names, as written.
-    case symlink(String)
-    case missing
-    /// Anything else: a file, a device, a pipe, a socket.
-    case other
-
-    /// `lstat(2)`, and `readlink(2)` for a link.
-    public static func inspect(_ path: String) -> PathEntry {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { return .missing }
-        switch info.st_mode & S_IFMT {
-        case S_IFDIR:
-            return .directory
-        case S_IFLNK:
-            var buffer = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
-            let count = readlink(path, &buffer, Int(PATH_MAX))
-            guard count >= 0 else { return .missing }
-            return .symlink(String(decoding: buffer[..<count].map { UInt8(bitPattern: $0) }, as: UTF8.self))
-        default:
-            return .other
-        }
-    }
-}
-
-/// Whether a saved session's root may start, and under which identity.
+/// Whether a saved session's root may start in the background, and under which identity.
 ///
 /// A root a launch restores was canonical when it was saved, but the file may have been
-/// edited since, and a folder on its path may have become a symbolic link, into
-/// Documents for instance. So a restored root is resolved again before its protection
-/// is decided, one component at a time with `lstat` and `readlink`, and the walk stops
-/// before it would look at anything in a protected location: looking there could raise
-/// the privacy prompt that restore defers. Ordinary opens resolve with `realpath(3)`,
-/// which reaches the same identity for a path outside protected locations.
+/// edited since, and a folder on its path replaced or relinked. Only a root whose
+/// identity is established without doubt warms in the background: a walk from `/`
+/// opens each component relative to the one before, with `O_NOFOLLOW`, never opening
+/// anything that is, in any spelling, a protected location or inside one. The opened
+/// folder must be on the home folder's volume, and the kernel's name for it
+/// (`F_GETPATH`, which undoes case variants and the Data volume's firmlinks) must hold
+/// no protected location. Anything less certain (a link anywhere on the path, another
+/// volume, a protected spelling) waits for its tab to be selected, under the spelling
+/// it was saved with, untouched, so selecting it serves what the path names then.
+///
+/// The server is started with a path, not a descriptor, so this cannot bind what the
+/// server later resolves: `RestoreQueue` checks each background root again just before
+/// it starts, and a process that changes the path in the moment between that check and
+/// the server resolving it is not something this can stop. The deferral is the app's
+/// own policy, so a restore raises no prompt for a folder nobody is looking at; macOS
+/// enforces its privacy grants regardless.
 public nonisolated enum RootAdmission: Equatable, Sendable {
-    /// Resolved, and outside every protected location: the root may start in the
-    /// background, under this canonical path.
+    /// May start in the background, under this canonical path.
     case open(String)
-    /// The root is, is inside, or holds a protected location, so its server waits until
-    /// one of its tabs is selected. The path is resolved up to the protected location.
+    /// Waits until one of its tabs is selected, under the saved spelling, unchanged.
     case deferred(String)
     /// Gone, or not a folder.
     case gone
-    /// Not an absolute path spelled as a canonical one (no `.`, `..`, or empty
-    /// components, no trailing slash, no line break), or a loop of links.
+    /// Not an absolute path spelled as a canonical one: a `.`, `..`, or empty component,
+    /// a trailing slash, or a line break.
     case invalid
 
-    /// More links than `realpath(3)` follows (`MAXSYMLINKS`) is a loop.
-    public static let linkLimit = 32
-
+    /// - Parameters:
+    ///   - homeDevice: the home folder's volume; nil reads it from `home`.
+    ///   - beforeOpening: called with each path just before it is opened, which is how
+    ///     the tests watch what is looked at and change the filesystem mid-walk.
     public static func admit(
-        _ saved: String, home: String, inspect: (String) -> PathEntry = PathEntry.inspect
+        _ saved: String, home: String, homeDevice: dev_t? = nil, beforeOpening: (String) -> Void = { _ in }
     ) -> RootAdmission {
         guard let components = canonicalComponents(saved) else { return .invalid }
-        var resolved = "/"
-        var remaining = components[...]
-        var links = 0
-        while let next = remaining.popFirst() {
-            switch next {
-            case "", ".": continue
-            case "..":
-                resolved = (resolved as NSString).deletingLastPathComponent
-                continue
-            default: break
-            }
-            let candidate = resolved == "/" ? "/" + next : resolved + "/" + next
-            if ProtectedLocations.isInside(candidate, home: home) {
-                return .deferred(lexical(candidate, remaining))
-            }
-            switch inspect(candidate) {
-            case .directory:
-                resolved = candidate
-            case .symlink(let target):
-                links += 1
-                guard links <= linkLimit, !target.isEmpty else { return .invalid }
-                if target.hasPrefix("/") { resolved = "/" }
-                remaining = (target.split(separator: "/", omittingEmptySubsequences: false).map(String.init) + remaining)[...]
-            case .missing, .other:
-                return .gone
-            }
+        let isInside = { ProtectedLocations.isInside($0, home: home) }
+        var fd = Darwin.open("/", O_SEARCH | O_CLOEXEC)
+        guard fd >= 0 else { return .deferred(saved) }
+        defer { close(fd) }
+        var path = ""
+        for component in components {
+            path += "/" + component
+            if isInside(path) { return .deferred(saved) }
+            beforeOpening(path)
+            let next = openat(fd, component, O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
+            guard next >= 0 else { return failure(errno, at: fd, component, saved) }
+            close(fd)
+            fd = next
         }
-        return ProtectedLocations.contains(resolved, home: home) ? .deferred(resolved) : .open(resolved)
+        var info = stat()
+        guard fstat(fd, &info) == 0 else { return .deferred(saved) }
+        let device: dev_t
+        if let homeDevice {
+            device = homeDevice
+        } else {
+            var homeInfo = stat()
+            guard stat(home, &homeInfo) == 0 else { return .deferred(saved) }
+            device = homeInfo.st_dev
+        }
+        guard info.st_dev == device, let canonical = kernelPath(fd) else { return .deferred(saved) }
+        return ProtectedLocations.contains(canonical, home: home) ? .deferred(saved) : .open(canonical)
     }
 
-    /// `base` with `rest` appended, `.` and empty components dropped and `..` taken
-    /// lexically: the identity of a deferred root, whose rest is not looked at.
-    static func lexical(_ base: String, _ rest: ArraySlice<String>) -> String {
-        var path = base
-        for component in rest where !component.isEmpty && component != "." {
-            if component == ".." {
-                path = (path as NSString).deletingLastPathComponent
-            } else {
-                path = path == "/" ? "/" + component : path + "/" + component
-            }
+    /// Why `component` did not open: missing or not a folder drops the tab, and a link,
+    /// or anything uncertain, defers it.
+    private static func failure(_ error: Int32, at parent: Int32, _ component: String, _ saved: String) -> RootAdmission {
+        switch error {
+        case ENOENT:
+            return .gone
+        case ENOTDIR, ELOOP:
+            var info = stat()
+            guard fstatat(parent, component, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return .gone }
+            return info.st_mode & S_IFMT == S_IFLNK ? .deferred(saved) : .gone
+        default:
+            return .deferred(saved)
         }
-        return path
+    }
+
+    /// The path the kernel gives an open folder, with the volume's own case and without
+    /// the Data volume's firmlinks.
+    private static func kernelPath(_ fd: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(fd, F_GETPATH, &buffer) == 0 else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     /// The components of `path` if it is spelled as a canonical absolute path.

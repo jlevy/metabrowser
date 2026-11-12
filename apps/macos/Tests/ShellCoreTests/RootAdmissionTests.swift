@@ -3,119 +3,198 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// A filesystem of directories and symbolic links that records every path looked at.
-private final class FakeFileSystem {
-    private let entries: [String: PathEntry]
-    private(set) var inspected: [String] = []
+/// A home folder in a temporary directory, with Documents in it, and a record of every
+/// path admission is about to open.
+private final class Fixture {
+    let directory: URL
+    /// Canonical, as `F_GETPATH` names it.
+    let home: String
+    private(set) var looked: [String] = []
+    /// Runs before admission opens a path, as the test's chance to change the filesystem.
+    var beforeOpening: ((String) -> Void)?
 
-    init(_ entries: [String: PathEntry]) {
-        self.entries = entries
+    init(_ name: String = #function) throws {
+        directory = try temporaryDirectory(name)
+        home = FileChecks.canonicalPath(directory.path(percentEncoded: false))
+        for folder in ["wrk/app/sub", "Documents/secret", "other/leaf"] {
+            try FileManager.default.createDirectory(atPath: home + "/" + folder, withIntermediateDirectories: true)
+        }
+        FileManager.default.createFile(atPath: home + "/notes.md", contents: Data("# notes\n".utf8))
     }
 
-    func inspect(_ path: String) -> PathEntry {
-        inspected.append(path)
-        return entries[path] ?? .missing
+    deinit { try? FileManager.default.removeItem(at: directory) }
+
+    func admit(_ root: String, homeDevice: dev_t? = nil) -> RootAdmission {
+        RootAdmission.admit(root, home: home, homeDevice: homeDevice) { path in
+            self.looked.append(path)
+            self.beforeOpening?(path)
+        }
     }
 
-    /// Whether any path at or below `location` was looked at.
-    func looked(within location: String) -> Bool {
-        inspected.contains { $0 == location || $0.hasPrefix(location + "/") }
+    func link(_ path: String, to target: String) throws {
+        try FileManager.default.createSymbolicLink(atPath: home + "/" + path, withDestinationPath: target)
     }
+
+    /// Whether admission opened anything at or below `location`, in any spelling of it.
+    func lookedWithin(_ location: String) -> Bool {
+        let spellings = [location, "/System/Volumes/Data" + location].map { $0.lowercased() }
+        return looked.contains { path in
+            spellings.contains { path.lowercased() == $0 || path.lowercased().hasPrefix($0 + "/") }
+        }
+    }
+
+    var documentsLooked: Bool { lookedWithin(home + "/Documents") }
 }
 
 @Suite struct RootAdmissionTests {
-    private let home = "/Homes/me"
-    private let documents = "/Homes/me/Documents"
-    private let base: [String: PathEntry] = [
-        "/Homes": .directory, "/Homes/me": .directory, "/Homes/me/wrk": .directory,
-        "/Homes/me/wrk/app": .directory, "/Homes/me/Library": .directory, "/Homes/me/notes.md": .other,
-    ]
-
-    private func admit(_ root: String, _ extra: [String: PathEntry] = [:]) -> (RootAdmission, FakeFileSystem) {
-        let files = FakeFileSystem(base.merging(extra) { $1 })
-        return (RootAdmission.admit(root, home: home, inspect: files.inspect), files)
+    @Test func aCleanRootUnderTheHomeFolderMayStartUnderItsCanonicalIdentity() throws {
+        let fixture = try Fixture()
+        #expect(fixture.admit(fixture.home + "/wrk/app") == .open(fixture.home + "/wrk/app"))
+        #expect(!fixture.documentsLooked)
     }
 
-    @Test func aCanonicalRootOutsideProtectedLocationsMayStart() {
-        #expect(admit("/Homes/me/wrk/app").0 == .open("/Homes/me/wrk/app"))
-    }
-
-    /// The defect: a saved folder replaced by a link into Documents passed as unprotected,
-    /// and its server read Documents before its tab was selected.
-    @Test func aRootReplacedByALinkIntoDocumentsWaitsAndDocumentsIsNotLookedAt() {
-        for target in ["/Homes/me/Documents/secret", "../me/Documents/secret", "/Homes/me/Documents"] {
-            let (admission, files) = admit("/Homes/me/proj/app", ["/Homes/me/proj": .symlink(target)])
-            let resolved = target.hasSuffix("secret") ? "/Homes/me/Documents/secret/app" : "/Homes/me/Documents/app"
-            #expect(admission == .deferred(resolved), "\(target)")
-            #expect(!files.looked(within: documents), "\(files.inspected)")
+    /// Review D1: `F_GETPATH` names the folder as the kernel does, so a case variant and a
+    /// Data-volume spelling are one root with one identity.
+    @Test func caseAndDataVolumeSpellingsOfOneFolderShareItsIdentity() throws {
+        let fixture = try Fixture()
+        let canonical = RootAdmission.open(fixture.home + "/wrk/app")
+        #expect(fixture.admit("/System/Volumes/Data" + fixture.home + "/wrk/app") == canonical)
+        let caseSensitive = try URL(filePath: fixture.home).resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+            .volumeSupportsCaseSensitiveNames ?? true
+        if !caseSensitive {
+            #expect(fixture.admit(fixture.home + "/WRK/App") == canonical)
         }
     }
 
-    @Test func aLinkElsewhereIsFollowedToTheCanonicalRoot() {
-        let (admission, _) = admit("/Homes/me/link", ["/Homes/me/link": .symlink("wrk/./app")])
-        #expect(admission == .open("/Homes/me/wrk/app"))
-        let (absolute, _) = admit("/Homes/me/far", ["/Homes/me/far": .symlink("/Homes/me/wrk/../wrk/app")])
-        #expect(absolute == .open("/Homes/me/wrk/app"))
-    }
-
-    @Test func otherSpellingsAreRefusedWithoutLookingAtAnything() {
+    /// Review D1: case variants and Data-volume aliases of protected locations wait, and
+    /// nothing in them is opened.
+    @Test func everySpellingOfAProtectedLocationWaitsUnopened() throws {
+        let fixture = try Fixture()
         for root in [
-            "/Homes/me/wrk/../Documents", "/Homes/me/./wrk", "/Homes/me//wrk", "/Homes/me/wrk/", "wrk/app", "",
-            "/Homes/me/wrk\napp",
+            "/volumes/x", "/VOLUMES/x", "/System/Volumes/Data/Volumes/x",
+            fixture.home + "/Documents/secret", fixture.home + "/documents/secret", fixture.home + "/DOCUMENTS",
+            "/System/Volumes/Data" + fixture.home + "/Documents/secret",
         ] {
-            let (admission, files) = admit(root)
-            #expect(admission == .invalid, "\(root)")
-            #expect(files.inspected.isEmpty, "\(root)")
+            #expect(fixture.admit(root) == .deferred(root), "\(root)")
+            #expect(!fixture.documentsLooked && !fixture.lookedWithin("/Volumes"), "\(root): \(fixture.looked)")
         }
     }
 
-    @Test func aProtectedSpellingWaitsWithoutLookingInside() {
-        for root in ["/Homes/me/Documents/notes", "/Volumes/USB/photos", "/Homes/me/Library/Mobile Documents/x"] {
-            let (admission, files) = admit(root)
-            #expect(admission == .deferred(root), "\(root)")
-            for location in [documents, "/Volumes", "/Homes/me/Library/Mobile Documents"] {
-                #expect(!files.looked(within: location), "\(root): \(files.inspected)")
-            }
+    @Test func aFolderThatHoldsAProtectedLocationWaits() throws {
+        let fixture = try Fixture()
+        #expect(fixture.admit(fixture.home) == .deferred(fixture.home))
+        #expect(fixture.admit("/") == .deferred("/"))
+        #expect(fixture.admit("/System/Volumes/Data") == .deferred("/System/Volumes/Data"))
+        #expect(!fixture.documentsLooked)
+    }
+
+    /// A link anywhere on the path means the folder has changed since it was saved, so its
+    /// identity is not established: it waits under the saved spelling, unopened past the
+    /// link, whatever the link points at.
+    @Test func aRootReplacedByALinkWaitsUnderItsSavedSpelling() throws {
+        let fixture = try Fixture()
+        try fixture.link("proj", to: fixture.home + "/Documents/secret")
+        try fixture.link("elsewhere", to: "other/leaf")
+        for root in [fixture.home + "/proj", fixture.home + "/proj/inner", fixture.home + "/elsewhere"] {
+            #expect(fixture.admit(root) == .deferred(root), "\(root)")
         }
+        #expect(!fixture.documentsLooked)
     }
 
-    @Test func aFolderThatHoldsAProtectedLocationWaits() {
-        #expect(admit("/Homes/me").0 == .deferred("/Homes/me"))
-        #expect(admit("/").0 == .deferred("/"))
+    /// Review D3's example: a link whose target runs through a protected location and back
+    /// out with `..`. The saved spelling is kept, never shortened to the volume.
+    @Test func aLinkThroughAProtectedLocationKeepsTheSavedSpelling() throws {
+        let fixture = try Fixture()
+        try fixture.link("bridge", to: "/Volumes/TestDisk/bridge/..")
+        #expect(fixture.admit(fixture.home + "/bridge") == .deferred(fixture.home + "/bridge"))
+        #expect(!fixture.lookedWithin("/Volumes"))
     }
 
-    @Test func aRootThatIsGoneOrNotAFolderIsDropped() {
-        #expect(admit("/Homes/me/gone").0 == .gone)
-        #expect(admit("/Homes/me/notes.md").0 == .gone)
-        #expect(admit("/Homes/me/dangling", ["/Homes/me/dangling": .symlink("nowhere")]).0 == .gone)
+    /// Review D2: each component is opened relative to the one before, without following a
+    /// link, so an ancestor replaced after it was opened cannot redirect the rest of the
+    /// walk. A walk by absolute paths would have followed the new link into Documents,
+    /// where a `sub` folder waits.
+    @Test func anAncestorReplacedDuringAdmissionIsNotFollowed() throws {
+        let fixture = try Fixture()
+        try FileManager.default.createDirectory(atPath: fixture.home + "/Documents/secret/sub", withIntermediateDirectories: true)
+        let ancestor = fixture.home + "/wrk/app"
+        fixture.beforeOpening = { path in
+            guard path == ancestor + "/sub" else { return }
+            // app is open; replace it with a link into Documents before sub is opened.
+            try? FileManager.default.moveItem(atPath: ancestor, toPath: fixture.home + "/wrk/app-moved")
+            try? FileManager.default.createSymbolicLink(atPath: ancestor, withDestinationPath: fixture.home + "/Documents/secret")
+        }
+        // The walk ends at the folder it opened, now named app-moved/sub, never in Documents.
+        #expect(fixture.admit(ancestor + "/sub") == .open(fixture.home + "/wrk/app-moved/sub"))
+        #expect(!fixture.documentsLooked, "\(fixture.looked)")
+        // Swapped before it is opened, the component is a link, and the root waits.
+        fixture.beforeOpening = { path in
+            guard path == fixture.home + "/other/leaf" else { return }
+            try? FileManager.default.moveItem(atPath: path, toPath: path + "-moved")
+            try? FileManager.default.createSymbolicLink(atPath: path, withDestinationPath: fixture.home + "/Documents/secret")
+        }
+        #expect(fixture.admit(fixture.home + "/other/leaf") == .deferred(fixture.home + "/other/leaf"))
+        #expect(!fixture.documentsLooked, "\(fixture.looked)")
     }
 
-    @Test func aLinkLoopIsRefused() {
-        let (admission, files) = admit("/Homes/me/a", ["/Homes/me/a": .symlink("b"), "/Homes/me/b": .symlink("a")])
-        #expect(admission == .invalid)
-        #expect(files.inspected.count <= RootAdmission.linkLimit * 2 + 4)
+    @Test func aRootOnAnotherVolumeWaits() throws {
+        let fixture = try Fixture()
+        var info = stat()
+        #expect(stat(fixture.home, &info) == 0)
+        #expect(fixture.admit(fixture.home + "/wrk/app", homeDevice: info.st_dev &+ 1)
+            == .deferred(fixture.home + "/wrk/app"))
     }
 
-    /// Against the real filesystem: links are read with lstat and readlink, and an
-    /// unprotected root resolves as realpath(3) does.
-    @Test func theRealFilesystemResolvesAsRealpathDoes() throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let home = FileChecks.canonicalPath(directory.path(percentEncoded: false))
-        let manager = FileManager.default
-        try manager.createDirectory(atPath: home + "/wrk/app", withIntermediateDirectories: true)
-        try manager.createDirectory(atPath: home + "/Documents/secret", withIntermediateDirectories: true)
-        try manager.createSymbolicLink(atPath: home + "/link", withDestinationPath: "wrk/app")
-        try manager.createSymbolicLink(atPath: home + "/proj", withDestinationPath: home + "/Documents/secret")
+    @Test func otherSpellingsAreRefusedUnopened() throws {
+        let fixture = try Fixture()
+        for root in [
+            fixture.home + "/wrk/../Documents", fixture.home + "/./wrk", fixture.home + "//wrk", fixture.home + "/wrk/",
+            "wrk/app", "", fixture.home + "/wrk\napp",
+        ] {
+            #expect(fixture.admit(root) == .invalid, "\(root)")
+        }
+        #expect(fixture.looked.isEmpty)
+    }
 
-        // The temporary directory is under /var, itself a link to /private/var.
-        let spelled = directory.path(percentEncoded: false).replacingOccurrences(of: "/private/var/", with: "/var/")
-        let viaLink = (spelled.hasSuffix("/") ? String(spelled.dropLast()) : spelled) + "/link"
-        #expect(RootAdmission.admit(viaLink, home: home) == .open(home + "/wrk/app"))
-        #expect(FileChecks.canonicalPath(viaLink) == home + "/wrk/app")
-        #expect(RootAdmission.admit(home + "/proj", home: home) == .deferred(home + "/Documents/secret"))
-        #expect(PathEntry.inspect(home + "/link") == .symlink("wrk/app"))
-        #expect(PathEntry.inspect(home + "/wrk") == .directory)
-        #expect(PathEntry.inspect(home + "/missing") == .missing)
+    @Test func aRootThatIsGoneOrNotAFolderIsDropped() throws {
+        let fixture = try Fixture()
+        #expect(fixture.admit(fixture.home + "/gone") == .gone)
+        #expect(fixture.admit(fixture.home + "/notes.md") == .gone)
+        #expect(fixture.admit(fixture.home + "/notes.md/below") == .gone)
+    }
+
+    /// Review D2: a root admitted at launch is checked again when its turn to start comes.
+    /// One replaced by a link while an earlier server was starting waits for its tab.
+    @Test func aQueuedRootReplacedWhileAnEarlierStartIsSuspendedWaits() throws {
+        let fixture = try Fixture()
+        let first = fixture.home + "/other/leaf"
+        let second = fixture.home + "/wrk/app"
+        let window = SavedWindow(
+            tabs: [SavedTab(root: first, page: nil), SavedTab(root: second, page: nil)], selected: 0, frame: nil)
+        let admitted = SavedSession(windows: [window]).admitted { fixture.admit($0) }
+        #expect(admitted.deferred.isEmpty)
+        var queue = RestoreQueue(admitted.session, isProtected: admitted.deferred.contains)
+        let stillOpen = { (root: String) in fixture.admit(root) == .open(root) }
+        let started = queue.next(stillOpen: stillOpen)
+        #expect(started == first)
+        // The first server is starting; meanwhile the second root becomes a link into Documents.
+        try FileManager.default.moveItem(atPath: second, toPath: second + "-moved")
+        try fixture.link("wrk/app", to: fixture.home + "/Documents/secret")
+        let held = queue.next(stillOpen: stillOpen)
+        #expect(held == nil)
+        #expect(queue.deferred == [second])
+        #expect(!fixture.documentsLooked)
+        // Selecting its tab starts it: that is the user's choice.
+        let selected = queue.select(second)
+        let chosen = queue.next(stillOpen: { _ in false })
+        #expect(selected && chosen == second)
+    }
+
+    /// The front tab is selected, so it starts without being checked again.
+    @Test func theFrontTabIsNotHeldBack() {
+        let window = SavedWindow(tabs: [SavedTab(root: "/front", page: nil)], selected: 0, frame: nil)
+        var queue = RestoreQueue(SavedSession(windows: [window]), isProtected: { _ in false })
+        let front = queue.next(stillOpen: { _ in false })
+        #expect(front == "/front")
     }
 }

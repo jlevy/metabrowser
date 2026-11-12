@@ -266,10 +266,24 @@ final class FolderWindows {
         guard !isStartingRestoredServers else { return }
         isStartingRestoredServers = true
         Task {
-            while let path = restoreQueue?.next() {
+            while let path = nextRestoredRoot() {
                 await sessionForPath(path)?.startServer()
             }
             isStartingRestoredServers = false
         }
+    }
+
+    /// The next root to start. A background root is admitted again first, since it can
+    /// change while the servers before it start; one that no longer is waits for its tab.
+    private func nextRestoredRoot() -> String? {
+        let home = self.home
+        let waiting = Set(restoreQueue?.deferred ?? [])
+        let next = restoreQueue?.next { RootAdmission.admit($0, home: home) == .open($0) }
+        for path in restoreQueue?.deferred ?? [] where !waiting.contains(path) {
+            AppLog.app.info(
+                "\(path, privacy: .public) changed since the launch admitted it; it starts when its tab is selected")
+            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+        }
+        return next
     }
 }
