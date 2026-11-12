@@ -563,7 +563,7 @@ def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status()
         assert signal.getsignal(signal.SIGHUP) is _stop_now
         with (
             patch("metabrowser.cli.serve.os.write"),
-            patch("metabrowser.git.process.kill_live_process_groups") as kill_groups,
+            patch("metabrowser.cli.serve.stop_process_groups") as kill_groups,
             patch("metabrowser.cli.serve.os._exit") as hard_exit,
         ):
             _stop_now(signal.SIGHUP, None)
