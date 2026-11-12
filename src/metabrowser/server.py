@@ -3846,6 +3846,10 @@ from metabrowser.plugin_loader.classify import (
 from metabrowser.plugin_loader.discovery import (
     discover_plugins,
 )
+from metabrowser.plugin_loader.manifest import (
+    merge_views,
+    view_entry,
+)
 from metabrowser.plugin_loader.static_assets import (
     build_plugin_routes,
 )
@@ -3889,18 +3893,7 @@ for _idx, _plugin in enumerate(_LOADED_PLUGINS):
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
-        bucket = _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, [])
-        bucket.append(
-            {
-                "id": _view.id,
-                "label": _view.label,
-                "default": _view.default,
-                "container_class": _view.container_class,
-                "printable": _view.printable,
-                "print_profile": _view.print_profile,
-                "render_runtime": _view.render_runtime,
-            }
-        )
+        _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
@@ -4035,32 +4028,14 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
 def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
-    Plugin views are appended after built-in views; an exact (kind, id)
-    collision means the plugin entry overrides the built-in (last write
-    wins; the plugin author intentionally chose to register an existing
-    id). The order in which they appear in the tab strip is built-ins
-    first, then plugin order.
+    :func:`merge_views` owns the merge order and the override rule.
 
     The html kind is the exception that still uses this merger: Preview is
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
     """
-    out: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for v in VIEW_REGISTRY.get(kind, []):
-        out.append(dict(v))
-        seen_ids.add(v["id"])
-    for v in _PLUGIN_VIEWS_BY_KIND.get(kind, []):
-        if v["id"] in seen_ids:
-            # Replace existing entry with plugin override.
-            for i, existing in enumerate(out):
-                if existing["id"] == v["id"]:
-                    out[i] = v
-                    break
-        else:
-            out.append(v)
-            seen_ids.add(v["id"])
+    out = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     if kind == "html":
         return _html_kind_views(out, target)
     if out and not any(v.get("default") for v in out):

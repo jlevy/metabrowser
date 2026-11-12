@@ -21,8 +21,9 @@ stdlib ``tomllib`` reader and validated by the Pydantic models below.
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -207,6 +208,43 @@ class ViewSpec(BaseModel):
         default=None,
         description="Descriptive runtime for the view renderer; JS registration still dispatches.",
     )
+
+
+def view_entry(view: ViewSpec) -> dict[str, Any]:
+    """Return the entry a file envelope's ``views`` list carries for *view*."""
+    return {
+        "id": view.id,
+        "label": view.label,
+        "default": view.default,
+        "container_class": view.container_class,
+        "printable": view.printable,
+        "print_profile": view.print_profile,
+        "render_runtime": view.render_runtime,
+    }
+
+
+def merge_views(
+    builtin: Iterable[Mapping[str, Any]], plugin: Iterable[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge one kind's built-in registry entries with its manifest view entries.
+
+    Plugin views are appended after built-in views; an exact id collision means
+    the plugin entry overrides the earlier one in place (last write wins; the
+    plugin author intentionally chose to register an existing id). The order in
+    which they appear in the tab strip is built-ins first, then plugin order.
+    The server and ``metab --doctor`` both merge through here, so the doctor
+    checks the list the server serves.
+    """
+    out = [dict(view) for view in builtin]
+    position = {view["id"]: index for index, view in enumerate(out)}
+    for view in plugin:
+        index = position.get(view["id"])
+        if index is None:
+            position[view["id"]] = len(out)
+            out.append(dict(view))
+        else:
+            out[index] = dict(view)
+    return out
 
 
 class DataHookSpec(BaseModel):
