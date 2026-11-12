@@ -291,6 +291,42 @@ The cold keyboard steps open files the page has not rendered, so the render cach
 answer them. The kept Worker and the new render path are on them, and nothing measured
 here separates their cost.
 
+## Explanations After the Round
+
+Written after the verdict, from the round’s records, the code, and a Node benchmark.
+They change no verdict; exp-082 is the declared confirmation round.
+
+What the candidate’s changed code does on each flagged transition, with each step’s
+requests the same count on both builds:
+
+- **`keyboard.down_cold.1` opens `CLAUDE.md`**, one KPress request and no plugin module.
+  The candidate adds a render-cache lookup that misses, and then a `store` of the new
+  render before it is placed.
+  Timed in Node with the real `createRenderCache`, a lookup miss and a store together
+  take 29 µs with 2 kept renders, as on this journey, and 56 µs with 300. The Worker is
+  already running on both builds.
+- **`keyboard.down_cold.3` opens `LICENSE`**, a text file that neither changed module
+  renders: no KPress request, one text-plugin module, on both builds.
+  Leaving `CONTRIBUTING.md` releases the Markdown Worker.
+  The candidate starts a 60 s idle timer where the control terminates the Worker, so the
+  candidate does less there.
+- **`views.markdown.revisit_2` switches `README.md` to its Source view**, which the
+  client runtime draws.
+  There is no request of any kind on either build, and the Document view’s revisit
+  before it made no KPress request on either build either.
+
+None of this is work that can add a frame, and nothing else on these paths changed.
+The four flags are of the kind the untouched journeys show at the rate above.
+
+The benchmark found one cost the round did not reach.
+`store` drops renders whose envelope was collected by checking every kept render’s
+`WeakRef`, so each store is linear in the number kept.
+With 1,000 kept renders a lookup miss and a store took 1.7 ms, and with 4,000 2.3 ms.
+The byte bound alone admits that many small renders.
+A bound on the number kept, or a sweep run only when the byte total is over its bound,
+would cap it. It is outside this round: the journeys keep a few renders, and a docs
+folder walk keeps a few hundred.
+
 ## Verdict
 
 **H90: unresolved.** Decided by the transition scenario under the accept rule:

@@ -308,7 +308,7 @@ the comparison came from the page’s keep.
 two or more pairs are higher beyond 1.3x (“explain before accepting”). None has its
 ranges apart. By the round each falls in:
 
-- **H88’s guard, 11:**
+- **H88’s guard, 10:**
   - `commits.hover_click`: painted ready, ready, frames to ready (1 (1–5) → 2), settled,
     and ready after the last input, each higher in pairs 1 to 5. Ready went from 15.8
     (14.6–79.9) to 35.2 (33.1–36.4) ms.
@@ -320,7 +320,7 @@ ranges apart. By the round each falls in:
   9.7 (4.9–10.0) ms, and `main.commits_to_pulls` settled, 6.3 (6.0–6.9) → 7.1 (5.5–9.6)
   ms.
 - **H90’s guard, 4:** see exp-063.
-- **Neither round’s transitions, 14:**
+- **Neither round’s transitions, 15:**
   - `views.json.revisit`: painted ready, ready, settled, and ready after the last input.
   - `main_subject.files_to_pulls` settled, 606.6 (67.0–1064.1) → 1053.3 (1044.7–1071.5)
     ms.
@@ -334,9 +334,100 @@ comparisons. So two-of-six flags under overlapping ranges occur on this machine 
 code changed. That base rate does not account for `commits.hover_click`, which is higher
 in five of six pairs.
 The application’s own `gitRevision:selectToReady` span in the raw runs agrees with it.
-The code read so far does not explain it: the hover and the click share one preparation,
-and its comparison never reaches the page’s keep.
-It was not investigated in a browser.
+[Explanations After the Round](#explanations-after-the-round) gives what was found.
+
+## Explanations After the Round
+
+Written after the verdicts, from the round’s own records and short probes.
+They change no verdict, and they decide nothing; exp-081 is the declared confirmation
+round.
+
+### `commits.hover_click` Is a Race the Background Catalog Walk Decides
+
+The hover starts the commit’s detail and comparison requests 300 ms after the pointer
+arrives, and the scenario clicks at 400 ms.
+The comparison takes about as long as the gap between the two, so the transition is a
+race:
+
+- if the answer lands before the click, the commit is ready in the click’s first frame
+  (the application’s `gitRevision:selectToReady` about 31 ms);
+- if it lands after, it is ready one frame later (about 47 ms).
+
+The candidate’s code on that path is a lookup that misses and, after the answer arrives,
+a deferred keep that sizes it.
+That answer is about 5.7 KB as `metab --api` prints it, so its sizing costs well under a
+millisecond.
+No H90 code runs there: the diff’s Markdown view is `diff-markdown.js`, with
+its own route.
+
+Short probes on this corpus did not show the candidate slower.
+They ran while another lane’s series ran, at one-minute loads of 13.8 to 55 where
+recorded:
+
+- Hover-clicks on both builds, in four invocations, replaying the journey’s cold visits
+  and revisits first: each build won and lost the race, and the comparison took 79 to
+  287 ms.
+- Eight interleaved requests per build of the comparison route: 83 to 125 ms on the
+  control and 82 to 157 ms on the candidate, with no difference between the builds.
+- The same for the commit route: 21 to 36 ms on both.
+
+What the series rows show instead
+([exp-061-hover-click-requests.jsonl](exp-061-hover-click-requests.jsonl)): during the
+commits journey a background walk of the pull-request catalog
+(`/api/plugin/github/pulls?...&after=N`, each page followed by `pull-cores-prepare`)
+runs on its own clock.
+The candidate meets it at a different point:
+
+- At `commits.revisit.2`, every candidate run was on page `after=299` and every control
+  run on `after=290`, because the candidate’s revisits skip the comparison request.
+- At the hover-click, in control pairs 2 to 5 page `after=280` started before the
+  hover’s comparison request, and each was ready in one frame.
+- In all six candidate runs, that page started after the comparison request, and each
+  was ready one frame later.
+- Control pairs 1 and 6 had no catalog page before the comparison either.
+  Pair 1 was ready in one frame; pair 6, at a load of 10.9, took 79.9 ms.
+
+In the 4 runs where a catalog page started before the hover’s comparison, none was late.
+In the 8 where none did, 7 were.
+
+So the extra frame follows the walk’s phase, which the candidate’s faster revisits move,
+not work the candidate adds on the hover-click.
+That the catalog page’s server work slows the comparison is inferred, not shown: the
+requests carry no timings, and the one probe run with the harness’s catalog state did
+not place a page inside the hover window.
+
+### The Refs Overlap Is the Repository-Identity Period, on Both Builds
+
+Numbering the 45 pairs in the order they ran (log 1 to 15, summary 16 to 30, refs 31 to
+45), the slow samples fall on pairs 4, 8, 12, 20, 24, 28, 32, 36, 40, and 44. That is
+every fourth pair, and both builds are slow on the same pairs:
+
+- control: 39 to 95 ms over its median on each;
+- candidate: 48 to 68 ms over its median.
+
+Pair 16 is the summary’s first, which follows that route’s unrecorded warm-up requests.
+The half took 69.5 s for 45 pairs, so four pairs are about 6 s: the 5 s
+`GIT_REPO_INFO_TTL_S` during which both builds keep a repository’s identity, plus the
+wait for the next request.
+The instrument records no timestamp per sample, so the pair index is the clock.
+On the refs route, where the candidate otherwise answers in about 3 ms, those shared
+pairs put the candidate’s maximum (71.96 ms) above the control’s minimum (23.49 ms).
+The memo does not avoid the identity rediscovery, and the control pays it on the same
+requests.
+
+### The Other Flags
+
+- **Outside both rounds, 15:**
+  - The flagged views and Pulls transitions request no Git route and no Markdown render
+    on either build.
+  - Their requests are GitHub plugin routes, in the same counts on both builds, one
+    background request aside.
+  - The changed modules are not on those paths: only the Markdown plugin imports
+    `rendered.js`, and the comparison keep runs only in the Commits panel.
+  - They are context, beside the untouched-journey rate above.
+- **`commits.cold.1`’s and `commits.first_show`’s flags**, each two of six pairs: the
+  same kind as that rate.
+  The cold visits fetch their comparison on both builds.
 
 ## Verdicts
 
