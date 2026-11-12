@@ -1336,6 +1336,19 @@ gate’s driver, found the Print request reaching that path and a dropped file h
 the app’s open path
 ([`window.print()` and Drag and Drop](../../large-content-rendering.md#windowprint-and-drag-and-drop)).
 
+## 2026-11-12 Addendum: Plugin Sources
+
+Adding Plugins Without Rebuilding the App kept every Python plugin in a runtime’s own
+environment and had the plugin mode reinstall Metabrowser with `--with`.
+[Loading Plugins from Any Source](research-2026-11-12-plugin-sources.md) found that
+install unresolvable for the motivating plugin, because of Metabrowser’s exact pins, and
+the owner ruled out reinstalling Metabrowser to add a plugin.
+[Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md)
+replaces that section’s install mechanics and its project-plugin sketch: plugins are
+registered sources, Python plugins run in workers on their own interpreters, and an
+app-managed runtime no longer reinstalls plugins when its base changes.
+What the section says about the signed bundle holding no plugins still holds.
+
 ## References
 
 - Metabrowser: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),

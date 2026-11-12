@@ -48,6 +48,11 @@ links to the document that covers each in depth.
   and window titles, the icon and release pipeline adapted from a sister app, warm
   folder switching, host mode and the agent front door, and the app-managed runtime,
   tracked under epic `mb-1apq`
+- [Plugin sources and out-of-process plugin environments](specs/active/plan-2026-11-12-plugin-sources.md)
+  — registered directories, environments, managed packages, and trusted project
+  declarations; Python plugins in workers on their own interpreters over a stdlib-only
+  plugin SDK; a caret SDK gate; and the macOS app’s plugin settings, tracked under epic
+  `mb-xbw3`
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
   — retained surfaces, fixed boxes at first paint, prediction behind admission control,
   and a shorter landing chain, each a measured performance-loop round, tracked under
@@ -104,6 +109,7 @@ Once its questions are answered and its measurements are superseded, it moves to
 - [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md)
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md)
 - [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md)
+- [Loading plugins from any source](research/research-2026-11-12-plugin-sources.md)
 
 ### Archived Research
 
