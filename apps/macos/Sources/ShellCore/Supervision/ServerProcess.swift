@@ -72,12 +72,15 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
 public nonisolated enum SpawnError: Error, Equatable, CustomStringConvertible {
     case relativeExecutable(String)
     case pipe(Int32)
+    /// The log could not be opened, so the child would have nowhere to write.
+    case log(path: String, code: Int32)
     case spawn(Int32)
 
     public var description: String {
         switch self {
         case .relativeExecutable(let path): "\(path) is not an absolute path"
         case .pipe(let code): "could not create a pipe: \(String(cString: strerror(code)))"
+        case .log(let path, let code): "could not open the server log \(path): \(String(cString: strerror(code)))"
         case .spawn(let code): String(cString: strerror(code))
         }
     }
@@ -107,6 +110,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         // posix_spawn resolves a relative path after the working-directory change, so
         // `metab` could otherwise name a file inside the folder being served.
         guard spec.executable.hasPrefix("/") else { throw .relativeExecutable(spec.executable) }
+        let log = try spec.logURL.map(Self.openLog)
         var stdinPipe: [Int32] = [-1, -1]
         var outputPipe: [Int32] = [-1, -1]
         guard pipe(&stdinPipe) == 0 else { throw .pipe(errno) }
@@ -163,10 +167,12 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
         let stdinHandle = FileHandle(fileDescriptor: stdinPipe[1], closeOnDealloc: true)
         if let line = spec.stdinLine {
+            // A write to a fresh pipe fails only with EPIPE, once the child has exited,
+            // and that exit, with its output, is what the supervisor reports.
             try? stdinHandle.write(contentsOf: Data((line + "\n").utf8))
         }
         if spec.closesStdin {
-            try? stdinHandle.close()
+            try? stdinHandle.close()  // closing a pipe's write end has no failure to report
             lifeline = nil
         } else {
             lifeline = stdinHandle
@@ -177,7 +183,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         let (lineStream, lineSink) = AsyncStream<String>.makeStream(
             bufferingPolicy: .bufferingNewest(spec.tailLimit))
         lines = lineStream
-        let log = spec.logURL.flatMap(Self.openLog)
+        let appender = LogAppender(log)
         let splitter = LineSplitter()
         let ended = outputEnd
         let reader = FileHandle(fileDescriptor: outputPipe[0], closeOnDealloc: true)
@@ -195,7 +201,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
                 ended.resolve(())
                 return
             }
-            try? log?.write(contentsOf: chunk)
+            if let failure = appender.append(chunk) { tail.append(failure) }
             splitter.append(chunk, emit: emit)
         }
 
@@ -252,9 +258,10 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     }
 
     /// Appends, never truncates, and refuses to follow a symlink planted at the path.
-    private static func openLog(_ url: URL) -> FileHandle? {
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { return nil }
+    private static func openLog(_ url: URL) throws(SpawnError) -> FileHandle {
+        let path = url.path(percentEncoded: false)
+        let fd = open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw .log(path: path, code: errno) }
         return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 }

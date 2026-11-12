@@ -149,7 +149,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = directory.appending(path: "x.log")
         try ServerLog.prepare(log)
-        ServerLog.append("started pid 7", to: log, now: Date(timeIntervalSince1970: 0))
+        try ServerLog.append("started pid 7", to: log, now: Date(timeIntervalSince1970: 0))
         #expect(try String(contentsOf: log, encoding: .utf8) == "[metabrowser-app 1970-01-01T00:00:00Z] started pid 7\n")
     }
 }

@@ -183,18 +183,19 @@ public final class ServerSupervisor {
         guard current == generation else { return }
 
         let started = clock.now
-        event("starting: \(spec.commandLine)")
+        // The first event follows the factory, which may prepare (and rotate) the log the
+        // events are written to.
         let child: any ServerProcess
         do {
             child = try makeProcess(spec)
         } catch {
             let summary = "Could not start \(spec.executable): \(error)."
-            event(summary)
+            event("could not start \(spec.commandLine): \(error)")
             state = .failed(ServerFailure(summary: summary, recentOutput: []))
             return
         }
         process = child
-        event("started pid \(child.pid) as the leader of its own process group")
+        event("started pid \(child.pid), the leader of its own process group: \(spec.commandLine)")
         // Exits before ready are this function's to report (the race below watches for
         // them); this task reports an exit after ready.
         Task { [weak self] in

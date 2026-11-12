@@ -28,19 +28,26 @@ final class FolderSession: ManagedServer {
         title = WindowTitle(.localFolder(root))
         let logURL = ServerLog.url(for: root)
         self.logURL = logURL
-        do {
-            try ServerLog.prepare(logURL)
-        } catch {
-            AppLog.app.error("could not prepare \(logURL.path, privacy: .public): \(error, privacy: .public)")
-        }
         let launch = CLIServeLaunch()
         let spec = launch.spec(
             serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
-        supervisor = ServerSupervisor(spec: spec, launch: launch, gate: gate)
+        // Each launch prepares the log first, so a log that cannot be kept fails the
+        // launch, and the window says why.
+        supervisor = ServerSupervisor(
+            spec: spec, launch: launch, gate: gate,
+            makeProcess: { spec in
+                if let logURL = spec.logURL { try ServerLog.prepare(logURL) }
+                return try SpawnedProcess(spec)
+            })
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
-            ServerLog.append(message, to: logURL)
             AppLog.server.info("\(name, privacy: .public): \(message, privacy: .public)")
+            do {
+                try ServerLog.append(message, to: logURL)
+            } catch {
+                // The event itself is in the unified log, on the line above.
+                AppLog.server.error("\(name, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
         }
         supervisor.onChange = { [weak self] state in self?.serverChanged(state) }
     }
