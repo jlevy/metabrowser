@@ -275,7 +275,8 @@ accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the 
 
 ### Checking Print and Drops by Hand
 
-`node webkit-gate/run.mjs --checks` scripts these in the app’s web view class
+From `apps/macos`, `node webkit-gate/run.mjs --checks` scripts these in the app’s web
+view class
 ([Measured in WebKit](../../docs/large-content-rendering.md#windowprint-and-drag-and-drop)
 has the results); this is the same check on the built development app,
 `build/dev/Metabrowser.app`, with a folder holding a Markdown file open:

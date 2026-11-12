@@ -1304,7 +1304,7 @@ What it adds to this brief:
 
 ## 2026-11-11 Addendum: The WebKit Measurement Gate
 
-Recommendation 4’s gate was run in the spike’s web view, in back-to-back pairs against
+Recommendation 4’s gate was run in the app’s web view, in back-to-back pairs against
 Chrome, and recorded in
 [Measured in WebKit](../../large-content-rendering.md#measured-in-webkit) with its
 method, machine, and versions.
@@ -1319,7 +1319,7 @@ What it changes here:
   also helps Safari users of the CLI, or Option F. That choice is the owner’s.
 - **Engine evidence is no longer Chromium-only** (What Metabrowser Requires of a Host),
   for the bounds the gate covers.
-  WebKit used a quarter to a third of Chrome’s renderer memory, and its element-height
+  WebKit used a seventh to a half of Chrome’s renderer memory, and its element-height
   limit is 33,554,428 CSS px, twice Chrome’s on a 2x display.
 - **`window.print()` is now verified, and does nothing** in a `WKWebView` whose delegate
   does not implement WebKit’s private print methods; `printOperation(with:)`, run
