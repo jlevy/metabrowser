@@ -324,7 +324,8 @@ def held(*args, **kwargs):
 async def held_acquisition(*args, **kwargs):
     # A fetch's Git stands in as a process group of its own, as acquisition starts it.
     group = await start_process_group(
-        lambda: asyncio.create_subprocess_exec("sleep", "600", start_new_session=True)
+        lambda: asyncio.create_subprocess_exec("sleep", "600", start_new_session=True),
+        program="sleep",
     )
     print(f"held {group.pid}", flush=True)
     await asyncio.Event().wait()

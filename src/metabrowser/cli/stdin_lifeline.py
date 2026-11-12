@@ -26,23 +26,13 @@ from typing import Final, NoReturn
 
 from metabrowser.cli.common import write_notice_now_or_never
 from metabrowser.errors import CLIError
-from metabrowser.git.process import (
-    kill_live_process_groups,
-    stop_process_groups,
-    wait_for_process_group_spawns,
-)
+from metabrowser.git.process import stop_process_groups
 
 STDIN_CLOSED_NOTICE: Final[bytes] = b"Stopping Metabrowser: stdin closed.\n"
 # A parent going away is an orderly end of serving, not a failure.
 STDIN_CLOSED_EXIT_STATUS: Final[int] = 0
 # What one read takes from the pipe; the bytes are dropped.
 _READ_BYTES: Final[int] = 64 * 1024
-# How long a stop waits for a group's spawn that was under way to end, which kills the
-# group and exits. A Git spawn took 2.9 ms (median) and 3.9 ms (max) from its start to
-# its registration over 50 runs on a loaded M-series Mac (2026-11-11), so the bound is
-# reached only when the event loop does not get back to the spawn; the stop then kills
-# what it knows and exits anyway.
-_SPAWN_WAIT_S: Final[float] = 2.0
 
 
 def require_open_stdin(*, fd: int = 0) -> None:
@@ -102,10 +92,6 @@ def stop_when_stdin_closes(*, fd: int = 0) -> threading.Thread:
     return watch_for_eof(stop_for_closed_stdin, fd=fd)
 
 
-def _exit_for_closed_stdin() -> NoReturn:
-    os._exit(STDIN_CLOSED_EXIT_STATUS)
-
-
 def stop_for_closed_stdin() -> NoReturn:
     """Stop the process on the spot, as one Ctrl-C does (see ``serve._stop_now``).
 
@@ -116,16 +102,14 @@ def stop_for_closed_stdin() -> NoReturn:
     slow read keeps the process alive.
 
     Git and ``gh`` that run in process groups of their own are killed first, by
-    :func:`stop_process_groups`, which also refuses new ones. A group whose spawn is
-    under way on the event loop is killed by that spawn as soon as it exists, and the
-    spawn then exits; this thread waits for it, up to a bound, and exits itself if the
-    loop never gets back to the spawn.
+    :func:`stop_process_groups`, which also refuses new ones. It finds them from the
+    kernel's list of this process's children, so a group whose spawn is stuck on the
+    event loop is killed too, and it waits, within a bound, only for a spawn on the
+    event loop that may not have forked yet.
     """
     write_notice_now_or_never(2, STDIN_CLOSED_NOTICE)
-    if not stop_process_groups(_exit_for_closed_stdin):
-        wait_for_process_group_spawns(_SPAWN_WAIT_S)
-        kill_live_process_groups()
-    _exit_for_closed_stdin()
+    stop_process_groups()
+    os._exit(STDIN_CLOSED_EXIT_STATUS)
 
 
 __all__ = [

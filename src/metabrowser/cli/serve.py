@@ -17,7 +17,7 @@ import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import override
+from typing import NoReturn, override
 
 import typer
 import uvicorn
@@ -116,7 +116,7 @@ def _write_stopping_notice() -> None:
     write_notice_now_or_never(2, _STOPPING_NOTICE)
 
 
-def _stop_now(sig: int, _frame: FrameType | None) -> None:
+def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     """Stop the process on the spot, reporting the interrupt exit code.
 
     This is a local, single-user, read-only file browser. There are no
@@ -127,18 +127,15 @@ def _stop_now(sig: int, _frame: FrameType | None) -> None:
     close, which is what stopping the server means.
 
     A background refresh's Git runs in its own process group, which exiting
-    here would leave running, so those groups are killed first. What a killed
-    fetch leaves in its store is removed by the next refresh. A terminal hangup
-    that lands here exits with the status a shell reports for it.
-
-    Returns only when the interrupt landed while a group's spawn was under way
-    on this thread, between its fork and its registration: the spawn, which
-    only this thread can finish, then kills the group and exits, within
-    milliseconds (see :func:`stop_process_groups`). A second press exits at once.
+    here would leave running, so those groups are killed first, including one
+    whose spawn has not returned, by :func:`stop_process_groups`, which needs
+    nothing from the event loop this handler interrupted. What a killed fetch
+    leaves in its store is removed by the next refresh. A terminal hangup that
+    lands here exits with the status a shell reports for it.
     """
     _write_stopping_notice()
-    status = HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE
-    stop_process_groups(lambda: os._exit(status))
+    stop_process_groups()
+    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
 
 
 class _QuietForceExitServer(uvicorn.Server):
@@ -150,10 +147,7 @@ class _QuietForceExitServer(uvicorn.Server):
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         if sig == signal.SIGINT:
             self.interrupted = True
-            # Returns only while a group's spawn finishes the stop; uvicorn's own
-            # shutdown is not wanted then either.
             _stop_now(sig, frame)
-            return
         super().handle_exit(sig, frame)
 
 

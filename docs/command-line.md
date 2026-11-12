@@ -143,8 +143,15 @@ The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin
 the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
 them) and any `gh` are killed, and the process exits at once, with status 0. Those run
 in process groups of their own, which would outlive the server, and a fetch holds its
-store’s lock, so each group is killed with every helper in it, including one whose start
-is under way when the stop begins, and no new one is started.
+store’s lock, so each group is killed with every helper in it, and no new one is
+started. The stop finds them in the system’s list of the server’s child processes, so it
+kills one whose start has not finished too, and it does not wait on the server’s event
+loop: it ends within a short bound (`SPAWN_WAIT_S` in `metabrowser/git/process.py`) even
+when that loop is stuck.
+Two things escape it: a child that has not yet begun running Git when that bound runs
+out, and the helpers of a Git whose start failed, which Python’s asyncio kills alone.
+On systems other than macOS and Linux, which cannot list a process’s children this way,
+a start under way is not covered.
 Other Git, which only reads, runs in the server’s own process group and is not
 signalled; it holds no lock, and it ends when it next writes to, or reads from, the
 server that is gone.
