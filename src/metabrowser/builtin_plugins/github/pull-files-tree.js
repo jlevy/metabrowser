@@ -806,7 +806,7 @@ function isFilesEnvelope(value) {
  *   routable?(path: string): boolean,
  *   leave(): void,
  *   lastInput?(): number | null,
- *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "failed" | "bound" | "reader" | "closed"): void,
+ *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "failed" | "bound" | "reader" | "closed" | "withdrawn"): void,
  * }} FileTreeDependencies
  */
 
@@ -945,9 +945,10 @@ export function createFileTreeController(deps, options) {
 
   /**
    * End an offer's wait once, saying how long the rows were offered and why that ended: the
-   * reader asked for them, or the tree closed with them still offered.
+   * reader asked for them, the tree closed with them still offered, or a later answer brought
+   * back the rows drawn.
    *
-   * @param {"reader" | "closed"} why
+   * @param {"reader" | "closed" | "withdrawn"} why
    */
   function endOffer(why) {
     if (withheld && heldSince !== null) {
@@ -1127,7 +1128,13 @@ export function createFileTreeController(deps, options) {
         const changed = holder.accept(envelope);
         // Late rows wait for the reader: the first into an empty tree, and every later change
         // to a drawn one, a list's further pages and a refresh that replaces it.
-        if (
+        if (changed && withheld && drawsSameRows()) {
+          // A later answer brought back the rows drawn: the offer has nothing to show.
+          endOffer("withdrawn");
+          withheld = false;
+          offerFloats = false;
+          rebuild();
+        } else if (
           changed &&
           (withheld || ((rows.length > 0 || !opening) && late() && !drawsSameRows()))
         ) {

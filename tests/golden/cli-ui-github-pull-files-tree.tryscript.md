@@ -585,8 +585,10 @@ on its line (`fill`), and a refreshed complete list over the tree’s top, float
 (`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`). A
 refresh that would draw the same rows is drawn in place, since it moves nothing
 (`unchangedRefresh`), and an offer hides none of the tree’s line or notices
-(`offerKeepsNotices`). Each hold’s span says how long it held and why it ended, an offer
-included when the tree closes on it, and a first read that fails as failed (`spans`).
+(`offerKeepsNotices`). An offer that a later answer makes empty, by bringing back the
+rows drawn, is withdrawn (`offerWithdrawn`). Each hold’s span says how long it held and
+why it ended, an offer included when the tree closes on it, and a first read that fails
+as failed (`spans`).
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -631,6 +633,18 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "4 rows, offer: Show 1 more file"
     ],
     "floats": true
+  },
+  "offerWithdrawn": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show 1 more file",
+      "4 rows"
+    ],
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 60000 ms"
+    ]
   },
   "unchangedRefresh": {
     "painted": [

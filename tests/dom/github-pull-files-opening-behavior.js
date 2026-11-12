@@ -247,6 +247,29 @@ async function run() {
     facts.refreshed = { painted: refreshed.painted, floats: refreshed.last().offerFloats };
   }
 
+  // The same offer standing, and a later refresh that brings back the rows drawn: the offer is
+  // withdrawn, since pressing it would draw nothing new (review D4).
+  {
+    const input = { at: 0 };
+    const changed = structuredClone(recorded.comparison);
+    changed.generation = `${"0".repeat(31)}4`;
+    changed.fetched += 1;
+    changed.rows = [
+      ...changed.rows,
+      { ...changed.rows[0], path: "docs/added.md", display: "docs/added.md" },
+    ];
+    const back = structuredClone(recorded.comparison);
+    back.generation = `${"0".repeat(31)}5`;
+    const returned = story(tree, [structuredClone(recorded.comparison), changed, back], input);
+    returned.controller.expand();
+    returned.frame();
+    await settle();
+    returned.frame();
+    await returned.advance(recorded.comparison.fresh_for_s * 1000);
+    await returned.advance(2 * recorded.comparison.fresh_for_s * 1000);
+    facts.offerWithdrawn = { painted: returned.painted, spans: returned.spans };
+  }
+
   // A cached list that is stale, drawn at the click, whose refresh answers a second later with
   // the same files, as after a rebase that leaves the diff as it was: it would draw the same
   // rows, so it is drawn in place, and nothing is offered.

@@ -291,6 +291,12 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file"],
             "floats": True,
         },
+        # A later refresh that brings back the rows drawn withdraws the offer (review D4);
+        # before, it stood as "Show the updated list of 2 files".
+        "offerWithdrawn": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file", "4 rows"],
+            "spans": ["opening met 0 ms", "lateRows withdrawn 60000 ms"],
+        },
         # A refresh that changes nothing draws the same rows, so it is drawn in place and
         # offers nothing (review C3); before, "Show the updated list of 2 files".
         "unchangedRefresh": {"painted": ["closed", "4 rows"], "reads": 3, "offer": None},
