@@ -93,8 +93,14 @@ struct LiveMetabTests {
     }
 
     /// What a crashed or force-quit app leaves: the kernel closes the stdin pipe the app
-    /// held, and the server, started as the app starts it, stops by itself and frees its
-    /// port. Nothing signals it.
+    /// held, and the server, started as the app starts it and serving, stops by itself
+    /// and frees its port. Nothing signals it.
+    ///
+    /// Review C4 on #363: the test closed stdin as soon as the server announced itself,
+    /// which it does before its socket listens, so the failed request at the end did not
+    /// show that a listening server let its port go. It now closes stdin only once the
+    /// server answers and holds its port. A stdin closed during startup is the CLI's case,
+    /// `test_a_stdin_that_closes_while_startup_is_held_stops_the_server`.
     @Test func aServerWhoseAppIsGoneStopsByItself() async throws {
         let path = try #require(liveMetab)
         let root = try temporaryDirectory()
@@ -108,20 +114,58 @@ struct LiveMetabTests {
             child.signalGroup(SIGKILL)  // only if the test failed with it running
             child.release()
         }
-        var announced: ServerEndpoint?
-        for await line in child.lines {
-            announced = launch.endpoint(announcedBy: line)
-            if announced != nil { break }
-        }
-        let endpoint = try #require(announced)
-        #expect(await eventually(within: .seconds(20)) { !child.hasExited })
+        let announced = await firstResult(within: .seconds(20), of: [{ @Sendable in
+            for await line in child.lines {
+                if let endpoint = launch.endpoint(announcedBy: line) { return endpoint }
+            }
+            return nil
+        }])
+        let endpoint = try #require(announced, "no announcement within 20 seconds")
+        let readiness = launch.readinessURL(for: endpoint)
+        let port = try #require(endpoint.origin.port)
+        try #require(await answers(readiness, within: .seconds(20)), "the server never answered \(readiness)")
+        try #require(!child.hasExited)
+        #expect(!canBindLoopback(port: port), "nothing listens on \(port), so the check below would prove nothing")
+
         child.closeLifeline()  // what the kernel does when the app dies
         let clock = ContinuousClock()
         let closed = clock.now
         let status = try #require(await firstResult(within: .seconds(15), of: [{ @Sendable in await child.waitForExit() }]))
         #expect(ExitStatus(waitStatus: status) == .exited(0))
         #expect(closed.duration(to: clock.now) < .seconds(5))
-        #expect(await HTTPReadiness.probe(endpoint.entryURL) == false)
+        #expect(await HTTPReadiness.probe(readiness) == false)
+        #expect(canBindLoopback(port: port))
         #expect(child.recentOutput().contains("Stopping Metabrowser: stdin closed."))
+    }
+}
+
+/// Whether `url` answers with a 2xx within `limit`, polled as the supervisor polls it.
+private func answers(_ url: URL, within limit: Duration) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: limit)
+    while clock.now < deadline {
+        if await HTTPReadiness.probe(url) { return true }
+        try? await Task.sleep(for: .milliseconds(50))
+    }
+    return false
+}
+
+/// Whether a socket can bind 127.0.0.1:`port`. With `SO_REUSEADDR`, connections the
+/// server left in TIME_WAIT do not block it, and a socket still listening there does.
+private func canBindLoopback(port: Int) -> Bool {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { return false }
+    defer { close(fd) }
+    var on: Int32 = 1
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    address.sin_port = in_port_t(UInt16(port)).bigEndian
+    return withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+        }
     }
 }
