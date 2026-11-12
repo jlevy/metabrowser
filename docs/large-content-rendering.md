@@ -636,33 +636,44 @@ switch show none. The choice is the owner’s, and this gate leaves it open.
 
 ### `window.print()` and Drag and Drop
 
-`run.mjs --checks` scripted both in the app’s web view class and configuration, with the
-app’s navigation policy deciding every navigation, on the same machine and versions.
-The screen was locked, so no drag could be made by hand: the drags were delivered to the
-web view’s own drop methods with a file URL on a private pasteboard, which is what
-AppKit delivers for a drag from Finder.
+`run.mjs --checks` scripts both in the app’s web view class and configuration, with the
+app’s navigation policy deciding every navigation.
+The screen was locked for both runs below, so no drag could be made by hand: the drags
+were delivered to the web view’s own drop methods with a file URL on a private
+pasteboard, which is what AppKit delivers for a drag from Finder.
 
-- **`window.print()` does nothing.** The Print button in a file’s header calls it.
+The first run, on the same machine and versions as the measurements and before
+jlevy/metabrowser#359, found:
+
+- **`window.print()` did nothing.** The Print button in a file’s header calls it.
   WebKit hands it to two private `WKUIDelegate` methods, `_webView:printFrame:` and
   `_webView:printFrame:pdfFirstPageSize:completionHandler:`, which it asked the delegate
-  for; the app implements neither, and no public method exists, so no panel, sheet, or
+  for; the app implemented neither, and no public method exists, so no panel, sheet, or
   modal window opened.
-- **File > Print works.** The app prints through `printOperation(with:)` run modally for
-  its window. A Markdown document printed as 8 pages of the document alone (Chrome’s
+- **File > Print worked.** The app prints through `printOperation(with:)` run modally
+  for its window. A Markdown document printed as 8 pages of the document alone (Chrome’s
   print of the same page: 9). Run synchronously with `run()` instead, the same operation
   printed blank pages until it was stopped at 865 MB, so it has to stay modal.
   Both engines printed a numbered item’s wrapped lines one word to a line, a defect of
   the print styles rather than of WebKit.
-- **A dropped folder opens.** `DropAwareWebView` takes a folder before WebKit sees it
-  and hands it to the app, which opens it in a window; the page saw no drag events.
-- **A dropped file does nothing.** The page saw `dragenter` and `dragover` carrying
+- **A dropped folder opened.** `DropAwareWebView` took a folder before WebKit saw it and
+  handed it to the app, which opened it in a window; the page saw no drag events.
+- **A dropped file did nothing.** The page saw `dragenter` and `dragover` carrying
   `Files` and handled neither, so WebKit’s default was to load the file: it asked to
   navigate to its `file://` URL, the policy cancelled that, and the page stayed put.
 
-The list records what the run found.
-Both failures are fixed since, in jlevy/metabrowser#359: a user script hands the main
-frame’s `window.print()` to the same print path as File > Print (`mb-j3eu`), and a
-dragged file opens at its page through the app’s open path (`mb-3h2m`).
+Both failures are fixed in jlevy/metabrowser#359: a user script hands the main frame’s
+`window.print()` to the same print path as File > Print (`mb-j3eu`), and a dragged file
+opens at its page through the app’s open path (`mb-3h2m`). The driver now installs that
+print bridge, `PagePrintRequests`, as the app does, and answers each request with the
+app’s policy. A second run, on the same machine and versions after those fixes, found:
+
+- **The Print button reaches the print path.** Its click sent one request from the main
+  frame of the server’s own page, the policy allowed it, and File > Print’s path printed
+  the document as 8 pages.
+- **A dropped file and a dropped folder both go to the app.** `DropAwareWebView` handed
+  each to `onFileDrop`, where the app opens it, before WebKit saw it; no navigation was
+  asked for, and the page stayed put.
 
 The same check by hand on the built app is
 [Checking Print and Drops by Hand](../apps/macos/README.md#checking-print-and-drops-by-hand)

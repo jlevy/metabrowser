@@ -11,8 +11,8 @@
 //   webkit-driver measure URL SCRIPT   inject SCRIPT at document start, load URL, print
 //                                      the probe's record, then wait for a line on stdin
 //   webkit-driver print URL PDF [N]    press the page's Print button, which calls
-//                                      window.print(), then print through printOperation
-//                                      as File > Print does, to PDF, at most N pages
+//                                      window.print(); the app's bridge hands it to
+//                                      File > Print's path, here to PDF, at most N pages
 //   webkit-driver drop URL PATH...     drop file URLs on the web view, as a drag from
 //                                      Finder delivers them
 //
@@ -138,6 +138,13 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     var fileDrops: [[String]] = []
     var loaded = false
     var occlusionDetectionDisabled = false
+    /// The app's bridge for the page's own Print button, installed as the app installs it.
+    var pagePrints: PagePrintRequests?
+    /// Every request the bridge delivered, with the policy's answer.
+    var pagePrintRequests: [[String: Any]] = []
+    /// The print path's result, once a print started; nil before.
+    var printRecord: [String: Any]?
+    var printing = false
     /// UI-delegate selectors naming printing that WebKit asked this delegate about. The
     /// app's delegate implements the same public methods as this one, so it answers the
     /// same way: no.
@@ -157,7 +164,11 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let configuration = WebConfiguration.make()
+        // As BrowserWindowController.pagePrints: the page's window.print() reaches
+        // pageAskedToPrint, which answers it as the app does.
+        let pagePrints = PagePrintRequests { [weak self] _, frame in self?.pageAskedToPrint(frame) }
+        self.pagePrints = pagePrints
+        let configuration = WebConfiguration.make(pagePrints: pagePrints)
         // A fresh store per run, like the scratch profile Chrome gets, so neither engine
         // starts with a warm HTTP cache. The rest of the configuration is the app's.
         configuration.websiteDataStore = .nonPersistent()
@@ -285,12 +296,13 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         exit(0)
     }
 
-    /// `window.print()` the way the shell's Print button calls it, then the app's menu path.
+    /// The page's Print button, which calls `window.print()`, and the print path it reaches.
+    ///
+    /// The app answers an allowed request with File > Print's path (`pageAskedToPrint`), so
+    /// the print starts from the request here too. If no request starts it, the check runs
+    /// that path itself, as File > Print does, and the record says which started it.
     func checkPrint() async throws {
-        guard let webView, let window else { return }
-        let pdfPath = arguments.first ?? "webkit-gate-print.pdf"
-        // At most this many pages, a safety net for a document that never stops paginating.
-        let lastPage = arguments.count > 1 ? Int(arguments[1]) ?? 50 : 50
+        guard let webView else { return }
         let windowsBefore = NSApp.windows.count
         let called = try await webView.callAsyncJavaScript(
             """
@@ -306,19 +318,60 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
             window.print();
             return "window.print() directly: no Print button appeared";
             """, arguments: [:], in: nil, contentWorld: .page)
-        try await Task.sleep(for: .seconds(3))
-        let afterScript: [String: Any] = [
+        // The same 3 s the check waited for a panel before the bridge existed.
+        var waited = 0
+        while !printing, waited < 30 {
+            try await Task.sleep(for: .milliseconds(100))
+            waited += 1
+        }
+        let pagePrint: [String: Any] = [
             "called": called as? String ?? "",
+            "requests": pagePrintRequests,
+            "reached_print_path": printing,
             "windows_before": windowsBefore,
             "windows_after": NSApp.windows.count,
-            "windows": NSApp.windows.map { "\(type(of: $0)) \"\($0.title)\" visible=\($0.isVisible)" },
-            "sheet_attached": window.attachedSheet != nil,
-            "modal_window": NSApp.modalWindow?.title ?? NSNull(),
             "print_selectors_webkit_asked_for": Self.printSelectorsAsked.sorted(),
         ]
+        if !printing {
+            startPrint(startedBy: "File > Print: no page request started a print")
+        }
+        while printRecord == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        emit([
+            "engine": engineFacts(),
+            "page_print": pagePrint,
+            "print_operation": printRecord ?? [:],
+            "navigations": decisions,
+        ])
+        exit(0)
+    }
 
-        // File > Print in the app: printOperation(with:), here saved to a PDF instead of
-        // shown in a panel.
+    /// The app's answer to the page's Print button (`BrowserWindowController`'s
+    /// `pageAskedToPrint`): the same policy, then File > Print's path. Only the print check
+    /// prints; another mode records the request alone.
+    func pageAskedToPrint(_ frame: WKFrameInfo) {
+        let sheetOpen = window?.attachedSheet != nil
+        let allowed = policy.allowsPagePrint(
+            from: frame.request.url, isMainFrame: frame.isMainFrame, sheetOpen: sheetOpen)
+        pagePrintRequests.append([
+            "frame_url": frame.request.url?.absoluteString ?? "",
+            "main_frame": frame.isMainFrame,
+            "sheet_open": sheetOpen,
+            "allowed": allowed,
+        ])
+        guard allowed, mode == "print", !printing else { return }
+        startPrint(startedBy: "the page's Print request")
+    }
+
+    /// File > Print in the app (`printPage`): printOperation(with:) run modally for the
+    /// window, here saved to a PDF of at most the page limit instead of shown in a panel.
+    func startPrint(startedBy: String) {
+        guard let webView, let window else { return }
+        printing = true
+        let pdfPath = arguments.first ?? "webkit-gate-print.pdf"
+        // At most this many pages, a safety net for a document that never stops paginating.
+        let lastPage = arguments.count > 1 ? Int(arguments[1]) ?? 50 : 50
         let info = NSPrintInfo.shared.copy() as! NSPrintInfo
         info.jobDisposition = .save
         info.dictionary()[NSPrintInfo.AttributeKey.allPages] = false
@@ -329,33 +382,28 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         operation.showsPrintPanel = false
         operation.showsProgressPanel = false
         operation.view?.frame = webView.bounds
-        // runModal(for:), as the app calls it: WebKit computes the pages asynchronously, and
-        // a synchronous run() here printed blank pages until it was stopped at 865 MB.
-        let started = Date()
-        let printed = await withCheckedContinuation { continuation in
-            let done = PrintDone(continuation)
-            operation.runModal(
-                for: window, delegate: done,
-                didRun: #selector(PrintDone.printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
-        }
-        let seconds = Date().timeIntervalSince(started)
-        let pdf = URL(fileURLWithPath: pdfPath)
-        // No file means nothing was printed, which the record reports as 0 bytes.
-        let size = (try? pdf.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let document = PDFDocument(url: pdf)
-        let pages = document?.pageCount ?? 0
-        let firstPageText = document?.page(at: 0)?.string ?? ""
-        emit([
-            "engine": engineFacts(),
-            "window_print": afterScript,
-            "print_operation": [
-                "ran": printed, "pdf_bytes": size, "pdf_pages": pages, "page_limit": lastPage,
-                "first_page_text": String(firstPageText.prefix(160)),
+        Task { @MainActor in
+            // runModal(for:), as the app calls it: WebKit computes the pages asynchronously,
+            // and a synchronous run() here printed blank pages until it was stopped at 865 MB.
+            let started = Date()
+            let printed = await withCheckedContinuation { continuation in
+                let done = PrintDone(continuation)
+                operation.runModal(
+                    for: window, delegate: done,
+                    didRun: #selector(PrintDone.printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
+            }
+            let seconds = Date().timeIntervalSince(started)
+            let pdf = URL(fileURLWithPath: pdfPath)
+            // No file means nothing was printed, which the record reports as 0 bytes.
+            let size = (try? pdf.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let document = PDFDocument(url: pdf)
+            printRecord = [
+                "started_by": startedBy, "ran": printed, "pdf_bytes": size,
+                "pdf_pages": document?.pageCount ?? 0, "page_limit": lastPage,
+                "first_page_text": String((document?.page(at: 0)?.string ?? "").prefix(160)),
                 "seconds": (seconds * 10).rounded() / 10,
-            ],
-            "navigations": decisions,
-        ])
-        exit(0)
+            ]
+        }
     }
 
     /// Drags each path onto the middle of the page and drops it, one at a time.

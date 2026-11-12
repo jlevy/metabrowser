@@ -299,9 +299,9 @@ accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the 
 From `apps/macos`, `node webkit-gate/run.mjs --checks` scripts these in the app’s web
 view class
 ([Measured in WebKit](../../docs/large-content-rendering.md#windowprint-and-drag-and-drop)
-has its results, from before the two fixes below); this is the same check on the built
-development app, `build/dev/Metabrowser.app`, with a folder holding a Markdown file
-open:
+has its results, from before the two fixes below and after them); this is the same check
+on the built development app, `build/dev/Metabrowser.app`, with a folder holding a
+Markdown file open:
 
 1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`,
    which opens the same print panel as File > Print (`mb-j3eu`; the gate found that it
