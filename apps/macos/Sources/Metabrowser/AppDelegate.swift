@@ -106,10 +106,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for signalNumber in [SIGTERM, SIGINT, SIGHUP] {
             signal(signalNumber, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .global())
-            source.setEventHandler { @Sendable [weak self] in
+            // The block finds the delegate on the main actor rather than capturing `self`,
+            // so nothing crosses from this nonisolated block into the main actor (Swift 6.2
+            // rejected the captured form as a data race).
+            source.setEventHandler { @Sendable in
                 let main = CFRunLoopGetMain()
                 CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
-                    MainActor.assumeIsolated { self?.terminateForSignal(signalNumber) }
+                    MainActor.assumeIsolated {
+                        (NSApp.delegate as? AppDelegate)?.terminateForSignal(signalNumber)
+                    }
                 }
                 CFRunLoopWakeUp(main)
             }

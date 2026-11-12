@@ -366,6 +366,11 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         present(alert) { _ in completionHandler() }
     }
 
+    // The explicit selector keeps this reachable on every SDK. Earlier Xcode 26 SDKs
+    // declare the completion handler `@Sendable` rather than main-actor, so Swift does not
+    // take this method as the protocol's witness there, and without `@objc` WebKit would
+    // find no `confirm()` handler and answer Cancel.
+    @objc(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:)
     func webView(
         _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void
