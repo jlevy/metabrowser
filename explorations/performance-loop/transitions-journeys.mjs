@@ -548,9 +548,11 @@ const pullsListConverged = listConverged(
   ".pull-request-host",
 );
 
+// The filter chips are named by their own container, not by the panel that holds it, so a
+// build that moves them into the navigation's toolbar slot is measured the same way.
 async function closedPulls(ctx, numbers) {
   await ctx.setupClick(
-    '#tab-pulls .chip[data-chip-value="closed"]',
+    '.github-pulls-filters .chip[data-chip-value="closed"]',
     `() => document.querySelectorAll("#tab-pulls a.github-pulls-row").length > 4 && document.querySelector('#tab-pulls ul.github-pulls-list[data-filter="closed"]') !== null`,
     "Closed pull requests",
   );

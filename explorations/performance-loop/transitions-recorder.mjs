@@ -1261,8 +1261,11 @@ export function accountFrames({
  * Region movement over the window, from the arm-time snapshot and the per-frame log.
  * Per region and tracked component: the largest single step, the net displacement from
  * the first box to the last, and the path length (the sum of every step). A group's
- * figure is the largest over its regions and components. A region with `identity` counts
- * a change of that value as a replacement, not a movement.
+ * figure is the largest over its regions and components. A region is the same region
+ * across a re-created element and across frames in which it is absent: when it comes
+ * back, its step is measured from where it last was, so a pull request header replaced
+ * by the next one's, of another height, moves the tab bar below it. A region with
+ * `identity` counts a change of that value as a replacement, not a movement.
  */
 export function regionMovement(snapshot, log, t0, regions, windowEnd = Number.POSITIVE_INFINITY) {
   const out = {};
@@ -1298,19 +1301,21 @@ export function regionMovement(snapshot, log, t0, regions, windowEnd = Number.PO
     // Net displacement is measured between boxes of one identity: the first box after
     // the last replacement against the last box.
     let anchor = seq[0];
+    // The last box the region had, so a step bridges the frames in which it was absent.
+    let seen = seq[0];
     for (let i = 1; i < seq.length; i++) {
-      const a = seq[i - 1];
       const b = seq[i];
-      if (a === null && b !== null) {
+      if (seq[i - 1] !== null && b === null) {
+        removed += 1;
+      }
+      if (b === null) {
+        continue;
+      }
+      const a = seen;
+      seen = b;
+      if (a === null) {
         appeared += 1;
         anchor ??= b;
-        continue;
-      }
-      if (a !== null && b === null) {
-        removed += 1;
-        continue;
-      }
-      if (a === null || b === null) {
         continue;
       }
       if (spec.identity && a[4] !== b[4]) {

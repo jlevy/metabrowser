@@ -779,8 +779,12 @@ start for a landing).
 - the movement of each named region (`REGIONS` in `transitions-recorder.mjs`) over the
   window, per tracked component of its post-layout box: the largest single step, the net
   displacement, and the path length (every step summed), for the page and for each group
-  (`tree`, `palette`). A tree row is identified by its `data-path`, so a row the product
-  re-creates is still the same row, and a different row is a replacement;
+  (`tree`, `palette`). A region is its selector, not an element: one the product
+  re-creates, or that is absent for some frames, is still the same region, and its next
+  box is measured from where it last was, so a pull request page replaced by one with a
+  taller header moves the tab bar below it.
+  A tree row is identified by its `data-path`, so a different row is a replacement, not
+  a movement;
 - Layout Instability entries with value, `hadRecentInput`, and their sources;
 - requests by class (`data`, `plugin`, `static`, `kpress`, `background`, `stream`,
   `document`, `other`), from the page and its workers, and duplicate requests for the
