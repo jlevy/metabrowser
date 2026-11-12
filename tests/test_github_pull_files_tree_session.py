@@ -254,6 +254,24 @@ def test_the_tree_holds_its_invariants() -> None:
     assert checks["a list for another read starts again at 0"] is True
 
 
+def test_a_tree_opens_once_and_never_grows_without_input() -> None:
+    """A row's tree opens at its height, and late rows wait for the reader.
+
+    Opening waits ``FILES_OPEN_HOLD_MS`` for the cached list it reads at once, so a list the
+    cache holds goes from closed to its rows in one step, where it went through its loading
+    line first. Rows a GitHub job brings ``LATE_ROWS_MS`` past the reader's last press or key
+    are offered on the line, at its height, and drawn when the reader asks; before, they
+    pushed the rows below without input. Rows inside the input's window are drawn as before.
+    """
+
+    assert run_session("github-pull-files-opening-behavior.js") == {
+        "cached": ["closed", "4 rows"],
+        "lateRows": ["closed", "loading line", "offer: Show 2 files", "4 rows"],
+        "promptRows": ["closed", "loading line", "4 rows"],
+        "slowRead": ["closed", "loading line"],
+    }
+
+
 def test_the_recording_holds_every_failure_the_plan_names() -> None:
     """Each typed state of the plan's table has a recorded answer the session plays."""
 

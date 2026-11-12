@@ -70,6 +70,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   open: (route: {file: string, replace: boolean, jumped: boolean}) => void,
  *   leave: () => void,
  *   focusedIn: () => void,
+ *   lastInput?: () => number | null,
  * }} host
  */
 export function mountFileTree(host) {
@@ -83,7 +84,9 @@ export function mountFileTree(host) {
     h("span", { class: "spinner spinner-sm" }),
   ]);
   const lineText = h("span");
-  const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText]);
+  // Rows that came with no recent input, offered on the line at its height (LATE_ROWS_MS).
+  const offer = h("button", { type: "button", class: "github-pull-text-action", hidden: "" });
+  const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText, offer]);
   const notice = h("div", { class: "github-pull-files-notice-host" });
   const list = h("div", { class: "github-pull-files-rows" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
@@ -246,7 +249,7 @@ export function mountFileTree(host) {
     }
     const rows = model.rows;
     // A closed tree keeps what it drew, so it opens again as it was.
-    if (!model.expanded) {
+    if (!model.expanded || model.opening) {
       return;
     }
     const height = host.scrollRoot === null ? 0 : heightOfRow();
@@ -344,7 +347,8 @@ export function mountFileTree(host) {
     if (changedRows) {
       index = new Map(next.rows.map((row, at) => [row.id, at]));
     }
-    group.classList.toggle("tree-children-collapsed", !next.expanded);
+    // An opening tree stays closed for its first read, so it opens once, at its height.
+    group.classList.toggle("tree-children-collapsed", !next.expanded || next.opening);
     group.setAttribute("aria-label", next.label);
     if (owner !== null) {
       owner.setAttribute("aria-expanded", String(next.expanded));
@@ -352,7 +356,9 @@ export function mountFileTree(host) {
       owner.classList.toggle("collapsed", !next.expanded);
     }
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
-    line.hidden = next.line === null && !next.loading;
+    offer.textContent = next.offer ?? "";
+    offer.hidden = next.offer === null;
+    line.hidden = next.line === null && !next.loading && next.offer === null;
     spinner.hidden = !next.loading;
     // The names breathe as paint; the rows stay fully usable, so the group is not marked busy.
     group.classList.toggle("mb-refreshing-group", next.refreshing);
@@ -456,6 +462,7 @@ export function mountFileTree(host) {
       open: host.open,
       routable: (path) => host.href(path) !== null,
       leave: host.leave,
+      ...(host.lastInput === undefined ? {} : { lastInput: host.lastInput }),
     },
     {
       number: host.number,
@@ -467,6 +474,7 @@ export function mountFileTree(host) {
 
   const listening = new AbortController();
   const { signal } = listening;
+  offer.addEventListener("click", () => controller.reveal(), { signal });
   /** @param {EventTarget | null} target */
   const rowOf = (target) =>
     target instanceof Element

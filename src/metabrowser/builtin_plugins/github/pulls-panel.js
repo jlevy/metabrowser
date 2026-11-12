@@ -2806,6 +2806,7 @@ export function mountPullsPanel(container, ctx, mb) {
           }
           focusedTree = number;
         },
+        lastInput: () => lastInputAt,
       });
       trees.set(number, tree);
       const entry = painted.get(number);
@@ -3646,6 +3647,18 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   /** @type {number | undefined} */
   let peekTimer;
+  // The reader's last press or key anywhere, which a tree's late rows wait for.
+  /** @type {number | null} */
+  let lastInputAt = null;
+  for (const type of ["pointerdown", "keydown"]) {
+    document.addEventListener(
+      type,
+      () => {
+        lastInputAt = Date.now();
+      },
+      { capture: true, signal },
+    );
+  }
   list.addEventListener(
     "pointerover",
     (event) => {
