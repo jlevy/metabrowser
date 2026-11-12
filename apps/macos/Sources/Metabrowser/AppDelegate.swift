@@ -39,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         operations.onFinish = { [weak self] in await self?.finished($0) }
+        operations.onRefusal = { path, reason in
+            AppLog.app.error(
+                "not starting a server from \(path, privacy: .public): \(reason, privacy: .public); checking it again")
+        }
         return operations
     }()
     /// Open folders by canonical path (one session, and so one server, per root), plus
@@ -254,7 +258,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let open = sessions[key] as? FolderSession { return open }
         guard let setup = selection.setup, CLIServeLaunch.unservableReason(root) == nil else { return nil }
         let session = FolderSession(
-            root: root, setup: setup, gate: launchGate, accepted: { [weak self] in self?.selection.launchableSetup })
+            root: root, setup: setup, gate: launchGate,
+            accepted: { [weak self] in self?.operations.launchableSetup() })
         session.onWaitingForRuntime = { [weak self] in
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
             if self?.selection.isBusy == false { self?.showSettings(nil) }
@@ -570,7 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // Chosen now, not when the sheet opened: an upgrade, a restart, or a rejection
             // may have come since. With no runtime accepted now, nothing is stopped.
-            guard let latest = selection.launchableSetup?.runtime else {
+            guard let latest = operations.launchableSetup()?.runtime else {
                 AppLog.app.error("not restarting after the upgrade: no metab Metabrowser can run is selected now")
                 if !selection.isBusy { showSettings(nil) }
                 return

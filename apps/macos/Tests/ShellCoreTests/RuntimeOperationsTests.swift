@@ -342,3 +342,160 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
         #expect(subject.selection.launchableSetup?.runtime.version == "0.13.0")
     }
 }
+
+/// The trust check at the moment of spawning (review A1 on #377, mb-c505). Discovery,
+/// the launch's saved setup, and rechecks checked who could change the runtime's file,
+/// but a start then asked only for the selected runtime, so a folder on its path made
+/// writable by its group, or a link on it led elsewhere, while the start waited at the
+/// launch gate still spawned it: neither changes the file's fingerprint, which is all
+/// the watch compares.
+@Suite struct LaunchTrustTests {
+    /// A runtime the app found in `home/link/bin/metab`, where `link` leads to `opt`, and
+    /// a folder server held behind a busy launch gate whose children the test counts.
+    private final class Fixture {
+        let directory: URL
+        let home: String
+        let executable: String
+        let searches = Searches()
+        let gate = LaunchGate()
+        let spawned = Recorder<String>()
+        private(set) var finishes: [RuntimeOperations.Finish] = []
+        let operations: RuntimeOperations
+        let server: FolderServer
+
+        init(source: RuntimeSource = .localBin, name: String = #function) throws {
+            directory = try temporaryDirectory(name)
+            home = FileChecks.canonicalPath(directory.path(percentEncoded: false))
+            for folder in ["opt/bin", "shared/bin"] {
+                try FileManager.default.createDirectory(atPath: home + "/" + folder, withIntermediateDirectories: true)
+                let metab = home + "/" + folder + "/metab"
+                try Data("#!/bin/sh\necho metab 0.13.0\n".utf8).write(to: URL(filePath: metab))
+                chmod(metab, 0o755)
+                chmod(home + "/" + folder, 0o755)
+            }
+            chmod(home + "/shared", 0o775)  // its group can change what is in it
+            try FileManager.default.createSymbolicLink(atPath: home + "/link", withDestinationPath: home + "/opt")
+            executable = home + "/link/bin/metab"
+            let setup = RuntimeSetup(
+                runtime: Runtime(executable: executable, version: "0.12.1", source: source), tools: ToolPaths())
+            let ran = Recorder<String>()
+            let env = DiscoveryEnvironment(
+                home: home, environment: [:], saved: nil, shell: nil,
+                isExecutable: FileChecks.isExecutableFile, canonicalPath: FileChecks.canonicalPath,
+                run: { spec, _ in
+                    ran.append(spec.executable)
+                    return CommandResult(status: 0, output: ["metab 0.13.0"])
+                })
+            let searches = self.searches
+            let operations = RuntimeOperations(
+                selection: RuntimeSelection(
+                    settings: RuntimeSettings(defaults: UserDefaults(suiteName: "shellcore-launch-trust-\(UUID().uuidString)")!),
+                    setup: setup),
+                work: RuntimeOperations.Work(
+                    discover: { await searches.discover() },
+                    validate: { path, source in (nil, await RuntimeDiscovery.validate(path, env, source: source)) },
+                    tools: { ToolPaths() }))
+            self.operations = operations
+            let launch = CLIServeLaunch()
+            let root = URL(filePath: home + "/notes", directoryHint: .isDirectory)
+            let spec = { (setup: RuntimeSetup) in launch.spec(serving: root, with: setup, inherited: [:], logURL: nil) }
+            var policy = SupervisorPolicy()
+            policy.startupTimeout = startupCeiling
+            policy.shutdownGrace = .milliseconds(100)
+            policy.probeInterval = .milliseconds(5)
+            let spawned = self.spawned
+            let supervisor = ServerSupervisor(
+                spec: spec(setup), launch: launch, policy: policy, gate: gate,
+                makeProcess: { spec in
+                    spawned.append(spec.executable)
+                    let child = FakeProcess(pid: pid_t(8000 + spawned.count))
+                    child.say("Serving /tmp/notes at http://127.0.0.1:8412/view/")
+                    return child
+                },
+                probe: { _ in true })
+            server = FolderServer(supervisor: supervisor, accepted: { operations.launchableSetup() }, spec: spec)
+            operations.onFinish = { [unowned self] in finishes.append($0) }
+        }
+
+        /// Runs `request` while the launch gate is held, makes the change once the request
+        /// waits there, then opens the gate.
+        func whileWaitingAtTheGate(
+            _ request: @escaping () async -> FolderServer.Outcome, change: () throws -> Void
+        ) async throws -> FolderServer.Outcome {
+            await gate.acquire()
+            let waiting = Task { await request() }
+            #expect(await eventually { server.supervisor.state == .starting })
+            try change()
+            gate.release()
+            return await waiting.value
+        }
+
+        func remove() {
+            chmod(home + "/opt/bin", 0o755)
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    @Test func aRestoredStartSpawnsNothingOnceAFolderOnItsPathBecomesWritableByItsGroup() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let server = fixture.server
+        let outcome = try await fixture.whileWaitingAtTheGate({ await server.start(holding: false) }) {
+            chmod(fixture.home + "/opt/bin", 0o775)
+        }
+        #expect(outcome == .waitingForRuntime)
+        #expect(fixture.spawned.all.isEmpty)
+        #expect(fixture.operations.selection.launchableSetup == nil, "held off until something validates one")
+        // The recheck refuses the file too, and a search looks for another.
+        #expect(await eventually { fixture.finishes.count == 1 })
+        guard case .recheck(_, .untrusted(let reason))? = fixture.finishes.first?.operation else {
+            Issue.record("expected a recheck that refused the file, got \(fixture.finishes)")
+            return
+        }
+        #expect(reason.contains("can be changed by its group"))
+        #expect(await eventually { fixture.searches.started == 1 })
+    }
+
+    @Test func aRestartSpawnsNothingOnceALinkOnItsPathLeadsToAFolderOthersCanChange() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let server = fixture.server
+        #expect(await server.start() == .launched)
+        #expect(fixture.spawned.count == 1)
+        let outcome = try await fixture.whileWaitingAtTheGate({ await server.restart() }) {
+            try FileManager.default.removeItem(atPath: fixture.home + "/link")
+            try FileManager.default.createSymbolicLink(atPath: fixture.home + "/link", withDestinationPath: fixture.home + "/shared")
+        }
+        #expect(outcome == .waitingForRuntime)
+        #expect(fixture.spawned.count == 1, "no replacement child")
+        #expect(server.held == .restart)
+        #expect(await eventually { fixture.searches.started == 1 })
+        await server.supervisor.shutDown()
+    }
+
+    /// A file the user chose is run as chosen, at its launches too.
+    @Test func aChosenRuntimeStillLaunches() async throws {
+        let fixture = try Fixture(source: .chosen)
+        defer { fixture.remove() }
+        let server = fixture.server
+        let outcome = try await fixture.whileWaitingAtTheGate({ await server.start(holding: false) }) {
+            chmod(fixture.home + "/opt/bin", 0o775)
+        }
+        #expect(outcome == .launched)
+        #expect(fixture.spawned.all == [fixture.executable])
+        #expect(fixture.searches.started == 0)
+        await server.supervisor.shutDown()
+    }
+
+    /// Nothing changed: the start spawns, after one check at the gate.
+    @Test func anUnchangedRuntimeLaunches() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let server = fixture.server
+        let outcome = try await fixture.whileWaitingAtTheGate({ await server.start(holding: false) }) {}
+        #expect(outcome == .launched)
+        #expect(fixture.spawned.all == [fixture.executable])
+        #expect(fixture.operations.selection.launchableSetup != nil)
+        await server.supervisor.shutDown()
+    }
+}

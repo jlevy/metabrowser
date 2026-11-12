@@ -665,13 +665,23 @@ whose access control list cannot be read, is not run, and Settings, the first-ru
 and the log name it and why.
 The same rule holds for a runtime a previous search saved, at launch and at each recheck
 after its file changes; a launch whose saved runtime fails it searches again.
-A file chosen with Choose metab… is run as chosen, and Settings says when the rule would
-have refused it. `~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s
-`HOME` is the account’s own.
-Setup saves the runtime and the absolute paths of `git` and `gh`; later launches only
-check that the saved `metab` is still executable, may still be run, and is the file that
-was validated ([The Version It Requires](#the-version-it-requires)), so they start no
-extra process. If nothing usable is found, Settings shows the steps that are missing
+It holds at each server’s start too, checked again just before the child spawns, after
+the launch gate and any earlier child’s stop (`RuntimeOperations.launchableSetup`): a
+folder on the path made writable by its group, or a link on it that now leads elsewhere,
+changes no fingerprint, so the watch would not see it.
+A start refused there spawns nothing and waits, the runtime is held off, and a recheck,
+which refuses it too, searches for another.
+The check reads each component of the path and its access control list: 54 µs for an
+eleven-component path, measured in a debug build on macOS 26.5.2, two or three times per
+start.
+A file chosen with Choose metab… is run as chosen, and Settings says when the rule
+would have refused it.
+`~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
+account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
+launches only check that the saved `metab` is still executable, may still be run, and is
+the file that was validated ([The Version It Requires](#the-version-it-requires)), so
+they start no extra process.
+If nothing usable is found, Settings shows the steps that are missing
 ([The First Run Without metab](#the-first-run-without-metab)) and every place it looked.
 Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
 reveals the logs folder.

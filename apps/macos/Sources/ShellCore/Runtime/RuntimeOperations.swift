@@ -26,15 +26,20 @@ public final class RuntimeOperations {
         public var validate: (String, RuntimeSource) async -> (FileFingerprint?, CandidateResult)
         /// The tool paths for a chosen file when there is no runtime to keep them from.
         public var tools: () -> ToolPaths
+        /// Why the app may not run a file it found by itself now, or nil if it may
+        /// (`ExecutableTrust`).
+        public var refusal: (String) -> String?
 
         public init(
             discover: @escaping () async -> DiscoveryReport,
             validate: @escaping (String, RuntimeSource) async -> (FileFingerprint?, CandidateResult),
-            tools: @escaping () -> ToolPaths
+            tools: @escaping () -> ToolPaths,
+            refusal: @escaping (String) -> String? = { ExecutableTrust.refusal($0) }
         ) {
             self.discover = discover
             self.validate = validate
             self.tools = tools
+            self.refusal = refusal
         }
     }
 
@@ -74,6 +79,34 @@ public final class RuntimeOperations {
         self.selection = selection
         self.work = work
     }
+
+    /// The runtime a server may start from at this moment, which every start, restart, and
+    /// retry asks, the last time just before its child spawns, after the launch gate and
+    /// any earlier child's termination (`FolderServer`, `ServerSupervisor.mayLaunch`).
+    ///
+    /// It is the selection's runtime, and one the app found by itself only while no other
+    /// account can change its file (`ExecutableTrust`), checked now: a folder on its path
+    /// made writable by its group, a changed access control list, or a link on the path
+    /// that now leads elsewhere changes no fingerprint, so neither the watch nor the
+    /// selection notices it. One that fails is held off, and a recheck, which refuses it
+    /// as well, searches for another; whatever waited starts once one is accepted. A file
+    /// the user chose is run as chosen.
+    public func launchableSetup() -> RuntimeSetup? {
+        guard let setup = selection.launchableSetup, setup.runtime.source != .chosen else {
+            return selection.launchableSetup
+        }
+        // An `lstat` and an access control list read for each component of the path: 54 µs
+        // for an eleven-component path, measured in a debug build on macOS 26.5.2. A launch
+        // asks two or three times.
+        guard let reason = work.refusal(setup.runtime.executable) else { return setup }
+        onRefusal(setup.runtime.executable, reason)
+        beginRecheck()  // which holds the runtime off first, whether or not it runs now
+        return nil
+    }
+
+    /// A runtime the app found by itself failed `ExecutableTrust` at a launch: its path,
+    /// and why.
+    public var onRefusal: (String, String) -> Void = { _, _ in }
 
     /// Starts a search unless one is running. It counts as running from this call on, so
     /// a folder asked for in the same run-loop turn waits for it.
