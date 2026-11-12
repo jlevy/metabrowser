@@ -922,6 +922,17 @@ Terminal launch.
   elsewhere, and Command-click or right-click it for the path menu.
   [Why the Title Is a Title-Bar Accessory](#why-the-title-is-a-title-bar-accessory) has
   its measurements.
+- **Size:** a new window opens 80% as tall as its screen’s usable area (the visible
+  frame, without the menu bar and the Dock) and 90% as wide, at most 1,440 points wide
+  and never under the 480 by 320 minimum, on the screen with the key window
+  (`NewWindowFrame`). The first is centered as AppKit’s `center()` centers a window,
+  with a quarter of the free height above it; each next one steps 29 points down and
+  right, AppKit’s cascade step, and starts over at the first position before any part of
+  it would leave the screen.
+  A restored window keeps its saved frame, and a new tab takes the frame of the window
+  it joins (both checked on macOS 26.5 against a copy of the built app).
+  On a laptop the rule can open a window shorter than before, when every window opened
+  1,200 by 852 points: on a 13-inch laptop with the Dock showing, 675 points tall.
 - **Navigation:** the server’s origin (scheme, host, and port) stays in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, form, or Back and Forward is

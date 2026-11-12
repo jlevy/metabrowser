@@ -17,7 +17,8 @@
 //                                      Finder delivers them
 //
 // Each mode prints one JSON object on stdout and exits 0, or exits 1 with a message on
-// stderr. The window is 1200 x 820 points, the app's default content size.
+// stderr. The window is a fixed 1200 x 820 points, the content size the app's windows
+// opened at before they were sized to the screen, kept so that runs compare.
 import AppKit
 import PDFKit
 import ShellCore

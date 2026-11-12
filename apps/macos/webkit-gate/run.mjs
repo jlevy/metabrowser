@@ -12,7 +12,8 @@
 // for both engines), serves the committed diff benchmark pages and only the files they
 // load (static-server.mjs), builds webkit-driver, the app package's WebKitDriver target,
 // then runs each case as pairs: Chrome then WebKit, then WebKit then Chrome, alternating,
-// each sample a fresh browser with a cold cache at the app's 1200 x 820 content size.
+// each sample a fresh browser with a cold cache at a fixed 1200 x 820 content size, the
+// size the app's windows opened at before they were sized to the screen.
 // Both engines run probe.js, so they time the same intervals with the same code. Results
 // go to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora),
 // samples.jsonl (every record), summary.json, and summary.md, the table

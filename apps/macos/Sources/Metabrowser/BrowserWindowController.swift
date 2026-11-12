@@ -36,9 +36,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
-    private static var cascadePoint = NSPoint.zero
-    /// A new window's content size: most of a 14-inch laptop's screen.
-    private static let initialSize = NSSize(width: 1200, height: 820)
+    /// The window placed last, which the next one steps down and right from, while it
+    /// is open (`NewWindowFrame`).
+    private weak static var lastPlaced: NSWindow?
     /// Narrow enough to tile two windows side by side on a laptop screen, and wide
     /// enough for the status view.
     private static let minimumSize = NSSize(width: 480, height: 320)
@@ -64,7 +64,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container = WebContainerView(webView: webView, statusView: statusView)
 
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: Self.initialSize),
+            contentRect: NSRect(origin: .zero, size: Self.minimumSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.contentView = container
@@ -73,8 +73,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         window.addTitlebarAccessoryViewController(titleAccessory)
         window.tabbingIdentifier = Self.tabbingIdentifier
         window.isReleasedWhenClosed = false
-        window.center()
-        Self.cascadePoint = window.cascadeTopLeft(from: Self.cascadePoint)
+        Self.place(window)
         super.init(window: window)
         window.delegate = self
 
@@ -88,6 +87,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
+
+    /// Sizes a new window for the screen it opens on, the one with the key window (or
+    /// else the menu bar), and places it a step down and right from the window placed
+    /// before it, all of it on that screen (`NewWindowFrame`). A restored window then
+    /// takes its saved frame, and a new tab the frame of the window it joins.
+    private static func place(_ window: NSWindow) {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let visible = screen.visibleFrame
+        let size = NewWindowFrame.size(visible: visible, minimum: minimumSize)
+        let frame = NewWindowFrame.next(size: size, visible: visible, after: lastPlaced?.frame)
+        window.setFrame(frame, display: false)
+        lastPlaced = window
+    }
 
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
     /// `defaults write <bundle identifier> WebInspectorEnabled -bool true`.
