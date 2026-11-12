@@ -529,7 +529,12 @@ its check has not answered, a start spawns nothing and its windows say so, a res
 stops nothing if it has not yet, and both go ahead once a runtime is accepted.
 A folder the user opened or restarted waits on its own; a restore puts its root back at
 the front of its queue and pauses, so when a runtime is accepted each root is admitted
-again in its turn, in the restore’s order, with selected tabs first.
+again in its turn, in the restore’s order, with selected tabs first, including a tab
+selected while that root was waiting to start, which then starts it without the check.
+A restored background folder keeps its root check after it starts, so a later restart
+that finds its root changed, such as the one after an upgrade, spawns nothing; the
+folder waits for one of its tabs to be selected, which starts it once.
+A folder records the runtime it started from only once its child is created.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one

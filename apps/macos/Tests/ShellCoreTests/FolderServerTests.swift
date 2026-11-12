@@ -350,4 +350,171 @@ import Testing
         #expect(subject.selected.contains("/r/b"))
         #expect(subject.next(stillOpen: { _ in false }) == "/r/b")  // the user's choice is not checked again
     }
+
+    // MARK: - Selections while a root's start is outstanding (mb-ql6f)
+
+    /// Another tab selected while a root waited at the gate stays ahead of it when the
+    /// root is put back, and the root is admitted again in its turn.
+    @Test func aRootSelectedWhileAnotherWaitedStaysAheadOfIt() {
+        var subject = queue(["/r/a", "/r/b", "/r/c"])
+        #expect(subject.next() == "/r/a")
+        #expect(subject.next() == "/r/b")  // waiting at the gate
+        let selectedC = subject.select("/r/c")
+        #expect(selectedC)
+        subject.putBack("/r/b")  // no runtime
+        #expect(subject.pending == ["/r/c", "/r/b"])
+        let asked = Recorder<String>()
+        let admit = { (root: String) -> Bool in
+            asked.append(root)
+            return true
+        }
+        #expect(subject.next(stillOpen: admit) == "/r/c")
+        #expect(subject.next(stillOpen: admit) == "/r/b")
+        #expect(asked.all == ["/r/b"])  // only the background root is admitted again
+    }
+
+    /// The root's own tab selected while it waited is the user's choice once it is put
+    /// back: it is not admitted again, so it starts even if it became protected.
+    @Test func theRootSelectedWhileItWaitedIsSelectedWhenPutBack() {
+        var subject = queue(["/r/a", "/r/b", "/r/c"])
+        #expect(subject.next() == "/r/a")
+        #expect(subject.next() == "/r/b")
+        let selectedB = subject.select("/r/b")
+        #expect(!selectedB)  // nothing new to start: it is already starting
+        #expect(subject.selected.contains("/r/b"))
+        subject.putBack("/r/b")
+        #expect(subject.pending == ["/r/b", "/r/c"])
+        #expect(subject.next(stillOpen: { _ in false }) == "/r/b")
+    }
+
+    /// Both: the root selected first, then another tab; the later selection leads.
+    @Test func theLaterOfTwoSelectionsDuringTheWaitLeads() {
+        var subject = queue(["/r/a", "/r/b", "/r/c", "/r/d"])
+        _ = subject.next()
+        #expect(subject.next() == "/r/b")
+        _ = subject.select("/r/b")
+        _ = subject.select("/r/d")
+        subject.putBack("/r/b")
+        #expect(subject.pending == ["/r/d", "/r/b", "/r/c"])
+    }
+
+    // MARK: - A root-refused restart (mb-g77m)
+
+    /// A started restored folder whose root became protected before an upgrade restart:
+    /// the restart spawns nothing, the root waits for its tab, and selecting it starts
+    /// exactly one new server.
+    @Test func aRootRefusedRestartWaitsForItsTabAndStartsOnceSelected() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let home = FileChecks.canonicalPath(directory.path(percentEncoded: false))
+        for folder in ["notes", "wrk/app", "Documents/secret"] {
+            try FileManager.default.createDirectory(atPath: home + "/" + folder, withIntermediateDirectories: true)
+        }
+        let background = home + "/wrk/app"
+        var restore = queue([home + "/notes", background])
+        _ = restore.next()
+        #expect(restore.next() == background)
+        let spawned = Recorder<Int>()
+        let runtime = RuntimeSelection(
+            settings: RuntimeSettings(defaults: UserDefaults(suiteName: "shellcore-refused-\(UUID().uuidString)")!),
+            setup: RuntimeSetup(runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: ToolPaths()))
+        let launch = CLIServeLaunch()
+        let root = URL(filePath: background, directoryHint: .isDirectory)
+        let spec = { (setup: RuntimeSetup) in launch.spec(serving: root, with: setup, inherited: [:], logURL: nil) }
+        var policy = SupervisorPolicy()
+        policy.startupTimeout = .seconds(30)
+        policy.shutdownGrace = .milliseconds(100)
+        policy.probeInterval = .milliseconds(5)
+        let supervisor = ServerSupervisor(
+            spec: spec(runtime.setup!), launch: launch, policy: policy,
+            makeProcess: { _ in
+                spawned.append(1)
+                let child = FakeProcess()
+                child.say("Serving /tmp/root at http://127.0.0.1:8412/view/")
+                return child
+            },
+            probe: { _ in true })
+        let subject = FolderServer(supervisor: supervisor, accepted: { runtime.launchableSetup }, spec: spec)
+        subject.rootCheck = { RootAdmission.admit(background, home: home) == .open(background) }
+        #expect(await subject.start(holding: false) == .launched)
+        restore.finish(background)
+        #expect(spawned.count == 1)
+        // The folder becomes a link into Documents; then metab is upgraded.
+        try FileManager.default.moveItem(atPath: background, toPath: background + "-moved")
+        try FileManager.default.createSymbolicLink(atPath: background, withDestinationPath: home + "/Documents/secret")
+        let recheck = runtime.startRecheck()
+        _ = runtime.finishRecheck(recheck, fingerprint: nil, result: .valid(version: "0.13.0"))
+        #expect(await subject.restart() == .refusedByRoot)
+        #expect(spawned.count == 1)  // no replacement before the tab is selected
+        restore.hold(background)  // as FolderWindows does with a root-refused restart
+        #expect(restore.deferred == [background])
+        // Selecting its tab: the user's choice, so the root check is cleared.
+        let selected = restore.select(background)
+        #expect(selected)
+        subject.rootCheck = nil
+        #expect(restore.next(stillOpen: { _ in false }) == background)
+        #expect(await subject.start(holding: false) == .launched)
+        #expect(spawned.count == 2)
+    }
+}
+
+/// `startedRuntime` names only a runtime a child was actually created from (mb-wx92): a
+/// process factory that throws leaves it as it was.
+@Suite struct SpawnBookkeepingTests {
+    private struct CannotSpawn: Error {}
+
+    private func setup(_ executable: String, _ version: String) -> RuntimeSetup {
+        RuntimeSetup(runtime: Runtime(executable: executable, version: version, source: .localBin), tools: ToolPaths())
+    }
+
+    /// A supervisor whose factory throws for the launches `failing` numbers (from 0).
+    private func server(accepted: @escaping () -> RuntimeSetup?, failing: Set<Int>) -> (FolderServer, Recorder<Int>) {
+        let attempts = Recorder<Int>()
+        let launch = CLIServeLaunch()
+        let root = URL(filePath: "/tmp/root", directoryHint: .isDirectory)
+        let spec = { (setup: RuntimeSetup) in launch.spec(serving: root, with: setup, inherited: [:], logURL: nil) }
+        var policy = SupervisorPolicy()
+        policy.startupTimeout = .seconds(30)
+        policy.shutdownGrace = .milliseconds(100)
+        policy.probeInterval = .milliseconds(5)
+        let supervisor = ServerSupervisor(
+            spec: spec(setup("/opt/metab", "0.12.1")), launch: launch, policy: policy,
+            makeProcess: { _ in
+                let number = attempts.count
+                attempts.append(number)
+                if failing.contains(number) { throw CannotSpawn() }
+                let child = FakeProcess(pid: pid_t(6000 + number))
+                child.say("Serving /tmp/root at http://127.0.0.1:8412/view/")
+                return child
+            },
+            probe: { _ in true })
+        return (FolderServer(supervisor: supervisor, accepted: accepted, spec: spec), attempts)
+    }
+
+    @Test func aFirstStartWhoseChildCannotBeCreatedRecordsNoRuntime() async {
+        let (subject, attempts) = server(accepted: { self.setup("/opt/metab", "0.12.1") }, failing: [0])
+        await subject.start()
+        #expect(attempts.count == 1)
+        #expect(subject.supervisor.state.isFailed)
+        #expect(subject.startedRuntime == nil)
+        #expect(RuntimeUpgrade.outdated([subject.startedRuntime], current: setup("/opt/metab", "0.13.0").runtime) == [])
+    }
+
+    @Test func aRestartWhoseChildCannotBeCreatedKeepsTheRuntimeLastStarted() async {
+        var now = setup("/opt/metab", "0.12.1")
+        let (subject, attempts) = server(accepted: { now }, failing: [1])
+        await subject.start()
+        #expect(subject.startedRuntime?.version == "0.12.1")
+        now = setup("/opt/metab", "0.13.0")
+        await subject.restart()
+        #expect(attempts.count == 2)
+        #expect(subject.supervisor.state.isFailed)
+        #expect(subject.startedRuntime?.version == "0.12.1")
+    }
+}
+
+extension ServerState {
+    fileprivate var isFailed: Bool {
+        if case .failed = self { true } else { false }
+    }
 }

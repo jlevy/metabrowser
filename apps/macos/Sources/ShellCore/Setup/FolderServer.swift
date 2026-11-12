@@ -29,8 +29,10 @@ public final class FolderServer {
     }
 
     public let supervisor: ServerSupervisor
-    /// The runtime the server last spawned from; nil until it first spawns, as for a
-    /// restored folder still waiting for its turn or its tab.
+    /// The runtime the server last spawned a child from; nil until a child is first
+    /// created, as for a restored folder still waiting for its turn or its tab, or one whose
+    /// child could not be created. Set when the supervisor reports the child created
+    /// (`ServerSupervisor.onSpawn`).
     public private(set) var startedRuntime: Runtime?
     /// What waits for an accepted runtime.
     public private(set) var held: Request?
@@ -44,6 +46,9 @@ public final class FolderServer {
     private var attempts = 0
     /// Why the check at the moment of spawning refused a launch, by its number.
     private var refusal: (attempt: Int, outcome: Outcome)?
+    /// The runtime the check at the moment of spawning let through, which becomes
+    /// `startedRuntime` once the child is created.
+    private var approved: Runtime?
 
     /// - Parameters:
     ///   - accepted: the runtime a server may start from now, or nil.
@@ -56,6 +61,7 @@ public final class FolderServer {
         self.accepted = accepted
         self.spec = spec
         supervisor.mayLaunch = { [weak self] in self?.mayLaunchNow() ?? false }
+        supervisor.onSpawn = { [weak self] in self?.spawned() }
     }
 
     /// Whether a runtime is accepted now.
@@ -87,12 +93,14 @@ public final class FolderServer {
         return outcome == .waitingForRuntime ? waiting(.restart, holding: true) : outcome
     }
 
-    /// Carries out the held start or restart, if a runtime is accepted now.
-    public func resume() async {
+    /// Carries out the held start or restart, if a runtime is accepted now, and returns how
+    /// it ended; nil if nothing was held.
+    @discardableResult
+    public func resume() async -> Outcome? {
         switch held {
         case .start: await start()
         case .restart: await restart()
-        case nil: return
+        case nil: nil
         }
     }
 
@@ -123,9 +131,16 @@ public final class FolderServer {
             refusal = (launching.attempt, .refusedByRoot)
             return false
         }
-        startedRuntime = launching.setup.runtime
+        approved = launching.setup.runtime
         held = nil  // whatever was held is what spawns now
         return true
+    }
+
+    /// The child was created: until now, `startedRuntime` still names the one before, so a
+    /// process factory that throws leaves it as it was.
+    private func spawned() {
+        if let approved { startedRuntime = approved }
+        approved = nil
     }
 
     private func waiting(_ request: Request, holding: Bool) -> Outcome {
