@@ -186,8 +186,10 @@ issue or PR state uses a neutral entity icon.
 The page has three tabs.
 
 - **Conversation** shows the description, followed by comments, reviews, and commit
-  summaries. Commit rows follow GitHub’s conversation order, and a short commit ID opens
-  the exact commit on GitHub.
+  summaries. Commit rows the cache holds follow GitHub’s conversation order; commits
+  fetched from GitHub after the page has painted are added after what it shows, so
+  nothing you are reading moves.
+  A short commit ID opens the exact commit on GitHub.
   Cached timelines are readable offline.
   **Review comments** lists inline review comments with their files and diff hunks.
 - **Changes** shows the comparison from the merge base to the head, split or unified.

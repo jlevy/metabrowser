@@ -599,6 +599,28 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
     }
 
 
+def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
+    """Plain text never paints first where the description's Markdown can.
+
+    The first paint of a full record waits, within ``DESCRIPTION_HOLD_MS``, for the Markdown
+    it asked for, and is not ready meanwhile, so a page it replaces stays on screen. A
+    revisit and a refreshed record with the same text paint the render kept for that text,
+    keeping the description's node. Past the bound the text paints plain and its Markdown
+    follows. The kept renders are bounded by count and by characters. The state badge's
+    first paint is the fresher of the cached record and the repository's list.
+    """
+
+    assert run_session("github-pull-first-paint-behavior.js") == {
+        "firstVisit": "held, then final",
+        "refreshedSameText": "kept",
+        "revisit": "final at first paint",
+        "pastTheBound": "plain, then Markdown",
+        # A stale record paints the list's state when the list saw a later update.
+        "listedState": {"newerList": "Merged", "olderList": "Open"},
+        "bounded": True,
+    }
+
+
 def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -> None:
     """A cold selected page retains prior content until its honest core is ready."""
 

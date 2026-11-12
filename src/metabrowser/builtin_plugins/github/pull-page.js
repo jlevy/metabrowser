@@ -36,7 +36,7 @@
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
 import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
-import { displayState, pullStateIcon } from "./pull-state.js";
+import { displayState, listedState, pullStateIcon, withListedState } from "./pull-state.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -54,6 +54,21 @@ export const MARKDOWN_CONCURRENCY = 2;
 // took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
 // stays lazy: what is further off is not asked for until the reader comes nearer.
 export const MARKDOWN_AHEAD = "100% 0px";
+// How long a conversation's first paint waits for its description's Markdown and for the
+// commits the server holds, so the description is final when it first shows and commit rows
+// are placed among the cards then, never pushed between them later. A wait past this paints
+// plain text, and the Markdown replaces it when it comes. Measured 2026-11-11 with curl
+// against a local server on five of this repository's pull requests, at load averages of 6
+// to 36: the Markdown route took 2.3 to 36 ms for descriptions of 5.9 to 20 KB, and a
+// `cached_only` timeline read 2.0 to 8.1 ms. Browser time on top of that is not measured
+// here. A page replacing another keeps that one on screen meanwhile.
+export const DESCRIPTION_HOLD_MS = 200;
+// Rendered texts kept across pages, the newest first: a revisit, Back, or Forward, and a
+// refreshed record whose text did not change, show the Markdown at once instead of asking
+// again. Bounded by count and by the characters of HTML held. The five descriptions above
+// rendered to 5.9 to 20 KB, so the bound holds about a hundred of the largest of them.
+export const RENDERED_TEXTS = 256;
+export const RENDERED_TEXT_CHARS = 2_000_000;
 // How much of a review comment's diff hunk it shows; the rest is behind a disclosure.
 // GitHub's `diff_hunk` runs from the hunk's `@@` line to the commented line, which is
 // last, however long the hunk: on pallets/click#3030 (read 2026-11-01), 37 hunks of up to
@@ -970,7 +985,10 @@ export function rateLimitLifts(envelope) {
  * the plain age. A stale record says why only when no refresh can run: offline, held by
  * GitHub's rate limit, or a failure the reader can retry.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null}} page
+ * *listed* is what the repository's list said of this pull request, whose state is shown
+ * when the list saw a later update than the record or preview did.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -1040,7 +1058,7 @@ export function describePull(envelope, page) {
   const record = envelope.record;
   if (record === null && envelope.core_preview !== null) {
     const preview = envelope.core_preview;
-    model.pull = describeCore(preview.pull);
+    model.pull = describeCore(withListedState(preview.pull, page.listed));
     model.corePreview = true;
     model.contentReady = true;
     model.message = page.error ?? null;
@@ -1122,7 +1140,7 @@ export function describePull(envelope, page) {
       : "New commits were pushed to this pull request.";
   }
   const pull = record.pull ?? {};
-  model.pull = describeCore(pull);
+  model.pull = describeCore(withListedState(pull, page.listed));
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   model.checks = checks(record, model.pull.htmlUrl);
@@ -1258,6 +1276,132 @@ export function isEnvelope(value) {
   );
 }
 
+// ── Rendered texts, across pages ──────────────────────────────
+
+/**
+ * Rendered Markdown by what it renders. The server renders a text from the pull request's
+ * number, the part, and the text alone (`pull_markdown.render_part`), so an entry serves any
+ * record or core preview of that source with the same text, and never another text: the
+ * entry holds the text it was rendered from, and a lookup compares it.
+ *
+ * @type {Map<string, {text: string, rendered: Record<string, any>, size: number}>}
+ */
+const renderedTexts = new Map();
+let renderedChars = 0;
+// KPress's stylesheets for texts have loaded, or failed to, on some page of this document:
+// they are the same for every text, so a later page inserts a kept render at once.
+let kpressStylesSettled = false;
+
+/**
+ * @param {string} source
+ * @param {number} number
+ * @param {string} part
+ * @param {string} text
+ */
+function renderedKey(source, number, part, text) {
+  // FNV-1a, to spread texts over the map; equality is the stored text's.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+  }
+  return `${source}\n${number}\n${part}\n${text.length}:${(hash >>> 0).toString(16)}`;
+}
+
+/**
+ * Keep a text's render for later pages, dropping the oldest past the bounds.
+ *
+ * @param {string | null} source
+ * @param {number} number
+ * @param {string} part
+ * @param {string} text
+ * @param {Record<string, any>} rendered
+ */
+export function rememberRendered(source, number, part, text, rendered) {
+  if (source === null || typeof rendered.html !== "string") {
+    return;
+  }
+  const key = renderedKey(source, number, part, text);
+  const previous = renderedTexts.get(key);
+  if (previous !== undefined) {
+    renderedTexts.delete(key);
+    renderedChars -= previous.size;
+  }
+  const size = rendered.html.length + text.length;
+  if (size > RENDERED_TEXT_CHARS) {
+    return;
+  }
+  renderedTexts.set(key, { text, rendered, size });
+  renderedChars += size;
+  for (const [oldest, entry] of renderedTexts) {
+    if (renderedTexts.size <= RENDERED_TEXTS && renderedChars <= RENDERED_TEXT_CHARS) {
+      break;
+    }
+    renderedTexts.delete(oldest);
+    renderedChars -= entry.size;
+  }
+}
+
+/**
+ * The render kept for exactly this text, or null.
+ *
+ * @param {string | null} source
+ * @param {number} number
+ * @param {string} part
+ * @param {string} text
+ * @returns {Record<string, any> | null}
+ */
+export function renderedText(source, number, part, text) {
+  if (source === null) {
+    return null;
+  }
+  const key = renderedKey(source, number, part, text);
+  const entry = renderedTexts.get(key);
+  if (entry === undefined || entry.text !== text) {
+    return null;
+  }
+  renderedTexts.delete(key);
+  renderedTexts.set(key, entry);
+  return entry.rendered;
+}
+
+/**
+ * The text a part names in *record*, as the server's `part_text` reads it, or null. A
+ * comment's or review's part is named as `timeline` names it.
+ *
+ * @param {Record<string, any> | null} record
+ * @param {string} part
+ * @returns {string | null}
+ */
+export function partText(record, part) {
+  if (record === null) {
+    return null;
+  }
+  if (part === "body") {
+    return text(record.pull?.body);
+  }
+  const [kind, ident] = part.split("/");
+  const items =
+    kind === "issue_comment"
+      ? record.issue_comments
+      : kind === "review"
+        ? record.reviews
+        : kind === "review_comment"
+          ? record.review_comments
+          : null;
+  const item = list(items).find(
+    (entry) =>
+      (kind === "review_comment"
+        ? String(entry.id)
+        : text(entry.timeline_id) || String(entry.id)) === ident,
+  );
+  return item === undefined ? null : text(item.body);
+}
+
+/** How much the kept renders hold, for tests of the bounds. */
+export function renderedTextsHeld() {
+  return { texts: renderedTexts.size, chars: renderedChars };
+}
+
 /**
  * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullResponse
  * @typedef {{
@@ -1272,7 +1416,9 @@ export function isEnvelope(value) {
  *   ownsConversation?(): boolean,
  *   scheduleComparison?(callback: () => void): () => void,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
- *   renderMarkdown(part: string, rendered: Record<string, any>): void,
+ *   renderMarkdown(part: string, rendered: Record<string, any>, text: string): void,
+ *   textUnavailable?(part: string, text: string): void,
+ *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   timelineStateChanged?(): void,
  *   reload(): void,
  *   navigate(href: string): void,
@@ -1352,13 +1498,14 @@ export function createPullController(deps, options) {
   let walkSettling = false;
   // Only this page's acknowledged selected refresh can opt in to a settlement read.
   let waitForFull = false;
-  /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
+  /** Markdown by part, for the record content revision `markdownFor`, with the text it renders. @type {Map<string, {rendered: Record<string, any>, text: string}>} */
   const markdown = new Map();
   /** @type {string | null} */
   let markdownFor = null;
   /** @type {string[]} */
   const queue = [];
-  const asked = new Set();
+  /** The parts asked for, and the text each was asked for. @type {Map<string, string | null>} */
+  const asked = new Map();
   let inFlight = 0;
 
   /** A direct link's cold miss, which the page asks to fill once it is visible. */
@@ -1512,6 +1659,7 @@ export function createPullController(deps, options) {
       comparisonRefusal,
       waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
+      listed: deps.listed?.(envelope?.source ?? null, options.number) ?? null,
     };
   }
 
@@ -2152,6 +2300,8 @@ export function createPullController(deps, options) {
   function pump() {
     while (!disposed && inFlight < MARKDOWN_CONCURRENCY && queue.length > 0) {
       const part = /** @type {string} */ (queue.shift());
+      const text = asked.get(part) ?? null;
+      const source = envelope?.source ?? null;
       inFlight += 1;
       void deps
         .request(
@@ -2170,12 +2320,23 @@ export function createPullController(deps, options) {
           ) {
             // A render of a record the page no longer shows, or none at all: the
             // plain text stays, and a newer record is asked for again.
+            if (!disposed && text !== null) {
+              deps.textUnavailable?.(part, text);
+            }
             return;
           }
-          markdown.set(part, body);
-          deps.renderMarkdown(part, body);
+          if (text === null) {
+            return;
+          }
+          markdown.set(part, { rendered: body, text });
+          rememberRendered(source, options.number, part, text, body);
+          deps.renderMarkdown(part, body, text);
         })
-        .catch(() => {})
+        .catch(() => {
+          if (!disposed && text !== null) {
+            deps.textUnavailable?.(part, text);
+          }
+        })
         .finally(() => {
           inFlight -= 1;
           pump();
@@ -2186,24 +2347,47 @@ export function createPullController(deps, options) {
   /**
    * Ask for one part's Markdown once per record. The glue asks when the part is within
    * `MARKDOWN_AHEAD` of the view, so a long conversation renders what a reader reaches.
+   * A render an earlier page kept for the same text answers at once, a core preview's too.
    *
    * @param {string} part
+   * @param {string} [shownText] The text the page shows for it; the record's when absent.
    */
-  function requestMarkdown(part) {
-    if (disposed || markdownFor === null) {
+  function requestMarkdown(part, shownText) {
+    if (disposed) {
       return;
     }
+    // A part the record does not name is still asked for, and its answer is kept by no text.
+    const text = shownText ?? partText(envelope?.record ?? null, part);
     const done = markdown.get(part);
-    if (done !== undefined) {
-      deps.renderMarkdown(part, done);
+    if (done !== undefined && done.text === text) {
+      deps.renderMarkdown(part, done.rendered, done.text);
       return;
     }
-    if (asked.has(part)) {
+    const kept =
+      text === null ? null : renderedText(envelope?.source ?? null, options.number, part, text);
+    if (kept !== null && text !== null) {
+      deps.renderMarkdown(part, kept, text);
       return;
     }
-    asked.add(part);
+    if (markdownFor === null || asked.has(part)) {
+      return;
+    }
+    asked.set(part, text);
     queue.push(part);
     pump();
+  }
+
+  /**
+   * The render kept for *text*, by this page or an earlier one, or null.
+   *
+   * @param {string} part
+   * @param {string} text
+   */
+  function renderedFor(part, text) {
+    const done = markdown.get(part);
+    return done !== undefined && done.text === text
+      ? done.rendered
+      : renderedText(envelope?.source ?? null, options.number, part, text);
   }
 
   function onVisibilityChange() {
@@ -2270,6 +2454,7 @@ export function createPullController(deps, options) {
     switchToHead,
     browseCode,
     requestMarkdown,
+    renderedFor,
     setTab,
     walkCancelled,
     onVisibilityChange,
@@ -3113,9 +3298,31 @@ export function mountPullPage(container, ctx, mb) {
   let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
-  /** @type {{description: HTMLElement, cards: Map<string, {node: HTMLElement, pending: boolean}>,
-   *   inserts: Map<string, HTMLElement>, projection: TimelineProjection | null} | null} */
+  /** The text each text element shows, which its Markdown must be of. @type {WeakMap<Element, string>} */
+  const textOf = new WeakMap();
+  /** The conversation's sections as last painted, by what each shows. @type {Map<string, HTMLElement>} */
+  let sections = new Map();
+  /**
+   * `fresh` while the task that painted the discussion runs: commits placed then are part
+   * of its first paint, and any placed later only follow what is painted.
+   *
+   * @type {{description: HTMLElement, cards: Map<string, {node: HTMLElement, pending: boolean}>,
+   *   inserts: Map<string, HTMLElement>, projection: TimelineProjection | null, fresh: boolean} | null}
+   */
   let discussion = null;
+  /**
+   * The conversation's first paint of a full record, waiting for the description's Markdown
+   * and the commits the server holds, at most `DESCRIPTION_HOLD_MS`. Spent once a page.
+   *
+   * `plain` once its Markdown cannot come: the description then paints plain, at once.
+   *
+   * @type {{revision: string, text: string, plain: boolean, timer: ReturnType<typeof window.setTimeout>} | null}
+   */
+  let firstPaint = null;
+  let firstPaintSpent = false;
+  /** What the body last painted: another tab's content is never held on screen. */
+  /** @type {"none" | "loading" | "conversation" | "checks" | "files"} */
+  let bodyShows = "none";
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
    *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
@@ -3245,9 +3452,10 @@ export function mountPullPage(container, ctx, mb) {
           (entries) => {
             for (const entry of entries) {
               const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
-              if (part !== null) {
+              const value = textOf.get(entry.target);
+              if (part !== null && value !== undefined) {
                 observer?.unobserve(entry.target);
-                controller.requestMarkdown(part);
+                controller.requestMarkdown(part, value);
               }
             }
           },
@@ -3299,15 +3507,21 @@ export function mountPullPage(container, ctx, mb) {
     return github ? mb.decorateExternalLink(link, { icon: "github", position: "before" }) : link;
   };
 
+  /** The text elements a section being built makes, which it keeps with it. @type {HTMLElement[] | null} */
+  let collecting = null;
+  /** @type {WeakMap<Element, HTMLElement[]>} */
+  const sectionTexts = new WeakMap();
+
   /**
-   * A text of the pull request: plain until its Markdown arrives.
+   * A text of the pull request: its Markdown when a render of this very text is kept and can
+   * be inserted now, and otherwise plain until its Markdown arrives. The conversation asks
+   * for what is still plain once its sections are placed.
    *
    * @param {string} part
    * @param {string} value
    * @param {boolean} truncated
-   * @param {boolean} [renderMarkdown]
    */
-  function textBlock(part, value, truncated, renderMarkdown = true) {
+  function textBlock(part, value, truncated) {
     const element = h("div", { class: "github-pull-text", "data-part": part });
     if (value.trim() === "") {
       element.append(
@@ -3317,20 +3531,44 @@ export function mountPullPage(container, ctx, mb) {
       );
       return element;
     }
-    element.append(h("div", { class: "github-pull-plain" }, [value]));
+    textOf.set(element, value);
+    collecting?.push(element);
+    const kept = controller.renderedFor(part, value);
+    const inert = insertableNow(kept) ? window.MetabrowserInertHtml : undefined;
+    element.append(
+      kept !== null && inert !== undefined
+        ? kpressHost(inert, kept)
+        : h("div", { class: "github-pull-plain" }, [value]),
+    );
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
-    if (!renderMarkdown) {
-      return element;
-    }
-    texts.set(part, element);
-    if (part === "body" || observer === null) {
-      controller.requestMarkdown(part);
-    } else {
-      observer.observe(element);
-    }
     return element;
+  }
+
+  /**
+   * Ask for the Markdown of the texts still plain: the description now, and the rest as they
+   * near the view. A core preview's are answered only from renders kept for the same text.
+   *
+   * @param {HTMLElement[]} elements
+   */
+  function askForTexts(elements) {
+    for (const element of elements) {
+      const part = element.getAttribute("data-part");
+      const value = textOf.get(element);
+      if (part === null || value === undefined) {
+        continue;
+      }
+      texts.set(part, element);
+      if (element.querySelector(":scope > .github-pull-plain") === null) {
+        continue;
+      }
+      if (part === "body" || observer === null) {
+        controller.requestMarkdown(part, value);
+      } else {
+        observer.observe(element);
+      }
+    }
   }
 
   /** KPress's stylesheets, once. A text stays readable under the shell's if they fail. */
@@ -3338,44 +3576,77 @@ export function mountPullPage(container, ctx, mb) {
   let documentStyles = null;
 
   /**
-   * @param {string} part
+   * Whether *rendered* can be inserted in this task: the allowlist and the stylesheets an
+   * earlier render loaded are in place, so it is final when it first shows.
+   *
+   * @param {Record<string, any> | null} rendered
+   * @returns {boolean}
+   */
+  function insertableNow(rendered) {
+    return rendered !== null && kpressStylesSettled && window.MetabrowserInertHtml !== undefined;
+  }
+
+  /**
+   * KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own body_html is
+   * never used, and no KPress script is loaded for it. static/inert-html.js parses it into an
+   * inert template and inserts only nodes rebuilt from the same allowlist, links made absolute
+   * against the pull request. The article and the classes on its tables and code blocks are
+   * the page's own.
+   *
+   * @param {MetabrowserInertHtmlRuntime} inert
    * @param {Record<string, any>} rendered
    */
-  function renderMarkdown(part, rendered) {
+  function kpressHost(inert, rendered) {
+    const nodes = inert.sanitizeHtml(
+      String(rendered.html),
+      shown?.pull?.htmlUrl ?? "https://github.com/",
+    );
+    const article = h("article", { class: "kpress kpress-inert" }, [
+      inert.kpressProse(nodes, document),
+    ]);
+    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
+    // state attributes have already been discarded; known state comes from our record.
+    for (const anchor of article.querySelectorAll("a[href]")) {
+      decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
+    }
+    return h("div", { class: "metabrowser-kpress-host" }, [article]);
+  }
+
+  /**
+   * @param {string} part
+   * @param {Record<string, any>} rendered
+   * @param {string} text The text it is the render of.
+   */
+  function renderMarkdown(part, rendered, text) {
     const element = texts.get(part);
-    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch((error) => {
-      console.warn("metabrowser github: the text styles did not load", error);
-    });
+    if (documentStyles === null) {
+      documentStyles = mb.loadKpressAssets(rendered.assets).catch((error) => {
+        console.warn("metabrowser github: the text styles did not load", error);
+      });
+      void documentStyles.then(() => {
+        kpressStylesSettled = true;
+      });
+    }
     void Promise.all([inertReady, documentStyles]).then(([inert]) => {
-      if (
-        listening.signal.aborted ||
-        rendered.record_revision !== shown?.recordRevision ||
-        texts.get(part) !== element
-      ) {
+      if (listening.signal.aborted) {
         return;
       }
-      const plain = element?.querySelector(":scope > .github-pull-plain");
-      if (!element || !plain || inert === null) {
+      // The description a held first paint waits for may be insertable now, or never.
+      if (firstPaint !== null && part === "body" && firstPaint.text === text) {
+        firstPaint.plain ||= inert === null;
+        if (firstPaintReady()) {
+          releaseFirstPaint();
+          return;
+        }
+      }
+      if (element === undefined || texts.get(part) !== element || textOf.get(element) !== text) {
         return;
       }
-      // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
-      // body_html is never used, and no KPress script is loaded for it.
-      // static/inert-html.js parses it into an inert template and inserts only nodes
-      // rebuilt from the same allowlist, links made absolute against the pull request.
-      // The article and the classes on its tables and code blocks are the page's own.
-      const nodes = inert.sanitizeHtml(
-        String(rendered.html),
-        shown?.pull?.htmlUrl ?? "https://github.com/",
-      );
-      const article = h("article", { class: "kpress kpress-inert" }, [
-        inert.kpressProse(nodes, document),
-      ]);
-      // Only this newly sanitized, lazily opened message is visited. Authored SVG and
-      // state attributes have already been discarded; known state comes from our record.
-      for (const anchor of article.querySelectorAll("a[href]")) {
-        decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
+      const plain = element.querySelector(":scope > .github-pull-plain");
+      if (!plain || inert === null) {
+        return;
       }
-      plain.replaceWith(h("div", { class: "metabrowser-kpress-host" }, [article]));
+      plain.replaceWith(kpressHost(inert, rendered));
     });
   }
 
@@ -3808,14 +4079,60 @@ export function mountPullPage(container, ctx, mb) {
     );
 
   /**
+   * One commit's row, the one already shown for it when there is one.
+   *
+   * @param {TimelineCommit} event
+   * @param {string} source
+   * @param {Map<string, HTMLElement>} shownRows
+   * @returns {HTMLElement | null}
+   */
+  function commitRow(event, source, shownRows) {
+    const shownRow = shownRows.get(event.oid);
+    if (shownRow !== undefined) {
+      return shownRow;
+    }
+    const href = timelineCommitHref(source, number, event.oid);
+    if (href === null) {
+      return null;
+    }
+    return h("div", { class: "github-pull-commit" }, [
+      h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+      event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
+        ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+        : null,
+      mb.decorateExternalLink(
+        outside(
+          mb,
+          href,
+          "",
+          [event.oid.slice(0, 7)],
+          "github-pull-commit-id git-commit-sha github-pull-external-action",
+        ),
+        { icon: "github", position: "before" },
+      ),
+    ]);
+  }
+
+  /**
    * Install the provider order around the existing cards. Keep the focused card in
    * place and move its neighbors around it, so even a reordered review keeps focus.
+   *
+   * That is only while the discussion's own first paint is being made. A projection that
+   * answers once it has painted moves nothing that is painted: the commit rows it adds go
+   * after everything, in its order, and the cards keep theirs. A missing or unavailable
+   * projection leaves what is shown, so a refreshed record keeps its rows until its own
+   * projection replaces them.
    *
    * @param {TimelineProjection | null} projection
    * @param {string} source
    */
   function paintTimeline(projection, source) {
-    if (discussion === null || discussion.projection === projection) {
+    if (
+      discussion === null ||
+      discussion.projection === projection ||
+      projection === null ||
+      projection.state === "unavailable"
+    ) {
       return;
     }
     const { description, cards, inserts: previousInserts } = discussion;
@@ -3823,53 +4140,62 @@ export function mountPullPage(container, ctx, mb) {
     const inserts = new Map();
     discussion.projection = projection;
     discussion.inserts = inserts;
+    if (!discussion.fresh) {
+      for (const event of projection.events) {
+        if (event.kind !== "commit" || inserts.has(event.oid)) {
+          continue;
+        }
+        const row = commitRow(event, source, previousInserts);
+        if (row !== null) {
+          if (!previousInserts.has(event.oid)) {
+            body.append(row);
+          }
+          inserts.set(event.oid, row);
+        }
+      }
+      if (projection.state === "partial") {
+        const note =
+          previousInserts.get("partial") ??
+          h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
+        if (!previousInserts.has("partial")) {
+          body.append(note);
+        }
+        inserts.set("partial", note);
+      }
+      for (const [key, node] of previousInserts) {
+        if (!inserts.has(key)) {
+          node.remove();
+        }
+      }
+      return;
+    }
     const unmatched = new Map(cards);
     /** @type {HTMLElement[]} */
     const ordered = [];
-    if (projection !== null && projection.state !== "unavailable") {
-      for (const event of projection.events) {
-        if (event.kind !== "commit") {
-          const key = `${event.kind}/${event.id}`;
-          const card = unmatched.get(key);
-          if (card !== undefined && !card.pending) {
-            ordered.push(card.node);
-            unmatched.delete(key);
-          }
-          continue;
+    for (const event of projection.events) {
+      if (event.kind !== "commit") {
+        const key = `${event.kind}/${event.id}`;
+        const card = unmatched.get(key);
+        if (card !== undefined && !card.pending) {
+          ordered.push(card.node);
+          unmatched.delete(key);
         }
-        if (inserts.has(event.oid)) {
-          continue;
-        }
-        const href = timelineCommitHref(source, number, event.oid);
-        if (href === null) {
-          continue;
-        }
-        const row =
-          previousInserts.get(event.oid) ??
-          h("div", { class: "github-pull-commit" }, [
-            h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
-            event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
-              ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
-              : null,
-            mb.decorateExternalLink(
-              outside(
-                mb,
-                href,
-                "",
-                [event.oid.slice(0, 7)],
-                "github-pull-commit-id git-commit-sha github-pull-external-action",
-              ),
-              { icon: "github", position: "before" },
-            ),
-          ]);
-        ordered.push(row);
-        inserts.set(event.oid, row);
+        continue;
       }
+      if (inserts.has(event.oid)) {
+        continue;
+      }
+      const row = commitRow(event, source, previousInserts);
+      if (row === null) {
+        continue;
+      }
+      ordered.push(row);
+      inserts.set(event.oid, row);
     }
     for (const { node } of unmatched.values()) {
       ordered.push(node);
     }
-    if (projection?.state === "partial") {
+    if (projection.state === "partial") {
       const note =
         previousInserts.get("partial") ??
         h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
@@ -3901,25 +4227,58 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** @param {PullModel} model */
+  /**
+   * Paint the conversation in place. A section shown before with the same content keeps its
+   * node, rendered Markdown and all, and where it is: nothing above the first section that
+   * changed moves, and a full record replacing its core preview keeps the description it
+   * already shows. Commit rows the timeline placed stay among the cards they follow.
+   *
+   * @param {PullModel} model
+   */
   function paintConversation(model) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
     texts.clear();
     observer?.disconnect();
-    const description = h("section", { class: "page-card github-pull-card" }, [
-      h("div", { class: "github-pull-card-head" }, [
-        authorLabel(pull.author, pull.avatar),
-        " opened ",
-        age(pull.created),
-      ]),
-      textBlock("body", pull.text, pull.truncated, !model.corePreview),
-    ]);
-    const sections = [description];
-    discussion = model.corePreview
-      ? null
-      : { description, cards: new Map(), inserts: new Map(), projection: null };
+    /** @type {Map<string, HTMLElement>} */
+    const next = new Map();
+    /** @type {HTMLElement[]} */
+    const order = [];
+    /** @type {HTMLElement[]} */
+    const textElements = [];
+    /**
+     * @param {unknown[]} what Everything the section shows.
+     * @param {() => HTMLElement} build
+     */
+    const section = (what, build) => {
+      const key = JSON.stringify(what);
+      let node = sections.get(key);
+      if (node === undefined || next.has(key)) {
+        collecting = [];
+        node = build();
+        sectionTexts.set(node, collecting);
+        collecting = null;
+      }
+      next.set(key, node);
+      order.push(node);
+      textElements.push(...(sectionTexts.get(node) ?? []));
+      return node;
+    };
+    const description = section(
+      ["description", pull.author, pull.avatar, pull.created, pull.text, pull.truncated],
+      () =>
+        h("section", { class: "page-card github-pull-card" }, [
+          h("div", { class: "github-pull-card-head" }, [
+            authorLabel(pull.author, pull.avatar),
+            " opened ",
+            age(pull.created),
+          ]),
+          textBlock("body", pull.text, pull.truncated),
+        ]),
+    );
+    /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
+    const cards = new Map();
     if (model.corePreview) {
-      sections.push(
+      section(["discussion pending", model.refreshing], () =>
         h("section", { class: "github-pull-section" }, [
           h("h2", { class: "section-heading" }, ["Discussion"]),
           model.refreshing
@@ -3929,86 +4288,135 @@ export function mountPullPage(container, ctx, mb) {
               ]),
         ]),
       );
-      body.replaceChildren(...sections);
-      return;
     }
-    for (const item of model.timeline) {
-      const head = h("div", { class: "github-pull-card-head" }, [
-        authorLabel(item.author, item.avatar),
-      ]);
-      if (item.review !== null) {
-        head.append(" ", badge(item.review.state, item.review.label, "review"));
-      } else {
-        head.append(" commented");
-      }
-      head.append(" ", item.at === null ? "(pending)" : age(item.at));
-      const card = h("section", { class: `page-card github-pull-card github-pull-${item.kind}` }, [
-        head,
-      ]);
-      if (item.text.trim() !== "" || item.kind === "comment") {
-        card.append(textBlock(item.part, item.text, item.truncated));
-      }
-      sections.push(card);
-      discussion?.cards.set(`${item.kind}/${item.id}`, {
+    for (const item of model.corePreview ? [] : model.timeline) {
+      const card = section(["card", item], () => {
+        const head = h("div", { class: "github-pull-card-head" }, [
+          authorLabel(item.author, item.avatar),
+        ]);
+        if (item.review !== null) {
+          head.append(" ", badge(item.review.state, item.review.label, "review"));
+        } else {
+          head.append(" commented");
+        }
+        head.append(" ", item.at === null ? "(pending)" : age(item.at));
+        const built = h(
+          "section",
+          { class: `page-card github-pull-card github-pull-${item.kind}` },
+          [head],
+        );
+        if (item.text.trim() !== "" || item.kind === "comment") {
+          built.append(textBlock(item.part, item.text, item.truncated));
+        }
+        return built;
+      });
+      cards.set(`${item.kind}/${item.id}`, {
         node: card,
         pending: item.kind === "review" && (item.at === null || item.review?.state === "PENDING"),
       });
     }
-    if (model.reviewComments.length > 0) {
-      const threads = h("section", { class: "github-pull-section" }, [
-        h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
-      ]);
-      for (const comment of model.reviewComments) {
-        const head = h("div", { class: "github-pull-card-head" }, [
-          fileLink(comment.path, comment.line, model.browse),
-          comment.outdated ? " " : "",
-          comment.outdated ? badge("outdated", "outdated", "review") : null,
-          " ",
-          authorLabel(comment.author, comment.avatar),
-          ` ${comment.reply ? "replied" : "commented"} `,
-          age(comment.at),
-        ]);
-        const card = h(
-          "div",
-          { class: `page-card github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
-          [head],
-        );
-        if (!comment.reply && comment.hunk !== null) {
-          const { earlier, earlierLines, shown: tail } = comment.hunk;
-          // One box scrolls all of a hunk sideways, however far it is opened.
-          const box = h("div", { class: "github-pull-hunk-box" });
-          if (earlierLines > 0) {
-            // Native, so the browser opens and closes it and a repaint just closes it.
-            const lines = `line${earlierLines === 1 ? "" : "s"}`;
-            const plain = hunkLines([{ kind: "context", text: earlier }]);
-            const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
-              h("summary", { class: "fold-expander" }, [
-                chevron(),
-                h("span", { class: "github-pull-fold-closed" }, [
-                  `${earlierLines} earlier ${lines}`,
-                ]),
-                h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
-              ]),
-              plain,
-            ]);
-            tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
-            box.append(disclosure);
-          }
-          box.append(hunkLines(tail));
-          card.append(box);
-          if (comment.hunkTruncated) {
-            card.append(notice("warning", ["The start of this hunk was cut."]));
-          }
-        }
-        card.append(textBlock(comment.part, comment.text, comment.truncated));
-        threads.append(card);
+    if (!model.corePreview && model.reviewComments.length > 0) {
+      section(["threads", model.reviewComments, model.browse], () => reviewThreads(model));
+    }
+    for (const [index, note] of (model.corePreview ? [] : model.notes).entries()) {
+      section(["note", index, note], () => notice("warning", [note]));
+    }
+    sections = next;
+
+    const before = discussion;
+    const inserts = model.corePreview ? new Map() : (before?.inserts ?? new Map());
+    const rows = new Set(inserts.values());
+    const placed = new Set(order);
+    // The body holds only these sections and commit rows, all elements.
+    for (const child of [...body.childNodes]) {
+      const node = /** @type {HTMLElement} */ (child);
+      if (!placed.has(node) && !rows.has(node)) {
+        node.remove();
       }
-      sections.push(threads);
     }
-    for (const note of model.notes) {
-      sections.push(notice("warning", [note]));
+    let cursor = body.firstChild;
+    for (const node of order) {
+      while (cursor !== null && cursor !== node && rows.has(/** @type {HTMLElement} */ (cursor))) {
+        cursor = cursor.nextSibling;
+      }
+      if (cursor === node) {
+        cursor = cursor.nextSibling;
+      } else {
+        body.insertBefore(node, cursor);
+      }
     }
-    body.replaceChildren(...sections);
+    const sameCards =
+      before !== null &&
+      before.cards.size === cards.size &&
+      [...cards].every(([key, card]) => before.cards.get(key)?.node === card.node);
+    discussion = model.corePreview
+      ? null
+      : {
+          description,
+          cards,
+          inserts,
+          projection: sameCards ? before.projection : null,
+          fresh: true,
+        };
+    const painting = discussion;
+    // Commits placed in this task are part of this paint; later ones follow what it painted.
+    queueMicrotask(() => {
+      if (painting !== null) {
+        painting.fresh = false;
+      }
+    });
+    askForTexts(textElements);
+  }
+
+  /** @param {PullModel} model */
+  function reviewThreads(model) {
+    const threads = h("section", { class: "github-pull-section" }, [
+      h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
+    ]);
+    for (const comment of model.reviewComments) {
+      const head = h("div", { class: "github-pull-card-head" }, [
+        fileLink(comment.path, comment.line, model.browse),
+        comment.outdated ? " " : "",
+        comment.outdated ? badge("outdated", "outdated", "review") : null,
+        " ",
+        authorLabel(comment.author, comment.avatar),
+        ` ${comment.reply ? "replied" : "commented"} `,
+        age(comment.at),
+      ]);
+      const card = h(
+        "div",
+        { class: `page-card github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
+        [head],
+      );
+      if (!comment.reply && comment.hunk !== null) {
+        const { earlier, earlierLines, shown: tail } = comment.hunk;
+        // One box scrolls all of a hunk sideways, however far it is opened.
+        const box = h("div", { class: "github-pull-hunk-box" });
+        if (earlierLines > 0) {
+          // Native, so the browser opens and closes it and a repaint just closes it.
+          const lines = `line${earlierLines === 1 ? "" : "s"}`;
+          const plain = hunkLines([{ kind: "context", text: earlier }]);
+          const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
+            h("summary", { class: "fold-expander" }, [
+              chevron(),
+              h("span", { class: "github-pull-fold-closed" }, [`${earlierLines} earlier ${lines}`]),
+              h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
+            ]),
+            plain,
+          ]);
+          tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
+          box.append(disclosure);
+        }
+        box.append(hunkLines(tail));
+        card.append(box);
+        if (comment.hunkTruncated) {
+          card.append(notice("warning", ["The start of this hunk was cut."]));
+        }
+      }
+      card.append(textBlock(comment.part, comment.text, comment.truncated));
+      threads.append(card);
+    }
+    return threads;
   }
 
   /** @param {PullModel} model @param {NonNullable<PullModel["pull"]>} pull */
@@ -4354,6 +4762,12 @@ export function mountPullPage(container, ctx, mb) {
     }
     paintHeader(model);
     paintStacks(model);
+    if (firstPaint !== null && (model.tab !== "" || model.pull === null)) {
+      // Another tab holds the body now: the conversation paints as it is when it returns.
+      window.clearTimeout(firstPaint.timer);
+      firstPaint = null;
+      firstPaintSpent = true;
+    }
     // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
@@ -4378,10 +4792,12 @@ export function mountPullPage(container, ctx, mb) {
           : []),
       );
       bodyKey = "";
+      bodyShows = "loading";
       return;
     }
     if (model.tab === "files") {
       bodyKey = "";
+      bodyShows = "files";
       discussion = null;
       texts.clear();
       paintFiles(model);
@@ -4400,6 +4816,7 @@ export function mountPullPage(container, ctx, mb) {
       ]);
       if (key !== bodyKey) {
         bodyKey = key;
+        bodyShows = "checks";
         discussion = null;
         texts.clear();
         observer?.disconnect();
@@ -4415,22 +4832,95 @@ export function mountPullPage(container, ctx, mb) {
       { key: bodyKey, recordRevision: markdownRevision },
       { key, recordRevision: model.recordRevision },
     );
+    if (action === "repaint" && holdFirstPaint(model)) {
+      return;
+    }
     bodyKey = key;
     if (action === "repaint") {
+      bodyShows = "conversation";
       paintConversation(model);
     } else if (action === "reask") {
-      for (const [part, element] of texts) {
-        if (element.querySelector(":scope > .github-pull-plain") === null) {
-          continue;
-        }
-        if (part === "body" || observer === null) {
-          controller.requestMarkdown(part);
-        } else {
-          observer.observe(element);
-        }
-      }
+      askForTexts([...texts.values()]);
     }
     markdownRevision = model.recordRevision;
+  }
+
+  /**
+   * Whether the conversation's first paint of a full record waits, starting the wait when it
+   * is the first: until its description's Markdown can be inserted with it and the commits the
+   * server holds have answered, at most `DESCRIPTION_HOLD_MS`. Meanwhile the body shows what it
+   * did, a core preview or nothing, and the page is not ready, so a page replacing another
+   * keeps that one on screen. A record whose description has no text waits only for commits.
+   *
+   * @param {PullModel} model
+   * @returns {boolean}
+   */
+  function holdFirstPaint(model) {
+    const pull = model.pull;
+    if (firstPaintSpent || model.corePreview || model.recordRevision === null || pull === null) {
+      return false;
+    }
+    if (bodyShows === "files" || bodyShows === "checks") {
+      // A reader's own tab switch, from content that is not the conversation: paint now.
+      firstPaintSpent = true;
+      return false;
+    }
+    if (firstPaint !== null) {
+      if (firstPaint.text !== pull.text) {
+        firstPaint.plain = false;
+        controller.requestMarkdown("body", pull.text);
+      }
+      firstPaint.revision = model.recordRevision;
+      firstPaint.text = pull.text;
+      return true;
+    }
+    const commitsHeld =
+      commitTimeline !== null &&
+      commitTimeline.revision === model.recordRevision &&
+      commitTimeline.projection !== null;
+    const describedNow =
+      pull.text.trim() === "" || insertableNow(controller.renderedFor("body", pull.text));
+    if (describedNow && (commitsHeld || stackIdentity === null)) {
+      firstPaintSpent = true;
+      return false;
+    }
+    firstPaint = {
+      revision: model.recordRevision,
+      text: pull.text,
+      plain: false,
+      timer: window.setTimeout(releaseFirstPaint, DESCRIPTION_HOLD_MS),
+    };
+    if (!describedNow) {
+      controller.requestMarkdown("body", pull.text);
+    }
+    return true;
+  }
+
+  /** Whether what a held first paint waits for has come: it then paints final. */
+  function firstPaintReady() {
+    if (firstPaint === null) {
+      return true;
+    }
+    const { revision, text, plain } = firstPaint;
+    const described =
+      plain || text.trim() === "" || insertableNow(controller.renderedFor("body", text));
+    const reading = commitTimeline?.revision === revision && commitTimeline.read !== null;
+    return described && !reading;
+  }
+
+  /** Paint the held conversation now, as it is: the hold was met or its time ran out. */
+  function releaseFirstPaint() {
+    if (firstPaint === null) {
+      return;
+    }
+    window.clearTimeout(firstPaint.timer);
+    firstPaint = null;
+    firstPaintSpent = true;
+    if (shown !== null && !listening.signal.aborted) {
+      const model = shown;
+      mb.perf.measure("githubPull:render", () => paint(model), { number });
+      painted(model);
+    }
   }
 
   function cancelTimeline() {
@@ -4441,7 +4931,11 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** Timeline work follows an active Conversation with a full record. */
+  /**
+   * Timeline work follows an active Conversation with a full record. A held first paint
+   * reads the commits the server holds before it paints, active or not, so they are placed
+   * with it; anything that asks GitHub waits for the page to be active, as before.
+   */
   function followTimeline() {
     const revision = shown?.recordRevision ?? null;
     const source = stackIdentity?.source ?? null;
@@ -4462,10 +4956,9 @@ export function mountPullPage(container, ctx, mb) {
     }
     const held = commitTimeline;
     paintTimeline(held?.projection ?? null, source ?? "");
+    const holding = firstPaint !== null && held !== null && firstPaint.revision === held.revision;
     if (
-      !active ||
       listening.signal.aborted ||
-      discussion === null ||
       held === null ||
       document.visibilityState !== "visible" ||
       !onPageRoute(window.location.pathname, number, "")
@@ -4473,7 +4966,15 @@ export function mountPullPage(container, ctx, mb) {
       cancelTimeline();
       return;
     }
-    const providerAllowed = controller.timelineAllowed();
+    if (!holding && (!active || discussion === null)) {
+      // A staged conversation lets the read of held commits it started finish, and starts
+      // nothing until it is active.
+      if (discussion === null || held.read?.cachedOnly !== true) {
+        cancelTimeline();
+      }
+      return;
+    }
+    const providerAllowed = active && controller.timelineAllowed();
     if (held.read && (held.read.cachedOnly || providerAllowed)) {
       return;
     }
@@ -4482,10 +4983,13 @@ export function mountPullPage(container, ctx, mb) {
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
-    // A held projection can paint during a stale metadata refresh. A cache miss waits
-    // for settlement before it asks the provider.
+    // A held projection can paint during a stale metadata refresh, and with a held first
+    // paint. A cache miss waits for settlement before it asks the provider.
     const cachedOnly = !providerAllowed;
-    if (cachedOnly && (held.cacheMiss || (shown?.status !== "stale" && !shown?.refreshing))) {
+    if (
+      cachedOnly &&
+      (held.cacheMiss || (!holding && shown?.status !== "stale" && !shown?.refreshing))
+    ) {
       return;
     }
     const read = { cachedOnly, abort: new AbortController() };
@@ -4574,10 +5078,16 @@ export function mountPullPage(container, ctx, mb) {
       } else {
         held.settled = true;
       }
+      if (firstPaint !== null && firstPaintReady()) {
+        releaseFirstPaint();
+      }
     };
     if (retrying) {
       const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    } else if (holding) {
+      // Nothing is painted to wait for: the first paint waits for this.
+      void load();
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
         frame = window.requestAnimationFrame(() => void load());
@@ -4588,6 +5098,36 @@ export function mountPullPage(container, ctx, mb) {
     } else {
       const timer = window.setTimeout(() => void load(), 0);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    }
+  }
+
+  /**
+   * What follows a paint: the commits it may read, and once no first paint is held, the
+   * page's readiness and its milestones. A held first paint that can paint now does, and
+   * comes back here once.
+   *
+   * @param {PullModel} model
+   */
+  function painted(model) {
+    followTimeline();
+    if (firstPaint !== null) {
+      if (firstPaintReady()) {
+        releaseFirstPaint();
+      }
+      return;
+    }
+    if (model.contentReady) {
+      resolveReady();
+    }
+    if (!listening.signal.aborted && shown === model && model.pull !== null && model.tab === "") {
+      // DOM readiness is not a painted milestone; the browser probe observes that boundary.
+      mb.perf.measure("githubPull:descriptionReady", () => {}, {
+        number,
+        preview: model.corePreview,
+      });
+      if (!model.corePreview) {
+        mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+      }
     }
   }
 
@@ -4661,29 +5201,21 @@ export function mountPullPage(container, ctx, mb) {
       render(model, identity) {
         stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
-        if (model.contentReady) {
-          resolveReady();
-        }
-        if (
-          !listening.signal.aborted &&
-          shown === model &&
-          model.pull !== null &&
-          model.tab === ""
-        ) {
-          // DOM readiness is not a painted milestone; the browser probe observes that boundary.
-          mb.perf.measure("githubPull:descriptionReady", () => {}, {
-            number,
-            preview: model.corePreview,
-          });
-          if (!model.corePreview) {
-            mb.perf.measure("githubPull:conversationReady", () => {}, { number });
-          }
-        }
-        followTimeline();
+        painted(model);
       },
       reload: () => window.location.reload(),
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
+      listed: listedState,
+      textUnavailable(part, text) {
+        // The description a held first paint waits for will not come: it paints plain now.
+        if (firstPaint !== null && part === "body" && firstPaint.text === text) {
+          firstPaint.plain = true;
+          if (firstPaintReady()) {
+            releaseFirstPaint();
+          }
+        }
+      },
       timelineStateChanged: followTimeline,
     },
     {
@@ -4740,6 +5272,10 @@ export function mountPullPage(container, ctx, mb) {
 
   /** Stop ownership-bound work while preserving this page's inert handoff DOM. */
   function cancelPending() {
+    if (firstPaint !== null) {
+      window.clearTimeout(firstPaint.timer);
+      firstPaint = null;
+    }
     resolveReady();
     filesRefresh = null;
     wantedFile = null;

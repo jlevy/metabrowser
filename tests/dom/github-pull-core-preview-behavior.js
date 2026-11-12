@@ -368,6 +368,10 @@ async function run() {
     markdownRequests = 0;
   const posts = [];
   global.fetch = async (route, options) => {
+    if (route.includes("pull-timeline")) {
+      // The commits a held first paint reads first: none are held here.
+      return { status: 404, headers: { get: () => null }, json: async () => ({}) };
+    }
     if (options.method === "POST") {
       posts.push(JSON.parse(options.body));
       return new Promise((resolve) => {
@@ -531,10 +535,23 @@ async function run() {
   assert.notEqual(page.conversationKey(model), page.conversationKey(fullWins));
   const poll = [...timers].find(([, task]) => task.delay > 0 && task.delay <= 1000);
   assert.ok(poll);
+  const previewDescription = body.querySelector(".github-pull-card");
   current = full;
   timers.delete(poll[0]);
   poll[1].callback();
   await settle();
+  // The full record's first paint waits for its description's Markdown, which this server
+  // answers with a 404: plain then, at once, and in place of the preview it replaces.
+  assert.equal(
+    [...timers].some(([, task]) => task.delay === page.DESCRIPTION_HOLD_MS),
+    false,
+    "a description whose Markdown cannot come does not wait out the bound",
+  );
+  assert.equal(
+    body.querySelector(".github-pull-card"),
+    previewDescription,
+    "the description above the replaced Discussion is the node the preview painted",
+  );
   assert.equal(container.dataset.corePreview, "false");
   assert.equal(container.querySelector(".github-pull-section-loading"), null);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");

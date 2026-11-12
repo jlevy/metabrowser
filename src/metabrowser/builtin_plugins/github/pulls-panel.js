@@ -43,7 +43,7 @@ import {
   SLOW_POLL_MS,
 } from "./pull-page.js";
 import { createStackIndex, stackCaption, watchStacks } from "./pull-stacks.js";
-import { displayState, PULL_STATES, pullStateIcon } from "./pull-state.js";
+import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
@@ -1285,6 +1285,9 @@ export function createPullsController(deps, options = {}) {
   function holdRows(list, rows, source) {
     const repository = repositoryName(source);
     const next = rows.map((row) => describeRow(row, repository));
+    if (source !== null) {
+      noteListed(source, next);
+    }
     const same =
       next.length === list.rows.length &&
       next.every((row, index) => JSON.stringify(row) === JSON.stringify(list.rows[index]));

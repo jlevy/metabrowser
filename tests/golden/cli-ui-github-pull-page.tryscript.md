@@ -1663,11 +1663,15 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
 
-Conversation paints before its commit timeline request.
-A later partial timeline interleaves commit summaries with existing cards in provider
-order, keeps unmatched and pending discussion, and retains the rendered Markdown and
-focus. The pending request breathes the header’s age line and marks it busy; nothing
-spins. A stale page can show a held timeline before its metadata refresh.
+Conversation’s first paint waits, within its bound, for the commits the server holds,
+and places a held partial timeline’s commit summaries among the cards in provider order
+then, keeping unmatched and pending discussion.
+With none held it paints without them, and the provider’s timeline that answers later
+goes after everything painted, in its order, moving no painted node and keeping the
+rendered Markdown and focus (`appended`). The provider request breathes the header’s age
+line and marks it busy; nothing spins.
+A refreshed record keeps the rows it shows until its own timeline answers.
+A stale page can show a held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
@@ -1686,8 +1690,14 @@ $ node tests/dom/github-pull-timeline-session.js
     "review/15",
     "Some commits may be missing."
   ],
+  "appended": [
+    "<img> First commit",
+    "Last commit",
+    "Some commits may be missing."
+  ],
   "destination": "https://github.com/octo/demo/pull/7/commits/0123456789012345678901234567890123456789",
   "heldMarkdownAndFocus": true,
+  "lateCommitsMoveNothing": true,
   "staleCacheHitBeforeMetadata": true,
   "staleCacheMissWaited": true,
   "supersededReadAborted": true,
