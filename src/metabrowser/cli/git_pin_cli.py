@@ -529,6 +529,7 @@ def run_serve_pin(
     no_active_content: bool = False,
     allow_edits: bool = False,
     checkout: Path | None = None,
+    exit_on_eof: bool = False,
 ) -> None:
     """Acquire a source and serve the pin its URL selects until interrupted.
 
@@ -567,6 +568,7 @@ def run_serve_pin(
             f"Revision: {revision}",
             *selection_banner(selected.selection, selected.resolved, pull=selected.pull),
         ),
+        exit_on_eof=exit_on_eof,
     )
 
 

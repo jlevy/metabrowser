@@ -1,0 +1,82 @@
+"""Stop serving when stdin reaches EOF (``--exit-on-eof``).
+
+A parent that starts ``metab`` and holds its stdin open, as the macOS app does, gives the
+server a lifeline: however the parent ends, the kernel closes the pipe's write end, and
+the server reads EOF. A parent that crashes or is force-quit cannot stop its servers;
+this way they stop themselves, and nothing has to find them later by pid, a number the
+kernel may by then have given to an unrelated process.
+
+The flag is opt-in, since a server started from a shell with stdin at ``/dev/null``
+would otherwise stop at once. Whatever arrives on stdin before EOF is read and dropped.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import threading
+from collections.abc import Callable
+from typing import Final, NoReturn
+
+from metabrowser.errors import CLIError
+from metabrowser.git.process import kill_live_process_groups
+
+STDIN_CLOSED_NOTICE: Final[bytes] = b"Stopping Metabrowser: stdin closed.\n"
+# A parent going away is an orderly end of serving, not a failure.
+STDIN_CLOSED_EXIT_STATUS: Final[int] = 0
+# What one read takes from the pipe; the bytes are dropped.
+_READ_BYTES: Final[int] = 64 * 1024
+
+
+def require_open_stdin(*, fd: int = 0) -> None:
+    """Refuse to serve with the flag when there is no stdin to watch.
+
+    A closed descriptor would read as an immediate end, so the server would stop as soon
+    as it started, which no caller asking for the flag means.
+    """
+    try:
+        os.fstat(fd)
+    except OSError as exc:
+        raise CLIError(f"--exit-on-eof needs an open stdin to watch: {exc.strerror}") from exc
+
+
+def watch_for_eof(on_eof: Callable[[], object], *, fd: int = 0) -> threading.Thread:
+    """Read ``fd`` on a daemon thread until EOF, then call ``on_eof`` once.
+
+    A read error counts as the end too: a stdin that can no longer be read, such as a
+    terminal that hung up, has lost its parent just as surely.
+    """
+
+    def watch() -> None:
+        with contextlib.suppress(OSError):
+            while os.read(fd, _READ_BYTES):
+                pass
+        on_eof()
+
+    thread = threading.Thread(target=watch, name="metabrowser-stdin-lifeline", daemon=True)
+    thread.start()
+    return thread
+
+
+def stop_for_closed_stdin() -> NoReturn:
+    """Stop the process on the spot, as one Ctrl-C does (see ``serve._stop_now``).
+
+    Runs on the watcher thread while the main thread serves. The notice is a raw write,
+    which takes no lock the main thread may hold, and ``os._exit`` ends every thread at
+    once, so neither a request in flight nor a worker thread stuck in a slow read keeps
+    the process alive. A background refresh's Git, in process groups of its own, is
+    killed first.
+    """
+    with contextlib.suppress(OSError):
+        os.write(2, STDIN_CLOSED_NOTICE)
+    kill_live_process_groups()
+    os._exit(STDIN_CLOSED_EXIT_STATUS)
+
+
+__all__ = [
+    "STDIN_CLOSED_EXIT_STATUS",
+    "STDIN_CLOSED_NOTICE",
+    "require_open_stdin",
+    "stop_for_closed_stdin",
+    "watch_for_eof",
+]

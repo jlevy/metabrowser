@@ -114,6 +114,25 @@ Metabrowser warns when it ignores one of its own.
 See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
+### Stopping when the parent exits
+
+```shell
+# Serve until stdin closes: in a terminal, until Ctrl-D.
+metab ./notes --no-open --exit-on-eof
+```
+
+`--exit-on-eof` stops the server when its stdin closes.
+It is for a program that starts `metab` and holds its stdin open, as the macOS app does:
+however that program ends, by quitting or by crashing, the kernel closes the pipe, and
+the server stops by itself.
+The watch begins once the banner is printed, so the address is always in the output,
+even when stdin was already closed.
+The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
+any Git the server started is killed, and the process exits at once, with status 0.
+Whatever arrives on stdin before it closes is read and dropped.
+Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
+it, a stdin that is not open at all is refused before serving.
+
 ### Serving a Git source
 
 ```shell
