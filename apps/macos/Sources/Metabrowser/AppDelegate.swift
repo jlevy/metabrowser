@@ -327,7 +327,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openPendingFolders()
         let held = folderSessions.filter(\.isWaitingForRuntime)
         offerRestart(for: found.runtime)
-        // One at a time, as a restore starts them.
+        // A paused restore carries on in its own order, each root admitted again in its
+        // turn; the folders the user opened or restarted meanwhile start one at a time.
+        folderWindows.runtimeAccepted()
         Task {
             for session in held { await session.resume() }
         }
