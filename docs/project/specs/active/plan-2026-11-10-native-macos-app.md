@@ -200,8 +200,11 @@ One command produces a downloadable release, adapted from the sister app’s pip
 - **CI:** a drafted `macos-app` workflow builds the dev variant on pull requests and
   `main`, and on a `macos-v*` tag signs, notarizes, and drafts the release from secrets
   held in a protected environment.
-  Adding it, and gating the existing `publish.yml` to `v*` tags so a macOS tag never
-  triggers a PyPI publish, both wait for the user’s approval of workflow changes.
+  The user approved the build, test, and ad hoc release-rehearsal workflow and the gate
+  that keeps the existing `publish.yml` to the Python package’s `v<version>` tags, so a
+  macOS tag never triggers a PyPI publish, for the v1 milestone (`mb-x4fy`). The signing
+  and notarizing release job still waits for the user’s approval and the credentials
+  (Open Questions).
 - **What a downloader needs:** the app uses a `metab` CLI install and shows the install
   command when it finds none; Phase 5 adds a first-run flow that makes that install for
   the user.
@@ -256,15 +259,30 @@ The steps run in this order, which the beads record as dependencies:
    (`mb-1poj`); servers left by a crashed app reaped at the next launch, until host
    mode’s stdin-EOF exit (`mb-qzny`) replaces that (`mb-hwa9`); and the variant gaps in
    the sources (`mb-9xl0`).
-5. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
-   and the disk-image notice (`mb-3n79`), as Phase 5 describes.
-6. **Everyday use:** opening a file (`mb-tssz`), Dock and File menu recents (`mb-cqxd`),
-   native tabs (`mb-ssed`), and lazy session restore (`mb-lc8c`).
-7. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
+5. **Engine gate** (`mb-gvtw`): the WebKit measurement gate the packaging brief sets
+   before the Swift shell grows further.
+   The large-content cases measured in Chrome (see
+   [rendering large content](../../../large-content-rendering.md)) are run in the app’s
+   `WKWebView` and recorded beside the Chrome numbers with their method, and
+   `window.print()` and drag and drop are checked by hand.
+   A failure goes back to the brief’s fallback, Electron, before steps 6 and 7.
+6. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
+   and the disk-image notice (`mb-3n79`), as Phase 5 describes, and both flows in the
+   installation guide (`mb-2hqz`).
+7. **Everyday use:** opening a file (`mb-tssz`), recents (`mb-cqxd`), native tabs
+   (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents are the list macOS keeps
+   through `NSDocumentController`, behind the Dock menu and File > Open Recent; it
+   replaces the app’s own list in `UserDefaults`, so the app owns no membership or
+   order. Recent roots persisted in `metab` and the switcher over them stay in Phase 4.
+8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
    until a round finds nothing new.
-8. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and run
-   on real folders, through every manual check the earlier steps record.
+9. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and,
+   with fresh app settings on the build Mac, run through both setup flows, an old
+   `metab`, a launch from the disk image, and every manual check the earlier steps
+   record. Other macOS versions, standard accounts, and a Mac without the Command Line
+   Tools (`mb-5fp7`), and Gatekeeper with a Developer ID build (`mb-e9fm`), are not
+   covered; that is v1’s named limitation.
 
 Outside the milestone, each for a stated reason:
 
@@ -272,6 +290,7 @@ Outside the milestone, each for a stated reason:
 - host mode and the agent front door, which are Phase 3;
 - the app-private runtime (`mb-lrcd`), which is optional;
 - “Install for me” (`mb-34oi`), which waits on the clean-account matrix (`mb-5fp7`);
+- the clean-account matrix itself (`mb-5fp7`), which needs other machines and accounts;
 - a Developer ID release (`mb-e9fm`), which needs the owner’s certificate.
 
 ### Phase 1: Identity, Titles, Icon, and a Downloadable Build
@@ -332,8 +351,9 @@ confirms that root in the app.
 - [ ] Persist recent and added roots in `metab`, served by a roots route; the chosen
   security model decides which of them skip Phase 3’s confirmation (`mb-a5ru`).
 - [ ] Quick folder switcher, listing the roots route’s roots with live servers from the
-  registry, and Dock and File menu recents (`mb-9lf4`). The switcher’s membership and
-  order come from `metab`, so it needs no shell-only exemption.
+  registry (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it
+  needs no shell-only exemption.
+  Dock and File menu recents, which macOS keeps, are v1’s `mb-cqxd`.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates
@@ -360,7 +380,8 @@ The two standard setup flows come first; see the
 - [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
   `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).
-- [ ] The WebKit measurement gate against the Chrome-measured bounds (`mb-etqi`).
+- [ ] The WebKit measurement gate against the Chrome-measured bounds, run in v1
+  (`mb-gvtw`); the broader owner acceptance stays `mb-etqi`.
 - [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`). Each
   installed copy has one updater, and an update replaces the bundle whole.
 - [ ] A clean-account matrix for both flows, on macOS 15 and 26, admin and standard
