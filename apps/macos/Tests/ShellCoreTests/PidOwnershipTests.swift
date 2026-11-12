@@ -298,14 +298,18 @@ private nonisolated enum KernelCall: Equatable, Sendable {
     @Test func theSweepAfterTheLeaderExitsReachesItsGroup() async throws {
         let child = try SpawnedProcess(LaunchSpec(
             executable: "/bin/sh", arguments: ["-c", "sleep \(survivorSeconds) & echo $!; exit 0"]))
+        // Cleanup goes through the group the unreaped leader keeps, registered before
+        // anything can throw.
+        defer {
+            child.signalGroup(SIGKILL)
+            child.release()
+        }
         let job = try #require(await firstLine(of: child).flatMap { pid_t($0) })
-        defer { kill(job, SIGKILL) }
         _ = await child.waitForExit()
         #expect(isUnreapedZombie(child.pid))
         #expect(processExists(job))
         child.signalGroup(SIGKILL)
         #expect(await eventually { !processExists(job) })
-        child.release()
     }
 
     @Test func noSignalLeavesAfterRelease() async throws {

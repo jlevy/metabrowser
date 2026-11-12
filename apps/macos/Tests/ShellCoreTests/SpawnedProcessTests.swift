@@ -66,16 +66,23 @@ import Testing
     @Test func groupSignalReachesAGrandchild() async throws {
         let child = try SpawnedProcess(LaunchSpec(
             executable: "/bin/sh", arguments: ["-c", "sleep \(survivorSeconds) & echo $!; wait"]))
+        // Cleanup goes through the group, which the leader keeps while this test owns it,
+        // never through the grandchild's pid, which can be reused once it is gone.
+        defer {
+            child.signalGroup(SIGKILL)
+            child.release()
+        }
         var grandchild: pid_t?
         for await line in child.lines {
             grandchild = pid_t(line)
             break
         }
         let pid = try #require(grandchild)
-        defer { kill(pid, SIGKILL) }
         #expect(getpgid(pid) == child.pid)
         child.signalGroup(SIGTERM)
-        _ = await child.waitForExit()
+        // Polled from the signal, not from the leader's exit: if the signal were dropped,
+        // the leader would wait for the grandchild, which ends on its own only after
+        // survivorSeconds.
         #expect(await eventually { !processExists(pid) })
     }
 
@@ -133,8 +140,12 @@ import Testing
         let job = pid_t(result.output.first ?? "")
         #expect(job != nil)
         if let job {
-            defer { kill(job, SIGKILL) }
-            #expect(await eventually { !processExists(job) })
+            let gone = await eventually { !processExists(job) }
+            #expect(gone)
+            // The runner has released its leader, so no handle this test owns reaches the
+            // job's group. A job the poll last saw alive is killed by its pid; one that is
+            // gone is not, since its pid can be reused.
+            if !gone { kill(job, SIGKILL) }
         }
     }
 
