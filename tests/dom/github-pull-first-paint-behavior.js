@@ -93,18 +93,24 @@ function host() {
     holdMarkdown(on) {
       holdMarkdown = on;
     },
-    mount(page, initial) {
+    mount(page, initial, how = {}) {
       const container = new Element("main");
       let ready = false;
       const handle = page.mountPullPage(
         container,
-        { number: 7, tab: "", reader: { initial: { etag: null, body: initial }, fetchAfterMs: 0 } },
         {
-          perf,
+          number: 7,
+          tab: "",
+          // A direct landing has no reader: the page reads the record itself.
+          reader:
+            initial === null ? null : { initial: { etag: null, body: initial }, fetchAfterMs: 0 },
+        },
+        {
+          perf: how.perf ?? perf,
           ensureAsset: async () => {},
           loadKpressAssets: async () => {},
           ...refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          formatAge: how.formatAge ?? (() => ({ label: "now", className: "age" })),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",
@@ -124,6 +130,10 @@ function host() {
         ready: () => ready,
         plain: () => description()?.querySelector(":scope > .github-pull-plain") ?? null,
         rendered: () => description()?.querySelector(":scope > .metabrowser-kpress-host") ?? null,
+        // Laid out out of sight while its first paint waits.
+        holding: () => body().classes.has("github-pull-body-holding"),
+        texts: () =>
+          [...container.descendants()].filter((node) => node.getAttribute("data-part") !== null),
       };
     },
     async poll() {
@@ -144,11 +154,11 @@ async function run() {
   const session = host();
   session.current = first;
 
-  // A first visit: nothing paints in the body until the description's Markdown can.
+  // A first visit: the body is out of sight until the description's Markdown can show.
   session.holdMarkdown(true);
   const visit = session.mount(page, first);
   await settle();
-  assert.equal(visit.description(), undefined, "no plain description paints while held");
+  assert.equal(visit.holding(), true, "no plain description shows while held");
   assert.equal(visit.ready(), false, "a held page is not ready, so the page it replaces stays");
   assert.deepEqual(session.markdown, ["body"], "the description is asked for at once");
   session.holdMarkdown(false);
@@ -156,6 +166,7 @@ async function run() {
   await settle();
   assert.equal(visit.plain(), null, "the first paint is the Markdown");
   assert.equal(visit.rendered()?.textContent, "rendered first text");
+  assert.equal(visit.holding(), false);
   assert.equal(visit.ready(), true);
   assert.equal(
     [...session.timers.values()].some((timer) => timer.delay === page.DESCRIPTION_HOLD_MS),
@@ -198,7 +209,7 @@ async function run() {
   session.holdMarkdown(true);
   const late = session.mount(page, slow);
   await settle();
-  assert.equal(late.description(), undefined);
+  assert.equal(late.holding(), true);
   const [bound] = [...session.timers].filter(
     ([, timer]) => timer.delay === page.DESCRIPTION_HOLD_MS,
   );
@@ -206,6 +217,7 @@ async function run() {
   bound[1].callback();
   await settle();
   assert.equal(late.plain()?.textContent, "slow text", "past the bound the text paints plain");
+  assert.equal(late.holding(), false);
   assert.equal(late.ready(), true);
   session.holdMarkdown(false);
   session.held.shift()();
@@ -213,6 +225,135 @@ async function run() {
   assert.equal(late.rendered()?.textContent, "rendered slow text", "and its Markdown follows");
   late.handle.dispose();
   facts.pastTheBound = "plain, then Markdown";
+
+  // Comments and reviews the first screen shows wait with the description (review A6): at
+  // the paint that makes the page ready every text is Markdown, none plain.
+  const conversation = structuredClone(recorded.current.body);
+  conversation.record_revision = "f".repeat(64);
+  conversation.record.comparison = null;
+  conversation.record.unavailable.comparison = "no_store";
+  session.current = conversation;
+  session.holdMarkdown(true);
+  const askedBefore = session.markdown.length;
+  const discussed = session.mount(page, conversation);
+  await settle();
+  const atHold = discussed.texts().length;
+  assert.ok(atHold > 1, "the recorded conversation has texts beside its description");
+  assert.equal(discussed.holding(), true);
+  const plainShown = () =>
+    discussed.texts().filter((node) => node.querySelector(":scope > .github-pull-plain") !== null)
+      .length;
+  /** How many texts were plain when the page first became ready. @type {number | null} */
+  let plainAtReady = null;
+  while (session.held.length > 0) {
+    session.held.shift()();
+    await settle();
+    if (discussed.ready() && plainAtReady === null) {
+      plainAtReady = plainShown();
+    }
+  }
+  session.holdMarkdown(false);
+  await settle();
+  assert.equal(discussed.ready(), true);
+  assert.equal(plainAtReady, 0, "no text the first screen shows is plain at ready");
+  assert.equal(discussed.holding(), false);
+  facts.comments = { texts: atHold, asked: session.markdown.length - askedBefore, plainAtReady };
+  discussed.handle.dispose();
+
+  // Each hold says how long it held and why it ended (review B1): met when its texts came,
+  // bound when its time ran out.
+  {
+    /** @type {{label: string, meta: Record<string, any>}[]} */
+    const spans = [];
+    const recording = {
+      measure(label, work, meta) {
+        spans.push({ label, meta });
+        return work();
+      },
+      measureAsync: async (_label, work) => work(),
+    };
+    const met = envelope("1".repeat(64), "met text");
+    session.current = met;
+    session.holdMarkdown(true);
+    const metPage = session.mount(page, met, { perf: recording });
+    await settle();
+    session.held.shift()();
+    await settle();
+    metPage.handle.dispose();
+    const bounded = envelope("2".repeat(64), "bounded text");
+    session.current = bounded;
+    const boundPage = session.mount(page, bounded, { perf: recording });
+    await settle();
+    const [bound] = [...session.timers].filter(
+      ([, timer]) => timer.delay === page.DESCRIPTION_HOLD_MS,
+    );
+    session.timers.delete(bound[0]);
+    bound[1].callback();
+    await settle();
+    session.holdMarkdown(false);
+    session.held.shift()();
+    await settle();
+    boundPage.handle.dispose();
+    facts.holdSpans = spans
+      .filter((span) => span.label === "githubPull:firstPaintHold")
+      .map((span) => `${span.meta.mode} ${span.meta.outcome} ${span.meta.parts}`);
+  }
+
+  // A direct landing paints the loading blocks, and its held first paint replaces them with
+  // the conversation laid out out of sight (review B5): no loading block shows while it waits.
+  {
+    const landed = envelope("3".repeat(64), "landing text");
+    session.current = landed;
+    session.holdMarkdown(true);
+    const landing = session.mount(page, null);
+    const blocks = () =>
+      [...landing.body().descendants()].some((node) => node.classes.has("github-pull-loading"));
+    const before = blocks();
+    await settle();
+    const whileHeld = { holding: landing.holding(), blocks: blocks() };
+    session.holdMarkdown(false);
+    session.held.shift()();
+    await settle();
+    facts.landing = { blocksBefore: before, whileHeld, final: landing.plain() === null };
+    landing.handle.dispose();
+  }
+
+  // A kept section tells its ages again at every paint (review A5): three hours after two
+  // comments were painted, a refresh that adds a third reads all three as of now.
+  {
+    let clock = Date.parse("2026-09-17T12:00:00Z");
+    const minutesAgo = (seconds) => ({
+      label: `${Math.round((clock - seconds * 1000) / 60_000)} min`,
+      className: "age",
+    });
+    const comment = recorded.current.body.record.issue_comments[0];
+    const at = (minutes) => new Date(clock - minutes * 60_000).toISOString().replace(".000Z", "Z");
+    const aged = envelope("4".repeat(64), "aged text");
+    aged.record.issue_comments = [
+      { ...comment, id: 11, timeline_id: "11", created_at: at(6), body: "six" },
+      { ...comment, id: 12, timeline_id: "12", created_at: at(5), body: "five" },
+    ];
+    session.current = aged;
+    const agedPage = session.mount(page, aged, { formatAge: minutesAgo });
+    await settle();
+    clock += 180 * 60_000;
+    const refreshed = structuredClone(aged);
+    refreshed.record_revision = "5".repeat(64);
+    refreshed.record.issue_comments.push({
+      ...comment,
+      id: 13,
+      timeline_id: "13",
+      created_at: at(4),
+      body: "four",
+    });
+    session.current = refreshed;
+    await session.poll();
+    facts.ages = [...agedPage.body().descendants()]
+      .filter((node) => node.classes.has("github-pull-age"))
+      .map((node) => node.textContent)
+      .slice(1);
+    agedPage.handle.dispose();
+  }
 
   // A stale cached record paints the state the repository's list already knows, when the
   // list saw a later update; an older list leaves the record's own.
@@ -260,6 +401,7 @@ async function run() {
       settle_ = resolve;
     });
     let asked = null;
+    let holdingAtJump = null;
     const container = new Element("main");
     const handle = page.mountPullPage(
       container,
@@ -273,9 +415,20 @@ async function run() {
         ensureAsset: async () => {},
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
-          render(_host, ctx) {
+          render(host, ctx) {
             asked = ctx.markdownHoldMs;
-            return { currentFile: () => null, firstScreen: () => firstScreen, dispose() {} };
+            return {
+              currentFile: () => null,
+              firstScreen: () => firstScreen,
+              fileForPath: (path) => ({ kind: "file", path }),
+              // The file the address names is landed on before the wait (review B2), so the
+              // first screen the Markdown layer reports is the one the reader lands on.
+              scrollToFile(path) {
+                holdingAtJump = host.classes.has("github-pull-diff-holding");
+                return { kind: "jumped", path };
+              },
+              dispose() {},
+            };
           },
         }),
         loadKpressAssets: async () => {},
@@ -287,6 +440,7 @@ async function run() {
         icons: { toggle: "" },
       },
     );
+    handle.showFile("docs/new.md");
     let ready = false;
     void handle.whenFilesReady().then(() => {
       ready = true;
@@ -308,31 +462,46 @@ async function run() {
     const shown = !host.classes.has("github-pull-diff-holding");
     handle.dispose();
     window.location.pathname = "/pull/7";
-    return { asked, held, readyWhileHeld, shown, ready };
+    return { asked, held, readyWhileHeld, shown, ready, holdingAtJump };
   };
   facts.changes = { settled: await changes(true), bound: await changes(false) };
 
-  // The kept renders are bounded by count and by characters, the oldest dropped first.
+  // The kept renders are bounded by count and by characters, the oldest dropped first, and
+  // descriptions apart from the other parts, so a long conversation keeps them.
   const bounds = await import(`${pathToFileURL(pagePath).href}?bounds`);
-  for (let index = 0; index < bounds.RENDERED_TEXTS + 10; index += 1) {
+  bounds.rememberRendered("s", 1, "body", "a description", { html: "d", assets: { kept: 1 } });
+  for (let index = 0; index < bounds.RENDERED_PARTS + 10; index += 1) {
     bounds.rememberRendered("s", 1, `issue_comment/${index}`, `text ${index}`, { html: "x" });
   }
-  assert.equal(bounds.renderedTextsHeld().texts, bounds.RENDERED_TEXTS);
+  assert.equal(bounds.renderedTextsHeld().parts.texts, bounds.RENDERED_PARTS);
   assert.equal(bounds.renderedText("s", 1, "issue_comment/0", "text 0"), null, "oldest dropped");
   assert.ok(bounds.renderedText("s", 1, "issue_comment/10", "text 10"));
+  assert.deepEqual(
+    bounds.renderedText("s", 1, "body", "a description"),
+    { html: "d", assets: { kept: 1 } },
+    "a description outlives a long conversation, with the one manifest kept beside it",
+  );
   assert.equal(
     bounds.renderedText("s", 1, "issue_comment/10", "another text"),
     null,
     "a render serves only its own text",
   );
-  bounds.rememberRendered("s", 1, "body", "big", { html: "y".repeat(bounds.RENDERED_TEXT_CHARS) });
-  assert.ok(bounds.renderedTextsHeld().chars <= bounds.RENDERED_TEXT_CHARS);
+  // Several that together pass the characters' bound: the oldest go, the newest stay.
+  const each = Math.floor(bounds.RENDERED_DESCRIPTION_CHARS / 4);
+  for (let index = 0; index < 6; index += 1) {
+    bounds.rememberRendered("s", 2 + index, "body", `big ${index}`, { html: "y".repeat(each) });
+  }
+  const held = bounds.renderedTextsHeld().descriptions;
+  assert.ok(held.chars <= bounds.RENDERED_DESCRIPTION_CHARS);
+  assert.equal(bounds.renderedText("s", 2, "body", "big 0"), null, "the oldest went");
+  assert.ok(bounds.renderedText("s", 7, "body", "big 5"), "the newest stayed");
+  assert.equal(held.texts, 3, "three of a quarter each fit beside their texts");
   facts.bounded = true;
   return facts;
 }
 
 run()
-  .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+  .then((result) => process.stdout.write(`${JSON.stringify(result, null, 2)}\n`))
   .catch((error) => {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;

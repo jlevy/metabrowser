@@ -369,7 +369,7 @@ async function run() {
   const posts = [];
   global.fetch = async (route, options) => {
     if (route.includes("pull-timeline")) {
-      // The commits a held first paint reads first: none are held here.
+      // Commit timeline reads: none are held here.
       return { status: 404, headers: { get: () => null }, json: async () => ({}) };
     }
     if (options.method === "POST") {

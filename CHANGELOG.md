@@ -4,17 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A pull request’s **Conversation** shows its description as Markdown from the first
-  paint: the page waits up to 200 ms for the rendered description, keeping the page it
-  replaces on screen meanwhile, and shows plain text only past that wait.
-  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
-  refresh that leaves a text unchanged shows it at once without asking again.
-  When the full record replaces a description preview, the description stays where it is
-  and only the sections below it change.
-  Commits that arrive after the conversation has painted are added after everything
-  shown, so nothing you are reading moves; a conversation painted with its commits
-  already known, as when you return to it from another tab, places them among the
-  comments and reviews in GitHub’s order.
+- A pull request’s **Conversation** shows its description, and the comments and reviews
+  on its first screen, as Markdown from the first paint: the page waits up to 200 ms for
+  them, out of sight, keeping the page it replaces on screen meanwhile, and shows plain
+  text only past that wait.
+  A cold link or reload shows the header with an empty body for that wait instead of
+  loading blocks. A rendered text is kept for the rest of the session, so a revisit,
+  Back, Forward, or a refresh that leaves a text unchanged shows it at once without
+  asking again. When the full record replaces a description preview, the description
+  stays where it is and only the sections below it change; ages in kept cards still read
+  as of each paint. Commits that arrive after the conversation has painted are added
+  after everything shown, so nothing you are reading moves; a conversation painted with
+  its commits already known, as when you return to it from another tab, places them
+  among the comments and reviews in GitHub’s order.
   The state badge shows the fresher of the cached record and the repository’s list of
   pull requests, so a stale record of a merged pull request no longer shows Open first.
 

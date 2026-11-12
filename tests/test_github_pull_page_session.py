@@ -600,7 +600,7 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
 
 
 def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
-    """Plain text never paints first where the description's Markdown can.
+    """Plain text never paints first where a shown text's Markdown can.
 
     The first paint of a full record waits, within ``DESCRIPTION_HOLD_MS``, for the Markdown
     it asked for, and is not ready meanwhile, so a page it replaces stays on screen. A
@@ -616,17 +616,32 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "refreshedSameText": "kept",
         "revisit": "final at first paint",
         "pastTheBound": "plain, then Markdown",
+        # The comments and reviews the first screen shows wait with the description, so none is
+        # plain at the paint that makes the page ready (review A6).
+        "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
+        # Each hold's span says how it ended (review B1).
+        "holdSpans": ["hidden met 1", "hidden bound 1"],
+        # A direct landing's loading blocks give way to the held conversation (review B5).
+        "landing": {
+            "blocksBefore": True,
+            "whileHeld": {"holding": True, "blocks": False},
+            "final": True,
+        },
+        # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
+        "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.
         "listedState": {"newerList": "Merged", "olderList": "Open"},
         # Changes with rendered Markdown is out of sight, and not ready, until its first
         # screen's Markdown settles or CHANGES_FIRST_SCREEN_MS passes.
         "changes": {
+            # The file the address names is landed on while the diff is still held (review B2).
             ending: {
                 "asked": 200,
                 "held": True,
                 "readyWhileHeld": False,
                 "shown": True,
                 "ready": True,
+                "holdingAtJump": True,
             }
             for ending in ("settled", "bound")
         },

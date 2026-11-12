@@ -1709,3 +1709,72 @@ $ node tests/dom/github-pull-timeline-session.js
 }
 ? 0
 ```
+
+## Conversation and Changes First Paints
+
+The conversation’s first paint of a full record is laid out out of sight until the
+Markdown of every text its first screen shows can be inserted, within
+`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`). A
+revisit and a refreshed record with the same text paint the render kept for that text at
+once, keeping its node (`revisit`, `refreshedSameText`). Past the bound the text shows
+plain and its Markdown follows (`pastTheBound`). The state badge’s first paint is the
+fresher of the cached record and the repository’s list (`listedState`). Changes with
+rendered Markdown stays out of sight until its first screen settles or
+`CHANGES_FIRST_SCREEN_MS` passes (`changes`). The kept renders are bounded by count and
+by characters, descriptions apart from other parts (`bounded`).
+
+```console
+$ node tests/dom/github-pull-first-paint-behavior.js
+{
+  "firstVisit": "held, then final",
+  "refreshedSameText": "kept",
+  "revisit": "final at first paint",
+  "pastTheBound": "plain, then Markdown",
+  "comments": {
+    "texts": 5,
+    "asked": 5,
+    "plainAtReady": 0
+  },
+  "holdSpans": [
+    "hidden met 1",
+    "hidden bound 1"
+  ],
+  "landing": {
+    "blocksBefore": true,
+    "whileHeld": {
+      "holding": true,
+      "blocks": false
+    },
+    "final": true
+  },
+  "ages": [
+    "186 min",
+    "185 min",
+    "4 min"
+  ],
+  "listedState": {
+    "newerList": "Merged",
+    "olderList": "Open"
+  },
+  "changes": {
+    "settled": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    },
+    "bound": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    }
+  },
+  "bounded": true
+}
+? 0
+```

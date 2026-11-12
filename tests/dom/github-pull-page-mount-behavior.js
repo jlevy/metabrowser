@@ -433,10 +433,14 @@ async function markdownOwnership() {
         await settle();
       };
       await settle();
+      const holding = () =>
+        [...container.descendants()]
+          .find((node) => node.classes.has("github-pull-body"))
+          ?.classes.has("github-pull-body-holding");
       assert.equal(
-        body(),
-        undefined,
-        `${delayed}/${transition}: the first paint waits for the description's Markdown`,
+        holding(),
+        true,
+        `${delayed}/${transition}: the first paint waits, out of sight, for the description's Markdown`,
       );
       // The wait is bounded: past it the description paints plain.
       const [hold] = [...timers].filter(([, timer]) => timer.delay === page.DESCRIPTION_HOLD_MS);
@@ -444,6 +448,7 @@ async function markdownOwnership() {
       timers.delete(hold[0]);
       hold[1].callback();
       await settle();
+      assert.equal(holding(), false, `${delayed}/${transition}: past the bound it shows`);
       const old = body();
       assert.equal(
         old.textContent,

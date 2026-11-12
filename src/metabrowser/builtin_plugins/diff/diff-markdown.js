@@ -354,15 +354,22 @@ export function createMarkdownViews(deps) {
   let retryTimer;
   /** @type {(() => void) | undefined} */
   let unbind;
+  let firstScreenSettled = false;
   /** @type {() => void} */
   let settleFirstScreen = () => {};
   /** @type {Promise<void>} */
   const firstScreen = new Promise((resolve) => {
-    settleFirstScreen = () => resolve(undefined);
+    settleFirstScreen = () => {
+      firstScreenSettled = true;
+      resolve(undefined);
+    };
   });
 
   // The first screen has been reported and none of its files waits for Rendered any more.
   function checkFirstScreen() {
+    if (firstScreenSettled) {
+      return;
+    }
     if (
       disposed ||
       (reported &&
