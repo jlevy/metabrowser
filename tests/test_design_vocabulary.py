@@ -1762,6 +1762,21 @@ def _translucent(value: str) -> tuple[str, float]:
     return f"oklch({found[1]})", float(found[2] or 1)
 
 
+def _translucent_token(tokens: dict[str, str], token: str) -> tuple[str, float]:
+    """A token's opaque `oklch()` color and its alpha, following `var()` aliases.
+
+    A `color-mix(in srgb, var(--x) P%, transparent)` is `--x` at P% of its own alpha: a
+    browser mixes with `transparent` premultiplied, so the color does not move toward black.
+    """
+
+    value = _resolved(tokens, token)
+    mix = _MIX_OVER_TRANSPARENT.fullmatch(value)
+    if mix is None:
+        return _translucent(value)
+    color, alpha = _translucent(_resolved(tokens, mix["token"]))
+    return color, alpha * float(mix["percent"]) / 100
+
+
 def _over(ink: tuple[float, ...], ground: tuple[float, ...], opacity: float) -> tuple[float, ...]:
     """*ink* at *opacity* over *ground*, blended in gamma-encoded sRGB as a browser does."""
 
@@ -1791,7 +1806,7 @@ def _key_reveal_contrast(tokens: dict[str, str]) -> dict[str, float]:
 
     text = _srgb_luminance(_srgb(_resolved(tokens, "--kbd-badge-color")))
     strip = _srgb(_resolved(tokens, "--key-reveal-bg"))
-    fill, alpha = _translucent(_resolved(tokens, "--kbd-badge-bg"))
+    fill, alpha = _translucent_token(tokens, "--kbd-badge-bg")
     badge = min(
         _ratio(text, _srgb_luminance(_over(_srgb(fill), _ground(tokens, ground), alpha)))
         for ground in _BADGE_GROUNDS
@@ -1846,10 +1861,11 @@ def test_key_reveal_tokens_are_the_row_flash_yellow_in_both_themes() -> None:
     """The reveal is the live-row yellow (docs/design-system.md, "Badge Targets and the Shift Reveal").
 
     The strip's layer is `--row-flash-bg` itself; a badge is that color, partly transparent
-    so the label under its leading edge shows through; its border is a deeper tone of the
+    so the label under its leading edge shows through, and mixed from it rather than
+    restating its numbers, so its dark value serves both; its border is a deeper tone of the
     same hue, with more chroma and a step toward the text, so a keycap keeps its edge on the
-    yellow strip; and its text is the body text. Each is oklch at the yellow's hue in both
-    themes, which is what `test_themed_colors_keep_their_hue` reads as one color.
+    yellow strip; and its text is the body text. The border is oklch at the yellow's hue in
+    both themes, which is what `test_themed_colors_keep_their_hue` reads as one color.
     """
 
     themes = _theme_tokens()
@@ -1861,12 +1877,18 @@ def test_key_reveal_tokens_are_the_row_flash_yellow_in_both_themes() -> None:
     )
     assert root["--key-reveal-bg"] == "var(--row-flash-bg)"
     assert root["--kbd-badge-color"] == "var(--text)"
-    for token in ("--kbd-badge-bg", "--kbd-badge-border"):
-        assert token in root and token in dark, f"{token} must be defined in both themes"
+    mix = _MIX_OVER_TRANSPARENT.fullmatch(root["--kbd-badge-bg"])
+    assert mix is not None and mix["token"] == "--row-flash-bg", (
+        "a badge's fill is --row-flash-bg mixed with transparent, not a copy of its numbers"
+    )
+    assert "--kbd-badge-bg" not in dark, "the badge's fill follows --row-flash-bg's dark value"
+    assert "--kbd-badge-border" in root and "--kbd-badge-border" in dark, (
+        "--kbd-badge-border must be defined in both themes"
+    )
     for theme, tokens in themes.items():
         yellow = _oklch_channels(_resolved(tokens, "--key-reveal-bg"))
         assert yellow[2] == _KEY_REVEAL_YELLOW_HUE, f"the {theme} reveal left the row-flash hue"
-        fill, alpha = _translucent(tokens["--kbd-badge-bg"])
+        fill, alpha = _translucent_token(tokens, "--kbd-badge-bg")
         assert _oklch_channels(fill) == yellow, f"the {theme} badge is not the reveal's yellow"
         assert 0 < alpha < 1, f"the {theme} badge must be translucent, not {alpha}"
         border, border_alpha = _translucent(tokens["--kbd-badge-border"])

@@ -211,7 +211,9 @@
   /* Shift reveal: the keycap badges and the revealed shortcut strip
      (docs/design-system.md, "Badge Targets and the Shift Reveal"). The
      reveal is the live-row yellow, --row-flash-bg. The strip's layer is
-     that color; a badge is that color at 60% opacity, because a keycap,
+     that color; a badge is that color at 60% opacity, mixed with
+     transparent as --highlight-bg is, so it follows --row-flash-bg in both
+     themes and needs no dark override. It is 60% because a keycap,
      17 to 20px wide in Chrome, is wider than a tab's 12px inline-end
      padding and covers the label's last letter, which should still read
      through its leading edge (judged in headless Chrome 152 in both
@@ -230,9 +232,10 @@
      with --text as it is, so the reveal keeps --row-flash-bg's lightness
      rather than taking its own. test_key_reveal_text_meets_contrast_in_both_themes
      in tests/test_design_vocabulary.py recomputes every figure here and
-     fails when one drifts. The dark overrides are beside --row-flash-bg. */
+     fails when one drifts. The border's dark override is beside
+     --row-flash-bg. */
   --key-reveal-bg: var(--row-flash-bg);
-  --kbd-badge-bg: oklch(95.63% 0.0733 98.1 / 0.6);
+  --kbd-badge-bg: color-mix(in srgb, var(--row-flash-bg) 60%, transparent);
   --kbd-badge-border: oklch(78% 0.13 98.1);
   --kbd-badge-color: var(--text);
 
@@ -1178,8 +1181,8 @@
   --scrollbar-thumb-hover: oklch(54.9% 0.026 264.3);
   --tally-skeleton-bg: oklch(41.7% 0.019 264.3);
   --row-flash-bg: oklch(50.98% 0.0977 98.1);
-  /* The Shift reveal's badge, at the dark yellow; see the light tokens. */
-  --kbd-badge-bg: oklch(50.98% 0.0977 98.1 / 0.6);
+  /* The Shift reveal's badge border, a deeper tone of the dark yellow; see
+     the light tokens. */
   --kbd-badge-border: oklch(66% 0.12 98.1);
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
