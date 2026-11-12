@@ -4,7 +4,7 @@
 // the DOM but not on screen, blank and placeholder frames after ready, region movement,
 // input fidelity, and cache disposition against a server that logs its 304s.
 //
-//   node tests/dom/transitions-recorder-chrome.mjs frames|content|network
+//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network
 //
 // Paint and the frame clock are the behavior under test, so this needs a browser; the
 // pure accounting is tested browserless in transitions-instrument-behavior.mjs.
@@ -39,8 +39,20 @@ const pane = document.getElementById("preview-pane");
 const nav = document.getElementById("tree-content");
 const spin = (ms) => { const t = performance.now(); while (performance.now() - t < ms) {} };
 const show = (name, text) => { view.replaceChildren(document.createTextNode(text ?? name + " subject")); view.dataset.subject = name; };
+// A pull request page: its header, of a given height, and the tab bar below it.
+const pullHost = (n, height) => {
+  const host = document.createElement("div");
+  host.className = "pull-request-host";
+  host.dataset.number = String(n);
+  host.innerHTML = '<div class="github-pull-header" style="height:' + height + 'px">#' + n + '</div><div class="tab-bar">Conversation</div><div class="github-pull-body">body of #' + n + '</div>';
+  return host;
+};
 const actions = {
-  reset: () => { view.replaceChildren(); delete view.dataset.subject; pane.style.marginTop = "0px"; },
+  reset: () => { view.replaceChildren(); delete view.dataset.subject; pane.style.marginTop = "0px"; for (const h of pane.querySelectorAll(".pull-request-host")) { h.remove(); } },
+  prA: () => { pane.prepend(pullHost(353, 137)); },
+  // The next pull request replaces the page: the old host goes, and 50 ms later the new
+  // one, with a taller header, takes its place.
+  prB: () => { pane.querySelector(".pull-request-host").remove(); setTimeout(() => pane.prepend(pullHost(351, 203)), 50); },
   late: () => setTimeout(() => show("late"), 300),
   rafLoop: () => { show("rafLoop"); const end = performance.now() + 600; const loop = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { requestAnimationFrame(loop); } }; requestAnimationFrame(loop); },
   taskLoop: () => { show("taskLoop"); const end = performance.now() + 600; const ch = new MessageChannel(); ch.port1.onmessage = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { ch.port2.postMessage(0); } }; ch.port2.postMessage(0); },
@@ -133,7 +145,8 @@ async function measure(name, extra = {}) {
     input: { kind: "click", selector: `#go-${name}` },
     ready: subjectReady(name),
     converged: `() => ""`,
-    settleMs: 900,
+    settleMs: 400,
+    timeoutMs: 10000,
     ...extra,
   });
   await sleep(300);
@@ -143,6 +156,8 @@ async function measure(name, extra = {}) {
 // failing them all; by default the first failure ends the run.
 const failures = [];
 async function check(name, fn) {
+  // Progress on stderr, so a run cut off by its timeout says where it was.
+  process.stderr.write(`check: ${name}\n`);
   try {
     await fn();
   } catch (error) {
@@ -183,7 +198,7 @@ try {
       await check(
         `DOM work after the subject (${name}) is settle time, not readiness`,
         async () => {
-          const r = await measure(name);
+          const r = await measure(name, { settleMs: 800 });
           assert.equal(r.ok, true, JSON.stringify(r.refusals));
           assert.equal(r.framesToReady, 1);
           assert.equal(r.blankFrames, 0);
@@ -211,6 +226,7 @@ try {
         `${r.paintedReadyMs} vs ${presented}`,
       );
     });
+  } else if (group === "frames2") {
     await check("a long ready frame counts its own rendering", async () => {
       const r = await measure("heavy", { settleMs: 400 });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
@@ -258,6 +274,27 @@ try {
       assert.equal(r.movementNetPx, 37);
       assert.equal(r.movementPathPx, 37);
       assert.ok(r.movementPx <= 19, `largest step ${r.movementPx}`);
+    });
+    await check("a replaced page with a taller header moves the tab bar below it", async () => {
+      await d.click("#go-reset");
+      await sleep(200);
+      await d.click("#go-prA");
+      await sleep(300);
+      const r = await d.measure({
+        id: "prB",
+        subject: "#351",
+        input: { kind: "click", selector: "#go-prB" },
+        ready: `() => { const h = document.querySelector('#preview-pane > .pull-request-host[data-number="351"]'); return !!h && window.__tr.hasUseful(h); }`,
+        converged: `() => ""`,
+        settleMs: 400,
+      });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.deepEqual(r.regions.prTabs.net, [0, 66, 0, 0]);
+      assert.equal(r.regions.prTabs.path[1], 66, JSON.stringify(r.regions.prTabs));
+      assert.equal(r.regions.prHeader.net[3], 66);
+      assert.ok(r.movementNetPx >= 66, `net ${r.movementNetPx}`);
+      assert.ok(r.movementPathPx >= 66, `path ${r.movementPathPx}`);
+      await sleep(300);
     });
     await check("an untrusted start event refuses", async () => {
       await d.click("#go-reset");
@@ -319,7 +356,7 @@ try {
       assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
     });
   } else {
-    throw new Error(`unknown group ${group}; frames, content, or network`);
+    throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
   }
 } finally {
   await browser.close();

@@ -331,6 +331,24 @@ check("a region that goes and comes back has a path and no net", () => {
   assert.equal(m.groups.page.net, 0);
   assert.equal(m.groups.page.path, 20);
 });
+check("a region absent for some frames moves from where it last was", () => {
+  // A pull request's tab bar while its header is replaced by a taller one: gone for a
+  // frame, back 66 px lower.
+  const m = regionMovement(
+    { pane: [0, 300, 10, 10] },
+    [
+      [10, "pane", null],
+      [27, "pane", [0, 366, 10, 10]],
+    ],
+    5,
+    REG,
+  );
+  assert.equal(m.groups.page.net, 66);
+  assert.equal(m.groups.page.path, 66);
+  assert.equal(m.groups.page.step, 66);
+  assert.equal(m.regions.pane.removed, 1);
+  assert.equal(m.regions.pane.appeared, 0);
+});
 check("a row re-created with its identity moves; another identity is a replacement", () => {
   const same = regionMovement(
     { row: [0, 50, 10, 10, "docs"] },
