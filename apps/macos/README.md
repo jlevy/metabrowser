@@ -377,7 +377,7 @@ The outputs, at 0.1.0:
 
 | File | Size |
 | --- | --- |
-| `build/release/Metabrowser.app` | about 1.4 MB |
+| `build/release/Metabrowser.app` | about 1.5 MB |
 | `build/Metabrowser-0.1.0-arm64.dmg` | about 1.0 MB |
 | `build/Metabrowser-0.1.0-arm64.dmg.sha256` | one `shasum -a 256` line |
 | `build/metabrowser-app.rb` | the cask |
