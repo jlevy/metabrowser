@@ -769,6 +769,25 @@ def test_real_page_history_owns_file_selection_separately_from_retained_cursor()
     }
 
 
+def test_a_selection_reads_its_record_once() -> None:
+    """A click reads the record once: the page joins the peek's read or takes its answer.
+
+    The mousedown's peek starts the read before the click, and the open waits only so long
+    for it. A read still on its way is the page's first read; one that answered within a fast
+    poll counts as it; the pointer resting on the clicked row reads nothing more. Only a
+    record read ahead long before the click is asked again, with its tag. Before the page
+    joined, the same stories read two and three times.
+    """
+
+    assert run_session("github-pull-selection-read-behavior.js") == {
+        "slowRead": ["panel"],
+        "fastRead": ["panel"],
+        "oldReadAhead": ["panel", "page revalidates"],
+        # The second read is the other row's own peek; the page's read is the first.
+        "hoverAway": ["panel", "panel"],
+    }
+
+
 def test_background_core_warming_covers_viewport_and_catalog_without_stranding_reconnect() -> None:
     """Transport batches never cap coverage, and recovery keeps the settled cursor."""
 

@@ -1288,7 +1288,8 @@ export function isEnvelope(value) {
  *   tab: string,
  *   reader?: {
  *     fetchAfterMs: number,
- *     initial: {etag: string | null, body: unknown} | null,
+ *     initial: {etag: string | null, body: unknown, verified?: string | null, at?: number} | null,
+ *     pending?: Promise<{etag: string | null, body: unknown, verified?: string | null} | null> | null,
  *     walking?: () => boolean,
  *   } | null,
  *   checkoutHead?: string | null,
@@ -1715,22 +1716,7 @@ export function createPullController(deps, options) {
       if (disposed) {
         return;
       }
-      catalogScanning = false;
-      if (response.status === 200 && isEnvelope(response.body)) {
-        if (accept(response.body, request)) {
-          etag = response.etag;
-          catalogScanning = / scanning$/u.test(response.verified ?? "");
-        }
-        error = null;
-      } else if (response.status === 304 || pinChanged(response)) {
-        if (response.status === 304) {
-          adoptVerified(response.verified);
-          catalogScanning = / scanning$/u.test(response.verified ?? "");
-        }
-        error = null;
-      } else {
-        error = `The pull request is unavailable (HTTP ${response.status}).`;
-      }
+      take(response, request);
     } catch {
       catalogScanning = false;
       error = "The server did not answer.";
@@ -1742,11 +1728,91 @@ export function createPullController(deps, options) {
       return;
     }
     // A waiting read spent part (or all) of the interval already.
-    scheduleNext(
+    afterRead(
       waitStarted === null
         ? FAST_POLL_MS
         : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
     );
+  }
+
+  /**
+   * One answer of the pull route, as a poll takes it.
+   *
+   * @param {PullResponse} response
+   * @param {number} request
+   */
+  function take(response, request) {
+    catalogScanning = false;
+    if (response.status === 200 && isEnvelope(response.body)) {
+      if (accept(response.body, request)) {
+        etag = response.etag;
+        catalogScanning = / scanning$/u.test(response.verified ?? "");
+      }
+      error = null;
+    } else if (response.status === 304 || pinChanged(response)) {
+      if (response.status === 304) {
+        adoptVerified(response.verified);
+        catalogScanning = / scanning$/u.test(response.verified ?? "");
+      }
+      error = null;
+    } else {
+      error = `The pull request is unavailable (HTTP ${response.status}).`;
+    }
+  }
+
+  /**
+   * The page's first read is the Pulls tab's, when the selection that opened it read the
+   * record: one still on its way is joined, and one that answered within a fast poll is as
+   * current as a read of the page's own would be, so a click reads the record once. Anything
+   * else, a direct link or an answer read ahead long ago, is read again.
+   *
+   * @returns {Promise<void>}
+   */
+  async function firstRead() {
+    const answered = reader?.initial ?? null;
+    if (reader?.pending) {
+      polling = true;
+      const request = ++sent;
+      /** @type {{etag: string | null, body: unknown, verified?: string | null} | null} */
+      let joined = null;
+      try {
+        joined = await reader.pending;
+      } catch {
+        joined = null;
+      } finally {
+        polling = false;
+      }
+      if (disposed) {
+        return;
+      }
+      if (joined === null || !isEnvelope(joined.body) || joined.body.number !== options.number) {
+        return poll(true);
+      }
+      take(
+        { status: 200, etag: joined.etag, body: joined.body, verified: joined.verified },
+        request,
+      );
+      hasPolled = true;
+      afterRead(FAST_POLL_MS);
+      return;
+    }
+    const age = answered === null ? Number.NaN : deps.now() - Number(answered.at);
+    if (envelope !== null && shownRequest === 0 && age >= 0 && age < FAST_POLL_MS) {
+      hasPolled = true;
+      afterRead(FAST_POLL_MS - age);
+      return;
+    }
+    return poll(true);
+  }
+
+  /**
+   * What follows any read the page counts as its own: its next poll in *fastMs* or the slow
+   * interval, the asks that read may make due, and the paint.
+   *
+   * @param {number} fastMs
+   */
+  function afterRead(fastMs) {
+    scheduleNext(fastMs);
     fetchForReader();
     fetchSelectedChanges();
     // Decided before the paint, so a record that just went stale is painted refreshing and
@@ -2180,16 +2246,17 @@ export function createPullController(deps, options) {
   return Object.freeze({
     start: () => {
       // What the Pulls tab read when the row was chosen: the page paints with no empty frame,
-      // and its first read then asks whether that is still so.
+      // and its first read then asks whether that is still so, unless that read was it.
       const initial = reader?.initial?.body;
       if (isEnvelope(initial) && accept(initial, 0)) {
         etag = reader?.initial?.etag ?? null;
+        catalogScanning = / scanning$/u.test(reader?.initial?.verified ?? "");
         // A stale record the row read is painted refreshing from its first frame, never with
         // a Refresh it is about to make; the ask still waits as long as the opening said.
         askIfStale();
       }
       render();
-      return poll(true);
+      return firstRead();
     },
     poll: () => poll(),
     timelineAllowed: () =>
