@@ -107,3 +107,95 @@ def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:
     assert f'content: "{widest}" / "";' in sizer
     assert "height: 0;" in sizer and "visibility: hidden;" in sizer
     assert "flex-direction: column;" in _rule(css, selector)
+
+
+GITHUB = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "github"
+
+
+def _github_css() -> str:
+    return (GITHUB / "styles.css").read_text(encoding="utf-8")
+
+
+def test_a_title_holds_two_lines_and_never_more() -> None:
+    """A pull request's title was 1 to 3 lines, 30 px each, under the tab bar's feet."""
+
+    css = _github_css()
+    assert "min-height: 2lh;" in _rule(css, ".github-pull-title")
+    clamp = _rule(css, ".github-pull-title-text")
+    assert "-webkit-line-clamp: 2;" in clamp and "line-clamp: 2;" in clamp
+    assert "overflow: hidden;" in clamp
+    # The commit view's subject is the same heading, and holds the same two lines.
+    assert "min-height: 2lh;" in _rule(_css(), ".git-commit-subject.page-heading")
+
+
+def test_the_state_row_is_one_line_with_the_stacks_slot_at_its_end() -> None:
+    css = _github_css()
+    meta = _rule(css, ".github-pull-meta")
+    assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
+    details = _rule(css, ".github-pull-meta-details")
+    assert "min-width: 0;" in details and "overflow: hidden;" in details
+    assert "flex-shrink: 1;" in _rule(css, ".github-pull-meta .git-ref")
+    stacks = _rule(css, ".github-pull-stacks")
+    assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
+    assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
+    strut = _rule(css, ".github-pull-stack-strut")
+    assert "width: 0;" in strut and "visibility: hidden;" in strut
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
+
+
+def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
+    css = _github_css()
+    states = (GITHUB / "pull-state.js").read_text(encoding="utf-8")
+    labels = re.findall(r'label: "([A-Z][a-z]+)"', states)
+    assert set(labels) == {"Open", "Draft", "Merged", "Closed"}, labels
+    longest = max(len(label) for label in labels)
+    sized = set(
+        re.findall(
+            r'\.github-pull-meta \.github-pull-badge::(?:before|after) \{\s*content: "([A-Za-z]+)" / "";',
+            css,
+        )
+    )
+    assert sized == {label for label in labels if len(label) == longest}, sized
+    assert "flex-direction: column;" in _rule(css, ".github-pull-meta .github-pull-badge")
+
+
+def test_labels_have_a_row_that_always_exists() -> None:
+    rule = _rule(_github_css(), ".github-pull-labels")
+    assert "min-height: calc(1lh + 2px);" in rule
+    assert "flex-wrap: nowrap;" in rule
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert "if (pull.labels.length > 0)" not in page
+
+
+def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
+    css = _github_css()
+    status = _rule(css, ".github-pull-status")
+    assert "flex-wrap: nowrap;" in status
+    assert "font-variant-numeric: var(--tabular-numerals);" in _rule(css, ".github-pull-freshness")
+    assert "margin-inline-start: auto;" in _rule(css, ".github-pull-refresh")
+    held = _rule(css, ".github-pull-refresh[hidden]")
+    assert "visibility: hidden;" in held and "display: inline-block;" in held
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert "refresh.hidden = !model.canRefresh;" in page
+    assert "if (model.canRefresh) {" not in page
+
+
+def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
+    css = _github_css()
+    for selector in (".github-pulls-status,\n.github-pulls-connection",):
+        assert "min-height: calc(1lh + 6px);" in _rule(css, selector)
+    status = _rule(css, ".github-pulls-status")
+    assert "white-space: nowrap;" in status and "text-overflow: ellipsis;" in status
+    assert ".github-pulls-connection:not([hidden])" not in css
+    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert "status.hidden" not in panel and "connection.hidden" not in panel
+    assert 'h("div", { class: "github-pulls-connection" }, [' in panel
+
+
+def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None:
+    css = _github_css()
+    assert "grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;" in _rule(css, ".github-pulls-row")
+    count = _rule(css, ".github-pulls-filters .count")
+    assert "min-width: 3ch;" in count
+    assert "font-variant-numeric: var(--tabular-numerals);" in count

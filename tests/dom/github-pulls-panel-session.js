@@ -921,6 +921,19 @@ async function paintStory(panel, selection = false) {
       !connection.hidden && message.textContent === "Fetching pull requests…",
       "one fetch line",
     );
+    // The status line is there before the list answers, holding its line, so the list and
+    // the connection line under it never move when it fills (they dropped 24 px).
+    const statusLine = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-status"),
+    );
+    assert(
+      !statusLine.hidden && statusLine.textContent.length > 0,
+      "the status line holds its line before the list answers",
+    );
+    assert(
+      container.childNodes.indexOf(statusLine) + 1 === container.childNodes.indexOf(connection),
+      "the connection line is under the status line",
+    );
     assert(
       !spinner.hidden &&
         spinner.firstElementChild.classList.contains("spinner") &&

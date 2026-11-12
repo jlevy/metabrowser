@@ -241,6 +241,9 @@ const rollupError = (status) =>
             fetch: async () => {
               requests += 1;
               const answer = answers.next;
+              if (typeof answer === "function") {
+                return answer();
+              }
               if (answer instanceof Error) {
                 throw answer;
               }
@@ -606,6 +609,40 @@ const rollupError = (status) =>
     assert(notes["1 file"].includes("stopped after 1 file,"), `one file: ${notes["1 file"]}`);
     assert(notes["no limit named"].includes("its file limit"), notes["no limit named"]);
     transcript["the file list's note on a capped index"] = notes;
+  }
+
+  // The section holds the Overview's first paint for its first rollup, so it paints at
+  // the height it keeps; a rollup slower than FIRST_ROLLUP_WAIT_MS paints the pending
+  // state first, as before. Not part of the transcript: these are timings.
+  {
+    const { FIRST_ROLLUP_WAIT_MS } = await import(folder("file-overview-panel.js"));
+    const settled = async (promise) => {
+      let done = false;
+      void promise.then(() => {
+        done = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      return done;
+    };
+    let answer = () => {};
+    const held = page(
+      COMPLETE_DIR,
+      () =>
+        new Promise((resolve) => {
+          answer = () => resolve(JSON.parse(JSON.stringify(COMPLETE_ROLLUP)));
+        }),
+    );
+    assert(!(await settled(held.panel.ready)), "the section is ready before its rollup answered");
+    answer();
+    await held.settle();
+    assert(await settled(held.panel.ready), "the section is not ready once its rollup answered");
+    held.panel.dispose();
+    const late = page(COMPLETE_DIR, () => new Promise(() => {}));
+    assert(!(await settled(late.panel.ready)), "a late rollup did not hold the section");
+    await new Promise((resolve) => setTimeout(resolve, FIRST_ROLLUP_WAIT_MS + 20));
+    assert(await settled(late.panel.ready), "a late rollup held the section past its wait");
+    assert(FIRST_ROLLUP_WAIT_MS <= 100, "the section waits longer than a short hold");
+    late.panel.dispose();
   }
 
   console.warn = originalWarn;

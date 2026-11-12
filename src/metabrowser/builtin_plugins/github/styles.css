@@ -20,30 +20,63 @@
   gap: 6px;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
+/* The header's box is decided at first paint: each row is one line, or the title's two,
+   in every state and on every tab, so the tab bar under it never moves between pull
+   requests or tabs. Heights are in line units and struts of the controls they hold, not
+   pixels measured in one engine. Measured in Chrome 152 before this: the header ranged
+   from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
+.github-pull-title {
+  min-height: 2lh;
+}
 .github-pull-title-with-state {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 0.35em;
 }
+.github-pull-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
 .github-pull-number {
   color: var(--text);
   font-weight: var(--weight-normal);
 }
+/* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
+   wrapping the row, which made it 21 to 67 px tall. */
 .github-pull-meta {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 8px;
+  white-space: nowrap;
+}
+.github-pull-meta-details {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.3em;
+  min-width: 0;
+  overflow: hidden;
 }
 /* A branch takes the remote ref chip, smaller than the actor and action beside it. */
 .github-pull-meta .git-ref {
+  flex-shrink: 1;
+  min-width: 2em;
   font-size: var(--ui-small-font-size);
   line-height: 20px;
 }
 .github-pull-quiet {
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+.github-pull-header > .github-pull-quiet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .github-pull-header a,
 .github-pull-card-head a,
@@ -86,6 +119,24 @@
   line-height: 16px;
   white-space: nowrap;
 }
+/* A state's badge is as wide as the widest state's, so a stale record that turns out
+   merged does not widen it under the reader: sizers under the label give the width. */
+.github-pull-meta .github-pull-badge {
+  flex-direction: column;
+  gap: 0;
+}
+.github-pull-meta .github-pull-badge::before,
+.github-pull-meta .github-pull-badge::after {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.github-pull-meta .github-pull-badge::before {
+  content: "Merged" / "";
+}
+.github-pull-meta .github-pull-badge::after {
+  content: "Closed" / "";
+}
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success);
@@ -107,26 +158,54 @@
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
+/* Always present, one line of labels whether there are none or many: a label is a line
+   of its type and its border. */
 .github-pull-labels {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--chip-cluster-gap);
+  min-height: calc(1lh + 2px);
+  overflow: hidden;
+  font-size: var(--ui-small-font-size);
 }
 /* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
 .github-pull-label {
+  flex: none;
   padding: 0 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-tag);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+/* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
+   cut short before it wraps; its controls never are. */
 .github-pull-status {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 10px;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+  white-space: nowrap;
+}
+.github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-freshness {
+  font-variant-numeric: var(--tabular-numerals);
+}
+.github-pull-status > :is(.github-pull-offer, a) {
+  flex: none;
+}
+.github-pull-refresh {
+  flex: none;
+  margin-inline-start: auto;
+}
+.github-pull-refresh[hidden] {
+  display: inline-block;
+  visibility: hidden;
 }
 .github-pull-failure {
   color: var(--status-warning-strong);
@@ -426,16 +505,24 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
-.github-pulls-status > span {
-  display: block;
+/* Each a line that is always there (pulls-panel.js). The status line is cut short rather
+   than wrapped; the connection line wraps only for a message longer than the pane. */
+.github-pulls-status,
+.github-pulls-connection {
+  min-height: calc(1lh + 6px);
 }
-.github-pulls-connection:not([hidden]),
+.github-pulls-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-connection,
 .github-pulls-connection-text {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.github-pulls-connection:not([hidden]) {
+.github-pulls-connection {
   flex-wrap: wrap;
 }
 .github-pulls-connection-spinner:not([hidden]) {
@@ -480,9 +567,13 @@
    box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's
    baseline (docs/design-system.md, "Row Text Shares a Baseline"); the muted line is alone on
    its own, with no baseline to share. */
+/* The age has a column of one width, so every row's title is cut at one place and an age
+   that grows a digit does not move it. The longest compact age is four characters
+   ("11mo"), and its m is wider than a digit; 5ch of the row's type holds it in the age's
+   smaller type in any engine. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   padding: 2px 12px 2px 10px;
@@ -510,6 +601,17 @@
 }
 .github-pulls-row > :is(.github-pulls-title, .github-pulls-age) {
   align-self: baseline;
+}
+.github-pulls-row > .github-pulls-age {
+  justify-self: end;
+  white-space: nowrap;
+}
+/* A count that arrives, or changes, keeps its chip's width up to three digits. */
+.github-pulls-filters .count {
+  display: inline-block;
+  min-width: 3ch;
+  font-variant-numeric: var(--tabular-numerals);
+  text-align: end;
 }
 .github-pulls-title,
 .github-pulls-meta {
@@ -683,18 +785,24 @@
   outline-offset: 1px;
 }
 
-/* Optional membership stays beside the state badge in a retained status row.
+/* Optional membership has its slot at the end of the retained state row, so its chip,
+   which arrives from its own /stacks answer, moves nothing before it.
    The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
 .github-pull-stacks {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: var(--chip-cluster-gap);
+  margin-inline-start: auto;
   font-size: var(--ui-small-font-size);
 }
-.github-pull-stacks[hidden] {
-  display: none;
-}
-.github-pull-stacks:not([hidden]) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--chip-cluster-gap);
+/* With no stack, a chip of no width holds the row at a chip's height. */
+.github-pull-stack-strut {
+  width: 0;
+  padding-inline: 0;
+  border-inline-width: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 .github-pull-stack-disclosure {
   position: static;

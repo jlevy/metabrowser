@@ -1639,11 +1639,13 @@ and remounts it once after success even if metadata has advanced to another head
 Pending and disposed controls cannot issue duplicate requests.
 Asset and render failures retain their local Retry action.
 Opening Changes beside a checkout starts an acquisition and offers Retry changes after a
-refusal.
+refusal. The header has the same rows in the same order for every pull request and tab,
+and while its record is on its way: a stack has its slot at the end of the state row,
+and Refresh at the end of the status row.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true}
 ? 0
 ```
 

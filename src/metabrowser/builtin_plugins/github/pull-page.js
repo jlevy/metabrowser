@@ -3010,10 +3010,21 @@ export function mountPullPage(container, ctx, mb) {
   container.classList.add("github-pull");
   const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
-  const stackColumn = h("div", { class: "github-pull-stacks", hidden: "" });
+  // The header's box is decided at first paint: every row is there in every state, at one
+  // line each, so nothing that arrives later, a stack, a label, a Refresh, moves the tab
+  // bar or the rows below it. docs/design-system.md, "The Pull Request Page".
+  // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
+  // state row; with no stack the slot holds a hidden chip of no width, which gives the row
+  // a chip's height.
+  const stackStrut = h(
+    "span",
+    { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
+    [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
+  );
+  const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const stateBadge = h("span");
-  const stateDetails = h("span");
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stackColumn, stateDetails]);
+  const stateDetails = h("span", { class: "github-pull-meta-details" });
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, stackColumn]);
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -3520,14 +3531,14 @@ export function mountPullPage(container, ctx, mb) {
       stackMenus.set(stack.number, menu);
       return menu.element;
     });
-    stackColumn.hidden = nodes.length === 0;
+    const slot = nodes.length === 0 ? [stackStrut] : nodes;
     if (
-      nodes.length !== stackColumn.children.length ||
-      nodes.some((node, at) => node !== stackColumn.children[at])
+      slot.length !== stackColumn.children.length ||
+      slot.some((node, at) => node !== stackColumn.children[at])
     ) {
       const focused = document.activeElement;
       const restore = focused instanceof HTMLElement && stackColumn.contains(focused);
-      stackColumn.replaceChildren(...nodes);
+      stackColumn.replaceChildren(...slot);
       if (restore && focused.isConnected) {
         focused.focus({ preventScroll: true });
       }
@@ -3600,15 +3611,26 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
+      const titleText = h("span", { class: "github-pull-title-text" }, [
+        pull.title,
+        " ",
+        h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+      ]);
+      const title = h(
+        "h1",
+        { class: "page-heading github-pull-title github-pull-title-with-state" },
+        [pullStateIcon(pull.state, { named: false }), titleText],
+      );
+      // Two lines at most: a title cut short there carries the whole of it in its tooltip.
+      title.addEventListener("pointerenter", () => {
+        if (titleText.scrollHeight > titleText.clientHeight) {
+          title.dataset.tipText = `${pull.title} #${pull.number}`;
+        } else {
+          delete title.dataset.tipText;
+        }
+      });
       children.push(
-        h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
-          pullStateIcon(pull.state, { named: false }),
-          h("span", {}, [
-            pull.title,
-            " ",
-            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
-          ]),
-        ]),
+        title,
         paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
@@ -3629,19 +3651,29 @@ export function mountPullPage(container, ctx, mb) {
           model.browse === null ? null : browseControl(model.browse),
         ]),
       );
-      if (pull.labels.length > 0) {
-        children.push(
-          h(
-            "div",
-            { class: "github-pull-labels" },
-            pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
-          ),
-        );
-      }
+      // A row that is always there, so a pull request with labels is as tall as one without.
+      children.push(
+        h(
+          "div",
+          { class: "github-pull-labels" },
+          pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
+        ),
+      );
     } else {
       children.push(
         h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
       );
+      // While the record is on its way the header keeps the rows it will have, empty, at
+      // their heights, so the record lands without moving the tab bar.
+      if (model.status !== "unavailable") {
+        stateBadge.replaceChildren();
+        stateDetails.replaceChildren();
+        children.push(
+          stateRow,
+          h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
+          h("div", { class: "github-pull-labels" }),
+        );
+      }
     }
     status.dataset.status = model.status;
     for (const node of [...status.childNodes]) {
@@ -3670,22 +3702,22 @@ export function mountPullPage(container, ctx, mb) {
         ]),
       );
     }
-    if (model.canRefresh) {
-      const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
-        model.status === "absent" ? "Fetch" : "Refresh",
-      ]);
-      refresh.addEventListener("click", () => {
-        if (listening.signal.aborted || shown?.canRefresh !== true) {
-          return;
-        }
-        const displayed = shown.tab === "files" ? diffFor : null;
-        filesRefresh = displayed;
-        void controller.requestRefresh(
-          displayed === null ? undefined : { base: displayed.left, head: displayed.right },
-        );
-      });
-      status.append(refresh);
-    }
+    // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
+    // to refresh: it came and went with the tab, moving the tab bar 8 px.
+    const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
+      model.status === "absent" ? "Fetch" : "Refresh",
+    ]);
+    refresh.hidden = !model.canRefresh;
+    refresh.addEventListener("click", () => {
+      if (listening.signal.aborted || shown?.canRefresh !== true) {
+        return;
+      }
+      const displayed = shown.tab === "files" ? diffFor : null;
+      filesRefresh = displayed;
+      void controller.requestRefresh(
+        displayed === null ? undefined : { base: displayed.left, head: displayed.right },
+      );
+    });
     if (model.headOffer !== null) {
       const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
         "Switch to the head",
@@ -3697,6 +3729,7 @@ export function mountPullPage(container, ctx, mb) {
       const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
       status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
     }
+    status.append(refresh);
     children.push(status);
     const visible = children.filter((child) => child !== null);
     /** @type {Set<Node>} */
@@ -3714,7 +3747,7 @@ export function mountPullPage(container, ctx, mb) {
         header.insertBefore(node, cursor);
       }
     }
-    if (model.pull === null) {
+    if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
       for (const { id, link } of tabLinks) {

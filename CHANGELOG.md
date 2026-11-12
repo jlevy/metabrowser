@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Chrome keeps its place.
+  The filter bar keeps its slot on Commits and Pulls, the Commits tab is drawn at first
+  paint in a repository, every file has a view tab bar, and the tree and the preview
+  keep a scrollbar gutter.
+  A pull request’s header is one size for every pull request and tab: the title holds
+  two lines and is cut short there with the whole of it in a tooltip, the state row is
+  one line with the stack chip at its end, labels have a row of their own, and Refresh
+  has its slot on every tab.
+  The Pulls tab’s status lines are always there, and its ages have a column of one
+  width. A folder’s Overview paints once its first file-type rollup has answered,
+  briefly.
+
 - Less moves on its own.
   The first document after a cold start appears in its reading font instead of swapping
   the serif in after it is shown.

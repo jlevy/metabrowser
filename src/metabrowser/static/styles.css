@@ -3856,6 +3856,12 @@ a.tab-btn {
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
+/* A commit's subject holds two lines from first paint, so the diff under a one-line
+   subject starts where it starts under a two-line one (it moved 30 px between commits).
+   The pull request's title does the same, and clamps there (github/styles.css). */
+.git-commit-subject.page-heading {
+  min-height: 2lh;
+}
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
    width, converted from characters at :root) onto KPress's token.

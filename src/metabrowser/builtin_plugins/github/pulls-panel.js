@@ -2582,7 +2582,7 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   reloadButton.addEventListener("click", () => void controller.reload());
   filters.append(reloadButton);
-  const connection = h("div", { class: "github-pulls-connection", hidden: "" }, [
+  const connection = h("div", { class: "github-pulls-connection" }, [
     connectionText,
     connectionHelp,
   ]);
@@ -3379,15 +3379,19 @@ export function mountPullsPanel(container, ctx, mb) {
       );
     }
     if (model.window !== null) {
+      if (lines.length > 0) {
+        lines.push(" · ");
+      }
       lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
     }
-    status.replaceChildren(...lines);
-    status.hidden = lines.length === 0;
+    // The status and connection lines are always there, a line each, and the window's note
+    // shares the status line: the list under them starts at one height before the list
+    // answers and after, and across a filter change (they moved it 24 px on every load).
+    status.replaceChildren(...(lines.length > 0 ? lines : ["\u00a0"]));
     const connected = model.connection;
     const working = connected?.state === "working";
     const retrying = connected?.retrying === true;
     const refreshing = connected?.refreshing === true;
-    connection.hidden = connected === null;
     connectionText.classList.toggle("mb-delayed-loading", working);
     spinner.classList.toggle("mb-delayed-loading", retrying);
     spinner.hidden = !working && !retrying;

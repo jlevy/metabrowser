@@ -744,6 +744,84 @@ async function headerAges(page) {
   });
 }
 
+// The header's box is decided at first paint: the same rows, in the same order, whatever
+// the pull request carries and whichever tab shows, and while its record is on its way.
+// Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
+// row is there. A stack's chip has its slot at the state row's end, held by a strut until
+// one arrives, and Refresh has its slot at the status row's end on every tab.
+async function headerShape(page) {
+  const rows = (container) =>
+    container
+      .querySelector(".github-pull-header")
+      .children.map((node) =>
+        node.tag === "h1"
+          ? "title"
+          : [...node.classes].find((name) => name.startsWith("github-pull-")).slice(12),
+      );
+  const age = () => "now";
+  const shapes = {};
+  const variants = {
+    "one label": recorded.current.body,
+    "no labels, a title of three lines": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = [];
+      body.record.pull.title = "A title long enough to need three lines ".repeat(6).trim();
+      return body;
+    })(),
+    "three labels": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = ["bug", "enhancement", "needs review"];
+      return body;
+    })(),
+    merged: recorded.merged.body,
+    stale: recorded.stale.body,
+    "on its way": recorded.absent.body,
+  };
+  for (const [name, body] of Object.entries(variants)) {
+    for (const tab of ["", "files", "checks"]) {
+      const { container, handle } = await mountOn(page, body, tab, age);
+      const header = container.querySelector(".github-pull-header");
+      const meta = container.querySelector(".github-pull-meta");
+      const stacks = container.querySelector(".github-pull-stacks");
+      const status = container.querySelector(".github-pull-status");
+      const refresh = status.children.at(-1);
+      assert.equal(meta.children.at(-1), stacks, `${name} ${tab}: the stack slot ends the row`);
+      assert.ok(
+        stacks.children.length > 0 && !stacks.hidden,
+        `${name} ${tab}: the stack slot is held while no stack is known`,
+      );
+      assert.ok(
+        refresh.classes.has("github-pull-refresh"),
+        `${name} ${tab}: Refresh's slot ends the status row`,
+      );
+      assert.ok(
+        container.querySelector(".tab-bar"),
+        `${name} ${tab}: the tab bar is under the header from first paint`,
+      );
+      assert.equal(header.parentNode.children.indexOf(header), 0);
+      shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
+      handle.dispose();
+    }
+  }
+  assert.deepEqual(
+    new Set(Object.values(shapes)),
+    new Set(["title meta quiet labels status"]),
+    JSON.stringify(shapes, null, 2),
+  );
+  // A title cut short at two lines carries the whole of it in its tooltip, and only then.
+  const { container, handle } = await mountOn(page, variants["three labels"], "", age);
+  const title = container.querySelector(".github-pull-title");
+  const text = title.children[1];
+  text.scrollHeight = 60;
+  text.clientHeight = 40;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, "Count to two in the app #7");
+  text.scrollHeight = 40;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, undefined);
+  handle.dispose();
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -871,9 +949,12 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    const [stateBadgeSlot, stackSlot] = meta.children;
+    // The stack has its slot at the row's end, so its late chip moves nothing before it.
+    const [stateBadgeSlot, details, stackSlot] = meta.children;
     const stateBadge = stateBadgeSlot.children[0];
+    assert.ok(details.classes.has("github-pull-meta-details"));
     assert.equal(stackSlot, container.querySelector(".github-pull-stacks"));
+    assert.equal(meta.children.length, 3);
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
     const githubAction = [...container.descendants()].find(
@@ -1291,6 +1372,7 @@ async function run() {
   await markdownOwnership(page);
   await checkRows(page);
   await headerAges(page);
+  await headerShape(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -1312,6 +1394,7 @@ async function run() {
     markdownOwnership: true,
     checkRows: true,
     headerAges: true,
+    headerShape: true,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

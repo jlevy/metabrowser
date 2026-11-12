@@ -1092,9 +1092,17 @@ The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
 icon at the title’s font size.
-The text wraps under its first line while the icon stays beside the first line.
+The text wraps under its first line while the icon stays beside the first line, to two
+lines at most: the title holds two lines from first paint, and one cut short there
+carries the whole of it in its tooltip.
 The colored badge below the title gives the state in text and the title icon is
-decorative. The Changes body keeps the full pane so a diff has room for Split.
+decorative. The header’s box is decided at first paint, in every state and on every tab,
+so the tab bar under it never moves between pull requests or tabs: the state row is one
+line, its branch chips cut short rather than wrapping it, and the badge as wide as the
+widest state; the labels row is always there, a line of labels or none; the status row
+is one line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh;
+and a cold page keeps every row, empty, at its height.
+The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
@@ -1132,6 +1140,8 @@ behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
+Membership has its slot at the end of the state row, so its chip, which arrives from its
+own answer after the page, moves nothing before it.
 
 ### Text
 
@@ -2453,6 +2463,24 @@ item.
 PR arrival classification uses a conservative timestamp cutoff.
 A machine clock ahead of GitHub can suppress the tint.
 The new catalog row still appears with its regular controls and selection behavior.
+
+### Regions Keep Their Boxes
+
+Every region’s box is decided by the first paint and does not depend on data that
+arrives later. Chrome that comes and goes moved more than content did: the filter bar 37
+px on every main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px,
+the Commits tab 78 px on every landing.
+So a region keeps its slot while its content is absent, and holds the height it will
+have: the filter bar on every main tab (inert where it filters nothing), the Commits tab
+from the server at a repository’s root, a scrollbar gutter on the tree and the preview
+pane, the shortcut strip’s row, a view tab bar in every file, the print button’s and a
+run badge’s widths, the Pulls tab’s status and connection lines and its age column, and
+the pull request header’s rows.
+Heights are in line units, or struts of the controls a row holds, never pixels measured
+in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
+is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
+does, the view holds its first paint for that data, briefly, with the previous view
+still shown. `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome
 

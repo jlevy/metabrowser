@@ -556,6 +556,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
+        "headerShape": True,
     }
 
 
