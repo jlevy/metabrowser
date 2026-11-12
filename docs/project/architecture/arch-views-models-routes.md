@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log `L`, Raw JSON `R` | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>`; `github/pull-rendered-diff` per changed Markdown file |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request, which draws its own Conversation, Changes, and Checks tabs | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Changes, at one changed file for `/pull/<n>/files/<path>`; `github/pull-rendered-diff` per changed Markdown file |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 A view’s key is its manifest `[[view]] key`, written here uppercase as the keyboard
