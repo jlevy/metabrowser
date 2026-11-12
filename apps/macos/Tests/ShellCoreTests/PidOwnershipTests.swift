@@ -11,7 +11,7 @@ import Testing
 private let servingLine = "Serving /tmp/root at http://127.0.0.1:8412/view/"
 private let spec = LaunchSpec(executable: "/usr/bin/false")
 
-private func policy(startup: Duration = .seconds(2), killWait: Duration = .seconds(2)) -> SupervisorPolicy {
+private func policy(startup: Duration = startupCeiling, killWait: Duration = .seconds(2)) -> SupervisorPolicy {
     var policy = SupervisorPolicy()
     policy.startupTimeout = startup
     policy.shutdownGrace = .milliseconds(50)

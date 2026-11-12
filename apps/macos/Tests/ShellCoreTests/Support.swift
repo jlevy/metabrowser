@@ -81,8 +81,18 @@ nonisolated final class Recorder<Value: Sendable>: Sendable {
     var count: Int { values.withLock { $0.count } }
 }
 
+/// The startup timeout of a start that a test expects to succeed. Nothing waits it out:
+/// the fake child announces itself before the start and the probe answers at once. The
+/// tests once used 2 seconds, which a stalled main actor reached before the first probe
+/// on a loaded three-core CI runner, so a test went on from a failed start.
+nonisolated let startupCeiling: Duration = .seconds(60)
+
 /// Polls `condition` until it holds or `limit` passes.
-func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+///
+/// The limit only stops a test that would otherwise hang, so it sits far above any
+/// scheduling delay: every suite here runs on the main actor, which a loaded three-core
+/// CI runner has stalled for over two seconds at a time.
+func eventually(within limit: Duration = .seconds(30), _ condition: () -> Bool) async -> Bool {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: limit)
     while clock.now < deadline {

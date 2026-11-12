@@ -108,6 +108,9 @@ import Testing
         #expect(result.output.isEmpty)
     }
 
+    /// Each bound below separates the command's deadline from a wait for its 30-second
+    /// sleep, so it sits halfway between them, far above the main-actor stalls of a loaded
+    /// three-core CI runner, where these took 2.4 seconds against a 3-second bound.
     @Test func deadlineKillsTheCommand() async {
         let clock = ContinuousClock()
         let started = clock.now
@@ -115,7 +118,7 @@ import Testing
             LaunchSpec(executable: "/bin/sleep", arguments: ["30"]), timeout: .milliseconds(200))
         #expect(result.timedOut)
         #expect(result.status == nil)
-        #expect(started.duration(to: clock.now) < .seconds(3))
+        #expect(started.duration(to: clock.now) < .seconds(15))
     }
 
     @Test func backgroundJobDoesNotHoldTheResultOrSurvive() async {
@@ -124,7 +127,7 @@ import Testing
         let result = await CommandRunner.run(
             LaunchSpec(executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $!"]), timeout: .seconds(5))
         #expect(result.succeeded)
-        #expect(started.duration(to: clock.now) < .seconds(3))
+        #expect(started.duration(to: clock.now) < .seconds(15))
         let job = pid_t(result.output.first ?? "")
         #expect(job != nil)
         if let job { #expect(await eventually { !processExists(job) }) }
