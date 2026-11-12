@@ -198,9 +198,15 @@ const sdkPath = path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk.
 vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   filename: "plugin-sdk.js",
 });
+// The KPress loading is a view helper, in the SDK's on-demand half, which is on the page
+// before any plugin's code runs.
+const viewsPath = path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk-views.js");
+vm.runInContext(fs.readFileSync(viewsPath, "utf-8"), sandbox, {
+  filename: "plugin-sdk-views.js",
+});
 
 if (!sandbox.metabrowser || typeof sandbox.metabrowser.fetchKpressRender !== "function") {
-  fail("plugin-sdk.js did not expose metabrowser.fetchKpressRender");
+  fail("the SDK did not expose metabrowser.fetchKpressRender");
 }
 
 sandbox.metabrowser

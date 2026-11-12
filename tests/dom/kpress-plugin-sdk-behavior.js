@@ -232,10 +232,11 @@ vm.runInContext(fs.readFileSync(sdkPath, "utf-8"), sandbox, {
   importModuleDynamically: importKpressModule,
 });
 // The helpers a view's renderer calls, which the shell loads with the compositor.
+// They include the KPress loading, whose TOC module is a dynamic import.
 vm.runInContext(
   fs.readFileSync(path.join(path.dirname(sdkPath), "plugin-sdk-views.js"), "utf-8"),
   sandbox,
-  { filename: "plugin-sdk-views.js" },
+  { filename: "plugin-sdk-views.js", importModuleDynamically: importKpressModule },
 );
 
 // This session starts with the view prerequisites already loaded. The cold,

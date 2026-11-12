@@ -144,7 +144,8 @@ def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:
     rendered = (PLUGIN_DIR / "rendered.js").read_text(encoding="utf-8")
     assert "includeToc: options.includeToc" in rendered
 
-    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
+    # The render fetch is a view helper, in the SDK's on-demand half.
+    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk-views.js").read_text(encoding="utf-8")
     assert 'url.searchParams.set("toc", includeToc)' in sdk
 
 

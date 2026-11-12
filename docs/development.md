@@ -189,7 +189,7 @@ together, and its scripts run in manifest order once the stylesheets have settle
 loader through the documented SDK rather than a private global.
 
 **An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
-`plugin-sdk.js` shows: import the module, capture its named export, and hold it.
+`plugin-sdk-views.js` shows: import the module, capture its named export, and hold it.
 Two properties keep a vendored ESM tree loadable without a build step.
 Its specifiers must be relative, so no import map is needed; and where its filenames
 already carry content hashes, only the entry point needs the `?v=` cache-buster that
@@ -275,6 +275,7 @@ These are the ones with a measurement on record, and where it is:
 | Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
 | The Pulls tab’s host | With those tools, only in a shell that drew the tab, so a folder never fetches it | `shell-tools`, by `pulls_tab` in `server.py` | The view’s code is the GitHub plugin’s, on demand: see `static/pulls-nav.js` |
 | Source line gutter with `#L` anchors, SDK view helpers, and the syntax service | On demand, one file, fetched beside the view compositor and before any plugin’s code runs | `sdk-views` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| A rendered document’s KPress loading and table of contents (`fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`) | On demand, in the same file as the view helpers, so there before any plugin’s code runs; only a plugin’s view calls them | `sdk-views` in `on_demand_script_bundles` | Measured 2026-11-11, gzip level 6: 3,041 of `plugin-sdk.js`’s 17,434 compressed bytes as a startup script, which `devtools/check_startup_scripts.py` then reported as 3,062 bytes under the budget instead of 21; `plugin-sdk-views.js` grew by 3,981 compressed bytes, its type annotations included |
 | Pull-request routes and page host | Eager on the shell of an address under `/pull/`; on demand for a page that reaches one through history | `PULL_PAGE_STARTUP_SCRIPTS` and `pull-route` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | GitPath wire codec | Eager, on a pinned revision’s shell; on demand beside a checkout, at a pull request’s first diff with View file controls | `PIN_STARTUP_SCRIPTS` in `server.py`, and `viewFileOpener` in `builtin_plugins/diff/index.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
@@ -289,16 +290,15 @@ middleware compresses):
 
 | Code | In | Saves | Who calls it |
 | --- | --- | --- | --- |
-| KPress document loading and its table of contents | `plugin-sdk.js` | 2,595 bytes | a Markdown view’s renderer |
 | Rollup fetch and watch | `plugin-sdk.js` | 1,368 bytes | a folder view’s renderer |
 | Plugin data and text fetch helpers | `plugin-sdk.js` | 1,178 bytes | a view’s renderer |
 | The chart helper | `plugin-sdk.js` | 673 bytes | a view that draws a chart |
 | File rendering: the staged render, tabs and print, Load more, the live stream | `app.js` | 7,339 bytes | an opened file |
 
-The first four are the rest of the SDK’s view-phase surface and would join
+The first three are the rest of the SDK’s view-phase surface and would join
 `plugin-sdk-views.js` under the guarantee it already gives: there before any plugin’s
-code runs. Together they would put the pull-request shell, which the check reports as
-over, back under the ceiling.
+code runs. `devtools/check_startup_scripts.py` reports how far the pull-request shell is
+over the ceiling, which they would reduce.
 The last would sit beside the view compositor, and a page that loads at a file’s address
 wants it at once, so it needs the measurement this section asks for before it moves.
 
