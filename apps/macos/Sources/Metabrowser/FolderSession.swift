@@ -12,6 +12,9 @@ import WebKit
 final class FolderSession: ManagedServer {
     let root: URL
     let logURL: URL
+    /// This app's claim on the folder's log while it serves the folder; another running
+    /// copy of the app that serves it too writes a log of its own.
+    private let logLease: ServerLogLease?
     private let supervisor: ServerSupervisor
     private(set) var windows: [BrowserWindowController] = []
     private var endpoint: ServerEndpoint?
@@ -35,7 +38,15 @@ final class FolderSession: ManagedServer {
         runtime = setup.runtime
         self.root = root
         title = WindowTitle(.localFolder(root))
-        let logURL = ServerLog.url(for: root, in: appIdentity.logsDirectory())
+        let logs = appIdentity.logsDirectory()
+        do {
+            logLease = try ServerLogLease.claim(for: root, in: logs)
+        } catch {
+            // Each launch prepares the log too, and a launch that cannot shows why.
+            AppLog.app.error("\(String(describing: error), privacy: .public)")
+            logLease = nil
+        }
+        let logURL = logLease?.url ?? ServerLog.url(for: root, in: logs)
         self.logURL = logURL
         let launch = CLIServeLaunch()
         let spec = launch.spec(

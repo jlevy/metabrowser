@@ -139,6 +139,9 @@ Where to look while it runs:
   server’s output, with the app’s lifecycle events interleaved: start command, pid,
   announced URL, readiness time, stop, and exit status.
   File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
+  A second running copy of the same variant (a development build from another checkout)
+  that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
+  window shows the other server’s output (`ServerLogLease`).
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
