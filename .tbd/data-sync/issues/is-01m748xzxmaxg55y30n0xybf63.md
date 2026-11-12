@@ -3,9 +3,9 @@ type: is
 id: is-01m748xzxmaxg55y30n0xybf63
 title: macOS CI job for the app
 kind: task
-status: in_progress
+status: closed
 priority: 3
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -18,8 +18,12 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T03:02:57.202Z
-updated_at: 2026-11-12T00:19:08.763Z
+updated_at: 2026-11-12T00:55:29.678Z
 started_at: 2026-11-12T00:19:08.753Z
+closed_at: 2026-11-12T00:55:29.662Z
+close_reason: "Done on claude/macos-app-spike: .github/workflows/macos-app.yml (ec719287, uv checksum fixed in b0310862, macOS 26 only from bc6477a5) builds, tests (live suite guarded), and rehearses the release on macos-26 with Xcode 26.6; publish.yml runs only for v tags (7a27617e). First green run at bc6477a5. The signed release job stays mb-e9fm."
+resolution: null
+duplicate_of: null
 ---
 Phase 5. Build and test apps/macos on a macOS runner, and later sign and notarize release builds from secrets in a temporary keychain.
 
