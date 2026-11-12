@@ -87,6 +87,28 @@ class FakeWorker {
   }
 }
 
+/**
+ * The shared Worker outlives its last reference for an idle period. The period runs on a
+ * clock the session advances, so a check can say what is alive during it and after it.
+ */
+const idleTimers = new Map();
+let nextIdleTimer = 1;
+globalThis.setTimeout = (callback, delay) => {
+  const id = nextIdleTimer;
+  nextIdleTimer += 1;
+  idleTimers.set(id, { callback, delay });
+  return id;
+};
+globalThis.clearTimeout = (id) => {
+  idleTimers.delete(id);
+};
+function elapseIdlePeriod() {
+  for (const [id, timer] of [...idleTimers]) {
+    idleTimers.delete(id);
+    timer.callback();
+  }
+}
+
 (async () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/rendered.js"),
@@ -164,11 +186,15 @@ class FakeWorker {
   const requests = [];
   const completeTextRequests = [];
   const tocDisposals = [];
+  const assetLoads = [];
   const mb = {
     escapeHtml: String,
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     fetchKpressRender(ctx, _view, options) {
-      return new Promise((resolve) => requests.push({ ctx, resolve, options }));
+      return new Promise((resolve, reject) => requests.push({ ctx, resolve, reject, options }));
+    },
+    async loadKpressAssets(manifest) {
+      assetLoads.push(manifest);
     },
     async fetchCompleteText(ctx, options) {
       completeTextRequests.push({ ctx, options });
@@ -179,6 +205,7 @@ class FakeWorker {
     },
   };
   const requestFor = (filePath) => requests.find((request) => request.ctx.path === filePath);
+  const requestsFor = (filePath) => requests.filter((request) => request.ctx.path === filePath);
   const enhanceCallFor = (filePath) =>
     globalThis.__markdownEnhanceCalls.find((call) => call.sourcePath === filePath);
 
@@ -273,7 +300,30 @@ class FakeWorker {
   check("second enhancer disposer", globalThis.__markdownEnhanceDisposals.length === 2);
   check("a live mount still holds the shared Worker", !workers[0].terminated);
   thirdMount.dispose();
-  check("the last mount's disposal terminates the shared Worker", workers[0].terminated);
+  check(
+    "the last mount's disposal keeps the shared Worker for the idle period",
+    !workers[0].terminated && idleTimers.size === 1,
+  );
+  // A Markdown document opened after a file of another kind finds the Worker it left,
+  // instead of constructing one and requesting its modules again.
+  const afterOtherKind = makeContainer();
+  const afterOtherKindMount = module.mountRenderedMarkdown(
+    afterOtherKind,
+    { path: "after-other-kind.md", raw: { content: "after [[wiki]]" } },
+    mb,
+  );
+  await flush();
+  check(
+    "a mount within the idle period reuses the Worker",
+    workers.length === 1 && workers[0].messages.at(-1)?.payload.source === "after [[wiki]]",
+    String(workers.length),
+  );
+  check("the reusing mount ends the idle period", idleTimers.size === 0);
+  requestFor("after-other-kind.md").resolve({ html: "<article>after</article>", diagnostics: [] });
+  await afterOtherKindMount.ready;
+  afterOtherKindMount.dispose();
+  elapseIdlePeriod();
+  check("the idle period's end terminates the shared Worker", workers[0].terminated);
 
   // Cancellation stays per request: disposing a mount whose preparation is
   // running cancels only that request, and the other mount continues.
@@ -357,8 +407,9 @@ class FakeWorker {
   recoveredMount.dispose();
   crashedMount.dispose();
   continuingMount.dispose();
+  elapseIdlePeriod();
   check(
-    "every Worker is terminated once no mount remains",
+    "every Worker is terminated once no mount remains for the idle period",
     workers.every((worker) => worker.terminated),
   );
 
@@ -435,8 +486,284 @@ class FakeWorker {
     diagnosticHtml,
   );
   limitedWikiMount.dispose();
+
+  // ── Kept renders ─────────────────────────────────────────────
+  // A mount of the envelope the shell holds finds the render an earlier mount of it
+  // made: no preparation, no request, and the same document and diagnostics. Another
+  // envelope -- a changed file, or the same file fetched again after the shell dropped
+  // it -- prepares and asks afresh, and so does a render that did not go as it should.
+  const workerMessages = () => workers.reduce((count, worker) => count + worker.messages.length, 0);
+  const keptEnvelope = {
+    content: "# Kept [[wiki]] [[limited]]",
+    mtime_hash: "kept-v1",
+    path: "kept.md",
+    type: "text",
+  };
+  const keptFirst = makeContainer();
+  const keptFirstMount = module.mountRenderedMarkdown(
+    keptFirst,
+    { path: "kept.md", raw: keptEnvelope },
+    mb,
+  );
+  await flush();
   check(
-    "no Worker outlives the last mount",
+    "a first mount prepares the source and posts it",
+    requestsFor("kept.md").length === 1 &&
+      requestsFor("kept.md")[0].options.sourceText === "processed # Kept [[wiki]] [[limited]]",
+  );
+  const keptAssets = { schema: "kpress-asset-manifest-v2", assets: [] };
+  requestsFor("kept.md")[0].resolve({
+    assets: keptAssets,
+    diagnostics: [{ type: "kpress-note" }],
+    html: "<article>kept v1</article>",
+  });
+  await keptFirstMount.ready;
+  keptFirstMount.dispose();
+  check("the render is kept", module.keptRenders.stats().entries === 1);
+  const messagesBeforeRevisit = workerMessages();
+  const enhanceCallsBeforeRevisit = globalThis.__markdownEnhanceCalls.length;
+  const tocCallsBeforeRevisit = globalThis.__markdownTocFallbackCalls;
+  const keptRevisit = makeContainer();
+  const keptRevisitMount = module.mountRenderedMarkdown(
+    keptRevisit,
+    { path: "kept.md", raw: keptEnvelope },
+    mb,
+  );
+  await keptRevisitMount.ready;
+  check("a revisit runs no preparation", workerMessages() === messagesBeforeRevisit);
+  check("a revisit asks for no render", requestsFor("kept.md").length === 1);
+  check("a revisit places the kept render", keptRevisit.innerHTML.includes("kept v1"));
+  check(
+    "a revisit shows the preparation's and the render's diagnostics as the first mount did",
+    JSON.stringify(keptRevisit.prepended) === JSON.stringify(keptFirst.prepended) &&
+      JSON.stringify(keptRevisit.prepended).includes("transformed-source-byte-limit") &&
+      JSON.stringify(keptRevisit.prepended).includes("kpress-note"),
+    JSON.stringify([keptFirst.prepended, keptRevisit.prepended]),
+  );
+  check(
+    "a revisit still enhances its links and wires its table of contents",
+    globalThis.__markdownEnhanceCalls.length === enhanceCallsBeforeRevisit + 1 &&
+      globalThis.__markdownTocFallbackCalls === tocCallsBeforeRevisit + 1,
+  );
+  check(
+    "a revisit makes sure the render's KPress assets are loaded",
+    assetLoads.length === 1 && assetLoads[0] === keptAssets,
+  );
+  keptRevisitMount.dispose();
+
+  const disposedEarly = makeContainer();
+  const disposedEarlyMount = module.mountRenderedMarkdown(
+    disposedEarly,
+    { path: "kept.md", raw: keptEnvelope },
+    mb,
+  );
+  disposedEarlyMount.dispose();
+  await disposedEarlyMount.ready;
+  check(
+    "a kept render is not placed into a mount disposed before it was ready",
+    !disposedEarly.innerHTML.includes("kept v1"),
+  );
+
+  const optionsVariant = makeContainer();
+  const optionsVariantMount = module.mountRenderedMarkdown(
+    optionsVariant,
+    { path: "kept.md", raw: keptEnvelope },
+    mb,
+    { includeToc: "off" },
+  );
+  await flush();
+  check(
+    "another table-of-contents option is another render",
+    requestsFor("kept.md").length === 2 && requestsFor("kept.md")[1].options.includeToc === "off",
+  );
+  requestsFor("kept.md")[1].resolve({ html: "<article>kept no toc</article>", diagnostics: [] });
+  await optionsVariantMount.ready;
+  optionsVariantMount.dispose();
+
+  // The shell replaces the envelope when the file changes: the new one has another
+  // identity, and its mount must never show the render of the old one.
+  const changedEnvelope = { ...keptEnvelope, content: "# Kept v2 [[wiki]]", mtime_hash: "kept-v2" };
+  const changed = makeContainer();
+  const changedMount = module.mountRenderedMarkdown(
+    changed,
+    { path: "kept.md", raw: changedEnvelope },
+    mb,
+  );
+  await flush();
+  check(
+    "a changed file is prepared and asked for afresh",
+    requestsFor("kept.md").length === 3 &&
+      requestsFor("kept.md")[2].options.sourceText === "processed # Kept v2 [[wiki]]",
+  );
+  requestsFor("kept.md")[2].resolve({ html: "<article>kept v2</article>", diagnostics: [] });
+  await changedMount.ready;
+  check(
+    "a changed file shows its own render",
+    changed.innerHTML.includes("kept v2") && !changed.innerHTML.includes("kept v1"),
+  );
+  changedMount.dispose();
+
+  // The same identity in an envelope the shell fetched again, after it dropped the one the
+  // render was kept with, is asked for again: a render lives as long as its envelope.
+  const refetched = makeContainer();
+  const refetchedMount = module.mountRenderedMarkdown(
+    refetched,
+    { path: "kept.md", raw: { ...keptEnvelope } },
+    mb,
+  );
+  await flush();
+  check(
+    "an envelope the shell fetched again does not find the dropped envelope's render",
+    requestsFor("kept.md").length === 4,
+  );
+  requestsFor("kept.md")[3].resolve({ html: "<article>kept again</article>", diagnostics: [] });
+  await refetchedMount.ready;
+  refetchedMount.dispose();
+
+  // A folder's README panel mounts with the folder's envelope, whose identity does not
+  // move when the README's content does, so its render is never kept.
+  const folderEnvelope = { mtime_hash: "folder-identity", path: "docs", type: "folder" };
+  for (const round of [1, 2]) {
+    const panel = makeContainer();
+    const panelMount = module.mountRenderedMarkdown(
+      panel,
+      { kind: "markdown", path: "docs/README.md", raw: folderEnvelope },
+      mb,
+      { includeToc: "off" },
+    );
+    await flush();
+    requestsFor("docs/README.md")
+      .at(-1)
+      .resolve({ html: `<article>readme ${round}</article>` });
+    await panelMount.ready;
+    panelMount.dispose();
+  }
+  check(
+    "a render made from another file's envelope is asked for every time",
+    requestsFor("docs/README.md").length === 2,
+  );
+
+  // A render made without its preparation, or one that failed, is not kept.
+  const crashEnvelope = { content: "[[crash]] kept?", mtime_hash: "crash-1", path: "crash.md" };
+  for (const round of [1, 2]) {
+    const crash = makeContainer();
+    const crashMount = module.mountRenderedMarkdown(
+      crash,
+      { path: "crash.md", raw: crashEnvelope },
+      mb,
+    );
+    await flush();
+    requestsFor("crash.md")
+      .at(-1)
+      .resolve({ html: `<article>authored ${round}</article>` });
+    await crashMount.ready;
+    crashMount.dispose();
+  }
+  check(
+    "a render made without its preparation is asked for again",
+    requestsFor("crash.md").length === 2,
+  );
+  const failingEnvelope = { content: "# Fails", mtime_hash: "fails-1", path: "fails.md" };
+  const failing = makeContainer();
+  const failingMount = module.mountRenderedMarkdown(
+    failing,
+    { path: "fails.md", raw: failingEnvelope },
+    mb,
+  );
+  await flush();
+  requestsFor("fails.md")[0].reject(new Error("render failed"));
+  await failingMount.ready;
+  failingMount.dispose();
+  const retried = makeContainer();
+  const retriedMount = module.mountRenderedMarkdown(
+    retried,
+    { path: "fails.md", raw: failingEnvelope },
+    mb,
+  );
+  await flush();
+  check("a failed render is asked for again", requestsFor("fails.md").length === 2);
+  requestsFor("fails.md")[1].resolve({ html: "<article>recovered render</article>" });
+  await retriedMount.ready;
+  retriedMount.dispose();
+
+  // A truncated envelope's complete source is fetched once, by the mount that renders it.
+  const truncatedEnvelope = {
+    content: "[[partial",
+    content_truncated: true,
+    mtime_hash: "large-1",
+    path: "large-kept.md",
+  };
+  const completeTextsBefore = completeTextRequests.length;
+  for (const round of [1, 2]) {
+    const large = makeContainer();
+    const largeMount = module.mountRenderedMarkdown(
+      large,
+      { path: "large-kept.md", raw: truncatedEnvelope },
+      mb,
+    );
+    await flush();
+    if (round === 1) {
+      requestsFor("large-kept.md")[0].resolve({ html: "<article>large kept</article>" });
+    }
+    await largeMount.ready;
+    check(
+      `a truncated envelope's render ${round} is placed`,
+      large.innerHTML.includes("large kept"),
+    );
+    largeMount.dispose();
+  }
+  check(
+    "a kept render of a truncated envelope fetches no complete source again",
+    completeTextRequests.length === completeTextsBefore + 1 &&
+      requestsFor("large-kept.md").length === 1,
+  );
+
+  // The bound is bytes: the render's HTML and the JSON of the rest. A store past it evicts
+  // the least recently used render, which a lookup refreshes, and a render over a quarter
+  // of the bound is shown and not kept.
+  const bounded = module.createRenderCache({ maxBytes: 400 });
+  const boundedEnvelopes = [1, 2, 3, 4, 5, 6, 7].map((index) => ({ index }));
+  const boundedRequest = (index) =>
+    Object.freeze({
+      identity: `identity-${index}`,
+      path: `bounded-${index}.md`,
+      profile: "document",
+      source: "prepare-primary",
+      toc: "auto",
+      view: "rendered",
+    });
+  const boundedRender = (length) =>
+    Object.freeze({ diagnostics: [], rendered: { html: "h".repeat(length) } });
+  for (const [index, envelope] of boundedEnvelopes.slice(0, 6).entries()) {
+    bounded.store(envelope, boundedRequest(index), boundedRender(60));
+  }
+  check("six 64-byte renders fit in 400 bytes", bounded.stats().entries === 6);
+  check(
+    "a lookup finds a kept render",
+    bounded.lookup(boundedEnvelopes[0], boundedRequest(0))?.rendered.html.length === 60,
+  );
+  check(
+    "a lookup needs the same request as well as the same envelope",
+    bounded.lookup(boundedEnvelopes[0], boundedRequest(1)) === undefined,
+  );
+  bounded.store(boundedEnvelopes[6], boundedRequest(6), boundedRender(60));
+  check(
+    "a seventh render evicts the least recently used, not the one just read",
+    bounded.stats().entries === 6 &&
+      bounded.lookup(boundedEnvelopes[1], boundedRequest(1)) === undefined &&
+      bounded.lookup(boundedEnvelopes[0], boundedRequest(0)) !== undefined,
+    JSON.stringify(bounded.stats()),
+  );
+  check("the kept bytes stay within the bound", bounded.stats().bytes <= 400);
+  check(
+    "a render over a quarter of the bound is not kept",
+    bounded.store({}, boundedRequest(9), boundedRender(120)) === false &&
+      bounded.stats().entries === 6,
+  );
+
+  elapseIdlePeriod();
+  check(
+    "no Worker outlives the idle period after the last mount",
     workers.every((worker) => worker.terminated),
   );
 
@@ -496,8 +823,9 @@ class FakeWorker {
     String(globalThis.__markdownInertTocDisposals.length),
   );
   inertMounts[1].dispose();
+  elapseIdlePeriod();
   check(
-    "no Worker outlives the inert mounts",
+    "no Worker outlives the idle period after the inert mounts",
     workers.every((worker) => worker.terminated),
   );
 

@@ -195,9 +195,49 @@ function rejected(promise) {
   }
 
   // The page-scoped owner shares one lazily constructed client across every
-  // reference, cancels only a released reference's requests, terminates the
-  // Worker with the last reference, and replaces a fatally failed client.
-  const { acquireMarkdownWorkerClient } = await import(moduleUrl);
+  // reference, cancels only a released reference's requests, keeps the Worker
+  // for an idle period after the last reference and then terminates it, and
+  // replaces a fatally failed client. The idle period runs on a clock the test
+  // advances, and page hide is an event the test dispatches.
+  const { acquireMarkdownWorkerClient, MARKDOWN_WORKER_IDLE_MS } = await import(moduleUrl);
+  const NativeSetTimeout = globalThis.setTimeout;
+  const NativeClearTimeout = globalThis.clearTimeout;
+  const NativeAddEventListener = globalThis.addEventListener;
+  const NativeRemoveEventListener = globalThis.removeEventListener;
+  const idleTimers = new Map();
+  let nextIdleTimer = 1;
+  globalThis.setTimeout = (callback, delay) => {
+    const id = nextIdleTimer;
+    nextIdleTimer += 1;
+    idleTimers.set(id, { callback, delay });
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    idleTimers.delete(id);
+  };
+  const pagehideListeners = new Set();
+  globalThis.addEventListener = (type, listener) => {
+    if (type === "pagehide") {
+      pagehideListeners.add(listener);
+    }
+  };
+  globalThis.removeEventListener = (type, listener) => {
+    if (type === "pagehide") {
+      pagehideListeners.delete(listener);
+    }
+  };
+  const elapseIdlePeriod = () => {
+    for (const [id, timer] of [...idleTimers]) {
+      idleTimers.delete(id);
+      timer.callback();
+    }
+  };
+  const hidePage = () => {
+    for (const listener of [...pagehideListeners]) {
+      listener({ type: "pagehide", persisted: false });
+    }
+  };
+  const idle = () => ({ listeners: pagehideListeners.size, timers: idleTimers.size });
   const workersBeforeSharing = workers.length;
   const firstReference = acquireMarkdownWorkerClient();
   const secondReference = acquireMarkdownWorkerClient();
@@ -260,18 +300,74 @@ function rejected(promise) {
   const lastReference = acquireMarkdownWorkerClient();
   secondReference.dispose();
   check("a remaining reference keeps the replacement Worker", !recoveredWorker.terminated);
+  check(
+    "no idle period runs while a reference is held",
+    JSON.stringify(idle()) === JSON.stringify({ listeners: 0, timers: 0 }),
+    JSON.stringify(idle()),
+  );
   lastReference.dispose();
-  check("the last reference terminates the shared Worker", recoveredWorker.terminated);
+  check(
+    "the last reference leaves the Worker running for the idle period",
+    !recoveredWorker.terminated &&
+      JSON.stringify(idle()) === JSON.stringify({ listeners: 1, timers: 1 }) &&
+      [...idleTimers.values()][0].delay === MARKDOWN_WORKER_IDLE_MS,
+    JSON.stringify(idle()),
+  );
+  // A document mounted after a file of another kind finds the Worker it left.
+  const withinIdle = acquireMarkdownWorkerClient();
+  check(
+    "a reference acquired within the idle period ends it",
+    JSON.stringify(idle()) === JSON.stringify({ listeners: 0, timers: 0 }),
+    JSON.stringify(idle()),
+  );
+  const withinIdleRun = withinIdle.run("prepare-primary", { source: "within-idle" });
+  check(
+    "a reference acquired within the idle period reuses the Worker",
+    workers.at(-1) === recoveredWorker &&
+      recoveredWorker.messages.at(-1)?.payload.source === "within-idle",
+  );
+  recoveredWorker.reply("within-idle-result");
+  check("the kept Worker serves the new reference", (await withinIdleRun) === "within-idle-result");
+  withinIdle.dispose();
+  check("releasing it again starts another idle period", idle().timers === 1);
+  elapseIdlePeriod();
+  check(
+    "the idle period's end terminates the Worker and removes its page-hide listener",
+    recoveredWorker.terminated &&
+      JSON.stringify(idle()) === JSON.stringify({ listeners: 0, timers: 0 }),
+    JSON.stringify(idle()),
+  );
   const reacquired = acquireMarkdownWorkerClient();
   const reacquiredRun = reacquired.run("prepare-primary", { source: "reacquired" });
   const reacquiredWorker = workers.at(-1);
   check(
-    "a reference acquired after full release starts a new Worker lazily",
+    "a reference acquired after the idle period starts a new Worker lazily",
     reacquiredWorker !== recoveredWorker && reacquiredWorker.messages.length === 1,
   );
   reacquiredWorker.reply("reacquired-result");
   check("the new page Worker serves requests", (await reacquiredRun) === "reacquired-result");
   reacquired.dispose();
+  hidePage();
+  check(
+    "hiding the page terminates an idle Worker at once and ends its idle period",
+    reacquiredWorker.terminated &&
+      JSON.stringify(idle()) === JSON.stringify({ listeners: 0, timers: 0 }),
+    JSON.stringify(idle()),
+  );
+
+  // A Worker that failed is of no use to the next mount, so it is not kept idle.
+  const failing = acquireMarkdownWorkerClient();
+  const failingRun = rejected(failing.run("prepare-primary", { source: "fails-then-idles" }));
+  const failingWorker = workers.at(-1);
+  failingWorker.onerror({ message: "worker failed before release" });
+  await failingRun;
+  failing.dispose();
+  check(
+    "a failed client is released at once rather than kept idle",
+    failingWorker.terminated &&
+      JSON.stringify(idle()) === JSON.stringify({ listeners: 0, timers: 0 }),
+    JSON.stringify(idle()),
+  );
 
   // The shell mounts a staged document and waits for its primary preparation
   // before it disposes the outgoing document. The incoming primary must not
@@ -340,9 +436,23 @@ function rejected(promise) {
   incoming.dispose();
   bystander.dispose();
   check(
-    "the last released reference terminates the recovered Worker",
-    pageRecoveryWorker.terminated,
+    "the last released reference keeps the recovered Worker for the idle period",
+    !pageRecoveryWorker.terminated && idle().timers === 1,
   );
+  elapseIdlePeriod();
+  check(
+    "the idle period's end terminates the recovered Worker",
+    pageRecoveryWorker.terminated && idle().listeners === 0,
+  );
+  globalThis.setTimeout = NativeSetTimeout;
+  globalThis.clearTimeout = NativeClearTimeout;
+  if (NativeAddEventListener === undefined) {
+    delete globalThis.addEventListener;
+    delete globalThis.removeEventListener;
+  } else {
+    globalThis.addEventListener = NativeAddEventListener;
+    globalThis.removeEventListener = NativeRemoveEventListener;
+  }
 
   class ConstructorFailure {
     constructor() {

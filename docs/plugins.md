@@ -698,7 +698,11 @@ listeners, pending fragment work, and any nested Obsidian transclusions.
 Every mounted document on the page, including its nested transclusions, shares one
 lazily constructed preprocessing Worker.
 Each handle holds a reference to it: disposal cancels only that handle’s pending
-preprocessing, and the Worker terminates when the last mounted document is disposed.
+preprocessing. The Worker outlives the last mounted document by a minute, so a document
+opened after a file of another kind finds it, and terminates when that minute ends or
+the page is hidden. A mount keeps its render with the file envelope it was given, so a
+later mount of the same envelope places it without preprocessing or a request; a changed
+file arrives as another envelope and is rendered afresh.
 The Worker runs one request at a time, and a document’s primary preparation runs before
 queued transclusions, so a newly opened document does not wait for the embeds of the
 document it replaces.

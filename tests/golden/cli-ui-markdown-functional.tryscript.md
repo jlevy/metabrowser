@@ -11,8 +11,12 @@ catalog reconciliation coordinator, published-route adapters, preprocessing Work
 client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
 It pins exact, incomplete, truncated-catalog, truncated-to-complete, ambiguous,
 overflow, revision, slice, disposal, percent-identity, shared root-budget, task-list
-bracket-pairing, and page-wide Worker sharing, primary-first dispatch, and recovery
-behavior without requiring a browser.
+bracket-pairing, and page-wide Worker sharing, primary-first dispatch, recovery, and the
+idle period the Worker outlives its last reference by, ended by its clock or by page
+hide, without requiring a browser.
+It also pins which mounts reuse a kept render: a second mount of the same envelope asks
+for nothing, while a changed file’s new envelope, another table-of-contents option, and
+a folder’s README panel each ask again.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -36,6 +40,25 @@ $ node tests/dom/markdown-functional-session.js
         "internal:notes/Later.md"
       ]
     }
+  },
+  "keptRenders": {
+    "asks": [
+      "kept.md v1 POST toc=auto",
+      "kept.md v2 POST toc=auto",
+      "kept.md v2 POST toc=off",
+      "docs/README.md folder GET toc=off",
+      "docs/README.md folder GET toc=off"
+    ],
+    "kept": 3,
+    "shown": [
+      "<p>kept.md v1</p>",
+      "<p>kept.md v1</p>",
+      "<p>kept.md v2</p>",
+      "<p>kept.md v2</p>",
+      "<p>kept.md v2</p>",
+      "<p>docs/README.md folder</p>",
+      "<p>docs/README.md folder</p>"
+    ]
   },
   "publishedRoutes": {
     "complete": {
@@ -131,14 +154,20 @@ $ node tests/dom/markdown-functional-session.js
     "aliveAfterOneRelease": true,
     "concurrentWorkers": 1,
     "fatalError": "session worker failed",
+    "idlePeriodMs": [
+      60000
+    ],
+    "keptAfterLastRelease": true,
     "recovered": "after crash",
     "stagedDispatchOrder": [
       "outgoing embed 1",
       "staged document",
       "outgoing embed 2"
     ],
-    "terminatedAfterLastRelease": true,
-    "workersAfterRecovery": 2
+    "terminatedAfterIdlePeriod": true,
+    "terminatedOnPageHide": true,
+    "workersAfterRecovery": 2,
+    "workersForNextDocument": 2
   }
 }
 ```

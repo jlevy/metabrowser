@@ -9,9 +9,64 @@ const WORKER_URL = new URL("./markdown-worker.js", import.meta.url);
  * @typedef {Readonly<{dispose: () => void, run: ReturnType<typeof createMarkdownWorkerClient>["run"]}>} MarkdownWorkerRunner
  */
 
+/**
+ * How long the page's Worker outlives its last reference.
+ *
+ * Every Markdown mount releases its reference when the pane moves on, so a document that
+ * followed a file of another kind used to construct a new Worker and request its modules
+ * again. The 2026-11-11 research measured that in Chrome on architecture.md opened after
+ * pyproject.toml: two requests fewer per such mount with the Worker kept, and an app span
+ * of 37.7 ms against 44.2 ms (n=5 each, interleaved), inside the 1.3x tolerance
+ * (research-2026-11-11-ui-apparent-performance.md). A minute covers reading the other
+ * file and coming back; page hide ends it at once.
+ */
+export const MARKDOWN_WORKER_IDLE_MS = 60_000;
+
 /** @type {ReturnType<typeof createMarkdownWorkerClient> | null} */
 let sharedClient = null;
 let sharedReferences = 0;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let idleTermination = null;
+
+/**
+ * Keep the unreferenced client for {@link MARKDOWN_WORKER_IDLE_MS}, then terminate it.
+ * A latched client is of no use to the next mount and terminates now.
+ */
+function keepIdleClient() {
+  const client = sharedClient;
+  if (!client) {
+    return;
+  }
+  if (client.failed()) {
+    sharedClient = null;
+    client.dispose();
+    return;
+  }
+  idleTermination = setTimeout(terminateIdleClient, MARKDOWN_WORKER_IDLE_MS);
+  // Waiting is not work: where a timer can say so (Node, which runs the browserless
+  // sessions), it must not keep the process alive for the idle period.
+  /** @type {{unref?: () => void}} */ (/** @type {unknown} */ (idleTermination)).unref?.();
+  globalThis.addEventListener?.("pagehide", terminateIdleClient);
+}
+
+/** End the idle period: the timer and the page-hide listener are its only resources. */
+function cancelIdleTermination() {
+  if (idleTermination !== null) {
+    clearTimeout(idleTermination);
+    idleTermination = null;
+  }
+  globalThis.removeEventListener?.("pagehide", terminateIdleClient);
+}
+
+function terminateIdleClient() {
+  cancelIdleTermination();
+  if (sharedReferences !== 0) {
+    return;
+  }
+  const client = sharedClient;
+  sharedClient = null;
+  client?.dispose();
+}
 
 /**
  * Acquire a reference to the page's one shared Markdown Worker client.
@@ -19,9 +74,10 @@ let sharedReferences = 0;
  * Every rendered document, folder README panel, and nested transclusion on the
  * page uses the same lazily constructed module Worker instead of constructing and
  * terminating one per mount. Each reference cancels only its own requests when
- * disposed, and the Worker terminates when the last reference is released. A
- * client latched by a fatal Worker failure is replaced on the next request, so one
- * crash does not disable preprocessing for documents mounted afterward.
+ * disposed. The Worker outlives the last reference by {@link MARKDOWN_WORKER_IDLE_MS},
+ * so the next Markdown mount finds it, and terminates when that period ends or the
+ * page is hidden. A client latched by a fatal Worker failure is replaced on the next
+ * request, so one crash does not disable preprocessing for documents mounted afterward.
  *
  * A fatal failure rejects every reference's pending requests, not only the
  * request that was running. The Worker catches operation errors and reports
@@ -35,6 +91,7 @@ let sharedReferences = 0;
  */
 export function acquireMarkdownWorkerClient() {
   sharedReferences += 1;
+  cancelIdleTermination();
   let released = false;
   /** @type {Set<AbortController>} */
   const requests = new Set();
@@ -51,9 +108,7 @@ export function acquireMarkdownWorkerClient() {
     requests.clear();
     sharedReferences -= 1;
     if (sharedReferences === 0) {
-      const client = sharedClient;
-      sharedClient = null;
-      client?.dispose();
+      keepIdleClient();
     }
   }
 

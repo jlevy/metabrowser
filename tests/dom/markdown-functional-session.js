@@ -203,6 +203,25 @@ function parseFakeHtml(html, document) {
   return elements;
 }
 
+// The page-hide event the shared Markdown Worker listens for while it is idle. Installed
+// before any mount, so the Worker sections can end an earlier section's idle period.
+const pagehideListeners = new Set();
+globalThis.addEventListener = (type, listener) => {
+  if (type === "pagehide") {
+    pagehideListeners.add(listener);
+  }
+};
+globalThis.removeEventListener = (type, listener) => {
+  if (type === "pagehide") {
+    pagehideListeners.delete(listener);
+  }
+};
+function hidePage() {
+  for (const listener of [...pagehideListeners]) {
+    listener({ type: "pagehide", persisted: false });
+  }
+}
+
 (async () => {
   const wiki = await import(moduleUrl("wiki-resolver.js"));
   const coordinatorModule = await import(moduleUrl("reconciliation-coordinator.js"));
@@ -494,10 +513,25 @@ function parseFakeHtml(html, document) {
     throw new Error("real nested Markdown chain did not preserve its shared root budgets");
   }
 
-  // Every Markdown mount on a page shares one Worker. References release it only
-  // when the last one is disposed, and a fatal failure is replaced on the next
-  // request rather than disabling preprocessing for the rest of the page.
+  // Every Markdown mount on a page shares one Worker. It outlives the last
+  // reference for an idle period, so the next Markdown mount finds it, and ends
+  // with that period or when the page is hidden. A fatal failure is replaced on
+  // the next request rather than disabling preprocessing for the rest of the
+  // page. The idle period runs on a clock the session advances.
   const workerClient = await import(moduleUrl("markdown-worker-client.js"));
+  // The sections above ran the operations without a Worker and left that client idle;
+  // hiding the page ends it, so this section starts with none.
+  hidePage();
+  const nativeSetTimeout = globalThis.setTimeout;
+  const nativeClearTimeout = globalThis.clearTimeout;
+  const idleTimers = new Map();
+  let nextIdleTimer = 1;
+  globalThis.setTimeout = (callback, delay) => {
+    idleTimers.set(nextIdleTimer, { callback, delay });
+    nextIdleTimer += 1;
+    return nextIdleTimer - 1;
+  };
+  globalThis.clearTimeout = (id) => idleTimers.delete(id);
   const workers = [];
   globalThis.Worker = class SessionWorker {
     constructor() {
@@ -554,8 +588,94 @@ function parseFakeHtml(html, document) {
   const recovered = await panelReference.run("prepare-primary", { source: "after crash" });
   const workersAfterRecovery = workers.length;
   panelReference.dispose();
-  const terminatedAfterLastRelease = workers.every((worker) => worker.terminated);
+  const keptAfterLastRelease = !workers.at(-1).terminated;
+  const idlePeriodMs = [...idleTimers.values()].map((timer) => timer.delay);
+  // The next Markdown document, opened after a file of another kind.
+  const nextDocument = workerClient.acquireMarkdownWorkerClient();
+  await nextDocument.run("prepare-primary", { source: "next document" });
+  const workersForNextDocument = workers.length;
+  nextDocument.dispose();
+  for (const [id, timer] of [...idleTimers]) {
+    idleTimers.delete(id);
+    timer.callback();
+  }
+  const terminatedAfterIdlePeriod = workers.every((worker) => worker.terminated);
+  const hiddenDocument = workerClient.acquireMarkdownWorkerClient();
+  await hiddenDocument.run("prepare-primary", { source: "before hiding" });
+  hiddenDocument.dispose();
+  for (const listener of [...pagehideListeners]) {
+    listener({ type: "pagehide", persisted: false });
+  }
+  const terminatedOnPageHide =
+    workers.every((worker) => worker.terminated) &&
+    idleTimers.size === 0 &&
+    pagehideListeners.size === 0;
+  globalThis.setTimeout = nativeSetTimeout;
+  globalThis.clearTimeout = nativeClearTimeout;
+  delete globalThis.addEventListener;
+  delete globalThis.removeEventListener;
   delete globalThis.Worker;
+
+  // A mount of the envelope the shell holds places the render an earlier mount of it
+  // kept, with no preparation and no request. A changed file arrives as another envelope
+  // and asks again; another table-of-contents option is another render; and a folder's
+  // README panel, which mounts with the folder's envelope, asks every time.
+  globalThis.Element = FakeElement;
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
+  globalThis.requestAnimationFrame = () => 0;
+  globalThis.cancelAnimationFrame = () => {};
+  const renderAsks = [];
+  const keptSdk = {
+    decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
+    errors: { isAbortError: (error) => error?.name === "AbortError" },
+    escapeHtml: String,
+    fetchKpressRender: async (ctx, _view, options) => {
+      renderAsks.push(
+        `${ctx.path} ${ctx.raw?.mtime_hash} ${options.sourceText === undefined ? "GET" : "POST"} toc=${options.includeToc ?? "auto"}`,
+      );
+      return { diagnostics: [], html: `<p>${ctx.path} ${ctx.raw?.mtime_hash}</p>` };
+    },
+    fetchText: async () => "",
+    fileCatalog: { snapshot: () => snapshot([]), subscribe: () => () => {} },
+    kpressInitToc: () => () => {},
+    navigation: {
+      current: () => ({ path: "kept.md" }),
+      href: (target) => `/view/${target.path}`,
+      open: async () => {},
+    },
+    repository: null,
+  };
+  const shownByKeptMounts = [];
+  const mountKept = async (ctx, options) => {
+    const container = new FakeContainer([]);
+    const handle = renderedMarkdown.mountRenderedMarkdown(container, ctx, keptSdk, options);
+    await handle.ready;
+    shownByKeptMounts.push(container.innerHTML);
+    handle.dispose();
+  };
+  const keptFirst = { content: "# Kept\n", mtime_hash: "v1", path: "kept.md", type: "text" };
+  await mountKept({ path: "kept.md", raw: keptFirst });
+  await mountKept({ path: "kept.md", raw: keptFirst });
+  const keptChanged = { ...keptFirst, content: "# Kept, changed\n", mtime_hash: "v2" };
+  await mountKept({ path: "kept.md", raw: keptChanged });
+  await mountKept({ path: "kept.md", raw: keptChanged });
+  await mountKept({ path: "kept.md", raw: keptChanged }, { includeToc: "off" });
+  const folderEnvelope = { mtime_hash: "folder", path: "docs", type: "folder" };
+  for (let round = 0; round < 2; round += 1) {
+    await mountKept(
+      { kind: "markdown", path: "docs/README.md", raw: folderEnvelope },
+      { includeToc: "off" },
+    );
+  }
+  const keptRenders = {
+    asks: renderAsks,
+    kept: renderedMarkdown.keptRenders.stats().entries,
+    shown: shownByKeptMounts,
+  };
+  delete globalThis.Element;
+  delete globalThis.window;
+  delete globalThis.requestAnimationFrame;
+  delete globalThis.cancelAnimationFrame;
 
   console.log(
     JSON.stringify(
@@ -573,6 +693,7 @@ function parseFakeHtml(html, document) {
             revisionStates: truncatedRevisionStates,
           },
         },
+        keptRenders,
         publishedRoutes: {
           complete: completeAdapter,
           incomplete: incompleteAdapter,
@@ -613,10 +734,14 @@ function parseFakeHtml(html, document) {
           aliveAfterOneRelease,
           concurrentWorkers,
           fatalError,
+          idlePeriodMs,
+          keptAfterLastRelease,
           recovered,
           stagedDispatchOrder,
-          terminatedAfterLastRelease,
+          terminatedAfterIdlePeriod,
+          terminatedOnPageHide,
           workersAfterRecovery,
+          workersForNextDocument,
         },
       },
       null,

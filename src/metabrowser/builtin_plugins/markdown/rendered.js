@@ -6,6 +6,221 @@ import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
 
+// ── Kept renders ─────────────────────────────────────────────
+//
+// A rendered view asked the server for its document on every mount. Preparation puts an
+// anchor before every heading, so the prepared source differs from the file and is posted
+// whole -- 19 KB for README.md, 190 KB for design-system.md -- and the render comes back
+// whole (research-2026-11-11-ui-apparent-performance.md). A document shown again is the
+// same document, so a mount keeps the render, with what preparation said of the source,
+// and a later mount of the same envelope places it with no preparation and no request.
+//
+// The envelope object is the first part of the key. The shell hands a mount the very
+// object its file cache holds, keeps that object across a revalidation the server answers
+// 304, and replaces it when the server sends a body or the cache evicts it. So a render is
+// found only through the envelope the shell holds now: a changed file arrives as another
+// envelope, with another identity, and never finds a render of the old one; and the renders
+// of an envelope the shell dropped are dropped with it, with no call from the shell.
+//
+// The rest of the key is what else the render depends on: the path, the envelope's content
+// identity (`mtime_hash`, a pin's blob ID), the view, the profile, the table-of-contents
+// option, and which preparation made the posted source. Preparation is a pure function of
+// the source, which the identity names (markdown-worker-operations.js), so naming the
+// preparation names the posted source before it runs. The server's other inputs, the build
+// and whether active content is on, are fixed for the page. Only a render made from the
+// envelope of the file it renders is kept: a folder's README panel mounts with the folder's
+// envelope, whose identity does not move when the README's content does.
+
+// Bytes kept across every envelope, counted as the render's HTML plus the JSON of the rest.
+// Measured 2026-11-11 over this repository's 269 Markdown files, each rendered by the
+// server from the file as a GET (a posted, prepared source adds its heading anchors): 32 KB
+// of JSON at the median, 101 KB at the 90th percentile, 244 KB at the 99th, and 3.2 MB at
+// the largest. The shell's file cache holds 30 envelopes, so this keeps a render for each
+// of thirty 99th-percentile documents, and one render may take a quarter of it.
+export const RENDER_CACHE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Everything a render depends on beside the envelope that holds it.
+ *
+ * @typedef {Readonly<{path: string, identity: string, view: string, profile: string, toc: string, source: string}>} RenderRequest
+ */
+
+/** @typedef {Awaited<ReturnType<MetabrowserPublicSdk["fetchKpressRender"]>>} KpressRender */
+
+/**
+ * A kept render: the server's answer, and the preparation's own diagnostics.
+ *
+ * @typedef {Readonly<{rendered: KpressRender, diagnostics: ReadonlyArray<unknown>}>} KeptRender
+ */
+
+/** @param {RenderRequest} request */
+function renderKey(request) {
+  return JSON.stringify([
+    request.path,
+    request.identity,
+    request.view,
+    request.profile,
+    request.toc,
+    request.source,
+  ]);
+}
+
+/** @param {KeptRender} kept */
+function keptBytes(kept) {
+  const { html, ...rest } = kept.rendered;
+  try {
+    return (
+      (typeof html === "string" ? html.length : 0) +
+      JSON.stringify(rest).length +
+      JSON.stringify(kept.diagnostics).length
+    );
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/**
+ * Renders kept by envelope, bounded by bytes and evicted least recently used first.
+ *
+ * Each envelope's renders hang off the envelope itself, so an envelope nothing holds takes
+ * them with it. The recency list holds the envelope only weakly, so it never keeps one
+ * alive; its byte count can include a collected envelope's renders until the next store
+ * finds them gone, which only makes eviction come sooner.
+ *
+ * @param {{maxBytes?: number}} [options]
+ */
+export function createRenderCache(options = {}) {
+  const maxBytes = options.maxBytes ?? RENDER_CACHE_BYTES;
+  const maxEntryBytes = Math.floor(maxBytes / 4);
+  const supported = typeof WeakRef === "function";
+  /** @type {WeakMap<object, Map<string, {kept: KeptRender, token: object}>>} */
+  const byEnvelope = new WeakMap();
+  /** @type {Map<object, {envelope: WeakRef<object>, key: string, bytes: number}>} */
+  const recency = new Map();
+  let total = 0;
+
+  /** @param {object} token */
+  function evict(token) {
+    const record = recency.get(token);
+    if (!record) {
+      return;
+    }
+    recency.delete(token);
+    total -= record.bytes;
+    const envelope = record.envelope.deref();
+    if (!envelope) {
+      return;
+    }
+    const renders = byEnvelope.get(envelope);
+    if (renders && renders.get(record.key)?.token === token) {
+      renders.delete(record.key);
+      if (renders.size === 0) {
+        byEnvelope.delete(envelope);
+      }
+    }
+  }
+
+  return Object.freeze({
+    /**
+     * The render kept for *request* in *envelope*, or undefined.
+     *
+     * @param {object} envelope
+     * @param {RenderRequest} request
+     * @returns {KeptRender | undefined}
+     */
+    lookup(envelope, request) {
+      const found = byEnvelope.get(envelope)?.get(renderKey(request));
+      if (!found) {
+        return undefined;
+      }
+      const record = recency.get(found.token);
+      if (record) {
+        recency.delete(found.token);
+        recency.set(found.token, record);
+      }
+      return found.kept;
+    },
+    /**
+     * Keep *kept* for *request* in *envelope*. Returns whether it was kept.
+     *
+     * @param {object} envelope
+     * @param {RenderRequest} request
+     * @param {KeptRender} kept
+     */
+    store(envelope, request, kept) {
+      if (!supported) {
+        return false;
+      }
+      const key = renderKey(request);
+      const previous = byEnvelope.get(envelope)?.get(key);
+      if (previous) {
+        evict(previous.token);
+      }
+      const bytes = keptBytes(kept);
+      if (bytes > maxEntryBytes) {
+        return false;
+      }
+      for (const [token, record] of recency) {
+        if (!record.envelope.deref()) {
+          evict(token);
+        }
+      }
+      let renders = byEnvelope.get(envelope);
+      if (!renders) {
+        renders = new Map();
+        byEnvelope.set(envelope, renders);
+      }
+      const token = {};
+      renders.set(key, { kept, token });
+      recency.set(token, { envelope: new WeakRef(envelope), key, bytes });
+      total += bytes;
+      for (const oldest of recency.keys()) {
+        if (total <= maxBytes) {
+          break;
+        }
+        evict(oldest);
+      }
+      return true;
+    },
+    stats() {
+      return Object.freeze({ bytes: total, entries: recency.size });
+    },
+  });
+}
+
+/** The page's kept renders, shared by every Markdown mount. */
+export const keptRenders = createRenderCache();
+
+/**
+ * What a mount's render depends on, or null when it must not be kept.
+ *
+ * @param {{path?: string}} ctx
+ * @param {Record<string, unknown>} envelope
+ * @param {"auto" | "on" | "off" | undefined} includeToc
+ * @returns {RenderRequest | null}
+ */
+export function primaryRenderRequest(ctx, envelope, includeToc) {
+  const path = ctx.path;
+  const identity = envelope.mtime_hash;
+  if (
+    typeof path !== "string" ||
+    !path ||
+    envelope.path !== path ||
+    typeof identity !== "string" ||
+    !identity
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    path,
+    identity,
+    view: "rendered",
+    profile: "document",
+    toc: includeToc ?? "auto",
+    source: "prepare-primary",
+  });
+}
+
 /** Shown when the optional wiki preprocessing step could not run. */
 const MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC = Object.freeze({
   code: "markdown-preprocessing-unavailable",
@@ -139,47 +354,91 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   container.innerHTML =
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
+  /**
+   * Prepare the source and ask the server to render it, keeping the render for *request*.
+   *
+   * @param {Record<string, unknown>} raw
+   * @param {RenderRequest | null} request
+   * @returns {Promise<KeptRender>}
+   */
+  async function prepareAndRender(raw, request) {
+    let content = typeof raw.content === "string" ? raw.content : null;
+    if (raw.content_truncated === true) {
+      content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
+    }
+    /** @type {Array<unknown>} */
+    const diagnostics = [];
+    let wiki = null;
+    let prepared = true;
+    if (content !== null) {
+      // Wiki preprocessing is an enhancement. If the worker cannot load or
+      // fails, render the authored Markdown and say what is missing rather
+      // than replacing the whole document with an error.
+      try {
+        const preparation = await workerClient.run(
+          "prepare-primary",
+          Object.freeze({ source: content }),
+          { signal: controller.signal },
+        );
+        if (!isPrimaryPreparation(preparation)) {
+          throw new TypeError("Markdown worker returned an invalid primary preparation");
+        }
+        wiki = preparation;
+        diagnostics.push(...wiki.diagnostics);
+      } catch (error) {
+        if (mb.errors.isAbortError(error) || controller.signal.aborted) {
+          throw error;
+        }
+        prepared = false;
+        diagnostics.push(MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC);
+      }
+    }
+    const rendered = await mb.fetchKpressRender(ctx, "rendered", {
+      dedupKey: `markdown-mount-${++mountSequence}`,
+      profile: "document",
+      includeToc: options.includeToc,
+      signal: controller.signal,
+      sourceText: wiki?.changed ? wiki.source : undefined,
+    });
+    const kept = Object.freeze({ rendered, diagnostics: Object.freeze(diagnostics) });
+    // A render made without its preparation is the authored document with a warning, for
+    // one failure that the next mount may not repeat; it is shown and not kept.
+    if (request && prepared) {
+      keptRenders.store(raw, request, kept);
+    }
+    return kept;
+  }
+
+  /** @param {KpressRender} rendered */
+  async function ensureKeptAssets(rendered) {
+    // The first mount loaded these through fetchKpressRender, and a load is once a page;
+    // asking again costs nothing then and covers a render kept by anything else.
+    if (typeof mb.loadKpressAssets !== "function" || !rendered.assets) {
+      return;
+    }
+    try {
+      await mb.loadKpressAssets(rendered.assets);
+    } catch (error) {
+      console.warn(
+        "metabrowser: KPress document rendered with one or more unavailable assets",
+        error,
+      );
+    }
+  }
+
   async function render() {
     try {
       const raw =
         ctx.raw && typeof ctx.raw === "object"
           ? /** @type {Record<string, unknown>} */ (ctx.raw)
           : {};
-      let content = typeof raw.content === "string" ? raw.content : null;
-      if (raw.content_truncated === true) {
-        content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
+      const request = primaryRenderRequest(ctx, raw, options.includeToc);
+      const found = request ? keptRenders.lookup(raw, request) : undefined;
+      if (found) {
+        await ensureKeptAssets(found.rendered);
       }
-      /** @type {Array<unknown>} */
-      const preparationDiagnostics = [];
-      let wiki = null;
-      if (content !== null) {
-        // Wiki preprocessing is an enhancement. If the worker cannot load or
-        // fails, render the authored Markdown and say what is missing rather
-        // than replacing the whole document with an error.
-        try {
-          const prepared = await workerClient.run(
-            "prepare-primary",
-            Object.freeze({ source: content }),
-            { signal: controller.signal },
-          );
-          if (!isPrimaryPreparation(prepared)) {
-            throw new TypeError("Markdown worker returned an invalid primary preparation");
-          }
-          wiki = prepared;
-        } catch (error) {
-          if (mb.errors.isAbortError(error) || controller.signal.aborted) {
-            throw error;
-          }
-          preparationDiagnostics.push(MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC);
-        }
-      }
-      const rendered = await mb.fetchKpressRender(ctx, "rendered", {
-        dedupKey: `markdown-mount-${++mountSequence}`,
-        profile: "document",
-        includeToc: options.includeToc,
-        signal: controller.signal,
-        sourceText: wiki?.changed ? wiki.source : undefined,
-      });
+      const { rendered, diagnostics: preparationDiagnostics } =
+        found ?? (await prepareAndRender(raw, request));
       if (disposed || controller.signal.aborted) {
         return;
       }
@@ -203,11 +462,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         links?.dispose?.();
         return;
       }
-      const diagnostics = [
-        ...preparationDiagnostics,
-        ...(wiki?.diagnostics || []),
-        ...(rendered.diagnostics || []),
-      ];
+      const diagnostics = [...preparationDiagnostics, ...(rendered.diagnostics || [])];
       if (links) {
         disposeLinks = links.dispose;
         if (links.admissionTruncated) {
