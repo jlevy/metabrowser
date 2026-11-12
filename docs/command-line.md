@@ -153,6 +153,11 @@ Two things escape it: a child that has not yet begun running Git when that bound
 out, and the helpers of a Git whose start failed, which Python’s asyncio kills alone.
 On systems other than macOS and Linux, which cannot list a process’s children this way,
 a start under way is not covered.
+Each child is confirmed to be the server’s own, not yet reaped, just before it is
+signalled; in the microsecond or so between the two, another thread could reap it, and
+the signal would reach someone else only if the system had meanwhile given its ID to a
+new process that already leads a group of its own, which takes far longer to happen.
+`_unreaped_child` in `metabrowser/git/process.py` records the measurements.
 Other Git, which only reads, runs in the server’s own process group and is not
 signalled; it holds no lock, and it ends when it next writes to, or reads from, the
 server that is gone.

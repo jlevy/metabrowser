@@ -15,13 +15,15 @@ import asyncio
 import contextlib
 import fcntl
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -699,3 +701,59 @@ def test_a_spawn_that_registers_during_the_first_look_is_still_killed(
     if helper is not None:
         assert _gone_within(helper), "the helper outlived the stop"
     assert lock_free, "the fetch lock outlived the stop"
+
+
+@pytest.mark.parametrize("entry", ["registered", "registered-reaped", "unregistered"])
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_child_reaped_after_the_listing_is_never_signalled(
+    entry: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another thread reaps a listed child before the stop signals it.
+
+    Its ID is then free, and a new process may lead a group by that ID; here one does,
+    running the same program. The stop must not signal it, whether the registry still
+    holds the child (``returncode`` not yet set, or set) or only the kernel listed it.
+    """
+
+    program = shutil.which("sleep")
+    assert program is not None
+    child = subprocess.Popen([program, "60"], start_new_session=True)
+    pid = child.pid
+    stop = process_module._GROUP_STOP
+    # The program, as a stop knew it before and as it knows it now.
+    stop.programs.update({Path(program).name, os.path.realpath(program)})
+    if entry != "unregistered":
+        stand_in = SimpleNamespace(pid=pid, returncode=-9 if entry == "registered-reaped" else None)
+        monkeypatch.setitem(
+            process_module._LIVE_PROCESS_GROUPS, pid, cast("asyncio.subprocess.Process", stand_in)
+        )
+    process_module.prepare_child_listing()
+    real_list = process_module.child_pids
+
+    def listed_then_reaped() -> list[int] | None:
+        listed = real_list()
+        if child.returncode is None:
+            assert listed is not None and pid in listed
+            child.kill()
+            child.wait()  # Reaped: the ID is free from here.
+        return listed
+
+    real_getpgid = os.getpgid
+    real_executable = process_module.executable
+    monkeypatch.setattr(process_module, "child_pids", listed_then_reaped)
+    # The replacement: a new group by the same ID, running the same program.
+    monkeypatch.setattr(os, "getpgid", lambda p: p if p == pid else real_getpgid(p))
+    monkeypatch.setattr(
+        process_module,
+        "executable",
+        lambda p: os.path.realpath(program) if p == pid else real_executable(p),
+    )
+    signalled: list[int] = []
+    monkeypatch.setattr(os, "killpg", lambda pgid, signum: signalled.append(pgid))
+    try:
+        process_module._kill_owned_groups(stop)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+    assert pid not in signalled
