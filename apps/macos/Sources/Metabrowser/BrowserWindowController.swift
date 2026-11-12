@@ -22,8 +22,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let status = WindowStatus()
     private let textFinder = NSTextFinder()
     private let titleAccessory = TitleAccessoryController()
-    /// Reveal the page, replacing the status view, once this window's load commits.
-    private var revealOnCommit = false
+    /// The navigation `load` submitted, whose commit reveals the page in place of the
+    /// status view, until server state supersedes it (`PageReveal`).
+    private var reveal = PageReveal<WKNavigation>()
     /// The page to load next: one asked for (a file opened here, a restored tab's page),
     /// else the one shown before the server restarted or the tab gave up its page; and
     /// the loads waiting to load it, of which only the newest may (`PageLoads`).
@@ -123,6 +124,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     func showStarting() {
         pages.cancelAll()
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .starting
         container.showsStatus = true
@@ -131,6 +133,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     func showFailure(_ failure: ServerFailure) {
         pages.cancelAll()
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .failed(failure)
         container.showsStatus = true
@@ -139,6 +142,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// A restored folder in a protected location, whose server starts when this tab is
     /// selected.
     func showWaitingForSelection() {
+        supersedeLoad()
         status.phase = .waitingForSelection
         container.showsStatus = true
     }
@@ -147,9 +151,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// found changed and is being checked again.
     func showWaitingForRuntime() {
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .waitingForRuntime
         container.showsStatus = true
+    }
+
+    /// Server state now covers the page. A load still on its way is remembered as the
+    /// page to show next and stopped, and none of its callbacks, even one WebKit has
+    /// already sent, can change the status (`PageReveal`).
+    private func supersedeLoad() {
+        guard reveal.supersede() else { return }
+        rememberPage()
+        webView.stopLoading()
     }
 
     /// Loads the page this window is to show, on the new origin, or the server's entry
@@ -191,7 +205,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         pages.cancelAll()
         rememberPage()
         isDiscarded = true
-        revealOnCommit = false
+        reveal.supersede()  // the discarded view is stopped below
         let discarded = webView
         discarded.stopLoading()
         discarded.navigationDelegate = nil
@@ -233,8 +247,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func load(_ url: URL) {
-        revealOnCommit = true
-        webView.load(URLRequest(url: url))
+        reveal.submitted(webView.load(URLRequest(url: url)))
     }
 
     private func install(_ authorization: WebAuthorization, for endpoint: ServerEndpoint) async {
@@ -392,15 +405,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         session?.pageChanged()
-        guard revealOnCommit else { return }
-        revealOnCommit = false
+        guard reveal.reveals(onCommit: navigation) else { return }
         container.showsStatus = false
         window?.makeFirstResponder(webView)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        guard revealOnCommit, (error as NSError).code != NSURLErrorCancelled else { return }
-        revealOnCommit = false
+        let cancelled = (error as NSError).code == NSURLErrorCancelled
+        guard reveal.reports(failureOf: navigation, cancelled: cancelled) else { return }
         status.phase = .failed(ServerFailure(
             summary: "The page did not load: \(error.localizedDescription)", recentOutput: []))
         container.showsStatus = true
@@ -410,13 +422,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard contentRecoveries.allow() else {
             AppLog.app.error("web content process died repeatedly; showing the status view")
+            supersedeLoad()
             status.phase = .failed(ServerFailure(
                 summary: "The page stopped responding repeatedly. Retry restarts the folder's server.",
                 recentOutput: []))
             container.showsStatus = true
             return
         }
-        webView.reload()
+        reveal.reloaded(webView.reload())
     }
 
     /// `target=_blank` and `window.open`. The returned view must be built from

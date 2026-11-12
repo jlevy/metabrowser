@@ -544,6 +544,10 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    website data store, because Metabrowser keeps preferences in host-only cookies.
    A native “Starting” view covers the window until the page commits; its spinner
    appears only after 300 ms.
+   Only the navigation the window submitted last can reveal the page or replace the view
+   with a page error (`PageReveal`). When the server restarts, fails, or waits, the
+   window stops that navigation, and a commit or failure WebKit had already sent for it
+   changes nothing, so it cannot hide the server’s failure and Retry.
 5. **Check.** A window that joins a running server (a Command-click, and a folder opened
    again or brought back from the Dock) first asks the server for its entry page, since
    a live pid is not a working server.
