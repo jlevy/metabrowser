@@ -528,7 +528,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the searches, rechecks, and choices that settle which one runs, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
+| `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, its bundle identifier, which keeps its settings and recents apart from the other variant’s, and the log and session folders, named for the app, that both variants share. |
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session, its restore order, and the restore’s starts, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |

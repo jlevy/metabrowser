@@ -176,4 +176,52 @@ import Testing
         #expect(log.url != other.url)
         await subject.stop()
     }
+
+    /// Review F2 on #377: a development build and a release share the logs folder
+    /// (mb-d71s). One copy holds the folder's log, grown past the rotation size, with an
+    /// archive beside it; a second copy launches and restarts the same folder. Each launch
+    /// prepares, and so may rotate, only the log it claimed: preparing the shared path
+    /// while spawning into the claimed one would rotate the first copy's log under its
+    /// running server.
+    @Test func aSecondCopyNeverRotatesTheLogAnotherCopyHolds() async throws {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let other = try ServerLogLease.claim(for: root, in: folder, owner: 1)  // the first copy
+        let shared = ServerLog.url(for: root, in: folder)
+        #expect(other.url == shared)
+        let archive = URL(filePath: shared.path(percentEncoded: false) + ".1")
+        try Data("the first copy's archive\n".utf8).write(to: archive)
+        try ServerLog.prepare(shared)
+        let handle = try FileHandle(forWritingTo: shared)
+        try handle.write(contentsOf: Data("the first copy's server\n".utf8))
+        try handle.truncate(atOffset: UInt64(ServerLog.rotationBytes + 1))  // past the limit, sparse
+        try handle.close()
+        func identity(_ url: URL) throws -> (inode: Int, size: Int) {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+            return ((attributes[.systemFileNumber] as? Int) ?? -1, (attributes[.size] as? Int) ?? -1)
+        }
+        let before = try identity(shared)
+
+        let log = FolderLog(root: root, directory: folder)  // the second copy's session
+        let spawned = Recorder<LaunchSpec>()
+        let subject = ServerSupervisor(
+            spec: LaunchSpec(executable: "/usr/bin/false", logURL: log.url), launch: CLIServeLaunch(),
+            policy: policy(), makeProcess: log.processFactory(spawner(spawned)), probe: { _ in true })
+        await subject.start()
+        await subject.restart()
+        await subject.stop()
+
+        #expect(spawned.count == 2)
+        #expect(log.url != shared)
+        #expect(Set(spawned.all.map(\.logURL)) == [log.url])
+        let own = try? FileManager.default.attributesOfItem(atPath: log.url.path(percentEncoded: false))
+        #expect(own?[.posixPermissions] as? Int == 0o600, "the second copy prepared its own log")
+        let after = try identity(shared)
+        #expect(after.inode == before.inode && after.size == before.size, "the first copy's log was replaced")
+        let reader = try FileHandle(forReadingFrom: shared)
+        #expect(try reader.read(upToCount: 24) == Data("the first copy's server\n".utf8))
+        try reader.close()
+        #expect(try String(contentsOf: archive, encoding: .utf8) == "the first copy's archive\n")
+        withExtendedLifetime(other) {}
+    }
 }
