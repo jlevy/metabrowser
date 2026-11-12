@@ -57,6 +57,10 @@ final class FolderWindows {
             Self.orderInAlone(window)
             window.makeKeyAndOrderFront(nil)
         }
+        // Shown now even if the app is not active and the window does not become key, as
+        // when a folder arrives from `open -a` while another app is in front.
+        noteShown(controller)
+        discardBackgroundPages()
     }
 
     /// System Settings > Desktop & Dock > "Prefer tabs when opening documents".
@@ -85,11 +89,15 @@ final class FolderWindows {
     /// its server starts if a restore was holding it, and background tabs past the limit
     /// give up their pages.
     func windowShown(_ controller: BrowserWindowController, of session: FolderSession) {
-        shownCount += 1
-        lastShown[ObjectIdentifier(controller)] = shownCount
+        noteShown(controller)
         if restoreQueue?.select(session.path) == true { startRestoredServers() }
         discardBackgroundPages()
         scheduleSave()
+    }
+
+    private func noteShown(_ controller: BrowserWindowController) {
+        shownCount += 1
+        lastShown[ObjectIdentifier(controller)] = shownCount
     }
 
     /// Every tab of `session` has closed.
