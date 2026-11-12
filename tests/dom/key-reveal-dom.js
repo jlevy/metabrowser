@@ -419,6 +419,8 @@ class FakeElement extends FakeNode {
   }
 
   scrollIntoView() {}
+
+  select() {}
 }
 
 for (const name of REFLECTED_BOOLEANS) {

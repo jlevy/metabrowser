@@ -12,11 +12,20 @@ reserved one, rather than letting the server drop a key quietly at run time.
 
 from __future__ import annotations
 
+import json
+import re
+import string
 from collections import Counter
+from pathlib import Path
 
 from metabrowser import server
 from metabrowser.file_kinds import VIEW_REGISTRY
-from metabrowser.keymap import check_view_keys, live_view_keys, reserved_keys_for
+from metabrowser.keymap import (
+    RESERVED_SHELL_KEYS,
+    check_view_keys,
+    live_view_keys,
+    reserved_keys_for,
+)
 from metabrowser.plugin_loader.manifest import merge_views
 
 
@@ -97,3 +106,29 @@ def test_a_reserved_or_malformed_key_is_dropped_in_every_kind() -> None:
 
     assert check.views == [{"id": "a"}, {"id": "b"}, {"id": "c"}]
     assert [problem.view_id for problem in check.problems] == ["a", "b", "c"]
+
+
+def _golden_shell_keys() -> set[str]:
+    """The shell keys the reveal session's transcript prints, across its parts."""
+    golden = Path(__file__).parent / "golden" / "cli-ui-key-reveal.tryscript.md"
+    printed = re.findall(r'^\s*"shellKeys": (\[[^\]]*\])', golden.read_text(), re.MULTILINE)
+    assert len(printed) == 3, "every part of the session prints its shell keys"
+    return {key for keys in printed for key in json.loads(keys)}
+
+
+def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
+    """The table the manifest loader and this check reserve is what the shell really binds.
+
+    ``tests/dom/key-reveal-session.js`` runs the production shell keymap, main tabs, Pulls
+    keys, tree keys, and Quick Search, and its golden prints every letter and digit they
+    registered outside the view tabs and the modal scopes. Its letters are exactly the
+    table's, so a shell key added or dropped on one side fails here; its digits are the
+    navigation tabs' fixed digits, which the table reserves with the gaps a future tab
+    takes.
+    """
+    shell_keys = _golden_shell_keys()
+    letters = set(string.ascii_lowercase)
+    reserved = set(RESERVED_SHELL_KEYS)
+    assert shell_keys & letters == reserved & letters
+    assert shell_keys - letters == {"1", "2", "3"}
+    assert shell_keys - letters <= reserved - letters
