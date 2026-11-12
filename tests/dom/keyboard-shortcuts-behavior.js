@@ -129,15 +129,12 @@ const shortcuts = sandbox.MetabrowserKeyboardShortcuts;
 check("global installed", Boolean(shortcuts));
 
 const question = shortcuts.describeBindings([{ key: "?" }]);
-equal("question visible", question.visible, [{ keys: ["?"], separators: [] }]);
+equal("question visible", question.visible, ["?"]);
 equal("question spoken", question.spoken, "Question mark");
 equal("question aria omitted", question.ariaKeyshortcuts, "");
 
 const alternatives = shortcuts.describeBindings([{ key: "t" }, { key: "/" }]);
-equal("alternative key labels", alternatives.visible, [
-  { keys: ["T"], separators: [] },
-  { keys: ["/"], separators: [] },
-]);
+equal("alternative key labels", alternatives.visible, ["T", "/"]);
 equal("alternative spoken phrase", alternatives.spoken, "T or slash");
 equal("representable aria alias retained", alternatives.ariaKeyshortcuts, "T");
 
@@ -145,7 +142,7 @@ const digit = shortcuts.describeBindings([{ key: "1" }]);
 equal(
   "a digit is its own label, spoken name, and ARIA token",
   [digit.visible, digit.spoken, digit.ariaKeyshortcuts],
-  [[{ keys: ["1"], separators: [] }], "1", "1"],
+  [["1"], "1", "1"],
 );
 
 // No shortcut uses a modifier, so no binding may state a policy for one, Shift
@@ -208,10 +205,7 @@ equal(
 // The tree's movement shape: an arrow with a letter alias. The arrow leads, so
 // a surface with room for one key names the arrow.
 const movement = shortcuts.describeBindings([{ key: "ArrowDown" }, { key: "j" }]);
-equal("arrow and letter labels", movement.visible, [
-  { keys: ["↓"], separators: [] },
-  { keys: ["J"], separators: [] },
-]);
+equal("arrow and letter labels", movement.visible, ["↓", "J"]);
 equal("arrow and letter spoken phrase", movement.spoken, "Down arrow or J");
 equal("arrow and letter aria", movement.ariaKeyshortcuts, "ArrowDown J");
 equal("arrow is the preferred key", movement.preferred.ariaKeyshortcuts, "ArrowDown");
@@ -337,6 +331,24 @@ check(
 check(
   "binding renderer provides one spoken phrase",
   bindingHost.children.some((node) => node.textContent === "T or slash"),
+);
+equal(
+  "alternatives join with one hidden or, and nothing joins keys within one",
+  bindingHost.children
+    .filter((node) => node.tagName === "SPAN" && node.className !== "visually-hidden")
+    .map((node) => [node.textContent, node.getAttribute("aria-hidden")]),
+  [["or", "true"]],
+);
+const singleHost = new FakeElement("span");
+shortcuts.appendBinding(document, singleHost, question);
+equal(
+  "a single key is one keycap that names itself",
+  singleHost.children.map((node) => [
+    node.tagName,
+    node.textContent,
+    node.getAttribute("aria-hidden"),
+  ]),
+  [["KBD", "?", null]],
 );
 
 const registry = shortcuts.create({ document });

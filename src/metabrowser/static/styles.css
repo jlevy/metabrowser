@@ -2032,10 +2032,10 @@ html.theme-anim .menu {
    announces stays whatever the markup says. Keys stand alone as marks;
    do not nest one inside a <code> or restyle it per surface.
 
-   Dynamic shortcut surfaces use the shared binding renderer. It emits
-   one .kbd per physical key, an unambiguous visual separator, and one
-   expanded spoken phrase for aliases or chords; callers never assemble
-   those pieces themselves. */
+   Dynamic shortcut surfaces use the shared binding renderer. Every
+   binding is a single key, so it emits one .kbd per alternative, the
+   word "or" between alternatives, and one expanded spoken phrase for
+   them; callers never assemble those pieces themselves. */
 
 .kbd {
   display: inline-flex;

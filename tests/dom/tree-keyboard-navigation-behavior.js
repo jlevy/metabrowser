@@ -484,20 +484,20 @@ check("k opens the row it lands on", navigationCalls.at(-1) === "folder:src");
 equal(
   "Next item presents Down or J",
   [
-    shortcuts.present("tree.next").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.next").bindings.visible,
     shortcuts.present("tree.next").bindings.spoken,
     shortcuts.present("tree.next").bindings.ariaKeyshortcuts,
   ],
-  [[["↓"], ["J"]], "Down arrow or J", "ArrowDown J"],
+  [["↓", "J"], "Down arrow or J", "ArrowDown J"],
 );
 equal(
   "Previous item presents Up or K",
   [
-    shortcuts.present("tree.previous").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.previous").bindings.visible,
     shortcuts.present("tree.previous").bindings.spoken,
     shortcuts.present("tree.previous").bindings.ariaKeyshortcuts,
   ],
-  [[["↑"], ["K"]], "Up arrow or K", "ArrowUp K"],
+  [["↑", "K"], "Up arrow or K", "ArrowUp K"],
 );
 // J and K step; they are not also first and last, and no Shift+Arrow is.
 equal(

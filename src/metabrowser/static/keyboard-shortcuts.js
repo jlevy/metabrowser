@@ -16,7 +16,7 @@
    * @property {string} ariaKeyshortcuts
    * @property {BindingPresentation} [preferred]
    * @property {string} spoken
-   * @property {readonly Readonly<{keys: readonly string[], separators: readonly string[]}>[]} visible
+   * @property {readonly string[]} visible One keycap label per alternative.
    */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} ShortcutControlBinding */
   /**
@@ -349,17 +349,7 @@
     if (!Array.isArray(bindings) || bindings.length === 0) {
       throw new TypeError("Presented commands require at least one binding");
     }
-    const alternatives = bindings.map((binding) => {
-      const definition = keyDefinition(normalizeBinding(binding).key);
-      return Object.freeze({
-        aria: definition.aria,
-        spoken: definition.spoken,
-        visible: Object.freeze({
-          keys: Object.freeze([definition.visible]),
-          separators: Object.freeze([]),
-        }),
-      });
-    });
+    const alternatives = bindings.map((binding) => keyDefinition(normalizeBinding(binding).key));
     const preferred = alternatives[0];
     return Object.freeze({
       ariaKeyshortcuts: alternatives
@@ -380,46 +370,35 @@
   }
 
   /**
+   * One keycap per alternative, joined by "or". Every binding is a single key, so an
+   * alternative is one keycap; a group of them is spoken as one visually hidden
+   * phrase, such as "T or slash", with its keycaps and separators hidden.
+   *
    * @param {Document} hostDocument
    * @param {HTMLElement} container
    * @param {BindingPresentation} presentation
    */
   function appendBinding(hostDocument, container, presentation) {
-    const complex =
-      presentation.visible.length > 1 ||
-      presentation.visible.some((alternative) => alternative.keys.length > 1);
-    if (complex) {
+    const alternatives = presentation.visible.length > 1;
+    if (alternatives) {
       const spoken = hostDocument.createElement("span");
       spoken.className = "visually-hidden";
       spoken.textContent = presentation.spoken;
       container.append(spoken);
     }
-    presentation.visible.forEach((alternative, alternativeIndex) => {
-      if (alternativeIndex > 0) {
+    presentation.visible.forEach((label, index) => {
+      if (index > 0) {
         const separator = hostDocument.createElement("span");
         separator.className = "shortcut-binding-separator";
         separator.textContent = "or";
-        if (complex) {
-          separator.setAttribute("aria-hidden", "true");
-        }
+        separator.setAttribute("aria-hidden", "true");
         container.append(separator);
       }
-      alternative.keys.forEach((key, keyIndex) => {
-        if (keyIndex > 0) {
-          const separator = hostDocument.createElement("span");
-          separator.className = "shortcut-binding-separator";
-          separator.textContent = alternative.separators[keyIndex - 1] || "+";
-          if (complex) {
-            separator.setAttribute("aria-hidden", "true");
-          }
-          container.append(separator);
-        }
-        const keycap = createKeycap(hostDocument, key);
-        if (complex) {
-          keycap.setAttribute("aria-hidden", "true");
-        }
-        container.append(keycap);
-      });
+      const keycap = createKeycap(hostDocument, label);
+      if (alternatives) {
+        keycap.setAttribute("aria-hidden", "true");
+      }
+      container.append(keycap);
     });
   }
 

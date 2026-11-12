@@ -518,7 +518,7 @@ async function stackKeysStory() {
     Array.from(copy, (entry) => entry.keys),
     ["N", "P"],
   );
-  const visible = registry.present("pulls.stack.base").bindings.visible[0].keys;
+  const visible = registry.present("pulls.stack.base").bindings.visible;
   assert.deepEqual(Array.from(visible), ["P"]);
   host.dispose();
   assert.equal(press("p"), false, "disposed pages cannot navigate even before registry cleanup");

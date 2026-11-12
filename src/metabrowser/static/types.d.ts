@@ -2119,9 +2119,8 @@ type MetabrowserBindingPresentation = Readonly<{
   ariaKeyshortcuts: string;
   preferred?: MetabrowserBindingPresentation;
   spoken: string;
-  visible: ReadonlyArray<
-    Readonly<{ keys: ReadonlyArray<string>; separators: ReadonlyArray<string> }>
-  >;
+  /** One keycap label per alternative: every binding is a single key. */
+  visible: ReadonlyArray<string>;
 }>;
 
 type MetabrowserShortcutControlBinding = Readonly<{

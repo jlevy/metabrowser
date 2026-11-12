@@ -193,8 +193,8 @@ inside a sentence.
 
 Write the key in its natural case in markup — the caps treatment is presentational, so
 the accessible name stays what the markup says.
-For a chord or alternative, emit one `.kbd` per physical key so each keeps its own
-border.
+For alternative keys, emit one `.kbd` per key, joined by the word “or,” so each keeps
+its own border.
 
 The component, its tokens, and its markup contract are documented in the
 `── Keyboard keys ──` blocks of `static/styles.css`.

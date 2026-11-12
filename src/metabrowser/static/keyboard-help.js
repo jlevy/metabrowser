@@ -6,7 +6,7 @@
   // gains or loses a command on a registration, and a contextual command
   // appears or goes with its scope.
   const HINT_EVENT_KINDS = new Set(["registration", "scope"]);
-  /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly {keys: readonly string[], separators: readonly string[]}[]}} HelpBindingPresentation */
+  /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
    * @typedef {object} HelpCommandPresentation
