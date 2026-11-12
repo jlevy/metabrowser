@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests the release scripts' shared checks in scripts/common.sh against real codesign
-# results and generated casks, without building the app. `make test` runs it after the
-# Swift tests.
+# results and generated casks, and the icon renderer's reject check (scripts/build-icon.sh
+# --check) on a copy of its fixtures, without building the app. `make test` runs it after
+# the Swift tests.
 #
 #   scripts/test-scripts.sh
 set -euo pipefail
@@ -142,6 +143,35 @@ elif grep -q "does not require macOS $minimum" "$work/out"; then
   pass "a cask that admits a macOS older than the app's minimum stops the release"
 else
   fail "a stale macOS requirement stopped write_cask for another reason: $(cat "$work/out")"
+fi
+
+# ── build-icon.sh --check ──────────────────────────────────────
+# On a copy of the reject fixtures with one more, sorted last, that the renderer accepts:
+# every real fixture is refused for its reason, the accepted one stops the check, and
+# nothing the check started outlives it. Each process it starts inherits descriptor 9,
+# so any holder of that file after the check exits is a process it left running.
+mkdir -p "$work/icon/scripts" "$work/icon/AppIcon/rejects"
+cp scripts/build-icon.sh "$work/icon/scripts/"
+cp AppIcon/render-svg.swift "$work/icon/AppIcon/"
+cp AppIcon/rejects/*.svg "$work/icon/AppIcon/rejects/"
+cat >"$work/icon/AppIcon/rejects/zz-renders.svg" <<'EOF'
+<!-- render-svg refuses: nothing; it renders this square -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="16" height="16" fill="#FF0000"/>
+</svg>
+EOF
+if "$work/icon/scripts/build-icon.sh" --check >"$work/out" 2>&1 9>"$work/held"; then
+  fail "the reject check passed a fixture the renderer accepts"
+elif grep -q "^AppIcon/rejects/zz-renders.svg: render-svg accepted it" "$work/out"; then
+  pass "the reject check refuses every fixture and stops at one the renderer accepts"
+else
+  fail "the reject check stopped for another reason: $(cat "$work/out")"
+fi
+left="$(lsof -t "$work/held" 2>/dev/null | tr '\n' ',' || true)"
+if [[ -z "$left" ]]; then
+  pass "the reject check leaves no process running"
+else
+  fail "the reject check left processes running: $(ps -o pid=,command= -p "${left%,}" | tr '\n' ';')"
 fi
 
 if ((failures)); then
