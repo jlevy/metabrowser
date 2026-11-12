@@ -21,6 +21,17 @@ All notable changes to Metabrowser are documented here.
   running and could keep holding the store’s fetch lock; no new one starts once the stop
   has begun.
 
+- A folder’s File Overview is shorter.
+  Under the Files, Ignored, and Total bars it shows a legend of the five largest file
+  types, each a dot in its color with its name and share, plus **Other** for the rest,
+  as GitHub’s Languages box does.
+  The full table of groups, types, and **N more** rows is behind **Details**, which
+  starts closed and stays as left while the folder is open.
+  The “Share of Total” line is no longer shown; screen readers still hear it as the name
+  of the legend and the table.
+  `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
+  measure and population, so `metab --api` shows the same choice the page makes.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file

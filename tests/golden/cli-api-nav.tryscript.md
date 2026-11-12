@@ -209,6 +209,71 @@ status: 200
       "others": null
     }
   },
+  "file_type_legend": {
+    "schema": "file-type-legend-v1",
+    "limit": 5,
+    "minimum_share_percent": 1,
+    "files": {
+      "all": {
+        "total": 3,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 2
+          },
+          {
+            "family": "plain-text",
+            "value": 1
+          }
+        ],
+        "other": 0
+      },
+      "unignored": {
+        "total": 3,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 2
+          },
+          {
+            "family": "plain-text",
+            "value": 1
+          }
+        ],
+        "other": 0
+      }
+    },
+    "bytes": {
+      "all": {
+        "total": 22,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "plain-text",
+            "value": 6
+          }
+        ],
+        "other": 0
+      },
+      "unignored": {
+        "total": 22,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "plain-text",
+            "value": 6
+          }
+        ],
+        "other": 0
+      }
+    }
+  },
   "index_status": "done",
   "indexed_files": 3,
   "max_files": 500000,
@@ -328,6 +393,55 @@ status: 200
       },
       "extensions": [],
       "others": null
+    }
+  },
+  "file_type_legend": {
+    "schema": "file-type-legend-v1",
+    "limit": 5,
+    "minimum_share_percent": 1,
+    "files": {
+      "all": {
+        "total": 1,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 1
+          }
+        ],
+        "other": 0
+      },
+      "unignored": {
+        "total": 1,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 1
+          }
+        ],
+        "other": 0
+      }
+    },
+    "bytes": {
+      "all": {
+        "total": 7,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 7
+          }
+        ],
+        "other": 0
+      },
+      "unignored": {
+        "total": 7,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 7
+          }
+        ],
+        "other": 0
+      }
     }
   },
   "index_status": "done",
