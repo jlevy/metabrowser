@@ -137,6 +137,18 @@ frame(12_100);
 frame(12_200);
 results.afterInput = gapFields(perf.responsiveness());
 
+// Review B of #372, B1: a click that wakes a stopped loop and blocks the main thread
+// until the next frame is a gap, measured from the click; it used to be discarded as the
+// first frame after the restart.
+frame(30_000);
+results.framesAfterSecondWindow = frames.length;
+now = 40_000;
+emit("click", { isTrusted: true });
+frame(40_300);
+frame(40_316);
+frame(40_332);
+results.afterBlockingClick = gapFields(perf.responsiveness());
+
 // reset() starts a new measurement window, with the loop running.
 perf.reset();
 results.afterReset = gapFields(perf.responsiveness());

@@ -8375,7 +8375,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Could not initialize browser navigation", error);
     settleUnclaimedPreview();
   });
-  // What metabrowser.whenIdle waits for where the engine has no idle callback.
+  // For metabrowser.whenIdle.
   started.finally(() => window.dispatchEvent(new Event("metabrowser:first-view-settled")));
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree

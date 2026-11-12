@@ -912,12 +912,18 @@
   }
 
   // "Idle Work" in docs/development.md.
+  const IDLE_INPUT_QUIET_MS = 250;
   let _lastInput = -Infinity;
   const _viewSettled = new Promise((resolve) =>
     global.addEventListener?.("metabrowser:first-view-settled", resolve),
   );
-  for (const type of ["pointerdown", "keydown", "wheel"]) {
-    global.addEventListener?.(type, () => (_lastInput = performance.now()), true);
+  if (!global.requestIdleCallback) {
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      global.addEventListener?.(type, () => (_lastInput = performance.now()), {
+        capture: true,
+        passive: true,
+      });
+    }
   }
   function whenIdle(callback, options) {
     const timeout = options?.timeout;
@@ -930,7 +936,7 @@
     let timer;
     const check = () => {
       const now = performance.now();
-      const wait = Math.min(_lastInput + 250 - now, deadline - now);
+      const wait = Math.min(_lastInput + IDLE_INPUT_QUIET_MS - now, deadline - now);
       timer = wait > 0 ? setTimeout(check, wait) : void callback();
     };
     const start = () => {

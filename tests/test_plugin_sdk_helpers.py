@@ -40,9 +40,6 @@ STYLESHEET = "link rel=stylesheet /plugin-static/fixture-kind/styles.css"
 MODULE_PRELOAD = "link rel=modulepreload <the plugin's module>"
 VIEW_HELPERS = "script /static/plugin-sdk-views.js"
 TEMPLATES = "script /static/vendor/mustache.min.js"
-# The asset loader fetches a bundle's scripts through preloads, then appends each in turn.
-VIEW_HELPERS_PRELOAD = "link rel=preload /static/plugin-sdk-views.js"
-TEMPLATES_PRELOAD = "link rel=preload /static/vendor/mustache.min.js"
 
 
 def _sdk_source() -> str:
@@ -94,14 +91,7 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
     assert loaded["helpersAfter"] == "15 of 15"
     # The plugin's stylesheet and module are on the wire beside the helpers, not a
     # round trip after them, and none of its code has run while they are.
-    assert loaded["requestedTogether"] == [
-        VIEW_HELPERS_PRELOAD,
-        TEMPLATES_PRELOAD,
-        STYLESHEET,
-        MODULE_PRELOAD,
-        VIEW_HELPERS,
-        TEMPLATES,
-    ]
+    assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS, TEMPLATES]
     assert loaded["whileWaiting"] == {"loading": "pending", "pluginCode": []}
     # A documented helper works while the module evaluates, in a view's render, and in
     # a handler: the three places a plugin's code runs.
@@ -134,7 +124,7 @@ def test_no_plugin_code_runs_without_the_view_helpers(view_helpers: dict[str, An
     }
     # Asking again fetches what failed and nothing twice, and then the plugin runs once.
     assert refused["retry"] == {
-        "requested": [VIEW_HELPERS_PRELOAD, VIEW_HELPERS],
+        "requested": [VIEW_HELPERS],
         "loading": "resolved",
         "pluginCode": ["module evaluation: a Source view with a gutter of 1 lines"],
     }
@@ -158,7 +148,7 @@ def test_template_readiness_joins_prefetch_and_retries_before_plugin_evaluation(
         "viewRegistered": False,
     }
     assert refused["retry"] == {
-        "requested": [TEMPLATES_PRELOAD, TEMPLATES],
+        "requested": [TEMPLATES],
         "loading": "resolved",
         "pluginCode": ["module evaluation: a Source view with a gutter of 1 lines"],
         "templateCalls": [

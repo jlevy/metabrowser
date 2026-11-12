@@ -902,7 +902,9 @@
     observerNotes.push("longtask");
   }
 
-  // Frame gaps without Long Tasks: "Idle Work" in docs/development.md.
+  // "Idle Work" in docs/development.md.
+  var FRAME_GAP_MS = 50;
+  var FRAME_SAMPLE_WINDOW_MS = 10000;
   var raf = { gaps: 0, max_ms: 0, over_200ms: 0, sampled_ms: 0 };
   var rafOn = observerNotes.includes("longtask") && !!window.requestAnimationFrame;
   var rafUntil = 0;
@@ -910,10 +912,10 @@
   var rafRunning = false;
   function _rafFrame(at) {
     rafRunning = at <= rafUntil;
-    var gap = Math.round(at - rafLast);
+    var gap = Math.max(0, Math.round(at - rafLast));
     if (rafRunning && rafLast !== null && document.visibilityState === "visible") {
       raf.sampled_ms += gap;
-      if (gap > 50) {
+      if (gap > FRAME_GAP_MS) {
         raf.gaps += 1;
         raf.max_ms = Math.max(raf.max_ms, gap);
         raf.over_200ms += gap > 200 ? 1 : 0;
@@ -925,9 +927,10 @@
     }
   }
   function _sampleFrames() {
-    rafUntil = _now() + 10000;
+    rafUntil = _now() + FRAME_SAMPLE_WINDOW_MS;
     if (rafOn && !rafRunning) {
       rafRunning = true;
+      rafLast = _now();
       requestAnimationFrame(_rafFrame);
     }
   }

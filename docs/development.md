@@ -215,22 +215,41 @@ The app’s WebKit does not: `WKWebView` on macOS 26.5.2 had none when measured 
 a clock rather than when the page is free.
 There, the helper waits for `metabrowser:first-view-settled`, which `app.js` dispatches
 once the startup navigation has settled, whether it showed its view or failed, and then
-until 250 ms have passed with no `pointerdown`, `keydown`, or `wheel`, the same pause
-the tree’s hover prefetch waits for (`FILE_PREFETCH_HOVER_DELAY_MS`). A `timeout` bounds
-the whole wait, as it bounds `requestIdleCallback`’s; untimed work waits for the first
-view as long as it takes.
+until `IDLE_INPUT_QUIET_MS` (250 ms) has passed with no `pointerdown`, `keydown`, or
+`wheel`. It listens for those, passively, only where it can run.
+A `timeout` bounds the whole wait, as it bounds `requestIdleCallback`’s.
+
+Untimed work has no ceiling: it waits for the first view as long as that takes, which
+`tests/dom/idle-work-behavior.js` pins.
+That is a decision, not an omission.
+The one untimed caller is a pull request page’s comparison prefetch, and a page whose
+first view has not settled, as a hidden web view’s does not, would have that prefetch
+compete with the view it is still drawing.
+Every caller that must run regardless passes a timeout.
 
 The same engine has no `longtask`, `long-animation-frame`, or `layout-shift` observer.
 Where `longtask` is missing, `metabrowser.perf.responsiveness()` reports
-`raf_frame_gaps`: the count of `requestAnimationFrame` intervals over 50 ms while the
-page is visible, the longest, the count over 200 ms, and the time sampled.
+`raf_frame_gaps`: the count of `requestAnimationFrame` intervals over `FRAME_GAP_MS` (50
+ms, the Long Tasks threshold) while the page is visible, the longest, the count over 200
+ms, and the time sampled.
 A gap is a frame the page did not draw, whatever the cause, not a task’s measured
 length, so it is never written into the Long Task fields, which keep `longtask` in
-`unsupported`. A frame loop costs power, so it runs for 10 s after load, after
-`reset()`, and after each trusted click or key, and a gap that ends after that window is
-not counted. Where Long Tasks exist, `raf_frame_gaps` is null and no loop runs.
+`unsupported`. A frame loop costs power, so it runs for `FRAME_SAMPLE_WINDOW_MS` (10 s)
+after load, after `reset()`, and after each trusted click or key.
+When one of those starts it, the first interval is measured from that moment, so the
+work a waking click does before its frame is a gap like any other; a gap that ends after
+the window closes is not counted.
+Where Long Tasks exist, `raf_frame_gaps` is null and no loop runs.
 Where `layout-shift` is missing, `cls` stays null; the transition harness measures
 region movement instead.
+
+**Not measured in the app’s engine.** The 250 ms pause and the 10 s window were chosen,
+not measured: the pause is the tree’s hover prefetch delay
+(`FILE_PREFETCH_HOVER_DELAY_MS`), longer than a held key’s repeat or a wheel’s event
+interval, and the window covers a transition and its settling.
+When each idle call site’s work starts, and what the loop costs and misses, can only be
+read in `WKWebView`, which needs the probe the macOS app plan names; until a round there
+reads them, they are the values to test, not results.
 These two files are startup scripts, so the code is kept to what the startup budget
 leaves room for, and this section holds what their comments would otherwise say.
 

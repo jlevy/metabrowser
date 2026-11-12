@@ -22,6 +22,8 @@ let timers = [];
 let nextTimer = 1;
 /** @type {Map<string, Array<(event: unknown) => void>>} */
 const listeners = new Map();
+/** @type {Map<string, unknown>} */
+const listenerOptions = new Map();
 
 function advance(ms) {
   const until = clock + ms;
@@ -80,8 +82,9 @@ const sandbox = {
   clearTimeout(id) {
     timers = timers.filter((timer) => timer.id !== id);
   },
-  addEventListener(type, listener) {
+  addEventListener(type, listener, options) {
     listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+    listenerOptions.set(type, options ?? null);
   },
   removeEventListener() {},
   dispatchEvent(event) {
@@ -116,6 +119,34 @@ for (const name of [
   });
 }
 const mb = sandbox.metabrowser;
+
+/** The listeners the SDK adds in an engine that has requestIdleCallback. */
+function sdkListenerTypesWithIdleCallback() {
+  const types = [];
+  const other = {
+    ...sandbox,
+    // A fresh SDK: the one already loaded would make it return early, as on a double load.
+    metabrowser: undefined,
+    requestIdleCallback: () => 1,
+    cancelIdleCallback() {},
+    addEventListener: (type) => types.push(type),
+  };
+  other.window = other;
+  other.globalThis = other;
+  vm.createContext(other);
+  for (const name of [
+    "request-error.js",
+    "formatters.js",
+    "inventory-scope.js",
+    "resource-context.js",
+    "view-state.js",
+    "navigation.js",
+    "plugin-sdk.js",
+  ]) {
+    vm.runInContext(fs.readFileSync(path.join(staticDir, name), "utf8"), other, { filename: name });
+  }
+  return types.filter((type) => ["pointerdown", "keydown", "wheel"].includes(type));
+}
 const results = {};
 /** @type {Array<string>} */
 const ran = [];
@@ -126,9 +157,15 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 (async () => {
   results.helper = typeof mb.whenIdle;
+  // The input listeners only the fallback reads, passive so a wheel never waits on them.
+  results.inputListeners = ["pointerdown", "keydown", "wheel"].map((type) =>
+    listeners.has(type) ? listenerOptions.get(type) : null,
+  );
+  results.inputListenersWithIdleCallback = sdkListenerTypesWithIdleCallback();
 
   // 1. Before the first view settles, untimed work waits, and timed work waits for its
-  //    timeout and no longer.
+  //    timeout and no longer. Untimed work has no ceiling, by decision: see "Idle Work"
+  //    in docs/development.md.
   mb.whenIdle(record("untimed"));
   mb.whenIdle(record("timed-2000"), { timeout: 2000 });
   await flush();

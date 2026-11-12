@@ -47,16 +47,20 @@ def test_without_long_tasks_frame_gaps_are_recorded_under_their_own_fields() -> 
 
     assert json.loads(result.stdout) == {
         "frameRequestedAtLoad": 1,
-        # 16, 100, 16, and 300 ms intervals: two gaps.
-        "afterLoad": gaps(2, 300, 1, 432),
+        # Measured from load: 16, 16, 100, 16, and 300 ms intervals, two of them gaps.
+        "afterLoad": gaps(2, 300, 1, 448),
         "longTasks": {"long_tasks": 0, "long_task_max_ms": 0, "unsupported": ["longtask"]},
         "cls": None,
         # Hidden frames, and the first frame after showing, add nothing but sampled time.
-        "afterHidden": gaps(2, 300, 1, 448),
+        "afterHidden": gaps(2, 300, 1, 464),
         "framesRequestedAfterWindow": 0,
         "framesAfterUntrustedClick": 0,
         "framesAfterTrustedKey": 1,
-        "afterInput": gaps(3, 300, 1, 548),
+        # Measured from the waking key: 84 ms to the next frame is a gap, then 100.
+        "afterInput": gaps(4, 300, 1, 648),
+        "framesAfterSecondWindow": 0,
+        # Review B of #372, B1: the 300 ms a waking click blocks before its frame counts.
+        "afterBlockingClick": gaps(5, 300, 2, 980),
         "afterReset": gaps(0, 0, 0, 0),
         "framesAfterReset": 1,
     }

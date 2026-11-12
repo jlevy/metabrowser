@@ -32,6 +32,9 @@ def test_idle_work_waits_for_the_first_view_and_quiet_input() -> None:
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     assert json.loads(result.stdout) == {
         "helper": "function",
+        # Review B of #372, B6: installed only where the fallback reads them, and passive.
+        "inputListeners": [{"capture": True, "passive": True}] * 3,
+        "inputListenersWithIdleCallback": [],
         # Before the first view settles: untimed work waits; a timeout is the bound.
         "beforeTimeout": [],
         "atTimeout": ["timed-2000@2000"],
