@@ -1,0 +1,412 @@
+{
+  "path": "docs",
+  "index_status": "done",
+  "indexed_files": 1000,
+  "max_files": 500000,
+  "truncated": false,
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 1,
+      "revision": 1,
+      "fingerprint": "session"
+    },
+    "metrics": {
+      "all": {
+        "files": 1000,
+        "bytes": 1000
+      },
+      "unignored": {
+        "files": 800,
+        "bytes": 920
+      }
+    },
+    "groups": [
+      {
+        "id": "code",
+        "families": [
+          {
+            "id": "typescript",
+            "metrics": {
+              "all": {
+                "files": 60,
+                "bytes": 200
+              },
+              "unignored": {
+                "files": 60,
+                "bytes": 200
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".ts",
+                "metrics": {
+                  "all": {
+                    "files": 60,
+                    "bytes": 200
+                  },
+                  "unignored": {
+                    "files": 60,
+                    "bytes": 200
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "python",
+            "metrics": {
+              "all": {
+                "files": 33,
+                "bytes": 150
+              },
+              "unignored": {
+                "files": 33,
+                "bytes": 150
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".py",
+                "metrics": {
+                  "all": {
+                    "files": 33,
+                    "bytes": 150
+                  },
+                  "unignored": {
+                    "files": 33,
+                    "bytes": 150
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "javascript",
+            "metrics": {
+              "all": {
+                "files": 25,
+                "bytes": 120
+              },
+              "unignored": {
+                "files": 25,
+                "bytes": 120
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".js",
+                "metrics": {
+                  "all": {
+                    "files": 25,
+                    "bytes": 120
+                  },
+                  "unignored": {
+                    "files": 25,
+                    "bytes": 120
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "rust",
+            "metrics": {
+              "all": {
+                "files": 8,
+                "bytes": 5
+              },
+              "unignored": {
+                "files": 8,
+                "bytes": 5
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".rs",
+                "metrics": {
+                  "all": {
+                    "files": 8,
+                    "bytes": 5
+                  },
+                  "unignored": {
+                    "files": 8,
+                    "bytes": 5
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "markdown",
+            "metrics": {
+              "all": {
+                "files": 150,
+                "bytes": 300
+              },
+              "unignored": {
+                "files": 150,
+                "bytes": 300
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".md",
+                "metrics": {
+                  "all": {
+                    "files": 150,
+                    "bytes": 300
+                  },
+                  "unignored": {
+                    "files": 150,
+                    "bytes": 300
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "data",
+        "families": [
+          {
+            "id": "json",
+            "metrics": {
+              "all": {
+                "files": 240,
+                "bytes": 100
+              },
+              "unignored": {
+                "files": 40,
+                "bytes": 20
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".json",
+                "metrics": {
+                  "all": {
+                    "files": 240,
+                    "bytes": 100
+                  },
+                  "unignored": {
+                    "files": 40,
+                    "bytes": 20
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "yaml",
+            "metrics": {
+              "all": {
+                "files": 170,
+                "bytes": 50
+              },
+              "unignored": {
+                "files": 170,
+                "bytes": 50
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".yaml",
+                "metrics": {
+                  "all": {
+                    "files": 170,
+                    "bytes": 50
+                  },
+                  "unignored": {
+                    "files": 170,
+                    "bytes": 50
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "families": [
+          {
+            "id": "log",
+            "metrics": {
+              "all": {
+                "files": 21,
+                "bytes": 25
+              },
+              "unignored": {
+                "files": 21,
+                "bytes": 25
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".log",
+                "metrics": {
+                  "all": {
+                    "files": 21,
+                    "bytes": 25
+                  },
+                  "unignored": {
+                    "files": 21,
+                    "bytes": 25
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 40,
+          "bytes": 20
+        },
+        "unignored": {
+          "files": 40,
+          "bytes": 20
+        }
+      },
+      "filenames": [],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 253,
+          "bytes": 30
+        },
+        "unignored": {
+          "files": 253,
+          "bytes": 30
+        }
+      },
+      "extensions": [],
+      "others": null
+    }
+  },
+  "file_type_legend": {
+    "schema": "file-type-legend-v1",
+    "limit": 5,
+    "minimum_share_percent": 1,
+    "files": {
+      "all": {
+        "total": 1000,
+        "named": [
+          {
+            "family": "json",
+            "value": 240
+          },
+          {
+            "family": "yaml",
+            "value": 170
+          },
+          {
+            "family": "markdown",
+            "value": 150
+          },
+          {
+            "family": "typescript",
+            "value": 60
+          },
+          {
+            "family": "python",
+            "value": 33
+          }
+        ],
+        "other": 347
+      },
+      "unignored": {
+        "total": 800,
+        "named": [
+          {
+            "family": "yaml",
+            "value": 170
+          },
+          {
+            "family": "markdown",
+            "value": 150
+          },
+          {
+            "family": "typescript",
+            "value": 60
+          },
+          {
+            "family": "json",
+            "value": 40
+          },
+          {
+            "family": "python",
+            "value": 33
+          }
+        ],
+        "other": 347
+      }
+    },
+    "bytes": {
+      "all": {
+        "total": 1000,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 300
+          },
+          {
+            "family": "typescript",
+            "value": 200
+          },
+          {
+            "family": "python",
+            "value": 150
+          },
+          {
+            "family": "javascript",
+            "value": 120
+          },
+          {
+            "family": "json",
+            "value": 100
+          }
+        ],
+        "other": 130
+      },
+      "unignored": {
+        "total": 920,
+        "named": [
+          {
+            "family": "markdown",
+            "value": 300
+          },
+          {
+            "family": "typescript",
+            "value": 200
+          },
+          {
+            "family": "python",
+            "value": 150
+          },
+          {
+            "family": "javascript",
+            "value": 120
+          },
+          {
+            "family": "yaml",
+            "value": 50
+          }
+        ],
+        "other": 100
+      }
+    }
+  }
+}

@@ -154,9 +154,10 @@ A plugin owns its panel’s domain data, optional data hook, renderer, and style
 The visible **File Overview** heading belongs to `folder.file-overview`. It answers what
 a folder holds at two resolutions in one section: the inventory-backed Files and Ignored
 tallies, which need no rollup and so paint immediately, and beneath them the
-rollup-backed type table built from the packaged recommended definitions in File Rollup
-Format v0.1. Each tally row is its own complete population: Files means unignored files,
-Ignored means excluded files, and Total is their sum.
+rollup-backed type summary built from the packaged recommended definitions in File
+Rollup Format v0.1: a legend of the largest file-type families, with the full type table
+behind Details. Each tally row is its own complete population: Files means unignored
+files, Ignored means excluded files, and Total is their sum.
 A nonzero row therefore has a full-width composition track and no percentage label.
 Total is what the type distribution counts against while Show ignored is on, so it is
 the track whose segment shares match the distribution’s percentages in that state; Files
