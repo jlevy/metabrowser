@@ -20,8 +20,11 @@ private final class WindowRequests: NSObject, WKUIDelegate, WKNavigationDelegate
 }
 
 /// The popup rule in a real `WKWebView`: the navigation policy's tests cannot see it,
-/// since WebKit decides before it asks the app (review finding B2 on #341).
+/// since WebKit decides before it asks the app (review finding B2 on #341). Runs in a
+/// process of its own; see `ignoreSIGPIPELikeTheApp`.
 @Suite struct WebConfigurationTests {
+    init() { ignoreSIGPIPELikeTheApp() }
+
     /// A page of the folder's own server that opens two more of its pages as it loads.
     private let selfOpeningPage = """
         <script>
