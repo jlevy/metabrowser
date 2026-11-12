@@ -106,8 +106,12 @@ To run the tests against a real server too:
 
 ```shell
 cd apps/macos
-METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab swift test
+METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab make test
 ```
+
+`make test` runs the suites in three processes: the WebKit suites and the exit stress
+suite each stall the main actor, which every suite shares, so they run apart from the
+rest. A bare `swift test` runs them all in one process.
 
 Where to look while it runs:
 

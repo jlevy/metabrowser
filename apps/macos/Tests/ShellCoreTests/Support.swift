@@ -111,6 +111,18 @@ func temporaryDirectory(_ name: String = #function) throws -> URL {
     return url
 }
 
+/// Gives this test process the SIGPIPE disposition that the app sets on its first line
+/// (main.swift). The suites that drive WebKit call it as they start: at the default
+/// disposition, loaded runs of the download tests died of SIGPIPE before the test's
+/// server had written a byte, from a write elsewhere in this process.
+///
+/// Those suites also run in a process of their own (the `test` target in the app's
+/// Makefile): WebKit's first web view blocks the main actor, which every suite here
+/// shares, for seconds on a loaded runner.
+func ignoreSIGPIPELikeTheApp() {
+    signal(SIGPIPE, SIG_IGN)
+}
+
 func processExists(_ pid: pid_t) -> Bool {
     kill(pid, 0) == 0 || errno == EPERM
 }
