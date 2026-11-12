@@ -4,13 +4,18 @@
 /// while they run, and the app notices only afterwards, so the offer shortens the time
 /// old servers run against new files; it cannot prevent it.
 public nonisolated enum RuntimeUpgrade {
-    /// The indices of `running` whose servers started from `current`'s executable at
-    /// another version. A server started from another `metab` is not outdated by this
-    /// one; Restart Server moves it over. A checkout's description after the version
-    /// names its working tree, which changes with every commit, so it is not compared.
-    public static func outdated(_ running: [Runtime], current: Runtime) -> [Int] {
-        running.indices.filter {
-            running[$0].executable == current.executable && shortVersion(running[$0]) != shortVersion(current)
+    /// The indices of `started` whose servers started from `current`'s executable at
+    /// another version. Each entry is the runtime a folder's server last started from,
+    /// nil for one that never started, such as a restored folder waiting for its tab,
+    /// which is never outdated. With no accepted runtime nothing is. A server started
+    /// from another `metab` is not outdated by this one; Restart Server moves it over. A
+    /// checkout's description after the version names its working tree, which changes
+    /// with every commit, so it is not compared.
+    public static func outdated(_ started: [Runtime?], current: Runtime?) -> [Int] {
+        guard let current else { return [] }
+        return started.indices.filter {
+            guard let runtime = started[$0] else { return false }
+            return runtime.executable == current.executable && shortVersion(runtime) != shortVersion(current)
         }
     }
 

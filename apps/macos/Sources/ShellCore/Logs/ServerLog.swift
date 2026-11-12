@@ -4,7 +4,7 @@ import Foundation
 
 /// Why a server log could not be prepared or written, with its path and the cause.
 public nonisolated struct ServerLogError: Error, Equatable, CustomStringConvertible {
-    /// What was being done: "create", "rotate", "open", "append to", or "read".
+    /// What was being done: "create", "rotate", "open", "append to", "read", or "claim".
     public var operation: String
     public var path: String
     public var reason: String

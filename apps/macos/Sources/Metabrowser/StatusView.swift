@@ -2,7 +2,8 @@ import ShellCore
 import SwiftUI
 
 /// What a folder window shows in place of the page: the server is starting, it failed
-/// and here is why, it waits for its tab to be selected, or a discarded tab reloads.
+/// and here is why, it waits for its tab to be selected or for a `metab` the app can run,
+/// or a discarded tab reloads.
 @Observable final class WindowStatus {
     enum Phase: Equatable {
         case starting
@@ -10,6 +11,8 @@ import SwiftUI
         /// A restored folder in a protected location, whose server starts only once its tab
         /// is selected, so that a launch raises no privacy prompt for it.
         case waitingForSelection
+        /// A start waiting for a `metab` the app accepts.
+        case waitingForRuntime
         /// A tab that gave up its page loads it again from the running server.
         case reloading
     }
@@ -40,6 +43,13 @@ struct StatusView: View {
                     Text("Metabrowser opens \(folderName) when you select it.").font(.headline)
                     Text("macOS can ask your permission before an app reads this location.")
                     Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                .padding(32)
+            case .waitingForRuntime:
+                VStack(spacing: 12) {
+                    Text("Metabrowser opens \(folderName) once it has a metab it can run.").font(.headline)
+                    Text("Settings says what it found and what to install.")
+                    Button("Open Settings…", action: showSettings)
                 }
                 .padding(32)
             case .reloading:

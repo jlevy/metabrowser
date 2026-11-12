@@ -12,7 +12,12 @@ import WebKit
 final class FolderSession: ManagedServer {
     let root: URL
     let logURL: URL
-    private let supervisor: ServerSupervisor
+    /// This app's claim on the folder's log while it serves the folder; another running
+    /// copy of the app that serves it too writes a log of its own.
+    private let logLease: ServerLogLease?
+    /// The supervisor, behind the gate every start and restart passes.
+    private let server: FolderServer
+    private var supervisor: ServerSupervisor { server.supervisor }
     private(set) var windows: [BrowserWindowController] = []
     private var endpoint: ServerEndpoint?
     private var failure: ServerFailure?
@@ -20,35 +25,42 @@ final class FolderSession: ManagedServer {
     /// server answers `/api/identity`.
     private(set) var title: WindowTitle
     private var identityRequest: Task<Void, Never>?
-    /// The runtime the app would start now, which Retry and Restart Server use.
-    private let currentSetup: () -> RuntimeSetup?
-    /// The runtime the server was last started from, which an upgrade compares with.
-    private(set) var runtime: Runtime
     var onAllWindowsClosed: ((FolderSession) -> Void)?
     /// A window became key, which is how a tab is selected.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
     /// A window opened or closed, or a page changed: what the saved session records.
     var onLayoutChange: (() -> Void)?
+    /// A start or restart is waiting for a runtime the app accepts.
+    var onWaitingForRuntime: (() -> Void)?
 
-    init(root: URL, setup: RuntimeSetup, gate: LaunchGate, currentSetup: @escaping () -> RuntimeSetup?) {
-        self.currentSetup = currentSetup
-        runtime = setup.runtime
+    /// `accepted` is the runtime a server may start from at the moment it would start,
+    /// which every start, Retry, and Restart Server ask, not `setup`.
+    init(root: URL, setup: RuntimeSetup, gate: LaunchGate, accepted: @escaping () -> RuntimeSetup?) {
         self.root = root
         title = WindowTitle(.localFolder(root))
-        let logURL = ServerLog.url(for: root, in: appIdentity.logsDirectory())
+        let logs = appIdentity.logsDirectory()
+        do {
+            logLease = try ServerLogLease.claim(for: root, in: logs)
+        } catch {
+            // Each launch prepares the log too, and a launch that cannot shows why.
+            AppLog.app.error("\(String(describing: error), privacy: .public)")
+            logLease = nil
+        }
+        let logURL = logLease?.url ?? ServerLog.url(for: root, in: logs)
         self.logURL = logURL
         let launch = CLIServeLaunch()
-        let spec = launch.spec(
-            serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
+        let spec = { (setup: RuntimeSetup) in
+            launch.spec(serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
+        }
         // Each launch prepares the log first, so a log that cannot be kept fails the
-        // launch, and the window says why. Each child is recorded while it runs, so the
-        // next launch ends it if this app crashes.
-        supervisor = ServerSupervisor(
-            spec: spec, launch: launch, gate: gate,
-            makeProcess: serverRecords.recording { spec in
+        // launch, and the window says why.
+        let supervisor = ServerSupervisor(
+            spec: spec(setup), launch: launch, gate: gate,
+            makeProcess: { spec in
                 if let logURL = spec.logURL { try ServerLog.prepare(logURL) }
                 return try SpawnedProcess(spec)
             })
+        server = FolderServer(supervisor: supervisor, accepted: accepted, spec: spec)
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
             AppLog.server.info("\(name, privacy: .public): \(message, privacy: .public)")
@@ -77,23 +89,52 @@ final class FolderSession: ManagedServer {
     /// Every server child not yet reaped; each pid is also its process group.
     var childPIDs: [pid_t] { supervisor.childPIDs }
 
-    /// Starts the server unless one is starting, running, or stopping, and returns once
-    /// that start is ready or has failed.
-    func startServer() async {
-        await supervisor.start()
+    /// The runtime the server last started from, which an upgrade compares with; nil for
+    /// a folder whose server has not started, such as a restored one waiting for its tab.
+    var startedRuntime: Runtime? { server.startedRuntime }
+
+    /// Whether a start or restart is waiting for a runtime the app accepts.
+    var isWaitingForRuntime: Bool { server.held != nil }
+
+    /// Starts the server from the runtime accepted now, unless one is starting, running,
+    /// or stopping, and returns once that start is ready or has failed. Without an
+    /// accepted runtime the windows say so, and the start waits for `resume()`. False if
+    /// `launchCheck` refused it.
+    @discardableResult
+    func startServer() async -> Bool {
+        if await !server.start() { waitForRuntime() }
+        return !supervisor.launchWasRefused
     }
 
-    /// Retry and Restart Server: a fresh server from the runtime chosen now, which may not
-    /// be the one this folder started with. With no runtime (a search found none), the
-    /// folder keeps its own.
+    /// For a restored background folder, the check made just before its server would
+    /// spawn, after the launch gate (`ServerSupervisor.mayLaunch`); nil once one of its
+    /// tabs is selected, which starts it as the user's choice.
+    var launchCheck: (() -> Bool)? {
+        get { supervisor.mayLaunch }
+        set { supervisor.mayLaunch = newValue }
+    }
+
+    /// Retry and Restart Server: a fresh server from the runtime accepted now, which may
+    /// not be the one this folder started with. Without one, nothing is stopped, and the
+    /// restart waits for `resume()`.
     func retry() {
-        let setup = currentSetup()
-        let spec = setup.map {
-            supervisor.launch.spec(
-                serving: root, with: $0, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
+        Task {
+            if await !server.restart() { waitForRuntime() }
         }
-        if let setup { runtime = setup.runtime }
-        Task { await supervisor.restart(using: spec) }
+    }
+
+    /// Carries out a start or restart that waited for a runtime, now that one is accepted.
+    func resume() async {
+        await server.resume()
+    }
+
+    private func waitForRuntime() {
+        AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): waiting for a metab Metabrowser can run")
+        switch supervisor.state {
+        case .ready, .starting, .stopping: break  // a running server keeps running
+        case .stopped, .failed: windows.forEach { $0.showWaitingForRuntime() }
+        }
+        onWaitingForRuntime?()
     }
 
     func shutDown() async {
@@ -124,21 +165,14 @@ final class FolderSession: ManagedServer {
         NSWorkspace.shared.activateFileViewerSelecting([logURL])
     }
 
-    /// Command-click on a link to this folder's server.
+    /// Command-click on a link to this folder's server. The new tab holds the page before
+    /// the health check runs, so a server that fails the check, and comes back with Retry,
+    /// still shows it.
     func openWindow(at url: URL, besides parent: BrowserWindowController) {
-        let controller = makeWindow()
+        let page = PageAddress(url)
+        let controller = makeWindow(page: page)
         addTab(controller, besides: parent)
-        attach(controller, loading: url)
-    }
-
-    /// Loads `url` in a window joining a running server once the server proves it still
-    /// answers, since a live pid is not a working server. A server that does not answer
-    /// fails, which every window shows; one not ready yet loads every window when it is.
-    private func attach(_ controller: BrowserWindowController, loading url: URL) {
-        Task {
-            guard case .healthy = await checkHealth() else { return }
-            controller.load(url)
-        }
+        if let page { controller.show(page) }
     }
 
     /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,
@@ -175,6 +209,7 @@ final class FolderSession: ManagedServer {
         defer { onLayoutChange?() }
         controller.adoptServer(endpoint)
         if let failure { controller.showFailure(failure) }
+        if isWaitingForRuntime, endpoint == nil { controller.showWaitingForRuntime() }
         return controller
     }
 

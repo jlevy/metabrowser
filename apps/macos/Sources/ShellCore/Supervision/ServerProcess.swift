@@ -227,21 +227,24 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         // NOTE_EXIT can arrive before the exited child is waitable, and it arrives once,
         // so the event handler waits for the child to become waitable. The first look,
         // for a child that exited before the source was armed, must not wait: the child
-        // may run for hours.
+        // may run for hours. Both looks run on one serial queue; see `ExitObservation`.
         let latch = exit
         let ownership = ChildOwnership(pid: child)
         self.ownership = ownership
+        let observation = ExitObservation(
+            isPublished: { latch.isResolved },
+            readExit: { waiting in Self.observedExit(of: child, waiting: waiting) },
+            publish: { status in ownership.exited { latch.resolve(status) } })
         let source = DispatchSource.makeProcessSource(
-            identifier: child, eventMask: .exit, queue: .global())
-        let observe: @Sendable (_ waiting: Bool) -> Void = { waiting in
-            guard !latch.isResolved, let status = Self.observedExit(of: child, waiting: waiting) else { return }
-            ownership.exited { latch.resolve(status) }
-            source.cancel()
+            identifier: child, eventMask: .exit, queue: observation.queue)
+        source.setEventHandler {
+            if observation.look(waiting: true) { source.cancel() }
         }
-        source.setEventHandler { observe(true) }
         source.resume()
         exitSource = source
-        DispatchQueue.global().async { observe(false) }  // it may have exited before arming
+        observation.queue.async {  // it may have exited before arming
+            if observation.look(waiting: false) { source.cancel() }
+        }
     }
 
     /// A child nobody released, such as one a test spawned, is reaped when it exits.
@@ -299,6 +302,48 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     /// What the kernel does for a child if this app crashes: the child reads EOF.
     public func closeLifeline() {
         try? lifeline?.close()
+    }
+}
+
+/// The looks for one child's exit, run one at a time on `queue`.
+///
+/// A look reads the exit only while it is unpublished, and publishing it can let the
+/// owner release the child, which reaps it: the pid is then free for the kernel to give
+/// to another child of this app, and a blocking wait on it would wait on that child,
+/// holding a dispatch worker for its lifetime. The NOTE_EXIT handler and the first look
+/// once ran concurrently, so a handler that found the exit unpublished could reach its
+/// wait after the other look had published it and the owner had released the child
+/// (review finding E1 on #341). On one serial queue no look starts until the one before
+/// it has published or found nothing, and until the exit is published nothing reaps the
+/// child, so the pid a look waits on is still this child's.
+///
+/// The blocking wait runs on `queue`, outside `ChildOwnership`'s lock.
+nonisolated final class ExitObservation: Sendable {
+    let queue = DispatchQueue(label: "metabrowser.child-exit")
+    private let isPublished: @Sendable () -> Bool
+    private let readExit: @Sendable (_ waiting: Bool) -> Int32?
+    private let publish: @Sendable (Int32) -> Void
+
+    /// `readExit` is the kernel call, waiting or not; tests record it instead.
+    init(
+        isPublished: @escaping @Sendable () -> Bool,
+        readExit: @escaping @Sendable (_ waiting: Bool) -> Int32?,
+        publish: @escaping @Sendable (Int32) -> Void
+    ) {
+        self.isPublished = isPublished
+        self.readExit = readExit
+        self.publish = publish
+    }
+
+    /// Reads the exit unless it is already published, and publishes what it reads. Call
+    /// it on `queue`. Returns whether the exit is now published.
+    @discardableResult
+    func look(waiting: Bool) -> Bool {
+        dispatchPrecondition(condition: .onQueue(queue))
+        guard !isPublished() else { return true }
+        guard let status = readExit(waiting) else { return false }
+        publish(status)
+        return true
     }
 }
 

@@ -11,7 +11,7 @@ import Testing
 private let servingLine = "Serving /tmp/root at http://127.0.0.1:8412/view/"
 private let spec = LaunchSpec(executable: "/usr/bin/false")
 
-private func policy(startup: Duration = .seconds(2), killWait: Duration = .seconds(2)) -> SupervisorPolicy {
+private func policy(startup: Duration = startupCeiling, killWait: Duration = .seconds(2)) -> SupervisorPolicy {
     var policy = SupervisorPolicy()
     policy.startupTimeout = startup
     policy.shutdownGrace = .milliseconds(50)
@@ -198,6 +198,67 @@ private nonisolated enum KernelCall: Equatable, Sendable {
         ownership.exited {}
         ownership.release()
         #expect(calls.all == [.reap])
+    }
+}
+
+/// The looks for an exit run one at a time (review finding E1 on #341). The NOTE_EXIT
+/// handler and the first look once ran concurrently: a handler that found the exit
+/// unpublished just before the first look published it went on to a blocking wait after
+/// the owner had released and reaped the child, on a pid the kernel could by then have
+/// given to another child. Here NOTE_EXIT arrives while the first look is inside its read,
+/// and the owner releases the child inside the announcement, the earliest it can.
+@Suite struct ExitObservationTests {
+    private nonisolated enum Call: Equatable, Sendable {
+        case read(waiting: Bool)
+        case reap
+    }
+
+    @Test func aLookQueuedBehindAPublicationDoesNotWaitAfterTheRelease() {
+        let calls = Recorder<Call>()
+        let ownership = ChildOwnership(pid: 4242, sendToGroup: { _, _ in }, reapZombie: { _ in calls.append(.reap) })
+        let exit = Latch<Int32>()
+        let reading = DispatchSemaphore(value: 0)
+        let finishRead = DispatchSemaphore(value: 0)
+        let observation = ExitObservation(
+            isPublished: { exit.isResolved },
+            readExit: { waiting in
+                calls.append(.read(waiting: waiting))
+                if !waiting {
+                    reading.signal()
+                    finishRead.wait()
+                }
+                return 0
+            },
+            publish: { status in
+                ownership.exited {
+                    exit.resolve(status)
+                    ownership.release()  // a waiter that releases the child the moment it resumes
+                }
+            })
+        observation.queue.async { observation.look(waiting: false) }  // the first look finds the exit
+        reading.wait()
+        observation.queue.async { observation.look(waiting: true) }  // NOTE_EXIT, as the source delivers it
+        finishRead.signal()
+        observation.queue.sync {}  // both looks have run
+        #expect(calls.all == [.read(waiting: false), .reap])
+    }
+
+    @Test func aLookThatFindsNothingLeavesTheNextOneToRead() {
+        let calls = Recorder<Call>()
+        let exit = Latch<Int32>()
+        let observation = ExitObservation(
+            isPublished: { exit.isResolved },
+            readExit: { waiting in
+                calls.append(.read(waiting: waiting))
+                return waiting ? 0 : nil  // still running at the first look
+            },
+            publish: { exit.resolve($0) })
+        let first = observation.queue.sync { observation.look(waiting: false) }
+        let second = observation.queue.sync { observation.look(waiting: true) }
+        let third = observation.queue.sync { observation.look(waiting: true) }
+        #expect([first, second, third] == [false, true, true])
+        #expect(calls.all == [.read(waiting: false), .read(waiting: true)])
+        #expect(exit.isResolved)
     }
 }
 

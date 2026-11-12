@@ -75,6 +75,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "port",
             "host",
             "no_open",
+            "exit_on_eof",
             "plugins_dir",
             "log_level",
             "untrusted",
@@ -161,6 +162,7 @@ _OPTION_LABELS: dict[str, str] = {
     "port": "--port",
     "host": "--host",
     "no_open": "--no-open",
+    "exit_on_eof": "--exit-on-eof",
     "plugins_dir": "--plugins-dir",
     "log_level": "--log-level",
     "fmt": "--format",
@@ -647,6 +649,13 @@ def _metab(
         "allowed with METABROWSER_ALLOWED_HOSTS (see SECURITY.md).",
         rich_help_panel=_PANEL_SERVE,
     ),
+    exit_on_eof: bool = typer.Option(
+        False,
+        "--exit-on-eof",
+        help="Stop serving when stdin closes, as it does when the process that "
+        "started the server and holds its stdin exits, even by crashing.",
+        rich_help_panel=_PANEL_SERVE,
+    ),
     # ── Walk options ───────────────────────────────────────────────
     fmt: str = typer.Option(
         "text",
@@ -850,6 +859,7 @@ def _metab(
                 untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                exit_on_eof=exit_on_eof,
             )
         else:
             from metabrowser.cli.git_pin_cli import run_serve_pin
@@ -865,6 +875,7 @@ def _metab(
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
                 checkout=checkout,
+                exit_on_eof=exit_on_eof,
             )
     elif mode == "walk":
         run_walk(

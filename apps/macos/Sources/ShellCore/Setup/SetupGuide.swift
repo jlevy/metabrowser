@@ -3,41 +3,56 @@ import Foundation
 /// What a Mac without a usable `metab` still needs, as the first-run screen shows it:
 /// only the missing steps, each a command to copy, in the order to run them.
 ///
-/// Every path ends in Flow 1's CLI install (`uv tool install metabrowser`), which the
-/// app then finds with a file check; the setup flows brief's option (i).
+/// Once `MetabRequirement.minimum` is on PyPI, every path ends in Flow 1's CLI install
+/// (`uv tool install metabrowser`), which the app then finds with a file check; the
+/// setup flows brief's option (i). Until then uv installs only older releases, so the
+/// steps end in the source checkout the app was built from, and Choose metab….
 public nonisolated struct SetupGuide: Equatable, Sendable {
     public enum Step: Equatable, Sendable {
         case installUv(homebrew: Bool)
-        /// `afterUv`: the step before it installs uv.
-        case installMetab(afterUv: Bool)
+        /// `inNewTerminal`: run it in a new Terminal window, which finds uv.
+        case installMetab(inNewTerminal: Bool)
         /// A `metab` in uv's tool directory that does not run.
-        case reinstallMetab(path: String, reason: String)
+        case reinstallMetab(path: String, reason: String, inNewTerminal: Bool)
         /// A working `metab` older than `MetabRequirement.minimum`.
-        case upgradeMetab(path: String, version: String, afterUv: Bool)
+        case upgradeMetab(path: String, version: String, inNewTerminal: Bool)
+        /// The minimum is not on PyPI yet: `make install` in the checkout, then Choose
+        /// metab…. `oldPath` and `oldVersion` name an older `metab` found, if any.
+        case buildFromCheckout(oldPath: String?, oldVersion: String?, inNewTerminal: Bool)
 
         /// What the step does, with paths under `home` written with `~`.
         public func title(home: String) -> String {
+            func shown(_ path: String) -> String { FolderIdentity.abbreviatingHome(path, home: home) }
             switch self {
             case .installUv:
                 return "Install uv, which installs and updates metab."
             case .installMetab:
                 return "Install metab."
-            case .reinstallMetab(let path, let reason):
-                return "Reinstall metab: \(FolderIdentity.abbreviatingHome(path, home: home)) does not run (\(reason))."
+            case .reinstallMetab(let path, let reason, _):
+                return "Reinstall metab: \(shown(path)) does not run (\(reason))."
             case .upgradeMetab(let path, let version, _):
-                let shown = MetabVersion(version)?.text ?? version
-                return "Upgrade metab: \(FolderIdentity.abbreviatingHome(path, home: home)) is metab \(shown),"
+                return "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
                     + " and Metabrowser needs \(MetabRequirement.minimum) or later."
+            case .buildFromCheckout(let oldPath, let oldVersion, _):
+                var found = ""
+                if let oldPath, let oldVersion {
+                    found = "\(shown(oldPath)) is metab \(MetabVersion(oldVersion)?.text ?? oldVersion), and "
+                }
+                return "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
+                    + " with Choose metab… below: \(found)Metabrowser needs metab \(MetabRequirement.minimum) or"
+                    + " later, which is not on PyPI yet."
             }
         }
 
-        /// uv's official installer, or uv's documented tool commands.
+        /// uv's official installer, uv's documented tool commands, or the checkout's
+        /// install target.
         public var command: String {
             switch self {
             case .installUv: "curl -LsSf https://astral.sh/uv/install.sh | sh"
             case .installMetab: RuntimeDiscovery.installCommand
             case .reinstallMetab: "uv tool install --reinstall metabrowser"
             case .upgradeMetab: MetabRequirement.upgradeCommand
+            case .buildFromCheckout: "make install"
             }
         }
 
@@ -52,9 +67,14 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         /// already read.
         public var note: String? {
             switch self {
-            case .installMetab(afterUv: true), .upgradeMetab(_, _, afterUv: true):
-                "In a new Terminal window, so that it finds uv:"
-            default: nil
+            case .installUv: nil
+            case .installMetab(let inNewTerminal), .reinstallMetab(_, _, let inNewTerminal),
+                 .upgradeMetab(_, _, let inNewTerminal):
+                inNewTerminal ? "In a new Terminal window, so that it finds uv:" : nil
+            case .buildFromCheckout(_, _, let inNewTerminal):
+                inNewTerminal
+                    ? "In a new Terminal window, so that it finds uv, at the root of the checkout:"
+                    : "At the root of the checkout:"
             }
         }
     }
@@ -64,10 +84,20 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
     public var steps: [Step]
 
     public var heading: String {
-        let upgrading = steps.contains { if case .upgradeMetab = $0 { true } else { false } }
-        return upgrading
+        let needsVersion = steps.contains {
+            switch $0 {
+            case .upgradeMetab, .buildFromCheckout: true
+            default: false
+            }
+        }
+        return needsVersion
             ? "Metabrowser needs metab \(MetabRequirement.minimum) or later"
             : "Metabrowser needs the metab command-line tool"
+    }
+
+    /// Whether the last step is Choose metab…, rather than an install the app notices.
+    public var endsWithChoice: Bool {
+        steps.contains { if case .buildFromCheckout = $0 { true } else { false } }
     }
 
     /// Where uv installs `metab`, which the app watches.
@@ -77,38 +107,49 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
     /// Whether to suggest `uv tool update-shell`, so `metab` also runs in Terminal: the
     /// login shell's `PATH` lacks `binDirectory`, or is unknown. The app needs neither.
     public var suggestsUpdateShell: Bool
+    /// What the screen says besides the steps: each uv the app found and would not run.
+    public var notices: [String]
 
-    /// `tried` is the last search's candidates, `uv` the uv found, if any, and
-    /// `loginPath` the login shell's `PATH`, when the search read it.
+    /// `tried` is the last search's candidates, `uv` the uv found, if any, whether or
+    /// not the app may run it, and `loginPath` the login shell's `PATH`, when the search
+    /// read it. `refusedUv` lists the uvs the app would not run, and why.
     public init(
         tried: [CandidateOutcome], uv: String?, binDirectory: String, home: String, loginPath: [String]?,
-        hasHomebrew: Bool
+        hasHomebrew: Bool, minimumIsReleased: Bool = MetabRequirement.isReleased, refusedUv: [UvRefusal] = []
     ) {
-        let needsUv = uv == nil
-        var steps: [Step] = needsUv ? [.installUv(homebrew: hasHomebrew)] : []
+        // A Terminal finds the uv only if its directory is on the login shell's PATH, and
+        // the window that ran the installer has not read the PATH the installer added.
+        let inNewTerminal = uv.map { !(loginPath?.contains(($0 as NSString).deletingLastPathComponent) ?? false) } ?? true
+        var steps: [Step] = uv == nil ? [.installUv(homebrew: hasHomebrew)] : []
         let toolMetab = binDirectory + "/metab"
-        if let old = tried.lazy.compactMap({ outcome -> (String, String)? in
+        let old = tried.lazy.compactMap { outcome -> (String, String)? in
             if case .tooOld(let version) = outcome.result { return (outcome.path, version) }
             return nil
-        }).first {
-            steps.append(.upgradeMetab(path: old.0, version: old.1, afterUv: needsUv))
-        } else if let broken = tried.lazy.compactMap({ outcome -> String? in
+        }.first
+        let broken = tried.lazy.compactMap { outcome -> String? in
             if case .rejected(let reason) = outcome.result, outcome.path == toolMetab { return reason }
             return nil
-        }).first {
-            steps.append(.reinstallMetab(path: toolMetab, reason: broken))
+        }.first
+        if !minimumIsReleased {
+            steps.append(.buildFromCheckout(oldPath: old?.0, oldVersion: old?.1, inNewTerminal: inNewTerminal))
+        } else if let old {
+            steps.append(.upgradeMetab(path: old.0, version: old.1, inNewTerminal: inNewTerminal))
+        } else if let broken {
+            steps.append(.reinstallMetab(path: toolMetab, reason: broken, inNewTerminal: inNewTerminal))
         } else {
-            steps.append(.installMetab(afterUv: needsUv))
+            steps.append(.installMetab(inNewTerminal: inNewTerminal))
         }
         self.steps = steps
         self.binDirectory = binDirectory
         self.home = home
         suggestsUpdateShell = !(loginPath?.contains(binDirectory) ?? false)
+        notices = refusedUv.map { "Metabrowser does not run \($0.path) itself: \($0.reason)." }
     }
 
     /// Where uv may be, in order: where its installer puts it (`XDG_BIN_HOME`, then
     /// `XDG_DATA_HOME/../bin`, then `~/.local/bin`), the Homebrew prefixes, and then the
     /// login shell's `PATH`, which reaches any other install the user's Terminal finds.
+    /// The app runs only one that passes `ExecutableTrust`.
     public static func uvCandidates(home: String, environment: [String: String], loginPath: [String]?) -> [String] {
         var directories: [String] = []
         if let directory = environment["XDG_BIN_HOME"], directory.hasPrefix("/") { directories.append(directory) }
@@ -122,6 +163,17 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
             candidates.append(directory + "/uv")
         }
         return candidates
+    }
+}
+
+/// A uv the app found and would not run, and why (`ExecutableTrust`).
+public nonisolated struct UvRefusal: Equatable, Sendable {
+    public var path: String
+    public var reason: String
+
+    public init(path: String, reason: String) {
+        self.path = path
+        self.reason = reason
     }
 }
 
@@ -158,5 +210,45 @@ public nonisolated enum UvToolDirectory {
 
     public static func ask(uv: String, env: DiscoveryEnvironment) async -> Answer {
         parse(await env.run(spec(uv: uv, home: env.home, inherited: env.environment), timeout))
+    }
+
+    /// What the first-run screen knows about uv.
+    public struct Survey: Equatable, Sendable {
+        /// The first uv found, which decides whether the steps install uv. The user's own
+        /// Terminal runs it, so it counts whether or not the app may run it.
+        public var found: String?
+        /// The uv the app ran: the first found that the trust check passed.
+        public var run: String?
+        /// The uvs found before that one, which the app did not run, and why.
+        public var refused: [UvRefusal]
+        /// Where uv puts `metab`: its own answer, else uv's documented rule.
+        public var binDirectory: String
+        /// Why the uv that ran gave no answer, when it gave none.
+        public var failure: String?
+    }
+
+    /// Finds uv among `candidates` and asks the first one `refusal` passes where it puts
+    /// `metab`. A candidate refused is never run.
+    public static func survey(
+        _ candidates: [String], env: DiscoveryEnvironment, refusal: @Sendable (String) -> String?
+    ) async -> Survey {
+        var survey = Survey(
+            found: nil, run: nil, refused: [], binDirectory: RuntimeDiscovery.uvToolBinDirectory(env), failure: nil)
+        for candidate in candidates where env.isExecutable(candidate) {
+            if survey.found == nil { survey.found = candidate }
+            if let reason = refusal(candidate) {
+                survey.refused.append(UvRefusal(path: candidate, reason: reason))
+                continue
+            }
+            survey.run = candidate
+            break
+        }
+        if let uv = survey.run {
+            switch await ask(uv: uv, env: env) {
+            case .directory(let directory): survey.binDirectory = directory
+            case .failed(let reason): survey.failure = reason
+            }
+        }
+        return survey
     }
 }

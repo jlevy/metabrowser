@@ -91,4 +91,37 @@ struct LiveMetabTests {
             #expect((response as? HTTPURLResponse)?.statusCode == 200)
         }
     }
+
+    /// What a crashed or force-quit app leaves: the kernel closes the stdin pipe the app
+    /// held, and the server, started as the app starts it, stops by itself and frees its
+    /// port. Nothing signals it.
+    @Test func aServerWhoseAppIsGoneStopsByItself() async throws {
+        let path = try #require(liveMetab)
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let launch = CLIServeLaunch()
+        let child = try SpawnedProcess(LaunchSpec(
+            executable: path, arguments: launch.arguments(serving: root),
+            environment: ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: []),
+            workingDirectory: root.path))
+        defer {
+            child.signalGroup(SIGKILL)  // only if the test failed with it running
+            child.release()
+        }
+        var announced: ServerEndpoint?
+        for await line in child.lines {
+            announced = launch.endpoint(announcedBy: line)
+            if announced != nil { break }
+        }
+        let endpoint = try #require(announced)
+        #expect(await eventually(within: .seconds(20)) { !child.hasExited })
+        child.closeLifeline()  // what the kernel does when the app dies
+        let clock = ContinuousClock()
+        let closed = clock.now
+        let status = try #require(await firstResult(within: .seconds(15), of: [{ @Sendable in await child.waitForExit() }]))
+        #expect(ExitStatus(waitStatus: status) == .exited(0))
+        #expect(closed.duration(to: clock.now) < .seconds(5))
+        #expect(await HTTPReadiness.probe(endpoint.entryURL) == false)
+        #expect(child.recentOutput().contains("Stopping Metabrowser: stdin closed."))
+    }
 }

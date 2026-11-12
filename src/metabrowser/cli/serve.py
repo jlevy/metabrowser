@@ -29,6 +29,7 @@ from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
+from metabrowser.cli.stdin_lifeline import require_open_stdin, stop_for_closed_stdin, watch_for_eof
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.git.process import kill_live_process_groups
@@ -198,12 +199,14 @@ def run_serve(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    exit_on_eof: bool = False,
 ) -> None:
     """Serve ``root`` (a directory, or a file resolved to parent + selection).
 
     If ``root`` is a file, automatically split into parent directory plus a
     ``--path`` selection. An explicit ``path`` deep-links a file within the
-    root directory.
+    root directory. With ``exit_on_eof``, serving stops when stdin closes
+    (see :mod:`metabrowser.cli.stdin_lifeline`).
     """
     # First, before anything that starts a thread or opens a watcher: from here
     # to process exit, one Ctrl-C stops serving.
@@ -275,6 +278,7 @@ def run_serve(
         port=port,
         no_open=no_open,
         attach=attach_root,
+        exit_on_eof=exit_on_eof,
     )
 
 
@@ -306,14 +310,19 @@ def serve_until_interrupted(
     no_open: bool,
     attach: Callable[[], None],
     banner: Sequence[str] = (),
+    exit_on_eof: bool = False,
 ) -> None:
     """Print the banner and serve until the process is stopped.
 
     The caller has installed the interrupt handler and applied dotenv, the
     capability block, the log level, and plugin directories. *attach* selects
     what the server serves once its module is loaded; *served* names it in the
-    banner, followed by any *banner* lines.
+    banner, followed by any *banner* lines. With *exit_on_eof*, the
+    process stops as soon as stdin closes, from the banner on.
     """
+
+    if exit_on_eof:
+        require_open_stdin()
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -354,6 +363,11 @@ def serve_until_interrupted(
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")
+    # After the banner, which `typer.echo` has flushed, so a parent already gone still
+    # finds the address in the output; before uvicorn starts the inventory walk, which
+    # can take seconds that a closed stdin should not wait for.
+    if exit_on_eof:
+        watch_for_eof(stop_for_closed_stdin)
 
     # Race fix: open the browser only AFTER uvicorn is accepting
     # connections. The poll-then-open helper runs on a daemon thread

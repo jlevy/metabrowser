@@ -82,7 +82,6 @@ Both are named Metabrowser:
 | Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
 | About box | “Development build · 0.1.0 (2476) · 3c7b937” | “Release · 0.1.0 (2476) · 3c7b937” |
 | Server logs | `~/Library/Logs/Metabrowser Dev/` | `~/Library/Logs/Metabrowser/` |
-| Server records | `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` | `~/Library/Application Support/io.github.jlevy.metabrowser/servers/` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
 
@@ -128,11 +127,14 @@ separate folders, keyed by the variant.
 To run the tests against a real server too:
 
 ```shell
-METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test  # at the repository root
 ```
 
 The live tests check that `metab` against the version the app requires, so it must be
-0.12.1 or later.
+0.12.1 or later. `make test` (in `apps/macos`, which `make macos-test` runs) runs the
+suites in three processes: the WebKit suites and the exit stress suite each stall the
+main actor, which every suite shares, so they run apart from the rest.
+A bare `swift test` runs them all in one process.
 
 Where to look while it runs:
 
@@ -141,6 +143,9 @@ Where to look while it runs:
   server’s output, with the app’s lifecycle events interleaved: start command, pid,
   announced URL, readiness time, stop, and exit status.
   File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
+  A second running copy of the same variant (a development build from another checkout)
+  that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
+  window shows the other server’s output (`ServerLogLease`).
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
@@ -152,10 +157,6 @@ Where to look while it runs:
   Deleting `~/Library/Application Support/io.github.jlevy.metabrowser.dev/session.json`
   forgets the last session, and File > Open Recent > Clear Menu the recent folders,
   which macOS keeps.
-- **Server records:**
-  `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` holds one
-  `app-<pid>.json` per running app process with servers (see
-  [After a Crash](#after-a-crash)).
 
 ### Checking by Hand
 
@@ -164,7 +165,6 @@ Quit any other copy of the development build first: both have one bundle identif
 
 ```shell
 app="$PWD/apps/macos/build/dev/Metabrowser.app"
-records="$HOME/Library/Application Support/io.github.jlevy.metabrowser.dev/servers"
 logs="$HOME/Library/Logs/Metabrowser Dev"
 folder="$(mktemp -d)"
 ```
@@ -179,15 +179,18 @@ folder="$(mktemp -d)"
    Within about 10 seconds (5 for the check, then the stop: a stopped process holds
    SIGTERM until SIGKILL ends it) the window says “The server stopped answering” and
    offers Retry, and Retry serves the folder again.
+   Done with a Command-click, the new tab shows the clicked page after Retry, not the
+   folder’s first page.
+   With the server answering,
+   `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
+   `open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
 3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
    `INFO:` lines) beside its `Serving` line, which came through stdout.
-4. **After a crash.** `cat "$records"/app-*.json` lists the folder’s server.
-   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"` leaves it running
-   (`pgrep -fl -- "--no-open"`). `open -a "$app"`: within 5 seconds the server is gone,
-   the folder’s log ends with “ended the server pid PID …, with SIGTERM”, and the
-   crashed process’s records file is gone.
-5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server and no records
-   file.
+4. **After a crash.** With the folder open,
+   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"`. Within a second
+   `pgrep -fl -- "--exit-on-eof"` finds no server, and the folder’s log ends with
+   “Stopping Metabrowser: stdin closed.”
+5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server.
 
 ### Checking Files, Tabs, Recents, and Restore by Hand
 
@@ -220,7 +223,8 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    app log says “discarding the page of background tab” for the tab shown longest ago
    once four tabs are in the background, and
    `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
-   Selecting that tab reloads its page, with no “Starting” text.
+   Selecting that tab reloads its page, with no “Starting” text, at the top of the page
+   and with no Back or Forward history, since a discarded tab keeps only its address.
 5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
    with `c`, and quit. `session.json` (see Start over) now lists them; the next launch
    logs “restoring 2 window(s): 3 server(s) to start”, the windows and tabs come back,
@@ -255,19 +259,27 @@ scripts/check-setup-flows.sh disk-image
 
 Each run copies the app under its own bundle identifier,
 `io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
-saved runtime, recents, or LaunchServices entry, and opens it with a scratch `HOME` in
-which discovery finds only what the script puts there.
+saved runtime, recents, saved session, or LaunchServices entry, and opens it with a
+scratch `HOME`. A scratch `HOME` hides only what is under it: discovery and the
+first-run screen still look in `/opt/homebrew/bin`, `/usr/local/bin`, and on the login
+shell’s `PATH`, which with the scratch `HOME` is the system’s own (`/etc/paths` and
+`/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
+found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
+`no-metab` cannot run, and `old-metab` covers the screen with uv.
 It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
 this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
-copy with SIGTERM, reports any server left running as a failure, detaches its image,
-unregisters the copy, and deletes its defaults.
-It refuses to run where a `metab` in `/opt/homebrew/bin` or `/usr/local/bin` would be
-found first.
+copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
+saved session, and recents.
+A copy that needs SIGKILL, a server left running, and a server started from the older
+`metab` in `old-metab` are each a failed check: the script finishes its cleanup, then
+exits nonzero, keeping an earlier nonzero status if it had one.
+`scripts/test-scripts.sh` checks that accounting, and that every script starts with its
+interpreter line, on stand-in processes.
 
 | Case | What it checks |
 | --- | --- |
-| `no-metab` | No uv and no `metab`: both installs are shown, then only `uv tool install metabrowser` once uv appears, then the waiting folder opens by itself once `metab` does |
-| `old-metab` | A stand-in reporting 0.12.0: the upgrade command and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `no-metab` | No uv and no `metab`: the uv install and the source checkout step are shown, then only the checkout step, still for a new Terminal window, once uv appears, then the waiting folder opens by itself once `metab` does |
+| `old-metab` | A stand-in reporting 0.12.0: the checkout step naming it and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
 | `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
 
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
@@ -462,7 +474,7 @@ Do not hand one out as a release.
 | Path | Holds |
 | --- | --- |
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, stopping it, and the records that let the next launch end a crashed app’s servers. |
+| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
@@ -494,16 +506,17 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    A file opens inside a folder (see
    [Files, Tabs, Recents, and the Last Session](#files-tabs-recents-and-the-last-session)).
 2. **Spawn.** `ServerSupervisor` runs
-   `metab ROOT --no-open --host 127.0.0.1 --port 8411` with `posix_spawn`: in its own
-   process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is given
-   (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and with the
-   folder as its working directory, so `.env` lookup matches `metab .` in Terminal.
-   Its stderr is the server log itself, opened before the spawn, so an app that stalls
-   cannot block the server through a full pipe.
+   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port 8411` with `posix_spawn`:
+   in its own process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is
+   given (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and
+   with the folder as its working directory, so `.env` lookup matches `metab .` in
+   Terminal. Its stderr is the server log itself, opened before the spawn, so an app that
+   stalls cannot block the server through a full pipe.
    Its stdout is a pipe the app reads for the announcement and appends to the log.
    A log that cannot be prepared, opened, or rotated fails the launch with its path and
    cause, and a log write that fails midway says so in the window’s output.
-   Its stdin is a pipe the app holds open, ready to become the parent-death signal.
+   Its stdin is a pipe the app holds open, and `--exit-on-eof` makes it the parent-death
+   signal (see [After a Crash](#after-a-crash)).
 3. **Ready.** The server prints `Serving ROOT at http://127.0.0.1:PORT/view/` before its
    socket listens, so the supervisor parses that line and then polls the URL for a 2xx,
    within 60 seconds. The line must start with `Serving ` and end with the URL, and a
@@ -556,31 +569,30 @@ without changing the supervisor or the windows.
 
 ### After a Crash
 
-An orderly quit stops every server, but an app that crashes or is force-quit cannot, and
-today’s server does not exit when its stdin closes.
-So each app process records its servers, and the next launch ends the ones it left
-(`ServerRecords`, `OrphanReaper`):
+An orderly quit stops every server, but an app that crashes or is force-quit cannot.
+So each server ends with the app instead: the app starts it with `--exit-on-eof` and
+holds its stdin pipe open, the kernel closes that pipe however the app ends, and the
+server reads EOF and stops by itself, within a second, as one Ctrl-C stops it (see
+`metab`’s
+[command-line guide](../../docs/command-line.md#stopping-when-the-parent-exits)).
+`LiveMetabTests` closes the pipe of a real server and checks that it exits 0 and frees
+its port.
 
-- **Recorded.** Each server is recorded once it has spawned: its pid, which is also its
-  process group, the kernel’s start time for it, and its folder.
-  The record leaves when the server has been released and has exited; a server given up
-  on in uninterruptible I/O stays recorded until it exits.
-- **One file per app process.** `servers/app-<pid>.json`, owner-only (0600 in a 0700
-  folder) in the variant’s Application Support folder, names the app process that owns
-  it, and is rewritten whole, with a temporary file and a rename, at each change.
-  The last server’s exit deletes it.
-  A second copy of the app with the same bundle identifier, such as a development build
-  run from another checkout, keeps its own file, and its live servers are never taken
-  for orphans: a file is an orphan’s only once its owner is no longer running.
-- **Reaped at launch.** In the background, each orphaned server whose leader still has
-  the recorded start time and group gets SIGTERM, then SIGKILL after 5 seconds; that
-  check, made before each signal, keeps a pid the kernel has since given to another
-  process from being signaled.
-  A server that outlasts SIGKILL becomes the new app’s record, for the next launch to
-  try again. Each ending goes to the unified log and to the folder’s server log.
-- **Not reached.** A group whose leader has exited is not signaled, since nothing then
-  holds its id for the app, and descendants in other groups are not reached either (see
-  [Gaps to Close](#gaps-to-close)).
+Nothing is recorded and nothing is signaled later.
+An earlier design kept each server’s pid and start time on disk and signaled the groups
+it found at the next launch, but on macOS a signal cannot be bound to the process that
+was checked: between the check and `kill`, the process can exit and its pid can go to
+another process. The lifeline has no such window, because no pid is involved.
+
+What it does not cover:
+
+- **A server too wedged to run its watcher.** The watcher is a thread reading stdin; a
+  server whose interpreter cannot run any thread at all, such as one stuck in native
+  code that holds Python’s global lock, does not see the EOF. An orderly quit still ends
+  it with SIGKILL.
+- **Descendants in other groups**, as for every stop (see
+  [Gaps to Close](#gaps-to-close)): the stop kills the Git the server started, which it
+  tracks, and nothing else.
 
 ### Finding the Runtime
 
@@ -610,6 +622,12 @@ reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
+Every start asks for the runtime the app accepts at that moment (`FolderServer`): a
+folder’s first start, a restored folder’s start when its turn or its tab comes, Retry,
+Restart Server, and the restart after an upgrade.
+While there is none, because a search found nothing or the runtime’s file changed and
+its check has not answered, a start waits and its windows say so, a restart stops
+nothing, and both go ahead once a runtime is accepted.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, saved or in use, so neither the next
@@ -623,22 +641,40 @@ a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.
 
 | Found | Steps shown |
 | --- | --- |
-| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then, in a new Terminal window, `uv tool install metabrowser` |
+| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then the `metab` step below in a new Terminal window |
 | uv, no `metab` | `uv tool install metabrowser` |
 | A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
-| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'`, after installing uv if there is none |
+| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'` |
+
+Those are the steps once the minimum is on PyPI (`MetabRequirement.isReleased`). Until
+then uv can install only an older release, so every case ends in one step instead:
+`make install` at the root of the source checkout the app was built from, then Choose
+metab… and its `.venv/bin/metab`, naming the older `metab` found, if any.
+A step after uv’s says to run it in a new Terminal window while uv’s directory is not on
+the login shell’s `PATH` from the search, since the window that ran the installer has
+not read the `PATH` it added.
 
 - **Finding uv:** where its installer puts it (`XDG_BIN_HOME`, `XDG_DATA_HOME/../bin`,
   or `~/.local/bin`), `/opt/homebrew/bin`, `/usr/local/bin`, then the login shell’s
   `PATH` from the search, so a file check suffices.
-- **Where `metab` will appear:** `uv tool dir --bin`, asked of the uv found, with uv’s
-  location variables passed through.
-  Without uv, or if uv fails to answer (logged), uv’s documented default, which the
-  screen names.
+- **Where `metab` will appear:** `uv tool dir --bin`, asked of the first uv found that
+  no other account can change (`ExecutableTrust`), with uv’s location variables passed
+  through. Without one, or if it fails to answer (logged), uv’s documented default, which
+  the screen names.
+- **Which uv it runs:** the app runs a uv it found by itself only if every directory and
+  link from `/` to the file, and the file, belong to this user or root, none is writable
+  by its group or by every account, and no access control entry grants a right to change
+  it. Each one refused is named on the screen and in the log with the reason; the steps
+  still count it as installed, since the user’s Terminal is what runs it.
+  A standard Homebrew prefix is writable by the `admin` group, so its uv is refused,
+  which costs only the question: uv’s default directory is the answer a Finder launch
+  gets.
 - **Continuing by itself:** the app watches that directory, every place discovery looks
-  without a shell, and every place uv may be, once a second and when the app becomes
-  active. When `metab` appears or changes, it searches again, adopts the result, and
-  opens the folders that were waiting.
+  without a shell, every candidate the last search tried (those on the login shell’s
+  `PATH` among them), and every place uv may be, once a second and when the app becomes
+  active. A file’s fingerprint includes its mode, so `chmod +x` alone is a change.
+  When `metab` appears or changes, it searches again, adopts the result, and opens the
+  folders that were waiting.
   When uv appears, the steps shrink to the ones left.
 - **Terminal:** `~/.local/bin` is not on macOS’s default `PATH`. The app needs nothing
   there, but Terminal does, so the screen suggests `uv tool update-shell` unless the
@@ -660,19 +696,28 @@ Its number says only that it was built after 0.12.0: one built before the route 
 
 - **Below the minimum,** discovery skips that `metab` and tries the next place.
   If none qualifies, the app starts no server: Settings shows the version found, the
-  version needed, and `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy, and
-  folders wait. The command asks for a floor rather than an exact version, because uv
-  keeps the requirement in the tool’s receipt and a later `uv tool upgrade` would never
-  move past a pin. Choose metab… refuses an older `metab` the same way.
+  version needed, and, once the minimum is published,
+  `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy (before then, the source
+  checkout step above), and folders wait.
+  The command asks for a floor rather than an exact version, because uv keeps the
+  requirement in the tool’s receipt and a later `uv tool upgrade` would never move past
+  a pin. Choose metab… refuses an older `metab` the same way.
 - **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
-  inode, size, and modification time) from just before `metab --version` ran.
+  inode, size, modification time, and mode) from just before `metab --version` ran.
   The app compares it with the file once a second and when the app becomes active, and
-  checks before each folder it opens.
-  A change counts once two looks agree, so a file caught in the middle of an install is
-  not read; a folder opened then waits for the check.
+  checks before each folder it opens, and at launch before it restores the last session.
+  A change counts once two looks agree, which debounces a file caught in the middle of
+  an install without proving the installer is done: the check reads the file again, and
+  a later change is a new one.
+  From the first look that sees a change, no server starts from the old runtime until a
+  check, a Find Again, or a choice validates one, whichever finishes it; a choice being
+  validated is never overtaken by a check the app starts by itself.
   The check runs `metab --version` again.
   A version the app accepts replaces the old one, and if open folders run servers that
-  the same `metab` started at another version, an alert offers to restart them.
+  the same `metab` started at another version, an alert offers to restart them; a folder
+  whose server never started is not counted.
+  The restart uses the runtime accepted when the alert is answered, and restarts nothing
+  if a later change left none.
   Anything else leaves no runtime, and a search looks for another.
 - **What it cannot prevent:** an upgrade run in Terminal rewrites the environment the
   running servers import from, before the app notices or the user agrees, so a server
@@ -770,6 +815,9 @@ Terminal launch.
   announces. `open -a` delivers a file although `Info.plist` declares only
   `public.folder` (checked on macOS 26.5), so Finder’s Open With and the Dock still
   offer the app for folders only.
+  A file opened while its folder’s server is starting, has failed, or is restarting
+  loads once the server is ready: a requested page outlasts the page the window showed
+  before, through Retry, a discard, and a save (`NextPage`).
 
 - **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows,
   Move Tab to New Window, and dragging a tab combine any folders.
@@ -803,17 +851,49 @@ Terminal launch.
   A save writes a private temporary file beside the session and renames it over the old
   one (`SessionStore`), so a launch after a crash finds the previous session or the new
   one, never part of one.
-  The next launch recreates the windows and tabs, and only each window’s shown tab loads
-  its page. The servers start one at a time, each after the one before it is ready or has
+  The next launch reads the file once, through one descriptor: a regular file, not a
+  link or a pipe, of at most 1 MB however it changes meanwhile.
+  It rebuilds at most the front 20 windows and 50 tabs, each window keeping the tab it
+  shows (`RestoreBudget`, whose basis follows this list), and admits every saved root
+  again before deciding anything about it (`RootAdmission`): the file may have been
+  edited, and a folder on the path replaced or relinked.
+  Only a root whose identity is certain warms in the background.
+  The walk opens each component relative to the one before, with `O_NOFOLLOW`, so a
+  folder replaced after it was opened cannot redirect the rest, and it never opens a
+  protected location or anything inside one, compared without regard to case and in its
+  Data-volume spelling too (`/System/Volumes/Data/Volumes` is `/Volumes`). Nor does it
+  enter any mount point but the system’s and the Data volume’s, found in the kernel’s
+  mount table without asking any volume, so a disk or a share mounted under an ordinary
+  folder is neither looked at nor waited on.
+  The folder it reaches must be on the home folder’s volume, and the kernel’s name for
+  it (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
+  location; that name is the root’s identity, so aliases of one folder share one server.
+  A root that falls short (a link anywhere on its path, another volume, a protected
+  spelling) waits for its tab under the spelling it was saved with, untouched, so
+  selecting it serves what that path names then.
+  A home folder in a protected place (a network home under `/Volumes`) is not looked at
+  to classify anything, so every root then waits.
+  A root spelled with `.`, `..`, or empty components, or holding a NUL, is dropped
+  unopened, and so is one whose folder is proven gone; a component that a second lookup
+  cannot prove missing, or finds changed, waits instead.
+  The launch recreates the windows and tabs, and only each window’s shown tab loads its
+  page. The servers start one at a time, each after the one before it is ready or has
   failed: the front tab’s first, then those of the tabs the other windows show, front to
   back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
+  Each background root is admitted again when its turn comes, and once more just before
+  its server spawns, after the launch gate and any earlier child’s termination
+  (`ServerSupervisor.mayLaunch`); one that changed while it waited is not spawned and
+  waits for its tab instead.
+  Selecting a tab clears the check, even for a server already waiting at the gate.
+  The server takes a path, so a process that changes the path between that last check
+  and the server resolving it, about a process start later, can still win; the deferral
+  is the app’s own policy, and macOS enforces its privacy grants regardless.
   A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
   other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
   folder that holds one, such as the home folder) starts only when one of its tabs is
   selected, so a launch raises no privacy prompt for a folder nobody is looking at; the
-  front tab is selected, so it starts (`ProtectedLocations`). A folder that no longer
-  exists is dropped, except a protected one, which is not looked at until it is selected
-  and then says it is gone.
+  front tab is selected, so it starts (`ProtectedLocations`). A protected folder that is
+  gone says so only when its tab is selected.
   Settings > “Reopen the last session’s folders when Metabrowser opens” turns the
   restore off; the session is still saved.
   A session file that cannot be read is logged and ignored, and the next save replaces
@@ -834,6 +914,25 @@ Three background pages hold at most about 0.6 GB at the brief’s upper figure.
 The limit is a conservative default, not a measured optimum: showing a discarded tab
 costs a reload of a few hundred milliseconds, and how often people return to a tab past
 the third is unmeasured.
+A discarded tab keeps only its page’s address: it comes back at the top of the page,
+with no Back or Forward history and none of the page’s own state that its address does
+not hold.
+
+The restore budget’s basis, measured the same day by building windows that each hold a
+never-loaded web view, as a restore builds them:
+
+| Built | Main-thread time | Footprint added to the app |
+| --- | --- | --- |
+| 20 tabs in one window | 588 ms | 23 MB |
+| 50 tabs in one window | 1.76 s | 55 MB |
+| 100 tabs in one window | 4.47 s | 113 MB |
+| 20 separate windows | 187 ms | 16 MB |
+
+Each window’s shown tab then loads a page of 111–143 MB, and each distinct root starts a
+server of about 65 MB (the server-topology brief).
+Twenty windows and fifty tabs keep a launch under two seconds of building and under 3 GB
+of pages at the measured upper figure: far past an everyday session, and a bound on an
+edited or corrupted file.
 
 ### Why the Title Is a Title-Bar Accessory
 
@@ -891,11 +990,8 @@ AppKit and WebKit. What is left as it is, on purpose:
   counts as none, so setup runs again; an unreadable volume ends the path menu at `/`;
   and a staging directory left after a failed download is in the volume’s temporary
   items, which macOS empties.
-- **Errors only logged, with a reason.** A server records file that cannot be read or
-  saved goes to the unified log and stops nothing: the server runs, and only the cleanup
-  after a crash is lost, which is how the app behaved before it kept records.
-  A lifecycle event that cannot be appended to a server log is in the unified log
-  already.
+- **Errors only logged, with a reason.** A lifecycle event that cannot be appended to a
+  server log is in the unified log already.
 - **Layout numbers in views.** SwiftUI paddings and spacings stay inline, as SwiftUI
   code reads; numbers that set behavior (timeouts, limits, window and zoom sizes) are
   named and say why.
@@ -935,7 +1031,6 @@ Each gap points to the part of the brief that closes it.
 | --- | --- | --- |
 | **Session token and cookie exchange** | None: like the CLI, the server answers any local process. `WebAuthorization.cookie` is the slot. | Layering item 1; Security Models |
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
-| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app’s servers keep running until its next launch ends them (see [After a Crash](#after-a-crash)). | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
@@ -956,6 +1051,9 @@ Each gap points to the part of the brief that closes it.
   `open -a` or File > Open.
 - The restore recreates windows, tabs, frames, and pages, but not full screen, Spaces,
   minimized windows, or each tab’s Back and Forward history.
+  A discarded background tab loses the same within one launch: its history, its scroll
+  position, and the page’s own state that its address does not hold.
+- A restore past its budget, 20 windows and 50 tabs, rebuilds only the front ones.
   A page reached by the page’s own history changes, without a load, is saved at the next
   save or at quit.
 - A restored folder’s server starts once the one before it answers, not once that one
