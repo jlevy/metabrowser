@@ -218,8 +218,17 @@ def test_the_first_tree_paint_selects_and_shows_a_landings_row() -> None:
     assert "window.METABROWSER_INITIAL_TREE?.path" in block
     assert "setSelectedPath(landed)" in block
     assert 'scrollIntoView({\n      block: "nearest",' in block
-    # A reveal during the session that opens folders keeps the reader's row in place.
+    # A reveal the reader caused during the session (Quick Search, a link) is movement from
+    # their input: it opens the folders without travel and shows the new selection, in one
+    # frame. Nothing between the last folder opening and the scroll yields to the browser.
     reveal = app[app.index("async function revealInTree(") :]
     reveal = reveal[: reveal.index("\n}\n")]
-    assert "opened && held?.isConnected" in reveal
-    assert "scroller.scrollTop += held.getBoundingClientRect().top - heldTop" in reveal
+    assert "setFolderExpanded(folder, true, { instant: true })" in reveal
+    tail = reveal[reveal.rindex("setFolderExpanded(folder, true, { instant: true })") :]
+    tail = tail[tail.index("\n") :]
+    assert "await" not in tail, "the reveal yields a frame before it shows the selection"
+    assert tail.index("setSelectedPath(path)") < tail.index(
+        'target.scrollIntoView({ block: "nearest" })'
+    )
+    assert "scroll = true" in reveal, "a reveal shows its selection unless told not to"
+    assert "scrollTop +=" not in reveal and "held" not in reveal
