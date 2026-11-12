@@ -1,5 +1,6 @@
 import AppKit
 import ShellCore
+import ShellViews
 import SwiftUI
 import WebKit
 

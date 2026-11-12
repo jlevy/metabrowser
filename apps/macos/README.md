@@ -135,6 +135,8 @@ The live tests check that `metab` against the version the app requires, so it mu
 suites in three processes: the WebKit suites and the exit stress suite each stall the
 main actor, which every suite shares, so they run apart from the rest.
 A bare `swift test` runs them all in one process.
+First it builds the WebKit gate’s driver (`webkit-gate/`), which no product ships, so a
+change to the views or configuration it shares with the app cannot break it unnoticed.
 
 Where to look while it runs:
 
@@ -490,6 +492,7 @@ Do not hand one out as a release.
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session and its restore order, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
+| `Sources/ShellViews/` | The web view class a window holds, `DropAwareWebView`, and its container, `WebContainerView`: a library of their own so that the WebKit gate’s driver builds the same views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
 | `Resources/Info.plist` | The bundle’s property list. |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
@@ -497,7 +500,7 @@ Do not hand one out as a release.
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
 | `scripts/check-setup-flows.sh` | The manual checks of the first-run screens and the launch notice ([Checking the Setup Flows by Hand](#checking-the-setup-flows-by-hand)). |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
-| `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js` both engines run, and `WebKitDriver.swift`, built with the app’s web view sources. Not part of the app. |
+| `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js` both engines run, and `driver/WebKitDriver.swift`, the package’s `WebKitDriver` target, built against `ShellCore` and `ShellViews`. No product ships it; `make test` builds it. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit.

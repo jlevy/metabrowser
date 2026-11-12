@@ -1,12 +1,12 @@
 // The WebKit half of the measurement gate: a window holding the app's own web view.
 //
-// run.mjs compiles this file together with the app's `WebContainerView.swift`
-// (`WebContainerView` and `DropAwareWebView`) and ShellCore's `WebConfiguration.swift`
-// and `NavigationPolicy.swift`, so the page runs in the app's web view class, built from
-// the app's configuration, and navigations are decided by the app's policy. It is a
-// measurement tool and never ships, which is why it may use two private WebKit
-// interfaces: `_webProcessIdentifier`, to name the process whose memory run.mjs reads,
-// and window occlusion detection, turned off as Chrome's flags turn off its own.
+// SwiftPM builds it as the WebKitDriver target (Package.swift) against the app's own
+// modules: ShellViews for `WebContainerView` and `DropAwareWebView`, and ShellCore for
+// `WebConfiguration` and `NavigationPolicy`. So the page runs in the app's web view
+// class, built from the app's configuration, and navigations are decided by the app's
+// policy. It is a measurement tool and never ships, which is why it may use two private
+// WebKit interfaces: `_webProcessIdentifier`, to name the process whose memory run.mjs
+// reads, and window occlusion detection, turned off as Chrome's flags turn off its own.
 //
 //   webkit-driver measure URL SCRIPT   inject SCRIPT at document start, load URL, print
 //                                      the probe's record, then wait for a line on stdin
@@ -20,6 +20,8 @@
 // stderr. The window is 1200 x 820 points, the app's default content size.
 import AppKit
 import PDFKit
+import ShellCore
+import ShellViews
 import WebKit
 
 let contentSize = NSSize(width: 1200, height: 820)
@@ -132,7 +134,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     let pageEvents = PageEvents()
     /// Navigations the policy decided, in order, for the checks to report.
     var decisions: [[String: String]] = []
-    var folderDrops: [[String]] = []
+    /// The paths of each drop the web view handed to the app (`onFileDrop`).
+    var fileDrops: [[String]] = []
     var loaded = false
     var occlusionDetectionDisabled = false
     /// UI-delegate selectors naming printing that WebKit asked this delegate about. The
@@ -188,8 +191,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         }
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.onFolderDrop = { [weak self] urls in
-            self?.folderDrops.append(urls.map(\.path))
+        webView.onFileDrop = { [weak self] urls in
+            self?.fileDrops.append(urls.map(\.path))
             return true
         }
         let container = WebContainerView(webView: webView, statusView: NSView())
@@ -363,7 +366,7 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         for (index, path) in arguments.enumerated() {
             let urlBefore = webView.url?.absoluteString ?? ""
             let decisionsBefore = decisions.count
-            let foldersBefore = folderDrops.count
+            let fileDropsBefore = fileDrops.count
             let eventsBefore = pageEvents.events.count
             let drag = FileDrag(urls: [URL(fileURLWithPath: path)], at: point, in: window, sequence: 1000 + index)
             let entered = webView.draggingEntered(drag)
@@ -386,7 +389,7 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
                 "perform": performed,
                 "page_events": Array(pageEvents.events[eventsBefore...]),
                 "navigations": Array(decisions[decisionsBefore...]),
-                "folder_drops": Array(folderDrops[foldersBefore...]),
+                "app_opens": Array(fileDrops[fileDropsBefore...]),
                 "url_before": urlBefore,
                 "url_after": webView.url?.absoluteString ?? "",
             ])

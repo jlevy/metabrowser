@@ -10,9 +10,9 @@
 //
 // It writes deterministic corpora, serves them with this checkout's `metab` (one server
 // for both engines), serves the repository root for the committed diff benchmark pages,
-// compiles webkit-driver from WebKitDriver.swift and the app's web view sources, then runs
-// each case as pairs: Chrome then WebKit, then WebKit then Chrome, alternating, each
-// sample a fresh browser with a cold cache at the app's 1200 x 820 content size. Both
+// builds webkit-driver, the app package's WebKitDriver target, then runs each case as
+// pairs: Chrome then WebKit, then WebKit then Chrome, alternating, each sample a fresh
+// browser with a cold cache at the app's 1200 x 820 content size. Both
 // engines run probe.js, so they time the same intervals with the same code. Results go to
 // attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora), samples.jsonl
 // (every record), summary.json, and summary.md, the table docs/large-content-rendering.md
@@ -20,7 +20,7 @@
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
-// both under TIMER_FLOOR_MS is reported and not judged. Needs macOS, Xcode's swiftc,
+// both under TIMER_FLOOR_MS is reported and not judged. Needs macOS, Xcode's Swift,
 // Google Chrome, Node 24 (for its WebSocket), and a logged-in session; it keeps the
 // display awake while it runs.
 import { execFile, spawn } from "node:child_process";
@@ -335,28 +335,15 @@ async function footprint(pid) {
   };
 }
 
+/**
+ * webkit-driver: the app package's WebKitDriver target (driver/WebKitDriver.swift), built
+ * by SwiftPM against the app's own ShellCore and ShellViews, optimized as the app is.
+ */
 async function buildDriver() {
-  const output = path.join(APP, "build", "webkit-gate", "webkit-driver");
-  const sources = [
-    path.join(HERE, "WebKitDriver.swift"),
-    path.join(APP, "Sources/Metabrowser/WebContainerView.swift"),
-    path.join(APP, "Sources/ShellCore/Web/WebConfiguration.swift"),
-    path.join(APP, "Sources/ShellCore/Web/NavigationPolicy.swift"),
-  ];
-  fs.mkdirSync(path.dirname(output), { recursive: true });
-  await run("xcrun", [
-    "swiftc",
-    "-parse-as-library",
-    "-swift-version",
-    "6",
-    "-default-isolation",
-    "MainActor",
-    "-O",
-    "-o",
-    output,
-    ...sources,
-  ]);
-  return output;
+  const swift = ["build", "--package-path", APP, "-c", "release"];
+  await run("swift", [...swift, "--product", "WebKitDriver"]);
+  const { stdout } = await run("swift", [...swift, "--show-bin-path"]);
+  return path.join(stdout.trim(), "WebKitDriver");
 }
 
 const CHROME_FLAGS = [

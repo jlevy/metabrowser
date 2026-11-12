@@ -7,11 +7,11 @@ import WebKit
 ///
 /// `WKWebView` is not inside an `NSScrollView`, so `NSTextFinder` needs this container
 /// to hold its bar (the pattern from the macOS WebView shell guideline).
-final class WebContainerView: NSView, NSTextFinderBarContainer {
-    private(set) var webView: WKWebView
+public final class WebContainerView: NSView, NSTextFinderBarContainer {
+    public private(set) var webView: WKWebView
     private let statusView: NSView
 
-    init(webView: WKWebView, statusView: NSView) {
+    public init(webView: WKWebView, statusView: NSView) {
         self.webView = webView
         self.statusView = statusView
         super.init(frame: .zero)
@@ -21,9 +21,9 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("unused") }
+    public required init?(coder: NSCoder) { fatalError("unused") }
 
-    var showsStatus = true {
+    public var showsStatus = true {
         didSet {
             webView.isHidden = showsStatus
             statusView.isHidden = !showsStatus
@@ -32,7 +32,7 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
     }
 
     /// Swaps in the view of a tab that gave up its page, hidden like the old one would be.
-    func replaceWebView(_ replacement: WKWebView) {
+    public func replaceWebView(_ replacement: WKWebView) {
         webView.removeFromSuperview()
         webView = replacement
         addSubview(replacement, positioned: .below, relativeTo: statusView)
@@ -40,7 +40,7 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
         needsLayout = true
     }
 
-    var findBarView: NSView? {
+    public var findBarView: NSView? {
         didSet {
             oldValue?.removeFromSuperview()
             needsLayout = true
@@ -49,7 +49,7 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
 
     // Insert the bar here, not in findBarView's setter: when the bar was already in the
     // view tree, NSTextFinder never set isFindBarVisible (measured on macOS 26.5).
-    var isFindBarVisible = false {
+    public var isFindBarVisible = false {
         didSet {
             if isFindBarVisible, let findBarView, findBarView.superview == nil {
                 addSubview(findBarView)
@@ -60,10 +60,10 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
         }
     }
 
-    func findBarViewDidChangeHeight() { needsLayout = true }
-    func contentView() -> NSView? { webView }
+    public func findBarViewDidChangeHeight() { needsLayout = true }
+    public func contentView() -> NSView? { webView }
 
-    override func layout() {
+    public override func layout() {
         super.layout()
         statusView.frame = bounds
         var webFrame = bounds
@@ -79,8 +79,8 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
 /// Hands files and folders dropped on the page to the app (`FileDrop`), which opens a
 /// folder in its own window or tab and a file at its page. Anything else falls through
 /// to WebKit's ordinary drag and drop.
-final class DropAwareWebView: WKWebView {
-    var onFileDrop: (([URL]) -> Bool)?
+public final class DropAwareWebView: WKWebView {
+    public var onFileDrop: (([URL]) -> Bool)?
 
     private func fileURLs(_ info: any NSDraggingInfo) -> [URL] {
         let pasteboard = info.draggingPasteboard
@@ -88,13 +88,13 @@ final class DropAwareWebView: WKWebView {
         return FileDrop.opens(urls ?? [], items: pasteboard.pasteboardItems?.count ?? 0)
     }
 
-    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+    public override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let operation = super.draggingUpdated(sender)
         guard onFileDrop != nil, !fileURLs(sender).isEmpty else { return operation }
         return .copy
     }
 
-    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+    public override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let files = fileURLs(sender)
         if !files.isEmpty, let onFileDrop, onFileDrop(files) { return true }
         return super.performDragOperation(sender)
