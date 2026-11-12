@@ -5,7 +5,7 @@ title: "macOS app: resolve and pass the configuration, cache, and data home vari
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 labels: []
 dependencies:
@@ -13,6 +13,10 @@ dependencies:
     target: is-01m78fw226k1aejzey9xamd4e7
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
 created_at: 2026-11-12T18:21:11.088Z
-updated_at: 2026-11-12T18:21:11.621Z
+updated_at: 2026-11-12T18:47:19.178Z
 ---
 Phase 3 (plan: The macOS App). ChildEnvironment's allowlist drops XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_DATA_HOME, METABROWSER_CONFIG_DIR, and METABROWSER_CACHE_DIR, so a user who sets one in a shell profile gets a different configuration and cache home in app-launched servers than in Terminal (read from source; affects the repository cache today and the plugin registry later). Resolve them from the login shell once at setup, as git and gh are resolved, and pass them to servers; a setup check proves they reach a server.
+
+## Notes
+
+Review (2026-11-12, independent design review; plan updated to match): The login shell runs at setup today only when earlier lookups miss, and can take seconds and raise privacy prompts; run it once at setup for these names, save them with the runtime, refresh on Find Again.
