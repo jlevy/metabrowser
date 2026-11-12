@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LaunchLocationNotice.showIfNeeded()
         if let setup = selection.setup {
             AppLog.app.info("using saved runtime \(setup.runtime.executable, privacy: .public)")
             openPendingFolders()

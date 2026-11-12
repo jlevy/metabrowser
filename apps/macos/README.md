@@ -276,7 +276,8 @@ With a signed, notarized, and stapled release:
    ticket, which needs no network, and asks once whether to open an app downloaded from
    the Internet, saying Apple checked it for malicious software.
    An app opened straight from the DMG or from Downloads runs from a randomized
-   read-only copy (App Translocation); it works, but belongs in Applications.
+   read-only copy (App Translocation); it works, but belongs in Applications, and a
+   launch notice says so ([The Launch Notice](#the-launch-notice)).
 4. **Runtime.** The app runs the `metab` command-line tool and does not install it.
    Without one, or with one older than 0.12.1, the first launch shows the commands still
    missing ([The First Run Without metab](#the-first-run-without-metab)) and continues
@@ -303,7 +304,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, and the offer to restart servers after an upgrade. |
+| `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
@@ -473,6 +474,28 @@ Its number says only that it was built after 0.12.0: one built before the route 
   Where This Breaks). An upgrade that changes only a dependency leaves `metab` itself
   unchanged and goes unnoticed.
 
+### The Launch Notice
+
+A copy opened from its disk image runs from a read-only volume, and a quarantined copy
+opened where it was downloaded runs from a randomized read-only mirror (App
+Translocation). Neither can be replaced in place, and the first stops working when the
+image is ejected. macOS has no API to detect either, so `LaunchLocation`
+(`Sources/ShellCore/Setup/LaunchLocation.swift`) reads the bundle’s path and volume, as
+Sparkle does: a path containing `/AppTranslocation/` is translocated, and otherwise a
+volume that `statfs` reports read-only is a disk image.
+`URLResourceKey.volumeIsReadOnlyKey` is not used, since it reports the sealed system
+volume as writable.
+
+At launch such a copy shows “Move Metabrowser to Applications”, which says why and how:
+drag the app to Applications in Finder, then open it from there.
+Show in Finder opens the Applications folder and, on a disk image, selects the app in
+the image; for a translocated copy, whose path hides the original, it opens the
+Applications folder only.
+Continue goes on, and “Don’t remind me” stops the notice for that bundle identifier.
+The app moves nothing itself.
+A copy it made of a translocated app would keep its quarantine and be translocated again
+unless the app removed the attribute, which is a decision for a person.
+
 ### The Child’s Environment
 
 The server’s environment is built from an allowlist, never inherited.
@@ -609,7 +632,7 @@ Each gap points to the part of the brief that closes it.
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |
 | **App-managed runtime** | None: a CLI install is required. | Recommendation 5.2; Wrapping uv |
 | **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized. | Recommendation 6 |
-| **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
+| **Updates** | None: `brew upgrade --cask`, no in-app update notice, and no Sparkle. A copy run from its disk image or translocated gets a launch notice, and moving it is left to the user in Finder. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
 | **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
 | **WebKit measurement gate** | Not run. Large-content bounds were measured in Chrome; `window.print()` and drag and drop are not yet checked by hand. | Recommendation 4 (`mb-etqi`) |
