@@ -306,6 +306,11 @@ interpreter line, on stand-in processes.
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
 accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the path.
 
+A choice rejected during the first search is checked by hand within `no-metab`, whose
+search waits on the login shell: as soon as the copy opens, Settings > Choose metab… and
+`/bin/ls`. Settings names the rejection and goes on looking, then shows the steps, and
+the waiting folder still opens by itself once `metab` appears.
+
 ### Checking Print and Drops by Hand
 
 From `apps/macos`, `node webkit-gate/run.mjs --checks` scripts these in the app’s web
@@ -499,7 +504,7 @@ Do not hand one out as a release.
 | --- | --- |
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it. |
-| `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
+| `Sources/ShellCore/Runtime/` | Finding `metab`, the searches, rechecks, and choices that settle which one runs, the child environment, short commands, and saved settings. |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session, its restore order, and the restore’s starts, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
@@ -667,9 +672,16 @@ folder waits for one of its tabs to be selected, which starts it once.
 A folder records the runtime it started from only once its child is created.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
-A Find Again that finds nothing leaves no runtime, saved or in use, so neither the next
-folder nor the next launch starts the `metab` that failed; the next folder waits for a
-runtime.
+A choice that is rejected changes nothing, so a search it overtook, the first launch’s
+or a Find Again, runs again with a ticket of its own, and the overtaken search’s late
+result still changes nothing (`RuntimeOperations`): the folders opened meanwhile, and
+the restore, go ahead once that search finds a runtime, or wait behind the first-run
+steps if it finds none.
+Settings says it is looking only while a search runs; otherwise it says that a chosen
+file is being checked, that the steps are being worked out, or that no `metab` is
+selected (`RuntimeActivity`). A Find Again that finds nothing leaves no runtime, saved
+or in use, so neither the next folder nor the next launch starts the `metab` that
+failed; the next folder waits for a runtime.
 
 ### The First Run Without metab
 

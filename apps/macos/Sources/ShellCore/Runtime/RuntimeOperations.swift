@@ -7,8 +7,12 @@ import Foundation
 /// work for each operation and keeps the follow-ups in one place:
 ///
 /// - A recheck that rejects the runtime leaves none, so a search looks for another.
-/// - A choice that is rejected changes nothing, so a runtime it held off while it ran,
-///   whose file changed meanwhile, is checked again.
+/// - A choice that is rejected changes nothing, so what it overtook or held off still
+///   needs an answer: a runtime whose file changed while it ran is checked again, and a
+///   search it overtook runs again, with a fresh ticket, so the overtaken one's late
+///   result still changes nothing. Without that, a choice rejected during the first
+///   search left no runtime, no search, and no first-run steps, and the folders opened
+///   meanwhile waited for Find Again.
 ///
 /// The app (`AppDelegate`) supplies the work, which runs `metab` and the login shell, and
 /// shows each operation's end; `RuntimeOperationsTests` drive it with fakes.
@@ -102,8 +106,13 @@ public final class RuntimeOperations {
             ticket, path: path, result: result, fingerprint: fingerprint, tools: work.tools)
         onChange()
         await finish(.choice(path), outcome)
-        // A rejected choice leaves a runtime whose file changed meanwhile still unchecked.
-        if selection.needsRecheck { beginRecheck() }
+        // A rejected choice leaves a runtime whose file changed meanwhile still unchecked,
+        // and a search it overtook unanswered.
+        if selection.needsRecheck {
+            beginRecheck()
+        } else if selection.needsSearch {
+            beginDiscovery()
+        }
     }
 
     private func search(_ ticket: RuntimeSelection.Ticket) async {
@@ -121,7 +130,8 @@ public final class RuntimeOperations {
         let outcome = selection.finishRecheck(ticket, fingerprint: fingerprint, result: result)
         onChange()
         await finish(.recheck(path, result), outcome)
-        if outcome == .notFound { beginDiscovery() }
+        // A search a rejected choice overtook while this recheck was owed runs now too.
+        if outcome == .notFound || selection.needsSearch { beginDiscovery() }
     }
 
     private func finish(_ operation: Finish.Operation, _ outcome: RuntimeSelection.Outcome) async {
@@ -132,5 +142,24 @@ public final class RuntimeOperations {
             released = []
         }
         await onFinish(Finish(operation: operation, outcome: outcome, released: released))
+    }
+}
+
+/// What Settings says while it has neither a runtime nor first-run steps to show, from
+/// what is running now (`RuntimeView`). It says it is looking only while a search runs:
+/// it said so whenever both were missing, so a choice rejected during the first search
+/// left it looking forever.
+public nonisolated enum RuntimeActivity: Equatable, Sendable {
+    /// A search for `metab` is running.
+    case searching
+    /// A file chosen with Choose metab… is being checked.
+    case checkingChoice
+    /// A search found nothing, and the steps to install `metab` are being worked out.
+    case preparingSteps
+    /// Nothing is running: Find Again and Choose metab… are what remain.
+    case idle
+
+    public init(isSearching: Bool, isChoosing: Bool, isPreparingSteps: Bool) {
+        self = isSearching ? .searching : isChoosing ? .checkingChoice : isPreparingSteps ? .preparingSteps : .idle
     }
 }

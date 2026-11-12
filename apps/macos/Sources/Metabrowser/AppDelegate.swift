@@ -379,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentRuntime() {
         runtimeModel.setup = selection.setup
         runtimeModel.isSearching = selection.isSearching
+        runtimeModel.isChoosing = selection.isChoosing
         runtimeModel.tried = selection.tried
         rewatch()
     }
@@ -490,6 +491,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func prepareGuide() async {
         guideRequests += 1
         let request = guideRequests
+        runtimeModel.isPreparingGuide = true
+        defer { if request == guideRequests { runtimeModel.isPreparingGuide = false } }
         let env = DiscoveryEnvironment.live(saved: nil)
         let candidates = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
         // Only a uv no other account can change is run (ExecutableTrust).

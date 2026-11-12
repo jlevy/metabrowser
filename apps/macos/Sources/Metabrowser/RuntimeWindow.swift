@@ -8,6 +8,10 @@ import SwiftUI
     var setup: RuntimeSetup?
     var tried: [CandidateOutcome] = []
     var isSearching = false
+    /// A file chosen with Choose metab… is being checked.
+    var isChoosing = false
+    /// A search found nothing, and the first-run steps are being worked out.
+    var isPreparingGuide = false
     var isRunningDoctor = false
     var doctorOutput: String?
     var notice: String?
@@ -33,10 +37,9 @@ struct RuntimeView: View {
             } else if let guide = model.guide {
                 missing(guide)
             } else {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Looking for the metab command-line tool…")
-                }
+                activity(RuntimeActivity(
+                    isSearching: model.isSearching, isChoosing: model.isChoosing,
+                    isPreparingSteps: model.isPreparingGuide))
             }
             if let notice = model.notice {
                 Text(notice).foregroundStyle(.orange).textSelection(.enabled)
@@ -106,6 +109,23 @@ struct RuntimeView: View {
                 Text("gh").foregroundStyle(.secondary)
                 Text(setup.tools.gh ?? "not found (GitHub pull request views need it)").textSelection(.enabled)
             }
+        }
+    }
+
+    /// What is running while there is neither a runtime nor steps to show.
+    @ViewBuilder private func activity(_ activity: RuntimeActivity) -> some View {
+        switch activity {
+        case .searching: working("Looking for the metab command-line tool…")
+        case .checkingChoice: working("Checking the chosen metab…")
+        case .preparingSteps: working("Working out the steps to install metab…")
+        case .idle: Text("No metab is selected. Find Again looks for one, and Choose metab… picks one.")
+        }
+    }
+
+    private func working(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text)
         }
     }
 
