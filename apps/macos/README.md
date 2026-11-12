@@ -640,8 +640,9 @@ What it does not cover:
 ### Finding the Runtime
 
 Setup runs on the first launch, and again from Settings > Find Again.
-It looks in this order and runs `metab --version` on each candidate that exists and may
-be run:
+It looks in this order and checks each candidate that exists and may be run, with
+`metab --exit-on-eof --version` ([The Version It Requires](#the-version-it-requires)
+says how it judges the answer):
 
 1. the path saved by a previous setup;
 2. `METABROWSER_METAB`;
@@ -657,14 +658,16 @@ can raise privacy prompts you never saw in Terminal.
 It is the account’s own shell (`SHELL`, else the password database), so the rule below
 does not apply to it.
 One install reached two ways is tried once.
-Running `metab --version` executes the file, whatever it prints, so a candidate runs
-only if no other account can change it, by the rule the app applies to uv
-(`ExecutableTrust`, under [The First Run Without metab](#the-first-run-without-metab)):
-one in a folder its group can change, a standard Homebrew prefix among them, or one
-whose access control list cannot be read, is not run, and Settings, the first-run steps,
-and the log name it and why.
-The same rule holds for a runtime a previous search saved, at launch and at each recheck
-after its file changes; a launch whose saved runtime fails it searches again.
+Checking a candidate executes the file, whatever it prints, so a candidate runs only if
+no other account can change it, by the rule the app applies to uv (`ExecutableTrust`,
+under [The First Run Without metab](#the-first-run-without-metab)): one in a folder its
+group can change, a standard Homebrew prefix among them, or one whose access control
+list cannot be read, is not run, and Settings, the first-run steps, and the log name it
+and why.
+The same rule holds for a runtime a previous search saved, at launch and at each
+recheck after its file changes; a launch whose saved runtime fails it searches again.
+It is checked before each run of a check, so the second run that follows a rejected flag
+does not start from a file that became changeable while the first ran.
 It holds at each server’s start too, checked again just before the child spawns, after
 the launch gate and any earlier child’s stop (`RuntimeOperations.launchableSetup`): a
 folder on the path made writable by its group, or a link on it that now leads elsewhere,
@@ -785,14 +788,35 @@ A development build of 0.12.1 (`0.12.1.dev214+8b0603f7`, which PEP 440 orders be
 0.12.1) counts as 0.12.1, or no checkout would run.
 Its number says only that it was built after 0.12.0, not whether it has `--exit-on-eof`,
 which every server gets.
-So validation runs `metab --exit-on-eof --version`. Click rejects an unknown option
-before the eager `--version` runs, so a build from before the flag exits 2, and only
-then does `--version` run alone.
-A `metab` that answers it is too old whatever its number, and Settings and the first-run
-steps say it was built before `--exit-on-eof` instead of comparing numbers.
-A current `metab` costs one run.
 The flag reached the source after the identity route, so a build with the flag has the
 route too.
+
+So the app checks a `metab` by running `metab --exit-on-eof --version`
+(`RuntimeDiscovery.validate`), with the minimal environment a server gets.
+This is the check a search, a recheck, and Choose metab… all make:
+
+- **It prints a version:** the number decides.
+  At the minimum or later the `metab` is used; below it, it is too old, and the app says
+  which version it found and which it needs.
+  A current `metab` costs this one run.
+- **It exits 2 and its output names `--exit-on-eof`:** click rejects an unknown option
+  before the eager `--version` runs, so this is a build from before the flag.
+  Only then does `--version` run alone, after the file is checked again
+  ([Finding the Runtime](#finding-the-runtime)). A version below the minimum, such as
+  0.12.0, is too old for its number, as above.
+  One that meets it, such as a 0.12.1 development build, is too old because it lacks the
+  flag, and Settings and the first-run steps say it was built before `--exit-on-eof`
+  rather than compare numbers.
+  If `--version` alone fails too, the `metab` is rejected with what it printed.
+- **Anything else,** another exit status, exit 2 for another usage error, or a signal,
+  rejects the `metab` with the probe’s own last line, such as
+  `--exit-on-eof --version printed: ImportError: …`, and nothing more runs.
+  That shows nothing about when the build was made, so the app does not call it old.
+  A probe that cannot start or does not finish is rejected with why, and nothing more
+  runs either.
+
+What the app does with a `metab` the check finds too old, and with one that changes
+later:
 
 - **Below the minimum, or built before the flag,** discovery skips that `metab` and
   tries the next place.
@@ -804,7 +828,7 @@ route too.
   requirement in the tool’s receipt and a later `uv tool upgrade` would never move past
   a pin. Choose metab… refuses an older `metab` the same way.
 - **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
-  inode, size, modification time, and mode) from just before `metab --version` ran.
+  inode, size, modification time, and mode) from just before its check ran.
   The app compares it with the file once a second and when the app becomes active, and
   checks before each folder it opens, and at launch before it restores the last session.
   A change counts once two looks agree, which debounces a file caught in the middle of
@@ -814,7 +838,7 @@ route too.
   no server starts from the old runtime until a check, a Find Again, or a choice
   validates one, whichever finishes it; a choice being validated is never overtaken by a
   check the app starts by itself.
-  The check runs `metab --version` again.
+  The check is the one above, `metab --exit-on-eof --version`, run again.
   A version the app accepts replaces the old one, and if open folders run servers that
   the same `metab` started at another version, an alert offers to restart them; a folder
   whose server never started is not counted.
@@ -1154,7 +1178,7 @@ Each gap points to the part of the brief that closes it.
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
-| **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
+| **Rootless runtime report** | `metab --exit-on-eof --version` validates ([The Version It Requires](#the-version-it-requires)); `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |

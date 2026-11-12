@@ -74,8 +74,9 @@ public nonisolated enum MetabRequirement {
     /// What a `metab` that `RuntimeDiscovery.validate` found too old lacks when its number
     /// meets the minimum: "built before --exit-on-eof". Nil when its number is below the
     /// minimum, which then says why. `validate` finds a build that meets the number too old
-    /// only when it rejects `CLIServeLaunch.exitOnEOF`, so the screens that name one say
-    /// that, rather than compare its number with a minimum it meets.
+    /// only when it rejects `CLIServeLaunch.exitOnEOF` as an unknown option
+    /// (`RuntimeDiscovery.rejectsServeFlag`), so the screens that name one say that, rather
+    /// than compare its number with a minimum it meets.
     public static func flagShortfall(_ version: String) -> String? {
         guard let parsed = MetabVersion(version), accepts(parsed) else { return nil }
         return "built before \(CLIServeLaunch.exitOnEOF)"

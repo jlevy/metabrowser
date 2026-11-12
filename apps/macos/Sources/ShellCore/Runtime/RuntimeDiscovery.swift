@@ -59,8 +59,8 @@ public nonisolated enum CandidateResult: Equatable, Sendable {
     case valid(version: String)
     case missing
     /// A working `metab` older than `MetabRequirement.minimum`, or, whatever its number,
-    /// one built before `CLIServeLaunch.exitOnEOF`, which it rejects
-    /// (`MetabRequirement.flagShortfall`).
+    /// one built before `CLIServeLaunch.exitOnEOF`, which it rejects as an unknown option
+    /// (`RuntimeDiscovery.rejectsServeFlag`, `MetabRequirement.flagShortfall`).
     case tooOld(version: String)
     case rejected(String)
     /// Not run: the app found it by itself, and another account can change it, or it could
@@ -179,21 +179,28 @@ public nonisolated enum RuntimeDiscovery {
     /// The flag is the one every server gets (`CLIServeLaunch.exitOnEOF`), and a version
     /// number cannot show it: a development build of the minimum from before the flag
     /// counts as the minimum. Click rejects an unknown option before the eager `--version`
-    /// runs, so such a build exits 2 here. Only a run that ends that way, or fails
-    /// otherwise, is followed by `--version` alone; a `metab` that answers it with a
-    /// version this app reads is too old whatever its number. A run that could not start
-    /// or did not finish is not repeated, and a current `metab` costs one run.
+    /// runs, so such a build exits 2 and names the flag (`rejectsServeFlag`). Only then
+    /// does `--version` run alone, and a version this app reads from it makes the `metab`
+    /// too old whatever its number. Any other failed probe shows nothing about when the
+    /// build was made, so it is rejected with its own output and nothing more runs; so is
+    /// a probe that could not start or did not finish. A current `metab` costs one run.
     ///
     /// Running it executes the file, whatever it prints, so a file the app found by itself
     /// (every `source` but `.chosen`, and no source at all) runs only if no other account
     /// can change it (`env.refusal`, `ExecutableTrust`): discovery's candidates, a saved
-    /// runtime discovery found, and a recheck of one. A file the user chose in Settings is
-    /// run as chosen.
+    /// runtime discovery found, and a recheck of one. That is checked just before each
+    /// run, since a folder on the path can become writable by its group, or a link on it
+    /// lead elsewhere, while the probe runs. A file the user chose in Settings is run as
+    /// chosen.
     public static func validate(
         _ path: String, _ env: DiscoveryEnvironment, source: RuntimeSource? = nil
     ) async -> CandidateResult {
-        guard env.isExecutable(path) else { return .missing }
-        if source != .chosen, let reason = env.refusal(path) { return .untrusted(reason) }
+        func barred() -> CandidateResult? {
+            guard env.isExecutable(path) else { return .missing }
+            if source != .chosen, let reason = env.refusal(path) { return .untrusted(reason) }
+            return nil
+        }
+        if let barred = barred() { return barred }
         let environment = ChildEnvironment.build(inherited: env.environment, toolDirectories: [])
         func run(_ arguments: [String]) async -> CommandResult {
             await env.run(LaunchSpec(executable: path, arguments: arguments, environment: environment), versionTimeout)
@@ -217,9 +224,22 @@ public nonisolated enum RuntimeDiscovery {
         if probe.succeeded {
             return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
         }
+        guard rejectsServeFlag(probe) else {
+            return .rejected("\(CLIServeLaunch.exitOnEOF) --version printed: \(probe.output.last ?? "nothing")")
+        }
+        if let barred = barred() { return barred }
         let plain = await run(["--version"])
         if let rejection = unfinished(plain) { return rejection }
         return reading(plain) { version, _ in .tooOld(version: version) }
+    }
+
+    /// Whether `result` is click's rejection of `CLIServeLaunch.exitOnEOF` as an unknown
+    /// option: exit status 2, with the flag named in what it printed. The wording around
+    /// the flag is click's and is not matched. A crash, a signal, or another usage error is
+    /// not one, and shows nothing about when the build was made.
+    static func rejectsServeFlag(_ result: CommandResult) -> Bool {
+        guard let status = result.status, ExitStatus(waitStatus: status) == .exited(2) else { return false }
+        return result.output.contains { $0.contains(CLIServeLaunch.exitOnEOF) }
     }
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.

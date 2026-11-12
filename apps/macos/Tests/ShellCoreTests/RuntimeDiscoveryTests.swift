@@ -44,10 +44,15 @@ private struct Machine {
     }
 }
 
-/// What click prints, to stderr, for an option it does not know, before an eager option
-/// such as `--version` runs; it then exits with status 2.
+/// What a `metab` built before the flag prints, to stderr, in the app's minimal
+/// environment for `--exit-on-eof --version`, as measured on a 0.12.1.dev38: click's
+/// usage error for an option it does not know, boxed, before the eager `--version` runs.
+/// It then exits with status 2.
 nonisolated private let clickUsageError = [
-    "Usage: metab [OPTIONS] [ROOT]", "Try 'metab --help' for help.", "", "Error: No such option: --exit-on-eof",
+    "Usage: metab [OPTIONS] [ROOT]", "Try 'metab --help' for help.",
+    "╭─ Error ──────────────────────────────────────────────────────────────────────╮",
+    "│ No such option: --exit-on-eof                                                │",
+    "╰──────────────────────────────────────────────────────────────────────────────╯",
 ]
 
 private let homebrewTools: Set<String> = ["/opt/homebrew/bin/git", "/opt/homebrew/bin/gh"]
@@ -107,8 +112,8 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(report.setup?.runtime.executable == "/opt/homebrew/bin/metab")
         // ~/.local/bin is also uv's default tool directory, so it is tried once.
         #expect(report.tried.map(\.result) == [
-            .rejected("--version printed: Traceback (most recent call last):"), .tooOld(version: "0.12.0"),
-            .valid(version: "0.13.0"),
+            .rejected("--exit-on-eof --version printed: Traceback (most recent call last):"),
+            .tooOld(version: "0.12.0"), .valid(version: "0.13.0"),
         ])
     }
 
@@ -120,9 +125,10 @@ private func loginShellOutput(path: String) -> [String] {
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.setup == nil)
-        // One validation of a broken install: the probe, then `--version` alone.
+        // One validation of a broken install: its probe fails other than on the flag, so
+        // nothing more runs.
         #expect(calls.all.filter { $0.hasSuffix("--version") } == [
-            "/Volumes/Home/.local/bin/metab --exit-on-eof --version", "/Volumes/Home/.local/bin/metab --version",
+            "/Volumes/Home/.local/bin/metab --exit-on-eof --version",
         ])
     }
 
@@ -385,7 +391,11 @@ private func loginShellOutput(path: String) -> [String] {
 /// development build as the minimum, so a 0.12.1.dev38 built before `--exit-on-eof`
 /// passed; every window then failed on click's "No such option: --exit-on-eof" with no
 /// remedy (mb-sugi). Validation now runs `metab --exit-on-eof --version`, and a `metab`
-/// that rejects the flag but answers `--version` alone is too old.
+/// that rejects the flag as an unknown option but answers `--version` alone is too old.
+///
+/// Review D on #377: the second run started without checking the file's trust again
+/// (D1), and any failed probe followed by a working `--version` was called too old,
+/// although only an unknown-option rejection of the flag shows that (D2).
 @Suite struct ServeFlagValidationTests {
     private let current = "metab 0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"
     private let beforeTheFlag = "metab 0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
@@ -393,19 +403,22 @@ private func loginShellOutput(path: String) -> [String] {
     private let inherited = ["HOME": "/Volumes/Home", "PYTHONPATH": "/src", "VIRTUAL_ENV": "/Volumes/Home/.venv"]
 
     /// Validates `/opt/metab`, whose runs `answer` decides from their arguments, and
-    /// records every run.
+    /// records every run. `isExecutable` and `refusal` are asked before each run.
     private func validate(
-        ran: Recorder<LaunchSpec>, _ answer: @escaping @Sendable ([String]) -> CommandResult
+        ran: Recorder<LaunchSpec>, source: RuntimeSource = .localBin,
+        isExecutable: @escaping @Sendable (String) -> Bool = { _ in true },
+        refusal: @escaping @Sendable (String) -> String? = { _ in nil },
+        _ answer: @escaping @Sendable ([String]) -> CommandResult
     ) async -> CandidateResult {
         let env = DiscoveryEnvironment(
             home: "/Volumes/Home", environment: inherited, saved: nil, shell: nil,
-            isExecutable: { _ in true }, canonicalPath: { $0 },
+            isExecutable: isExecutable, canonicalPath: { $0 },
             run: { spec, _ in
                 ran.append(spec)
                 return answer(spec.arguments)
             },
-            refusal: { _ in nil })
-        return await RuntimeDiscovery.validate("/opt/metab", env, source: .localBin)
+            refusal: refusal)
+        return await RuntimeDiscovery.validate("/opt/metab", env, source: source)
     }
 
     /// A `metab` that rejects the flag as click does, and answers `--version` alone with
@@ -414,6 +427,16 @@ private func loginShellOutput(path: String) -> [String] {
         { arguments in
             arguments.contains("--exit-on-eof")
                 ? CommandResult(status: 2 << 8, output: clickUsageError) : CommandResult(status: 0, output: printed)
+        }
+    }
+
+    /// A `metab` whose probe ends as `status` with `output`, and that answers `--version`
+    /// alone with a current version.
+    private func probeEnding(_ status: Int32, _ output: [String]) -> @Sendable ([String]) -> CommandResult {
+        let printed = current
+        return { arguments in
+            arguments.contains("--exit-on-eof")
+                ? CommandResult(status: status, output: output) : CommandResult(status: 0, output: [printed])
         }
     }
 
@@ -458,12 +481,57 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(MetabRequirement.flagShortfall("0.12.0") == nil)
     }
 
-    /// A probe that fails for another reason leads to `--version` alone, whose output the
-    /// rejection names, as before the probe.
-    @Test func whenBothRunsFailTheRejectionNamesTheSecond() async {
+    /// The flag is rejected as an unknown option only when the probe exits 2 and names it.
+    /// `status` is a raw wait status: a 2 there is SIGINT, not exit status 2.
+    @Test func onlyExitTwoNamingTheFlagIsARejectionOfIt() {
+        #expect(RuntimeDiscovery.rejectsServeFlag(CommandResult(status: 2 << 8, output: clickUsageError)))
+        #expect(RuntimeDiscovery.rejectsServeFlag(CommandResult(status: 2 << 8, output: ["Error: --exit-on-eof"])))
+        #expect(!RuntimeDiscovery.rejectsServeFlag(CommandResult(status: 2, output: clickUsageError)))
+        #expect(!RuntimeDiscovery.rejectsServeFlag(CommandResult(status: 1 << 8, output: clickUsageError)))
+        #expect(!RuntimeDiscovery.rejectsServeFlag(
+            CommandResult(status: 2 << 8, output: ["Error: No such option: --x"])))
+        #expect(!RuntimeDiscovery.rejectsServeFlag(CommandResult(status: nil, output: clickUsageError, timedOut: true)))
+    }
+
+    /// D2: a current build whose probe fails for another reason, as an import does in the
+    /// middle of an upgrade, is refused with the probe's own output, and is not called old
+    /// because `--version` alone works.
+    @Test func aProbeThatFailsOtherwiseIsRejectedWithItsOwnOutputAndNothingMoreRuns() async {
+        let ran = Recorder<LaunchSpec>()
+        let result = await validate(ran: ran, probeEnding(1 << 8, [
+            "Traceback (most recent call last):", "ImportError: cannot import name 'serve' from 'metabrowser.cli'",
+        ]))
+        #expect(result == .rejected(
+            "--exit-on-eof --version printed: ImportError: cannot import name 'serve' from 'metabrowser.cli'"))
+        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+    }
+
+    /// D2: exit status 2 for another usage error, the flag named by another status, and a
+    /// probe ended by a signal are each refused with the probe's output, with no second run.
+    @Test func otherProbeFailuresAreRejectedWithoutASecondRun() async {
+        let cases: [(Int32, [String], String)] = [
+            (2 << 8, ["Usage: metab [OPTIONS] [ROOT]", "Error: Got unexpected extra argument (x)"],
+             "--exit-on-eof --version printed: Error: Got unexpected extra argument (x)"),
+            (1 << 8, ["RuntimeError: --exit-on-eof needs a pipe"],
+             "--exit-on-eof --version printed: RuntimeError: --exit-on-eof needs a pipe"),
+            (SIGSEGV, ["Fatal Python error: Segmentation fault"],
+             "--exit-on-eof --version printed: Fatal Python error: Segmentation fault"),
+            (SIGINT, clickUsageError, "--exit-on-eof --version printed: \(clickUsageError.last ?? "")"),
+            (SIGKILL, [], "--exit-on-eof --version printed: nothing"),
+        ]
+        for (status, output, reason) in cases {
+            let ran = Recorder<LaunchSpec>()
+            #expect(await validate(ran: ran, probeEnding(status, output)) == .rejected(reason))
+            #expect(ran.count == 1, "\(reason)")
+        }
+    }
+
+    /// After a genuine rejection of the flag, a failed `--version` alone is rejected with
+    /// its own output, as before the probe.
+    @Test func whenTheSecondRunFailsTheRejectionNamesIt() async {
         let broken = await validate(ran: Recorder()) { arguments in
             arguments.contains("--exit-on-eof")
-                ? CommandResult(status: 1 << 8, output: ["Traceback (most recent call last):", "ImportError: probe"])
+                ? CommandResult(status: 2 << 8, output: clickUsageError)
                 : CommandResult(status: 1 << 8, output: ["Traceback (most recent call last):", "ImportError: plain"])
         }
         #expect(broken == .rejected("--version printed: ImportError: plain"))
@@ -491,6 +559,62 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(await validate(ran: unstarted) { _ in CommandResult(status: nil, output: [], launchError: "EACCES") }
             == .rejected("could not run: EACCES"))
         #expect(unstarted.count == 1)
+    }
+
+    /// D1: the file is checked again before the second run, as before the first. One that
+    /// another account can change by the time the probe ends, or that is gone, is not run
+    /// again; a file the user chose is run as chosen.
+    @Test func theSecondRunIsCheckedAgainFirst() async {
+        let shared = "/opt is writable by its group"
+        let refusedLater = Recorder<LaunchSpec>()
+        let untrusted = await validate(
+            ran: refusedLater, refusal: { _ in refusedLater.count > 0 ? shared : nil },
+            Self.predatingTheFlag([beforeTheFlag]))
+        #expect(untrusted == .untrusted(shared))
+        #expect(refusedLater.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+
+        let removedLater = Recorder<LaunchSpec>()
+        let missing = await validate(
+            ran: removedLater, isExecutable: { _ in removedLater.count == 0 }, Self.predatingTheFlag([beforeTheFlag]))
+        #expect(missing == .missing)
+        #expect(removedLater.count == 1)
+
+        let chosen = Recorder<LaunchSpec>()
+        let asChosen = await validate(
+            ran: chosen, source: .chosen, refusal: { _ in chosen.count > 0 ? shared : nil },
+            Self.predatingTheFlag([beforeTheFlag]))
+        #expect(asChosen == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(chosen.count == 2)
+    }
+
+    /// D1 with the live check: the candidate's folder becomes writable by its group while
+    /// its probe runs, and `ExecutableTrust` refuses the second run.
+    @Test func aFolderMadeGroupWritableDuringTheProbeStopsTheSecondRun() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bin = directory.appending(path: "bin").path(percentEncoded: false)
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        chmod(bin, 0o755)
+        let metab = bin + "/metab"
+        try Data("#!/bin/sh\n".utf8).write(to: URL(filePath: metab))
+        chmod(metab, 0o755)
+        #expect(ExecutableTrust.refusal(metab) == nil, "the check below would prove nothing")
+        let ran = Recorder<LaunchSpec>()
+        let env = DiscoveryEnvironment(
+            home: directory.path(percentEncoded: false), environment: [:], saved: nil, shell: nil,
+            isExecutable: FileChecks.isExecutableFile, canonicalPath: FileChecks.canonicalPath,
+            run: { spec, _ in
+                ran.append(spec)
+                chmod(bin, 0o775)  // its group can now change what is in it
+                return CommandResult(status: 2 << 8, output: clickUsageError)
+            })
+        let result = await RuntimeDiscovery.validate(metab, env, source: .loginShell)
+        guard case .untrusted(let reason) = result else {
+            Issue.record("expected a refusal, got \(result)")
+            return
+        }
+        #expect(reason.contains("can be changed by its group"))
+        #expect(ran.count == 1)
     }
 
     /// The machine the defect was found on: uv's tool directory holds the old build, and
@@ -527,25 +651,13 @@ private func loginShellOutput(path: String) -> [String] {
             "~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --exit-on-eof, and") == true)
     }
 
-    /// The same check against a real process: a script that answers as click does, from
-    /// its own stderr and exit status, through the app's command runner.
-    @Test func aRealProcessThatRejectsTheFlagIsTooOld() async throws {
+    /// Validates a script written to a fresh folder through the app's command runner, and
+    /// returns the result with what each run printed and how it ended.
+    private func validateScript(_ body: String) async throws -> (CandidateResult, [CommandResult]) {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let metab = directory.appending(path: "metab").path(percentEncoded: false)
-        let script = """
-            #!/bin/sh
-            for argument in "$@"; do
-              if [ "$argument" = --exit-on-eof ]; then
-                printf '%s\\n' "Usage: metab [OPTIONS] [ROOT]" "Try 'metab --help' for help." "" \\
-                  "Error: No such option: --exit-on-eof" >&2
-                exit 2
-              fi
-            done
-            echo "\(beforeTheFlag)"
-
-            """
-        try Data(script.utf8).write(to: URL(filePath: metab))
+        try Data(("#!/bin/sh\n" + body).utf8).write(to: URL(filePath: metab))
         chmod(metab, 0o755)
         let results = Recorder<CommandResult>()
         let env = DiscoveryEnvironment(
@@ -557,11 +669,40 @@ private func loginShellOutput(path: String) -> [String] {
                 return result
             },
             refusal: { _ in nil })
-        #expect(await RuntimeDiscovery.validate(metab, env) == .tooOld(
-            version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
-        let probe = try #require(results.all.first)
+        let result = await RuntimeDiscovery.validate(metab, env)
+        return (result, results.all)
+    }
+
+    /// The same checks against real processes: scripts that answer from their own stderr
+    /// and exit status, through the app's command runner. One rejects the flag as the
+    /// measured old build does; the other prints the same lines and is then killed, which
+    /// is no rejection of the flag, whatever it printed.
+    @Test func realProcessesAreJudgedByHowTheyEnd() async throws {
+        // Each line single-quoted for the shell, with its own quotes closed and escaped.
+        let usage = clickUsageError.map { "'" + $0.replacingOccurrences(of: "'", with: #"'\''"#) + "'" }
+            .joined(separator: " ")
+        let (old, oldRuns) = try await validateScript("""
+            for argument in "$@"; do
+              if [ "$argument" = --exit-on-eof ]; then printf '%s\\n' \(usage) >&2; exit 2; fi
+            done
+            echo "\(beforeTheFlag)"
+
+            """)
+        #expect(old == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        let probe = try #require(oldRuns.first)
         #expect(probe.status.map(ExitStatus.init(waitStatus:)) == .exited(2))
-        #expect(probe.output.last == "Error: No such option: --exit-on-eof")
-        #expect(results.count == 2)
+        #expect(probe.output == clickUsageError)
+        #expect(oldRuns.count == 2)
+
+        let (killed, killedRuns) = try await validateScript("""
+            for argument in "$@"; do
+              if [ "$argument" = --exit-on-eof ]; then printf '%s\\n' \(usage) >&2; kill -KILL $$; fi
+            done
+            echo "\(beforeTheFlag)"
+
+            """)
+        #expect(killed == .rejected("--exit-on-eof --version printed: \(clickUsageError.last ?? "")"))
+        #expect(killedRuns.first?.status.map(ExitStatus.init(waitStatus:)) == .signaled(SIGKILL))
+        #expect(killedRuns.count == 1)
     }
 }
