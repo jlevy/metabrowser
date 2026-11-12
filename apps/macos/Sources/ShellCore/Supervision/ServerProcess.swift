@@ -20,7 +20,8 @@ public nonisolated protocol ServerProcess: AnyObject, Sendable {
     func waitForOutputEnd() async -> Void?
     /// Sends `signal` to the child's whole process group, until `release()`.
     func signalGroup(_ signal: Int32)
-    /// Gives up the child's pid: reaps it now if it has exited, or as soon as it does.
+    /// Gives up the child's pid: reaps it now if `waitForExit()` has returned, or else as
+    /// soon as the child's exit is observed.
     /// Once a child is reaped and its group is empty, the kernel can hand the same id to
     /// an unrelated process group, so `signalGroup` does nothing after this.
     func release()
@@ -211,9 +212,9 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
             var info = siginfo_t()
             guard waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == child
             else { return }
-            latch.resolve(Self.waitStatus(info))
+            let status = Self.waitStatus(info)
+            ownership.exited { latch.resolve(status) }
             source.cancel()
-            ownership.exited()
         }
         source.setEventHandler(handler: observe)
         source.resume()
@@ -277,9 +278,22 @@ nonisolated final class ChildOwnership: Sendable {
 
     private let pid: pid_t
     private let state = OSAllocatedUnfairLock(initialState: State())
+    private let sendToGroup: @Sendable (pid_t, Int32) -> Void
+    private let reapZombie: @Sendable (pid_t) -> Void
 
-    init(pid: pid_t) {
+    /// `sendToGroup` and `reapZombie` are the two system calls whose order ownership
+    /// decides; tests record them instead.
+    init(
+        pid: pid_t,
+        sendToGroup: @escaping @Sendable (pid_t, Int32) -> Void = { pid, signal in _ = kill(-pid, signal) },
+        reapZombie: @escaping @Sendable (pid_t) -> Void = { pid in
+            var status: Int32 = 0
+            _ = waitpid(pid, &status, 0)  // a zombie: returns at once
+        }
+    ) {
         self.pid = pid
+        self.sendToGroup = sendToGroup
+        self.reapZombie = reapZombie
     }
 
     var isReaped: Bool { state.withLock { $0.reaped } }
@@ -287,16 +301,20 @@ nonisolated final class ChildOwnership: Sendable {
     func signalGroup(_ signal: Int32) {
         state.withLock { state in
             guard !state.reaped else { return }
-            kill(-pid, signal)
+            sendToGroup(pid, signal)
         }
     }
 
-    /// The exit handler saw the child exit.
-    func exited() {
+    /// The exit handler saw the child exit, and `announce` resumes the exit waiters.
+    /// The exit is recorded, and the child reaped if it is already released, before
+    /// `announce` runs: a waiter that releases the child the moment `waitForExit()`
+    /// returns then reaps it at once, and no later signal reaches its group.
+    func exited(announce: () -> Void) {
         state.withLock { state in
             state.exited = true
             reapIfDone(&state)
         }
+        announce()
     }
 
     func release() {
@@ -308,8 +326,7 @@ nonisolated final class ChildOwnership: Sendable {
 
     private func reapIfDone(_ state: inout State) {
         guard state.exited, state.released, !state.reaped else { return }
-        var status: Int32 = 0
-        _ = waitpid(pid, &status, 0)  // a zombie: returns at once
+        reapZombie(pid)
         state.reaped = true
     }
 }
