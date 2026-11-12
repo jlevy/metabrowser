@@ -97,17 +97,30 @@ const sandbox = {
   Object,
   String,
 };
+const moduleSource = fs.readFileSync(
+  path.join(repoRoot, "src/metabrowser/static/source-append.js"),
+  "utf-8",
+);
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(
-  fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/source-append.js"), "utf-8"),
-  sandbox,
-  { filename: "source-append.js" },
-);
+vm.runInContext(moduleSource, sandbox, { filename: "source-append.js" });
 
 const api = sandbox.MetabrowserSourceAppend;
 check("the module installs its namespace", !!api, "MetabrowserSourceAppend missing");
+
+// The same module in a runtime without Intl.Segmenter, which an engine may lack.
+const bare = { Math, Number, Object, String };
+bare.window = bare;
+bare.globalThis = bare;
+vm.createContext(bare);
+vm.runInContext("delete Intl.Segmenter;", bare);
+vm.runInContext(moduleSource, bare, { filename: "source-append.js" });
+const bareApi = bare.MetabrowserSourceAppend;
+check(
+  "the bare runtime has no Intl.Segmenter",
+  vm.runInContext("typeof Intl.Segmenter", bare) === "undefined",
+);
 
 // ── Growth ────────────────────────────────────────────────────────
 check("growth doubles the last request", api.nextChunkBytes(1024, 1 << 30) === 2048);
@@ -305,10 +318,129 @@ check("empty text has no pieces", api.textPieces("").length === 0);
     }
   }
 }
+// Grapheme boundaries depend on what comes before them: whether a regional indicator
+// starts a flag depends on how many indicators precede it in its run. So a cut is
+// checked against the boundaries of the whole text, from the engine's own segmenter,
+// never against a piece of it.
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** Every grapheme boundary of the whole text, in order, with its end. */
+function boundariesOf(text) {
+  const found = Array.from(segmenter.segment(text), (segment) => segment.index);
+  found.push(text.length);
+  return found;
+}
+
+/**
+ * Inside a line longer than the bound, each cut is the last grapheme boundary of the
+ * whole text the bound allows; when the window holds none, one cluster is longer than
+ * the bound and the cut falls back to a code point.
+ */
+function cutsAtGraphemes(name, text, pieces, limit = LIMIT) {
+  const boundaries = boundariesOf(text);
+  let start = 0;
+  for (let index = 0; index < pieces.length - 1; index += 1) {
+    const cut = start + pieces[index].length;
+    const end = start + limit;
+    if (!text.slice(start, end).includes("\n")) {
+      const last = boundaries.filter((at) => at > start && at <= end).pop();
+      check(
+        `${name}: cut ${index + 1} at ${cut} is the last grapheme boundary by ${end}`,
+        last === undefined || cut === last,
+        `expected ${last}`,
+      );
+    }
+    start = cut;
+  }
+}
+
+{
+  // A flag is two regional indicators, and a run of flags pairs from its start. A
+  // window that begins between a flag's two indicators pairs them the other way.
+  const text = `${"a".repeat(65_502)}${"\u{1F1FA}\u{1F1F8}".repeat(9)}z`;
+  const pieces = api.textPieces(text);
+  wellSplit("nine flags across the bound", text, pieces);
+  cutsAtGraphemes("nine flags across the bound", text, pieces);
+  check(
+    "nine flags across the bound: the ninth flag moves whole to the next node",
+    pieces[0].length === 65_534 && pieces[1].startsWith("\u{1F1FA}\u{1F1F8}"),
+    lengths(pieces),
+  );
+}
+{
+  // Runs of indicators of every parity, ending at every position near the bound,
+  // after a lone indicator that shifts which pairs are flags.
+  for (const lead of ["", "\u{1F1EB}"]) {
+    for (let flags = 1; flags <= 40; flags += 7) {
+      for (let shift = 0; shift < 8; shift += 1) {
+        const run = `${lead}${"\u{1F1FA}\u{1F1F8}".repeat(flags)}`;
+        const text = `${"a".repeat(LIMIT - run.length + 1 + shift)}${run}z`;
+        const label = `${lead ? "a lone indicator and " : ""}${flags} flags, shifted ${shift}`;
+        const pieces = api.textPieces(text);
+        wellSplit(label, text, pieces);
+        cutsAtGraphemes(label, text, pieces);
+      }
+    }
+  }
+}
+{
+  // A cluster of a hundred code units, past any short lookbehind, still moves whole.
+  const cluster = `e${"́".repeat(99)}`;
+  const text = `${"a".repeat(LIMIT - 50)}${cluster}z`;
+  const pieces = api.textPieces(text);
+  wellSplit("a 100-unit cluster across the bound", text, pieces);
+  check(
+    "a 100-unit cluster across the bound moves whole to the next node",
+    pieces[0].length === LIMIT - 50 && pieces[1].startsWith(cluster),
+    lengths(pieces),
+  );
+}
+{
+  // One cluster longer than the bound has no boundary to cut at, so it is cut at the
+  // last code point boundary: never inside a surrogate pair.
+  const text = `e${"\u{1D167}".repeat(40_000)}`;
+  const pieces = api.textPieces(text);
+  wellSplit("a cluster longer than the bound", text, pieces);
+  check(
+    "a cluster longer than the bound is cut at a code point",
+    pieces[0].length === LIMIT - 1,
+    lengths(pieces),
+  );
+}
+{
+  // Without Intl.Segmenter the cut is at a code point: a surrogate pair and a CRLF stay
+  // whole, and a combining accent can be cut from its letter.
+  const pair = `${"a".repeat(LIMIT - 1)}\u{1F600}b`;
+  const pairPieces = bareApi.textPieces(pair);
+  wellSplit("without a segmenter, a surrogate pair", pair, pairPieces);
+  check(
+    "without a segmenter, a surrogate pair across the bound moves whole",
+    lengths(pairPieces) === `[${LIMIT - 1},3]`,
+    lengths(pairPieces),
+  );
+  const crlf = `${"a".repeat(LIMIT - 1)}\r\nb`;
+  const crlfPieces = bareApi.textPieces(crlf);
+  wellSplit("without a segmenter, a CRLF", crlf, crlfPieces);
+  check(
+    "without a segmenter, a CRLF across the bound moves whole",
+    lengths(crlfPieces) === `[${LIMIT - 1},3]`,
+    lengths(crlfPieces),
+  );
+  const accent = `${"a".repeat(LIMIT - 1)}éz`;
+  const accentPieces = bareApi.textPieces(accent);
+  wellSplit("without a segmenter, an accent", accent, accentPieces);
+  check(
+    "without a segmenter, an accent across the bound is cut from its letter",
+    lengths(accentPieces) === `[${LIMIT},2]` && accentPieces[1].startsWith("́"),
+    lengths(accentPieces),
+  );
+}
 {
   // Random text against small bounds, so every kind of boundary falls on every
-  // position: lines, CRLF, lone CR, surrogate pairs, and clusters longer than the
-  // bound, which must still split rather than stall.
+  // position: lines, CRLF, lone CR, surrogate pairs, lone regional indicators that
+  // pair with their neighbors, accents, emoji sequences, and clusters longer than the
+  // bound, which must still split rather than stall. Every cut inside a line is checked
+  // against the whole text's grapheme boundaries.
   let state = 0x9e3779b9;
   const random = () => {
     state ^= state << 13;
@@ -318,21 +450,43 @@ check("empty text has no pieces", api.textPieces("").length === 0);
     state >>>= 0;
     return state;
   };
-  const alphabet = ["a", "b", " ", "\n", "\r\n", "\r", "😀", "é", "漢", "👩‍👧", "🇺🇸"];
-  for (let trial = 0; trial < 400; trial += 1) {
+  const alphabet = [
+    "a",
+    "b",
+    " ",
+    "\n",
+    "\r\n",
+    "\r",
+    "\u{1F600}",
+    "́",
+    "漢",
+    "‍",
+    "\u{1F469}",
+    "\u{1F3FD}",
+    "\u{1F1FA}",
+    "\u{1F1F8}",
+    "\u{1F1EB}",
+  ];
+  for (let trial = 0; trial < 2_000; trial += 1) {
     const parts = [];
     const count = 1 + (random() % 60);
     for (let index = 0; index < count; index += 1) {
+      // A quarter of the draws are runs of up to 40 indicators, long enough for a
+      // window to start inside one.
+      const indicators = random() % 4 === 0 ? random() % 41 : 0;
+      for (let run = 0; run < indicators; run += 1) {
+        parts.push(alphabet[alphabet.length - 3 + (random() % 3)]);
+      }
       parts.push(alphabet[random() % alphabet.length]);
     }
     const text = parts.join("");
-    const limit = 2 + (random() % 12);
-    wellSplit(
-      `random text ${trial} at a bound of ${limit}`,
-      text,
-      api.textPieces(text, limit),
-      limit,
-    );
+    // Past 32 units, too, the lookbehind an earlier version trusted.
+    const limit = 2 + (random() % 79);
+    const label = `random text ${trial} at a bound of ${limit}`;
+    const pieces = api.textPieces(text, limit);
+    wellSplit(label, text, pieces, limit);
+    cutsAtGraphemes(label, text, pieces, limit);
+    wellSplit(`${label}, without a segmenter`, text, bareApi.textPieces(text, limit), limit);
   }
 }
 {

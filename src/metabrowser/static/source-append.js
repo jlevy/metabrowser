@@ -31,10 +31,6 @@
    */
   const TEXT_NODE_MAX_LENGTH = 65_536;
 
-  // How far either side of a cut inside a long line the grapheme search looks.
-  // A cluster longer than this, which no real text has, is cut at a code point.
-  const GRAPHEME_WINDOW = 32;
-
   /** @type {Intl.Segmenter | null | undefined} */
   let graphemes;
 
@@ -44,16 +40,32 @@
   const isLowSurrogate = (code) => code >= 0xdc00 && code <= 0xdfff;
 
   /**
-   * Where to cut a line longer than the bound, at or before `end`: the last
-   * grapheme boundary when the engine can find one, so an accent, an emoji
-   * sequence, or a flag is never drawn in two pieces, and otherwise the last
-   * code point boundary that does not separate CR from LF.
+   * Where to cut a line longer than the bound, at or before `end`.
+   *
+   * Two ASCII characters always have a grapheme boundary between them, except CR
+   * and LF, so a long line of ASCII, such as minified code, is cut at the bound
+   * without a segmenter. Otherwise, where the engine has Intl.Segmenter, the cut
+   * is the start of the grapheme cluster that holds `end`, so an accent, an emoji
+   * sequence, or a flag stays whole. A boundary depends on the text before it, back
+   * to the previous boundary: whether a regional indicator starts a flag depends
+   * on how many precede it in its run. The piece's start is a boundary, so the line
+   * is segmented from there, which is exact and never reaches back past the piece.
+   *
+   * Without Intl.Segmenter, or inside one cluster longer than the bound, the cut is
+   * the last code point boundary that keeps a surrogate pair and a CRLF whole: an
+   * accent can then be cut from its letter, and the next piece, which starts inside
+   * that cluster, is segmented as though it did not.
    *
    * @param {string} text
    * @param {number} start Where the piece starts; the cut is after it.
    * @param {number} end The furthest cut the bound allows.
    */
   function cutInsideLine(text, start, end) {
+    const before = text.charCodeAt(end - 1);
+    const after = text.charCodeAt(end);
+    if (before < 0x80 && after < 0x80 && !(before === 0x0d && after === 0x0a)) {
+      return end;
+    }
     if (graphemes === undefined) {
       graphemes =
         typeof Intl === "object" && typeof Intl.Segmenter === "function"
@@ -61,26 +73,14 @@
           : null;
     }
     if (graphemes) {
-      const from = Math.max(start, end - GRAPHEME_WINDOW);
-      const nearby = text.slice(from, Math.min(text.length, end + GRAPHEME_WINDOW));
-      let best = 0;
-      for (const { index } of graphemes.segment(nearby)) {
-        if (index > end - from) {
-          break;
-        }
-        best = index;
-      }
-      // The window's own start is no evidence of a boundary, so it does not count.
-      if (best > 0) {
-        return from + best;
+      // Through the code point at `end`, which decides whether `end` is a boundary.
+      const cluster = graphemes.segment(text.slice(start, end + 2)).containing(end - start);
+      if (cluster && cluster.index > 0) {
+        return start + cluster.index;
       }
     }
     let cut = end;
-    if (
-      cut - 1 > start &&
-      isLowSurrogate(text.charCodeAt(cut)) &&
-      isHighSurrogate(text.charCodeAt(cut - 1))
-    ) {
+    if (cut - 1 > start && isLowSurrogate(after) && isHighSurrogate(before)) {
       cut -= 1;
     }
     if (cut - 1 > start && text.charCodeAt(cut - 1) === 0x0d && text.charCodeAt(cut) === 0x0a) {
