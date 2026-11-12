@@ -9,9 +9,9 @@ enum AppLog {
 }
 
 /// App lifecycle: the runtime, the folder sessions, the menus, and quitting.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
-    private let recents = RecentFolderStore()
+    private lazy var recentFolders = RecentFoldersMenu { [weak self] in self?.request($0) }
     private let launchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.build(recentFolders: self)
+        NSApp.mainMenu = MainMenu.build(recentFolders: recentFolders)
         installTerminationSignals()
         presentRuntime()
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
@@ -157,9 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(url.lastPathComponent) cannot be served: \(reason).")
         }
-        var folders = recents.folders
-        folders.add(key)
-        recents.folders = folders
+        RecentFoldersMenu.noteOpened(root)
         if let session = sessions[key] as? FolderSession {
             session.showFrontWindow()
             return
@@ -197,37 +195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard response == .OK else { return }
             panel.urls.forEach { self?.request($0) }
         }
-    }
-
-    @objc func openRecent(_ sender: NSMenuItem) {
-        guard let path = sender.representedObject as? String else { return }
-        request(URL(filePath: path, directoryHint: .isDirectory))
-    }
-
-    @objc func clearRecent(_ sender: Any?) {
-        var folders = recents.folders
-        folders.clear()
-        recents.folders = folders
-    }
-
-    /// Rebuilds File > Open Recent each time it opens.
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        for path in recents.folders.existing() {
-            let item = NSMenuItem(
-                title: FileManager.default.displayName(atPath: path), action: #selector(openRecent(_:)),
-                keyEquivalent: "")
-            item.representedObject = path
-            item.toolTip = path
-            item.image = NSWorkspace.shared.icon(forFile: path)
-            item.image?.size = NSSize(width: 16, height: 16)
-            menu.addItem(item)
-        }
-        if menu.items.isEmpty {
-            menu.addItem(NSMenuItem(title: "No Recent Folders", action: nil, keyEquivalent: ""))
-        }
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Clear Menu", action: #selector(clearRecent(_:)), keyEquivalent: ""))
     }
 
     // MARK: - Runtime
