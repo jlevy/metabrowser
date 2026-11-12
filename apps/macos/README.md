@@ -214,7 +214,8 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    app log says “discarding the page of background tab” for the tab shown longest ago
    once four tabs are in the background, and
    `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
-   Selecting that tab reloads its page, with no “Starting” text.
+   Selecting that tab reloads its page, with no “Starting” text, at the top of the page
+   and with no Back or Forward history, since a discarded tab keeps only its address.
 5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
    with `c`, and quit. `session.json` (see Start over) now lists them; the next launch
    logs “restoring 2 window(s): 3 server(s) to start”, the windows and tabs come back,
@@ -744,6 +745,9 @@ Terminal launch.
   announces. `open -a` delivers a file although `Info.plist` declares only
   `public.folder` (checked on macOS 26.5), so Finder’s Open With and the Dock still
   offer the app for folders only.
+  A file opened while its folder’s server is starting, has failed, or is restarting
+  loads once the server is ready: a requested page outlasts the page the window showed
+  before, through Retry, a discard, and a save (`NextPage`).
 
 - **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows,
   Move Tab to New Window, and dragging a tab combine any folders.
@@ -777,17 +781,40 @@ Terminal launch.
   A save writes a private temporary file beside the session and renames it over the old
   one (`SessionStore`), so a launch after a crash finds the previous session or the new
   one, never part of one.
-  The next launch recreates the windows and tabs, and only each window’s shown tab loads
-  its page. The servers start one at a time, each after the one before it is ready or has
+  The next launch reads the file once, through one descriptor: a regular file, not a
+  link or a pipe, of at most 1 MB however it changes meanwhile.
+  It rebuilds at most the front 20 windows and 50 tabs, each window keeping the tab it
+  shows (`RestoreBudget`, whose basis follows this list), and admits every saved root
+  again before deciding anything about it (`RootAdmission`): the file may have been
+  edited, and a folder on the path replaced or relinked.
+  Only a root whose identity is certain warms in the background.
+  The walk opens each component relative to the one before, with `O_NOFOLLOW`, so a
+  folder replaced after it was opened cannot redirect the rest, and it never opens a
+  protected location or anything inside one, compared without regard to case and in its
+  Data-volume spelling too (`/System/Volumes/Data/Volumes` is `/Volumes`). The folder it
+  reaches must be on the home folder’s volume, and the kernel’s name for it
+  (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
+  location; that name is the root’s identity, so aliases of one folder share one server.
+  A root that falls short (a link anywhere on its path, another volume, a protected
+  spelling) waits for its tab under the spelling it was saved with, untouched, so
+  selecting it serves what that path names then.
+  A root spelled with `.`, `..`, or empty components is dropped unopened, and so is one
+  whose folder is gone.
+  The launch recreates the windows and tabs, and only each window’s shown tab loads its
+  page. The servers start one at a time, each after the one before it is ready or has
   failed: the front tab’s first, then those of the tabs the other windows show, front to
   back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
+  Each background root is admitted again just before its server starts, and one that
+  changed while the servers before it started waits for its tab instead.
+  The server takes a path, so a process that changes the path between that last check
+  and the server resolving it can still win; the deferral is the app’s own policy, and
+  macOS enforces its privacy grants regardless.
   A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
   other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
   folder that holds one, such as the home folder) starts only when one of its tabs is
   selected, so a launch raises no privacy prompt for a folder nobody is looking at; the
-  front tab is selected, so it starts (`ProtectedLocations`). A folder that no longer
-  exists is dropped, except a protected one, which is not looked at until it is selected
-  and then says it is gone.
+  front tab is selected, so it starts (`ProtectedLocations`). A protected folder that is
+  gone says so only when its tab is selected.
   Settings > “Reopen the last session’s folders when Metabrowser opens” turns the
   restore off; the session is still saved.
   A session file that cannot be read is logged and ignored, and the next save replaces
@@ -808,6 +835,25 @@ Three background pages hold at most about 0.6 GB at the brief’s upper figure.
 The limit is a conservative default, not a measured optimum: showing a discarded tab
 costs a reload of a few hundred milliseconds, and how often people return to a tab past
 the third is unmeasured.
+A discarded tab keeps only its page’s address: it comes back at the top of the page,
+with no Back or Forward history and none of the page’s own state that its address does
+not hold.
+
+The restore budget’s basis, measured the same day by building windows that each hold a
+never-loaded web view, as a restore builds them:
+
+| Built | Main-thread time | Footprint added to the app |
+| --- | --- | --- |
+| 20 tabs in one window | 588 ms | 23 MB |
+| 50 tabs in one window | 1.76 s | 55 MB |
+| 100 tabs in one window | 4.47 s | 113 MB |
+| 20 separate windows | 187 ms | 16 MB |
+
+Each window’s shown tab then loads a page of 111–143 MB, and each distinct root starts a
+server of about 65 MB (the server-topology brief).
+Twenty windows and fifty tabs keep a launch under two seconds of building and under 3 GB
+of pages at the measured upper figure: far past an everyday session, and a bound on an
+edited or corrupted file.
 
 ### Why the Title Is a Title-Bar Accessory
 
@@ -926,6 +972,9 @@ Each gap points to the part of the brief that closes it.
   `open -a` or File > Open.
 - The restore recreates windows, tabs, frames, and pages, but not full screen, Spaces,
   minimized windows, or each tab’s Back and Forward history.
+  A discarded background tab loses the same within one launch: its history, its scroll
+  position, and the page’s own state that its address does not hold.
+- A restore past its budget, 20 windows and 50 tabs, rebuilds only the front ones.
   A page reached by the page’s own history changes, without a load, is saved at the next
   save or at quit.
 - A restored folder’s server starts once the one before it answers, not once that one
