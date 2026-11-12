@@ -296,8 +296,10 @@ private nonisolated enum KernelCall: Equatable, Sendable {
     /// The leader exits and leaves a background job in its group: the sweep still
     /// reaches the job, because the unreaped leader keeps the group id.
     @Test func theSweepAfterTheLeaderExitsReachesItsGroup() async throws {
-        let child = try SpawnedProcess(LaunchSpec(executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $!; exit 0"]))
+        let child = try SpawnedProcess(LaunchSpec(
+            executable: "/bin/sh", arguments: ["-c", "sleep \(survivorSeconds) & echo $!; exit 0"]))
         let job = try #require(await firstLine(of: child).flatMap { pid_t($0) })
+        defer { kill(job, SIGKILL) }
         _ = await child.waitForExit()
         #expect(isUnreapedZombie(child.pid))
         #expect(processExists(job))
