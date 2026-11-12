@@ -125,6 +125,7 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
             "node": None,
             "ext_tallies": [],
             "file_type_breakdown": None,
+            "file_type_legend": None,
             "index_status": "scanning",
             "indexed_files": 0,
             "max_files": 500_000,
@@ -140,9 +141,28 @@ def test_rollup_envelope_accepts_honest_cold_state() -> None:
                 "node": None,
                 "ext_tallies": [[".py", 1, 1, 1, 1]],
                 "file_type_breakdown": None,
+                "file_type_legend": None,
                 "index_status": "scanning",
                 "indexed_files": 0,
                 "max_files": 500_000,
                 "truncated": False,
             }
         )
+
+
+def test_rollup_envelope_requires_the_legend_its_breakdown_implies() -> None:
+    cold = {
+        "root": "/served",
+        "path": "nested",
+        "node": None,
+        "ext_tallies": [],
+        "file_type_breakdown": None,
+        "index_status": "scanning",
+        "indexed_files": 0,
+        "max_files": 500_000,
+        "truncated": False,
+    }
+    with pytest.raises(AssertionError, match="carries file_type_legend"):
+        validate_rollup_envelope(cold)
+    with pytest.raises(AssertionError):
+        validate_rollup_envelope({**cold, "file_type_legend": {"schema": "file-type-legend-v1"}})

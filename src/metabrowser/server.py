@@ -100,6 +100,7 @@ from metabrowser.file_kinds import (
     register_file_kind_detector,
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.folder_discovery import discover_folder
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
@@ -2398,6 +2399,7 @@ async def api_rollup(request: Request) -> Response:
         ):
             raise TypeError("the rollup read returned the wrong projections")
         payload = rollup.payload
+        breakdown = payload.get("file_type_breakdown") if payload is not None else None
         state = coordinated.result.state
         indexed_files = diagnostic.payload.files_indexed
         status = _index_status_from_state(
@@ -2412,9 +2414,8 @@ async def api_rollup(request: Request) -> Response:
                     "path": subpath,
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
-                    "file_type_breakdown": (
-                        payload.get("file_type_breakdown") if payload is not None else None
-                    ),
+                    "file_type_breakdown": breakdown,
+                    "file_type_legend": build_file_type_legend(breakdown),
                     "index_status": status,
                     "indexed_files": indexed_files,
                     "max_files": runtime.config.budget.max_files,
