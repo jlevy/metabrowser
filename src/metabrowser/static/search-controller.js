@@ -36,7 +36,7 @@
    * Files keep the whole cap, and pull requests have this many rows of their own after
    * them. Being below the files, a late group moves no file row whatever the file count
    * is, so it needs no share of the files' cap: halving the cap for it cut a file query
-   * to 50 of 100 rows even where no pull request matched (PR 370 review A4).
+   * to 50 of 100 rows even where no pull request matched.
    */
   const PULL_RESULT_LIMIT = 20;
 

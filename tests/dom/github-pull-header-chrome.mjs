@@ -13,13 +13,13 @@
 // starts at one place. That is layout, which no browserless DOM can compute: the
 // stylesheet text passed with a state badge whose first flex item was a zero-height sizer,
 // which hung the badge below the line and made the loaded header 5.6 px taller than the
-// empty one (PR 370 review A3). The row structure itself is pinned browserless in
-// github-pull-page-mount-behavior.js.
-import { spawn } from "node:child_process";
+// empty one. And no record's row may end past the header: an offer kept whole ran 262 px
+// past it in a 360 px pane, and the pane scrolled sideways. The row structure itself is
+// pinned browserless in github-pull-page-mount-behavior.js.
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
+import { launchChrome } from "./chrome-session.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -93,84 +93,32 @@ function serve() {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-async function launch(bin) {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "mb-pull-header-"));
-  const chrome = spawn(
-    bin,
-    [
-      "--headless=new",
-      "--remote-debugging-port=0",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--force-device-scale-factor=1",
-      "--window-size=1280,900",
-      `--user-data-dir=${profile}`,
-      "about:blank",
-    ],
-    { stdio: ["ignore", "ignore", "pipe"] },
-  );
-  chrome.stderr.on("data", () => {});
-  const portFile = path.join(profile, "DevToolsActivePort");
-  for (let attempt = 0; attempt < 200 && !fs.existsSync(portFile); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  const port = fs.readFileSync(portFile, "utf8").split("\n")[0];
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const socket = new WebSocket(
-    targets.find((target) => target.type === "page").webSocketDebuggerUrl,
-  );
-  await new Promise((resolve, reject) => {
-    socket.onopen = resolve;
-    socket.onerror = reject;
-  });
-  let next = 0;
-  const pending = new Map();
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    pending.get(message.id)?.(message);
-    pending.delete(message.id);
-  };
-  const send = (method, params = {}) =>
-    new Promise((resolve, reject) => {
-      next += 1;
-      pending.set(next, (message) =>
-        message.error
-          ? reject(new Error(`${method}: ${message.error.message}`))
-          : resolve(message.result),
-      );
-      socket.send(JSON.stringify({ id: next, method, params }));
-    });
-  const evaluate = async (expression) => {
-    const result = await send("Runtime.evaluate", {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    if (result.exceptionDetails) {
-      throw new Error(JSON.stringify(result.exceptionDetails).slice(0, 800));
-    }
-    return result.result.value;
-  };
-  const close = () => {
-    socket.close();
-    chrome.kill();
-    fs.rmSync(profile, { force: true, recursive: true });
-  };
-  return { close, evaluate, send };
-}
-
 // In the page: mount one record on one tab in a pane of one width and read the header's
 // rows. The page's API is the one github-pull-page-mount-behavior.js mounts with, its ref
 // helpers the production SDK's, and every request it makes answers 304.
-const MEASURE = `async (name, tab, width) => {
+const MEASURE = `async (name, change, tab, width) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
   const body = structuredClone(recorded[name].body);
   for (const envelope of [body, body.pull]) {
     const holder = envelope?.record?.same_as;
     if (holder !== undefined) {
-      envelope.record = recorded[holder].body.record;
+      envelope.record = structuredClone(recorded[holder].body.record);
     }
+  }
+  // A pin behind the pull request's head draws the offer to switch to it.
+  if (change.pinBehind) {
+    body.pin = "1".repeat(40);
+    body.pin_ref = "refs/pull/" + body.number + "/head";
+  }
+  // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
+  if (change.checkoutAtHead) {
+    body.pin = null;
+    body.pin_ref = null;
+  }
+  if (change.lastRefresh) {
+    body.state = "stale";
+    body.last_refresh = change.lastRefresh;
   }
   window.fetch = async () => new Response(null, { status: 304 });
   history.replaceState(null, "", "/pull/" + body.number + (tab ? "/" + tab : ""));
@@ -194,6 +142,7 @@ const MEASURE = `async (name, tab, width) => {
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
+      repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
       icons: { toggle: "" },
     },
   );
@@ -216,17 +165,58 @@ const MEASURE = `async (name, tab, width) => {
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strut ? Math.round(box(strut).height * 100) / 100 : null,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(meta))) * 100) / 100 : null,
+    offers: header.querySelectorAll(".github-pull-offer").length,
+    // How far any of the header's content ends past its content box, where it is not
+    // clipped by a box that cuts it short, and which element it is; and the pane's own
+    // sideways scroll.
+    ...(() => {
+      const edge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+      let past = 0;
+      let culprit = null;
+      for (const node of header.querySelectorAll("*")) {
+        let right = box(node).right;
+        for (let up = node.parentElement; up && up !== header; up = up.parentElement) {
+          if (getComputedStyle(up).overflowX !== "visible") {
+            right = Math.min(right, box(up).right);
+          }
+        }
+        if (right - edge > past) {
+          past = right - edge;
+          culprit = node.className || node.tagName;
+        }
+      }
+      return { pastHeader: Math.round(past * 100) / 100, culprit };
+    })(),
+    paneScrolls: pane.scrollWidth > pane.clientWidth,
   };
   handle.dispose();
   return result;
 }`;
 
-// A record that has not arrived, records still loading, loaded, merged, closed, stale, and
-// with the checkout on its head. A failure is let wrap its status row (review A6), so it
-// is not among them.
-const RECORDS = ["absent", "pending", "current", "merged", "closed", "stale", "on_head"];
+// A record that has not arrived, records still loading, loaded, merged, closed, stale, with
+// the checkout on its head, with each offer the status row can draw, and held by a rate
+// limit. A failure is let wrap its status row, so it is not among them.
+const RATE_LIMITED = {
+  outcome: "rate_limited",
+  message: null,
+  reset_at: "2099-01-01T00:00:00Z",
+  at: "2026-09-17T12:30:00Z",
+};
+const RECORDS = [
+  ["absent", {}],
+  ["pending", {}],
+  ["current", {}],
+  ["merged", {}],
+  ["closed", {}],
+  ["stale", {}],
+  ["on_head", {}],
+  ["behind_head", {}],
+  ["current", { pinBehind: true }],
+  ["on_head", { checkoutAtHead: true }],
+  ["current", { lastRefresh: RATE_LIMITED }],
+];
 const TABS = ["", "files", "checks"];
-const WIDTHS = [960, 560];
+const WIDTHS = [980, 760, 560, 420, 360];
 
 async function main() {
   const bin = process.env.CHROME_BIN;
@@ -237,55 +227,73 @@ async function main() {
     throw new Error("KPRESS_STATIC holds no css/style-tokens.css");
   }
   const server = await serve();
-  const browser = await launch(bin);
   try {
-    await browser.send("Page.enable");
-    await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/` });
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (
-        await browser.evaluate(
-          `document.readyState === "complete" && Boolean(window.metabrowser?.refChip)`,
-        )
-      ) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    for (const width of WIDTHS) {
-      const seen = {};
-      for (const name of RECORDS) {
-        for (const tab of TABS) {
-          const shape = await browser.evaluate(
-            `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(tab)}, ${width})`,
-          );
-          seen[`${name} ${tab || "conversation"}`] = shape;
-          if (shape.badgeOffset !== null) {
+    const browser = await launchChrome(bin);
+    try {
+      await browser.send("Page.enable");
+      await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/` });
+      await browser.waitFor(
+        `document.readyState === "complete" && Boolean(window.metabrowser?.refChip)`,
+      );
+      const offersDrawn = new Set();
+      for (const width of WIDTHS) {
+        const seen = {};
+        for (const [name, change] of RECORDS) {
+          const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
+          for (const tab of TABS) {
+            const shape = await browser.evaluate(
+              `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(change)}, ${JSON.stringify(tab)}, ${width})`,
+            );
+            const where = `${width} px, ${label} ${tab || "conversation"}`;
+            seen[`${label} ${tab || "conversation"}`] = shape;
+            if (shape.offers > 0) {
+              offersDrawn.add(label);
+            }
+            if (shape.badgeOffset !== null) {
+              check(
+                `${where}: the state badge is centred on its row`,
+                Math.abs(shape.badgeOffset) <= 1,
+                String(shape.badgeOffset),
+              );
+            }
             check(
-              `${width} px, ${name} ${tab || "conversation"}: the state badge is centred on its row`,
-              Math.abs(shape.badgeOffset) <= 1,
-              String(shape.badgeOffset),
+              `${where}: the state row is as tall as the stack strut`,
+              shape.strut !== null && Math.abs(shape.meta - shape.strut) <= 0.5,
+              JSON.stringify({ meta: shape.meta, strut: shape.strut }),
+            );
+            check(
+              `${where}: nothing ends past the header, and the pane does not scroll sideways`,
+              shape.pastHeader <= 0.5 && !shape.paneScrolls,
+              JSON.stringify({
+                culprit: shape.culprit,
+                pastHeader: shape.pastHeader,
+                paneScrolls: shape.paneScrolls,
+              }),
             );
           }
+        }
+        const reference = seen["absent conversation"];
+        for (const [key, shape] of Object.entries(seen)) {
           check(
-            `${width} px, ${name} ${tab || "conversation"}: the state row is as tall as the stack strut`,
-            shape.strut !== null && Math.abs(shape.meta - shape.strut) <= 0.5,
-            JSON.stringify({ meta: shape.meta, strut: shape.strut }),
+            `${width} px, ${key}: the header lays out to the empty record's height, row by row`,
+            shape.header === reference.header &&
+              shape.tabBar === reference.tabBar &&
+              JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
+            JSON.stringify({ empty: reference, [key]: shape }),
           );
         }
       }
-      const reference = seen["absent conversation"];
-      for (const [key, shape] of Object.entries(seen)) {
-        check(
-          `${width} px, ${key}: the header lays out to the empty record's height, row by row`,
-          shape.header === reference.header &&
-            shape.tabBar === reference.tabBar &&
-            JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
-          JSON.stringify({ empty: reference, [key]: shape }),
-        );
-      }
+      check(
+        "both offers are drawn by the records that carry them",
+        offersDrawn.has("behind_head") &&
+          offersDrawn.has("current pinBehind") &&
+          offersDrawn.has("on_head checkoutAtHead"),
+        JSON.stringify([...offersDrawn]),
+      );
+    } finally {
+      await browser.close();
     }
   } finally {
-    browser.close();
     server.close();
   }
 }

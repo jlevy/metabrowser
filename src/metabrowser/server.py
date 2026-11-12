@@ -1589,7 +1589,7 @@ async def index(
         # Nothing to keep on screen while the page is staged: the page's own loading state,
         # its header rows at their heights and the tab bar over a body skeleton, replaces
         # this at once (static/app.js#beginPreviewNavigation). Staged, it stayed hidden
-        # behind this skeleton until the record landed, 1.9 s on a cold cache (PR 370 review A9).
+        # behind this skeleton until the record landed, 1.9 s on a cold cache.
         preview_loading = (
             '<div class="pull-request-placeholder mb-delayed-loading" role="status"'
             ' aria-label="Loading pull request" data-preview-empty>'
@@ -1690,7 +1690,13 @@ async def index(
                     break
                 grafts.append((row, children))
                 level = children
-            if len(grafts) == len(ancestors):
+            # While discovery runs, a folder the walk has not reached yet reads as an empty
+            # listing with no further page: grafted, the page drew it empty and open, with
+            # nothing to load, and never selected the landing's row. So the path's folders
+            # are grafted only from a read of complete coverage.
+            if len(grafts) == len(ancestors) and (
+                not ancestors or initial_read.result.state.coverage.complete
+            ):
                 for row, children in grafts:
                     row["children"] = children
                     row["expanded"] = True

@@ -517,6 +517,7 @@ function createShell(pathname, network, options = {}) {
   );
   /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
   const slotToolbar = (toolbar) => {
+    toolbar.querySelector ??= () => null;
     const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
     if (toolbar.dataset.navToolbar !== "files") {
       elements.set(id, toolbar);
@@ -869,6 +870,8 @@ function createShell(pathname, network, options = {}) {
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
     /** The toolbars in the navigation's slot, shown or not. */
     toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
+    /** @param {string} name One toolbar in the slot. */
+    toolbar: (name) => toolbars.find((toolbar) => toolbar.dataset.navToolbar === name),
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1223,6 +1226,18 @@ async function independentMainTabs() {
     "git",
     "a press before registration opens Commits once it is registered",
   );
+  const drawnReplaced = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnReplaced.sandbox.navigationController.start();
+  drawnReplaced.clickTab("git");
+  drawnReplaced.clickTab("files");
+  await settle();
+  drawnReplaced.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnReplaced.sandbox.mainTabs.active(),
+    "files",
+    "a press on another tab replaces a pending Commits press",
+  );
   assert.deepEqual(
     reloaded.tabButtons.map((button) => button.dataset.tab),
     ["files", "git"],
@@ -1242,6 +1257,14 @@ async function independentMainTabs() {
     slots,
     { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
     "each tab shows its own toolbar, and only it",
+  );
+  // A toolbar a narrow pane scrolled comes back at its start.
+  slotted.toolbar("pulls").scrollLeft = 97;
+  slotted.sandbox.mainTabs.activate("pulls");
+  assert.equal(
+    slotted.toolbar("pulls").scrollLeft,
+    0,
+    "a scrolled toolbar comes back at its start",
   );
   const pullsLanding = createShell("/pulls", read, { pulls: true });
   assert.deepEqual(

@@ -209,7 +209,11 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     assert "font-variant-numeric: var(--tabular-numerals);" in _rule(css, ".github-pull-freshness")
     # The offers end the row with Refresh, so the freshness text's width moves none of them.
     end = _rule(css, ".github-pull-status-end")
-    assert "margin-inline-start: auto;" in end and "flex: none;" in end
+    assert "margin-inline-start: auto;" in end and "flex: 0 1 auto;" in end
+    # An offer's sentence gives way before its control; what that lays out to, at every
+    # pane width, is checked in Chrome (tests/test_github_pull_header_chrome.py).
+    assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-offer-text")
+    assert "flex: none;" in _rule(css, ".github-pull-offer > :is(button, a)")
     assert "margin-inline-start" not in _rule(css, ".github-pull-refresh")
     held = _rule(css, ".github-pull-refresh[hidden]")
     assert "visibility: hidden;" in held and "display: inline-block;" in held
@@ -221,7 +225,9 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     # A failure carries its remedy, so it is the one text the row lets wrap.
     failed = _rule(css, ".github-pull-status.github-pull-status-failed")
     assert "flex-wrap: wrap;" in failed and "white-space: normal;" in failed
-    assert 'status.classList.toggle("github-pull-status-failed", model.failure !== null)' in page
+    # A rate limit's hold asks nothing of the reader and lifts by itself: it stays on the line.
+    assert "model.failure !== null && model.failureHold !== true" in page
+    assert "model.failureHold = true;" in page
 
 
 def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
@@ -244,3 +250,12 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "font-variant-numeric: var(--tabular-numerals);" in count
     # Pending, the count is as wide as it will be once it lands.
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
+
+
+def test_a_pulls_rows_stack_position_ends_its_line() -> None:
+    """It arrives from its own answer; anywhere but the end it moves what follows."""
+
+    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    meta = panel[panel.index("function rowMeta(") :]
+    meta = meta[: meta.index("\n  }\n")]
+    assert meta.index("      stack,\n") > meta.index('"github-pulls-refs"')

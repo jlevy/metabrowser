@@ -2881,11 +2881,15 @@ export function mountPullsPanel(container, ctx, mb) {
     );
   }
 
-  /** @param {PullRow} row @param {HTMLElement} stack */
+  /**
+   * The stack's position ends the line: it arrives from its own answer, and inserted after
+   * the number it moved the author and branches right (layout shift 0.0009 to 0.0028).
+   *
+   * @param {PullRow} row @param {HTMLElement} stack
+   */
   function rowMeta(row, stack) {
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-      stack,
       " · ",
       authorLabel(row.author, row.avatar, "github-pulls-author"),
       " · ",
@@ -2894,6 +2898,7 @@ export function mountPullsPanel(container, ctx, mb) {
         " ← ",
         mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
       ]),
+      stack,
     ]);
   }
 

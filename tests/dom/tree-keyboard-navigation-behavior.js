@@ -779,7 +779,7 @@ async function walkSession() {
   check("a settled walk holds nothing", walkNavigator.walking("g.md") === null);
 
   // The key is still down: its repeat is slower than the settle, so walking would only
-  // make each row wait it out (PR 370 review B2). The rest of the hold opens rows at once.
+  // make each row wait it out. The rest of the hold opens rows at once.
   press(true);
   equal("a repeat slower than the settle opens its row at once", opened.at(-1), ["h.md", false]);
   check("a slow repeat starts no timer", timers.size === 0);

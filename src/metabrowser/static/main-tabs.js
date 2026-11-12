@@ -66,7 +66,7 @@
 
     // Commits, asked for before Git discovery registered it: the server draws the tab at
     // first paint, about 50 to 100 ms before discovery, and a click or its shortcut there
-    // did nothing (PR 370 review A13). It opens on registration, unless discovery removes it.
+    // did nothing. It opens on registration, unless discovery removes it.
     let gitOpenPending = false;
 
     /** @param {MetabrowserNavPanel} panel */
@@ -142,7 +142,7 @@
       const wasActive = button?.classList.contains("active");
       button?.remove();
       container?.remove();
-      // Its toolbar goes with it, or the hidden slot keeps the last tally (PR 370 review A15).
+      // Its toolbar goes with it, or the hidden slot keeps the last tally.
       document.getElementById(`nav-toolbar-${panelId}`)?.remove();
       // Never leave the nav with no active tab: if the panel being removed
       // was the visible one, fall back to Files.
@@ -219,6 +219,10 @@
 
     /** @param {string} panelId A click on one of the main navigation tabs. */
     function openMainTab(panelId) {
+      // A press on another tab replaces a pending Commits press.
+      if (panelId !== "git") {
+        gitOpenPending = false;
+      }
       if (panelId === activeNavPanelId) {
         return;
       }
@@ -292,8 +296,18 @@
       // Files tab's toolbar in one slot every tab fills with its own, at one
       // height, so the panel below starts at one y on every tab.
       for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
-        /** @type {HTMLElement} */ (toolbar).hidden =
-          /** @type {HTMLElement} */ (toolbar).dataset.navToolbar !== panelId;
+        const slot = /** @type {HTMLElement} */ (toolbar);
+        const returning = slot.hidden && slot.dataset.navToolbar === panelId;
+        slot.hidden = slot.dataset.navToolbar !== panelId;
+        // A toolbar a narrow pane scrolled comes back at its start, with its chosen
+        // filter, the roving tab stop of its chips, in view: it came back scrolled, with
+        // the filter off the edge.
+        if (returning && slot.scrollLeft > 0) {
+          slot.scrollLeft = 0;
+          slot
+            .querySelector('[tabindex="0"]')
+            ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+        }
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;

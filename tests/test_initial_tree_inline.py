@@ -9,6 +9,7 @@ explorations/performance-loop/experiments/exp-004.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from metabrowser import server
+from metabrowser.inventory_engine.contract import Coverage, CoverageReason
 from tests.inventory_harness import inventory_harness
 
 STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
@@ -335,3 +337,38 @@ def test_a_landing_deeper_than_the_bound_inlines_no_folder(
     assert "expanded" not in a and a["children"] is None
     shallow = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/e.md")))
     assert shallow is not None and shallow["path"] == "a/e.md"
+
+
+def test_a_landing_inlines_no_folder_while_discovery_runs(tmp_path: Path, monkeypatch: Any) -> None:
+    """A folder the walk has not reached reads as an empty listing with no further page.
+    Grafted, the page drew it empty and open, with nothing to load, and never selected the
+    landing's row; so a read of incomplete coverage grafts no folder."""
+
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    real = server._inventory_runtime_for
+
+    def unsettled(request: Any) -> Any:
+        runtime = real(request)
+        coordinator = runtime.coordinator
+
+        async def read(read_request: Any) -> Any:
+            answer = await coordinator.read(read_request)
+            state = dataclasses.replace(
+                answer.result.state,
+                coverage=Coverage(complete=False, reason=CoverageReason.BUILDING),
+            )
+            return dataclasses.replace(
+                answer, result=dataclasses.replace(answer.result, state=state)
+            )
+
+        return SimpleNamespace(coordinator=SimpleNamespace(read=read))
+
+    monkeypatch.setattr(server, "_inventory_runtime_for", unsettled)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+    assert payload is not None and "path" not in payload
+    a = _node(payload["tree"], "a")
+    assert "expanded" not in a and a["children"] is None
+    # A root file is its own row, which the root listing names whatever discovery holds.
+    root_file = _inline_payload(asyncio.run(_landing_html(tmp_path, "README.md")))
+    assert root_file is not None and root_file["path"] == "README.md"

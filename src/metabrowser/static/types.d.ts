@@ -140,7 +140,7 @@ type MetabrowserViewLifecycleStage = Readonly<{
 type MetabrowserViewCompositionRuntime = Readonly<{
   FACE_WAIT_MS: number;
   /** Wait, at most FACE_WAIT_MS, for the faces a staged view's text is set in; `null` when they are there. */
-  settleFaces(root: Element | null | undefined, view?: string): Promise<void> | null;
+  settleFaces(root: Element | null | undefined): Promise<void> | null;
   createLifecycle(options?: { onDisposeError?: (error: unknown) => void }): Readonly<{
     begin(): MetabrowserViewLifecycleStage;
     disposeActive(): void;

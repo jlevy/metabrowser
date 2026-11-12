@@ -6,7 +6,7 @@
 // faces are loaded, with the page's timers replaced so the cap elapses when a scenario says
 // it does. The wait asks for the faces by name: a renderer that writes its DOM without
 // yielding leaves the stage unlaid, so no face has been requested yet and
-// `document.fonts.status` still reads "loaded" (PR 370 review A2). Whether a real engine
+// `document.fonts.status` still reads "loaded". Whether a real engine
 // lays the faces out as the computed style says is the browser's; this pins what the shell
 // asks for and how long it holds the stage.
 
@@ -55,16 +55,28 @@ function compositorWith({
   const timers = [];
   const cleared = [];
   const requested = [];
-  const reads = { styles: 0 };
+  const reads = { declaredLoads: 0, styles: 0 };
   /** @type {Map<string, () => void>} */
   const arrivals = new Map();
+  const idle = [];
+  // The page's declared faces: one there, one not yet asked for.
+  const declared = [
+    { status: "loaded", load: () => Promise.resolve() },
+    {
+      status: allLoaded ? "loaded" : "unloaded",
+      load() {
+        this.status = "loading";
+        reads.declaredLoads += 1;
+        return Promise.resolve();
+      },
+    },
+  ];
   const fontSet = {
     status: "loaded",
     ready: Promise.resolve(),
     check: () => true,
     *[Symbol.iterator]() {
-      yield { status: "loaded" };
-      yield { status: allLoaded ? "loaded" : "unloaded" };
+      yield* declared;
     },
     load(font, text) {
       if (throwing) {
@@ -107,6 +119,10 @@ function compositorWith({
     clearTimeout(id) {
       cleared.push(id);
     },
+    requestIdleCallback(callback) {
+      idle.push(callback);
+      return idle.length;
+    },
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
@@ -115,6 +131,8 @@ function compositorWith({
     arrivals,
     cleared,
     composition: sandbox.MetabrowserViewComposition,
+    declared,
+    idle,
     reads,
     requested,
     timers,
@@ -158,7 +176,7 @@ async function main() {
 
   // The A2 case: nothing has laid the stage out, so the font set reads "loaded" and no face
   // is loading, but the stage's faces are not there.
-  const waiting = cold.composition.settleFaces(proseDocument(), "markdown:rendered");
+  const waiting = cold.composition.settleFaces(proseDocument());
   check("faces the stage's text needs hold it although nothing is loading yet", waiting !== null);
   check("the stage stays held while its faces load", !(await settledWithin(waiting)));
   check(
@@ -183,22 +201,48 @@ async function main() {
     JSON.stringify({ cleared: cold.cleared, timers: cold.timers.map((timer) => timer.delay) }),
   );
 
-  // A later stage of the same view asks for the faces it was set in, without reading the
-  // stage's style again: that read recalculated a large document's style twice.
-  const readsBefore = cold.reads.styles;
-  const requestedBefore = cold.requested.length;
-  const again = cold.composition.settleFaces(proseDocument(), "markdown:rendered");
+  // Every staged document's faces are read: a later document can be the first to use one,
+  // and remembering the first document's faces let an all-italic document after a plain
+  // one swap faces after it was shown.
+  const plainFirst = compositorWith({ loaded: new Set([font(regular)]) });
+  await plainFirst.composition.settleFaces(element(regular, { p: element(regular) }));
+  const italicDocument = element(regular, { p: element(regular), "em, i": element(italic) });
+  const italicWait = plainFirst.composition.settleFaces(italicDocument);
   check(
-    "a later stage of a view reads no style and asks for the same faces",
-    cold.reads.styles === readsBefore && cold.requested.length === requestedBefore + 4,
-    JSON.stringify({
-      reads: cold.reads.styles - readsBefore,
-      asked: cold.requested.length - requestedBefore,
-    }),
+    "a face first used by a later document holds that document's stage",
+    italicWait !== null &&
+      plainFirst.requested.includes(font(italic)) &&
+      !(await settledWithin(italicWait)),
+    JSON.stringify(plainFirst.requested),
   );
-  check("faces that are there show a later stage at once", await settledWithin(again));
-  cold.composition.settleFaces(element(code, {}), "source:rendered");
-  check("another view reads its own faces", cold.reads.styles === readsBefore + 1);
+  plainFirst.arrivals.get(font(italic))?.();
+  check("the later document is shown once its face lands", await settledWithin(italicWait));
+  check("each staged document's faces are read", plainFirst.reads.styles === 2 + 3);
+
+  // Reading the samples recalculates the stage's style, so once a stage has found a face
+  // missing, every face the page declares is loaded at idle, and later stages neither read
+  // a style nor wait.
+  check(
+    "a stage that found a face missing queues the declared faces once",
+    plainFirst.idle.length === 1,
+  );
+  plainFirst.idle[0]();
+  check(
+    "at idle, every declared face not asked for is loaded",
+    plainFirst.reads.declaredLoads === 1,
+  );
+  plainFirst.declared[1].status = "loaded";
+  const stylesBefore = plainFirst.reads.styles;
+  check(
+    "once every declared face is there, a stage reads no style and does not wait",
+    plainFirst.composition.settleFaces(italicDocument) === null &&
+      plainFirst.reads.styles === stylesBefore,
+  );
+  plainFirst.declared[1].status = "error";
+  check(
+    "a declared face that failed to load does not hold a stage",
+    plainFirst.composition.settleFaces(italicDocument) === null,
+  );
 
   const warm = compositorWith({ allLoaded: true });
   check(
@@ -241,9 +285,9 @@ async function main() {
   // into the pane, it is given the staged view, and the claim is checked again after it.
   const renderFile = appSource.slice(appSource.indexOf("async function renderFile("));
   const mounted = renderFile.indexOf('"fileNavigation:activeView"');
-  // Given the staged view, and keyed by the view's kind and id, so its faces are read once.
-  const asked = renderFile.search(
-    /viewComposition\.composition\.settleFaces\(\s*arrivalContent \?\? stage,\s*`\$\{compositionKind\}:\$\{initialActiveView\?\.id\}`,?\s*\)/,
+  // Given the staged view, whose own faces it reads.
+  const asked = renderFile.indexOf(
+    "viewComposition.composition.settleFaces(arrivalContent ?? stage)",
   );
   const waited = renderFile.indexOf("await facesSettled;");
   const rechecked = renderFile.indexOf("if (!renderIsCurrent())", waited);

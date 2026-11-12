@@ -29,7 +29,7 @@
   min-height: 2lh;
 }
 /* The icon, the title cut short at two lines, and the number after the title's last line:
-   the number is outside the clamp, so a title cut short keeps it (PR 370 review A5). */
+   the number is outside the clamp, so a title cut short keeps it. */
 .github-pull-title-with-state {
   display: grid;
   grid-template-columns: auto minmax(0, max-content) auto;
@@ -54,7 +54,7 @@
 /* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
    wrapping the row, which made it 21 to 67 px tall. A narrow row gives way in its sentence
    first: the action is cut to nothing before either branch chip shrinks, and a chip keeps a
-   few characters (PR 370 review A5). */
+   few characters. */
 .github-pull-meta {
   position: relative;
   display: flex;
@@ -143,7 +143,7 @@
    merged does not widen it under the reader: sizers under the label give the width. The
    label stays the first flex item, because an inline flex container takes its baseline
    from its first item: a sizer first hung the badge 8.5 px below its line and made the
-   row 31 px (PR 370 review A3; tests/dom/github-pull-header-chrome.mjs). */
+   row 31 px (tests/dom/github-pull-header-chrome.mjs). */
 .github-pull-meta .github-pull-badge {
   flex-direction: column;
   gap: 0;
@@ -203,8 +203,7 @@
 }
 /* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
    cut short before it wraps; its controls never are. A failure is the exception: it says
-   what to do, so the row wraps to show all of it, the one state where the tab bar may move
-   (PR 370 review A6). */
+   what to do, so the row wraps to show all of it, the one state where the tab bar may move. */
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -218,6 +217,8 @@
   white-space: nowrap;
 }
 .github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
+  /* The row's text gives way before the offers at its end, and they before their controls. */
+  flex-shrink: 100;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -236,13 +237,30 @@
   flex: none;
 }
 /* The offers end the row with Refresh, so the freshness text changing width moves none of
-   them (PR 370 review A7). */
+   them. An offer's sentence is cut short, with all of it in a tooltip, before its control
+   is: kept whole, the group ran 62 px past the header in a 560 px pane and 262 px past at
+   360, and the pane scrolled sideways. */
 .github-pull-status-end {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
   gap: 4px 10px;
+  min-width: 0;
   margin-inline-start: auto;
+}
+.github-pull-status-end > .github-pull-offer {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  min-width: 0;
+}
+.github-pull-offer-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-offer > :is(button, a) {
+  flex: none;
 }
 .github-pull-refresh {
   flex: none;
@@ -660,7 +678,7 @@
 }
 /* A count that arrives, or changes, keeps its chip's width up to three digits, and so
    does its pending pulse: at the tally's own 22 px the chips moved 4 to 8 px when the
-   counts landed (PR 370 review A10). */
+   counts landed. */
 .github-pulls-filters .count {
   display: inline-block;
   min-width: 3ch;

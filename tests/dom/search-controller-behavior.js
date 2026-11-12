@@ -360,7 +360,7 @@ async function main() {
   );
   check("groups within their caps are not truncated", grouped.final.truncated === false);
 
-  // Review A4: with pull requests searched and none matching, a file query was cut to half
+  // With pull requests searched and none matching, a file query was cut to half
   // of its cap and marked truncated.
   const manyFiles = Array.from(
     { length: 100 },

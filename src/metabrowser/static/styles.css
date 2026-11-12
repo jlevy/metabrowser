@@ -3238,7 +3238,7 @@ a.tab-btn {
    history, and the list start at one y on every tab. Before, the bar hid on Commits
    and Pulls, and what was under it moved 37 px on every switch. A toolbar wider than a
    narrowed pane scrolls along its one line rather than being cut: a control past the
-   pane's edge is still reached, and focus brings it into view (PR 370 review A8). */
+   pane's edge is still reached, and focus brings it into view. */
 .nav-toolbar {
   display: flex;
   flex-shrink: 0;

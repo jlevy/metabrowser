@@ -708,10 +708,14 @@ the folders on the way with `.tree-children-instant`, which lands them in place.
 Animated, a deep reveal moved the rows below it 43–131 px a frame with no input.
 The reader’s next toggle of that folder travels again.
 Such a reveal is the reader’s own doing, so it then scrolls the new selection into view
-in the same frame. A landing needs no reveal: the server inlines the folders of the
-address’s path, open, and the tree’s first paint selects and shows its row, so nothing
-is fetched, opened, or scrolled after it.
+in the same frame. A landing within the inline’s bounds needs no reveal: the server
+inlines the folders of the address’s path, open, and the tree’s first paint selects and
+shows its row, so nothing is fetched, opened, or scrolled after it.
 Opening them after the first paint had moved the tree with no input.
+The bounds are each folder’s whole listing (200 entries at most), 300 rows for the
+path’s folders in all, and 8 folders, and the inventory’s discovery complete.
+A landing outside them inlines the root alone, and the page reveals its path after the
+first paint, its folders travelling, as before: that still moves the tree with no input.
 
 ## Notices and Partial Content
 
@@ -1105,8 +1109,10 @@ decorative. The header’s box is decided at first paint, in every state and on 
 so the tab bar under it never moves between pull requests or tabs: the state row is one
 line, its branch chips cut short rather than wrapping it, and the badge as wide as the
 widest state; the labels row is always there, a line of labels or none; the status row
-is one line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh;
-and a cold page keeps every row, empty, at its height.
+is one line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh,
+its text and then its offers’ sentences cut short, never their controls, and a rate
+limit’s hold on the line too; and a cold page keeps every row, empty, at its height.
+Only a failure, which says what to do, wraps the status row.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.

@@ -3913,7 +3913,7 @@ function initNavScrollShadow() {
     // Whichever chrome is bottom-most *and visible* carries it, and the
     // others are cleared so a tab switch cannot leave two shadows armed.
     // The chrome is the pane's own children, so a scroll visits those and not
-    // the document (44 to 510 us a call on 1,871 to 23,232 elements, PR 370 review B3).
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements).
     const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
     for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
       chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
@@ -6070,10 +6070,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
         // Shown once the faces its text is set in land (view-composition.js#settleFaces).
-        const facesSettled = viewComposition.composition.settleFaces(
-          arrivalContent ?? stage,
-          `${compositionKind}:${initialActiveView?.id}`,
-        );
+        const facesSettled = viewComposition.composition.settleFaces(arrivalContent ?? stage);
         if (facesSettled) {
           await facesSettled;
         }

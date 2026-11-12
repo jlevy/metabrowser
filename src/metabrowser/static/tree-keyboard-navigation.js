@@ -18,7 +18,7 @@
    * passed: 14 requests and 28 pane replacements in Chrome 152.
    *
    * A repeat slower than WALK_SETTLE_MS outlasts each walk, so walking saved it nothing
-   * and opened every row 125 ms late (PR 370 review B2). Once the settle ends a walk with the
+   * and opened every row 125 ms late. Once the settle ends a walk with the
    * key still down, the rest of that hold opens each row at once, as single presses do,
    * until the key is released or pressed anew.
    */

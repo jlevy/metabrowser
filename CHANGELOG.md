@@ -23,11 +23,14 @@ All notable changes to Metabrowser are documented here.
   briefly.
 
 - Less moves on its own.
-  The first document after a cold start appears in its reading font instead of swapping
-  the serif in after it is shown.
+  A document appears in its reading fonts instead of swapping them in after it is shown,
+  the first after a cold start and the first to use a bold or italic face alike.
   A page that lands on a file deep in the tree paints with its folders already open and
-  its row in view, and navigation that opens folders to reveal a file opens them in
-  place and shows the file’s row at once, while a folder you toggle still slides open.
+  its row in view, when the path’s folders are small enough to send with the page (200
+  entries each, 300 in all, 8 folders deep); a landing past that opens them after the
+  first paint, as before.
+  Navigation that opens folders to reveal a file opens them in place and shows the
+  file’s row at once, while a folder you toggle still slides open.
   A held arrow key in the file tree moves the selection and the address on every repeat
   and opens only the file it stops on.
   In Quick Search, pull requests follow the file results as their own group, so their

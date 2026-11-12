@@ -288,6 +288,7 @@ const TRUNCATED = Object.freeze({
  *   freshness: string | null,
  *   failure: string | null,
  *   failureHelp?: "install" | "update",
+ *   failureHold?: true,
  *   pull: null | {
  *     title: string, number: number, state: import("./pull-state.js").PullState, stateLabel: string, author: string,
  *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
@@ -1024,7 +1025,9 @@ export function describePull(envelope, page) {
   const heldUntil = rateLimitLifts(envelope);
   const held = heldUntil > page.nowMs;
   if (last?.outcome === "rate_limited" && !envelope.refreshing) {
-    // Held, not failed: the time named is the one the page next asks at.
+    // Held, not failed: the time named is the one the page next asks at. It begins and
+    // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
+    model.failureHold = true;
     model.failure = Number.isFinite(heldUntil)
       ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(new Date(heldUntil).toISOString().replace(".000Z", "Z"))}`
       : "GitHub rate limit · next check within a minute";
@@ -3604,6 +3607,39 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  /**
+   * Give *node* its own text as a tooltip whenever it is cut short.
+   *
+   * @template {HTMLElement} T
+   * @param {T} node
+   * @returns {T}
+   */
+  function tipWhenCut(node) {
+    node.addEventListener("pointerenter", () => {
+      if (node.scrollWidth > node.clientWidth) {
+        node.dataset.tipText = node.textContent ?? "";
+      } else {
+        delete node.dataset.tipText;
+      }
+    });
+    return node;
+  }
+
+  /**
+   * An offer at the status row's end: its sentence is cut short before its control is,
+   * so a narrow pane still shows the control inside the header (styles.css, "The offers").
+   *
+   * @param {string} text
+   * @param {HTMLElement} control
+   */
+  function offer(text, control) {
+    return h("span", { class: "github-pull-offer" }, [
+      tipWhenCut(h("span", { class: "github-pull-offer-text" }, [text])),
+      " ",
+      control,
+    ]);
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     const children = [];
@@ -3686,8 +3722,13 @@ export function mountPullPage(container, ctx, mb) {
       }
     }
     status.dataset.status = model.status;
-    // A failure is the one text the row lets wrap: it carries its remedy.
-    status.classList.toggle("github-pull-status-failed", model.failure !== null);
+    // A failure is the one text the row lets wrap: it carries its remedy. A rate limit's
+    // hold carries none and lifts by itself, so it stays on the line, cut short with its
+    // whole text in a tooltip: wrapping it moved the tab bar 22 px as it began and lifted.
+    status.classList.toggle(
+      "github-pull-status-failed",
+      model.failure !== null && model.failureHold !== true,
+    );
     for (const node of [...status.childNodes]) {
       if (node !== freshnessLine) {
         node.remove();
@@ -3705,7 +3746,7 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }
     if (model.failure !== null) {
-      status.append(h("span", { class: "github-pull-failure" }, [model.failure]));
+      status.append(tipWhenCut(h("span", { class: "github-pull-failure" }, [model.failure])));
     }
     if (model.failureHelp !== undefined) {
       status.append(
@@ -3721,7 +3762,7 @@ export function mountPullPage(container, ctx, mb) {
     ]);
     refresh.hidden = !model.canRefresh;
     // Offers sit at the row's end with Refresh, so the freshness text changing its width
-    // moves nothing after it: it moved an offer by 100 px (PR 370 review A7).
+    // moves nothing after it: it moved an offer by 100 px.
     const end = h("span", { class: "github-pull-status-end" }, [refresh]);
     refresh.addEventListener("click", () => {
       if (listening.signal.aborted || shown?.canRefresh !== true) {
@@ -3738,17 +3779,11 @@ export function mountPullPage(container, ctx, mb) {
         "Switch to the head",
       ]);
       button.addEventListener("click", () => void controller.switchToHead());
-      end.insertBefore(
-        h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]),
-        refresh,
-      );
+      end.insertBefore(offer(model.headOffer.text, button), refresh);
     }
     if (model.checkoutAtHead !== null) {
       const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
-      end.insertBefore(
-        h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]),
-        refresh,
-      );
+      end.insertBefore(offer(model.checkoutAtHead, root), refresh);
     }
     status.append(end);
     children.push(status);
