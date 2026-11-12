@@ -4,9 +4,15 @@ import os
 
 /// This build: its name, its variant, and the folders it keeps apart from the other
 /// variant's.
-let appIdentity = AppIdentity.current
+nonisolated let appIdentity = AppIdentity.current
 
-enum AppLog {
+/// The servers this app process runs, for the next launch to end if this one crashes or
+/// is force-quit, in the variant's Application Support folder.
+nonisolated let serverRecords = ServerRecords(
+    directory: appIdentity.supportDirectory().appending(path: "servers", directoryHint: .isDirectory),
+    onError: { AppLog.app.error("\($0, privacy: .public)") })
+
+nonisolated enum AppLog {
     static let subsystem = appIdentity.bundleIdentifier
     static let app = Logger(subsystem: subsystem, category: "app")
     static let server = Logger(subsystem: subsystem, category: "server")
@@ -33,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build(appName: appIdentity.name, recentFolders: self)
         installTerminationSignals()
+        reapOrphans()
         presentRuntime()
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
         // before applicationDidFinishLaunching. Marking the search as running now makes
@@ -92,6 +99,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let survivors = ExitSweep.end(remaining)
         if !survivors.isEmpty {
             AppLog.app.error("servers \(survivors, privacy: .public) outlasted SIGTERM; their groups got SIGKILL")
+        }
+    }
+
+    /// Ends the servers an earlier run of this variant left running, as a crashed or
+    /// force-quit app does, in the background: new servers need not wait for it, since
+    /// each picks a free port. Each ending goes to the unified log and to the folder's
+    /// server log.
+    private func reapOrphans() {
+        let orphans = serverRecords.orphans
+        guard !orphans.isEmpty else { return }
+        AppLog.app.info("\(orphans.count) server(s) of an app that did not quit are recorded; ending any still running")
+        let logs = appIdentity.logsDirectory()
+        Task {
+            let outcomes = await OrphanReaper.reap(orphans, table: .live)
+            for outcome in outcomes {
+                AppLog.server.info("\(outcome.summary, privacy: .public)")
+                if case .gone = outcome { continue }
+                let root = URL(filePath: outcome.record.root, directoryHint: .isDirectory)
+                do {
+                    try ServerLog.append(outcome.summary, to: ServerLog.url(for: root, in: logs))
+                } catch {
+                    AppLog.server.error("\(String(describing: error), privacy: .public)")
+                }
+            }
+            serverRecords.settleOrphans(outcomes)
         }
     }
 

@@ -32,10 +32,11 @@ final class FolderSession: ManagedServer {
         let spec = launch.spec(
             serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
         // Each launch prepares the log first, so a log that cannot be kept fails the
-        // launch, and the window says why.
+        // launch, and the window says why. Each child is recorded while it runs, so the
+        // next launch ends it if this app crashes.
         supervisor = ServerSupervisor(
             spec: spec, launch: launch, gate: gate,
-            makeProcess: { spec in
+            makeProcess: serverRecords.recording { spec in
                 if let logURL = spec.logURL { try ServerLog.prepare(logURL) }
                 return try SpawnedProcess(spec)
             })

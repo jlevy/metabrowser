@@ -75,6 +75,7 @@ Both are named Metabrowser:
 | Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
 | About box | “Development build · 0.1.0 (2476) · 3c7b937” | “Release · 0.1.0 (2476) · 3c7b937” |
 | Server logs | `~/Library/Logs/Metabrowser Dev/` | `~/Library/Logs/Metabrowser/` |
+| Server records | `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` | `~/Library/Application Support/io.github.jlevy.metabrowser/servers/` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
 
@@ -398,6 +399,34 @@ authorization a window installs before loading (`WebAuthorization.cookie`).
 `CLIServeLaunch` implements it for today’s server; a host-mode launch replaces it
 without changing the supervisor or the windows.
 
+### After a Crash
+
+An orderly quit stops every server, but an app that crashes or is force-quit cannot, and
+today’s server does not exit when its stdin closes.
+So each app process records its servers, and the next launch ends the ones it left
+(`ServerRecords`, `OrphanReaper`):
+
+- **Recorded.** Each server is recorded once it has spawned: its pid, which is also its
+  process group, the kernel’s start time for it, and its folder.
+  The record leaves when the server has been released and has exited; a server given up
+  on in uninterruptible I/O stays recorded until it exits.
+- **One file per app process.** `servers/app-<pid>.json`, owner-only (0600 in a 0700
+  folder) in the variant’s Application Support folder, names the app process that owns
+  it, and is rewritten whole, with a temporary file and a rename, at each change.
+  The last server’s exit deletes it.
+  A second copy of the app with the same bundle identifier, such as a development build
+  run from another checkout, keeps its own file, and its live servers are never taken
+  for orphans: a file is an orphan’s only once its owner is no longer running.
+- **Reaped at launch.** In the background, each orphaned server whose leader still has
+  the recorded start time and group gets SIGTERM, then SIGKILL after 5 seconds; that
+  check, made before each signal, keeps a pid the kernel has since given to another
+  process from being signaled.
+  A server that outlasts SIGKILL becomes the new app’s record, for the next launch to
+  try again. Each ending goes to the unified log and to the folder’s server log.
+- **Not reached.** A group whose leader has exited is not signaled, since nothing then
+  holds its id for the app, and descendants in other groups are not reached either (see
+  [Gaps to Close](#gaps-to-close)).
+
 ### Finding the Runtime
 
 Setup runs on the first launch, and again from Settings > Find Again.
@@ -542,6 +571,11 @@ AppKit and WebKit. What is left as it is, on purpose:
   counts as none, so setup runs again; an unreadable volume ends the path menu at `/`;
   and a staging directory left after a failed download is in the volume’s temporary
   items, which macOS empties.
+- **Errors only logged, with a reason.** A server records file that cannot be read or
+  saved goes to the unified log and stops nothing: the server runs, and only the cleanup
+  after a crash is lost, which is how the app behaved before it kept records.
+  A lifecycle event that cannot be appended to a server log is in the unified log
+  already.
 - **Layout numbers in views.** SwiftUI paddings and spacings stay inline, as SwiftUI
   code reads; numbers that set behavior (timeouts, limits, window and zoom sizes) are
   named and say why.
@@ -581,7 +615,7 @@ Each gap points to the part of the brief that closes it.
 | --- | --- | --- |
 | **Session token and cookie exchange** | None: like the CLI, the server answers any local process. `WebAuthorization.cookie` is the slot. | Layering item 1; Security Models |
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
-| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
+| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app’s servers keep running until its next launch ends them (see [After a Crash](#after-a-crash)). | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
 | **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |

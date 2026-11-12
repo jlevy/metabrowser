@@ -32,6 +32,7 @@ cask "metabrowser-app" do
   EOS
 
   zap trash: [
+    "~/Library/Application Support/io.github.jlevy.metabrowser",
     "~/Library/Caches/io.github.jlevy.metabrowser",
     "~/Library/HTTPStorages/io.github.jlevy.metabrowser.binarycookies",
     "~/Library/Logs/Metabrowser",
