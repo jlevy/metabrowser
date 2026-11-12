@@ -594,7 +594,7 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
     """Refuse new process groups and kill every one this process started, then return.
 
     For a command that must stop at once and then exits without unwinding. It does not
-    need the event loop to make progress, and it returns within about *wait_s*:
+    need the event loop to make progress:
 
     * From now on :func:`start_process_group` refuses.
     * Every group this process leads is killed: each child the kernel lists that the
@@ -602,8 +602,16 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
       whether or not its spawn ever returned (see :func:`_kill_owned_groups`).
     * A spawn under way on another thread may not have forked yet, or may fork and
       register while the stop first looks. The stop waits for those, up to *wait_s*,
-      and always looks once more at the end. One on this thread cannot fork any more:
-      this thread is here, and the caller exits next.
+      and always looks once more at the end.
+
+    It returns after waiting at most *wait_s*, plus the two looks at this process's
+    children. A look is a few system calls per child, but on a Linux kernel without
+    per-thread child lists it reads every process's ``/proc`` entry.
+
+    A spawn on the calling thread gets no such wait: that thread is here, and the caller
+    exits next. If a signal handler interrupted that spawn between the fork and the
+    child's ``exec``, the child is still a copy of this interpreter, runs no file a
+    group spawn ran, and is not killed.
 
     Where the kernel cannot list children (:func:`metabrowser.git.children.child_pids`),
     the registry is all there is. Safe in a signal handler: it takes only a re-entrant

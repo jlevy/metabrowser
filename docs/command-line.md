@@ -147,10 +147,15 @@ in process groups of their own, which would outlive the server, and a fetch hold
 store’s lock, so each group is killed with every helper in it, and no new one is
 started. The stop finds them in the system’s list of the server’s child processes, so it
 kills one whose start has not finished too, and it does not wait on the server’s event
-loop: it ends within a short bound (`SPAWN_WAIT_S` in `metabrowser/git/process.py`) even
-when that loop is stuck.
-Two things escape it: a child that has not yet begun running Git when that bound runs
-out, and the helpers of a Git whose start failed, which Python’s asyncio kills alone.
+loop, even when that loop is stuck.
+It waits only for a start under way on another thread, at most `SPAWN_WAIT_S` (in
+`metabrowser/git/process.py`), and then looks at the server’s children once more.
+Each look takes a few system calls per child; on a Linux kernel without per-thread child
+lists, it reads every process’s `/proc` entry.
+Three things escape it: a child that has not yet begun running Git when that wait ends;
+with Ctrl-C or a hangup, a child the interrupted thread had forked and that had not yet
+begun running Git, since that thread gets no wait at all; and the helpers of a Git whose
+start failed, which Python’s asyncio kills alone.
 On systems other than macOS and Linux, which cannot list a process’s children this way,
 a start under way is not covered.
 Each child is confirmed to be the server’s own, not yet reaped, just before it is
