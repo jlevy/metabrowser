@@ -83,8 +83,9 @@ const actions = {
   },
 };
 const buttons = document.getElementById("buttons");
+// Each action runs from a click; when its handler started is kept for the checks.
 for (const [name, fn] of Object.entries(actions)) {
-  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", fn); buttons.appendChild(b);
+  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickHandledAt = performance.now(); fn(); }); buttons.appendChild(b);
 }
 // A synthetic pointerdown dispatched by the page itself when the pointer first moves over it.
 document.getElementById("go-reset").insertAdjacentHTML("beforebegin", '<button id="go-forged">forged</button>');
@@ -167,10 +168,44 @@ async function measure(name, extra = {}) {
     converged: `() => ""`,
     settleMs: 400,
     timeoutMs: 10000,
+    debug: true,
     ...extra,
   });
   await sleep(300);
   return r;
+}
+// The press that starts the recorder's clock, on the page clock.
+const pressAt = (r) =>
+  r.raw.inputs.find(([type]) => type === "pointerdown" || type === "mousedown")[1];
+// The press and the release that makes the click are separate CDP calls, so a busy machine
+// can draw a frame between them: under 12 extra busy loops on a 10-core machine the click
+// reached the page up to 22 ms after the press, and in 2 of 15 rafLoop transitions a frame
+// fell between them. That frame shows the page before the click handler ran, and the
+// recorder counts it from the press, as it should: one more frame to ready, blank on these
+// pages. These are the frames read after the press and before the click handler started.
+async function framesBeforeClick(r) {
+  const handledAt = await d.evaluate("window.clickHandledAt");
+  return r.raw.frames.filter(
+    ([t, , readAt]) => t >= pressAt(r) && readAt !== null && readAt < handledAt,
+  ).length;
+}
+// Painted ready against Chrome's presentation of the click's next paint (Event Timing),
+// which is the ready frame on these pages. Chrome presents a frame after its main-thread
+// rendering ends, and painted ready is the first frame boundary after that end, so painted
+// ready is never more than a frame after the presentation. The 9 ms covers Chrome's
+// rounding of that time to 8 ms and the recorder's to 0.1 ms. An entry Chrome leaves out
+// was presented within its 16 ms threshold of the click.
+// The bound has one side. The presentation also includes compositor, raster, and GPU work
+// after the main thread, which painted ready leaves out (README, "Limits"), so it can come
+// later than painted ready by that much: for the long frame below, by 9 to 12 ms in five
+// CI runs and 23 to 43 ms with the renderer's CPU throttled fourfold.
+function assertPaintedByPresentation(r) {
+  const click = r.raw.inputs.find(([type]) => type === "click");
+  const presented = r.eventPresentedMs.click ?? click[1] - pressAt(r) + 16;
+  assert.ok(
+    r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
+    `painted ready ${r.paintedReadyMs}, presented by ${presented}`,
+  );
 }
 // TRANSITIONS_PROBE_ALL=1 runs every check and lists each failure, to show a recorder
 // failing them all; by default the first failure ends the run.
@@ -238,34 +273,29 @@ try {
         async () => {
           const r = await measure(name, { settleMs: 800 });
           assert.equal(r.ok, true, JSON.stringify(r.refusals));
-          assert.equal(r.framesToReady, 1);
-          assert.equal(r.blankFrames, 0);
+          // Ready in the first frame read after the click showed the subject, and painted
+          // ready is that frame's presentation, not the end of the 600 ms of DOM work after
+          // it. A busy machine can be slow to draw that frame (CI once read 198.7 ms here),
+          // so the bound is Chrome's presentation of it, not a fixed time.
+          const early = await framesBeforeClick(r);
+          assert.equal(r.framesToReady, early + 1, JSON.stringify(r.frameStates));
+          assert.equal(r.blankFrames, early, JSON.stringify(r.frameStates));
           assert.equal(r.uncreditedFrames, 0);
-          assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
+          assertPaintedByPresentation(r);
           assert.ok(r.navSettledMs > 400, `nav settled ${r.navSettledMs}`);
         },
       );
     }
     // Chrome reports the frame after this stall on the frame grid, so this page cannot tell
     // painted ready from the next frame's begin time; the browserless presentedAt checks
-    // and the long-frame check below are the ones that do.
+    // are the ones that do.
     await check("a long task after the ready frame is not counted", async () => {
       const r = await measure("stall");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
       assert.ok(r.paintedReadyMs >= r.readyMs);
-      // Chrome's own presentation time for the click, to its 8 ms rounding, is no later
-      // than painted ready, which is at most one frame and the rounding after it. Event
-      // Timing leaves out an event presented within 16 ms, which bounds it the same way.
-      const presented = r.eventPresentedMs.click ?? 16;
-      assert.ok(
-        r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
-        `${r.paintedReadyMs} vs ${presented}`,
-      );
-      assert.ok(
-        r.paintedReadyMs >= Math.min(presented, r.readyMs) - 9,
-        `${r.paintedReadyMs} vs ${presented}`,
-      );
+      // The 300 ms task runs after the ready frame, so counting it would put painted ready
+      // far more than a frame past Chrome's presentation of that frame.
+      assertPaintedByPresentation(r);
     });
   } else if (group === "frames2") {
     await check("a long ready frame counts its own rendering", async () => {
@@ -282,7 +312,7 @@ try {
     await check("blank and placeholder frames after ready are counted", async () => {
       const r = await measure("flicker");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.equal(r.blankFramesBeforeReady, 0);
+      assert.equal(r.blankFramesBeforeReady, await framesBeforeClick(r));
       assert.ok(r.placeholderVisibleFramesAfterReady >= 3, JSON.stringify(r.frameStates));
       assert.ok(r.blankFramesAfterReady >= 3, JSON.stringify(r.frameStates));
       assert.ok(r.blankMs >= 50, `blank ms ${r.blankMs}`);
@@ -291,9 +321,9 @@ try {
       const ready = `() => !!document.querySelector("#view .preview-empty")`;
       const declared = await measure("prompt", { ready, emptyState: true });
       assert.equal(declared.ok, true, JSON.stringify(declared.refusals));
-      assert.equal(declared.blankFrames, 0);
+      assert.equal(declared.blankFrames, await framesBeforeClick(declared));
       const undeclared = await measure("prompt", { ready });
-      assert.ok(undeclared.blankFrames >= 1);
+      assert.ok(undeclared.blankFrames > (await framesBeforeClick(undeclared)));
     });
   } else if (group === "content") {
     await check("an image counts once its bytes have arrived and decoded", async () => {
@@ -319,8 +349,10 @@ try {
     await check("content behind 500 hidden text nodes is found", async () => {
       const r = await measure("hiddenAhead", { timeoutMs: 5000 });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.equal(r.blankFrames, 0);
-      assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
+      // Found in the first frame read after the click.
+      const early = await framesBeforeClick(r);
+      assert.equal(r.framesToReady, early + 1, JSON.stringify(r.frameStates));
+      assert.equal(r.blankFrames, early, JSON.stringify(r.frameStates));
     });
     await check("a hidden retained page is not taken for the one on screen", async () => {
       await d.click("#go-reset");
