@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m76cd1ysrge9arg7a773j3ff
-title: Dock and File menu recents through NSDocumentController
+title: "Recents owned by macOS: NSDocumentController replaces the app's list"
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
@@ -15,6 +15,6 @@ dependencies:
     target: is-01m76h3hdcp0ek254274recmn5
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T22:42:05.400Z
-updated_at: 2026-11-12T00:04:21.098Z
+updated_at: 2026-11-12T00:13:58.603Z
 ---
-Register opened folders with NSDocumentController so the Dock menu and File > Open Recent list them, as macOS keeps that list (a platform exemption from CLI parity, recorded in the topology brief after review A on #352).
+v1 milestone (review A2 on jlevy/metabrowser#357). Opened folders are registered with NSDocumentController, and that OS-owned list is the only recents the app keeps: it backs the Dock menu, File > Open Recent, and any recent list in the app's own windows. The app's RecentFolderStore (an app-defined ordered list in UserDefaults) is removed, so no app-owned membership or order remains, which is the platform exemption the topology brief records. Recent and added roots persisted in metab, with a route and goldens, stay in Phase 4 (mb-a5ru), and the quick switcher over them stays mb-9lf4.

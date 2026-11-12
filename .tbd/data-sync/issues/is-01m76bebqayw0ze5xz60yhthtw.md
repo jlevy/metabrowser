@@ -3,9 +3,9 @@ type: is
 id: is-01m76bebqayw0ze5xz60yhthtw
 title: "Address PR #341 reviews A, B, C: native macOS app spike"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 13
+version: 14
 labels: []
 dependencies: []
 parent_id: is-01m76a2payev2p4yz1ckvpb91t
@@ -23,6 +23,10 @@ child_order_hints:
   - is-01m76bf0syr48edst0accjg3ky
   - is-01m76bf16dr1tzbrmmg5wfpvbs
 created_at: 2026-11-11T22:25:19.592Z
-updated_at: 2026-11-11T22:25:41.581Z
+updated_at: 2026-11-12T00:16:37.605Z
+closed_at: 2026-11-12T00:16:37.595Z
+close_reason: All 18 findings of reviews A, B, C fixed at fff9d777; disposition replies posted (issuecomment-6810482704, -6810483075, -6810483376)
+resolution: null
+duplicate_of: null
 ---
 Addressing reviews A (senior, https://github.com/jlevy/metabrowser/pull/341#pullrequestreview-5866036012), B (security, https://github.com/jlevy/metabrowser/pull/341#pullrequestreview-5866036340), and C (correctness, https://github.com/jlevy/metabrowser/pull/341#pullrequestreview-5866036572) at head f4f588e24348b25e4e5cbefe916ac74479657fbc. Overlapping findings share one child bead.

@@ -3,9 +3,9 @@ type: is
 id: is-01m76a2payev2p4yz1ckvpb91t
 title: "PR #341 (merge-ready): feat(macos): spike a native macOS app shell over a CLI install"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 6
+version: 7
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
@@ -20,6 +20,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T22:01:28.669Z
-updated_at: 2026-11-12T00:04:23.678Z
+updated_at: 2026-11-12T00:18:31.277Z
 started_at: 2026-11-11T22:01:29.343Z
+closed_at: 2026-11-12T00:18:31.263Z
+close_reason: "Round 1 on #341 addressed at fff9d777: Astra reviews A (senior), B (security), C (correctness), 18 findings, all fixed with tests (141 Swift tests), disposition replies posted. The follow-up round the fixes' size calls for is folded into the v1 milestone's full re-review (mb-niod), which re-checks every Blocker and High disposition; #341's merge readiness is re-established there."
+resolution: null
+duplicate_of: null
 ---
