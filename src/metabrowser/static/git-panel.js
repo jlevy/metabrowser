@@ -924,6 +924,11 @@
     return document.getElementById("tab-git");
   }
 
+  /** The Commits tab's toolbar in the navigation's slot (main-tabs.js), if the shell has one. */
+  function historyToolbar() {
+    return document.getElementById("nav-toolbar-git");
+  }
+
   /**
    * @param {HTMLElement} panel
    * @param {string} message
@@ -1412,7 +1417,14 @@
       list = document.createElement("div");
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
-      panel.replaceChildren(summary, list);
+      // The tally is the tab's toolbar, in the navigation's toolbar slot when the shell has one.
+      const toolbar = historyToolbar();
+      if (toolbar) {
+        toolbar.replaceChildren(summary);
+        panel.replaceChildren(list);
+      } else {
+        panel.replaceChildren(summary, list);
+      }
       invalidateHistoryOrigin();
       observeSummaryHeight(summary);
     }
@@ -1435,7 +1447,7 @@
    * @param {HTMLElement} panel
    */
   function renderHistorySummary(panel) {
-    const row = panel.querySelector(".git-history-summary");
+    const row = (historyToolbar() ?? panel).querySelector(".git-history-summary");
     if (!(row instanceof HTMLElement)) {
       return;
     }

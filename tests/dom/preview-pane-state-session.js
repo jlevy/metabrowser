@@ -499,7 +499,16 @@ function createShell(pathname, network, options = {}) {
     }),
   );
   const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  // The navigation's toolbar slot: one toolbar per tab the server draws, the one in front shown.
+  const toolbars = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { navToolbar: tab },
+      hidden: tab !== (options.pulls && pathname.startsWith("/pull") ? "pulls" : "files"),
+    }),
+  );
   scroller.querySelector = () => ({ remove() {} });
+  // A toolbar main-tabs.js adds for a tab the server did not draw goes into the slot.
+  scroller.before = (toolbar) => toolbars.push(toolbar);
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
@@ -614,8 +623,14 @@ function createShell(pathname, network, options = {}) {
       createElement: () => fakeElement({ focus() {}, remove() {} }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
-      querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
-      querySelectorAll: () => [...tabPanels, previewTab],
+      querySelector: (selector) =>
+        selector === ".nav-tab-bar"
+          ? navBar
+          : (toolbars.find(
+              (toolbar) => selector === `[data-nav-toolbar="${toolbar.dataset.navToolbar}"]`,
+            ) ?? null),
+      querySelectorAll: (selector) =>
+        selector === "[data-nav-toolbar]" ? toolbars : [...tabPanels, previewTab],
       head: { append() {}, appendChild: requestScript },
     },
     DOMException,
@@ -827,6 +842,9 @@ function createShell(pathname, network, options = {}) {
     sandbox,
     sources,
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
+    /** The toolbars shown in the navigation's slot: exactly the active tab's. */
+    toolbarsShown: () =>
+      toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
   };
 }
 
@@ -1163,6 +1181,32 @@ async function independentMainTabs() {
     reloaded.tabButtons.map((button) => button.dataset.tab),
     ["files", "git"],
     "discovery that registers Commits keeps the drawn tab",
+  );
+
+  // The navigation's toolbar slot shows exactly the tab in front's toolbar, so the slot
+  // is never empty and what is under it starts at one y on every tab.
+  const slotted = createShell("/view/", read, { pulls: true });
+  await slotted.sandbox.navigationController.start();
+  const slots = { landing: slotted.toolbarsShown() };
+  for (const panel of ["git", "pulls", "files"]) {
+    slotted.sandbox.mainTabs.activate(panel);
+    slots[panel] = slotted.toolbarsShown();
+  }
+  assert.deepEqual(
+    slots,
+    { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
+    "each tab shows its own toolbar, and only it",
+  );
+  const pullsLanding = createShell("/pulls", read, { pulls: true });
+  assert.deepEqual(
+    pullsLanding.toolbarsShown(),
+    ["pulls"],
+    "the server draws the landing's toolbar",
+  );
+  assert.deepEqual(
+    pendingGit.toolbarsShown(),
+    ["git"],
+    "a toolbar added for a late panel shows with it",
   );
 
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });

@@ -2593,7 +2593,15 @@ export function mountPullsPanel(container, ctx, mb) {
   moreButton.addEventListener("click", () => void controller.loadMore());
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
-  container.replaceChildren(filters, status, connection, list, empty, foot, live);
+  // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
+  // at the slot's height, so the list starts where the Files tree does.
+  const toolbar = nav.toolbar ?? null;
+  if (toolbar) {
+    toolbar.replaceChildren(filters);
+    container.replaceChildren(status, connection, list, empty, foot, live);
+  } else {
+    container.replaceChildren(filters, status, connection, list, empty, foot, live);
+  }
 
   /**
    * What is painted of each row held, by number: its elements, the key of what it shows, and
@@ -3831,6 +3839,7 @@ export function mountPullsPanel(container, ctx, mb) {
       painted.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();
+      filters.remove();
     },
   });
 }

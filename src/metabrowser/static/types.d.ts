@@ -57,6 +57,8 @@ type MetabrowserPullsNavHost = Readonly<{
   refreshAhead: boolean;
   /** A checkout served as a folder: its list is of its `origin`, read only once shown. */
   checkout: boolean;
+  /** The tab's toolbar in the navigation's slot, which the list's filters fill; or null. */
+  toolbar?: HTMLElement | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */

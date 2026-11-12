@@ -100,6 +100,15 @@
         // Pulls can be present in the server shell before Git discovery finishes.
         navBar.insertBefore(btn, panel.id === "git" ? tabButton("pulls") : null);
       }
+      // A panel the server did not draw gets its toolbar too, empty until it fills it.
+      if (!document.querySelector(`[data-nav-toolbar="${panel.id}"]`)) {
+        const toolbar = document.createElement("div");
+        toolbar.className = "nav-toolbar";
+        toolbar.id = `nav-toolbar-${panel.id}`;
+        toolbar.dataset.navToolbar = panel.id;
+        toolbar.hidden = true;
+        content.before(toolbar);
+      }
       if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
         const container = document.createElement("div");
         container.id = `tab-${panel.id}`;
@@ -260,11 +269,12 @@
       // wholesale, and the bar has to survive that and stay put while the
       // tree scrolls. Being outside means the loop above does not reach it,
       // so a panel that is not Files would otherwise keep a bar of file
-      // filters on screen above content they cannot filter. Inert, the bar
-      // keeps its slot, so the panel below starts at one height on every tab.
-      const filterBar = document.getElementById("nav-filter-bar");
-      if (filterBar) {
-        filterBar.inert = panelId !== "files";
+      // filters on screen above content they cannot filter. The bar is the
+      // Files tab's toolbar in one slot every tab fills with its own, at one
+      // height, so the panel below starts at one y on every tab.
+      for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
+        /** @type {HTMLElement} */ (toolbar).hidden =
+          /** @type {HTMLElement} */ (toolbar).dataset.navToolbar !== panelId;
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;

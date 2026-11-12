@@ -1284,9 +1284,9 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink |
 | Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
 | Base and head | `--ui-small-font-size`, remote-ref ink | Compact contextual chips below the title’s primary size |
-| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
-| Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
+| Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
 | Connection | One live status row: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
@@ -2471,11 +2471,12 @@ arrives later. Chrome that comes and goes moved more than content did: the filte
 px on every main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px,
 the Commits tab 78 px on every landing.
 So a region keeps its slot while its content is absent, and holds the height it will
-have: the filter bar on every main tab (inert where it filters nothing), the Commits tab
-from the server at a repository’s root, a scrollbar gutter on the tree and the preview
-pane, the shortcut strip’s row, a view tab bar in every file, the print button’s and a
-run badge’s widths, the Pulls tab’s status and connection lines and its age column, and
-the pull request header’s rows.
+have: one toolbar slot at the top of the navigation that every main tab fills with its
+own toolbar at one height (the Files filters, the Commits tally, the Pulls filters), the
+Commits tab from the server at a repository’s root, a scrollbar gutter on the tree and
+the preview pane, the shortcut strip’s row, a view tab bar in every file, the print
+button’s and a run badge’s widths, the Pulls tab’s status and connection lines and its
+age column, and the pull request header’s rows.
 Heights are in line units, or struts of the controls a row holds, never pixels measured
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup

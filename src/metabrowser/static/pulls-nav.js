@@ -71,6 +71,7 @@
    *   activate(panelId: string): void,
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
+   *   toolbar?(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -139,6 +140,8 @@
                 // repository modes. Details use the shared bounded background scheduler.
                 refreshAhead: true,
                 checkout,
+                // The tab's toolbar in the navigation's slot, which its filters fill.
+                toolbar: deps.toolbar?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} */ route,
@@ -643,6 +646,7 @@
         return sdk.getRegisteredView(kind, kind);
       },
       container: () => document.getElementById("tab-pulls"),
+      toolbar: () => document.getElementById("nav-toolbar-pulls"),
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

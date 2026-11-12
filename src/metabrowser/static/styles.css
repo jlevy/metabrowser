@@ -438,6 +438,10 @@
     2 *
     var(--chip-border)
   );
+  /* The navigation's toolbar slot: one chip, 6px above and below it, and the slot's
+     bottom border. Every main tab's toolbar is this tall, so what is under it starts
+     at one y on every tab. */
+  --nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -2913,7 +2917,8 @@ a.tab-btn {
   transition: box-shadow var(--transition-fast);
 }
 .tab-bar.nav-tab-bar.scrolled,
-.nav-filter-bar.scrolled {
+.nav-filter-bar.scrolled,
+.nav-toolbar.scrolled {
   box-shadow: var(--shadow-md);
 }
 
@@ -3218,7 +3223,7 @@ a.tab-btn {
      border: the same height a populated bar computes to, so nothing moves
      when the chips land. `box-sizing` is border-box, so the padding and
      border are inside this figure. */
-  min-height: calc(var(--chip-height) + 12px + 1px);
+  min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
   transition:
@@ -3227,11 +3232,29 @@ a.tab-btn {
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */
-/* On Commits and Pulls the bar has nothing to filter, but it keeps its slot, so
-   the tree, the history, and the list below start at one height on every tab
-   (main-tabs.js makes it inert there). */
-.nav-filter-bar[inert] {
-  visibility: hidden;
+/* The bar is the Files tab's toolbar. The navigation's toolbar slot holds one toolbar
+   per main tab, the one in front shown: the Commits tally and the Pulls filters stand
+   in the bar's place at its height (main-tabs.js#activateNavPanel), so the tree, the
+   history, and the list start at one y on every tab. Before, the bar hid on Commits
+   and Pulls, and what was under it moved 37 px on every switch. */
+.nav-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: var(--nav-toolbar-height);
+  padding: 0 var(--pane-header-padding-x);
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  transition: box-shadow var(--transition-fast);
+}
+.nav-filter-bar[hidden],
+.nav-toolbar[hidden] {
+  display: none;
 }
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
@@ -5571,6 +5594,16 @@ pre.code-block.metabrowser-source-lines > code {
 /* "begun 3mo ago": word gaps only — the age value inside carries the
    shared age primitive (hue, weight, size, numerals), the words keep
    the row's own type, and baseline alignment joins the two sizes. */
+/* In the toolbar slot, the slot is the row: its padding, border, and height. It fills
+   the slot's height, so the tally landing in it changes no box. */
+.nav-toolbar > .git-history-summary {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+}
 .git-history-summary-first {
   display: inline-flex;
   align-items: baseline;

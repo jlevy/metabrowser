@@ -1493,9 +1493,12 @@ async def index(
     files_active = "" if pulls_in_front else " active"
     files_selected = "false" if pulls_in_front else "true"
     behind_pulls = ' style="display: none"' if pulls_in_front else ""
-    # The filter bar keeps its slot behind Pulls, inert, so the panel below it starts at the
-    # same height on every tab (static/main-tabs.js#activateNavPanel).
-    filter_bar_behind_pulls = " inert" if pulls_in_front else ""
+    # The navigation's toolbar slot holds the toolbar of the tab in front: the Files filters, or
+    # the Commits tally, or the Pulls filters, each at the slot's one height, so the panel
+    # below starts at one y on every tab (static/main-tabs.js#activateNavPanel). A tab whose
+    # toolbar its script fills later ships the shared pending tally, never an empty slot.
+    filter_bar_behind_pulls = " hidden" if pulls_in_front else ""
+    pending_tally = '<span class="count tally-pending"></span>'
     # Commits is drawn here when the served root is a repository's root, the one root Git
     # discovery accepts (git/repo.py), so the Pulls tab beside it does not move when discovery
     # registers it; discovery removes it in the rare case Git does not agree.
@@ -1506,6 +1509,17 @@ async def index(
         '\n        <button class="tab-btn" type="button" role="tab" data-tab="git"'
         ' aria-selected="false">Commits</button>'
         if commits_tab
+        else ""
+    )
+    toolbars = (
+        '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git" hidden>'
+        f'<div class="git-history-summary">{pending_tally}</div></div>'
+        if commits_tab
+        else ""
+    ) + (
+        '\n      <div class="nav-toolbar" id="nav-toolbar-pulls" data-nav-toolbar="pulls"'
+        f"{'' if pulls_in_front else ' hidden'}>{pending_tally}</div>"
+        if pulls_tab
         else ""
     )
     pulls_button = (
@@ -1895,7 +1909,7 @@ async def index(
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar"{filter_bar_behind_pulls}></div>
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind_pulls}>{pending_tally}</div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{behind_pulls}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span

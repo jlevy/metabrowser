@@ -1397,6 +1397,43 @@ async function paintStory(panel, selection = false) {
     };
     mounted.dispose();
     story["disposed: what is left in the tab"] = container.childNodes.length;
+    // With the host's toolbar, the filters are the tab's toolbar in the navigation's slot,
+    // and the list starts with its status line; a disposed list leaves the slot.
+    const slot = new FakeElement("div");
+    const slotted = new FakeElement("div");
+    const inSlot = panel.mountPullsPanel(
+      slotted,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: slot,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    assert(
+      slot.childNodes.length === 1 && slot.childNodes[0].classList.contains("github-pulls-filters"),
+      "the filters fill the host's toolbar",
+    );
+    assert(
+      slotted.childNodes[0].classList.contains("github-pulls-status") &&
+        !slotted.childNodes.some((node) => node.classList?.contains("github-pulls-filters")),
+      "the list under the toolbar starts with its status line",
+    );
+    inSlot.dispose();
+    assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
     return story;
   } finally {
     Date.now = realNow;

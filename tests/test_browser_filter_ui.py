@@ -1404,4 +1404,5 @@ def test_scroll_shadow_rides_the_filter_bar() -> None:
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.getElementById("nav-filter-bar")' in fn_block
     css = _read("styles.css")
-    assert ".nav-filter-bar.scrolled {" in css
+    # Each main tab's toolbar in the slot takes the same shadow as the filter bar.
+    assert ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled {" in css

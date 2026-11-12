@@ -3899,16 +3899,14 @@ function initNavScrollShadow() {
   }
   const scrollContent = content;
   function update() {
-    // Resolved per call rather than once at startup: the filter bar is
-    // hidden on panels that are not Files, and a shadow on a hidden
-    // element is no cue at all. Whichever chrome is bottom-most *and
-    // visible* carries it, and the other is cleared so a tab switch
-    // cannot leave two shadows armed.
-    const target =
-      filterBar && filterBar.offsetParent !== null && !filterBar.inert ? filterBar : tabBar;
-    const other = target === filterBar ? tabBar : filterBar;
-    other?.classList.remove("scrolled");
-    target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
+    // Resolved per call rather than once at startup: each tab shows its own
+    // toolbar in the slot, and a shadow on a hidden one is no cue at all.
+    // Whichever chrome is bottom-most *and visible* carries it, and the
+    // others are cleared so a tab switch cannot leave two shadows armed.
+    const target = queryHtml("[data-nav-toolbar]:not([hidden])") ?? tabBar;
+    for (const chrome of queryHtmlAll("[data-nav-toolbar], .nav-tab-bar")) {
+      chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
+    }
   }
   navScrollShadowUpdate = update;
   // Passive listener — we never preventDefault — so the browser

@@ -1296,6 +1296,56 @@ async function run() {
     container.scrollTop = 0;
   }
 
+  // ── The tally is the Commits tab's toolbar, in the navigation's slot ──
+  //
+  // With the shell's toolbar slot, the tally fills it, so the slot is never
+  // empty and the list starts at the panel's top, where the Files tree starts.
+  {
+    const container = document.getElementById("tab-git");
+    const toolbar = document.register("nav-toolbar-git", document.createElement("div"));
+    const shipped = document.createElement("div");
+    shipped.className = "git-history-summary";
+    toolbar.appendChild(shipped);
+    const revisions = [SHA_A, SHA_B];
+    const fresh = internals.emptyState();
+    fresh.pageCache.put({
+      page: 0,
+      startOrdinal: 0,
+      commits: [commit(SHA_A, [SHA_B], "second"), commit(SHA_B, [], "first")],
+      checkpoint: {
+        version: 1,
+        priorSwimlanes: [],
+        colorIndex: -1,
+        headRevision: revisions[0],
+        scopeFingerprint: "scope",
+      },
+      pageCursor: "page-0",
+      nextCursor: null,
+      previousCursor: null,
+    });
+    fresh.rowCount = 2;
+    fresh.virtualWindow.setRowCount(2);
+    fresh.scopeFingerprint = "scope";
+    fresh.summary = { commitCount: 2, firstCommitAt: null };
+    internals.setStateForTests(fresh);
+    // A panel showing its first list: the earlier scenarios left one mounted.
+    container.replaceChildren();
+    internals.renderPanel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const tally = toolbar.querySelector(".git-history-summary");
+    assertTrue("toolbar: the tally fills the slot", tally?.textContent === "2 commits");
+    assertTrue(
+      "toolbar: the list starts at the panel's top",
+      container.querySelector(".git-history-summary") === null &&
+        container.children[0]?.className === "git-graph-list",
+    );
+    assertEqual("toolbar: nothing above the list shifts it", internals.historyOrigin(), 0);
+    document.byId.delete("nav-toolbar-git");
+    toolbar.remove();
+    internals.setStateForTests(internals.emptyState());
+    internals.renderPanel();
+  }
+
   // ── The panel mounts a logical window, not its decoded working set ──
   {
     const container = document.getElementById("tab-git");

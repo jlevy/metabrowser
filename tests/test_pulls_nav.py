@@ -61,6 +61,23 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _toolbars(html: str) -> dict[str, bool]:
+    """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
+
+    toolbars: dict[str, bool] = {}
+    for opening, body in re.findall(
+        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
+    ):
+        name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
+        assert name is not None
+        toolbars[name.group(1)] = " hidden" not in opening
+        # Each ships the pending tally until its script fills it.
+        assert "tally-pending" in body, opening
+    assert list(toolbars.values()).count(True) == 1, toolbars
+    assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
+    return toolbars
+
+
 def _shell_tools(html: str) -> list[str]:
     bundles = re.search(r"window\.METABROWSER_ASSET_BUNDLES=(\{.*?\});</script>", html)
     assert bundles is not None
@@ -175,7 +192,7 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             assert '<div id="tab-pulls" data-tab-content="pulls" style="display: none"></div>' in (
                 elsewhere
             )
-            assert 'id="nav-filter-bar"></div>' in elsewhere
+            assert _toolbars(elsewhere) == {"files": True, "git": False, "pulls": False}
 
             for route in (
                 "/pull/7",
@@ -186,10 +203,10 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             ):
                 html = client.get(route).text
                 assert _tabs(html) == {"files": False, "git": False, "pulls": True}, route
-                # The Files tree is behind the Pulls tab from first paint, and its filters
-                # keep their slot, inert, so the list starts where the tree would.
+                # The Files tree is behind the Pulls tab from first paint, and the toolbar
+                # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
-                assert 'id="nav-filter-bar" inert></div>' in html
+                assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1

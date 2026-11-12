@@ -497,6 +497,18 @@
   overflow-wrap: anywhere;
   white-space: normal;
 }
+/* In the navigation's toolbar slot the slot is the row (static/styles.css, .nav-toolbar):
+   the filters take its height and keep to one line. */
+.github-pulls-filters:where(.nav-toolbar > *) {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: none;
+}
+.github-pulls-filters:where(.nav-toolbar > *) .chip {
+  white-space: nowrap;
+}
 .github-pulls-status,
 .github-pulls-connection,
 .github-pulls-empty {

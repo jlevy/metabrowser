@@ -44,13 +44,31 @@ def test_both_panes_keep_their_scrollbar_gutter() -> None:
         assert "scrollbar-gutter: stable;" in _rule(css, selector), selector
 
 
-def test_the_filter_bar_keeps_its_slot_on_every_tab() -> None:
+def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
+    """The top of the navigation is one toolbar slot, filled by the tab in front.
+
+    The Files filters, the Commits tally, and the Pulls filters stand in one another's
+    place at one height, in line units, so what is under the slot starts at one y on every
+    tab. The filter bar alone hid on Commits and Pulls and moved the panel 37 px.
+    """
+
     css = _css()
-    assert "visibility: hidden;" in _rule(css, ".nav-filter-bar[inert]")
-    assert "display: none" not in _rule(css, ".nav-filter-bar[inert]")
+    assert "--nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);" in css
+    assert "1.5 *" in css[css.index("--chip-height: calc(") :][:120], "chips are in line units"
+    toolbar = _rule(css, ".nav-toolbar")
+    assert "height: var(--nav-toolbar-height);" in toolbar
+    assert "overflow: hidden;" in toolbar and "white-space: nowrap;" in toolbar
+    assert "min-height: var(--nav-toolbar-height);" in _rule(css, ".nav-filter-bar")
+    assert "display: none;" in _rule(css, ".nav-filter-bar[hidden],\n.nav-toolbar[hidden]")
+    assert ".nav-filter-bar[inert]" not in css
+    tally = _rule(css, ".nav-toolbar > .git-history-summary")
+    assert "padding: 0;" in tally and "min-height: 0;" in tally
+    pulls = _rule(_github_css(), ".github-pulls-filters:where(.nav-toolbar > *)")
+    assert "position: static;" in pulls and "padding: 0;" in pulls
     tabs = (STATIC / "main-tabs.js").read_text(encoding="utf-8")
     activate = _function(tabs, "activateNavPanel")
-    assert 'filterBar.inert = panelId !== "files"' in activate
+    assert 'document.querySelectorAll("[data-nav-toolbar]")' in activate
+    assert ".dataset.navToolbar !== panelId" in activate
 
 
 def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
