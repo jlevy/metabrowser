@@ -132,12 +132,13 @@ it, a stdin that is not open at all is refused before serving.
 The watch begins as soon as the command line is read, before the server reads ROOT,
 dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
 startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
-A stdin that is closed from the start therefore stops the server before it prints its
-address. Python’s start, the import of `metab` itself, and the reading of its command
-line come before the watch: a stdin that closes during them is seen as soon as they end,
-and a hang there, such as a disk that stops answering while `metab` loads, is not
-covered. A stdin that closes while startup is failing ends the process either way, with
-the failure’s status or with 0.
+A stdin that is closed from the start therefore stops the server, possibly before it
+prints its address: the watch and startup run side by side, so either can come first.
+Python’s start, the import of `metab` itself, and the reading of its command line come
+before the watch: a stdin that closes during them is seen as soon as they end, and a
+hang there, such as a disk that stops answering while `metab` loads, is not covered.
+A stdin that closes while startup is failing ends the process either way, with the
+failure’s status or with 0.
 
 The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
 the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
