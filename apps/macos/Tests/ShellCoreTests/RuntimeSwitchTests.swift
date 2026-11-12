@@ -43,11 +43,11 @@ import Testing
     @Test func aFolderCommandComesFromItsSetup() {
         let spec = CLIServeLaunch().spec(
             serving: root, with: setup("/opt/b/metab", git: "/opt/b/bin/git"),
-            inherited: ["HOME": "/Users/someone", "VIRTUAL_ENV": "/tmp/venv"], logURL: URL(filePath: "/tmp/notes.log"))
+            inherited: ["HOME": "/tmp/home", "VIRTUAL_ENV": "/tmp/venv"], logURL: URL(filePath: "/tmp/notes.log"))
         #expect(spec.executable == "/opt/b/metab")
         #expect(spec.arguments == CLIServeLaunch().arguments(serving: root))
         #expect(spec.workingDirectory == "/tmp/notes/")
-        #expect(spec.environment["HOME"] == "/Users/someone")
+        #expect(spec.environment["HOME"] == "/tmp/home")
         #expect(spec.environment["VIRTUAL_ENV"] == nil)
         #expect(spec.environment["PATH"]?.hasPrefix("/opt/b/bin:") == true)
         #expect(spec.logURL == URL(filePath: "/tmp/notes.log"))
