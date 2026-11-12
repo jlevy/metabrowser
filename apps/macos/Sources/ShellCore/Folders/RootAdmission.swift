@@ -13,11 +13,15 @@ import Foundation
 /// no protected location. Anything less certain (a link anywhere on the path, another
 /// volume, a protected spelling) waits for its tab to be selected, under the spelling
 /// it was saved with, untouched, so selecting it serves what the path names then.
+/// A volume mounted under an ordinary folder is not entered: the mount table, read
+/// without touching any volume, marks every mount point but the system's and the Data
+/// volume's as a place the walk stops before.
 ///
 /// The server is started with a path, not a descriptor, so this cannot bind what the
-/// server later resolves: `RestoreQueue` checks each background root again just before
-/// it starts, and a process that changes the path in the moment between that check and
-/// the server resolving it is not something this can stop. The deferral is the app's
+/// server later resolves. Each background root is checked again when `RestoreQueue`
+/// reaches it and once more just before its server spawns (`ServerSupervisor.mayLaunch`),
+/// and a process that changes the path in the moment between that check and the server
+/// resolving it is not something this can stop. The deferral is the app's
 /// own policy, so a restore raises no prompt for a folder nobody is looking at; macOS
 /// enforces its privacy grants regardless.
 public nonisolated enum RootAdmission: Equatable, Sendable {
@@ -28,28 +32,49 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
     /// Gone, or not a folder.
     case gone
     /// Not an absolute path spelled as a canonical one: a `.`, `..`, or empty component,
-    /// a trailing slash, or a line break.
+    /// a trailing slash, a line break, or a NUL, which would end the path `openat` sees
+    /// before the end of the one checked.
     case invalid
+
+    /// What looking a component up again found, after `openat` refused it.
+    public enum SecondLookup: Equatable, Sendable {
+        /// The entry's type, `st_mode & S_IFMT`.
+        case success(mode_t)
+        case failure(Int32)
+    }
 
     /// - Parameters:
     ///   - homeDevice: the home folder's volume; nil reads it from `home`.
-    ///   - beforeOpening: called with each path just before it is opened, which is how
+    ///   - mounts: the mount points; nil reads the mount table.
+    ///   - beforeLooking: called with each path just before it is looked up, which is how
     ///     the tests watch what is looked at and change the filesystem mid-walk.
     public static func admit(
-        _ saved: String, home: String, homeDevice: dev_t? = nil, beforeOpening: (String) -> Void = { _ in }
+        _ saved: String, home: String, homeDevice: dev_t? = nil, mounts: [String]? = nil,
+        beforeLooking: (String) -> Void = { _ in }
     ) -> RootAdmission {
         guard let components = canonicalComponents(saved) else { return .invalid }
         let isInside = { ProtectedLocations.isInside($0, home: home) }
+        // A home folder in a protected place cannot be looked at to classify anything.
+        guard !isInside(home), let table = mounts ?? mountPoints() else { return .deferred(saved) }
+        let barriers = mountBarriers(table)
         var fd = Darwin.open("/", O_SEARCH | O_CLOEXEC)
         guard fd >= 0 else { return .deferred(saved) }
         defer { close(fd) }
         var path = ""
         for component in components {
             path += "/" + component
-            if isInside(path) { return .deferred(saved) }
-            beforeOpening(path)
+            if isInside(path) || barriers.contains(path.lowercased()) { return .deferred(saved) }
+            beforeLooking(path)
             let next = openat(fd, component, O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
-            guard next >= 0 else { return failure(errno, at: fd, component, saved) }
+            guard next >= 0 else {
+                let error = errno
+                guard error == ENOTDIR || error == ELOOP else { return error == ENOENT ? .gone : .deferred(saved) }
+                beforeLooking(path)
+                var info = stat()
+                let lookup = fstatat(fd, component, &info, AT_SYMLINK_NOFOLLOW) == 0
+                    ? SecondLookup.success(info.st_mode & S_IFMT) : .failure(errno)
+                return refusedComponent(lookup, saved)
+            }
             close(fd)
             fd = next
         }
@@ -60,6 +85,7 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
             device = homeDevice
         } else {
             var homeInfo = stat()
+            beforeLooking(home)
             guard stat(home, &homeInfo) == 0 else { return .deferred(saved) }
             device = homeInfo.st_dev
         }
@@ -67,19 +93,50 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
         return ProtectedLocations.contains(canonical, home: home) ? .deferred(saved) : .open(canonical)
     }
 
-    /// Why `component` did not open: missing or not a folder drops the tab, and a link,
-    /// or anything uncertain, defers it.
-    private static func failure(_ error: Int32, at parent: Int32, _ component: String, _ saved: String) -> RootAdmission {
-        switch error {
-        case ENOENT:
-            return .gone
-        case ENOTDIR, ELOOP:
-            var info = stat()
-            guard fstatat(parent, component, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return .gone }
-            return info.st_mode & S_IFMT == S_IFLNK ? .deferred(saved) : .gone
-        default:
-            return .deferred(saved)
+    /// After `openat` refused a component as not a folder or a link: only proof that it is
+    /// missing, or that it is neither a folder nor a link, drops the tab. A link, a folder
+    /// (the component changed between the two lookups), or a lookup that failed otherwise
+    /// defers it.
+    static func refusedComponent(_ lookup: SecondLookup, _ saved: String) -> RootAdmission {
+        switch lookup {
+        case .failure(ENOENT): .gone
+        case .failure: .deferred(saved)
+        case .success(S_IFDIR), .success(S_IFLNK): .deferred(saved)
+        case .success: .gone
         }
+    }
+
+    /// Every mount point, from the kernel's table without asking any volume (`MNT_NOWAIT`),
+    /// or nil if the table cannot be read.
+    public static func mountPoints() -> [String]? {
+        let count = getfsstat(nil, 0, MNT_NOWAIT)
+        guard count > 0 else { return nil }
+        var entries = Array(repeating: Darwin.statfs(), count: Int(count))
+        let filled = entries.withUnsafeMutableBufferPointer { buffer in
+            getfsstat(buffer.baseAddress, Int32(MemoryLayout<Darwin.statfs>.stride * buffer.count), MNT_NOWAIT)
+        }
+        guard filled > 0 else { return nil }
+        return entries.prefix(Int(filled)).map { entry in
+            withUnsafeBytes(of: entry.f_mntonname) { bytes in
+                String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
+            }
+        }
+    }
+
+    /// The mount points the walk stops before, lowercased, in both spellings of a
+    /// firmlinked path: all but the system volume's and the Data volume's.
+    static func mountBarriers(_ mounts: [String]) -> Set<String> {
+        let data = ProtectedLocations.dataVolume
+        var barriers: Set<String> = []
+        for mount in mounts where mount != "/" && mount != data {
+            barriers.insert(mount.lowercased())
+            if mount.hasPrefix(data + "/") {
+                barriers.insert(String(mount.dropFirst(data.count)).lowercased())
+            } else {
+                barriers.insert((data + mount).lowercased())
+            }
+        }
+        return barriers
     }
 
     /// The path the kernel gives an open folder, with the volume's own case and without
@@ -92,7 +149,8 @@ public nonisolated enum RootAdmission: Equatable, Sendable {
 
     /// The components of `path` if it is spelled as a canonical absolute path.
     static func canonicalComponents(_ path: String) -> [String]? {
-        guard path.hasPrefix("/"), !path.contains(where: \.isNewline) else { return nil }
+        guard path.hasPrefix("/"), !path.contains(where: \.isNewline), !path.unicodeScalars.contains("\0")
+        else { return nil }
         if path == "/" { return [] }
         let components = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return nil }

@@ -741,24 +741,33 @@ Terminal launch.
   The walk opens each component relative to the one before, with `O_NOFOLLOW`, so a
   folder replaced after it was opened cannot redirect the rest, and it never opens a
   protected location or anything inside one, compared without regard to case and in its
-  Data-volume spelling too (`/System/Volumes/Data/Volumes` is `/Volumes`). The folder it
-  reaches must be on the home folder’s volume, and the kernel’s name for it
-  (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
+  Data-volume spelling too (`/System/Volumes/Data/Volumes` is `/Volumes`). Nor does it
+  enter any mount point but the system’s and the Data volume’s, found in the kernel’s
+  mount table without asking any volume, so a disk or a share mounted under an ordinary
+  folder is neither looked at nor waited on.
+  The folder it reaches must be on the home folder’s volume, and the kernel’s name for
+  it (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
   location; that name is the root’s identity, so aliases of one folder share one server.
   A root that falls short (a link anywhere on its path, another volume, a protected
   spelling) waits for its tab under the spelling it was saved with, untouched, so
   selecting it serves what that path names then.
-  A root spelled with `.`, `..`, or empty components is dropped unopened, and so is one
-  whose folder is gone.
+  A home folder in a protected place (a network home under `/Volumes`) is not looked at
+  to classify anything, so every root then waits.
+  A root spelled with `.`, `..`, or empty components, or holding a NUL, is dropped
+  unopened, and so is one whose folder is proven gone; a component that a second lookup
+  cannot prove missing, or finds changed, waits instead.
   The launch recreates the windows and tabs, and only each window’s shown tab loads its
   page. The servers start one at a time, each after the one before it is ready or has
   failed: the front tab’s first, then those of the tabs the other windows show, front to
   back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
-  Each background root is admitted again just before its server starts, and one that
-  changed while the servers before it started waits for its tab instead.
+  Each background root is admitted again when its turn comes, and once more just before
+  its server spawns, after the launch gate and any earlier child’s termination
+  (`ServerSupervisor.mayLaunch`); one that changed while it waited is not spawned and
+  waits for its tab instead.
+  Selecting a tab clears the check, even for a server already waiting at the gate.
   The server takes a path, so a process that changes the path between that last check
-  and the server resolving it can still win; the deferral is the app’s own policy, and
-  macOS enforces its privacy grants regardless.
+  and the server resolving it, about a process start later, can still win; the deferral
+  is the app’s own policy, and macOS enforces its privacy grants regardless.
   A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
   other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
   folder that holds one, such as the home folder) starts only when one of its tabs is
