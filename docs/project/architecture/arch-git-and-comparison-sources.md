@@ -206,23 +206,45 @@ away — the client must be able to recover, not just fail.
 `/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer from refs, and resolving
 a scope runs up to eight Git processes.
 `git/ref_state.py` names the refs’ state without running Git: one `stat` per entry under
-`refs/`, plus `HEAD`, `packed-refs`, `reftable/`, `config`, `config.worktree`,
-`shallow`, and `info/grafts`, in the location’s own Git directory and the common one.
-A ref update renames a lock file over the ref, so its inode moves even when its time and
-size do not.
+`refs/` and `reftable/`, plus `HEAD`, `packed-refs`, `config`, `config.worktree`,
+`shallow`, and `info/grafts`, in the common Git directory and, for a linked worktree, in
+its own, where a reftable repository keeps that worktree’s `HEAD`. A ref update renames
+a lock file over the ref, so its inode moves even when its time and size do not.
+The Git directories are asked of Git once and remembered with the served root’s `.git`
+entry, so a folder replaced in place is asked about again.
 
 Under one state, a scope is resolved once, the refs and summary bodies are kept in
 `git/route_memo.py`, a later log page skips the proof that its scope still holds, and a
 first page asked for again replays the live session that answered it.
 The state covers every ref rather than only the scope’s, because a page’s decorations
 name every ref that points into it.
-Each answer carries an entity tag, and a client holding one that this process made is
-answered 304. Every keep is bounded by count, and the memo by bytes as well; a
-repository with more ref entries than `MAX_REF_ENTRIES` gets no state and is answered as
-before. The state does not cover Git configuration outside the repository or an object
-lost from under a ref, neither of which changes which commits the refs name.
-`tests/test_git_route_memo.py` holds each input moving the state, a repeat running no
-Git, and a pin’s store moving its answers.
+It does not cover another worktree’s `HEAD`, so no answer reads one: the summary counts
+the commits its scope’s log walks rather than `rev-list --all`. Each answer carries an
+entity tag, and a client holding one that this process made is answered 304. The memo is
+bounded by entries and bytes, the kept scopes by entries and ref targets, each holding
+only the latest state’s; a repository with more ref entries than `MAX_REF_ENTRIES` gets
+no state, is answered as before, and is not walked again for the repository-identity
+period. The constants record the walk’s measured cost beside them.
+The state does not cover Git configuration outside the repository or an object lost from
+under a ref, neither of which changes which commits the refs name.
+`tests/test_git_route_memo.py` moves every covered input once, in a main and a linked
+worktree, with the files backend and with reftable, and holds a repeat running no Git
+and a pin’s store moving its answers.
+
+### Comparisons the page keeps
+
+The Commits panel keeps each answered comparison in the page, keyed by the request’s own
+query and only when its revision is a full commit ID, so a revisited commit’s diff
+mounts with no request (`static/git-panel.js`). It is bounded at
+`GIT_COMPARISON_CACHE_BYTES`, 16 MiB of JSON characters, with a quarter for one answer,
+least recently used first, and sized in a task after the one that hands the answer to
+the diff. It is cleared by Refresh, by the panel’s teardown, and by a history walk found
+stale, and an answer requested before a clear is not kept when it lands.
+A store’s answer for a commit ID is the same later.
+A served folder’s is not always: its working tree’s `.gitattributes`, `.git/config`, the
+reader’s Git configuration, and a replace ref or graft can each change it, and the page
+does not notice them until one of those clears happens.
+The server keeps no folder comparison (`builtin_plugins/diff/comparison_cache.py`).
 
 ## Paths are bytes
 

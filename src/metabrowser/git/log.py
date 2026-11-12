@@ -307,39 +307,34 @@ async def read_history_summary(
     served_root: Path | GitLocation,
     *,
     revisions: Sequence[str],
-    all_refs: bool,
 ) -> tuple[int, float | None]:
     """Total commits in scope, and the oldest root commit's committer date.
 
-    Backs the panel's header tally. ``--all`` stands in for an expanded
-    all-refs target list: it reaches the same commits, and a repository
-    with thousands of refs must not become thousands of argv entries.
-    The default scope passes its handful of resolved revisions directly.
+    Backs the panel's header tally. *revisions* are the scope's resolved commit IDs, the
+    same ones the log walks, so the tally counts what the list shows. They go on standard
+    input, as the log's do: a repository with thousands of refs must not become thousands
+    of argv entries. ``--all`` would stand in for them, but it also adds the ``HEAD`` of
+    every other worktree, which the log does not walk and the ref state does not cover
+    (review C of #368, C2).
 
     Both commands walk the graph without touching trees or diffs, so the
     cost is one traversal, bounded by the shared subprocess timeout. An
     empty scope is an unborn branch: zero commits, no first date.
     """
     location = as_location(served_root)
-    selector: tuple[str, ...] = tuple(revisions)
-    if all_refs:
-        # A pinned store's history is these namespaces plus the pin, not every ref.
-        selector = (
-            ("--all",)
-            if location.pinned_revision is None
-            else ("--branches", "--tags", "--remotes", location.pinned_revision)
-        )
-    if not selector:
+    if not revisions:
         return 0, None
-    raw_count = await run_git_at(["rev-list", "--count", *selector], location)
+    selector = ("\n".join(revisions) + "\n").encode("ascii")
+    raw_count = await run_git_at(["rev-list", "--count", "--stdin"], location, stdin_bytes=selector)
     commit_count = int(raw_count.decode("ascii", errors="replace").strip() or "0")
 
     # One "commit <sha>" line and one "%ct" line per root commit. A scope
     # can have several roots (orphan branches, grafted history); the
     # repository's age is the oldest of them.
     raw_roots = await run_git_at(
-        ["rev-list", "--max-parents=0", "--format=%ct", *selector],
+        ["rev-list", "--max-parents=0", "--format=%ct", "--stdin"],
         location,
+        stdin_bytes=selector,
     )
     timestamps = [
         float(line)

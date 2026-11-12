@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -22,6 +25,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import paths_safe
+from metabrowser.git import history as history_module
 from metabrowser.git import process as git_process
 from metabrowser.git import ref_state as ref_state_module
 from metabrowser.git import repo as git_repo
@@ -78,13 +82,37 @@ def _forget_everything() -> None:
     git_repo.clear_repo_cache()
 
 
-@pytest.fixture
-def repo(tmp_path: Path) -> Iterator[Path]:
-    root = tmp_path / "repo"
+def _git_version() -> tuple[int, int]:
+    raw = subprocess.run(["git", "--version"], capture_output=True, text=True, check=True).stdout
+    match = re.search(r"(\d+)\.(\d+)", raw)
+    return (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+
+
+# Both ref backends: a reftable repository keeps its refs, and a linked worktree's HEAD,
+# in table files rather than one file a ref (review C of #368, C1).
+REF_FORMATS = (
+    pytest.param("files", id="files"),
+    pytest.param(
+        "reftable",
+        id="reftable",
+        marks=pytest.mark.skipif(
+            _git_version() < (2, 45), reason="reftable repositories need Git 2.45 or later"
+        ),
+    ),
+)
+
+
+def _make_repo(root: Path, ref_format: str = "files") -> Path:
     root.mkdir()
-    _git(root, "init", "-q", "-b", "main")
+    formats = ["--ref-format=reftable"] if ref_format == "reftable" else []
+    _git(root, "init", "-q", *formats, "-b", "main")
     _commit(root, "first.txt")
     _commit(root, "second.txt")
+    return root
+
+
+@contextmanager
+def _serving(root: Path) -> Generator[Path]:
     previous = paths_safe.ROOT_DIR
     paths_safe._set_root_dir(root)
     _forget_everything()
@@ -97,6 +125,12 @@ def repo(tmp_path: Path) -> Iterator[Path]:
             asyncio.run(HISTORY_SESSIONS.close_all())
             paths_safe._set_root_dir(previous)
             _forget_everything()
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Iterator[Path]:
+    with _serving(_make_repo(tmp_path / "repo")) as root:
+        yield root
 
 
 # The commands the history routes run. The server's inventory may run Git of its own
@@ -130,57 +164,217 @@ def _state(root: Path) -> str | None:
 # ── The state ────────────────────────────────────────────────
 
 
-def test_the_state_holds_still_and_moves_with_every_input_it_covers(repo: Path) -> None:
-    states = [_state(repo)]
-    assert states[0] is not None
-    assert _state(repo) == states[0], "nothing changed, so nothing may move"
+class _States:
+    """The states one location has had; each move must name a state not seen before."""
 
-    def moved(change: str) -> None:
-        state = _state(repo)
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        first = _state(root)
+        assert first is not None
+        assert _state(root) == first, "nothing changed, so nothing may move"
+        self.seen = [first]
+
+    def moved(self, change: str) -> None:
+        state = _state(self.root)
         assert state is not None, change
-        assert state not in states, f"{change} did not move the state"
-        states.append(state)
+        assert state not in self.seen, f"{change} did not move the state"
+        self.seen.append(state)
 
-    _commit(repo, "third.txt")
-    moved("a commit on the checked-out branch")
+
+@pytest.mark.parametrize("ref_format", REF_FORMATS)
+def test_the_state_holds_still_and_moves_with_every_input_it_covers(
+    tmp_path: Path, ref_format: str
+) -> None:
+    """Every input the module says it covers, moved once, in a main worktree."""
+
+    repo = _make_repo(tmp_path / "repo", ref_format)
+    git_dir = Path(_git(repo, "rev-parse", "--absolute-git-dir"))
+    states = _States(repo)
+    first = _git(repo, "rev-list", "--max-parents=0", "HEAD")
+    third = _commit(repo, "third.txt")
+    states.moved("a commit on the checked-out branch")
     _git(repo, "tag", "v1")
-    moved("a new tag")
+    states.moved("a new tag")
     _git(repo, "branch", "side")
-    moved("a new branch")
+    states.moved("a new branch")
     _git(repo, "checkout", "-q", "side")
-    moved("a checkout")
+    states.moved("a checkout")
     _git(repo, "pack-refs", "--all")
-    moved("packing the refs")
+    states.moved("packing the refs")
     _git(repo, "config", "branch.side.merge", "refs/heads/main")
-    moved("an upstream named in config")
+    states.moved("an upstream named in config")
     _git(repo, "update-ref", "-d", "refs/tags/v1")
-    moved("deleting a packed ref")
+    states.moved("deleting a packed ref")
     _git(repo, "checkout", "-q", "--detach")
-    moved("detaching HEAD")
+    states.moved("detaching HEAD")
+    _git(repo, "config", "extensions.worktreeConfig", "true")
+    states.moved("turning on per-worktree configuration")
+    _git(repo, "config", "--worktree", "metabrowser.probe", "1")
+    assert (git_dir / "config.worktree").is_file()
+    states.moved("a per-worktree setting in config.worktree")
+    _git(repo, "replace", "--graft", third, first)
+    states.moved("a replace ref")
+    # Git writes these two only on a fetch or a hand edit: written here as Git writes them.
+    (git_dir / "info").mkdir(exist_ok=True)
+    (git_dir / "info" / "grafts").write_text(f"{third} {first}\n")
+    states.moved("info/grafts")
+    (git_dir / "shallow").write_text(f"{first}\n")
+    states.moved("a shallow boundary")
 
 
-def test_a_linked_worktree_has_its_own_head_and_shares_the_refs(repo: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("ref_format", REF_FORMATS)
+def test_a_linked_worktree_has_its_own_head_and_shares_the_refs(
+    tmp_path: Path, ref_format: str
+) -> None:
+    """A linked worktree's own HEAD and refs, and the shared ones, each move its state.
+
+    Under reftable a linked worktree's HEAD file is a stub, and its real HEAD and its
+    per-worktree refs are tables in its own Git directory (review C of #368, C1).
+    """
+
+    repo = _make_repo(tmp_path / "repo", ref_format)
+    _git(repo, "branch", "other")
     linked = tmp_path / "linked"
     _git(repo, "worktree", "add", "-q", "-b", "linked", str(linked))
-    before = _state(linked)
-    assert before is not None
+    states = _States(linked)
     _commit(linked, "linked.txt")
-    after_own_commit = _state(linked)
-    assert after_own_commit not in (None, before), "the worktree's own branch moved"
+    states.moved("a commit on the worktree's own branch")
     _commit(repo, "main-only.txt")
-    after_shared = _state(linked)
-    assert after_shared not in (None, after_own_commit), "a shared branch moved"
-    _git(linked, "checkout", "-q", "--detach")
-    assert _state(linked) not in (None, after_shared), "the worktree's own HEAD moved"
+    states.moved("a commit on a shared branch, made in the main worktree")
+    _git(linked, "switch", "-q", "other")
+    states.moved("a switch in the worktree")
+    _git(linked, "switch", "-q", "--detach")
+    states.moved("a detach in the worktree")
+    _commit(linked, "detached.txt")
+    states.moved("a detached commit in the worktree")
+    _git(linked, "update-ref", "refs/worktree/probe", "HEAD")
+    states.moved("a per-worktree ref")
 
 
-def test_the_state_gives_up_past_its_bound(repo: Path) -> None:
+@pytest.mark.parametrize("ref_format", REF_FORMATS)
+def test_a_served_linked_worktree_answers_afresh_after_a_switch(
+    tmp_path: Path, ref_format: str
+) -> None:
+    """Review C of #368, C1's reproduction, through the routes."""
+
+    repo = _make_repo(tmp_path / "repo", ref_format)
+    _git(repo, "branch", "other")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-q", "-b", "topic", str(linked))
+    _commit(linked, "t1.txt")
+    with _serving(linked), TestClient(app) as client:
+        before = client.get("/api/git/log", params={"limit": "10"}).json()
+        assert before["commits"][0]["subject"] == "t1.txt"
+        assert client.get("/api/git/summary").json()["commit_count"] == 3
+        _git(linked, "switch", "-q", "other")
+        git_repo.clear_repo_cache()
+        after = client.get("/api/git/log", params={"limit": "10"}).json()
+        summary = client.get("/api/git/summary").json()
+    assert after["page_cursor"] != before["page_cursor"]
+    assert after["commits"][0]["subject"] == "second.txt"
+    assert summary["commit_count"] == 2
+
+
+def _fresh_summary(client: TestClient, params: dict[str, str]) -> dict[str, Any]:
+    """The summary as a server with nothing kept answers it."""
+
+    GIT_ANSWERS.clear()
+    clear_kept_scopes()
+    return client.get("/api/git/summary", params=params).json()
+
+
+@pytest.mark.parametrize("served", ["main", "linked"])
+def test_the_all_summary_reads_nothing_the_state_does_not_cover(
+    tmp_path: Path, served: str
+) -> None:
+    """Commits on another worktree's detached HEAD change no kept summary's answer.
+
+    ``rev-list --all`` adds every worktree's HEAD, which the state does not cover, so a
+    kept answer went stale against a fresh one (review C of #368, C2). The summary now
+    counts the scope the log walks, whose inputs the state covers.
+    """
+
+    repo = _make_repo(tmp_path / "repo")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-q", "--detach", str(linked))
+    root, other = (repo, linked) if served == "main" else (linked, repo)
+    with _serving(root), TestClient(app) as client:
+        params = {"scope": "all"}
+        kept_before = client.get("/api/git/summary", params=params).json()
+        if served == "linked":
+            _git(other, "switch", "-q", "--detach")
+        _commit(other, "elsewhere-1.txt")
+        _commit(other, "elsewhere-2.txt")
+        kept_after = client.get("/api/git/summary", params=params).json()
+        fresh = _fresh_summary(client, params)
+        logged = client.get("/api/git/log", params={"limit": "1000", "scope": "all"}).json()
+    assert kept_after == fresh, "a kept summary disagrees with a fresh one"
+    assert fresh["commit_count"] == len(logged["commits"]), "the tally counts the list"
+    assert kept_before["commit_count"] == fresh["commit_count"]
+
+
+def test_a_served_folder_replaced_in_place_is_asked_about_again(tmp_path: Path) -> None:
+    """Review C of #368, C3: a linked worktree's folder deleted and cloned again."""
+
+    repo = _make_repo(tmp_path / "repo")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-q", "-b", "linked", str(linked))
+    replaced = _state(linked)
+    assert replaced is not None
+    other = _make_repo(tmp_path / "other")
+    _commit(other, "other-only.txt")
+    shutil.rmtree(linked)
+    _git(tmp_path, "clone", "-q", str(other), str(linked))
+    now = _state(linked)
+    clear_ref_state_cache()
+    assert now == _state(linked), "the state is not the clone's"
+    assert now != replaced
+
+
+def test_the_state_gives_up_past_its_bound_and_remembers_it(repo: Path) -> None:
     head = _git(repo, "rev-parse", "HEAD")
     for index in range(4):
         _git(repo, "update-ref", f"refs/heads/many-{index}", head)
-    with mock.patch.object(ref_state_module, "MAX_REF_ENTRIES", 3):
+    walks = mock.Mock(wraps=ref_state_module._read_state)
+    with (
+        mock.patch.object(ref_state_module, "MAX_REF_ENTRIES", 3),
+        mock.patch.object(ref_state_module, "_read_state", walks),
+    ):
         assert _state(repo) is None
+        assert _state(repo) is None
+        assert walks.call_count == 1, "a repository past the bound was walked again at once"
+        with mock.patch.object(ref_state_module, "GIT_REPO_INFO_TTL_S", 0.0):
+            clear_ref_state_cache()
+            assert _state(repo) is None
+            assert _state(repo) is None
+        assert walks.call_count == 3, "the verdict outlived its period"
+    clear_ref_state_cache()
     assert _state(repo) is not None
+
+
+def test_only_the_latest_scope_is_kept_and_its_targets_are_bounded(repo: Path) -> None:
+    """Review B of #368, B2: a moved state's scope goes at once, and targets are bounded."""
+
+    location = GitLocation.filesystem(repo)
+
+    async def scope_now(wants_all: bool) -> None:
+        state = await ref_state(location)
+        await history_module.current_history_scope(location, wants_all=wants_all, state=state)
+
+    asyncio.run(scope_now(True))
+    asyncio.run(scope_now(False))
+    assert len(history_module._KEPT_SCOPES) == 2
+    for index in range(3):
+        _git(repo, "tag", f"moved-{index}")
+        asyncio.run(scope_now(True))
+    assert len(history_module._KEPT_SCOPES) == 2, "a moved state's scope was kept beside"
+    with mock.patch.object(history_module, "_MAX_KEPT_SCOPE_ENTRY_TARGETS", 0):
+        _git(repo, "tag", "moved-past-entry-bound")
+        asyncio.run(scope_now(True))
+    assert len(history_module._KEPT_SCOPES) == 1, "a scope past the entry bound was kept"
+    with mock.patch.object(history_module, "_MAX_KEPT_SCOPE_TARGETS", 1):
+        asyncio.run(scope_now(True))
+    assert history_module.kept_scope_targets() <= 1
 
 
 # ── The routes ───────────────────────────────────────────────

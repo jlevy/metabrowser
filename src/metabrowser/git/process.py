@@ -863,8 +863,12 @@ async def run_git_at(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
+    stdin_bytes: bytes | None = None,
 ) -> bytes:
-    """Run ``git`` at *location*, applying store isolation when it is a pin."""
+    """Run ``git`` at *location*, applying store isolation when it is a pin.
+
+    *stdin_bytes* is written to Git's stdin, as :func:`run_git` does.
+    """
 
     return await run_git(
         [*location.config_args, *args],
@@ -873,6 +877,7 @@ async def run_git_at(
         policy=policy if policy is not None else location.read_policy,
         timeout_s=timeout_s,
         max_bytes=max_bytes,
+        stdin_bytes=stdin_bytes,
     )
 
 

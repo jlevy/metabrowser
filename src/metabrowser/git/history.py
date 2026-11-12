@@ -409,17 +409,31 @@ async def resolve_history_scope(root: Path | GitLocation, *, wants_all: bool) ->
     )
 
 
-# Scopes resolved per location, scope name, and ref state. A state that moved is never
-# asked for again, so the bound reclaims it; an ``all`` scope of a repository with many
-# refs carries one target per ref, which is why it is bounded by count at all.
+# The scope resolved for each location and scope name, with the ref state it was resolved
+# under. Only the latest state's is kept: a state that moved is never asked for again, so
+# a newer one replaces it at once.
+#
+# An ``all`` scope carries one commit ID per distinct ref target. Measured 2026-11-12 with
+# tracemalloc: 89 bytes a target, 8.9 MB for 100,000 targets (this repository has 506
+# refs, about 45 KB a scope). So the keep is bounded by targets as well as by entries:
+# 262,144 targets is about 23 MB, and a scope with more than a quarter of that is resolved
+# and not kept.
 _MAX_KEPT_SCOPES = 32
-_KEPT_SCOPES: OrderedDict[tuple[str, HistoryScopeName, str], HistoryScope] = OrderedDict()
+_MAX_KEPT_SCOPE_TARGETS = 262_144
+_MAX_KEPT_SCOPE_ENTRY_TARGETS = _MAX_KEPT_SCOPE_TARGETS // 4
+_KEPT_SCOPES: OrderedDict[tuple[str, HistoryScopeName], tuple[str, HistoryScope]] = OrderedDict()
 
 
 def clear_kept_scopes() -> None:
     """Forget every resolved scope, as a served-root change requires."""
 
     _KEPT_SCOPES.clear()
+
+
+def kept_scope_targets() -> int:
+    """How many ref targets the kept scopes hold together; for tests and bounds."""
+
+    return sum(len(scope.arguments) for _state, scope in _KEPT_SCOPES.values())
 
 
 async def current_history_scope(
@@ -434,19 +448,19 @@ async def current_history_scope(
     location = as_location(root)
     if state is None:
         return await resolve_history_scope(location, wants_all=wants_all)
-    key: tuple[str, HistoryScopeName, str] = (
-        location.identity,
-        "all" if wants_all else "default",
-        state,
-    )
+    key: tuple[str, HistoryScopeName] = (location.identity, "all" if wants_all else "default")
     kept = _KEPT_SCOPES.get(key)
-    if kept is not None:
+    if kept is not None and kept[0] == state:
         _KEPT_SCOPES.move_to_end(key)
-        return kept
+        return kept[1]
     scope = await resolve_history_scope(location, wants_all=wants_all)
-    _KEPT_SCOPES[key] = scope
-    while len(_KEPT_SCOPES) > _MAX_KEPT_SCOPES:
-        _KEPT_SCOPES.popitem(last=False)
+    _KEPT_SCOPES.pop(key, None)
+    if len(scope.arguments) <= _MAX_KEPT_SCOPE_ENTRY_TARGETS:
+        _KEPT_SCOPES[key] = (state, scope)
+        while len(_KEPT_SCOPES) > _MAX_KEPT_SCOPES or (
+            kept_scope_targets() > _MAX_KEPT_SCOPE_TARGETS
+        ):
+            _KEPT_SCOPES.popitem(last=False)
     return scope
 
 
@@ -1199,6 +1213,7 @@ __all__ = [
     "clear_kept_scopes",
     "close_history_sessions",
     "current_history_scope",
+    "kept_scope_targets",
     "decode_history_cursor",
     "encode_history_cursor",
     "resolve_history_scope",

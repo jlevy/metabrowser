@@ -142,8 +142,9 @@ async def api_git_summary(request: Request) -> Response:
     first page paints — the same pattern as the file tree's tally row —
     so its one graph traversal never blocks history rendering.
 
-    ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
-    default counts the same refs the panel walks.
+    ``scope`` follows ``/api/git/log``, and the count is of the commits that
+    scope's log walks: ``all`` counts every ref and HEAD, the default the same
+    refs the panel walks. Another worktree's HEAD is not in either.
 
     Kept under the ref state: the commits the refs reach cannot change while the refs
     do not, and ``shallow`` and ``info/grafts``, which bound the walk, are in the state.
@@ -168,9 +169,7 @@ async def api_git_summary(request: Request) -> Response:
     try:
         scope = await current_history_scope(location, wants_all=wants_all, state=state)
         commit_count, first_commit_at = await read_history_summary(
-            location,
-            revisions=scope.arguments,
-            all_refs=wants_all,
+            location, revisions=scope.arguments
         )
     except GitError as exc:
         log.warning("git summary failed: %s", failure_detail(exc))
