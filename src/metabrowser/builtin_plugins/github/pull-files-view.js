@@ -88,6 +88,8 @@ export function mountFileTree(host) {
   // Rows that came with no recent input, offered at no cost in height (LATE_ROWS_MS): on the
   // line when it is shown, and over the tree's top, floating, when it is not.
   const offer = h("button", { type: "button", class: "github-pull-text-action", hidden: "" });
+  /** Whether the offer was last pressed from the keyboard, which scrolls to where focus goes. */
+  let offerByKey = false;
   const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText, offer]);
   const notice = h("div", { class: "github-pull-files-notice-host" });
   const list = h("div", { class: "github-pull-files-rows" });
@@ -414,7 +416,10 @@ export function mountFileTree(host) {
         host.leave();
       } else {
         arriving.focus({ preventScroll: true });
-        arriving.scrollIntoView({ block: "nearest" });
+        // A pointer pressed the offer where it is; only a key may have moved the reader away.
+        if (offerByKey) {
+          arriving.scrollIntoView({ block: "nearest" });
+        }
       }
     }
     // Transfer only focus this replacement removed; an unrelated control keeps its focus.
@@ -495,7 +500,15 @@ export function mountFileTree(host) {
 
   const listening = new AbortController();
   const { signal } = listening;
-  offer.addEventListener("click", () => controller.reveal(), { signal });
+  offer.addEventListener(
+    "click",
+    (event) => {
+      // A click from Enter or Space has no pointer press to count.
+      offerByKey = event.detail === 0;
+      controller.reveal();
+    },
+    { signal },
+  );
   /** @param {EventTarget | null} target */
   const rowOf = (target) =>
     target instanceof Element

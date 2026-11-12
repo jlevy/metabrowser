@@ -24,11 +24,12 @@ async function settle() {
 }
 
 /**
- * One tree; *answers* is what each read of the list answers, in order, and a refresh POST
- * answers that it started. What the paint shows is sampled where a frame could paint: after
- * the click's task and after each later task the session runs.
+ * One tree; *answers* is what each read of the list answers, in order ("fail" for a read the
+ * server does not answer), and a refresh POST answers that it started, with *refreshing* as
+ * its list when given. What the paint shows is sampled where a frame could paint: after the
+ * click's task and after each later task the session runs.
  */
-function story(tree, answers, input) {
+function story(tree, answers, input, refreshing = null) {
   let now = 0;
   const timers = new Map();
   let next = 1;
@@ -44,11 +45,14 @@ function story(tree, answers, input) {
           return Promise.resolve({
             status: 202,
             etag: null,
-            body: { files: { ...recorded.pending, rows: [] } },
+            body: { files: { ...(refreshing ?? recorded.pending), rows: [] } },
           });
         }
         reads.push(route);
         const answer = answers.shift();
+        if (answer === "fail") {
+          return Promise.reject(new Error("the server did not answer"));
+        }
         return answer === undefined
           ? new Promise(() => {})
           : Promise.resolve({ status: 200, etag: null, body: answer });
@@ -241,6 +245,71 @@ async function run() {
     refreshed.frame();
     await refreshed.advance(recorded.comparison.fresh_for_s * 1000);
     facts.refreshed = { painted: refreshed.painted, floats: refreshed.last().offerFloats };
+  }
+
+  // A cached list that is stale, drawn at the click, whose refresh answers a second later with
+  // the same files, as after a rebase that leaves the diff as it was: it would draw the same
+  // rows, so it is drawn in place, and nothing is offered.
+  {
+    const input = { at: 0 };
+    const cached = { ...structuredClone(recorded.comparison), state: "stale" };
+    const generation = `${"0".repeat(31)}9`;
+    const past = {
+      ...structuredClone(recorded.comparison),
+      generation,
+      offset: cached.rows.length,
+      rows: [],
+    };
+    const same = { ...structuredClone(recorded.comparison), generation };
+    const unchanged = story(tree, [cached, past, same], input, { ...cached, refreshing: true });
+    unchanged.controller.expand();
+    unchanged.frame();
+    await settle();
+    unchanged.frame();
+    await unchanged.advance(3 * tree.FILES_POLL_MS);
+    facts.unchangedRefresh = {
+      painted: unchanged.painted,
+      reads: unchanged.reads.length,
+      offer: unchanged.last().offer,
+    };
+  }
+
+  // A first read the server does not answer: the opening ends, and says it failed.
+  {
+    const input = { at: 0 };
+    const failing = story(tree, ["fail"], input);
+    failing.controller.expand();
+    await settle();
+    spans.failedRead = failing.spans;
+  }
+
+  // An offer joins what the drawn tree says; it hides none of it: a list stopped at GitHub's
+  // rate limit keeps its line and notice, and a poll that fails keeps its error and Retry.
+  {
+    const drawn = { number: 7, expanded: true, rows: [], rowsVersion: 1, asking: false };
+    const stopped = tree.describeFileTree(recorded.stopped, {
+      ...drawn,
+      error: null,
+      formatTime: (iso) => iso,
+      withheld: 205,
+      drawn: 200,
+    });
+    const failed = tree.describeFileTree(recorded.comparison, {
+      ...drawn,
+      error: "The server did not answer.",
+      formatTime: (iso) => iso,
+      withheld: 3,
+      drawn: 2,
+      floats: true,
+    });
+    facts.offerKeepsNotices = {
+      stopped: { line: stopped.line, notice: stopped.notice?.text ?? null, offer: stopped.offer },
+      failedPoll: {
+        notice: failed.notice?.text ?? null,
+        action: failed.notice?.action ?? null,
+        offer: failed.offer,
+      },
+    };
   }
 
   // A server that does not answer within the bound: the tree opens on its loading line.

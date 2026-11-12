@@ -627,6 +627,31 @@ export function fileListFailure(envelope, formatTime) {
  * @returns {FileTreeModel}
  */
 export function describeFileTree(envelope, held) {
+  const model = describeDrawnTree(envelope, held);
+  if (held.withheld !== undefined && held.withheld > 0) {
+    // What is drawn keeps its line and notices; the offer only joins them.
+    const drawn = held.drawn ?? 0;
+    const more = held.withheld - drawn;
+    model.offer =
+      drawn === 0
+        ? `Show ${plural(held.withheld, "file")}`
+        : more > 0
+          ? `Show ${plural(more, "more file")}`
+          : `Show the updated list of ${plural(held.withheld, "file")}`;
+    model.offerFloats = drawn > 0 && held.floats === true;
+    model.live = model.notice?.text ?? `${plural(held.withheld, "file")} listed`;
+  }
+  return model;
+}
+
+/**
+ * The tree's model for what it draws, without an offer.
+ *
+ * @param {FilesEnvelope | null} envelope
+ * @param {Parameters<typeof describeFileTree>[1]} held
+ * @returns {FileTreeModel}
+ */
+function describeDrawnTree(envelope, held) {
   /** @type {FileTreeModel} */
   const model = {
     number: held.number,
@@ -643,19 +668,6 @@ export function describeFileTree(envelope, held) {
     offer: null,
     offerFloats: false,
   };
-  if (held.withheld !== undefined && held.withheld > 0) {
-    const drawn = held.drawn ?? 0;
-    const more = held.withheld - drawn;
-    model.offer =
-      drawn === 0
-        ? `Show ${plural(held.withheld, "file")}`
-        : more > 0
-          ? `Show ${plural(more, "more file")}`
-          : `Show the updated list of ${plural(held.withheld, "file")}`;
-    model.offerFloats = drawn > 0 && held.floats === true;
-    model.live = `${plural(held.withheld, "file")} listed`;
-    return model;
-  }
   if (envelope === null) {
     model.loading = held.error === null;
     if (held.error !== null) {
@@ -794,7 +806,7 @@ function isFilesEnvelope(value) {
  *   routable?(path: string): boolean,
  *   leave(): void,
  *   lastInput?(): number | null,
- *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "bound" | "reader" | "closed"): void,
+ *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "failed" | "bound" | "reader" | "closed"): void,
  * }} FileTreeDependencies
  */
 
@@ -902,7 +914,7 @@ export function createFileTreeController(deps, options) {
   /**
    * End the opening's wait, saying how long it held and why it ended.
    *
-   * @param {"met" | "bound" | "closed"} outcome
+   * @param {"met" | "failed" | "bound" | "closed"} outcome
    */
   function stopOpening(outcome) {
     if (opening) {
@@ -1010,6 +1022,19 @@ export function createFileTreeController(deps, options) {
     settleAnchor();
   }
 
+  /**
+   * Whether the rows held would draw the rows drawn now, the same rows in the same order, as a
+   * refresh that changes nothing does: drawing such a change moves nothing.
+   */
+  function drawsSameRows() {
+    const held = holder.rows();
+    if (rows.length === 0 || held.length === 0 || expansion === null) {
+      return false;
+    }
+    const next = visibleRows(buildFileTree(held), expansion);
+    return next.length === rows.length && next.every((row, at) => row.id === rows[at]?.id);
+  }
+
   /** The tree again, from the rows held: the first rows decide which folders start open. */
   function rebuild() {
     const held = holder.rows();
@@ -1102,7 +1127,10 @@ export function createFileTreeController(deps, options) {
         const changed = holder.accept(envelope);
         // Late rows wait for the reader: the first into an empty tree, and every later change
         // to a drawn one, a list's further pages and a refresh that replaces it.
-        if (changed && (withheld || ((rows.length > 0 || !opening) && late()))) {
+        if (
+          changed &&
+          (withheld || ((rows.length > 0 || !opening) && late() && !drawsSameRows()))
+        ) {
           if (!withheld) {
             offerFloats = rows.length > 0 && !lineShown;
             heldSince = deps.now();
@@ -1129,7 +1157,7 @@ export function createFileTreeController(deps, options) {
       }
     }
     // The first read answered: the tree paints open now, with its rows if the cache had them.
-    stopOpening("met");
+    stopOpening(error === null ? "met" : "failed");
     render();
     if (!again) {
       askIfDue();

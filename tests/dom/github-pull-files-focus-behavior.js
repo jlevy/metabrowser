@@ -84,7 +84,9 @@ class Element {
   focus() {
     document.activeElement = this;
   }
-  scrollIntoView() {}
+  scrollIntoView() {
+    scrolled.push(this);
+  }
   // A browser blurs an element that is hidden while it has focus.
   get hidden() {
     return this._hidden === true;
@@ -96,6 +98,8 @@ class Element {
     }
   }
 }
+/** The elements scrolled into view, in order. @type {Element[]} */
+const scrolled = [];
 async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -280,17 +284,20 @@ async function run() {
   }
   await walkClaims(mountFileTree);
   results.push({ scenario: "refreshing", paints: await refreshingPaint(mountFileTree) });
-  results.push({ scenario: "offer pressed", focus: await offerFocus(mountFileTree) });
+  results.push({ scenario: "offer pressed", ...(await offerFocus(mountFileTree, 0)) });
+  results.push({ scenario: "offer clicked", ...(await offerFocus(mountFileTree, 1)) });
   return results;
 }
 
 /**
- * Rows that came late are offered on the tree's line; pressing the offer from the keyboard
- * draws them and leaves focus on the tree's anchor, never on the document body.
+ * Rows that came late are offered on the tree's line; pressing the offer draws them and leaves
+ * focus on the tree's anchor, never on the document body. Only a press from the keyboard, a
+ * click whose `detail` is 0, scrolls to the anchor: a pointer pressed the offer where it is.
  *
  * @param {Function} mountFileTree
+ * @param {number} detail The click's count of pointer presses.
  */
-async function offerFocus(mountFileTree) {
+async function offerFocus(mountFileTree, detail) {
   const realNow = Date.now;
   let now = 0;
   Date.now = () => now;
@@ -388,12 +395,14 @@ async function offerFocus(mountFileTree) {
     const offer = line.children.find((element) => element.tagName === "BUTTON");
     assert.equal(offer.hidden, false, "late rows are offered");
     offer.focus();
-    offer.listeners.get("click")();
+    scrolled.length = 0;
+    offer.listeners.get("click")({ detail });
     await settle();
     assert.notEqual(document.activeElement, document.body, "focus stays in the tree");
     const focused = document.activeElement.dataset.id;
+    const scrolls = scrolled.length;
     view.dispose();
-    return focused;
+    return { focus: focused, scrolls };
   } finally {
     Date.now = realNow;
   }

@@ -291,13 +291,33 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file"],
             "floats": True,
         },
+        # A refresh that changes nothing draws the same rows, so it is drawn in place and
+        # offers nothing (review C3); before, "Show the updated list of 2 files".
+        "unchangedRefresh": {"painted": ["closed", "4 rows"], "reads": 3, "offer": None},
+        # An offer joins what the drawn tree says and hides none of it (review C6).
+        "offerKeepsNotices": {
+            "stopped": {
+                "line": "200 files so far, 2 of 3 pages",
+                "notice": (
+                    "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. "
+                    "No automatic attempt runs before then."
+                ),
+                "offer": "Show 5 more files",
+            },
+            "failedPoll": {
+                "notice": "The server did not answer.",
+                "action": "retry",
+                "offer": "Show 1 more file",
+            },
+        },
         "slowRead": ["closed", "loading line"],
         # Each hold's span: how long it held and why it ended, an offer the tree closes on
-        # included (review B1).
+        # included (review B1), and a first read that fails as failed (review C7).
         "spans": {
             "cached": ["opening met 0 ms"],
             "lateRows": ["opening met 0 ms", "lateRows reader 100 ms"],
             "landingClosed": ["opening met 0 ms", "lateRows closed 400 ms"],
+            "failedRead": ["opening failed 0 ms"],
             "slowRead": ["opening bound 150 ms"],
         },
     }
@@ -339,9 +359,11 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
                 for phase in ("asked", "running", "settled")
             },
         },
-        # Late rows offered on the line: pressing the offer from the keyboard draws them and
-        # leaves focus on the tree's anchor, not on the document body (review A2).
-        {"scenario": "offer pressed", "focus": "a.py"},
+        # Late rows offered on the line: pressing the offer draws them and leaves focus on the
+        # tree's anchor, not on the document body (review A2). Only a press from the keyboard
+        # scrolls to it; a pointer pressed the offer where it is (review C4).
+        {"scenario": "offer pressed", "focus": "a.py", "scrolls": 1},
+        {"scenario": "offer clicked", "focus": "a.py", "scrolls": 0},
     ]
 
 

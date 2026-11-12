@@ -33,6 +33,8 @@ All notable changes to Metabrowser are documented here.
   files** instead of being drawn by itself, and so are its later pages (**Show N more
   files**) and a refresh that changes a list already shown, which floats over the tree’s
   top: the rows below never move while you are not interacting with the list.
+  A refresh that leaves the same files is drawn at once, since it moves nothing, and the
+  tree’s notices and **Retry** stay while something is offered.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

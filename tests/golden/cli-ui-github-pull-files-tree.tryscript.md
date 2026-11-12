@@ -582,9 +582,11 @@ the cache holds opens in one step (`cached`). Rows that come `LATE_ROWS_MS` afte
 reader’s last press or key, or after the tree’s opening on a landing, are offered rather
 than drawn: the first into an empty tree (`lateRows`, `landing`), a list’s further pages
 on its line (`fill`), and a refreshed complete list over the tree’s top, floating
-(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`). Each
-hold’s span says how long it held and why it ended, an offer included when the tree
-closes on it (`spans`).
+(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`). A
+refresh that would draw the same rows is drawn in place, since it moves nothing
+(`unchangedRefresh`), and an offer hides none of the tree’s line or notices
+(`offerKeepsNotices`). Each hold’s span says how long it held and why it ended, an offer
+included when the tree closes on it, and a first read that fails as failed (`spans`).
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -630,6 +632,26 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     ],
     "floats": true
   },
+  "unchangedRefresh": {
+    "painted": [
+      "closed",
+      "4 rows"
+    ],
+    "reads": 3,
+    "offer": null
+  },
+  "offerKeepsNotices": {
+    "stopped": {
+      "line": "200 files so far, 2 of 3 pages",
+      "notice": "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. No automatic attempt runs before then.",
+      "offer": "Show 5 more files"
+    },
+    "failedPoll": {
+      "notice": "The server did not answer.",
+      "action": "retry",
+      "offer": "Show 1 more file"
+    }
+  },
   "slowRead": [
     "closed",
     "loading line"
@@ -645,6 +667,9 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     "landingClosed": [
       "opening met 0 ms",
       "lateRows closed 400 ms"
+    ],
+    "failedRead": [
+      "opening failed 0 ms"
     ],
     "slowRead": [
       "opening bound 150 ms"
