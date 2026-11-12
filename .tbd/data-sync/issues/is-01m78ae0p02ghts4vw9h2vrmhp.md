@@ -3,9 +3,9 @@ type: is
 id: is-01m78ae0p02ghts4vw9h2vrmhp
 title: "Address PR #375 review A: view keys as route data (layer 2, stack #376)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -20,7 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-12T16:46:08.575Z
-updated_at: 2026-11-12T16:46:39.831Z
+updated_at: 2026-11-12T17:22:21.551Z
 started_at: 2026-11-12T16:46:39.830Z
+closed_at: 2026-11-12T17:22:21.550Z
+close_reason: "Review A addressed at 5d52b575: A1-A6 fixed, A7 deferred as mb-gidr (end-of-stack rebase onto main). Disposition: https://github.com/jlevy/metabrowser/pull/375#issuecomment-6830783051"
+resolution: null
+duplicate_of: null
 ---
 Address review A (senior, round 1) on https://github.com/jlevy/metabrowser/pull/375 at head 8154909fb11989cf95bcec290313b707b602adb0. Review: https://github.com/jlevy/metabrowser/pull/375#pullrequestreview-5871448143. Findings A1-A7, one child bead each.

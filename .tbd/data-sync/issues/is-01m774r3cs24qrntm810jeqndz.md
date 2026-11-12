@@ -5,7 +5,7 @@ title: "Git: comparison cache by commit ID; route memo by refs fingerprint"
 kind: task
 status: in_progress
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -16,11 +16,11 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:33.134Z
-updated_at: 2026-11-12T15:26:03.374Z
+updated_at: 2026-11-12T17:07:23.119Z
 started_at: 2026-11-12T05:53:04.459Z
 ---
 Browser cache of diff comparisons keyed by full commit ID; server memo of git refs, log pages, and summary keyed by a refs fingerprint. Measured as commit revisit requests and painted-ready, and route server time.
 
 ## Notes
 
-PR #368. Round-1 reviews at 60a4e623 (A 5876259351, B 5876259603, C 5876259835): 0 Blocker, 1 High, 6 Medium, 13 Low. Addressed at 4b0e1233 (d85ee2d3, 7fd879c6, 4b0e1233). Dispositions 6827183008/6827196003/6827213204; deferrals mb-ak8u, mb-32en, mb-bjt4 (note 6827258806). Follow-up review D (round 2, 4b0e1233, 5877077982): approve; 2 Low (D1 linked-worktree input tests and packed-refs; D2 memo doc), queued as a tests-and-docs commit after the rounds, plus a check that reftable skips pass CI's admitted-git 2.43.7 job. Official exp-061 and exp-063 on harness v4 at 4b0e1233 queued after the layout series.
+PR #368 at a4b6aba9 (official records 3a3238bb, review D fixes a4b6aba9; dispositions D 6830344513). Official exp-061 (6 interleaved pairs, harness v4, 0 refused): H88(a) commit revisit 1 request to 0, painted ready 146.8 to 31.0 ms and 188.9 to 29.6 ms (pairs 0.21x, 0.16x, 6 of 6 beyond) BUT guard failed: commits.hover_click 30.8 to 47.8 ms (pairs 1.55x, 5 of 6 higher, frames to ready 1 to 2) -> unresolved. H88(b) route memo: log 182 to 6.8 ms (26x), summary 184 to 3.4 ms (52x), refs 28.4 to 3.6 ms (7.5x) with ranges overlapping -> unresolved. B8 correctness guard: 45 of 45 equal after ref moves. Next: diagnose hover_click and refs overlap; confirmation round exp-081.

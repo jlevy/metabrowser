@@ -5,7 +5,7 @@ title: Reserve toggling chrome and fix page header sections' boxes at first pain
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -18,7 +18,7 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:29.077Z
-updated_at: 2026-11-12T16:41:38.311Z
+updated_at: 2026-11-12T17:18:22.231Z
 started_at: 2026-11-12T06:11:46.298Z
 ---
 Per the page-header audit in the research doc (Page Headers, Section by Section): filter bar slot on every main tab; Commits button in the shell; scrollbar-gutter on tree and preview panes; always-present view tab bar; print and badge slots kept; PR title reserved and clamped to two lines; one-line fixed 26 px state row with truncating branch chips and a reserved stack-chip slot; state badge min-width; labels in an always-present row; fixed 26 px status row with a permanent Refresh slot; loading skeleton at final heights; Pulls status and connection lines always present, counts with tabular numerals and min-width; folder Overview panel skeletons at final height. Measured as region movement per transition (0 px target) and shift.
@@ -29,3 +29,4 @@ PR #370. Pilot (harness v2 patched selector): main-tab tree movement 37 to 0 px;
 
 
 Round-1 addressed at 666a066c (475e2327 fixes, dfb78106 test, 666a066c doc): A1 landing graft all-or-nothing under a rows budget; A2 font wait moved to settleFaces; A3 badge sizer order and quiet-row height, Chrome header check; A4-A9 fixed; A12 deferred mb-25o7, A13 remainder mb-fov8; non-inlined landing reveal regression found and fixed. Startup headroom 395 bytes. Follow-up review C (round 2) in progress. exp-059 and exp-064 queued behind the series lock at 666a066c.
+Follow-up review C (round 2, 666a066c, 5878884042): changes requested; 1 High (C1 lint fails on 'PR 370' references in comments), 4 Medium (C2 wrong empty graft during discovery; C3 font wait caches the first document's faces, later faces swap in with CLS up to 0.150; C4 status end group overflows at narrow panes; C5 non-inlined landing still moves the tree, bead mb-o1ba), 5 Low. Rounds held until fixed.

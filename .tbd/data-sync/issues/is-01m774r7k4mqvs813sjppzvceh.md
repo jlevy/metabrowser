@@ -5,7 +5,7 @@ title: "PR page: join the click to the peek, same-frame list collapse, hold Chan
 kind: task
 status: in_progress
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:37.443Z
-updated_at: 2026-11-12T16:47:04.908Z
+updated_at: 2026-11-12T17:01:25.924Z
 started_at: 2026-11-12T06:11:46.651Z
 ---
 One read of the selected PR per click (join the mousedown peek); collapse the old and expand the new Pulls row in one frame; reserve a selected row's file-tree height at the click or open it only when rows are known; hold Changes first paint for rendered diffs already in flight or reserve their heights. Measured as selected-record reads per click and no-input shift (largest today 0.146 from the late file tree).
@@ -31,3 +31,4 @@ Follow-up review C (round 2, 593beceb, 5877695054): approve; 2 Medium (C1 hold p
 
 Review C addressed at 3afd3131 (4ff1cf9f C1 first screen from the new page's own top, re-measured as texts land; C2 visible blocks stay until content; C5; 3afd3131 C3, C4, C6, C7); dispositions 6829270629. Holds re-measured from scrolled conversations (n=10-14): firstPaintHold median 34 ms, changesHold 39, openingHold 31; none hit bound. Follow-up review D (round 3, narrow) in progress. exp-065 and exp-080 queued behind the series lock at 3afd3131.
 Follow-up review D (round 3, 3afd3131, 5878410290): approve; 1 Medium (D1 kept loading blocks drop by the header's growth when the record arrives: CLS 0.039 on every slow cold landing), 3 Low. Fixing D1 before the rounds; coordinator verifies D1 with the reviewer's harness instead of another full round.
+Review D addressed at 5a56f0a8 (cf117163 header held with the body; 5a56f0a8 D4); dispositions 6830212104. Coordinator verified D1 with review D's harness (comment 6830266303): six landing stories, layout shift 0.039 in five at 3afd3131, none at 5a56f0a8; 45 ms landing shows no blocks. Review rounds for #369 complete. exp-065 and exp-080 at 5a56f0a8 behind the series lock.
