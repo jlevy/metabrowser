@@ -335,8 +335,8 @@ The outputs, at 0.1.0:
 
 | File | Size |
 | --- | --- |
-| `build/release/Metabrowser.app` | about 1.2 MB |
-| `build/Metabrowser-0.1.0-arm64.dmg` | about 0.9 MB |
+| `build/release/Metabrowser.app` | about 1.4 MB |
+| `build/Metabrowser-0.1.0-arm64.dmg` | about 1.0 MB |
 | `build/Metabrowser-0.1.0-arm64.dmg.sha256` | one `shasum -a 256` line |
 | `build/metabrowser-app.rb` | the cask |
 | `build/notary-*.json`, `build/release/notary-*.json` | the notary logs, each beside the file it is for |
