@@ -21,12 +21,15 @@ from pathlib import Path
 from metabrowser import server
 from metabrowser.file_kinds import VIEW_REGISTRY
 from metabrowser.keymap import (
+    PULL_REQUEST_KIND,
     RESERVED_SHELL_KEYS,
     check_view_keys,
     live_view_keys,
     reserved_keys_for,
+    serialize_reserved_shell_keys,
 )
 from metabrowser.plugin_loader.manifest import merge_views
+from metabrowser.settings import client_settings_dict
 
 
 def _served_kinds() -> list[str]:
@@ -132,3 +135,45 @@ def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     assert shell_keys & letters == reserved & letters
     assert shell_keys - letters == {"1", "2", "3"}
     assert shell_keys - letters <= reserved - letters
+
+
+def test_the_shell_serves_the_reserved_table_to_the_browser() -> None:
+    """``METABROWSER_SETTINGS`` carries the table, so the plugin facade refuses its letters.
+
+    ``static/plugin-shortcuts.js`` reads ``RESERVED_SHELL_KEYS`` from the settings the
+    shell writes before any script runs. Every reserved key is served, each with the kinds
+    it is reserved for or None for every kind, so the contextual ``n`` and ``p`` arrive
+    with their kind although the facade refuses them everywhere.
+    """
+    served = client_settings_dict()["RESERVED_SHELL_KEYS"]
+    assert served == serialize_reserved_shell_keys()
+    assert set(served) == set(RESERVED_SHELL_KEYS)
+    assert served["n"] == served["p"] == [PULL_REQUEST_KIND]
+    assert served["t"] is None
+
+
+def _plugin_session_list(name: str) -> list[str]:
+    """One list the plugin shortcut session's transcript prints, by its field name."""
+    golden = Path(__file__).parent / "golden" / "cli-ui-plugin-shortcuts.tryscript.md"
+    printed = re.findall(rf'^\s*"{name}": (\[[^\]]*\])', golden.read_text(), re.MULTILINE)
+    assert len(printed) == 1, f"the transcript prints {name} once"
+    return json.loads(printed[0])
+
+
+def test_the_plugin_facade_refuses_exactly_the_reserved_letters() -> None:
+    """The facade refuses the letters this table reserves, contextual ones included.
+
+    ``tests/dom/plugin-shortcuts-session.js`` serves its page a copy of the table and
+    prints it, then attaches every letter through the production facade and prints the
+    ones it refused. The copy must be the table the server serves, and the refused
+    letters must be all of its letters: a plugin view can appear in any kind, so the
+    facade cannot leave ``n`` and ``p`` to a pull request page alone.
+    """
+    printed = _plugin_session_list("reservedKeys")
+    served = serialize_reserved_shell_keys()
+    assert printed == sorted(
+        f"{key}: {'every kind' if kinds is None else ' '.join(kinds)}"
+        for key, kinds in served.items()
+    )
+    letters = set(string.ascii_lowercase)
+    assert set(_plugin_session_list("refused")) == set(RESERVED_SHELL_KEYS) & letters

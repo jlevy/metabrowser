@@ -639,13 +639,39 @@ stackOpen = true;
 typed("the global P outranks the view tab while a stack is open", { key: "p" }, "stack");
 // A permanent scope is always active in its fixed place, so activating one, which
 // would lift view-tabs above global and hand the stack's P to the view tab, is refused.
-for (const permanent of ["global", "view-tabs"]) {
+for (const permanent of ["global", "view-tabs", "plugin"]) {
   rejects(`activating the permanent ${permanent} scope is refused`, () =>
     layouts.activateScope(permanent),
   );
 }
 typed("the global P still outranks the view tab after the refusal", { key: "p" }, "stack");
+// The plugin facade's permanent plugin scope sits below view-tabs, so a plugin letter
+// registers beside a shell one and loses at dispatch while the shell's is live, and
+// heldAbove() tells the facade so, for its badges.
+let pluginRegistered = false;
+try {
+  layouts.register(
+    command({
+      bindings: [{ key: "p" }],
+      group: "controls",
+      handler: record("plugin"),
+      id: "plugin.demo.p",
+      scope: "plugin",
+      surfaces: { help: "always" },
+    }),
+  );
+  pluginRegistered = true;
+} catch (error) {
+  check("plugin registration", false, String(error));
+}
+check("a plugin P registers beside the global and the view-tabs P", pluginRegistered);
+typed("the global P outranks a plugin P", { key: "p" }, "stack");
+check("the global P holds P above the plugin scope", layouts.heldAbove("plugin", "P"));
+check("nothing is above global", !layouts.heldAbove("global", "p"));
 stackOpen = false;
+typed("the view tab's P outranks a plugin P", { key: "p" }, "preview");
+check("the view tab holds P above the plugin scope", layouts.heldAbove("plugin", "p"));
+check("no shell key holds Q", !layouts.heldAbove("plugin", "q"));
 rejects("two P bindings in one scope still fail", () =>
   layouts.register(
     command({
@@ -1030,6 +1056,28 @@ batched.dispose();
     "the keyup listener goes with the last observer",
     !tree.listeners.some((entry) => entry.type === "keyup"),
   );
+
+  // A lower rank goes first among live targets, ahead of document order: the plugin
+  // facade ranks a letter's targets by which plugin attached it first.
+  const laterInDocument = tab("tree", "Ranked");
+  tree.body.append(laterInDocument);
+  const ranked = targetRegistry.attachTarget("view-tabs.r", laterInDocument, { rank: -1 });
+  check(
+    "a lower rank outranks document order",
+    targetRegistry.liveTarget("view-tabs.r") === laterInDocument,
+  );
+  laterInDocument.hidden = true;
+  check(
+    "a hidden low-ranked target leaves the key to the next",
+    targetRegistry.liveTarget("view-tabs.r") === rebuilt,
+  );
+  check("a live target is live", targetRegistry.isTargetLive(rebuilt));
+  check("a hidden target is not", !targetRegistry.isTargetLive(laterInDocument));
+  rejects("a rank must be a finite number", () =>
+    targetRegistry.attachTarget("view-tabs.r", laterInDocument, { rank: Number.NaN }),
+  );
+  ranked.detach();
+  laterInDocument.remove();
 
   stagedHandle.detach();
   targetRegistry.dispose();

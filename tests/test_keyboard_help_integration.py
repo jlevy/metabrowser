@@ -35,6 +35,7 @@ def test_help_assets_have_stable_deferred_shell_order() -> None:
         "/static/keyboard-help.js",
         "/static/key-reveal.js",
         "/static/shell-keymap.js",
+        "/static/plugin-shortcuts.js",
         "/static/search-palette.js",
     )
     positions = []

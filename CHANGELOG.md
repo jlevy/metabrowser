@@ -34,6 +34,16 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- Plugin SDK: `metabrowser.shortcuts.attach(element, spec)` gives a control of a plugin
+  view a letter key, listed in Help and badged while Shift is held, and returns a handle
+  with `retarget()` and `detach()`; an `AbortSignal` in the spec detaches it too.
+  A view may attach before the shell’s keyboard support loads.
+  Malformed input throws an error starting with `shortcuts.attach:`. A letter the shell
+  reserves, `T`, `J`, `K`, `U`, `W`, `X`, `Y`, `A`, `N`, or `P`, is refused with one
+  console warning, and a shell key or an earlier plugin’s key wins a letter two shown
+  controls hold. `METABROWSER_SETTINGS` serves the reserved keys as
+  `RESERVED_SHELL_KEYS`. `PLUGIN_SDK_VERSION` remains `0.7`.
+
 - Hold Shift outside a text field to see the keys: a keycap appears on each control a
   key reaches now, and the shortcut strip lists the common keys that are live.
   Releasing Shift, a click, or a scroll hides them, and `?`, capitals, Shift+click, and

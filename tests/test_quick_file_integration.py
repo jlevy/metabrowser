@@ -60,6 +60,7 @@ def test_quick_file_assets_load_in_deferred_dependency_order() -> None:
         "/static/keyboard-help.js",
         "/static/key-reveal.js",
         "/static/shell-keymap.js",
+        "/static/plugin-shortcuts.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
     )
@@ -144,6 +145,7 @@ def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
         "keyboard-help.js",
         "main-tabs.js",
         "overlay-layer.js",
+        "plugin-shortcuts.js",
         "pulls-nav.js",
         "search-palette.js",
         "shell-keymap.js",

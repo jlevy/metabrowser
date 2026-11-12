@@ -12,6 +12,10 @@ the later view. The server serves what it returns, and ``metab --doctor`` and
 ``tests/test_keymap.py`` report what it drops. Last, :func:`live_view_keys` removes
 every key from a served list that kept fewer than two views, since one view has no tab.
 
+The shell serves the reserved table to the browser through ``METABROWSER_SETTINGS``
+(:func:`serialize_reserved_shell_keys`), so the plugin shortcut facade refuses the same
+letters the manifest loader does.
+
 This module imports nothing beyond the standard library, so the manifest loader and
 ``metab --doctor`` can use it without loading content classification or the server.
 ``docs/plugins.md`` documents the manifest field for plugin authors.
@@ -58,6 +62,19 @@ RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
         "p": ReservedKey("previous pull request in the stack", frozenset({PULL_REQUEST_KIND})),
     }
 )
+
+
+def serialize_reserved_shell_keys() -> dict[str, list[str] | None]:
+    """Return the reserved table as the browser reads it from ``METABROWSER_SETTINGS``.
+
+    Each key maps to the sorted kinds it is reserved for, or None for every kind. The
+    plugin shortcut facade (``static/plugin-shortcuts.js``) refuses every key here,
+    contextual ones included, because it cannot know which kinds a plugin view shows in.
+    """
+    return {
+        key: None if reserved.kinds is None else sorted(reserved.kinds)
+        for key, reserved in RESERVED_SHELL_KEYS.items()
+    }
 
 
 def reserved_keys_for(kind: str) -> frozenset[str]:

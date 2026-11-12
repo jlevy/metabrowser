@@ -73,6 +73,10 @@
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //
+//   Keyboard ("Keyboard Shortcuts" in docs/plugins.md):
+//     shortcuts.attach(element, spec)     — a letter key and badge for a view's control;
+//                                          returns {retarget, detach}
+//
 //   Diagnostics:
 //     perf.measure(label, fn)            — contribute a synchronous named span
 //     perf.measureAsync(label, fn)       — contribute an asynchronous named span
@@ -147,6 +151,27 @@
       return _attachedFileCatalog?.subscribe(listener) || (() => {});
     },
   });
+  // Plugin keys until static/plugin-shortcuts.js loads and takes them: 233 bytes of
+  // startup transfer, by devtools/check_startup_scripts.py.
+  const _shortcutQueue = [];
+  function queueShortcut(element, options) {
+    const facade = global.MetabrowserPluginShortcuts;
+    if (facade) {
+      return facade.attachShortcut(element, options);
+    }
+    const queued = { element, options };
+    _shortcutQueue.push(queued);
+    return {
+      retarget(next) {
+        queued.element = next;
+        queued.handle?.retarget(next);
+      },
+      detach() {
+        queued.options = null;
+        queued.handle?.detach();
+      },
+    };
+  }
   const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
 
   /** @param {unknown} value */
@@ -420,6 +445,7 @@
     isOwnedDelegate,
     loadPluginsForKind,
     registerLoadMoreAction,
+    shortcutQueue: _shortcutQueue,
   });
 
   function registerView(kindId, viewId, spec) {
@@ -1614,6 +1640,7 @@
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
+    shortcuts: Object.freeze({ attach: queueShortcut }),
     navigation: global.MetabrowserNavigationRoute.navigation,
     sourceKind: sourceKind,
     repository: repository,

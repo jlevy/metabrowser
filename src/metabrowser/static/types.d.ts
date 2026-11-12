@@ -1245,6 +1245,8 @@ type MetabrowserSdk = {
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
   filterState?: MetabrowserFilterState;
+  /** A view's letter keys and badges (SDK 0.7); feature-detect `shortcuts?.attach`. */
+  shortcuts?: MetabrowserPluginShortcutsApi;
   countClass(value: number): "" | "count-large";
   formatSize(value: number): string;
   formatFileCount(value: number): string;
@@ -1863,6 +1865,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   isOwnedDelegate(element: Element | null | undefined): boolean;
   /** Copy what an owned copy control names, as its click does; see plugin-sdk.js. */
   copyFromControl(control: HTMLElement | null): boolean;
+  /** Plugin keys attached before static/plugin-shortcuts.js loaded; it empties this. */
+  shortcutQueue: Array<MetabrowserQueuedShortcut>;
   configureAssets(
     assetsByKind: Record<
       string,
@@ -2178,11 +2182,14 @@ type MetabrowserShortcutRegistry = Readonly<{
   appendBinding(container: HTMLElement, presentation: MetabrowserBindingPresentation): void;
   /** Render one key, a binding key or a standalone name such as `Shift`, as one keycap. */
   appendKey(container: HTMLElement, key: string): HTMLElement;
-  /** Record an element a command acts on: its `aria-keyshortcuts`, liveness, and badge. */
+  /**
+   * Record an element a command acts on: its `aria-keyshortcuts`, liveness, and badge. A
+   * lower `rank` goes first among live targets, ahead of document order.
+   */
   attachTarget(
     commandId: string,
     element: HTMLElement,
-    options?: { placement?: MetabrowserBadgePlacement },
+    options?: { placement?: MetabrowserBadgePlacement; rank?: number },
   ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
@@ -2191,11 +2198,15 @@ type MetabrowserShortcutRegistry = Readonly<{
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
   describeKey(key: string): MetabrowserKeyDefinition;
+  /** Whether a live command in an active layer above `scope` is bound to `key`. */
+  heldAbove(scope: string, key: string): boolean;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
   /** Whether a command would run now: active scope, `available()`, and a live target. */
   isLive(commandId: string): boolean;
   isRevealed(): boolean;
-  /** The element a command would act on now, its first live target in document order. */
+  /** Whether an element can take a key now: connected, enabled, not inert, and visible. */
+  isTargetLive(element: HTMLElement): boolean;
+  /** The element a command would act on now, its first live target by rank and order. */
   liveTarget(commandId: string): HTMLElement | null;
   /** Hear each key after dispatch as `(event, handled)`, and each `keyup` as unhandled. */
   observeKeys(observer: (event: KeyboardEvent, handled: boolean) => void): () => void;
@@ -2339,6 +2350,53 @@ type MetabrowserShellKeymapRuntime = Readonly<{
     shortcuts: MetabrowserShortcutRegistry;
     shell: MetabrowserShellKeymapShell;
   }): MetabrowserShellKeymapApi;
+}>;
+
+/** What a plugin passes `metabrowser.shortcuts.attach()`; see docs/plugins.md. */
+type MetabrowserPluginShortcutSpec = Readonly<{
+  /** Dotted, such as `diff.layout`; one id is one command, whatever it is attached to. */
+  id: string;
+  /** One ASCII letter, case ignored. */
+  key: string;
+  group: "controls" | "view-tabs";
+  order: number;
+  copy: Readonly<{ action: string; description: string; hint: string }>;
+  /** The control's own activation path, never a synthesized click. */
+  activate(): unknown;
+  /** Aborting it detaches the key. */
+  signal?: AbortSignal;
+}>;
+
+/** What `metabrowser.shortcuts.attach()` returns: move the key's target, or let it go. */
+type MetabrowserPluginShortcutHandle = Readonly<{
+  detach(): void;
+  retarget(element: HTMLElement): void;
+}>;
+
+/** `window.metabrowser.shortcuts`: a plugin view's letter keys and their badges. */
+type MetabrowserPluginShortcutsApi = Readonly<{
+  attach(
+    element: HTMLElement,
+    spec: MetabrowserPluginShortcutSpec,
+  ): MetabrowserPluginShortcutHandle;
+}>;
+
+/** One attachment plugin-sdk.js holds until static/plugin-shortcuts.js loads and takes it. */
+type MetabrowserQueuedShortcut = {
+  element: unknown;
+  /** Null once the plugin detached it. */
+  options: unknown;
+  /** The facade's handle, once the facade took the attachment. */
+  handle?: MetabrowserPluginShortcutHandle;
+};
+
+/** static/plugin-shortcuts.js: the plugin shortcut facade. */
+type MetabrowserPluginShortcutsRuntime = Readonly<{
+  attachShortcut(element: unknown, options: unknown): MetabrowserPluginShortcutHandle;
+  /** Bind every attachment, now and later, to a registry; returns the detach. */
+  attachShortcutRegistry(registry: MetabrowserShortcutRegistry): () => void;
+  /** Detach every attachment whose element is inside `container`: view disposal's net. */
+  releaseWithin(container: Node): void;
 }>;
 
 type MetabrowserKeyboardHelpApi = Readonly<{
@@ -3045,6 +3103,10 @@ declare global {
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
+  type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;
+  type MetabrowserPublicPluginShortcutHandle = MetabrowserPluginShortcutHandle;
+  type MetabrowserPublicPluginShortcutsApi = MetabrowserPluginShortcutsApi;
+  type MetabrowserPublicQueuedShortcut = MetabrowserQueuedShortcut;
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
   type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
@@ -3115,6 +3177,7 @@ declare global {
     MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
     MetabrowserKeyReveal?: MetabrowserKeyRevealRuntime;
     MetabrowserShellKeymap?: MetabrowserShellKeymapRuntime;
+    MetabrowserPluginShortcuts?: MetabrowserPluginShortcutsRuntime;
     MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
     METABROWSER_PATH_ENCODING?: "utf16" | "bytes";
@@ -3204,6 +3267,11 @@ declare global {
       BUILD_TAG?: string;
       /** The served store's token, named beside the build for the same reason; a folder has none. */
       STORE_TAG?: string;
+      /**
+       * The shell's reserved keys, from src/metabrowser/keymap.py: each key with the kinds
+       * it is reserved for, or null for every kind. The plugin facade refuses them all.
+       */
+      RESERVED_SHELL_KEYS?: Readonly<Record<string, ReadonlyArray<string> | null>>;
       CAPABILITIES?: {
         active_content: boolean;
         mutations: boolean;

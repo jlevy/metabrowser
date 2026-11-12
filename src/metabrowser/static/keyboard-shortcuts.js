@@ -44,6 +44,7 @@
    * @property {string} commandId
    * @property {HTMLElement} element
    * @property {BadgePlacement} placement
+   * @property {number} rank Lower first among live targets, then document order.
    */
   /**
    * @typedef {object} ShortcutTargetHandle
@@ -74,8 +75,9 @@
   // punctuation typed with it stays outside the shortcuts too.
   /** @type {readonly ("altKey" | "ctrlKey" | "metaKey")[]} */
   const DISQUALIFYING_MODIFIERS = Object.freeze(["altKey", "ctrlKey", "metaKey"]);
-  // Scopes that are always active below the activated ones, in order.
-  const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs"]);
+  // Scopes that are always active below the activated ones, in order. `plugin` holds the
+  // keys plugin views attach through static/plugin-shortcuts.js, below every shell key.
+  const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs", "plugin"]);
 
   /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
   const KEY_DEFINITIONS = Object.freeze({
@@ -679,9 +681,10 @@
     }
 
     /**
-     * The first live target of a command in document order: the one a key runs and
-     * the one that carries the badge. The others keep their `aria-keyshortcuts` and
-     * wait their turn.
+     * The first live target of a command, by rank and then in document order: the one
+     * a key runs and the one that carries the badge. The others keep their
+     * `aria-keyshortcuts` and wait their turn. Shell targets all rank 0; the plugin
+     * facade ranks a letter's targets by which plugin attached it first.
      *
      * @param {string} commandId
      */
@@ -691,7 +694,9 @@
       for (const record of targets.get(commandId) || []) {
         if (
           isTargetLive(record.element) &&
-          (!first || precedesInDocument(record.element, first.element))
+          (!first ||
+            record.rank < first.rank ||
+            (record.rank === first.rank && precedesInDocument(record.element, first.element)))
         ) {
           first = record;
         }
@@ -828,11 +833,12 @@
      * badge goes. The element carries the command's `aria-keyshortcuts` while
      * attached. A component that rebuilds its markup calls `retarget()` with the new
      * element; `detach()` removes the attribute, any badge, and the record, and is
-     * idempotent. During a reveal the badge follows at once.
+     * idempotent. During a reveal the badge follows at once. A lower `rank` goes
+     * first among the command's live targets, ahead of document order.
      *
      * @param {string} commandId
      * @param {HTMLElement} element
-     * @param {{placement?: BadgePlacement}} [targetOptions]
+     * @param {{placement?: BadgePlacement, rank?: number}} [targetOptions]
      * @returns {Readonly<ShortcutTargetHandle>}
      */
     function attachTarget(commandId, element, targetOptions = {}) {
@@ -845,8 +851,12 @@
       if (!BADGE_PLACEMENTS.has(placement)) {
         throw new TypeError(`Unknown badge placement: ${placement}`);
       }
+      const rank = targetOptions.rank ?? 0;
+      if (typeof rank !== "number" || !Number.isFinite(rank)) {
+        throw new TypeError("A shortcut target's rank must be a finite number");
+      }
       /** @type {ShortcutTargetRecord} */
-      const record = { badge: null, commandId, element, placement };
+      const record = { badge: null, commandId, element, placement, rank };
       const records = targets.get(commandId) || [];
       records.push(record);
       targets.set(commandId, records);
@@ -1118,6 +1128,31 @@
     }
 
     /**
+     * Whether a live command in an active layer above `scope` is bound to `key`, so the
+     * key would reach that command first. The plugin facade asks it, so that a shell
+     * key outranks a plugin key on the badges and the strip as it does at dispatch.
+     *
+     * @param {string} scope
+     * @param {string} key
+     */
+    function heldAbove(scope, key) {
+      const layers = activeLayers();
+      const at = layers.indexOf(scope);
+      const above = new Set(at < 0 ? layers : layers.slice(0, at));
+      const wanted = normalizeBinding({ key }).key;
+      for (const entry of commands.values()) {
+        if (
+          above.has(entry.descriptor.scope) &&
+          entry.descriptor.bindings.some((binding) => binding.key === wanted) &&
+          entryIsLive(entry, above)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**
      * A surface's commands by group. `live` keeps only the commands that would run
      * now (`isLive`), which the `reveal` surface always does: it shows what the keys
      * under a held Shift reach. Help never reads live, because opening it makes
@@ -1233,9 +1268,12 @@
       describeBindings,
       describeKey,
       dispose,
+      heldAbove,
       invoke,
       isLive,
       isRevealed: () => revealed,
+      /** @param {HTMLElement} element */
+      isTargetLive: (element) => isTargetLive(element),
       liveTarget,
       observeKeys,
       present,

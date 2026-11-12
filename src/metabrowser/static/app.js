@@ -961,6 +961,7 @@ var treeKeyboard = null;
 var shellKeymap = null;
 /** @type {MetabrowserPublicKeyRevealApi | null} */
 var keyReveal = null;
+var detachPluginShortcuts = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
@@ -8184,6 +8185,8 @@ function initKeyboardInfrastructure() {
       shortcuts: shortcutRegistry,
     });
   }
+  detachPluginShortcuts =
+    window.MetabrowserPluginShortcuts?.attachShortcutRegistry(shortcutRegistry);
   applicationFocusListener = (event) => {
     var target = event.target;
     var treePaneElement = document.getElementById("tree-pane");
@@ -8213,6 +8216,8 @@ function disposeKeyboardInfrastructure() {
   keyReveal = null;
   shellKeymap?.dispose();
   shellKeymap = null;
+  detachPluginShortcuts?.();
+  detachPluginShortcuts = null;
   treeKeyboard?.dispose();
   treeKeyboard = null;
   keyboardHelp?.dispose();

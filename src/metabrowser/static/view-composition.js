@@ -20,6 +20,30 @@
   }
 
   /**
+   * Release every plugin key attached to an element inside `container`, the net under a
+   * view's own `dispose()`: through the plugin shortcut facade once it has loaded, and
+   * before then in the SDK's queue, which holds every key attached until it loads.
+   *
+   * @param {HTMLElement} container
+   */
+  function releaseShortcutsWithin(container) {
+    const facade = window.MetabrowserPluginShortcuts;
+    if (facade) {
+      facade.releaseWithin(container);
+      return;
+    }
+    const Node = window.Node;
+    for (const queued of window.MetabrowserPluginHost?.shortcutQueue ?? []) {
+      // What the plugin passed is checked only when the facade takes it.
+      if (typeof Node === "function" && queued.element instanceof Node) {
+        if (container.contains(queued.element)) {
+          queued.options = null;
+        }
+      }
+    }
+  }
+
+  /**
    * Own the transfer from a staged preview to the active preview.
    *
    * A stage may be cancelled before commit. Once committed, its disposer list
@@ -140,11 +164,15 @@
         return;
       }
       record.disposed = true;
-      if (typeof record.handle?.dispose === "function") {
-        record.handle.dispose();
-      }
-      if (typeof renderer.dispose === "function") {
-        renderer.dispose(container);
+      try {
+        if (typeof record.handle?.dispose === "function") {
+          record.handle.dispose();
+        }
+        if (typeof renderer.dispose === "function") {
+          renderer.dispose(container);
+        }
+      } finally {
+        releaseShortcutsWithin(container);
       }
     });
     try {

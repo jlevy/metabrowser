@@ -35,6 +35,7 @@ KEYBOARD_STATIC_ASSETS = {
     "keyboard-help.js",
     "keyboard-shortcuts.js",
     "overlay-layer.js",
+    "plugin-shortcuts.js",
     "shell-keymap.js",
     "tree-keyboard-navigation.js",
 }

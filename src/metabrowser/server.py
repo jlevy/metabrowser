@@ -1449,6 +1449,8 @@ async def index(
     # The Shift key reveal and the shell's own keys: neither has work before the registry.
     key_reveal_url = _static_asset_url("key-reveal.js")
     shell_keymap_url = _static_asset_url("shell-keymap.js")
+    # The plugin shortcut facade, which takes the keys plugin-sdk.js queued before it.
+    plugin_shortcuts_url = _static_asset_url("plugin-shortcuts.js")
     tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
     search_palette_url = _static_asset_url("search-palette.js")
     git_graph_url = _static_asset_url("git-graph.js")
@@ -1644,6 +1646,7 @@ async def index(
             {"src": keyboard_help_url},
             {"src": key_reveal_url},
             {"src": shell_keymap_url},
+            {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
             {"src": search_palette_url},
             {"src": git_graph_url},
