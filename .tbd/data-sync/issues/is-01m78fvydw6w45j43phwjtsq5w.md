@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m78fvydw6w45j43phwjtsq5w
-title: Plugin SDK package and worker protocol, with the host's worker client
+title: Plugin runtime injected as metabrowser, and the worker client
 kind: task
 status: open
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 labels: []
 dependencies:
@@ -13,10 +13,10 @@ dependencies:
     target: is-01m78fvywxsmc0m4481ypk3zbq
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
 created_at: 2026-11-12T18:21:07.899Z
-updated_at: 2026-11-12T18:47:16.726Z
+updated_at: 2026-11-12T21:17:38.475Z
 ---
-Phase 1 (plan: The Plugin SDK, The Worker Protocol, Process Model). New uv workspace member metabrowser-plugin-sdk (import metabrowser_plugin_sdk), stdlib-only, Python >=3.12: the inventory identity codec moved from inventory_engine.contract and ArtifactPath moved from gz_io (the host imports both from the SDK), path helpers and root callbacks bound to the session, the content reader calling the host from a worker, LogEvent and register_log_parser, host services, HookRequest/HookResponse (Starlette responses accepted by duck typing; streaming refused), and the worker module (python -I -m metabrowser_plugin_sdk.worker). Protocol v1: JSON header line plus body_len bytes, ids for multiplexing, both directions; hello with major version and capabilities (fail fast on a major mismatch), list, check, call, cancel, parse, root_changed, shutdown. Host client in plugin_loader: spawn in the server's process group with the stdin lifeline, stdout redirection in the worker, stderr to the server log, deadlines, cancel on disconnect, body and header bounds, restart with a crash limit, idle exit. Golden protocol session and fault tests (exit mid-call, hang, garbage frames, stdout prints, oversized body, major mismatch, stdin EOF). Add the worker protocol row (VERSION + CAPABILITIES) to the Standing Compatibility Answers.
+Phase 1 (plan: The Plugin Runtime, Process Model, Hook Response Headers; Key Decision 1). A stdlib-only runtime package inside the wheel, put first on each worker's sys.path and importable as metabrowser, so documented plugin imports resolve to the host's code whatever the environment holds (the second spike ran all three downstream plugins unchanged this way). It holds the identity codec (moved out of inventory_engine.contract), ArtifactPath with gz_io and content_errors, the path helpers and root callbacks, the content reader with a per-call host handle table, LogEvent, register_log_adapter, detect_adapter with built-in detectors separated from prettyfmt, JsonlParseLimitError, CLIError, host services, HookRequest/HookResponse, and the worker loop: every name plugin_api and metabrowser.__all__ export for sidekicks. Worker client: posix_spawn of <interpreter> -I -B in the server's process group; request pipe on fd 3 and reply pipe on fd 4, close-on-exec in the worker; fd 0 /dev/null, fd 1 stderr to the server log; SIGINT ignored; request-pipe EOF lifeline; allowlisted environment plus manifest-declared names; multiplexed frames both ways; deadlines that kill the worker after a grace and fail its in-flight calls; restart with a crash limit; idle exit except with open streams; stop on environment change, restart on next call when manifests are unchanged. Header policy: pass content headers and every restrictive header (CSP, nosniff, referrer, frame, permissions, cross-origin policies), refuse set-cookie, access-control-*, location, and unlisted; host adds nosniff, and a sandbox CSP to HTML, SVG, or XML lacking one, for in-process hooks too; request headers accept, content-type, if-none-match, if-modified-since, x-metabrowser-pin; handler time in the existing Server-Timing. Golden protocol session and fault tests per the plan's Testing Strategy.
 
 ## Notes
 
-Review (2026-11-12, independent design review; plan updated to match): Protocol on inherited descriptors 3 and 4 marked close-on-exec in the worker; fd 0 -> /dev/null, fd 1 -> stderr; worker ignores SIGINT; lifeline is EOF on the request pipe. Fault test: a plugin subprocess writing to stdout and reading stdin touches neither pipe. SDK must cover every plugin_api export: resolve_content_container, open_content, source_capabilities, require_source_capability, MAX_CONTAINER_INNER_DEPTH, detect_adapter, JsonlParseLimitError, ContentRef/ContentStat/ContentWindow; move content_errors with gz_io; ContentRef in a worker carries a handle into a per-call host table. Request header allowlist includes accept, content-type, if-none-match, x-metabrowser-pin; add handler time to the existing Server-Timing header.
+Body rewritten 2026-11-12 after the Fable 5.2 design review; it supersedes the earlier review notes. The plan's Key Decisions are awaiting the owner.

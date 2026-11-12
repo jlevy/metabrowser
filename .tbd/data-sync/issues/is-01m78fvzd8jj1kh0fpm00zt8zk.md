@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m78fvzd8jj1kh0fpm00zt8zk
-title: Declarative log-adapter detection and proxied log parsing
+title: Declarative log-adapter detection and parsing in the owning worker
 kind: task
 status: open
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 labels: []
 dependencies:
@@ -13,10 +13,10 @@ dependencies:
     target: is-01m78fvzzpbj5yemnpk3513vyz
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
 created_at: 2026-11-12T18:21:08.903Z
-updated_at: 2026-11-12T18:47:17.508Z
+updated_at: 2026-11-12T21:17:40.734Z
 ---
-Phase 1 (plan: Log Adapters). Manifest [[log_adapter]] with name and a detect predicate over the first 20 parsed JSON objects (equals, in, prefix, has, all, any), evaluated host-side beside the built-in detectors so classification never waits on a worker; built-in names unclaimable and duplicate names a --doctor error. Parsing in the owning worker through register_log_parser factories, batched, one parser per stream id, for file views and live streams; events returned without raw, each with its line index, the host attaching the source line. Measure batch size and whether splicing the worker's JSON into the response without decoding is worth it (spike: transport and codec cost 2.5-3.5x the parse on 100,000 synthetic lines; omitting raw saved about 30% of transport). A manifest addition, so a PATCH bump under the caret gate.
+Phase 2 (plan: Log Adapters). Manifest [[log_adapter]] with name and a detect predicate (equals, in, prefix, has, all, any) over the first 20 parsed JSON objects, evaluated host-side; plugin detectors run before built-ins on each line, as today; built-in names unclaimable; duplicate names a --doctor error. Reorder the JSONL paths: /api/file and the pin content routes parse then classify today, and charts.py detects then parses; detect from the head first, classify, then parse, in the owning worker for a plugin adapter. Unknown adapter names get the generic JSONL parser instead of the Claude parser (core behavior change, CHANGELOG). Batched parsing, one parser per stream id, for file views and live streams; a replacement worker re-primes stream parsers by replaying to the cursor, as sse.py's _prime_parser_to_cursor does. Measure the wire shape against today's in-process pipeline (about 2.4x the bare parse by an independent measurement): worker-serialized events spliced without decoding; keep raw unless omitting it wins end to end.
 
 ## Notes
 
-Review (2026-11-12, independent design review; plan updated to match): Reorder the JSONL paths: /api/file (server.py) and the pin content routes parse the whole file and classify from the parse summary today, and charts.py detects then parses; detect from the head first, classify, then parse (in the owning worker for a plugin adapter). create_parser must fall back to the generic JSONL parser, not ClaudeLogParser, for an unknown name. Events made at flush or coalesced from several lines keep their own raw; charts read raw fields.
+Body rewritten 2026-11-12 after the Fable 5.2 design review; it supersedes the earlier review notes. The plan's Key Decisions are awaiting the owner.

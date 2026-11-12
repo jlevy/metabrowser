@@ -5,16 +5,16 @@ title: Checked-in plugin directories under .metabrowser/plugins
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 labels: []
 dependencies: []
 parent_id: is-01m78ftefp9ks9100ebsm7sm29
 created_at: 2026-11-12T18:34:45.298Z
-updated_at: 2026-11-12T18:47:18.326Z
+updated_at: 2026-11-12T21:17:46.267Z
 ---
-Phase 2 (plan: Repository Plugins, Discovery and The Repository's Environment). Plugins a repository checks in without packaging: .metabrowser/plugins/<name>/ with manifest.toml, index.js, and optionally sidekick.py. Under trust they load like any repository plugin; their hooks run in a worker on the repository's environment with the plugin directory on sys.path, or, in a repository with no environment, on Metabrowser's own interpreter where only the standard library and the plugin SDK are available. Fixture and goldens for both cases.
+Phase 3 (plan: Checked-In Plugin Directories; Key Decision 3). A directory under .metabrowser/plugins/<name>/ is a provider. Its Python runs in the clone's worker, each plugin's modules loaded from its own directory under a package name of its own (no shared sys.path entry, so sidekick.py files neither collide nor shadow the environment). In a clone with no environment, its hooks run in a worker on Metabrowser's base interpreter started with -I -S, where only the standard library and the injected runtime are importable (verified: -I -S finds none of Starlette, Pydantic, Softschema, or Metabrowser). Fixture and goldens for both cases.
 
 ## Notes
 
-Review (2026-11-12, independent design review; plan updated to match): No fallback to Metabrowser's own environment (it holds all of Metabrowser's dependencies and an importable metabrowser.plugin_api bound to the wrong root): without a repository environment a checked-in plugin is JavaScript-only. Load each checked-in plugin's modules from its own directory under a unique package name, never via a shared sys.path entry.
+Body rewritten 2026-11-12 after the Fable 5.2 design review; it supersedes the earlier review notes. The plan's Key Decisions are awaiting the owner.
