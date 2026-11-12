@@ -5,9 +5,11 @@ import WebKit
 
 /// Downloads through a real `WKDownload` from a local server, with the save panel
 /// replaced by a fixed answer.
-@Suite struct DownloadTests {
+@Suite(.serialized) struct DownloadTests {
     private let original = Data("the original file\n".utf8)
-    private let replacement = Data("the new download\n".utf8)
+    /// More than the 512 bytes a loader may buffer to sniff the content type before it
+    /// reports the response, so a transfer held open midway still reaches the delegate.
+    private let replacement = Data(String(repeating: "the new download\n", count: 512).utf8)
 
     /// A coordinator that saves to `destination` and records each failure it reports.
     private func coordinator(saving destination: URL, failures: Recorder<DownloadFailure>) -> DownloadCoordinator {
@@ -16,10 +18,17 @@ import WebKit
             reportFailure: { _, failure in failures.append(failure) })
     }
 
+    /// Sets the delegate in the completion handler, as the app does in `didBecome`: WebKit
+    /// asks for a destination as soon as the response arrives, and the async
+    /// `startDownload` resumes its caller only after a hop to the main actor, which a busy
+    /// test run can delay past that, leaving the download waiting with no delegate.
     private func start(_ url: URL, with downloads: DownloadCoordinator, in webView: WKWebView) async -> WKDownload {
-        let download = await webView.startDownload(using: URLRequest(url: url))
-        download.delegate = downloads
-        return download
+        await withCheckedContinuation { continuation in
+            webView.startDownload(using: URLRequest(url: url)) { download in
+                download.delegate = downloads
+                continuation.resume(returning: download)
+            }
+        }
     }
 
     private func contents(_ url: URL) -> Data? { FileManager.default.contents(atPath: url.path) }
@@ -31,16 +40,18 @@ import WebKit
         defer { try? FileManager.default.removeItem(at: folder) }
         let destination = folder.appending(path: "report.bin")
         try original.write(to: destination)
-        let server = try LocalHTTPServer(body: replacement, declaredLength: 10_000)
+        let server = try LocalHTTPServer(body: replacement, declaredLength: 100_000)
         defer { server.stop() }
-        let url = await server.start()
+        let url = server.start()
         let failures = Recorder<DownloadFailure>()
         let downloads = coordinator(saving: destination, failures: failures)
         let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
 
         _ = await start(url, with: downloads, in: webView)
-        await server.waitUntilSent()
-        #expect(await eventually { downloads.replacementsInProgress.count == 1 })
+        #expect(await server.waitUntilSent())
+        #expect(
+            await eventually { downloads.replacementsInProgress.count == 1 },
+            "the download ended early: \(failures.all.map(\.reason))")
         let staged = try #require(downloads.replacementsInProgress.first)
         #expect(staged.destination == destination)
         #expect(contents(destination) == original)  // still there while the transfer runs
@@ -60,12 +71,12 @@ import WebKit
         defer { try? FileManager.default.removeItem(at: folder) }
         let destination = folder.appending(path: "report.bin")
         try original.write(to: destination)
-        let server = try LocalHTTPServer(body: replacement, declaredLength: 10_000)
+        let server = try LocalHTTPServer(body: replacement, declaredLength: 100_000)
         defer {
             server.release()
             server.stop()
         }
-        let url = await server.start()
+        let url = server.start()
         let failures = Recorder<DownloadFailure>()
         let downloads = coordinator(saving: destination, failures: failures)
         let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
@@ -89,7 +100,7 @@ import WebKit
         try original.write(to: destination)
         let server = try LocalHTTPServer(body: replacement)
         defer { server.stop() }
-        let url = await server.start()
+        let url = server.start()
         let failures = Recorder<DownloadFailure>()
         let downloads = coordinator(saving: destination, failures: failures)
         let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
@@ -108,7 +119,7 @@ import WebKit
         let destination = folder.appending(path: "report.bin")
         let server = try LocalHTTPServer(body: replacement)
         defer { server.stop() }
-        let url = await server.start()
+        let url = server.start()
         let failures = Recorder<DownloadFailure>()
         let downloads = coordinator(saving: destination, failures: failures)
         let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
@@ -123,7 +134,7 @@ import WebKit
     @Test func aDeclinedSavePanelDownloadsNothing() async throws {
         let server = try LocalHTTPServer(body: replacement)
         defer { server.stop() }
-        let url = await server.start()
+        let url = server.start()
         let failures = Recorder<DownloadFailure>()
         let downloads = DownloadCoordinator(
             chooseDestination: { _, _, answer in answer(nil) },
