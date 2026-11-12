@@ -87,7 +87,7 @@ else
 fi
 [[ "$NOTARIZE" != 1 && "$variant" == release ]] && state="$state; a rehearsal, not an official build"
 echo
-echo "$product $version ($(build_number)), $arch_label, $state:"
+echo "$product $version ($(build_number)), the $variant variant, $arch_label, $state:"
 for output in "${outputs[@]}"; do
   if [[ -d "$output" ]]; then
     size="$(du -sk "$output" | cut -f1) KB on disk"

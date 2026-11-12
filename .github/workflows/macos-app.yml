@@ -137,7 +137,7 @@ jobs:
           scripts/check-dmg.sh "$dmg"
           # ditto keeps the bundle's symlinks, modes, and signature, which a plain upload
           # would not.
-          zip="build/${product// /-}-$version-$arch_label.app.zip"
+          zip="build/$artifact_label-$version-$arch_label.app.zip"
           ditto -c -k --keepParent "$app" "$zip"
           echo "app=apps/macos/$zip" >>"$GITHUB_OUTPUT"
           echo "dmg=apps/macos/$dmg" >>"$GITHUB_OUTPUT"

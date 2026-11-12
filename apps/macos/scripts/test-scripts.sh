@@ -88,7 +88,7 @@ fi
 # checksum it carries, and declare the architecture the image runs on.
 check_cask() {
   local label="$1" dmg cask url
-  dmg="$work/$(basename "$(dmg_path Metabrowser 1.2.3 "$label")")"
+  dmg="$work/$(basename "$(dmg_path release 1.2.3 "$label")")"
   cask="$work/cask-$label.rb"
   printf 'image %s\n' "$label" >"$dmg"
   write_checksum "$dmg"
@@ -122,6 +122,43 @@ if stops write_cask "$work/Metabrowser-1.2.3-arm64.dmg" "$work/cask-bad.rb" 1.2.
   fail "write_cask accepted the architecture label ppc"
 else
   pass "an unknown architecture label stops the release"
+fi
+
+# variant_settings: both variants are Metabrowser.app, each in a folder of its own, and
+# their images keep the variant in their names.
+dev_app="$(variant_settings dev && echo "$app|$dmg|$bundle_id")"
+release_app="$(variant_settings release && echo "$app|$dmg|$bundle_id")"
+version="$(read_version)"
+if [[ "$dev_app" == "build/dev/Metabrowser.app|build/Metabrowser-Dev-$version-arm64.dmg|io.github.jlevy.metabrowser.dev" &&
+  "$release_app" == "build/release/Metabrowser.app|build/Metabrowser-$version-arm64.dmg|io.github.jlevy.metabrowser" ]]; then
+  pass "each variant builds Metabrowser.app in its own folder, and its image names the variant"
+else
+  fail "the variants' paths: dev $dev_app, release $release_app"
+fi
+if [[ "$(variant_of_bundle_id io.github.jlevy.metabrowser.dev)" == dev &&
+  "$(variant_of_bundle_id io.github.jlevy.metabrowser)" == release &&
+  -z "$(variant_of_bundle_id io.github.jlevy.other)" ]]; then
+  pass "a bundle identifier names its variant, and an unknown one names none"
+else
+  fail "variant_of_bundle_id did not map the bundle identifiers"
+fi
+
+# source_commit: HEAD's short hash, marked -dirty when apps/macos has changes. A Git
+# hook exports GIT_DIR and friends, which would point these commands at this checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+repo="$work/repo"
+mkdir -p "$repo/apps/macos"
+git -C "$repo" init -q
+git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -q --allow-empty -m one
+head="$(git -C "$repo" rev-parse --short=7 HEAD)"
+clean="$(cd "$repo/apps/macos" && source_commit)"
+touch "$repo/apps/macos/changed"
+dirty="$(cd "$repo/apps/macos" && source_commit)"
+outside="$(cd "$work" && GIT_CEILING_DIRECTORIES="$work" source_commit)"
+if [[ "$clean" == "$head" && "$dirty" == "$head-dirty" && -z "$outside" ]]; then
+  pass "source_commit names HEAD, marks uncommitted changes, and is empty outside Git"
+else
+  fail "source_commit gave '$clean', '$dirty', and '$outside' (HEAD is $head)"
 fi
 
 if ((failures)); then
