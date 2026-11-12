@@ -31,8 +31,8 @@ The evidence, the reproductions, and the alternatives rejected are in
 
 - Adding, removing, or updating a plugin never reinstalls Metabrowser.
 - A plugin’s Python dependencies never conflict with Metabrowser’s or another plugin’s.
-- The macOS app uses exactly the sources the CLI uses, and adds only native consent and
-  settings UI.
+- The macOS app uses exactly the sources that the `metab` of the runtime it runs uses,
+  and adds only native consent and settings UI.
 - A repository that checks in a plugin, or locks a library that ships one, works for
   every teammate who opens it, after one trust decision per repository or per parent
   folder, and with no Metabrowser-specific configuration.
@@ -129,7 +129,10 @@ Plugins below is that spec.
 
 Later sources win a plugin-name collision, in the order of the table, so a repository’s
 own copy of a plugin overrides a registered one, and `--doctor` reports every collision.
-Two entries that resolve to the same interpreter are one source.
+A repository source may not take a built-in plugin’s name, so a repository cannot
+replace `github` or `markdown`. An environment is identified by its prefix, the
+directory that holds its `pyvenv.cfg`, not by its interpreter, which in a uv environment
+is a symlink to the shared base Python; two entries with the same prefix are one source.
 A registered environment is whatever its interpreter imports; for the downstream
 application repository, registering its uv project brings all three plugins at once.
 
@@ -142,24 +145,28 @@ the SDK’s module. `--plugins-add` says so and names the range to add when it i
 `XDG_CONFIG_HOME/metabrowser`, or `~/.config/metabrowser`) beside `config.yml`.
 
 - It is a record with its own Softschema contract, `metabrowser:PluginSources/0.1`,
-  enforced, because Metabrowser is its only writer.
+  permissive like `config.yml`: known fields validate strictly, and unknown ones are
+  kept and written back, because several Metabrowser versions can share one home, as the
+  CLI install and an older `uv run metab` do.
   CLI modes write it by atomic replace under the home’s lock.
 - It names code to run, so it is read through the home’s verified reader with sharing
   refused rather than repaired: a registry another account could have written is not
   used, and `--doctor` says why.
 - Serving reads it when it exists and never creates the home, so browsing a folder still
-  touches no state.
+  touches no state. Serving does not import the home module today, a boundary
+  `tests/test_plugin_public_api.py` holds, so Phase 1 adds a small reader whose import
+  cost it measures, and moves that boundary deliberately as Deferred Imports requires.
 
 ```yaml
 softschema:
   contract: metabrowser:PluginSources/0.1
   envelope: plugins
-  status: enforced
+  status: permissive
 plugins:
   sources:
     - id: workflow
       kind: environment
-      interpreter: ~/src/workflow/.venv/bin/python
+      environment: ~/src/workflow/.venv
       project: ~/src/workflow
       added_at: 2026-11-12T10:00:00Z
       added_by: 0.13.0
@@ -169,28 +176,33 @@ plugins:
   repository_trust:
     - path: ~/src
       level: trusted
+      origins: [github.com/example-org/*]
       granted_at: 2026-11-12T10:05:00Z
     - path: ~/src/outside-contrib
       level: pinned
       origin: https://github.com/example/outside-contrib.git
-      approved_commit: 9f1c2e7
+      approved_commit: 9f1c2e7a5b0c3d4e8f9a1b2c3d4e5f60718293a4
       plugin_set_sha256: 3b4f…
       granted_at: 2026-11-12T10:06:00Z
 ```
 
-Listing an environment means importing its entry points, which costs 250–400 ms for
-three plugins (measured).
-The result is cached in the cache home, keyed by a fingerprint of the environment: the
-interpreter’s file identity and the modification times of its `site-packages`, each
-`*.dist-info`, and each `*.pth`. A server starts from the cache and from the manifests,
-which it reads itself, so registering a source adds no startup process; a stale
-fingerprint re-lists in a worker.
+Listing an environment means importing its entry points, since only the entry point’s
+callable knows its plugin directory; that cost 251–469 ms for three plugins (measured).
+The result is cached in the cache home, keyed by a fingerprint of the environment: its
+`pyvenv.cfg`, the base interpreter’s file identity, and the modification times of its
+`site-packages`, each `*.dist-info`, and each `*.pth`. A server starts from a warm cache
+and the manifests, which it reads itself, so it spawns nothing at startup.
+A cold or stale listing is taken before the classifier is built, which costs that spawn
+and those imports once, at the first start after an environment changes; the CLI modes
+that add or trust a source take it ahead of time, so ordinary starts are warm.
+Serving writes the cache only for sources the user registered or repositories the user
+trusted, so an ordinary browse still creates no state.
 
 ### Trust and Consent
 
 | Source | Who may add it | How the user approves it |
 | --- | --- | --- |
-| Registered directory or environment | the account owner, through `metab` | naming the path is consent to run that interpreter; `--plugins-add` lists what it found and asks before recording (`--yes` for scripts) |
+| Registered directory or environment | the account owner, through `metab` | `--plugins-add` shows what the environment’s metadata says it holds, imports nothing until the user confirms, and records the listing hash it showed; `--yes --expect SHA256` is for scripts and refuses when the listing changed |
 | Managed package | the account owner, through `metab` | as above, after the install and before recording |
 | Repository plugins | the repository proposes by what it contains; the account owner trusts the repository or a parent folder | `metab ROOT --plugins-trust`, or the app’s bar, after seeing what was discovered; see Repository Plugins |
 | Per-invocation flags | whoever runs the command | the command line itself |
@@ -201,13 +213,24 @@ fingerprint re-lists in a worker.
 - **No route writes the registry or trust.** Any plugin’s JavaScript runs in the page
   and can call any same-origin route, so a write route would let a JavaScript-only
   plugin register Python.
-  This is the one deliberate gap in route parity: the parity table lists the CLI modes
-  as the surface and this reason.
+  The registry is persisted state with a `metab` equivalent (`--plugins --json`) and a
+  read route, and every write is a CLI mode with a golden, so nothing is left uncovered.
+- **The read route shows no local paths.** `GET /api/plugins` names sources by id and
+  shows locations relative to the served root or `~`, as the home’s errors avoid naming
+  paths; full paths appear only in the CLI’s output.
 - **Served content cannot opt itself in.** A `.env` file cannot name a source or record
   trust, an untrusted repository’s plugins are only reported, and the agent front door
   (`metab TARGET --present`) never changes sources or trust.
   An agent with a shell can run `metab --plugins-add`, as it can run `uv tool install`
   today; the Metabrowser skill tells agents to ask the user first.
+- **Only code the user’s account alone can change runs.** Before recording a source or
+  trust, and again before each worker spawns, the environment prefix, its interpreter
+  and the base interpreter it links to, each plugin directory, and a repository’s top
+  level pass the rule the app applies to `metab` (`ExecutableTrust`): every component of
+  the path owned by the user or root, none writable by its group or every account, and
+  no access-control entry granting a write.
+  A repository whose top level another account owns is refused, as Git’s
+  `safe.directory` refuses one.
 - **Plugin code has the app’s privacy grants.** Under the app, a worker is a descendant
   of the app, and macOS attributes a descendant’s file access to the app (inferred), so
   plugin code can read what the user let Metabrowser read.
@@ -232,10 +255,14 @@ Metabrowser-specific file:
 For a folder server, never a Git source opened from a URL, a pin, a mirror, or an
 `--untrusted` session:
 
-1. **The repository** is the Git top level that contains the served folder, which the
-   server already resolves as its repository context, or the served folder itself
-   outside Git. Folders below the served one are not searched, so serving a folder of
-   many repositories loads none of their plugins.
+1. **The repository** is the Git top level that contains the served folder, or the
+   served folder itself outside Git.
+   The server’s existing repository context answers only for GitHub origins and checks
+   no ownership, so discovery has its own reader: the nearest `.git` at or above the
+   served folder, no higher than the user’s home directory, owned as the rule above
+   requires, with its origin URL read from the common directory’s `config`, whatever the
+   host. Folders below the served one are not searched, so serving a folder of many
+   repositories loads none of their plugins.
 2. **Its environment** belongs to the uv project or workspace root: the nearest
    `pyproject.toml` at or above the served folder, inside the repository, with a
    `uv.lock` beside it, preferring one with `[tool.uv.workspace]`. The environment is
@@ -252,34 +279,49 @@ For a folder server, never a Git source opened from a URL, a pin, a mirror, or a
    `.metabrowser/config.toml` for a repository without one: `environment`, `include` and
    `exclude` by entry-point name, and further plugin `dirs`.
 
-Discovery reads bounded files only, refuses paths that resolve outside the repository
-unless the user confirms them (a `.venv` that is a symlink elsewhere, say), and runs no
-interpreter. Its result is cached with the listing cache’s fingerprint plus the
-modification times of the files it read, so a server start with a warm cache costs a few
-`stat` calls.
+Discovery reads bounded files only, refuses an environment whose prefix resolves outside
+the repository unless the user confirms it (a `.venv` that is a symlink elsewhere, say),
+and runs no interpreter.
+Its result is cached with the listing cache’s fingerprint plus the modification times of
+the files it read, so a server start with a warm cache costs a few `stat` calls.
 
 #### Trust Levels
 
 | Level | Recorded | What happens automatically |
 | --- | --- | --- |
 | Undecided, the default | nothing | Discovery only. The page shows a bar naming what was found, `metab` prints one line on stderr, and `--plugins` and `--doctor` list the plugins as untrusted. No interpreter runs, and no plugin JavaScript, style, asset, kind, or view is served. |
-| Trusted | the repository or a parent folder’s path, the repository’s origin URL, the time | Every server for a folder in the repository loads everything discovered: manifests, assets, and JavaScript, and a worker on the repository’s interpreter for hooks and adapters. A pull, a new plugin, a lock bump, or `uv sync` takes effect at the next server start, or the next reload, without asking. |
+| Trusted | the repository’s path and origin URL, or a parent folder’s path with the origins it covers, such as `github.com/example-org/*` | Every server for a folder in the repository loads what was discovered: manifests, assets, and JavaScript, and a worker on the repository’s environment for hooks and adapters. A pull, a new plugin of the repository’s own or of a direct dependency, a lock bump, or `uv sync` takes effect at the next server start, or the next reload, without asking. |
 | Pinned | as Trusted, plus the approved commit and a SHA-256 of the plugin set | Loads only while the plugin set matches. After any change nothing from the repository loads, and the bar offers Review, Metabrowser’s own diff of the plugin paths from the approved commit to the working tree, and Approve. |
 | Denied | the repository or a parent folder’s path | Nothing loads, and nothing is reported beyond `--plugins --json`. |
 
 - **The nearest record wins**, so a repository’s own record overrides its parent
-  folder’s, and trusting `~/src` makes every repository below it work at once.
+  folder’s.
+- **A parent folder covers only the origins it names.** Trusting `~/src` for
+  `github.com/example-org/*` makes every clone of that organization below it work at
+  once; any other repository under it, a stranger’s clone or one with no origin, is
+  undecided and shows the bar, so `git clone` into a trusted folder, by a person or an
+  agent, runs nothing new.
 - **A changed origin URL makes a trusted repository undecided again**, because a
   different repository cloned to the same path is not the one the user trusted.
+- **Library plugins come from direct dependencies.** Under Trusted, a plugin loads when
+  it is the repository’s own or comes from a distribution a workspace member depends on
+  directly. One that a transitive dependency declares is reported and loads only once
+  `include` names it or the user approves it in the bar.
 - **The plugin set** is the sorted plugin distributions with versions and origins, the
-  lock file, and the Git tree ids of the in-repository plugin paths and of
-  `.metabrowser/`, with uncommitted files hashed by content.
+  lock file, every `*.pth` file, and the Git tree ids of every editable install’s source
+  tree and of `.metabrowser/`, with uncommitted files hashed by content, so code a
+  plugin imports from the workspace is covered as well as the plugin’s own.
+- **What the user saw is what is approved.** Review and `--dry-run` print the plugin
+  set’s hash, and Approve and `--yes` take it back (`--expect SHA256`) and refuse when
+  it no longer matches.
+  Records hold full commit object ids.
 - **Path trust is the default** because the owner’s case is internal repositories, where
   a trust that asks on every pull would be dismissed by habit.
   It matches VS Code Workspace Trust and `mise trust`; Pinned matches `direnv allow` and
   mise’s paranoid mode, and suits a repository that takes outside contributions.
 - **Commands:** `metab ROOT --plugins-trust [--pinned]`, `metab ROOT --plugins-deny`,
-  `metab ROOT --plugins-untrust`, and `metab --plugins-trust DIR` for a parent folder.
+  `metab ROOT --plugins-untrust`, and
+  `metab --plugins-trust-under DIR --origins PATTERN` for a parent folder.
   Each shows what it will load and asks on a terminal; `--yes` is for scripts.
   `--repo-plugins` loads the served repository’s plugins as trusted for one command and
   records nothing, for CI and plugin authors.
@@ -301,10 +343,14 @@ modification times of the files it read, so a server start with a warm cache cos
 - **Unusual:** a `.venv` tracked by Git, or one that resolves outside the repository, is
   named in the trust confirmation.
 - **The plugin SDK** comes into the environment through the plugins that depend on it.
-  A checked-in plugin directory’s hooks run in a worker on the repository’s environment
-  with that directory on `sys.path`; in a repository with no environment, they run on
-  Metabrowser’s own interpreter, where only the standard library and the SDK are
-  available.
+- **Checked-in plugin directories** with hooks need the repository’s environment: their
+  Python runs in its worker, each plugin’s modules loaded from its own directory under a
+  package name of its own, so two plugins’ `sidekick.py` cannot collide or shadow the
+  environment’s modules.
+  In a repository with no environment such a plugin is JavaScript-only, and `--doctor`
+  says its hooks need one.
+  Metabrowser’s own environment is not a fallback: it holds Metabrowser and all its
+  dependencies, not only the SDK.
 
 #### For Libraries That Ship a Plugin
 
@@ -351,20 +397,32 @@ decision.
 - **Spawned like the server.** `<interpreter> -I -m metabrowser_plugin_sdk.worker`, with
   the server’s working directory, the server’s environment without Metabrowser’s
   capability variables, and `PYTHONNOUSERSITE=1`. It stays in the server’s process
-  group, so the app’s group stop reaches it, and its stdin is the lifeline: it exits
-  when the server’s end closes, measured at 4–5 ms.
-  Its stderr goes to the server’s log, prefixed with the source id; plugin code that
-  prints to stdout is redirected to stderr so it cannot corrupt the protocol.
+  group, so the app’s group stop reaches it.
+- **The protocol has descriptors of its own.** The worker inherits a request pipe and a
+  reply pipe as descriptors 3 and 4, marks them close-on-exec, points descriptor 0 at
+  `/dev/null` and descriptor 1 at its stderr, and ignores SIGINT, since the server owns
+  Ctrl-C. A plugin’s `print` or a subprocess it starts therefore cannot read or write
+  frames, and the lifeline is the request pipe: the worker exits when the server’s end
+  closes, measured at 4–5 ms in the spike, which used stdin.
+  Its stderr goes to the server’s log, prefixed with the source id.
+- **A worker keeps the environment it started with.** Until Phase 5, a worker records
+  the environment’s fingerprint the server started from; when the environment changes,
+  its plugins report that a restart applies the change, and the worker is neither
+  relisted nor respawned into code that the routes and manifests fixed at startup do not
+  describe.
 - **Failures stay in the worker.** A worker that exits is restarted at the next request.
   One that exits three times in a minute is marked failed until its environment’s
   fingerprint changes or the user reloads, and its hooks answer the existing degraded
   `plugin_error` envelope.
 - **Bounded calls.** Each call carries a deadline (a default, overridable per hook in
-  the manifest); a client disconnect sends `cancel`. A request body is at most 1 MiB and
-  a response at most 64 MiB, the bound `jsonl_view` already applies to a parse; the
-  largest response measured was 429 KB. Response headers pass through an allowlist
-  (`content-type`, `etag`, `cache-control`, `last-modified`, `content-disposition`), and
-  the host adds `Server-Timing` with the handler’s time.
+  the manifest); a client disconnect sends `cancel`. A request body is at most 1 MiB.
+  The response bound is set in Phase 1 from measurements; the largest response measured
+  was 429 KB, and the nearest existing bound is the 64 MiB that `jsonl_view` allows a
+  parse’s input. Request headers pass through an allowlist (`accept`, `content-type`,
+  `if-none-match`, and `x-metabrowser-pin`, which hooks already read for revalidation
+  and pins), as do response headers (`content-type`, `etag`, `cache-control`,
+  `last-modified`, `content-disposition`), and the host adds the handler’s time to the
+  `Server-Timing` header the server already emits.
 
 ### The Plugin SDK
 
@@ -377,12 +435,17 @@ one implementation:
   it from the SDK);
 - `resolve_path`, `resolve_directory`, `relativize_path`, `served_root`, and
   `register_root_callback`, bound to the session’s subject;
-- `ArtifactPath` and its errors, moved from `gz_io`, which already uses only `gzip` and
-  `zlib`;
-- the content reader (`resolve_content`, `read_content_window`, `stat_content`, and
-  `ContentReadError`), which in a worker calls the host, so it works on a Git pin and
-  keeps the host’s bounds;
-- `LogEvent`, the parser protocol, and `register_log_parser`;
+- `ArtifactPath` and its errors, moved from `gz_io`, with the content error family it
+  raises (`content_errors`), all of which use only the standard library;
+- the content reader (`resolve_content`, `resolve_content_container`,
+  `read_content_window`, `stat_content`, `open_content`, `source_capabilities`,
+  `require_source_capability`, `MAX_CONTAINER_INNER_DEPTH`, the `ContentRef`,
+  `ContentStat`, and `ContentWindow` types, and `ContentReadError`), which in a worker
+  calls the host, so it works on a Git pin and keeps the host’s bounds.
+  A `ContentRef` holds a host reader, so in a worker it carries a handle into a per-call
+  table the host keeps and releases when the call ends;
+- `LogEvent`, the parser protocol, `register_log_parser`, `detect_adapter`, and
+  `JsonlParseLimitError`, every name `metabrowser.plugin_api` exports today;
 - host services that stay host computations, such as the agent-log chart projection;
 - `HookRequest` and `HookResponse`, the worker, and `testing`.
 
@@ -422,18 +485,18 @@ schedule and are the named consumer the compatibility rules require.
 
 ### Log Adapters
 
-Detection moves into the manifest, so classifying a file never waits on a worker:
+Detection moves into the manifest, so classifying a file need not wait on a worker:
 
 ```toml
 [[log_adapter]]
-name = "pool"
-detect = { key = "event", equals = "pool_start" }
+name = "batch"
+detect = { key = "event", equals = "batch_start" }
 
 [[log_adapter]]
 name = "steps"
 detect = { all = [
-  { key = "event", in = ["process_start", "step_start", "item_start"] },
-  { any = [{ has = "process" }, { has = "step_id" }, { key = "event", prefix = "item_" }] },
+  { key = "event", in = ["run_start", "step_start", "item_start"] },
+  { any = [{ has = "run" }, { has = "step_id" }, { key = "event", prefix = "item_" }] },
 ] }
 ```
 
@@ -443,12 +506,21 @@ detect = { all = [
 - The host evaluates it beside the built-in detectors.
   A built-in name cannot be claimed, and two plugins claiming one name is a `--doctor`
   error, as now.
+- **The JSONL paths change order.** Today `/api/file` parses the whole file and
+  classifies from the parse summary’s adapter, the pin content routes do the same, and
+  `charts.py` detects and then parses; `create_parser` falls back to the Claude parser
+  for a name it does not know.
+  Phase 1 makes each detect from the head first, with the built-in and declarative
+  detectors, classify, and only then parse, in the owning worker for a plugin’s adapter;
+  an unknown name gets the generic JSONL parser.
 - Parsing stays the plugin’s code.
   The plugin registers a parser factory for each name with `register_log_parser`; the
   host sends lines to the owning worker in batches with a stream id, one parser per
   stream, for a file view and for a live stream alike.
 - Events come back without `raw`, each with its line index, and the host attaches the
   source line it already parsed.
+  An event that a parser makes at flush or coalesces from several lines has no single
+  source line, so it carries its own `raw`, which the chart projection reads.
   The spike measured this saving about 41% of the bytes and 30% of the transport.
   Phase 1 measures splicing the worker’s JSON into the response without decoding it
   before deciding whether to add it.
@@ -462,17 +534,23 @@ Three versions, each with one rule:
   The host accepts a manifest with its MINOR and a PATCH no greater than its own, and
   refuses a newer PATCH as needing a newer Metabrowser.
   Today’s `0.7` reads as `0.7.0`, so no manifest changes when the rule lands.
+  The gate reads `sdk_version` from the raw TOML before the schema validates, because
+  the manifest model forbids unknown fields: an older host would otherwise report a
+  newer manifest’s `[[log_adapter]]` as a schema error instead of naming the Metabrowser
+  version it needs.
 - **Breaks are listed as data.** `plugin_loader/sdk-changes.toml` records each version’s
   additions, changes, and removals by surface name, the window globals plugins use
   (`MetabrowserCharts`, `MetabrowserTooltip`, `MetabrowserAssets`) among them.
   A refusal names the changes between the plugin’s version and the host’s, and a test
   fails when `PLUGIN_SDK_VERSION` has no entry.
-- **Deprecate before removing where it is cheap.** A surface a plugin may use is kept,
-  with a console warning and a `--doctor` note, for one compatibility line before it is
-  removed; where keeping it costs more than a break, the break bumps MINOR. This revises
-  “Plugins are upgraded, not accommodated”: plugins in other repositories now update on
-  their own schedule, the condition the Standing Compatibility Answers name for
-  revisiting it.
+- **Deprecate only what a named plugin uses.** A surface that a named external plugin
+  uses, recorded in `sdk-changes.toml` with that consumer, is kept with a console
+  warning and a `--doctor` note for one compatibility line before it is removed; any
+  other change breaks and bumps MINOR. This narrows “Plugins are upgraded, not
+  accommodated” to the consumers the compatibility rules ask a layer to name, since
+  plugins in other repositories now update on their own schedule.
+  `AGENTS.md` and the Standing Compatibility Answers change in the same pull request as
+  the gate.
 - **An author can see what breaks.** `metab --plugins-sdk-override NAME`, for one
   command and never recorded, loads a refused plugin, logs the override, and shows a
   banner in the page.
@@ -485,13 +563,16 @@ Three versions, each with one rule:
   Until Phase 5, a change takes effect at the next server start.
 - **Update** is whatever updates the environment: `uv sync` in a project,
   `uv tool upgrade`, or `metab --plugins-upgrade` for a managed package.
-  A worker compares the environment’s fingerprint when it starts and when the listing
-  cache is read; a changed environment is listed again.
+  A server compares each environment’s fingerprint at start, and a changed environment
+  is listed again before the classifier is built; while a server runs, a change waits
+  for the next start, or for reload in Phase 5.
 - **Reload without a restart (Phase 5).** The registry becomes a generation object that
   the server swaps whole.
   Data hooks dispatch through one route, `/api/plugin/{plugin}/{route}`, that looks up
-  the current generation, instead of one Starlette route per hook; `/plugin-static/`,
-  the classifier, and the derived caches read or key by the generation.
+  the current generation and refuses a method the hook does not declare, since the
+  server’s same-origin guard covers only POST, PUT, PATCH, and DELETE, instead of one
+  Starlette route per hook; `/plugin-static/`, the classifier, and the derived caches
+  read or key by the generation.
   The server watches `plugins.yml` and each environment’s fingerprint, debounced, and
   applies a new generation; workers whose environment changed drain and restart.
   The server then emits `plugins-changed`, and an open page offers to reload, since its
@@ -499,7 +580,8 @@ Three versions, each with one rule:
   When the app plan’s host mode lands, `metab --plugins-reload` also reaches a running
   server through its control socket.
 - **Managed packages (Phase 5).** `--plugins-install REQUIREMENT` creates a uv project
-  per package under the runtime’s data home (`plugin-envs/<id>/` with `pyproject.toml`
+  per package under a data home, which Metabrowser does not have yet and Phase 5 adds
+  beside the cache and configuration homes (`plugin-envs/<id>/` with `pyproject.toml`
   and `uv.lock`), locks it with the supply-chain cool-off (`exclude-newer = "14 days"`,
   first-party packages exempt as
   [supply-chain security](../../../../SUPPLY-CHAIN-SECURITY.md) describes), syncs it
@@ -513,23 +595,28 @@ Three versions, each with one rule:
 
 The app keeps its rule: `metab` owns the data, the app owns platform behavior.
 
-- **One configuration home in Terminal and the app.** The app resolves
-  `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `METABROWSER_CONFIG_DIR`, and
-  `METABROWSER_CACHE_DIR` from the login shell once at setup, as it resolves `git` and
-  `gh`, and passes them to every server, so a server the app starts reads the same
-  registry and cache as `metab` in Terminal.
+- **One configuration home in Terminal and the app.** Only the login shell knows whether
+  the user set `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`,
+  `METABROWSER_CONFIG_DIR`, or `METABROWSER_CACHE_DIR`. Setup runs the login shell today
+  only when its earlier lookups miss, because that run can take seconds and raise
+  privacy prompts. So setup runs it once for these names, saves them with the runtime,
+  passes them to every server, and Find Again refreshes them; a server the app starts
+  then reads the same registry and cache as `metab` in Terminal.
   This also fixes the cache-home gap the research brief found.
 - **Where plugin environments live.** Registered environments stay where the user keeps
   them. Managed packages live in the data home of the runtime the app uses: the XDG data
   home for a CLI install, `~/Library/Application Support/Metabrowser/` for an
   app-managed runtime.
-  The registry belongs to that runtime’s configuration home, as state homes already do.
+  The registry belongs to that runtime’s configuration home, as state homes already do,
+  so an app-managed runtime and its command-line launcher share one registry, and a
+  separate CLI install keeps its own.
 - **Settings > Plugins** is a native list built from `metab --plugins --json`: each
   source with its kind, location, plugins, and problems.
-  Add… opens a panel for a folder, environment, or interpreter, runs
-  `metab --plugins-add --dry-run --json PATH`, and shows a native confirmation with the
-  interpreter, the plugins with their hooks and adapters, and the privacy-grant note;
-  confirming runs `metab --plugins-add --yes --json PATH`. Remove runs
+  Add… opens a panel for a folder or environment, runs
+  `metab --plugins-add --dry-run --json PATH`, which reads metadata and imports nothing,
+  and shows a native confirmation with the environment, the plugins it declares, the
+  privacy-grant note, and the listing hash; confirming runs
+  `metab --plugins-add --yes --expect SHA256 --json PATH`. Remove runs
   `--plugins-remove`. Run Doctor and Reveal Logs exist already.
   The list is native, not a page, because its actions are the registry writes no page
   may reach; a read-only page can show the same model later.
@@ -540,15 +627,16 @@ The app keeps its rule: `metab` owns the data, the app owns platform behavior.
   interpreter, and the privacy-grant note, and Not Now.
   A pinned repository’s Review opens the diff since the approved commit.
   Each button runs the matching `metab ROOT --plugins-…` mode.
-- **Trusted folders** in Settings > Plugins lists parent-folder records, with Add… for a
-  folder such as `~/src`, which runs `metab --plugins-trust --yes DIR`.
+- **Trusted folders** in Settings > Plugins lists parent-folder records with the origins
+  each covers, with Add… for a folder such as `~/src`, which runs
+  `metab --plugins-trust-under DIR --origins PATTERN --yes`.
 - **Applying a change.** Until Phase 5, after a change the app offers to restart the
   servers it affects (every open folder for a source, that repository’s folders for
   trust), through the same path it uses after an upgrade (`mb-895s`). After Phase 5 the
   servers reload themselves and the app does nothing.
 - **Supervision.** Workers are in their server’s process group, so the app’s stop
-  (SIGTERM to the group, then SIGKILL) reaches them, and each worker’s stdin lifeline
-  ends it with its server however the server ends.
+  (SIGTERM to the group, then SIGKILL) reaches them, and each worker’s request-pipe
+  lifeline ends it with its server however the server ends.
   A worker’s stderr is in the server’s log, which the app’s failure view already shows.
   A live test stops a folder and checks that no worker remains.
 - **Signing and sandbox.** Nothing is added to the signed bundle.
@@ -571,10 +659,14 @@ local worker cannot read remote files.
 `--remote` forwards `--plugins` and `--doctor` over the same SSH path, so the local user
 can see what the remote session loads.
 Adding a source on a remote host is `metab --plugins-add` run there.
-Repository discovery and trust run on the remote host too, against its registry; the
-page’s bar names `metab --remote HOST --path ROOT --plugins-trust`, which forwards the
-trust mode over the same SSH path with a terminal for its confirmation, and the remote
-repository’s environment is synced on the remote host.
+Repository discovery and trust run on the remote host too, against its registry, and the
+remote repository’s environment is synced on the remote host.
+The `--remote` wrapper runs the remote command with `/dev/null` as stdin and no
+terminal, so a forwarded mode cannot ask.
+In Phase 2 the page’s bar therefore names `ssh -t HOST metab ROOT --plugins-trust`;
+Phase 5 adds the forwarded form, in which the local `metab` fetches the remote plugin
+set through the forwarded `--plugins --json`, asks locally, and sends
+`--plugins-trust --yes --expect SHA256`.
 
 ### Diagnostics
 
@@ -588,17 +680,18 @@ repository’s environment is synced on the remote host.
   available, whether a uv project’s environment matches its lock.
   Given a root, it also reports that root’s repository plugins, their trust level, and
   why each is or is not loaded.
-  It stays rootless, and closes every worker it starts.
-- `GET /api/plugins` serves the same model to the page and to `--api`.
+  Without a root it stays rootless, and it closes every worker it starts.
+- `GET /api/plugins` serves the same model to the page and to `--api`, with locations
+  shown relative to the served root or `~`.
 - `metab ROOT --show PATH` names the source and the process that own the selected kind.
 
 ### CLI and Routes
 
 | Surface | Kind | Golden |
 | --- | --- | --- |
-| `--plugins-add SOURCE [--dry-run] [--yes]`, `--plugins-remove ID` | CLI mode, writes `plugins.yml` | add, dry run, remove, refusal of a shared registry |
+| `--plugins-add SOURCE [--dry-run] [--yes --expect SHA256]`, `--plugins-remove ID` | CLI mode, writes `plugins.yml` | add, dry run, a listing that changed after the dry run, remove, refusal of a shared registry and of an environment another account can write |
 | `--plugins-env PATH` | per-command source, repeatable, like `--plugins-dir` | a fixture environment’s hook through `--api`, an adapter kind through `--show` |
-| `ROOT --plugins-trust [--pinned]`, `ROOT --plugins-deny`, `ROOT --plugins-untrust`, `--plugins-trust DIR` | CLI mode, writes trust | each level on a fixture repository, a pinned repository after a commit, a changed origin, refusal on a Git source |
+| `ROOT --plugins-trust [--pinned] [--yes --expect SHA256]`, `ROOT --plugins-deny`, `ROOT --plugins-untrust`, `--plugins-trust-under DIR --origins PATTERN` | CLI mode, writes trust | each level on a fixture repository, a pinned repository after a commit, a changed origin, a clone with another origin under a trusted folder, refusal on a Git source |
 | `--repo-plugins` | per-command trust, recorded nowhere | a fixture repository’s hook through `--api` |
 | `--plugins-install`, `--plugins-upgrade`, `--plugins-uninstall` (Phase 5) | CLI mode | offline install from a local wheel |
 | `--plugins-reload` (Phase 5) | CLI mode through the control socket | reload after a registry change |
@@ -626,8 +719,8 @@ The server discovers the plugins and shows the bar: Trust and Set Up runs
 On the command line, `metab <repo>` prints the one-line notice, and
 `metab <repo> --plugins-trust` with `uv sync --locked` does the same.
 Nothing asks again on later opens.
-A teammate who trusts `~/src` once sees the bar only for an environment that still needs
-syncing.
+A teammate who trusts `~/src` once for the organization’s origins sees the bar only for
+an environment that still needs syncing, or for a repository from somewhere else.
 
 **A pull request changes the plugin.** Reviewed in Metabrowser’s pull-request pages, the
 changed plugin never runs, since plugins load from a working tree and never from a
@@ -743,20 +836,25 @@ the rest.
   install of the fixture and the SDK workspace member, which have no other dependencies.
 - **Protocol.** A golden session of normalized frames between the host client and the
   real worker, and fault tests: a worker that exits mid-call, one that hangs past its
-  deadline, garbage frames, plugin code printing to stdout, an oversized body, a
-  protocol major mismatch, and stdin closing.
+  deadline, garbage frames, plugin code printing to stdout, a plugin subprocess that
+  writes to its stdout and reads its stdin without touching either protocol pipe, an
+  oversized body, a protocol major mismatch, and the request pipe closing.
 - **Goldens through `metab`.** `--plugins-env` with `--api` for a hook, `--show` for an
   adapter kind, `--plugins --json`, `--doctor --json`, `GET /api/plugins`, and each
   registry mode.
 - **A fixture repository.** A Git repository with a uv workspace holding a plugin
   member, a library-like distribution from outside the repository, and a
   `.metabrowser/plugins/` directory, built offline like the fixture environment.
-- **Records and trust.** The registry’s contract; refusal of a shared registry; serving
-  never creating the home; for each trust level, exactly what loads and what is
-  reported; a parent folder’s record and a nearer one; a pinned repository after a
-  commit to a plugin path and after a lock change; a changed origin; no repository
-  plugins on a Git source, a pull-request page, or under `--untrusted`; and an undecided
-  repository whose served page requests no plugin asset.
+- **Records and trust.** The registry’s contract, including unknown fields kept across a
+  write; refusal of a shared registry; serving never creating the home; for each trust
+  level, exactly what loads and what is reported; a parent folder’s record, a nearer
+  one, and a clone with another origin under it; a transitive dependency’s plugin held
+  back; a pinned repository after a commit to a plugin path, to other workspace code,
+  and after a lock change; `--expect` refusing a plugin set that changed after Review; a
+  changed origin; the ownership rule refusing an environment, a plugin directory, or a
+  repository another account can write; no repository plugins on a Git source, a
+  pull-request page, or under `--untrusted`; an undecided repository whose served page
+  requests no plugin asset; and `GET /api/plugins` naming no absolute path.
 - **Compatibility.** The caret rule’s table; `sdk-changes.toml` covers every version.
 - **Performance.** Phase 1 records worker spawn, listing, resident memory, hook
   overhead, and adapter throughput with the spike’s method in

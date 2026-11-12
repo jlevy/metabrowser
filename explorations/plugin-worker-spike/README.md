@@ -16,6 +16,8 @@ the design that follows from them is
 Both halves mark the shortcuts the plan replaces: the worker sets the root and reads
 adapters through private names of the environment’s own Metabrowser, and hooks are
 called past the host’s SDK gate.
+The protocol also runs over the worker’s stdin and stdout, which a subprocess that
+plugin code starts would inherit; the plan moves it to descriptors of its own.
 
 ## Running It
 

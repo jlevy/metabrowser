@@ -71,8 +71,8 @@ stdio to a worker that runs in the plugin’s own environment.
   everything else in its process: small calls beside a 1.2–1.4 s hook rose from 0.14 ms
   to about 8 ms median and up to 68 ms.
   Out of process, that contention leaves the server’s event loop; in process, it is the
-  server’s. And proxied log parsing cost 2.5–3.5 times the parse itself on a synthetic
-  100,000-line log, mostly JSON encoding and decoding.
+  server’s. And proxied log parsing cost 2.5–3.5 times the parse itself in each run on a
+  synthetic 100,000-line log, mostly JSON encoding and decoding.
 - **The candidate design’s transport and process model hold; its binding does not.** A
   worker that imports the plugin environment’s own `metabrowser` must set private module
   state of whatever Metabrowser version that environment holds (the spike had to),
@@ -312,7 +312,7 @@ What this shows:
   than the parse: 0.87–0.96 s against 0.36–0.39 s with `raw` echoed, and 0.62–0.67 s
   against 0.40–0.43 s without it.
   Dropping the echoed `raw` saved about 41% of the bytes and 30% of the transport.
-  The plan makes detection declarative, so classification never waits on a worker, and
+  The plan makes detection declarative, so classification need not wait on a worker, and
   sends events without `raw`; whether to splice the worker’s JSON into the response
   without decoding it is measured there.
 - **Memory is per worker.** 61–121 MB for one environment is close to a server’s own
@@ -489,8 +489,8 @@ workspace’s `pyproject.toml` files and lock already say.
 ### Option M: Path Trust Only, or Content Trust Only (Both Offered)
 
 Path trust, as in VS Code, keeps an owner’s own repositories effortless: once trusted, a
-pull, a new plugin, or a lock bump just works, and trusting a parent folder covers every
-repository under it.
+pull, a new plugin, or a lock bump just works, and trusting a parent folder covers the
+repositories under it whose origins it names.
 Content trust, as in direnv, makes every change to the plugin set ask again, which suits
 a repository that takes outside contributions.
 The plan makes path trust the default and content trust a per-repository choice, because
