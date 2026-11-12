@@ -7,7 +7,9 @@ import Testing
 ///     METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab swift test --filter LiveMetab
 nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABROWSER_SHELL_TEST_METAB"]
 
-@Suite(.enabled(if: liveMetab != nil, "set METABROWSER_SHELL_TEST_METAB to a metab executable"))
+/// Serialized: `metab` picks its port by probing and binds it later, so two servers
+/// started at once can announce the same port, which the app's `LaunchGate` prevents.
+@Suite(.serialized, .enabled(if: liveMetab != nil, "set METABROWSER_SHELL_TEST_METAB to a metab executable"))
 struct LiveMetabTests {
     @Test func discoveryValidatesIt() async throws {
         let path = try #require(liveMetab)
