@@ -7,6 +7,7 @@ implementation modules can share them without import cycles.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from collections.abc import Callable, Generator
@@ -85,6 +86,33 @@ class PipeTrackingStream:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.stream, name)
+
+
+def write_notice_now_or_never(fd: int, notice: bytes) -> None:
+    """Write a stop notice to *fd* if it can be written now, and skip it otherwise.
+
+    For a process about to exit at once, from a signal handler or another thread. A raw
+    ``os.write`` takes no Python lock the interrupted thread may hold, but on a full pipe
+    whose reader has stopped reading it waits for good, and the stop with it. So the
+    write is made with ``O_NONBLOCK``, and a notice that does not fit is dropped.
+
+    ``O_NONBLOCK`` belongs to the open file, not to the descriptor: a duplicate shares
+    it, and so may other processes, such as a shell writing to the same terminal. It is
+    set for this one write and then put back. A notice is short, so the write is all or
+    nothing on a pipe. Any error just means there is no notice.
+    """
+
+    try:
+        was_blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
+    except OSError:
+        return
+    try:
+        with contextlib.suppress(OSError):
+            os.write(fd, notice)
+    finally:
+        with contextlib.suppress(OSError):
+            os.set_blocking(fd, was_blocking)
 
 
 def silence_broken_pipe(stream: TextIO) -> None:

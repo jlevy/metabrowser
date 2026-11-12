@@ -11,10 +11,10 @@ import WebKit
 /// schedules.
 final class FolderSession: ManagedServer {
     let root: URL
-    let logURL: URL
-    /// This app's claim on the folder's log while it serves the folder; another running
-    /// copy of the app that serves it too writes a log of its own.
-    private let logLease: ServerLogLease?
+    /// The folder's log, which each launch claims before it spawns, so another running
+    /// copy of the app serving the folder too writes a log of its own.
+    private let log: FolderLog
+    var logURL: URL { log.url }
     /// The supervisor, behind the gate every start and restart passes.
     private let server: FolderServer
     private var supervisor: ServerSupervisor { server.supervisor }
@@ -32,40 +32,31 @@ final class FolderSession: ManagedServer {
     var onLayoutChange: (() -> Void)?
     /// A start or restart is waiting for a runtime the app accepts.
     var onWaitingForRuntime: (() -> Void)?
+    /// A restart or a resumed start of a restored background folder was refused by its
+    /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
+    var onRootRefused: ((FolderSession) -> Void)?
 
     /// `accepted` is the runtime a server may start from at the moment it would start,
     /// which every start, Retry, and Restart Server ask, not `setup`.
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate, accepted: @escaping () -> RuntimeSetup?) {
         self.root = root
         title = WindowTitle(.localFolder(root))
-        let logs = appIdentity.logsDirectory()
-        do {
-            logLease = try ServerLogLease.claim(for: root, in: logs)
-        } catch {
-            // Each launch prepares the log too, and a launch that cannot shows why.
-            AppLog.app.error("\(String(describing: error), privacy: .public)")
-            logLease = nil
-        }
-        let logURL = logLease?.url ?? ServerLog.url(for: root, in: logs)
-        self.logURL = logURL
+        let log = FolderLog(root: root, directory: appIdentity.logsDirectory())
+        self.log = log
         let launch = CLIServeLaunch()
         let spec = { (setup: RuntimeSetup) in
-            launch.spec(serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
+            launch.spec(serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: log.url)
         }
-        // Each launch prepares the log first, so a log that cannot be kept fails the
-        // launch, and the window says why.
+        // Each launch claims and prepares the log first, so a log that cannot be claimed or
+        // kept fails the launch, the window says why, and Retry tries again.
         let supervisor = ServerSupervisor(
-            spec: spec(setup), launch: launch, gate: gate,
-            makeProcess: { spec in
-                if let logURL = spec.logURL { try ServerLog.prepare(logURL) }
-                return try SpawnedProcess(spec)
-            })
+            spec: spec(setup), launch: launch, gate: gate, makeProcess: log.processFactory())
         server = FolderServer(supervisor: supervisor, accepted: accepted, spec: spec)
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
             AppLog.server.info("\(name, privacy: .public): \(message, privacy: .public)")
             do {
-                try ServerLog.append(message, to: logURL)
+                try ServerLog.append(message, to: log.url)
             } catch {
                 // The event itself is in the unified log, on the line above.
                 AppLog.server.error("\(name, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -105,7 +96,7 @@ final class FolderSession: ManagedServer {
     /// is ready or has failed. Without an accepted runtime the windows say so, and the
     /// start waits for `resume()`.
     func startServer() async {
-        if await server.start() == .waitingForRuntime { waitForRuntime() }
+        settle(await server.start())
     }
 
     /// A restored folder's turn (`FolderWindows`): the same start, which waits in the
@@ -129,14 +120,25 @@ final class FolderSession: ManagedServer {
     /// not be the one this folder started with. Without one, nothing is stopped, and the
     /// restart waits for `resume()`.
     func retry() {
-        Task {
-            if await server.restart() == .waitingForRuntime { waitForRuntime() }
-        }
+        Task { settle(await server.restart()) }
     }
 
     /// Carries out a start or restart that waited for a runtime, now that one is accepted.
     func resume() async {
-        await server.resume()
+        if let outcome = await server.resume() { settle(outcome) }
+    }
+
+    /// What the windows show, and who is told, after a start or restart that did not spawn.
+    private func settle(_ outcome: FolderServer.Outcome) {
+        switch outcome {
+        case .launched: break
+        case .waitingForRuntime: waitForRuntime()
+        case .refusedByRoot:
+            AppLog.app.info(
+                "\(self.root.lastPathComponent, privacy: .public) changed since it was restored; it starts when its tab is selected")
+            windows.forEach { $0.showWaitingForSelection() }
+            onRootRefused?(self)
+        }
     }
 
     private func waitForRuntime() {

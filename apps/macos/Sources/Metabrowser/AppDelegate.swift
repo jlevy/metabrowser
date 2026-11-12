@@ -238,6 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
             if self?.selection.isBusy == false { self?.showSettings(nil) }
         }
+        session.onRootRefused = { [weak self] refused in self?.folderWindows.rootRefused(refused) }
         session.onAllWindowsClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)

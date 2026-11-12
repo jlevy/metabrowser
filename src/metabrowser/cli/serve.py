@@ -9,7 +9,6 @@ implementation.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import signal
@@ -18,21 +17,24 @@ import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import NoReturn, override
+from typing import override
 
 import typer
 import uvicorn
 
 from metabrowser.build_version import build_state
-from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.common import (
+    apply_log_level,
+    validate_contained_path,
+    write_notice_now_or_never,
+)
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
-from metabrowser.cli.stdin_lifeline import require_open_stdin, stop_for_closed_stdin, watch_for_eof
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
-from metabrowser.git.process import kill_live_process_groups
+from metabrowser.git.process import stop_process_groups
 from metabrowser.server_utils import find_available_local_port, port_search_range
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
@@ -108,13 +110,13 @@ def _write_stopping_notice() -> None:
     main thread while it may be part-way through a buffered write of its
     own. ``sys.stderr.write`` would take that same non-reentrant stream
     lock and deadlock; a bare ``os.write`` takes no Python-level lock.
-    A closed or full stderr is not worth failing a shutdown over.
+    A closed or full stderr is not worth failing a shutdown over, nor
+    waiting on: see :func:`write_notice_now_or_never`.
     """
-    with contextlib.suppress(OSError):
-        os.write(2, _STOPPING_NOTICE)
+    write_notice_now_or_never(2, _STOPPING_NOTICE)
 
 
-def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
+def _stop_now(sig: int, _frame: FrameType | None) -> None:
     """Stop the process on the spot, reporting the interrupt exit code.
 
     This is a local, single-user, read-only file browser. There are no
@@ -128,10 +130,15 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     here would leave running, so those groups are killed first. What a killed
     fetch leaves in its store is removed by the next refresh. A terminal hangup
     that lands here exits with the status a shell reports for it.
+
+    Returns only when the interrupt landed while a group's spawn was under way
+    on this thread, between its fork and its registration: the spawn, which
+    only this thread can finish, then kills the group and exits, within
+    milliseconds (see :func:`stop_process_groups`). A second press exits at once.
     """
     _write_stopping_notice()
-    kill_live_process_groups()
-    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
+    status = HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE
+    stop_process_groups(lambda: os._exit(status))
 
 
 class _QuietForceExitServer(uvicorn.Server):
@@ -143,7 +150,10 @@ class _QuietForceExitServer(uvicorn.Server):
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         if sig == signal.SIGINT:
             self.interrupted = True
+            # Returns only while a group's spawn finishes the stop; uvicorn's own
+            # shutdown is not wanted then either.
             _stop_now(sig, frame)
+            return
         super().handle_exit(sig, frame)
 
 
@@ -199,14 +209,12 @@ def run_serve(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
-    exit_on_eof: bool = False,
 ) -> None:
     """Serve ``root`` (a directory, or a file resolved to parent + selection).
 
     If ``root`` is a file, automatically split into parent directory plus a
     ``--path`` selection. An explicit ``path`` deep-links a file within the
-    root directory. With ``exit_on_eof``, serving stops when stdin closes
-    (see :mod:`metabrowser.cli.stdin_lifeline`).
+    root directory.
     """
     # First, before anything that starts a thread or opens a watcher: from here
     # to process exit, one Ctrl-C stops serving.
@@ -278,7 +286,6 @@ def run_serve(
         port=port,
         no_open=no_open,
         attach=attach_root,
-        exit_on_eof=exit_on_eof,
     )
 
 
@@ -310,19 +317,14 @@ def serve_until_interrupted(
     no_open: bool,
     attach: Callable[[], None],
     banner: Sequence[str] = (),
-    exit_on_eof: bool = False,
 ) -> None:
     """Print the banner and serve until the process is stopped.
 
     The caller has installed the interrupt handler and applied dotenv, the
     capability block, the log level, and plugin directories. *attach* selects
     what the server serves once its module is loaded; *served* names it in the
-    banner, followed by any *banner* lines. With *exit_on_eof*, the
-    process stops as soon as stdin closes, from the banner on.
+    banner, followed by any *banner* lines.
     """
-
-    if exit_on_eof:
-        require_open_stdin()
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -363,11 +365,6 @@ def serve_until_interrupted(
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")
-    # After the banner, which `typer.echo` has flushed, so a parent already gone still
-    # finds the address in the output; before uvicorn starts the inventory walk, which
-    # can take seconds that a closed stdin should not wait for.
-    if exit_on_eof:
-        watch_for_eof(stop_for_closed_stdin)
 
     # Race fix: open the browser only AFTER uvicorn is accepting
     # connections. The poll-then-open helper runs on a daemon thread

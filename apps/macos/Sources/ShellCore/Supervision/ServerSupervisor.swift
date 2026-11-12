@@ -90,6 +90,9 @@ public final class ServerSupervisor {
     public var mayLaunch: (() -> Bool)?
     /// Whether the latest launch was refused by `mayLaunch`.
     public private(set) var launchWasRefused = false
+    /// Called right after a child is created, before it is ready; not when creating it
+    /// fails. What a folder records as the runtime its server started from.
+    public var onSpawn: (() -> Void)?
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -301,6 +304,7 @@ public final class ServerSupervisor {
         }
         process = child
         event("started pid \(child.pid), the leader of its own process group: \(spec.commandLine)")
+        onSpawn?()
         // Exits before ready are this function's to report (the race below watches for
         // them); this task reports an exit after ready.
         Task { [weak self] in

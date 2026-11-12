@@ -7,8 +7,19 @@ All notable changes to Metabrowser are documented here.
 - `metab ROOT --exit-on-eof` stops serving when its stdin closes, so a program that
   starts the server and holds its stdin, such as the macOS app, leaves no server running
   when it exits, even by crashing.
+  The watch begins before startup reads the disk or acquires a Git source, so a server
+  still starting stops too.
   See
   [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
+
+- Stopping a server, by Ctrl-C, a hangup, or `--exit-on-eof`, no longer waits on a
+  stderr that is full because nothing reads it: the stop notice is dropped and the
+  process stops.
+
+- Stopping a server by Ctrl-C, a hangup, or `--exit-on-eof` now also kills a fetch’s or
+  clone’s Git, or a `gh`, whose start was under way at that moment, which used to keep
+  running and could keep holding the store’s fetch lock; no new one starts once the stop
+  has begun.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

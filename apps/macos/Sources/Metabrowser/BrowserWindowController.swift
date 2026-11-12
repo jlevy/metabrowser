@@ -25,10 +25,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// Reveal the page, replacing the status view, once this window's load commits.
     private var revealOnCommit = false
     /// The page to load next: one asked for (a file opened here, a restored tab's page),
-    /// else the one shown before the server restarted or the tab gave up its page.
-    private var next: NextPage
-    /// Loads waiting on a health check; only the newest may load.
-    private var loads = LoadTickets()
+    /// else the one shown before the server restarted or the tab gave up its page; and
+    /// the loads waiting to load it, of which only the newest may (`PageLoads`).
+    private var pages: PageLoads
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
     /// Whether the tab gave up its page's web view (`TabDiscardPolicy`). It loads the page
@@ -52,7 +51,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     ) {
         self.session = session
         webView = Self.makeWebView(configuration ?? WebConfiguration.make(pagePrints: Self.pagePrints))
-        next = NextPage(requested: page)
+        pages = PageLoads(requested: page)
         isDiscarded = discarded
 
         let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
@@ -122,7 +121,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     // MARK: - Server state
 
     func showStarting() {
-        loads.cancelAll()
+        pages.cancelAll()
         rememberPage()
         endpoint = nil
         status.phase = .starting
@@ -130,7 +129,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func showFailure(_ failure: ServerFailure) {
-        loads.cancelAll()
+        pages.cancelAll()
         rememberPage()
         endpoint = nil
         status.phase = .failed(failure)
@@ -156,14 +155,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// Loads the page this window is to show, on the new origin, or the server's entry
     /// page. A discarded tab only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
-        loads.cancelAll()
+        let ticket = pages.begin()  // which supersedes every load still waiting
         policy.origin = endpoint.origin
         self.endpoint = endpoint
         if isDiscarded { status.phase = .reloading }
         Task {
             await install(authorization, for: endpoint)
             guard self.endpoint == endpoint, !isDiscarded else { return }
-            loadNextPage(from: endpoint)
+            load(pages.take(for: ticket), from: endpoint)
         }
     }
 
@@ -175,21 +174,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     /// Shows `page` now if the server is ready and still answers, or once it is ready.
     func show(_ page: PageAddress) {
-        next.request(page)
+        pages.request(page)
         isDiscarded = false
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
-        next.saved(showing: currentServerURL.flatMap(PageAddress.init))
+        pages.saved(showing: currentServerURL.flatMap(PageAddress.init))
     }
 
     /// Gives up the page's web view, which ends its WebContent process, and keeps the
     /// page to load again from the folder's server when the tab is shown.
     func discardPage() {
         guard !isDiscarded else { return }
-        loads.cancelAll()
+        pages.cancelAll()
         rememberPage()
         isDiscarded = true
         revealOnCommit = false
@@ -216,20 +215,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// Loads from a server that was ready before this window asked, once it proves it
     /// still answers: a live pid is not a working server. One that does not answer fails,
     /// and every window of the folder says so. Only the newest waiting load loads
-    /// (`LoadTickets`), so overlapping requests end on the newest page.
+    /// (`PageLoads`), so overlapping requests end on the newest page.
     private func loadNextPageOnceAnswered(from endpoint: ServerEndpoint) {
-        let ticket = loads.begin()
+        let ticket = pages.begin()
         Task {
-            guard let session, case .healthy = await session.checkHealth(), loads.isCurrent(ticket),
-                  self.endpoint == endpoint, !isDiscarded
+            guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
+                  !isDiscarded
             else { return }
-            loadNextPage(from: endpoint)
+            load(pages.take(for: ticket), from: endpoint)
         }
     }
 
-    private func loadNextPage(from endpoint: ServerEndpoint) {
-        let target = next.take().flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL
-        load(target)
+    /// Loads the page a ticket's turn gives, or nothing for a superseded ticket.
+    private func load(_ turn: PageLoads.Load, from endpoint: ServerEndpoint) {
+        guard case .page(let page) = turn else { return }
+        load(page.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL)
     }
 
     func load(_ url: URL) {
@@ -255,7 +255,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     private func rememberPage() {
-        if let page = currentServerURL.flatMap(PageAddress.init) { next.remember(shown: page) }
+        if let page = currentServerURL.flatMap(PageAddress.init) { pages.remember(shown: page) }
     }
 
     /// Names the window for everything that reads its title, and draws the visible one.
@@ -279,7 +279,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func windowWillClose(_ notification: Notification) {
-        loads.cancelAll()
+        pages.cancelAll()
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
@@ -317,9 +317,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     private func pageAskedToPrint(_ frame: WKFrameInfo) {
         let sheetOpen = window?.attachedSheet != nil
-        guard policy.allowsPagePrint(from: frame.request.url, isMainFrame: frame.isMainFrame, sheetOpen: sheetOpen)
-        else {
-            AppLog.app.info("a page's print was not answered: not this server's page, or a sheet is open")
+        guard PagePrintRequests.allows(frame, under: policy, sheetOpen: sheetOpen) else {
+            AppLog.app.info("a page's print was not answered: not from this server's own origin, or a sheet is open")
             return
         }
         printPage(nil)

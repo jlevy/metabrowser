@@ -125,8 +125,9 @@ func ignoreSIGPIPELikeTheApp() {
 
 /// How long, in seconds, the background job of a group-signal test sleeps. It must
 /// outlive `eventually`'s limit by a wide margin: a job that expired on its own during
-/// the poll would pass a check that the signal under test killed it. Each such test also
-/// kills the job on the way out, so a signal that misses it leaves nothing running.
+/// the poll would pass a check that the signal under test killed it. A test that owns the
+/// job's leader also kills the group on the way out, so a signal that misses the job
+/// leaves nothing running.
 nonisolated let survivorSeconds = 600
 
 func processExists(_ pid: pid_t) -> Bool {

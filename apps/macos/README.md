@@ -148,7 +148,9 @@ Where to look while it runs:
   File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
   A second running copy of the same variant (a development build from another checkout)
   that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
-  window shows the other server’s output (`ServerLogLease`).
+  window shows the other server’s output (`ServerLogLease`). Each launch claims its log
+  before it spawns (`FolderLog`): a claim that fails fails the launch, the window says
+  why, and Retry claims again.
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
@@ -648,7 +650,12 @@ its check has not answered, a start spawns nothing and its windows say so, a res
 stops nothing if it has not yet, and both go ahead once a runtime is accepted.
 A folder the user opened or restarted waits on its own; a restore puts its root back at
 the front of its queue and pauses, so when a runtime is accepted each root is admitted
-again in its turn, in the restore’s order, with selected tabs first.
+again in its turn, in the restore’s order, with selected tabs first, including a tab
+selected while that root was waiting to start, which then starts it without the check.
+A restored background folder keeps its root check after it starts, so a later restart
+that finds its root changed, such as the one after an upgrade, spawns nothing; the
+folder waits for one of its tabs to be selected, which starts it once.
+A folder records the runtime it started from only once its child is created.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, saved or in use, so neither the next
@@ -824,7 +831,10 @@ Terminal launch.
   The page’s own Print button prints the same way as File > Print: WebKit hands a page’s
   `window.print()` only to private delegate methods, so a user script replaces
   `window.print` in the main frame with a message to the app (`PagePrintRequests`),
-  which prints the server’s own page when no sheet is open.
+  which prints only for the main frame of a document whose security origin is the
+  server’s own, and only when no sheet is open.
+  It checks the origin, not the URL: a `/raw` response has the server’s URL, but its CSP
+  sandbox gives it an opaque origin, and any script can call the handler directly.
   The page calls only the web’s `window.print()`; frames inside it keep WebKit’s, which
   does nothing. If the web content process dies, the window reloads, at most twice in 30
   seconds, and then shows the status view.

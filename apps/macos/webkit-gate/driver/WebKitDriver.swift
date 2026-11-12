@@ -352,10 +352,11 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     /// prints; another mode records the request alone.
     func pageAskedToPrint(_ frame: WKFrameInfo) {
         let sheetOpen = window?.attachedSheet != nil
-        let allowed = policy.allowsPagePrint(
-            from: frame.request.url, isMainFrame: frame.isMainFrame, sheetOpen: sheetOpen)
+        let allowed = PagePrintRequests.allows(frame, under: policy, sheetOpen: sheetOpen)
+        let origin = frame.securityOrigin
         pagePrintRequests.append([
             "frame_url": frame.request.url?.absoluteString ?? "",
+            "frame_origin": "\(origin.protocol)://\(origin.host):\(origin.port)",
             "main_frame": frame.isMainFrame,
             "sheet_open": sheetOpen,
             "allowed": allowed,
