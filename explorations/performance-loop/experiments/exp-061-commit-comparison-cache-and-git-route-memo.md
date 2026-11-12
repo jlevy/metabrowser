@@ -101,13 +101,29 @@ experiment:
       - A repository with more than 16,384 entries under its ref directories gets no ref state and is answered uncached, as before.
     notes: 856 lines of product code in git/ref_state.py, git/route_memo.py, git/history.py, git/routes.py, static/git-panel.js, settings.py, and types.d.ts; tests and documentation are another 708.
   verdict:
-    decision: accepted
+    decision: unresolved
     primary_metric: requests_data and painted_ready_ms on commits.revisit
-    reason: A commit revisit asked for no comparison in any candidate run and painted in 80 ms against 132 ms and 213 ms, ranges apart and beyond the 1.3x tolerance; the Git routes answered a repeat 5x to 39x faster, ranges apart; and nothing else moved the wrong way.
+    reason: A pilot, not a verdict. It ran on harness revision 1 (22af6103), whose painted-ready measure and compare labels review A of the harness found unsound; its candidate was 9e1630db, which carries this round's and exp-063's changes in one build measured in one series against 09903292; and the corpus's refs moved during the series. Its request counts and the separately measured route timings stand as pilot evidence; the official round on the fixed harness decides.
     commit: 45f2b8d3
 ---
-**Status:** Accepted.
-Five interleaved pairs, ten valid runs, none refused.
+**Status:** Pilot, not a verdict.
+Five interleaved pairs, ten valid runs, none refused, on harness revision 1
+(`22af6103`). The official round on the fixed harness will reuse this id and keep this
+pilot as one of its sections.
+
+Why this is a pilot:
+
+- The harness revision the series ran on had unsound painted-ready crediting and
+  `compare` labels, which review A of the harness found after the series; the times
+  below are reported as the instrument gave them and are not a result.
+- The candidate was `9e1630db`, one build carrying this round’s commits and exp-063’s,
+  measured in one series against `09903292`; the plan asks for each item’s control to be
+  the build just before that item.
+- The corpus is a linked worktree of an active repository, and its refs moved during the
+  series.
+
+What stands: the request counts, which do not depend on frame crediting, and the route
+timings, measured apart from the harness.
 
 ## Why This Round
 
@@ -282,19 +298,22 @@ The other 28 are on transitions with a Markdown subject and belong to exp-063. N
 transition’s request counts, blank frames, placeholder frames, preview replacements,
 layout shifts, or region movement came apart.
 
-## Verdict
+## What the Pilot Shows
 
-The accept rule, applied:
+No verdict: the accept rule is applied by the official round.
+As pilot evidence:
 
-- The named metrics moved as predicted: a commit revisit made no comparison request (1 →
-  0 in every run) and painted sooner (0.61x and 0.38x).
-- Their ranges do not overlap, at five runs per condition, and both times are beyond the
-  1.3x tolerance. The server half’s three routes are apart at 5x to 39x.
-- Nothing else moved the wrong way: the input-to-next-paint of a revisit rose from 16 to
-  24 ms in some runs, with ranges overlapping, and no guard count changed.
-- **Judgment:** worth it, because a commit revisit now paints in about 80 ms with no
-  request and the Git routes answer a repeat in 4 to 8 ms, for a stat walk per request
-  and memory bounded at 16 MiB in the page and 8 MiB plus 32 scopes on the server.
+- A commit revisit made no comparison request in any candidate run (1 → 0 in every run),
+  and returning to a selected commit through a main tab made one data request instead of
+  two.
+- The three routes, measured apart from the harness, answered a repeat 5x to 39x faster
+  with ranges apart.
+- The painted-ready times above came from the harness revision with the unsound
+  crediting and are not evidence either way.
+- Since the pilot, review round 1 of the change made the ref state cover a reftable
+  linked worktree’s own refs and made `summary?scope=all` count the log’s scope instead
+  of `--all`, and it changed the state’s walk and bounds.
+  The official round measures that code, not this candidate.
 
 ## Limits
 
@@ -303,8 +322,8 @@ The accept rule, applied:
   depends on how often other worktrees commit.
   A served repository that nobody else writes to keeps its state longer.
 - The browser cache’s cost in memory was not measured in a browser; its bound is the
-  JSON length measured over this repository’s last 200 commits (V8 heap 1.0 to 1.5 times
-  that, in Node).
+  JSON length measured over this repository’s last 200 commits (V8 heap 0.97 to 1.66
+  times that, in Node, over five answers).
 - A served folder’s comparison also reads its working tree’s `.gitattributes`; the page
   asks again only on Refresh.
 - H88 is registered in the plan on the research branch, not yet in this branch’s plan.

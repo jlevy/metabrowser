@@ -130,13 +130,30 @@ experiment:
       - A render whose server inputs change while the page is open without changing the file's identity, such as a server restarted with other trust flags, is served from the page's copy until the shell drops the envelope.
     notes: 400 lines of product code in builtin_plugins/markdown/rendered.js and markdown-worker-client.js, none in an eager startup script; tests and documentation are another 648.
   verdict:
-    decision: accepted
+    decision: unresolved
     primary_metric: requests_kpress and requests_plugin on Markdown revisits and history steps
-    reason: Every Markdown revisit, history step, keyboard revisit, and main-tab return to a Markdown file made no render request and no Worker module request, ranges apart; keyboard revisits and main-tab returns painted 1.6x to 2.1x sooner; click revisits and history steps showed no detected difference in painted ready; and the one wrong-way movement, an 81 to 93 ms task on design-system.md's revisit and Forward, is accounted for.
+    reason: A pilot, not a verdict. It ran on harness revision 1 (22af6103), whose painted-ready measure and compare labels review A of the harness found unsound; its candidate was 9e1630db, which carries this round's and exp-061's changes in one build measured in one series against 09903292, and which places a large kept render in the input's task, as the head no longer does (60a4e623); and the corpus's refs moved during the series. Its request counts stand as pilot evidence; the official round on the fixed harness decides.
     commit: 9e1630db
 ---
-**Status:** Accepted, with a responsiveness cost on large documents recorded below.
-Five interleaved pairs, ten valid runs, none refused.
+**Status:** Pilot, not a verdict.
+Five interleaved pairs, ten valid runs, none refused, on harness revision 1
+(`22af6103`). The official round on the fixed harness will reuse this id and keep this
+pilot as one of its sections.
+
+Why this is a pilot:
+
+- The harness revision the series ran on had unsound painted-ready crediting and
+  `compare` labels, which review A of the harness found after the series; the times
+  below are reported as the instrument gave them and are not a result.
+- The candidate was `9e1630db`, one build carrying this round’s commit and exp-061’s,
+  measured in one series against `09903292`.
+- The candidate placed every kept render in the task of the input that found it.
+  The responsiveness cost recorded below led to `60a4e623`, which places a large kept
+  render after the input’s first paint, so the head does not behave as this candidate
+  did.
+- The corpus’s refs moved during the series (exp-061 says how).
+
+What stands: the request counts, which do not depend on frame crediting.
 
 ## Why This Round
 
@@ -262,24 +279,19 @@ No other transition’s request counts, blank frames, placeholder frames, previe
 replacements, layout shifts, or region movement came apart, and views, tree, Pulls, and
 cold file transitions are within their control ranges.
 
-## Verdict
+## What the Pilot Shows
 
-The accept rule, applied:
+No verdict: the accept rule is applied by the official round.
+As pilot evidence:
 
-- The named metric moved as predicted: no render request, and no Worker module request,
-  on any Markdown revisit or history step in any candidate run.
-  Painted ready, also named, showed no detected difference on the four click and history
-  transitions and is lower beyond the tolerance on keyboard revisits (0.64x) and on the
-  return from Pulls to Files (0.47x).
-- The request counts’ ranges do not overlap, at five runs per condition.
-- What moved the wrong way is accounted for above: the 81 to 93 ms task on
-  design-system.md’s revisit and Forward, and input-to-next-paint up one frame on small
-  documents and 80 ms on design-system.md, because the kept render is placed in the
-  input’s own task.
-- **Judgment:** worth it, because it removes a render request and its upload from every
-  Markdown return and halves keyboard and main-tab returns, but the input-to-next-paint
-  cost on large documents should be its own next round: place a kept render of a large
-  document after the input’s first paint and measure that it keeps painted ready.
+- No candidate run made a render request, or loaded a Worker module, on any Markdown
+  revisit, history step, keyboard revisit, or main-tab return to a Markdown file.
+- The painted-ready times above came from the harness revision with the unsound
+  crediting and are not evidence either way.
+- The responsiveness cost on design-system.md was real enough to act on: `60a4e623`
+  places a kept render over a measured size after the input’s first paint, and review
+  round 1 of the change lowered that size to the largest one measured without a long
+  task. The official round measures that code, not this candidate.
 
 ## Limits
 
