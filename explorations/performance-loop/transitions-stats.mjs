@@ -373,7 +373,10 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
   const flags = sameEverywhere(all, regimeFlags, "the regime (headed, warm-up, journeys)", refuse);
   sameEverywhere(all, (r) => r.journeys_requested, "the journeys requested", refuse);
 
-  const notes = [];
+  const corpus = all[0];
+  const notes = [
+    `every run served corpus ${corpus.corpus.commit.slice(0, 8)} (trunk ${String(corpus.corpus.trunk).slice(0, 8)}, server git log head ${String(corpus.facts?.git_log_head).slice(0, 8)}, ${corpus.server?.indexed_files} indexed files)`,
+  ];
   if (revision !== SCENARIO_REVISION) {
     notes.push(`runs are scenario revision ${revision}; this reads revision ${SCENARIO_REVISION}`);
   }
