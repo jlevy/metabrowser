@@ -810,16 +810,27 @@ function cmdCompare(argv) {
       candidate: { type: "string" },
       tolerance: { type: "string", default: "1.3" },
       format: { type: "string", default: "markdown" },
+      aa: { type: "string" },
     },
   });
   if (positionals.length !== 1) {
-    throw new Error("compare RUNS.jsonl --control LABEL --candidate LABEL");
+    throw new Error("compare RUNS.jsonl --control LABEL --candidate LABEL | --aa LABEL");
   }
   const tolerance = Number.parseFloat(values.tolerance);
   if (!(tolerance > 1 && tolerance < 2)) {
     throw new Error("--tolerance must be above 1 and below 2 (1.3 rough cut; never 2x)");
   }
-  const conditions = groupConditions(readRows(positionals[0]));
+  let rows = readRows(positionals[0]);
+  if (values.aa) {
+    // An A/A comparison: one condition's runs in recorded order, odd against even, which
+    // measures the instrument's own resolution on that build.
+    rows = rows
+      .filter((r) => r.condition === values.aa && r.valid)
+      .map((r, i) => ({ ...r, condition: `${values.aa}.${i % 2 === 0 ? "odd" : "even"}` }));
+    values.control = `${values.aa}.odd`;
+    values.candidate = `${values.aa}.even`;
+  }
+  const conditions = groupConditions(rows);
   const labels = [...conditions.keys()];
   const A = conditions.get(values.control ?? labels[0]);
   const B = conditions.get(values.candidate ?? labels[1]);
@@ -850,12 +861,17 @@ function cmdCompare(argv) {
   const idA = `${A.valid[0].build.version} ${A.valid[0].build.commit} ${A.valid[0].build.dirty}`;
   const idB = `${B.valid[0].build.version} ${B.valid[0].build.commit} ${B.valid[0].build.dirty}`;
   if (idA === idB) {
-    notes.push("both conditions report the same build identity: this is an A/A comparison");
+    notes.push(
+      values.aa
+        ? `A/A comparison of ${values.aa}: odd-numbered valid runs against even-numbered ones`
+        : "both conditions report the same build identity: this is an A/A comparison",
+    );
   }
   const ca = collect(A);
   const cb = collect(B);
   const findings = [];
   const rowsOut = [];
+  const every = [];
   for (const [id, ea] of ca) {
     const eb = cb.get(id);
     if (!eb) {
@@ -882,13 +898,20 @@ function cmdCompare(argv) {
         }
         findings.push({ id, metric: m.key, kind: m.kind, sa, sb, ratio, verdict });
       }
+      every.push({ id, metric: m.key, control: sa, candidate: sb, ratio, overlap, verdict });
       if (m.key === "painted_ready_ms") {
         rowsOut.push({ id, sa, sb, ratio, overlap, verdict });
       }
     }
   }
   if (values.format === "json") {
-    console.log(JSON.stringify({ control: A.label, candidate: B.label, notes, findings }, null, 1));
+    console.log(
+      JSON.stringify(
+        { control: A.label, candidate: B.label, tolerance, notes, findings, all: every },
+        null,
+        1,
+      ),
+    );
     return 0;
   }
   const out = [
@@ -927,6 +950,55 @@ function cmdCompare(argv) {
   return 0;
 }
 
+/** Keep only what summarize and compare read, so a round can commit its samples. */
+function cmdSamples(argv) {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: { out: { type: "string" } },
+  });
+  if (positionals.length !== 1 || !values.out) {
+    throw new Error("samples RUNS.jsonl --out FILE");
+  }
+  const keep = (t) => ({
+    id: t.id,
+    subject: t.subject,
+    ok: t.ok,
+    paintedReadyMs: t.paintedReadyMs,
+    blankFrames: t.blankFrames,
+    placeholderVisibleFrames: t.placeholderVisibleFrames,
+    navPlaceholderVisibleFrames: t.navPlaceholderVisibleFrames,
+    movementPx: t.movementPx,
+    requests: { byClass: t.requests.byClass, subjectDuplicates: t.requests.subjectDuplicates },
+    previewTop: { removed: t.previewTop.removed },
+    shifts: { count: t.shifts.count, sumNoInput: t.shifts.sumNoInput },
+    longTasks: { maxMs: t.longTasks.maxMs },
+    dom: { end: t.dom.end },
+  });
+  const lines = readRows(positionals[0]).map((r) => {
+    const { journeys, warmup: _warmup, regime: _regime, regions: _regions, ...rest } = r;
+    const scrub = (p) => (typeof p === "string" ? path.basename(p) : p);
+    return JSON.stringify({
+      ...rest,
+      build: { ...rest.build, metab: scrub(rest.build.metab), source: scrub(rest.build.source) },
+      corpus: { ...rest.corpus, path: scrub(rest.corpus.path) },
+      server: rest.server
+        ? { ...rest.server, serving_line: undefined, log: undefined }
+        : rest.server,
+      journeys: (journeys ?? []).map((j) => ({
+        name: j.name,
+        ok: j.ok,
+        chrome: j.chrome,
+        refusals: j.refusals,
+        transitions: j.transitions.map(keep),
+      })),
+    });
+  });
+  fs.writeFileSync(values.out, `${lines.join("\n")}\n`);
+  console.log(`wrote ${lines.length} row(s) to ${values.out}`);
+  return 0;
+}
+
 // --------------------------------------------------------------------------- main
 
 const USAGE = `usage:
@@ -935,11 +1007,13 @@ const USAGE = `usage:
                       [--headed] [--no-warmup] [--order alternate|fixed] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
+  transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
+  transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
 journeys: ${Object.keys(JOURNEYS).join(", ")}
 subjects: ${JSON.stringify(SUBJECTS).slice(0, 120)}...`;
 
 const [mode, ...rest] = process.argv.slice(2);
-const commands = { run: cmdRun, summarize: cmdSummarize, compare: cmdCompare };
+const commands = { run: cmdRun, summarize: cmdSummarize, compare: cmdCompare, samples: cmdSamples };
 if (!commands[mode]) {
   console.error(USAGE);
   process.exit(2);

@@ -756,6 +756,11 @@ judged on their ranges alone.
 Prefer counts: blank frames, requests, replacements, and movement do not depend on the
 load average, and times do.
 Write the verdict with the accept rule below, and say what did not move.
+`compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
+halves, an A/A check of the instrument’s resolution on that build (it needs six runs).
+`samples RUNS.jsonl --out FILE` keeps only the fields `summarize` and `compare` read,
+with paths reduced to their last component, so a round can commit its samples beside its
+artifact and its tables can be regenerated from them.
 
 **Limits.** Headless Chrome only; the native app’s WebKit is not measured.
 Painted ready is an upper bound quantized to one frame, and a product
