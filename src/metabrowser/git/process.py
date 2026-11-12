@@ -618,13 +618,17 @@ async def start_process_group(
 def _end_group_spawn(stop: _GroupStop, proc: asyncio.subprocess.Process | None) -> None:
     """Register what a spawn started, or nothing, and end a stop that waited for it."""
 
+    # A child already reaped, as one that ended while its spawn was held is, has given up
+    # its ID, which may by now lead an unrelated group: it is neither kept nor signalled,
+    # as :func:`kill_live_process_groups` skips one.
+    live = proc is not None and proc.returncode is None
     with stop.lock:
-        if proc is not None:
+        if proc is not None and live:
             _register_group(proc)
         stop.in_flight -= 1
         if not stop.requested:
             return
-        if proc is not None:
+        if proc is not None and live:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(proc.pid, signal.SIGKILL)
         finish = stop.finish
