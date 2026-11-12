@@ -105,8 +105,49 @@ experiment:
     primary_metric: painted_ready_ms
     reason: Six valid runs of the control build on scenario revision 3 pass every guard on all 77 transitions. The tables below are the reference each campaign round and the campaign summary compare against. The A/A split found no painted-ready result; its five results are a one-frame difference in the image's blank frames, a settle time under 25 ms, and figures that are shown but not judged. It is a baseline, not a result about the product.
 ---
-**Status:** Baseline.
+**Status:** Baseline, with one correction to its cache disposition counts (below).
 Six valid runs of the control build on scenario revision 3, none refused.
+
+## Correction, 2026-11-12
+
+Review B on this round’s pull request found that revision 3, which recorded these rows,
+read a 304 for a request a worker made as `network`. Chrome sends the raw status of a
+dedicated worker’s request on the page’s session, and the recorder did not match it to
+the worker’s request, so the request kept the cached 200 of its response event.
+The record is corrected here, not rewritten: the samples, the tables, and the A/A
+figures are left as recorded, since `byFamily` cannot be recomputed from the samples.
+
+- In these six runs that is 108 requests: the Markdown worker’s two imports,
+  `markdown-worker-operations.js` and `wiki-parser.js` (`plugin_static`), on nine
+  transitions in every run.
+  On `files.revisit.markdown_small`, `keyboard.up_revisit.1`,
+  `main.commits_to_files.first` and `.again`, `main.pulls_to_files.first` and `.again`,
+  `main_subject.pulls_to_files`, and `main_subject.commits_to_files` they are the whole
+  `plugin_static` network count, 2 in every run, for requests that the server answered
+  with 304 when review B reproduced the revisit on this build (the rows themselves do
+  not hold the raw status); on `skim.held_arrow_down` they are 2 of its 3.
+- `landing.reload`’s 2 `plugin_static` network requests in the Cache disposition table
+  are very probably the same two; its request list is cut at 60 of 111 requests, so the
+  rows cannot name them.
+- The fields affected are `requests.byFamily.plugin_static` (`network` and
+  `revalidated`), and through them the `plugin_static_network` and
+  `plugin_static_revalidated` metrics.
+  No other figure in this artifact reads them.
+
+Revision 4 of the scenario reads these requests as `revalidated`. A round whose verdict
+reads cache disposition uses that recorder with its own interleaved control, and does
+not compare against these rows’ cache disposition counts.
+`compare` refuses to mix revision 3 rows with revision 4 rows, so a later comparison
+against this baseline as a whole needs it recorded again at revision 4. Revision 4 also
+changes two readers that matter only for hidden or retained surfaces (a region’s first
+rendered match, and the search for content past hidden text); their effect on these rows
+was not measured.
+
+The A/A figures below are `compare` at `5e368814`. At revision 4’s harness, on the same
+samples, `compare` also lists 88 comparisons with one pair beyond the tolerance under
+overlapping ranges, none a wrong-way result; the 33 separations, 5 results, 15 to
+explain, 23 within the tolerance, and 5 reruns are unchanged, and it notes that the rows
+are revision 3.
 
 ## Why This Round
 
