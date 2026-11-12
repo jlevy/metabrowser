@@ -388,11 +388,14 @@ test("a signal during the run's own cleanup waits for it, then exits with the si
      setInterval(() => {}, 1000);`,
     { resistant: true },
   );
+  // Listening from the start, since "cleaning" can arrive in the same chunk as "ready".
+  const cleaning = carried(harness.stdout, "cleaning");
+  cleaning.catch(() => {}); // reported where it is awaited
   let pid = 0;
   try {
     const owned = await ownedChild(harness);
     pid = owned.pid;
-    await carried(harness.stdout, "cleaning");
+    await cleaning;
     harness.kill("SIGTERM");
     assert.deepEqual(await owned.exited, { code: 143, signal: null });
     assert.equal(await gone(pid, 5_000), true, "the child outlived the signal during cleanup");
