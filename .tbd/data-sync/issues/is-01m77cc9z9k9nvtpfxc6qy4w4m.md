@@ -3,9 +3,9 @@ type: is
 id: is-01m77cc9z9k9nvtpfxc6qy4w4m
 title: A stop kills owned groups from the kernel's child list, bounded, without the event loop (#366 review B1)
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-12T08:00:55.270Z
-updated_at: 2026-11-12T08:08:45.185Z
+updated_at: 2026-11-12T08:36:41.038Z
 started_at: 2026-11-12T08:08:45.184Z
+closed_at: 2026-11-12T08:36:41.037Z
+close_reason: Fixed in 0e02c5ac on claude/cli-exit-on-eof (#366 review B1); residuals documented in docs/command-line.md.
+resolution: null
+duplicate_of: null
 ---
 Review B on #366, B1: shutdown still depended on an in-flight spawn returning; the signal path had no bounded completion; a failed set-up balanced the counter without owning what was forked.
