@@ -20,6 +20,12 @@ Every route is read-only. Four shared rules hold across all of them:
   ``limit`` is a client bug that should still render a panel.
 * **Git failures become 5xx with a generic body.** Git's error text
   contains absolute local paths, so it is logged and dropped.
+
+The refs, summary, and log routes answer from the repository's refs, which
+:func:`~metabrowser.git.ref_state.ref_state` names without running Git. The
+refs and summary bodies are kept under that state (:mod:`~metabrowser.git.route_memo`),
+a log page is a live session's page (:mod:`~metabrowser.git.history`), and each
+carries an entity tag, so a repeat answers from memory or with a 304.
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ from __future__ import annotations
 import logging
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser.git.detail import read_commit_detail
@@ -37,12 +43,15 @@ from metabrowser.git.history import (
     HistoryStorageError,
     InvalidHistoryCursorError,
     StaleHistorySessionError,
-    resolve_history_scope,
+    current_history_scope,
 )
 from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
+from metabrowser.git.ref_state import ref_state
 from metabrowser.git.repo import RepoContext, repo_info
+from metabrowser.git.route_memo import answer_tag, keep_answer, kept_answer
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
+from metabrowser.http_caching import etag_headers, matches_if_none_match
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
 from metabrowser.source import as_git_revision_subject, get_source_session, session_filesystem_root
 
@@ -100,23 +109,32 @@ async def api_git_repo(_request: Request) -> JSONResponse:
     return JSONResponse(dict(info))
 
 
-async def api_git_refs(_request: Request) -> JSONResponse:
-    """``GET /api/git/refs`` — every branch, remote branch, and tag."""
+async def api_git_refs(request: Request) -> Response:
+    """``GET /api/git/refs`` — every branch, remote branch, and tag.
+
+    Kept under the ref state and the checked-out branch, which marks one ref as HEAD.
+    """
     location = session_git_location()
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
 
+    head_ref = context.head["ref"]
+    state = await ref_state(location)
+    key = None if state is None else ("refs", location.identity, head_ref or "", state)
+    kept = kept_answer(request, key)
+    if kept is not None:
+        return kept
     try:
-        refs = await read_refs(location, head_ref=context.head["ref"])
+        refs = await read_refs(location, head_ref=head_ref)
     except GitError as exc:
         log.warning("git refs failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
-    return JSONResponse({"is_repo": True, "refs": refs})
+    return keep_answer(request, key, {"is_repo": True, "refs": refs})
 
 
-async def api_git_summary(request: Request) -> JSONResponse:
+async def api_git_summary(request: Request) -> Response:
     """``GET /api/git/summary`` — history depth for the panel header.
 
     Total commits reachable from the requested scope and the committer
@@ -126,6 +144,9 @@ async def api_git_summary(request: Request) -> JSONResponse:
 
     ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
     default counts the same refs the panel walks.
+
+    Kept under the ref state: the commits the refs reach cannot change while the refs
+    do not, and ``shallow`` and ``info/grafts``, which bound the walk, are in the state.
     """
     location = session_git_location()
     context, info = await _resolve(location)
@@ -135,8 +156,17 @@ async def api_git_summary(request: Request) -> JSONResponse:
         return JSONResponse({"is_repo": True, "commit_count": 0, "first_commit_at": None})
 
     wants_all = request.query_params.get("scope") == "all"
+    state = await ref_state(location)
+    key = (
+        None
+        if state is None
+        else ("summary", location.identity, "all" if wants_all else "default", state)
+    )
+    kept = kept_answer(request, key)
+    if kept is not None:
+        return kept
     try:
-        scope = await resolve_history_scope(location, wants_all=wants_all)
+        scope = await current_history_scope(location, wants_all=wants_all, state=state)
         commit_count, first_commit_at = await read_history_summary(
             location,
             revisions=scope.arguments,
@@ -146,12 +176,14 @@ async def api_git_summary(request: Request) -> JSONResponse:
         log.warning("git summary failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
-    return JSONResponse(
-        {"is_repo": True, "commit_count": commit_count, "first_commit_at": first_commit_at}
+    return keep_answer(
+        request,
+        key,
+        {"is_repo": True, "commit_count": commit_count, "first_commit_at": first_commit_at},
     )
 
 
-async def api_git_log(request: Request) -> JSONResponse:
+async def api_git_log(request: Request) -> Response:
     """``GET /api/git/log`` — one page of history.
 
     Query parameters:
@@ -170,6 +202,11 @@ async def api_git_log(request: Request) -> JSONResponse:
         many-ref repository shows whichever branch commits most often
         and buries the rest. A pinned revision's default walk is that
         object id only, not the store's ambient HEAD.
+
+    A page's body is a function of its session and page number, which its
+    ``page_cursor`` names, so that is its entity tag. A first page asked for
+    again under the same ref state is the same session's, and a client that
+    holds it is answered 304.
     """
     location = session_git_location()
     context, info = await _resolve(location)
@@ -227,7 +264,13 @@ async def api_git_log(request: Request) -> JSONResponse:
         log.warning("git log failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
-    return JSONResponse(dict(page))
+    page_cursor = page.get("page_cursor")
+    if page_cursor is None:
+        return JSONResponse(dict(page))
+    headers = etag_headers(answer_tag(("log", location.identity, page_cursor)))
+    if matches_if_none_match(request, headers["ETag"]):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(page), headers=headers)
 
 
 async def api_git_commit(request: Request) -> JSONResponse:

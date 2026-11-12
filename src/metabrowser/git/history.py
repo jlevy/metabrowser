@@ -4,6 +4,16 @@ Each session owns one ordered ``git log`` walk. Requests advance it one
 page at a time, while completed pages are framed in a private spool and
 replayed by indexed seek. The process, parser, session registry, idle
 lifetime, and storage all have independent measured bounds.
+
+Resolving a scope runs up to eight Git processes, and it ran on every
+request: once to start a walk, and again on every later page to prove the
+refs had not moved. :func:`~metabrowser.git.ref_state.ref_state` names the
+refs' state from the filesystem instead, so a scope is resolved once per
+state (:func:`current_history_scope`), a later page whose state has not
+moved skips the proof, and a first page asked for again under the same
+state replays the live session that answered it rather than starting
+another walk. The state covers every ref, not only the scope's, because a
+page's decorations name every ref that points into it.
 """
 
 from __future__ import annotations
@@ -20,6 +30,7 @@ import secrets
 import struct
 import tempfile
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +52,7 @@ from metabrowser.git.process import (
     spawn_git_at,
     terminate_git_process,
 )
+from metabrowser.git.ref_state import ref_state
 from metabrowser.git.wire import (
     GitCommit,
     GitGraphCheckpoint,
@@ -48,6 +60,7 @@ from metabrowser.git.wire import (
     GitLogPage,
     is_full_revision,
 )
+from metabrowser.paths_safe import register_root_callback
 from metabrowser.settings import (
     GIT_HISTORY_SESSION_IDLE_TTL_S,
     GIT_HISTORY_SESSION_MAX_ENTRIES,
@@ -396,6 +409,50 @@ async def resolve_history_scope(root: Path | GitLocation, *, wants_all: bool) ->
     )
 
 
+# Scopes resolved per location, scope name, and ref state. A state that moved is never
+# asked for again, so the bound reclaims it; an ``all`` scope of a repository with many
+# refs carries one target per ref, which is why it is bounded by count at all.
+_MAX_KEPT_SCOPES = 32
+_KEPT_SCOPES: OrderedDict[tuple[str, HistoryScopeName, str], HistoryScope] = OrderedDict()
+
+
+def clear_kept_scopes() -> None:
+    """Forget every resolved scope, as a served-root change requires."""
+
+    _KEPT_SCOPES.clear()
+
+
+async def current_history_scope(
+    root: Path | GitLocation, *, wants_all: bool, state: str | None
+) -> HistoryScope:
+    """:func:`resolve_history_scope`, resolved once while the refs keep *state*.
+
+    *state* is :func:`~metabrowser.git.ref_state.ref_state` read before this call, so a
+    scope kept under it was resolved from refs at that state or newer, never older. None
+    resolves without keeping.
+    """
+    location = as_location(root)
+    if state is None:
+        return await resolve_history_scope(location, wants_all=wants_all)
+    key: tuple[str, HistoryScopeName, str] = (
+        location.identity,
+        "all" if wants_all else "default",
+        state,
+    )
+    kept = _KEPT_SCOPES.get(key)
+    if kept is not None:
+        _KEPT_SCOPES.move_to_end(key)
+        return kept
+    scope = await resolve_history_scope(location, wants_all=wants_all)
+    _KEPT_SCOPES[key] = scope
+    while len(_KEPT_SCOPES) > _MAX_KEPT_SCOPES:
+        _KEPT_SCOPES.popitem(last=False)
+    return scope
+
+
+register_root_callback(clear_kept_scopes)
+
+
 def _label_color(commit: GitCommit, head_ref: str | None) -> str | None:
     if head_ref is None:
         return None
@@ -529,6 +586,10 @@ class HistorySession:
         self._closed = False
         self._lock = asyncio.Lock()
         self.command_args: tuple[str, ...] = ()
+        # The ref state read before this session's scope was resolved, or None when the
+        # location's refs have no state. A later page under the same state needs no proof
+        # that the scope still holds.
+        self.ref_state: str | None = None
 
     @classmethod
     async def start(
@@ -849,6 +910,18 @@ class HistorySession:
             await asyncio.to_thread(temporary_directory.cleanup)
 
 
+def _first_cursor(session: HistorySession) -> HistoryCursor:
+    """The cursor a request with no cursor reads *session* at: its first page."""
+
+    return HistoryCursor(
+        session_id=session.id,
+        page=0,
+        direction="next",
+        scope_fingerprint=session.scope.fingerprint,
+        page_size=session.page_size,
+    )
+
+
 class HistorySessionRegistry:
     """Process-wide LRU owner for bounded history sessions and Git walks."""
 
@@ -873,6 +946,10 @@ class HistorySessionRegistry:
         self.storage_max_bytes = storage_max_bytes
         self._clock = clock
         self._sessions: dict[str, HistorySession] = {}
+        # The session that answered a first page, by everything that page's body depends
+        # on: the location, the scope, the page size, and the ref state. Entries whose
+        # session is gone are dropped when found and when the index outgrows its bound.
+        self._first_pages: dict[tuple[str, str, str, int, str], str] = {}
         self._lock = asyncio.Lock()
         self._create_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task[None] | None = None
@@ -893,17 +970,26 @@ class HistorySessionRegistry:
         self._ensure_reaper()
         location = as_location(root)
         if cursor is None:
-            scope = await resolve_history_scope(location, wants_all=bool(wants_all))
-            session = await self._create_session(location, scope=scope, page_size=limit)
-            first = HistoryCursor(
-                session_id=session.id,
-                page=0,
-                direction="next",
-                scope_fingerprint=scope.fingerprint,
-                page_size=limit,
+            state = await ref_state(location)
+            scope = await current_history_scope(location, wants_all=bool(wants_all), state=state)
+            session, reused = await self._first_page_session(
+                location, scope=scope, page_size=limit, state=state
             )
+            if reused:
+                # Another request's walk: a cancellation here is this request's alone, and
+                # leaves the session to the reader paging it.
+                try:
+                    return await session.page(_first_cursor(session))
+                except ExpiredHistorySessionError:
+                    # Closed between being found and being read: start the walk afresh.
+                    session = await self._create_session(
+                        location, scope=scope, page_size=limit, state=state
+                    )
+                except (GitError, HistoryStorageError):
+                    await self._discard(session.id)
+                    raise
             try:
-                return await session.page(first)
+                return await session.page(_first_cursor(session))
             except BaseException:
                 await self._discard(session.id)
                 raise
@@ -927,18 +1013,49 @@ class HistorySessionRegistry:
             if requested_scope != session.scope.name:
                 await self._discard(session.id)
                 raise StaleHistorySessionError("history cursor scope changed")
-        current_scope = await resolve_history_scope(
-            location,
-            wants_all=session.scope.name == "all",
-        )
-        if current_scope.fingerprint != session.scope.fingerprint:
-            await self._discard(session.id)
-            raise StaleHistorySessionError("history refs changed during paging")
+        state = await ref_state(location)
+        if state is None or state != session.ref_state:
+            current_scope = await current_history_scope(
+                location,
+                wants_all=session.scope.name == "all",
+                state=state,
+            )
+            if current_scope.fingerprint != session.scope.fingerprint:
+                await self._discard(session.id)
+                raise StaleHistorySessionError("history refs changed during paging")
         try:
             return await session.page(decoded)
         except (GitError, HistoryStorageError):
             await self._discard(session.id)
             raise
+
+    async def _first_page_session(
+        self,
+        location: GitLocation,
+        *,
+        scope: HistoryScope,
+        page_size: int,
+        state: str | None,
+    ) -> tuple[HistorySession, bool]:
+        """The live session that answered this first page under *state*, or a new one.
+
+        The second value says whether the session was found rather than started. Lookup
+        and creation share the creation lock, so two first pages asked for together start
+        one walk.
+        """
+        async with self._create_lock:
+            if state is not None:
+                key = (location.identity, scope.name, scope.fingerprint, page_size, state)
+                session_id = self._first_pages.get(key)
+                if session_id is not None:
+                    async with self._lock:
+                        found = self._sessions.get(session_id)
+                    if found is not None and not found.closed:
+                        return found, True
+                    self._first_pages.pop(key, None)
+            return await self._create_session_locked(
+                location, scope=scope, page_size=page_size, state=state
+            ), False
 
     async def _create_session(
         self,
@@ -946,39 +1063,61 @@ class HistorySessionRegistry:
         *,
         scope: HistoryScope,
         page_size: int,
+        state: str | None = None,
     ) -> HistorySession:
         async with self._create_lock:
-            await self.reap_expired()
-            evicted: list[HistorySession] = []
-            async with self._lock:
-                while (
-                    sum(session.walk_active for session in self._sessions.values())
-                    >= self.max_walks
-                ):
-                    victim = min(
-                        (session for session in self._sessions.values() if session.walk_active),
-                        key=lambda session: session.last_access,
-                    )
-                    self._sessions.pop(victim.id, None)
-                    evicted.append(victim)
-                while len(self._sessions) >= self.max_entries:
-                    victim = min(self._sessions.values(), key=lambda session: session.last_access)
-                    self._sessions.pop(victim.id, None)
-                    evicted.append(victim)
-            for victim in evicted:
-                await victim.close()
-
-            session = await HistorySession.start(
-                root=root,
-                scope=scope,
-                page_size=page_size,
-                parser_max_bytes=self.parser_max_bytes,
-                storage_max_bytes=self.storage_max_bytes,
-                clock=self._clock,
+            return await self._create_session_locked(
+                root, scope=scope, page_size=page_size, state=state
             )
-            async with self._lock:
-                self._sessions[session.id] = session
-            return session
+
+    async def _create_session_locked(
+        self,
+        root: Path | GitLocation,
+        *,
+        scope: HistoryScope,
+        page_size: int,
+        state: str | None,
+    ) -> HistorySession:
+        await self.reap_expired()
+        evicted: list[HistorySession] = []
+        async with self._lock:
+            while sum(session.walk_active for session in self._sessions.values()) >= self.max_walks:
+                victim = min(
+                    (session for session in self._sessions.values() if session.walk_active),
+                    key=lambda session: session.last_access,
+                )
+                self._sessions.pop(victim.id, None)
+                evicted.append(victim)
+            while len(self._sessions) >= self.max_entries:
+                victim = min(self._sessions.values(), key=lambda session: session.last_access)
+                self._sessions.pop(victim.id, None)
+                evicted.append(victim)
+        for victim in evicted:
+            await victim.close()
+
+        session = await HistorySession.start(
+            root=root,
+            scope=scope,
+            page_size=page_size,
+            parser_max_bytes=self.parser_max_bytes,
+            storage_max_bytes=self.storage_max_bytes,
+            clock=self._clock,
+        )
+        session.ref_state = state
+        location = as_location(root)
+        async with self._lock:
+            self._sessions[session.id] = session
+            if state is not None:
+                self._first_pages[
+                    (location.identity, scope.name, scope.fingerprint, page_size, state)
+                ] = session.id
+                if len(self._first_pages) > 4 * self.max_entries:
+                    self._first_pages = {
+                        key: session_id
+                        for key, session_id in self._first_pages.items()
+                        if session_id in self._sessions
+                    }
+        return session
 
     def _ensure_reaper(self) -> None:
         if self._reaper_task is None or self._reaper_task.done():
@@ -1035,6 +1174,7 @@ class HistorySessionRegistry:
         async with self._lock:
             sessions = list(self._sessions.values())
             self._sessions.clear()
+            self._first_pages.clear()
         for session in sessions:
             await session.close()
 
@@ -1056,7 +1196,9 @@ __all__ = [
     "HistoryStorageError",
     "InvalidHistoryCursorError",
     "StaleHistorySessionError",
+    "clear_kept_scopes",
     "close_history_sessions",
+    "current_history_scope",
     "decode_history_cursor",
     "encode_history_cursor",
     "resolve_history_scope",

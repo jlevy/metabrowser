@@ -193,17 +193,20 @@ def _served(root: Path) -> _Served:
 class _FakeRequest:
     """Minimal stand-in for a Starlette request.
 
-    The route handlers only read ``query_params`` and ``path_params``, so
-    a full request object would add setup without adding coverage.
+    The route handlers only read ``query_params``, ``path_params``, and the
+    ``If-None-Match`` header, so a full request object would add setup
+    without adding coverage.
     """
 
     def __init__(
         self,
         query_params: dict[str, str] | None = None,
         path_params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         self.query_params: dict[str, str] = query_params or {}
         self.path_params: dict[str, str] = path_params or {}
+        self.headers: dict[str, str] = headers or {}
 
 
 def _json(response: Any) -> Any:

@@ -201,6 +201,29 @@ requests means owning its whole lifecycle.** Bound the count, bound the storage,
 on idle, release on shutdown, and give the client a typed way to learn its handle went
 away — the client must be able to recover, not just fail.
 
+### Answers kept under the refs’ state
+
+`/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer from refs, and resolving
+a scope runs up to eight Git processes.
+`git/ref_state.py` names the refs’ state without running Git: one `stat` per entry under
+`refs/`, plus `HEAD`, `packed-refs`, `reftable/`, `config`, `config.worktree`,
+`shallow`, and `info/grafts`, in the location’s own Git directory and the common one.
+A ref update renames a lock file over the ref, so its inode moves even when its time and
+size do not.
+
+Under one state, a scope is resolved once, the refs and summary bodies are kept in
+`git/route_memo.py`, a later log page skips the proof that its scope still holds, and a
+first page asked for again replays the live session that answered it.
+The state covers every ref rather than only the scope’s, because a page’s decorations
+name every ref that points into it.
+Each answer carries an entity tag, and a client holding one that this process made is
+answered 304. Every keep is bounded by count, and the memo by bytes as well; a
+repository with more ref entries than `MAX_REF_ENTRIES` gets no state and is answered as
+before. The state does not cover Git configuration outside the repository or an object
+lost from under a ref, neither of which changes which commits the refs name.
+`tests/test_git_route_memo.py` holds each input moving the state, a repeat running no
+Git, and a pin’s store moving its answers.
+
 ## Paths are bytes
 
 A POSIX path is an arbitrary byte sequence excluding NUL and `/`. It need not be valid
