@@ -3023,7 +3023,8 @@ declare global {
 
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
-    cancelPending(): void;
+    /** Stops the panel's work for another owner; returns what disposes its shown commit diff. */
+    cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;

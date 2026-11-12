@@ -1743,14 +1743,26 @@
     }
   }
 
-  /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
+  /**
+   * Stop work relinquished to another preview owner, retaining the useful DOM and history.
+   *
+   * The commit diff stays on screen until that owner's content replaces it, so it is
+   * handed to the shell, which disposes it then as it does a retired pull-request page.
+   * Its own keys end with it: a diff left mounted would keep `L` in Help on every later
+   * page.
+   *
+   * @returns {(() => void) | null} Disposes the relinquished diff; null when none is mounted.
+   */
   function cancelPending() {
     landingGeneration += 1;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
     preparationSlot = null;
-    commitDiffHandle?.cancelPending?.();
+    const relinquished = commitDiffHandle;
+    commitDiffHandle = null;
+    relinquished?.cancelPending?.();
+    return relinquished ? () => relinquished.dispose?.() : null;
   }
 
   /** @returns {Promise<void>} */

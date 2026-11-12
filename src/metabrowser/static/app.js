@@ -3646,14 +3646,17 @@ function clearPreviewNavigationState(preview) {
  */
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
-  if (owner !== "git") {
-    window.MetabrowserGitPanel?.cancelPending();
-  }
-  // Whatever claims the pane next retires the pull-request page. Its DOM can
-  // stay visible until the replacement is ready (createPullPageHost).
-  const retired = pullPageHost?.release();
-  if (retired) {
+  // Whatever claims the pane next retires the pull-request page, and any owner but the
+  // Git panel retires its commit diff. Their DOM can stay visible until the replacement
+  // is ready (createPullPageHost).
+  for (const retired of [
+    owner !== "git" && window.MetabrowserGitPanel?.cancelPending(),
+    pullPageHost?.release(),
+  ]) {
     // A later pending claim must not replace the one old visible handoff surface.
+    if (!retired) {
+      continue;
+    }
     if (retainedPullPageDispose) {
       retired();
     } else {
@@ -7793,7 +7796,7 @@ function isPullAddress(pathname) {
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
-/** @type {(() => void) | null} One canceled page whose DOM remains until actual replacement. */
+/** @type {(() => void) | null} One retired page or commit diff, shown until its replacement. */
 var retainedPullPageDispose = null;
 
 /** The pull-request page's host, created once its module has arrived. */
