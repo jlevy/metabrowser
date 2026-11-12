@@ -274,6 +274,10 @@ Strict mode is off on a developer machine, which can add these:
 
 - `needs a Git the acquisition floor admits`, where the installed Git is below the
   floor;
+- `reftable repositories need Git 2.45 or later`, for the reftable cases of
+  `tests/test_git_route_memo.py`, where the installed Git is older; the default CI job’s
+  Git is newer, so CI runs them and strict mode fails them if they skip, and the
+  admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
 - `root is never denied by modes`, when the suite runs as root;
 - `symlinks are unavailable`, where the platform or the account cannot create one;

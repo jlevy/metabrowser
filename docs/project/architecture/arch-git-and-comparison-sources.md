@@ -221,15 +221,19 @@ name every ref that points into it.
 It does not cover another worktree’s `HEAD`, so no answer reads one: the summary counts
 the commits its scope’s log walks rather than `rev-list --all`. Each answer carries an
 entity tag, and a client holding one that this process made is answered 304. The memo is
-bounded by entries and bytes, the kept scopes by entries and ref targets, each holding
-only the latest state’s; a repository with more ref entries than `MAX_REF_ENTRIES` gets
-no state, is answered as before, and is not walked again for the repository-identity
-period. The constants record the walk’s measured cost beside them.
+bounded by entries and bytes and the kept scopes by entries and ref targets.
+The kept scopes hold only the latest state’s; the memo keeps an earlier state’s answers,
+which no request names again, until its bounds push them out.
+A repository with more ref entries than `MAX_REF_ENTRIES` gets no state, is answered as
+before, and is not walked again for the repository-identity period.
+The constants record the walk’s measured cost beside them.
 The state does not cover Git configuration outside the repository or an object lost from
 under a ref, neither of which changes which commits the refs name.
-`tests/test_git_route_memo.py` moves every covered input once, in a main and a linked
-worktree, with the files backend and with reftable, and holds a repeat running no Git
-and a pin’s store moving its answers.
+`tests/test_git_route_memo.py` moves every covered input once, served from a main and
+from a linked worktree, with the files backend and with reftable, and writes the common
+files from the main worktree; `packed-refs` is moved with the files backend only, the
+one that has it. It also holds a repeat running no Git and a pin’s store moving its
+answers.
 
 ### Comparisons the page keeps
 

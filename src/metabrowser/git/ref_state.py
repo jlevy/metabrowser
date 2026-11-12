@@ -26,8 +26,10 @@ commit ID makes immutable:
 
 It does not cover other worktrees' ``HEAD`` files, so no answer may read them: the
 summary counts the scope the log walks rather than ``rev-list --all``, which adds every
-worktree's ``HEAD``. ``tests/test_git_route_memo.py`` moves each input above, in a main
-and a linked worktree, with the files backend and with reftable.
+worktree's ``HEAD``. ``tests/test_git_route_memo.py`` moves each input above once, served
+from a main and from a linked worktree, with the files backend and with reftable, and
+writes the common files from the main worktree; ``packed-refs`` is moved with the files
+backend only, the one that has it.
 
 Git updates a ref by writing a lock file and renaming it over the ref, so the ref's inode
 changes even when its time and size do not, and its directory's entry changes with it.

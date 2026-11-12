@@ -181,23 +181,54 @@ class _States:
         self.seen.append(state)
 
 
+def _rewrite_packed_ref(common: Path, ref: str, old: str, new: str) -> None:
+    """Point a packed ref elsewhere by rewriting ``packed-refs`` alone, as Git writes it.
+
+    Git rewrites ``packed-refs`` through a lock file it renames over the old one, and
+    takes a lock under ``refs/`` as it does, which moves the walk; a rewrite by any other
+    tool touches nothing under ``refs/``. The new text is the old one's length, so only
+    the file's identity and times say it changed.
+    """
+
+    packed = common / "packed-refs"
+    text = packed.read_text()
+    line = f"{old} {ref}\n"
+    assert line in text, f"{ref} is not packed at {old}"
+    lock = common / "packed-refs.lock"
+    lock.write_text(text.replace(line, f"{new} {ref}\n"))
+    os.replace(lock, packed)
+
+
+@pytest.mark.parametrize("served", ["main", "linked"])
 @pytest.mark.parametrize("ref_format", REF_FORMATS)
 def test_the_state_holds_still_and_moves_with_every_input_it_covers(
-    tmp_path: Path, ref_format: str
+    tmp_path: Path, ref_format: str, served: str
 ) -> None:
-    """Every input the module says it covers, moved once, in a main worktree."""
+    """Every input the module says it covers, moved once, in a main or a linked worktree.
+
+    The served worktree checks out and detaches; the shared refs, configuration, and
+    common files are written from the main worktree, so a linked worktree's state has to
+    read them from the common directory and its own ``HEAD`` and ``config.worktree`` from
+    its own (review D of #368, D1).
+    """
 
     repo = _make_repo(tmp_path / "repo", ref_format)
-    git_dir = Path(_git(repo, "rev-parse", "--absolute-git-dir"))
-    states = _States(repo)
+    root = repo
+    if served == "linked":
+        root = tmp_path / "linked"
+        _git(repo, "worktree", "add", "-q", "-b", "linked", str(root))
+    own = Path(_git(root, "rev-parse", "--absolute-git-dir"))
+    common = Path(_git(repo, "rev-parse", "--absolute-git-dir"))
+    assert (own == common) == (served == "main")
+    states = _States(root)
     first = _git(repo, "rev-list", "--max-parents=0", "HEAD")
-    third = _commit(repo, "third.txt")
+    third = _commit(root, "third.txt")
     states.moved("a commit on the checked-out branch")
     _git(repo, "tag", "v1")
     states.moved("a new tag")
     _git(repo, "branch", "side")
     states.moved("a new branch")
-    _git(repo, "checkout", "-q", "side")
+    _git(root, "checkout", "-q", "side")
     states.moved("a checkout")
     _git(repo, "pack-refs", "--all")
     states.moved("packing the refs")
@@ -205,21 +236,30 @@ def test_the_state_holds_still_and_moves_with_every_input_it_covers(
     states.moved("an upstream named in config")
     _git(repo, "update-ref", "-d", "refs/tags/v1")
     states.moved("deleting a packed ref")
-    _git(repo, "checkout", "-q", "--detach")
+    _git(root, "checkout", "-q", "--detach")
     states.moved("detaching HEAD")
     _git(repo, "config", "extensions.worktreeConfig", "true")
     states.moved("turning on per-worktree configuration")
-    _git(repo, "config", "--worktree", "metabrowser.probe", "1")
-    assert (git_dir / "config.worktree").is_file()
+    _git(root, "config", "--worktree", "metabrowser.probe", "1")
+    assert (own / "config.worktree").is_file()
     states.moved("a per-worktree setting in config.worktree")
     _git(repo, "replace", "--graft", third, first)
     states.moved("a replace ref")
     # Git writes these two only on a fetch or a hand edit: written here as Git writes them.
-    (git_dir / "info").mkdir(exist_ok=True)
-    (git_dir / "info" / "grafts").write_text(f"{third} {first}\n")
+    (common / "info").mkdir(exist_ok=True)
+    (common / "info" / "grafts").write_text(f"{third} {first}\n")
     states.moved("info/grafts")
-    (git_dir / "shallow").write_text(f"{first}\n")
+    (common / "shallow").write_text(f"{first}\n")
     states.moved("a shallow boundary")
+    if ref_format == "files":
+        # Only the files backend reads packed-refs: a reftable repository has none.
+        _git(repo, "tag", "v2", first)
+        _git(repo, "pack-refs", "--all")
+        states.moved("packing a new tag")
+        assert not (common / "refs" / "tags" / "v2").exists()
+        _rewrite_packed_ref(common, "refs/tags/v2", first, third)
+        assert _git(repo, "rev-parse", "refs/tags/v2") == third
+        states.moved("packed-refs rewritten in place, with nothing under refs/")
 
 
 @pytest.mark.parametrize("ref_format", REF_FORMATS)
