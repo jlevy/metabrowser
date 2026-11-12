@@ -197,7 +197,9 @@ For alternative keys, emit one `.kbd` per key, joined by the word “or,” so e
 its own border.
 
 The component, its tokens, and its markup contract are documented in the
-`── Keyboard keys ──` blocks of `static/styles.css`.
+`── Keyboard keys ──` blocks of `static/styles.css`. The Shift reveal’s badges are
+keycaps too: the `.kbd-badge` modifier changes only their paint, as
+[Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) describes.
 
 #### Canonical Key Names
 
@@ -1381,6 +1383,43 @@ the revealed strip exist only while it shows.
 `static/key-reveal.js` is the state machine, and `static/shell-keymap.js` holds the
 shell’s targeted commands.
 
+The reveal is drawn in the live-row yellow, `--row-flash-bg`, which `--key-reveal-bg`
+names for it:
+
+- **A badge is a keycap.** It is a `.kbd` with the `.kbd-badge` modifier, which keeps
+  the keycap’s type, caps, padding, and radius and changes only its paint: the yellow at
+  60% opacity (`--kbd-badge-bg`), a deeper border of the same hue
+  (`--kbd-badge-border`), the body text (`--kbd-badge-color`), and the small elevation.
+  It is absolutely positioned and ignores the pointer, so it moves no box and a click
+  reaches the target beneath it.
+  No call site styles a badge.
+- **Placement.** An `inline-end` badge sits inside its target over the inline-end
+  padding, centered top to bottom: the default, for tabs, chips, and text buttons.
+  A keycap is wider than a tab’s padding, so it covers the label’s last letter, which
+  reads through the translucent fill.
+  A `beside` badge sits just past its target’s inline end, within the nearest
+  `[data-kbd-badge-anchor]`: the file header, the folder header, or the commit view’s
+  heading. It serves icon buttons and targets in a row that clips, such as the Copy path
+  button and the breadcrumbs.
+  The target and the anchor become containing blocks through zero-specificity rules, so
+  one that already declares a position keeps it.
+- **Hover-revealed targets show.** A target that otherwise appears only on hover or
+  focus, such as either copy button, appears for the reveal, with its pointer events, as
+  [Reveal on Hover Keeps Keyboard Reach](#reveal-on-hover-keeps-keyboard-reach) requires
+  of every reveal trigger.
+- **The revealed strip** is the same yellow, with `--text` and keycaps in a badge’s
+  paint. Its layer sits against the strip’s bottom edge and grows upward over the panel,
+  which neither reflows nor scrolls; the panel’s pinned headers and open menus stay
+  above it.
+- **Contrast.** Everything the reveal paints keeps 4.5:1 in both themes: a badge as
+  composited over each surface a target sits on, and the strip’s labels and keycaps on
+  the yellow, where `--muted` would not.
+  The ratios are recorded beside the tokens in `static/styles.css`, and
+  `tests/test_design_vocabulary.py` recomputes them.
+- **Motion and print.** Badges and the strip fade in over `--transition-fast`, appear at
+  once under `prefers-reduced-motion: reduce`, and go at once when the reveal ends.
+  Neither prints.
+
 ### Navigational Row Collections
 
 A row collection whose primary action replaces the main content behaves as one keyboard
@@ -1617,6 +1656,8 @@ which fades opacity and drops `pointer-events` rather than setting `visibility: 
 A hidden button leaves the tab order, so the control becomes mouse-only.
 Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
 focus is itself a reveal trigger.
+So is the Shift reveal for a button that is a shortcut target, so its keycap never marks
+an invisible control.
 
 ## Filter Controls
 

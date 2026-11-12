@@ -118,8 +118,9 @@ A pull request beside a checkout has its own step:
 1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
    Look at what a hidden pane cannot show: focus rings while tabbing, the layout at each
    width, what gives way as a mirror’s headings narrow (steps 1 and 2 of 5.3), the HTML
-   Preview frame, the print preview, and Back in check 12 of 3.4 and in steps 4 and 6 of
-   5.11, which each browser’s back/forward cache treats differently.
+   Preview frame, the print preview, the Shift reveal’s keycaps and strip in checks 13
+   and 14 of 3.4, and Back in check 12 of 3.4 and in steps 4 and 6 of 5.11, which each
+   browser’s back/forward cache treats differently.
    Check 12 has been measured only in Chrome; `mb-etqi` tracks the other two.
    **Pass:** the same results in all three.
    **Fail:** a check that passes in one browser only.
@@ -923,8 +924,7 @@ line. Open that address with the browser’s developer tools open.
     Hold Shift and press `2`: Commits opens with its first row focused, and the keycaps
     follow; press `1`: the filters get theirs back.
     Click while holding Shift, or scroll: the keycaps go.
-    Until the presentation layer lands, the keycaps and the strip’s layer are plain, not
-    yet yellow or overlaid.
+    Check 14 looks at how they are drawn.
 
     Three constants are set by hand, not yet by measurement, and this check measures
     them. Paste each snippet into the developer tools console, in Chrome and then Safari,
@@ -938,14 +938,53 @@ line. Open that address with the browser’s developer tools open.
       `let o; addEventListener("pointermove", (e) => { o ??= [e.clientX, e.clientY]; console.log(Math.round(Math.hypot(e.clientX - o[0], e.clientY - o[1]))); }, true);`
       then rest a hand on the mouse for five seconds, reload, and do the same on a
       trackpad. The constant should be just above the largest drift logged.
-    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 8, estimated from the
-      stylesheet. Once the presentation layer overlays the strip, drag the navigation
-      pane to its narrowest, open a file of a mirror’s pin, and hold Shift at 100% and
-      200% zoom. The revealed strip should list all eight of Help, Quick Search, Files,
-      Commits, Pulls, Up, Copy, and Branch within the bottom quarter of the panel; lower
-      the cap until it does.
+    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 8. Drag the navigation
+      pane to its narrowest, open a file of a mirror’s pin, hold Shift at 100% and 200%
+      zoom, and count the rows the revealed strip takes.
+      Headless Chrome 152 measured them beside the constant: at the 180px minimum, five
+      to seven items take four rows and all eight take five, 167px, which is 27% of the
+      panel in a 1280 by 800 window at 100% zoom and 73% at 200%. No count keeps the
+      strip within the panel’s bottom quarter at 200% zoom, so the cap waits on a
+      decision about what it should keep the strip within.
+      Record Safari’s rows beside the constant.
 
     Record each measurement beside its constant.
+
+14. **How the Shift reveal is drawn.** Open `overview.md` in the light theme, with focus
+    on its tree row, and hold Shift alone.
+    - Each keycap is a small yellow key with a deeper yellow border and dark text.
+      A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
+      label’s last letter, which still reads through it.
+      The Up and Copy keycaps sit just past their controls in the file header.
+      No keycap is cut off, and nothing beside one moves.
+    - The Copy path button, which otherwise shows only on hover, shows while Shift is
+      held, with the pointer away from the header.
+    - The strip at the bottom of the navigation pane turns the same yellow with dark
+      text, its keycaps outlined in the deeper yellow, and grows upward over the tree.
+      The tree neither moves nor scrolls.
+    - Release Shift: the keycaps and the yellow go at once, and Copy path fades out.
+
+    Repeat in the dark theme, where the yellow is olive and the text light, and
+    everything reads as clearly.
+    Repeat each theme at 200% zoom, with the navigation pane dragged to its narrowest,
+    and in a window about 480 pixels wide, where a tab cut off by the window’s edge
+    takes its keycap with it.
+    Then turn on the system’s Reduce motion setting and hold Shift: the keycaps and the
+    strip appear at once rather than fading in over about a sixth of a second.
+
+    Headless Chrome 152 ran this check on a Markdown file of a mirror’s pin in both
+    themes, at 200% zoom, with the pane at its narrowest, and 480 pixels wide, and on a
+    folder and a commit in both themes.
+    No keycap was clipped except the one on the tab the window’s edge cut off, the
+    tree’s box and scroll position did not change while the strip showed, and the
+    keycaps and the strip were gone once Shift was released.
+    Under emulated reduced motion the keycaps had no animation, and under print media
+    neither keycap nor strip was displayed.
+    From the hold timer to the frame that showed the keycaps took about 4 ms on the
+    Markdown file and 16 to 18 ms on the Source view of `static/app.js`, a page of about
+    15,000 elements. The contrast of the reveal’s text is computed beside its tokens in
+    `static/styles.css` and recomputed by `tests/test_design_vocabulary.py`; this check
+    is where a person judges it.
 
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which

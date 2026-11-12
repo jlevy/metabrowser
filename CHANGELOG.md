@@ -47,6 +47,15 @@ All notable changes to Metabrowser are documented here.
   Help lists the new keys under View tabs, Controls, and Filters, and ends with a note
   about Shift. The main pane’s view tabs are a tablist to assistive technology.
 
+- The keys Shift reveals are drawn in the yellow that marks a newly arrived row.
+  Each keycap sits at the end of its tab or button, or just past an icon button, and is
+  translucent, so the label under its edge still reads; a copy button that otherwise
+  shows only on hover shows while Shift is held.
+  The shortcut strip turns the same yellow and grows upward over the bottom of the
+  navigation pane, so the tree does not move.
+  Text on the yellow keeps at least 4.5:1 contrast in both themes.
+  The keycaps fade in briefly, appear at once under reduced motion, and never print.
+
 - Every keyboard shortcut is a single key, and Shift no longer changes what any of them
   does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls; `1`, `2`, and `3`
   still do, and the browser keeps Command and Ctrl with a digit for its own tabs.

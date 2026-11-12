@@ -11,15 +11,20 @@
   // At rest no strip shows them, so they cost nothing then.
   const REVEAL_EVENT_KINDS = new Set(["dispatch", "reveal", "target"]);
   // The most items the revealed strip lists; later ones in the surface order drop first
-  // and stay in Help. PROVISIONAL: estimated from styles.css, not yet measured in a
-  // browser. At the navigation pane's minimum width, `.tree-pane`'s 180px, the strip's
-  // 12px side padding leaves 156px; a one-letter keycap is about 18px, with a 4px gap to
-  // its 12px label and 6px between items. The most the `reveal` surface lists at once,
-  // eight, on a file of a mirror's pin (Help, Quick Search, Files, Commits, Pulls, Up,
-  // Copy, Branch), then wraps to four rows, about 100px over the panel. What remains to
-  // measure, in Chrome and Safari at that width and at 200% zoom: the rows those eight
-  // take, and the count that keeps the revealed strip within the panel's bottom quarter
-  // (docs/qa-v012-repository-library.md, the reveal check).
+  // and stay in Help. PROVISIONAL: measured in Chrome, not yet chosen. The most the
+  // `reveal` surface lists at once is eight, on a file of a mirror's pin with a hosted
+  // origin (Help, Quick Search, Files, Commits, Pulls, Up, Copy, Branch). Each row of the
+  // revealed layer is 32px, a 20px keycap with 3px above and below it and a 6px gap, so
+  // the layer is 32px a row plus 7: 13px of padding and border, less the last gap. How
+  // many items a row holds depends on the face's label widths, so the count cannot be
+  // read off the stylesheet. Headless Chrome 152, at the navigation pane's 180px minimum:
+  // two items take two rows (71px), three or four take three (103px), five to seven take
+  // four (135px), and eight take five (167px); at the default 300px, eight take three
+  // (103px). A 1280 by 800 window gives the panel 629px at 100% zoom, so seven cover 21%
+  // of it and eight 27%; at 200% zoom it has 229px, and even two cover 31%. So no cap
+  // keeps the strip within the panel's bottom quarter at 200% zoom, and the reveal check
+  // in docs/qa-v012-repository-library.md leaves the choice open. What remains: the same
+  // widths in Safari, and a decision on the rule the cap serves.
   const REVEAL_STRIP_MAX_ITEMS = 8;
   /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
