@@ -36,6 +36,7 @@ function story(tree, answers, input) {
   let shown = "closed";
   let lastModel = null;
   const reads = [];
+  const spans = [];
   const controller = tree.createFileTreeController(
     {
       request(method, route) {
@@ -83,6 +84,7 @@ function story(tree, answers, input) {
       open() {},
       leave() {},
       lastInput: () => input.at,
+      held: (hold, heldMs, outcome) => spans.push(`${hold} ${outcome} ${heldMs} ms`),
     },
     { number: 7, autoExpandFiles: 3000 },
   );
@@ -95,6 +97,7 @@ function story(tree, answers, input) {
     controller,
     painted,
     reads,
+    spans,
     frame,
     last: () => lastModel,
     async advance(target) {
@@ -121,6 +124,8 @@ async function run() {
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-files-tree.js")).href
   );
   const facts = {};
+  // Each hold's span, by story: how long it held and why it ended.
+  const spans = {};
 
   // A list the cache holds: one step from closed to its rows, at the click.
   {
@@ -131,6 +136,7 @@ async function run() {
     await settle();
     cached.frame();
     facts.cached = cached.painted;
+    spans.cached = cached.spans;
   }
 
   // A list a GitHub job fills two seconds after the click, with no input since: the tree
@@ -146,9 +152,11 @@ async function run() {
     await late.advance(2 * tree.FILES_POLL_MS);
     assert.equal(late.controller.snapshot().rows, 0, "late rows are not drawn by themselves");
     input.at = 2 * tree.FILES_POLL_MS + 100;
+    await late.advance(input.at);
     late.controller.reveal();
     late.frame();
     facts.lateRows = late.painted;
+    spans.lateRows = late.spans;
   }
 
   // The same job answering within the input's window draws its rows as the click's.
@@ -209,6 +217,10 @@ async function run() {
     landing.frame();
     await landing.advance(tree.FILES_POLL_MS);
     facts.landing = landing.painted;
+    // The reader closes the tree with its rows still offered: that ends the offer too.
+    await landing.advance(tree.FILES_POLL_MS + 400);
+    landing.controller.collapse();
+    spans.landingClosed = landing.spans;
   }
 
   // A drawn list that is complete shows no line; a refresh that changes it later floats its
@@ -241,7 +253,9 @@ async function run() {
     slow.frame();
     await slow.advance(tree.FILES_OPEN_HOLD_MS);
     facts.slowRead = slow.painted;
+    spans.slowRead = slow.spans;
   }
+  facts.spans = spans;
   return facts;
 }
 

@@ -292,6 +292,14 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "floats": True,
         },
         "slowRead": ["closed", "loading line"],
+        # Each hold's span: how long it held and why it ended, an offer the tree closes on
+        # included (review B1).
+        "spans": {
+            "cached": ["opening met 0 ms"],
+            "lateRows": ["opening met 0 ms", "lateRows reader 100 ms"],
+            "landingClosed": ["opening met 0 ms", "lateRows closed 400 ms"],
+            "slowRead": ["opening bound 150 ms"],
+        },
     }
 
 

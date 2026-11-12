@@ -582,7 +582,9 @@ the cache holds opens in one step (`cached`). Rows that come `LATE_ROWS_MS` afte
 reader’s last press or key, or after the tree’s opening on a landing, are offered rather
 than drawn: the first into an empty tree (`lateRows`, `landing`), a list’s further pages
 on its line (`fill`), and a refreshed complete list over the tree’s top, floating
-(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`).
+(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`). Each
+hold’s span says how long it held and why it ended, an offer included when the tree
+closes on it (`spans`).
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -631,7 +633,23 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   "slowRead": [
     "closed",
     "loading line"
-  ]
+  ],
+  "spans": {
+    "cached": [
+      "opening met 0 ms"
+    ],
+    "lateRows": [
+      "opening met 0 ms",
+      "lateRows reader 100 ms"
+    ],
+    "landingClosed": [
+      "opening met 0 ms",
+      "lateRows closed 400 ms"
+    ],
+    "slowRead": [
+      "opening bound 150 ms"
+    ]
+  }
 }
 ? 0
 ```

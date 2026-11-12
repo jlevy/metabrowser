@@ -932,16 +932,24 @@ export function createFileTreeController(deps, options) {
   }
 
   /**
-   * Draw the rows the tree offered: the reader asked for them.
+   * End an offer's wait once, saying how long the rows were offered and why that ended: the
+   * reader asked for them, or the tree closed with them still offered.
    *
-   * @param {"reader" | "closed"} [why]
+   * @param {"reader" | "closed"} why
    */
-  function reveal(why = "reader") {
+  function endOffer(why) {
+    if (withheld && heldSince !== null) {
+      deps.held?.("lateRows", deps.now() - heldSince, why);
+    }
+    heldSince = null;
+  }
+
+  /** Draw the rows the tree offered: the reader asked for them. */
+  function reveal() {
     if (withheld) {
+      endOffer("reader");
       withheld = false;
       offerFloats = false;
-      deps.held?.("lateRows", heldSince === null ? 0 : deps.now() - heldSince, why);
-      heldSince = null;
       rebuild();
       render();
     }
@@ -1390,6 +1398,7 @@ export function createFileTreeController(deps, options) {
       }
       expanded = false;
       stopOpening("closed");
+      endOffer("closed");
       clearTimer();
       cancelRequests();
       clearWalk();
@@ -1579,6 +1588,7 @@ export function createFileTreeController(deps, options) {
     dispose() {
       disposed = true;
       stopOpening("closed");
+      endOffer("closed");
       clearTimer();
       clearWalk();
       cancelRequests();
