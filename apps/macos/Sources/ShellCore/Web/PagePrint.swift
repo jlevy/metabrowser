@@ -36,12 +36,31 @@ public final class PagePrintRequests: NSObject, WKScriptMessageHandler {
     }
 }
 
+extension PagePrintRequests {
+    /// Whether a window prints when `frame` asks, the check every window applies. It goes
+    /// by the document's security origin, not its URL: a `/raw` response has the server's
+    /// URL, but its CSP sandbox gives it an opaque origin and no `allow-modals`, and a
+    /// frame can call the handler directly, without the `window.print` replacement.
+    public static func allows(_ frame: WKFrameInfo, under policy: NavigationPolicy, sheetOpen: Bool) -> Bool {
+        let origin = frame.securityOrigin
+        return policy.allowsPagePrint(
+            scheme: origin.protocol, host: origin.host, port: origin.port, isMainFrame: frame.isMainFrame,
+            sheetOpen: sheetOpen)
+    }
+}
+
 extension NavigationPolicy {
-    /// Whether a window prints when its page asks: only the main frame of the server's own
-    /// page, and not while a sheet, such as an earlier print panel, is open, so a page
-    /// cannot stack print panels.
-    public func allowsPagePrint(from url: URL?, isMainFrame: Bool, sheetOpen: Bool) -> Bool {
-        guard isMainFrame, !sheetOpen, let url else { return false }
-        return isAppOrigin(url)
+    /// Whether a document whose security origin is `scheme`, `host`, and `port` (0 for the
+    /// scheme's default, as WebKit reports it) may print: only the main frame of the
+    /// server's own origin, never an opaque one, which has no scheme or host, and not
+    /// while a sheet, such as an earlier print panel, is open.
+    public func allowsPagePrint(scheme: String, host: String, port: Int, isMainFrame: Bool, sheetOpen: Bool) -> Bool {
+        guard isMainFrame, !sheetOpen, !scheme.isEmpty, !host.isEmpty, origin != nil else { return false }
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = host
+        if port != 0 { parts.port = port }
+        guard let document = parts.url else { return false }
+        return isAppOrigin(document)
     }
 }

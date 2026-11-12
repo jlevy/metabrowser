@@ -519,7 +519,10 @@ Terminal launch.
   The page’s own Print button prints the same way as File > Print: WebKit hands a page’s
   `window.print()` only to private delegate methods, so a user script replaces
   `window.print` in the main frame with a message to the app (`PagePrintRequests`),
-  which prints the server’s own page when no sheet is open.
+  which prints only for the main frame of a document whose security origin is the
+  server’s own, and only when no sheet is open.
+  It checks the origin, not the URL: a `/raw` response has the server’s URL, but its CSP
+  sandbox gives it an opaque origin, and any script can call the handler directly.
   The page calls only the web’s `window.print()`; frames inside it keep WebKit’s, which
   does nothing. If the web content process dies, the window reloads, at most twice in 30
   seconds, and then shows the status view.
