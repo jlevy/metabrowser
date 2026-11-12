@@ -8,7 +8,7 @@ softschema:
 experiment:
   id: exp-058
   title: Transition Navigation Baseline
-  date: "2026-11-11"
+  date: "2026-11-12"
   hypotheses:
     - H86
     - H88
@@ -20,7 +20,7 @@ experiment:
     - H101
     - H105
   subject:
-    corpus: Detached checkout of this repository at 7a02fed4, frozen and clean; its refs are shared with the main checkout, so the Commits list follows that checkout's trunk.
+    corpus: Standalone clone of this repository at 7a02fed4 with its own refs, clean; nothing else commits to it, and its refs did not move during the series.
     corpus_files: 1286
     host_cpu: 10 CPUs
     host_system: Darwin 25.5.0 arm64, Node 24.19.0
@@ -30,51 +30,63 @@ experiment:
   method:
     runs_per_condition: 6
     interleaved: false
-    control: metab 0.12.1.dev165+9903292, the editable control checkout at origin/main 09903292, clean, one server process per run.
-    candidate: No candidate. The results block is an A/A split of the same six runs, odd-numbered against even-numbered, which measures the instrument's resolution on this build.
+    control: metab 0.12.1.dev165+9903292, the editable control checkout at origin/main 09903292, clean at the start and end of every run, one server process per run.
+    candidate: No candidate. The results block is an A/A split of the same six runs, odd-numbered against even-numbered and paired in recorded order, which measures the instrument's resolution on this build.
     record: exp-058-transition-samples.jsonl
   results:
-    - metric: painted_ready_ms.main.commits_to_files.again
-      control_median: 78.8
-      candidate_median: 63.7
-      control_range: [63.2, 104.4]
-      candidate_range: [58.5, 64.7]
+    - metric: painted_ready_ms.views.markdown.first
+      control_median: 28.6
+      candidate_median: 29.2
+      control_range: [28.6, 30.5]
+      candidate_range: [28.6, 30.6]
       overlapping: true
-    - metric: blank_frames.main.commits_to_files.again
-      control_median: 3
+    - metric: painted_ready_ms.landing.reload
+      control_median: 172.6
+      candidate_median: 173.7
+      control_range: [172.1, 172.6]
+      candidate_range: [172.8, 174.6]
+      overlapping: false
+    - metric: painted_ready_ms.files.cold.image
+      control_median: 77.8
+      candidate_median: 79.9
+      control_range: [63.4, 78.1]
+      candidate_range: [78.9, 95.3]
+      overlapping: false
+    - metric: painted_ready_ms.commits.cold.1
+      control_median: 113.2
+      candidate_median: 163.5
+      control_range: [112.8, 164.3]
+      candidate_range: [113.4, 163.9]
+      overlapping: true
+    - metric: painted_ready_ms.main_subject.pulls_to_commits
+      control_median: 229.6
+      candidate_median: 212.2
+      control_range: [229.1, 229.6]
+      candidate_range: [178.8, 213.8]
+      overlapping: false
+    - metric: painted_ready_ms.files.revisit.source_large
+      control_median: 92.9
+      candidate_median: 80.4
+      control_range: [79.8, 95.8]
+      candidate_range: [79.6, 94.6]
+      overlapping: true
+    - metric: blank_frames.files.cold.image
+      control_median: 1
       candidate_median: 2
-      control_range: [2, 5]
+      control_range: [1, 1]
       candidate_range: [2, 2]
-      overlapping: true
-    - metric: region_movement_px.main.files_to_commits.again
+      overlapping: false
+    - metric: settled_ms.pulls.tab.checks_first
+      control_median: 9.3
+      candidate_median: 9.7
+      control_range: [7.2, 9.6]
+      candidate_range: [9.7, 24.4]
+      overlapping: false
+    - metric: region_movement_net_px.main.files_to_commits.again
       control_median: 37
       candidate_median: 37
       control_range: [37, 37]
       candidate_range: [37, 37]
-      overlapping: true
-    - metric: painted_ready_ms.files.revisit.markdown_large
-      control_median: 130.8
-      candidate_median: 162.2
-      control_range: [130.1, 131]
-      candidate_range: [113.8, 163.6]
-      overlapping: true
-    - metric: requests_kpress.files.revisit.markdown_large
-      control_median: 1
-      candidate_median: 1
-      control_range: [1, 1]
-      candidate_range: [1, 1]
-      overlapping: true
-    - metric: painted_ready_ms.commits.revisit.1
-      control_median: 131
-      candidate_median: 163.7
-      control_range: [130.4, 263.9]
-      candidate_range: [131.3, 164.4]
-      overlapping: true
-    - metric: requests_data.commits.revisit.1
-      control_median: 1
-      candidate_median: 1
-      control_range: [1, 1]
-      candidate_range: [1, 1]
       overlapping: true
     - metric: subject_duplicates.pulls.list_to_pr.cold
       control_median: 2
@@ -82,25 +94,19 @@ experiment:
       control_range: [2, 2]
       candidate_range: [2, 2]
       overlapping: true
-    - metric: painted_ready_ms.pulls.pr_to_pr.revisit
-      control_median: 28
-      candidate_median: 24.7
-      control_range: [26.5, 29.3]
-      candidate_range: [24, 27.7]
-      overlapping: true
-    - metric: painted_ready_ms.keyboard.down_cold.1
-      control_median: 43.3
-      candidate_median: 51.9
-      control_range: [41, 43.7]
-      candidate_range: [43.3, 58.7]
+    - metric: subject_settlement_reads.pulls.pr_to_pr.revisit
+      control_median: 2
+      candidate_median: 2
+      control_range: [2, 2]
+      candidate_range: [2, 2]
       overlapping: true
   verdict:
     decision: baseline
     primary_metric: painted_ready_ms
-    reason: Six valid runs of the control build pass every guard on all 73 transitions. The tables below are the control numbers each campaign round compares against. The A/A split found no time metric apart beyond the 1.3x tolerance; it is a baseline, not a result about the product.
+    reason: Six valid runs of the control build on scenario revision 3 pass every guard on all 77 transitions. The tables below are the reference each campaign round and the campaign summary compare against. The A/A split found no painted-ready result; its five results are a one-frame difference in the image's blank frames, a settle time under 25 ms, and figures that are shown but not judged. It is a baseline, not a result about the product.
 ---
 **Status:** Baseline.
-Six valid runs of the control build, none refused.
+Six valid runs of the control build on scenario revision 3, none refused.
 
 ## Why This Round
 
@@ -113,21 +119,44 @@ This round adds the `transition-navigation/v1` scenario
 records the numbers every later round compares against.
 No product code changed.
 
+## What Replaced the First Recording
+
+The first recording of this baseline was scenario revision 1, from harness `f571f0ea`
+and `047a41d9`, on a detached checkout that shared its refs with the main checkout.
+Review A on its pull request found that its clocks and frame accounting decided verdicts
+wrongly, and this recording replaces it entirely: none of its numbers compare with
+these. Revision 3 changed what the numbers mean:
+
+- Every frame is read after its own layout, so later DOM work no longer delays the
+  credited frame. Painted ready is the ready frame’s presentation, the first frame
+  boundary after its rendering ended, so a long task after the ready frame no longer
+  counts; DOM work after it is settle time.
+- Readiness counts only in a frame read after the input reached the page, and a ready
+  predicate names the route, the active main tab, and a rendered surface.
+- Useful content must be on screen: visible text, or an image once decoded.
+- Blank and placeholder frames are counted over the whole window, and the prompt a main
+  tab with nothing selected lands on is not blank.
+- Region movement adds net displacement and path length, across replaced elements.
+- A 304 the browser answered to its own cache is `revalidated`, not `network`.
+- A read of a pull request that follows the page’s own refresh is a settlement read, not
+  a duplicate.
+
+`compare` now judges times on back-to-back pairs and reports every gap, and the series
+refuses a moving corpus or build.
+
 ## Protocol
 
 Declared before the measured series:
 
-- Scenario: every journey of `transitions.mjs`, 73 transitions per run.
+- Scenario: every journey of `transitions.mjs` at scenario revision 3, 11 journeys and
+  77 transitions per run, from harness `dae89b6a`. Nothing on the run path (the
+  recorder, the journeys, and `run`) changed after it.
 
-- Series: five runs in one invocation, then a sixth so that `compare --aa` has three
-  runs per half:
+- Series: six runs in one invocation, then the samples, the tables, and the A/A split:
 
   ```shell
   node explorations/performance-loop/transitions.mjs run --exp exp-058 \
-    --corpus /path/to/frozen-checkout --runs 5 \
-    --condition control=/path/to/control/.venv/bin/metab
-  node explorations/performance-loop/transitions.mjs run --exp exp-058 \
-    --corpus /path/to/frozen-checkout --runs 1 \
+    --corpus /path/to/standalone-clone --runs 6 \
     --condition control=/path/to/control/.venv/bin/metab
   node explorations/performance-loop/transitions.mjs samples \
     .bench/transitions/exp-058/runs.jsonl \
@@ -139,357 +168,442 @@ Declared before the measured series:
   ```
 
 - Regime: the standard one in the scenario section.
-  Each run started a fresh server on its own port (8890 to 8894, and 8890 again for the
-  sixth), ran every journey once unrecorded, and then measured them, each journey in a
-  fresh Chrome profile.
-  All six runs shared one cache and configuration directory.
-  Run 1 started it empty, so its warm-up pass fetched the pull request catalog from
-  GitHub; the catalog was absent at run 1’s server start and `current` or `stale` at the
-  other five.
+  Each run started a fresh server on its own port (8890 to 8895), ran every journey once
+  unrecorded, and then measured them, each journey in a fresh Chrome profile.
+  All six runs shared one cache and configuration directory, which run 1 started empty,
+  so its warm-up pass fetched the pull request catalog from GitHub.
 
-- Load: the one-minute load average was 4.78 to 32.12 at run starts and ends; the
-  five-minute average reached 43.88 at the end of run 4. Each run took 430 to 452 s.
+- Load: no other measurement series was running when this one started.
+  The one-minute load average was 3.23 to 6.67 at run starts and ends and 3.16 to 7.70
+  when each transition started; the five-minute average was 4.17 to 5.59. Each run took
+  457 to 480 s.
 
-The tables in this artifact are the output of `summarize` and the list in the A/A
-section is the output of `compare --aa`, both run on the committed
+The tables in this artifact are the output of `summarize`, and the A/A figures the
+output of `compare --aa`, both run on the committed
 [samples](exp-058-transition-samples.jsonl).
-Running them on the full local rows gives the same output.
+Running them on the full local rows gives the same output, byte for byte.
 
 ## Identities
 
 | Item | Value |
 | --- | --- |
-| Control build | `metab 0.12.1.dev165+9903292 (+165 commits, 099032928)`, editable checkout at `09903292`, clean in every run |
-| Corpus | Checkout at `7a02fed4`, clean, 1,286 indexed files |
-| Trunk seen by Commits | `09903292` in all six runs, which was also the head of the first `git/log` page |
-| Pull request catalog | 348 to 350 in all, 11 to 13 open, 337 closed, in runs 2 to 6 |
-| Harness | `f571f0ea` for runs 1 to 5; `047a41d9` for run 6 |
+| Control build | `metab 0.12.1.dev165+9903292 (+165 commits, 099032928)`, editable checkout at `09903292`, clean at the start and end of every run |
+| Corpus | Standalone clone at `7a02fed4` with its own refs, clean, 1,286 indexed files; commit, cleanliness, trunk, and the hash of every ref were the same at the start and end of every run |
+| Trunk seen by Commits | `7a02fed4`, the head of the server’s first `git/log` page, in all six runs; the clone’s `origin/main` is `083e78e4`, an ancestor of it |
+| Pull request catalog | Absent at run 1’s server start, before its warm-up fetched it; 358 in all, 18 open, 340 closed at runs 2 to 6 |
+| Subjects in their lists | Every pull request and commit subject was mounted without scrolling, at the same offsets in every run: #353, #351, #349, and #348 at 344, 430, 473, and 516 px down the Closed list |
+| Harness | `dae89b6a`, clean, in all six runs; scenario revision 3 |
 | Chrome | 152.0.7977.83, headless |
-
-Runs 2 to 5 record `harness.dirty: true`. While the series ran, the `samples` mode and
-the `--aa` option were being written in the same worktree and were then committed as
-`047a41d9`. Runs 1 to 5 were one process started at `f571f0ea`, so they all executed
-that commit’s code. `047a41d9` changes only the README and `transitions.mjs` outside its
-run path (`git diff --stat f571f0ea 047a41d9`).
-
-The open pull request count moved from 11 to 13 during the series as other work opened
-pull requests. That changes the list `pulls.first_show` and the main-tab Pulls rows land
-on. The pull request subjects are merged and listed under the Closed filter, whose count
-did not move.
 
 ## Guards
 
-Every measured and warm-up pass of all six runs passed every guard.
-Across the 438 measured transitions there were no page exceptions, no console errors,
-and no rendered error.
+Every warm-up and measured pass of all six runs passed every guard, and no run’s build
+or corpus moved between its start and its end.
+Across the 462 measured transitions there were no page exceptions, no console errors,
+and no rendered error, and none of their 26,421 frames went unread.
 
-During development each guard below refused at least once.
-The first two refusals came from defects in the recorder itself; the rest are synthetic
-checks run with scratch scripts that were not committed.
+What makes each guard and definition fire is tested in
+`tests/test_transitions_instrument.py`, on synthetic pages in headless Chrome and on
+fixture rows, rather than by scratch scripts:
 
-| Guard | What it refused |
+| Guard or definition | What the test does |
 | --- | --- |
-| `page_exceptions` | The first recorder threw at document start, observing a document element that did not exist yet; both landing transitions refused. A product click handler made to throw also refused. |
-| `converged` | The first landing arm ran before the recorder existed, so no landing became ready; both refused after 60 s. |
-| `build_identity` | A wrapper `metab` that printed a different `--version` refused twice: once on the server’s version line and once on the page’s. |
-| `viewport` | A 1280×800 browser refused. |
-| `visibility` | A page whose `visibilityState` was forced to `hidden` refused, with 28 hidden frames. |
-| `raf` | A page whose `requestAnimationFrame` was stubbed refused: two frames did not arrive within 3 s. |
-| `hit_test` | An overlay over the tree refused the click before it was sent. |
-| `rendered_errors` | A landing on a missing file refused on its `preview-error` alert. |
-| `subject_missing` | Pull request #99999 refused: it is not listed under Closed. |
-
-`input_observed`, `target_missing`, and `setup` did not trigger during development.
+| `ready_before_input` | The subject is already on screen when the click is armed. |
+| Settle time, not readiness | The page keeps changing the DOM for 600 ms after the subject shows, in a rAF loop and in a task loop. |
+| Painted ready | A 300 ms task runs after the ready frame, and a ready frame takes hundreds of milliseconds to lay out; both are checked against Chrome’s Event Timing presentation time for the click. |
+| Blank and placeholder frames | Content, then a visible placeholder, then content again, after ready; and a declared prompt. |
+| Useful content | An image whose bytes arrive 700 ms later, and text at zero opacity, hidden, or clipped by a collapsed parent. |
+| Region movement | A 37 px move over two frames, and a pull request page replaced after a gap by one whose header is 66 px taller. |
+| `input_observed` | The page dispatches its own untrusted `pointerdown` first; a held key’s first `keyDown` is not a repeat. |
+| Cache disposition | A server that logs its 304s answers a `no-cache` file, a `max-age` file, and the page’s own conditional request. |
+| `compare` | Every refusal and verdict, on fixture rows. |
+| Process cleanup | A stand-in server that fails after it starts, twice, and a Chrome that cannot start. |
 
 ## Baseline
 
-Times are painted ready, from the input event to the frame after the first frame that
-showed the exact subject with useful content, as median and range over six runs.
-Counts are a single value when every run agreed and a range otherwise.
-Blank frames include frames that show a tab’s prompt by design: a main tab with nothing
-selected lands on its prompt.
+Painted ready is measured from the input event to the ready frame’s presentation, the
+first frame boundary after the main-thread rendering of the first frame that showed the
+exact subject with useful content; ready read is that frame’s post-layout read.
+Times are whole milliseconds, median and range over six runs.
+Frame counts cover the whole window, from the input to the end of the transition’s
+settle time; a count is one value when every run agreed, else median and range.
+A main tab with nothing selected lands on its prompt by design, and its prompt frames
+are not blank.
 
 ### Time and frames
 
-| Transition | Painted ready ms, median (range) | Blank frames | Visible placeholder frames | Nav placeholder frames | Longest task ms, median (range) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `landing.cold_markdown` | 378 (299–543) | 13–28 | 10–25 | 0–1 | 0 (0–0) |
-| `landing.reload` | 182 (158–238) | 7–10 | 3–6 | 0 | 0 (0–0) |
-| `files.cold.markdown_large` | 205 (181–264) | 0 | 0 | 0 | 70 (61–77) |
-| `files.cold.markdown_mid` | 56 (47–76) | 0 | 0 | 0 | 0 (0–0) |
-| `files.cold.source_large` | 114 (97–130) | 0 | 0 | 0 | 118 (113–156) |
-| `files.cold.source_small` | 47 (46–64) | 0 | 0 | 0 | 0 (0–0) |
-| `files.cold.json` | 79 (63–81) | 0 | 0 | 0 | 0 (0–0) |
-| `files.cold.diff` | 130 (113–147) | 0 | 0 | 0 | 0 (0–0) |
-| `files.cold.image` | 47 (46–49) | 0 | 0 | 0 | 0 (0–0) |
-| `files.cold.binary` | 47 (46–64) | 0 | 0 | 0 | 0 (0–0) |
-| `files.revisit.source_large` | 323 (314–362) | 0 | 0 | 0 | 126 (115–133) |
-| `files.revisit.json` | 48 (48–64) | 0 | 0 | 0 | 0 (0–0) |
-| `files.revisit.markdown_small` | 64 (48–64) | 0 | 0 | 0 | 0 (0–0) |
-| `files.revisit.markdown_large` | 131 (114–164) | 0 | 0 | 0 | 0 (0–0) |
-| `files.history_back` | 42 (40–71) | 0 | 0 | 0 | 0 (0–0) |
-| `files.history_forward` | 110 (109–157) | 0 | 0 | 0 | 0 (0–0) |
-| `files.hover_click.markdown` | 65 (48–77) | 0 | 0 | 0 | 0 (0–0) |
-| `keyboard.down_cold.1` | 44 (41–59) | 0 | 0 | 0 | 0 (0–0) |
-| `keyboard.down_cold.2` | 44 (43–60) | 0 | 0 | 0 | 0 (0–0) |
-| `keyboard.down_cold.3` | 44 (42–159) | 0 | 0 | 0 | 0 (0–0) |
-| `keyboard.up_revisit.1` | 45 (43–72) | 0 | 0 | 0 | 0 (0–0) |
-| `keyboard.up_revisit.2` | 45 (41–47) | 0 | 0 | 0 | 0 (0–0) |
-| `views.markdown.first` | 31 (30–32) | 0 | 0 | 0 | 0 (0–0) |
-| `views.markdown.revisit` | 31 (26–32) | 0 | 0 | 0 | 0 (0–0) |
-| `views.markdown.revisit_2` | 31 (30–32) | 0 | 0 | 0 | 0 (0–0) |
-| `views.json.first` | 47 (30–48) | 0 | 0 | 0 | 0 (0–0) |
-| `views.json.revisit` | 31 (30–32) | 0 | 0 | 0 | 0 (0–0) |
-| `views.json.revisit_2` | 30 (29–31) | 0 | 0 | 0 | 0 (0–0) |
-| `views.folder.first` | 47 (47–48) | 0 | 0 | 0 | 0 (0–0) |
-| `views.folder.revisit` | 47 (46–49) | 0 | 0 | 0 | 0 (0–0) |
-| `views.folder.revisit_2` | 64 (62–65) | 0 | 0 | 0 | 0 (0–0) |
-| `main.files_to_commits.first` | 306 (264–364) | 15–21 | 0 | 0 | 0 (0–0) |
-| `main.commits_to_files.first` | 65 (59–93) | 2–4 | 0 | 0 | 0 (0–0) |
-| `main.files_to_commits.again` | 31 (25–32) | 1 | 0 | 0 | 0 (0–0) |
-| `main.commits_to_files.again` | 64 (59–104) | 2–5 | 0 | 0 | 0 (0–0) |
-| `main.files_to_pulls.first` | 65 (56–101) | 1 | 0 | 0 | 0 (0–0) |
-| `main.pulls_to_files.first` | 70 (64–126) | 2–6 | 0 | 0 | 0 (0–0) |
-| `main.files_to_pulls.again` | 64 (61–66) | 1 | 0 | 0 | 0 (0–0) |
-| `main.pulls_to_commits` | 30 (26–31) | 1 | 0 | 0 | 0 (0–0) |
-| `main.commits_to_pulls` | 64 (63–65) | 3 | 0 | 0 | 0 (0–0) |
-| `main.pulls_to_files.again` | 64 (63–65) | 2 | 0 | 0 | 0 (0–0) |
-| `main_subject.files_to_commits` | 240 (214–279) | 0 | 0 | 0 | 0 (0–0) |
-| `main_subject.commits_to_pulls` | 65 (64–78) | 0 | 0 | 0 | 0 (0–0) |
-| `main_subject.pulls_to_files` | 65 (62–112) | 0 | 0 | 0 | 0 (0–0) |
-| `main_subject.files_to_pulls` | 64 (62–65) | 0 | 0 | 0 | 0 (0–0) |
-| `main_subject.pulls_to_commits` | 220 (198–244) | 0 | 0 | 0 | 0 (0–0) |
-| `main_subject.commits_to_files` | 64 (62–65) | 0 | 0 | 0 | 0 (0–0) |
-| `commits.first_show` | 322 (281–430) | 16–25 | 0 | 0 | 0 (0–0) |
-| `commits.cold.1` | 188 (164–298) | 5–14 | 2–11 | 0 | 54 (50–55) |
-| `commits.cold.2` | 207 (197–230) | 0 | 0 | 0 | 0 (0–0) |
-| `commits.cold.3` | 140 (130–182) | 0 | 0 | 0 | 0 (0–0) |
-| `commits.revisit.1` | 148 (130–264) | 0 | 0 | 0 | 0 (0–0) |
-| `commits.revisit.2` | 206 (148–295) | 0 | 0 | 0 | 0 (0–0) |
-| `commits.hover_click` | 65 (65–80) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.first_show` | 65 (63–77) | 1 | 0 | 0 | 0 (0–0) |
-| `pulls.list_to_pr.cold` | 91 (59–102) | 1–5 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.changes_first` | 112 (79–128) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.checks_first` | 29 (26–46) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.conversation_revisit` | 29 (29–46) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.changes_revisit` | 46 (44–62) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.conversation_revisit_2` | 29 (26–57) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.pr_to_pr.cold` | 79 (78–94) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.pr_to_pr.revisit` | 27 (24–29) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.pr_to_pr.hover_click` | 98 (64–115) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.changes_first_2` | 46 (44–51) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.history_back` | 26 (24–28) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.tab.changes_revisit_2` | 69 (45–156) | 0 | 0 | 0 | 0 (0–0) |
-| `pulls.pr_changes_to_pr` | 105 (76–129) | 0 | 0 | 0 | 0 (0–0) |
-| `tree.expand.docs` | 97 (81–130) | 0 | 0 | 0 | 0 (0–0) |
-| `tree.expand.src` | 48 (48–77) | 0 | 0 | 0 | 0 (0–0) |
-| `tree.collapse.src` | 31 (29–32) | 0 | 0 | 0 | 0 (0–0) |
-| `tree.reexpand.src` | 31 (31–32) | 0 | 0 | 0 | 0 (0–0) |
-| `tree.expand_nested.src_metabrowser` | 48 (46–59) | 0 | 0 | 0 | 0 (0–0) |
+| Transition | Painted ready ms, median (range) | Ready read ms | Blank frames | Blank after ready | Visible placeholder frames | Nav placeholder frames | Preview settled ms | Longest task ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `landing.cold_markdown` | 275 (266–281) | 267 (259–270) | 11.5 (11–12) | 0 | 8 (7–9) | 0 | 276 (269–277) | 0 (0–0) |
+| `landing.reload` | 173 (172–175) | 160 (157–165) | 7.5 (7–8) | 0 | 3 (2–4) | 0 | 168 (160–177) | 0 (0–0) |
+| `files.cold.markdown_large` | 180 (179–181) | 170 (165–173) | 0 | 0 | 0 | 0 | 182 (177–184) | 61 (59–63) |
+| `files.cold.markdown_mid` | 64 (63–65) | 52 (51–54) | 0 | 0 | 0 | 0 | 57 (54–58) | 0 (0–0) |
+| `files.cold.source_large` | 113 (112–114) | 97 (93–100) | 0 | 0 | 0 | 0 | 303 (294–306) | 116 (107–127) |
+| `files.cold.source_small` | 48 (46–63) | 38 (36–51) | 0 | 0 | 0 | 0 | 53 (50–67) | 0 (0–0) |
+| `files.cold.json` | 64 (63–81) | 58 (56–70) | 0 | 0 | 0 | 0 | 65 (62–77) | 0 (0–0) |
+| `files.cold.diff` | 80 (77–95) | 73 (72–87) | 0 | 0 | 0 | 0 | 106 (98–114) | 0 (0–0) |
+| `files.cold.image` | 79 (63–95) | 65 (49–82) | 1.5 (1–2) | 0 | 0 | 0 | 57 (46–64) | 0 (0–0) |
+| `files.cold.binary` | 64 (63–65) | 55 (54–56) | 0 | 0 | 0 | 0 | 63 (62–64) | 0 (0–0) |
+| `files.revisit.source_large` | 87 (80–96) | 72 (67–82) | 0 | 0 | 0 | 0 | 195 (187–206) | 127 (107–143) |
+| `files.revisit.json` | 64 (63–65) | 57 (56–58) | 0 | 0 | 0 | 0 | 63 (62–64) | 0 (0–0) |
+| `files.revisit.markdown_small` | 63 (60–78) | 56 (54–61) | 0 | 0 | 0 | 0 | 65 (61–67) | 0 (0–0) |
+| `files.revisit.markdown_large` | 146 (144–147) | 136 (133–138) | 0 | 0 | 0 | 0 | 142 (139–143) | 0 (0–0) |
+| `files.history_back` | 41 (37–42) | 35 (32–38) | 0 | 0 | 0 | 0 | 43 (39–44) | 0 (0–0) |
+| `files.history_forward` | 122 (118–138) | 115 (113–123) | 0 | 0 | 0 | 0 | 120 (118–129) | 0 (0–0) |
+| `files.hover_click.markdown` | 64 (63–65) | 59 (58–60) | 0 | 0 | 0 | 0 | 64 (63–65) | 0 (0–0) |
+| `keyboard.down_cold.1` | 54 (53–55) | 41 (40–43) | 0 | 0 | 0 | 0 | 55 (54–57) | 0 (0–0) |
+| `keyboard.down_cold.2` | 56 (50–58) | 41 (35–44) | 0 | 0 | 0 | 0 | 58 (51–59) | 0 (0–0) |
+| `keyboard.down_cold.3` | 42 (41–54) | 33 (30–45) | 0 | 0 | 0 | 0 | 48 (46–58) | 0 (0–0) |
+| `keyboard.up_revisit.1` | 48 (41–58) | 34 (27–43) | 0 | 0 | 0 | 0 | 50 (41–59) | 0 (0–0) |
+| `keyboard.up_revisit.2` | 44 (42–46) | 29 (28–32) | 0 | 0 | 0 | 0 | 45 (44–47) | 0 (0–0) |
+| `views.markdown.first` | 29 (29–31) | 15 (14–16) | 0 | 0 | 0 | 0 | 24 (22–25) | 0 (0–0) |
+| `views.markdown.revisit` | 30 (28–32) | 15 (15–18) | 0 | 0 | 0 | 0 | 2 (2–3) | 0 (0–0) |
+| `views.markdown.revisit_2` | 30 (29–31) | 15 (14–17) | 0 | 0 | 0 | 0 | 3 (2–3) | 0 (0–0) |
+| `views.json.first` | 29 (28–30) | 21 (21–24) | 0 | 0 | 0 | 0 | 39 (36–42) | 0 (0–0) |
+| `views.json.revisit` | 30 (30–45) | 28 (23–30) | 0 | 0 | 0 | 0 | 4 (3–5) | 0 (0–0) |
+| `views.json.revisit_2` | 31 (29–32) | 18 (18–22) | 0 | 0 | 0 | 0 | 3 (3–4) | 0 (0–0) |
+| `views.folder.first` | 47 (47–48) | 39 (38–40) | 0 | 0 | 0 | 0 | 20 (19–21) | 0 (0–0) |
+| `views.folder.revisit` | 30 (29–31) | 15 (13–16) | 0 | 0 | 0 | 0 | 15 (13–16) | 0 (0–0) |
+| `views.folder.revisit_2` | 31 (31–32) | 18 (16–19) | 0 | 0 | 0 | 0 | 20 (18–21) | 0 (0–0) |
+| `main.files_to_commits.first` | 228 (227–245) | 224 (222–238) | 0 | 0 | 0 | 0 | 10 (7–10) | 0 (0–0) |
+| `main.commits_to_files.first` | 78 (63–79) | 62 (57–64) | 2 | 0 | 0 | 0 | 64 (59–66) | 0 (0–0) |
+| `main.files_to_commits.again` | 28 (28–30) | 19 (14–20) | 0 | 0 | 0 | 0 | 17 (12–18) | 0 (0–0) |
+| `main.commits_to_files.again` | 62 (62–65) | 55 (55–60) | 2 | 0 | 0 | 0 | 58 (57–62) | 0 (0–0) |
+| `main.files_to_pulls.first` | 29 (28–30) | 20 (15–21) | 0 | 0 | 0 | 0 | 18 (11–19) | 0 (0–0) |
+| `main.pulls_to_files.first` | 63 (63–65) | 60 (55–60) | 2 | 0 | 0 | 0 | 62 (57–62) | 0 (0–0) |
+| `main.files_to_pulls.again` | 30 (28–31) | 16 (14–17) | 0 | 0 | 0 | 0 | 8 (6–12) | 0 (0–0) |
+| `main.pulls_to_commits` | 30 (28–32) | 15 (14–16) | 0 | 0 | 0 | 0 | 9 (8–10) | 0 (0–0) |
+| `main.commits_to_pulls` | 30 (29–31) | 14 (14–16) | 0 | 0 | 0 | 0 | 9 (6–10) | 0 (0–0) |
+| `main.pulls_to_files.again` | 64 (63–65) | 59 (57–60) | 2 | 0 | 0 | 0 | 61 (59–63) | 0 (0–0) |
+| `main_subject.files_to_commits` | 214 (165–230) | 210 (159–215) | 0 | 0 | 0 | 0 | 215 (214–228) | 0 (0–0) |
+| `main_subject.commits_to_pulls` | 78 (63–81) | 67 (49–71) | 0 | 0 | 0 | 0 | 565 (552–574) | 0 (0–0) |
+| `main_subject.pulls_to_files` | 65 (63–65) | 59 (58–61) | 0 | 0 | 0 | 0 | 67 (64–67) | 0 (0–0) |
+| `main_subject.files_to_pulls` | 64 (64–65) | 50 (48–54) | 0 | 0 | 0 | 0 | 72 (69–1044) | 0 (0–0) |
+| `main_subject.pulls_to_commits` | 221 (179–230) | 213 (171–217) | 0 | 0 | 0 | 0 | 219 (205–222) | 0 (0–0) |
+| `main_subject.commits_to_files` | 71 (62–80) | 61 (56–66) | 0 | 0 | 0 | 0 | 66 (64–68) | 0 (0–0) |
+| `commits.first_show` | 269 (262–278) | 264 (257–271) | 0 | 0 | 0 | 0 | 6 (5–10) | 0 (0–0) |
+| `commits.cold.1` | 138 (113–164) | 134 (109–162) | 5 | 0 | 2 | 0 | 169 (162–176) | 53 (0–56) |
+| `commits.cold.2` | 180 (162–212) | 172 (156–205) | 0 | 0 | 0 | 0 | 206 (190–208) | 0 (0–0) |
+| `commits.cold.3` | 145 (112–158) | 136 (108–146) | 0 | 0 | 0 | 0 | 149 (136–163) | 0 (0–0) |
+| `commits.revisit.1` | 122 (97–148) | 111 (90–136) | 0 | 0 | 0 | 0 | 140 (135–142) | 0 (0–0) |
+| `commits.revisit.2` | 164 (147–197) | 155 (137–183) | 0 | 0 | 0 | 0 | 185 (173–189) | 0 (0–0) |
+| `commits.hover_click` | 31 (31–32) | 16 (15–18) | 0 | 0 | 0 | 0 | 34 (32–35) | 0 (0–0) |
+| `pulls.first_show` | 29 (27–31) | 19 (14–22) | 0 | 0 | 0 | 0 | 17 (10–19) | 0 (0–0) |
+| `pulls.list_to_pr.cold` | 65 (62–68) | 52 (50–58) | 1 (1–2) | 0 | 0 | 0 | 80 (77–90) | 0 (0–0) |
+| `pulls.tab.changes_first` | 51 (42–58) | 42 (33–53) | 0 | 0 | 0 | 0 | 92 (83–100) | 0 (0–0) |
+| `pulls.tab.checks_first` | 29 (28–47) | 14 (13–31) | 0 | 0 | 0 | 0 | 10 (7–24) | 0 (0–0) |
+| `pulls.tab.conversation_revisit` | 29 (28–30) | 17 (15–19) | 0 | 0 | 0 | 0 | 11 (10–13) | 0 (0–0) |
+| `pulls.tab.changes_revisit` | 43 (42–44) | 33 (32–34) | 0 | 0 | 0 | 0 | 58 (57–59) | 0 (0–0) |
+| `pulls.tab.conversation_revisit_2` | 36 (26–44) | 27 (14–30) | 0 | 0 | 0 | 0 | 20 (11–23) | 0 (0–0) |
+| `pulls.pr_to_pr.cold` | 43 (41–46) | 33 (29–35) | 0 | 0 | 0 | 0 | 71 (66–82) | 0 (0–0) |
+| `pulls.pr_to_pr.revisit` | 27 (25–46) | 13 (12–32) | 0 | 0 | 0 | 0 | 1085 (1078–1098) | 0 (0–0) |
+| `pulls.pr_to_pr.hover_click` | 47 (46–49) | 37 (35–40) | 0 | 0 | 0 | 0 | 64 (61–78) | 0 (0–0) |
+| `pulls.tab.changes_first_2` | 42 (41–60) | 41 (38–55) | 0 | 0 | 0 | 0 | 82 (76–105) | 0 (0–0) |
+| `pulls.history_back` | 47 (38–54) | 35 (30–43) | 0 | 0 | 0 | 0 | 32 (27–39) | 0 (0–0) |
+| `pulls.tab.changes_revisit_2` | 45 (43–45) | 38 (37–43) | 0 | 0 | 0 | 0 | 74 (70–86) | 0 (0–0) |
+| `pulls.pr_changes_to_pr` | 62 (58–62) | 54 (50–58) | 0 | 0 | 0 | 0 | 79 (74–93) | 0 (0–0) |
+| `tree.expand.docs` | 78 (64–79) | 64 (54–65) | 0 | 0 | 0 | 0 | 64 (63–66) | 0 (0–0) |
+| `tree.expand.src` | 46 (42–47) | 34 (30–34) | 0 | 0 | 0 | 0 | 47 (44–49) | 0 (0–0) |
+| `tree.collapse.src` | 31 (30–32) | 16 (15–18) | 0 | 0 | 0 | 0 | 0 (0–0) | 0 (0–0) |
+| `tree.reexpand.src` | 30 (29–31) | 15 (13–16) | 0 | 0 | 0 | 0 | 0 (0–0) | 0 (0–0) |
+| `tree.expand_nested.src_metabrowser` | 47 (45–48) | 36 (33–36) | 0 | 0 | 0 | 0 | 48 (45–50) | 0 (0–0) |
+| `palette.open` | 23 (19–33) | 16 (13–20) | 0 | 0 | 0 | 0 | 0 (0–0) | 0 (0–0) |
+| `palette.query` | 190 (178–193) | 181 (175–185) | 0 | 0 | 0 | 0 | 0 (0–0) | 0 (0–0) |
+| `skim.held_arrow_down` | 380 (373–389) | 376 (368–384) | 0 | 0 | 0 | 0 | 382 (374–390) | 0 (0–0) |
+| `reveal.deep_landing` | 201 (184–203) | 192 (178–197) | 7.5 (7–9) | 0 | 4 (4–6) | 0 (0–1) | 200 (192–210) | 0 (0–0) |
 
 ### Requests
 
-| Transition | Data | Plugin modules | Static | KPress | Background | Subject duplicates |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `landing.cold_markdown` | 17–20 | 29 | 41 | 18 | 1–2 | 0 |
-| `landing.reload` | 17–21 | 29 | 41 | 18 | 1–2 | 0 |
-| `files.cold.markdown_large` | 1 | 0 | 0 | 3 | 2 | 0 |
-| `files.cold.markdown_mid` | 1 | 0 | 0 | 1 | 0–2 | 0 |
-| `files.cold.source_large` | 1 | 1 | 0 | 0 | 0–2 | 0 |
-| `files.cold.source_small` | 1 | 0 | 0 | 0 | 2 | 0 |
-| `files.cold.json` | 2 | 4 | 0 | 0 | 0 | 0 |
-| `files.cold.diff` | 3 | 7 | 0 | 0 | 0–2 | 0 |
-| `files.cold.image` | 1 | 2 | 0 | 0 | 1–2 | 0 |
-| `files.cold.binary` | 1 | 0 | 0 | 0 | 0–2 | 0 |
-| `files.revisit.source_large` | 0 | 0 | 0 | 0 | 0–2 | 0 |
-| `files.revisit.json` | 1 | 0 | 0 | 0 | 0–2 | 0 |
-| `files.revisit.markdown_small` | 0 | 3 | 0 | 1 | 0 | 0 |
-| `files.revisit.markdown_large` | 0 | 0 | 0 | 1 | 0–2 | 0 |
-| `files.history_back` | 0 | 0 | 0 | 1 | 2 | 0 |
-| `files.history_forward` | 0 | 0 | 0 | 1 | 0–2 | 0 |
-| `files.hover_click.markdown` | 1 | 0 | 0 | 1 | 0–2 | 0 |
-| `keyboard.down_cold.1` | 1 | 0 | 0 | 1 | 0 | 0 |
-| `keyboard.down_cold.2` | 1 | 0 | 0 | 1 | 0–2 | 0 |
-| `keyboard.down_cold.3` | 1 | 1 | 0 | 0 | 2 | 0 |
-| `keyboard.up_revisit.1` | 0 | 3 | 0 | 1 | 2 | 0 |
-| `keyboard.up_revisit.2` | 0 | 0 | 0 | 1 | 0–2 | 0 |
-| `views.markdown.first` | 0 | 0 | 0 | 0 | 2 | 0 |
-| `views.markdown.revisit` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `views.markdown.revisit_2` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `views.json.first` | 0 | 0 | 0 | 0 | 2 | 0 |
-| `views.json.revisit` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `views.json.revisit_2` | 0 | 0 | 0 | 0 | 0–2 | 0 |
-| `views.folder.first` | 1 | 0 | 0 | 0 | 1–2 | 0 |
-| `views.folder.revisit` | 0 | 0 | 0 | 0 | 0–2 | 0 |
-| `views.folder.revisit_2` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `main.files_to_commits.first` | 4–5 | 0 | 0 | 0 | 1–2 | 0 |
-| `main.commits_to_files.first` | 0–1 | 3 | 0 | 1 | 0–2 | 0 |
-| `main.files_to_commits.again` | 1 | 0 | 0 | 0 | 2 | 0 |
-| `main.commits_to_files.again` | 0 | 3 | 0 | 1 | 0 | 0 |
-| `main.files_to_pulls.first` | 4–6 | 0 | 0 | 0 | 4 | 0 |
-| `main.pulls_to_files.first` | 0 | 3 | 0 | 1 | 0 | 0 |
-| `main.files_to_pulls.again` | 2 | 0 | 0 | 0 | 1 | 0 |
-| `main.pulls_to_commits` | 1 | 0 | 0 | 0 | 0 | 0 |
-| `main.commits_to_pulls` | 2 | 0 | 0 | 0 | 1 | 0 |
-| `main.pulls_to_files.again` | 0 | 3 | 0 | 1 | 0 | 0 |
-| `main_subject.files_to_commits` | 2 | 0 | 0 | 0 | 2 | 0 |
-| `main_subject.commits_to_pulls` | 11–13 | 0 | 0 | 0 | 4–6 | 0 |
-| `main_subject.pulls_to_files` | 0 | 3 | 0 | 1 | 0–2 | 0 |
-| `main_subject.files_to_pulls` | 11–12 | 0 | 0 | 0 | 3 | 0–1 |
-| `main_subject.pulls_to_commits` | 2 | 0 | 0 | 0 | 2–3 | 0 |
-| `main_subject.commits_to_files` | 0 | 3 | 0 | 1 | 2 | 0 |
-| `commits.first_show` | 4 | 0 | 0 | 0 | 2 | 0 |
-| `commits.cold.1` | 2 | 7 | 0 | 0 | 2 | 0 |
-| `commits.cold.2` | 2 | 0 | 0 | 0 | 2 | 0 |
-| `commits.cold.3` | 2 | 0 | 0 | 0 | 2 | 0 |
-| `commits.revisit.1` | 1 | 0 | 0 | 0 | 2 | 0 |
-| `commits.revisit.2` | 1 | 0 | 0 | 0 | 2 | 0 |
-| `commits.hover_click` | 2 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.first_show` | 4 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.list_to_pr.cold` | 14 | 8 | 1 | 1 | 5 | 2 |
-| `pulls.tab.changes_first` | 4 | 1 | 1 | 0 | 6 | 0 |
-| `pulls.tab.checks_first` | 0 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.tab.conversation_revisit` | 0 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.tab.changes_revisit` | 4–5 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.tab.conversation_revisit_2` | 0 | 0 | 0 | 0 | 2–4 | 0 |
-| `pulls.pr_to_pr.cold` | 13–19 | 0 | 0 | 0 | 6 | 2–4 |
-| `pulls.pr_to_pr.revisit` | 14–16 | 0 | 0 | 0 | 3–5 | 1–2 |
-| `pulls.pr_to_pr.hover_click` | 14–16 | 0 | 0 | 0 | 5–7 | 1 |
-| `pulls.tab.changes_first_2` | 3–5 | 0 | 0 | 0 | 4–7 | 0 |
-| `pulls.history_back` | 0 | 0 | 0 | 0 | 3–5 | 0 |
-| `pulls.tab.changes_revisit_2` | 3–6 | 0 | 0 | 0 | 2–5 | 0 |
-| `pulls.pr_changes_to_pr` | 14–15 | 0 | 0 | 0 | 1–6 | 1–2 |
-| `tree.expand.docs` | 5–7 | 19 | 0 | 1 | 2 | 0 |
-| `tree.expand.src` | 2 | 0 | 0 | 0 | 0–2 | 0 |
-| `tree.collapse.src` | 0 | 0 | 0 | 0 | 0–2 | 0 |
-| `tree.reexpand.src` | 0 | 0 | 0 | 0 | 2 | 0 |
-| `tree.expand_nested.src_metabrowser` | 12 | 0 | 0 | 0 | 2 | 0 |
+| Transition | Data | Plugin modules | Static | KPress | Background | Subject duplicates | Settlement reads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `landing.cold_markdown` | 17 | 29 | 41 | 18 | 1 | 0 | 0 |
+| `landing.reload` | 20 | 29 | 41 | 18 | 1 | 0 | 0 |
+| `files.cold.markdown_large` | 1 | 0 | 0 | 3 | 2 | 0 | 0 |
+| `files.cold.markdown_mid` | 1 | 0 | 0 | 1 | 0–2 | 0 | 0 |
+| `files.cold.source_large` | 1 | 1 | 0 | 0 | 1–2 | 0 | 0 |
+| `files.cold.source_small` | 1 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `files.cold.json` | 2 | 4 | 0 | 0 | 0 | 0 | 0 |
+| `files.cold.diff` | 3 | 7 | 0 | 0 | 0–2 | 0 | 0 |
+| `files.cold.image` | 1 | 2 | 0 | 0 | 2 | 0 | 0 |
+| `files.cold.binary` | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `files.revisit.source_large` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `files.revisit.json` | 1 | 0 | 0 | 0 | 1–2 | 0 | 0 |
+| `files.revisit.markdown_small` | 0 | 3 | 0 | 1 | 0 | 0 | 0 |
+| `files.revisit.markdown_large` | 0 | 0 | 0 | 1 | 2 | 0 | 0 |
+| `files.history_back` | 0 | 0 | 0 | 1 | 2 | 0 | 0 |
+| `files.history_forward` | 0 | 0 | 0 | 1 | 2 | 0 | 0 |
+| `files.hover_click.markdown` | 1 | 0 | 0 | 1 | 2 | 0 | 0 |
+| `keyboard.down_cold.1` | 1 | 0 | 0 | 1 | 0–2 | 0 | 0 |
+| `keyboard.down_cold.2` | 1 | 0 | 0 | 1 | 2 | 0 | 0 |
+| `keyboard.down_cold.3` | 1 | 1 | 0 | 0 | 2 | 0 | 0 |
+| `keyboard.up_revisit.1` | 0 | 3 | 0 | 1 | 0–2 | 0 | 0 |
+| `keyboard.up_revisit.2` | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| `views.markdown.first` | 0 | 0 | 0 | 0 | 1 | 0 | 0 |
+| `views.markdown.revisit` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `views.markdown.revisit_2` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `views.json.first` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `views.json.revisit` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `views.json.revisit_2` | 0 | 0 | 0 | 0 | 0–2 | 0 | 0 |
+| `views.folder.first` | 1 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `views.folder.revisit` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `views.folder.revisit_2` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `main.files_to_commits.first` | 4 | 0 | 0 | 0 | 1 | 0 | 0 |
+| `main.commits_to_files.first` | 0–1 | 3 | 0 | 1 | 2 | 0 | 0 |
+| `main.files_to_commits.again` | 1 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `main.commits_to_files.again` | 0 | 3 | 0 | 1 | 0 | 0 | 0 |
+| `main.files_to_pulls.first` | 4–6 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `main.pulls_to_files.first` | 0 | 3 | 0 | 1 | 0 | 0 | 0 |
+| `main.files_to_pulls.again` | 2 | 0 | 0 | 0 | 1 | 0 | 0 |
+| `main.pulls_to_commits` | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `main.commits_to_pulls` | 2 | 0 | 0 | 0 | 1 | 0 | 0 |
+| `main.pulls_to_files.again` | 0 | 3 | 0 | 1 | 0 | 0 | 0 |
+| `main_subject.files_to_commits` | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `main_subject.commits_to_pulls` | 13 | 0 | 0 | 0 | 6 | 0 | 0 |
+| `main_subject.pulls_to_files` | 0 | 3 | 0 | 1 | 0–2 | 0 | 0 |
+| `main_subject.files_to_pulls` | 11–12 | 0 | 0 | 0 | 3 | 0–1 | 0 |
+| `main_subject.pulls_to_commits` | 2 | 0 | 0 | 0 | 1–3 | 0 | 0 |
+| `main_subject.commits_to_files` | 0 | 3 | 0 | 1 | 2 | 0 | 0 |
+| `commits.first_show` | 4 | 0 | 0 | 0 | 1 | 0 | 0 |
+| `commits.cold.1` | 2 | 7 | 0 | 0 | 0–2 | 0 | 0 |
+| `commits.cold.2` | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `commits.cold.3` | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `commits.revisit.1` | 1 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `commits.revisit.2` | 1 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `commits.hover_click` | 2 | 0 | 0 | 0 | 4 | 0 | 0 |
+| `pulls.first_show` | 4–6 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `pulls.list_to_pr.cold` | 14 | 8 | 1 | 1 | 5 | 2 | 0 |
+| `pulls.tab.changes_first` | 4 | 1 | 1 | 0 | 5–6 | 0 | 0 |
+| `pulls.tab.checks_first` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `pulls.tab.conversation_revisit` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `pulls.tab.changes_revisit` | 5 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `pulls.tab.conversation_revisit_2` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `pulls.pr_to_pr.cold` | 13–16 | 0 | 0 | 0 | 6 | 2 | 0 |
+| `pulls.pr_to_pr.revisit` | 14 | 0 | 0 | 0 | 4 | 0 | 2 |
+| `pulls.pr_to_pr.hover_click` | 14–15 | 0 | 0 | 0 | 5 | 1 | 0 |
+| `pulls.tab.changes_first_2` | 3–6 | 0 | 0 | 0 | 6 | 0 | 0 |
+| `pulls.history_back` | 0 | 0 | 0 | 0 | 4–5 | 0 | 0 |
+| `pulls.tab.changes_revisit_2` | 6–7 | 0 | 0 | 0 | 3–4 | 0 | 0 |
+| `pulls.pr_changes_to_pr` | 15 | 0 | 0 | 0 | 6–9 | 2 | 0 |
+| `tree.expand.docs` | 5–6 | 19 | 0 | 1 | 1 | 0 | 0 |
+| `tree.expand.src` | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `tree.collapse.src` | 0 | 0 | 0 | 0 | 1–2 | 0 | 0 |
+| `tree.reexpand.src` | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `tree.expand_nested.src_metabrowser` | 12 | 0 | 0 | 0 | 2 | 0 | 0 |
+| `palette.open` | 0 | 0 | 0 | 0 | 1–2 | 0 | 0 |
+| `palette.query` | 1 | 0 | 0 | 0 | 4 | 0 | 0 |
+| `skim.held_arrow_down` | 6 | 4 | 0 | 6 | 4 | 0 | 0 |
+| `reveal.deep_landing` | 23–32 | 11 | 41 | 2–3 | 1 | 0 | 0 |
 
 ### Stability and DOM
 
-| Transition | Preview top nodes replaced | Layout shifts | Shift without input | Region movement px | DOM nodes after |
+| Transition | Preview top nodes replaced | Layout shifts | Shift without input | Largest step px | Net px | Path px | DOM nodes after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `landing.cold_markdown` | 4 | 2 | 0.0033 | 0 | 0 | 0 | 2296 |
+| `landing.reload` | 4 | 1 | 0.0002 | 0 | 0 | 0 | 2296 |
+| `files.cold.markdown_large` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 8637 |
+| `files.cold.markdown_mid` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 6519 |
+| `files.cold.source_large` | 5 | 0 | 0.0000 | 30 | 30 | 30 | 18872 |
+| `files.cold.source_small` | 3 | 0 | 0.0000 | 0 | 0 | 0 | 6219 |
+| `files.cold.json` | 3 | 0 | 0.0000 | 30 | 30 | 30 | 10241 |
+| `files.cold.diff` | 5 | 7 | 0.0000 | 30 | 30 | 30 | 6619 |
+| `files.cold.image` | 3 | 0 | 0.0000 | 11 | 11 | 11 | 5953 |
+| `files.cold.binary` | 3 | 0 | 0.0000 | 11 | 11 | 11 | 5963 |
+| `files.revisit.source_large` | 3 | 0 | 0.0000 | 0 | 0 | 0 | 18895 |
+| `files.revisit.json` | 3 | 0 | 0.0000 | 30 | 30 | 30 | 10260 |
+| `files.revisit.markdown_small` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 6419 |
+| `files.revisit.markdown_large` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 8661 |
+| `files.history_back` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 6419 |
+| `files.history_forward` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 8661 |
+| `files.hover_click.markdown` | 5 | 0 | 0.0000 | 0 | 0 | 0 | 7057 |
+| `keyboard.down_cold.1` | 5 | 0 | 0.0000 | 11 | 11 | 11 | 1907 |
+| `keyboard.down_cold.2` | 5 | 0 | 0.0000 | 11 | 11 | 11 | 1953 |
+| `keyboard.down_cold.3` | 5 | 0 | 0.0000 | 30 | 30 | 30 | 1836 |
+| `keyboard.up_revisit.1` | 3 | 0 | 0.0000 | 30 | 30 | 30 | 1954 |
+| `keyboard.up_revisit.2` | 5 | 0 | 0.0000 | 11 | 11 | 11 | 1908 |
+| `views.markdown.first` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2518 |
+| `views.markdown.revisit` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2518 |
+| `views.markdown.revisit_2` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2518 |
+| `views.json.first` | 0 | 1 | 0.0000 | 0 | 0 | 0 | 9759 |
+| `views.json.revisit` | 0 | 1 | 0.0000 | 0 | 0 | 0 | 9759 |
+| `views.json.revisit_2` | 0 | 1 | 0.0000 | 0 | 0 | 0 | 9759 |
+| `views.folder.first` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2418 |
+| `views.folder.revisit` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2232 |
+| `views.folder.revisit_2` | 0 | 2 | 0.0000 | 0 | 0 | 0 | 2418 |
+| `main.files_to_commits.first` | 4 | 1 | 0.0000 | 37 | 37 | 37 | 3732 |
+| `main.commits_to_files.first` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 4341 |
+| `main.files_to_commits.again` | 4 | 1 | 0.0000 | 37 | 37 | 37 | 3732 |
+| `main.commits_to_files.again` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 4341 |
+| `main.files_to_pulls.first` | 4 | 2 | 0.0000 | 37 | 37 | 37 | 3796 |
+| `main.pulls_to_files.first` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 4404 |
+| `main.files_to_pulls.again` | 4 | 1 | 0.0000 | 37 | 37 | 37 | 3796 |
+| `main.pulls_to_commits` | 1 | 0 | 0.0000 | 0 | 0 | 0 | 3795 |
+| `main.commits_to_pulls` | 1 | 0 | 0.0000 | 0 | 0 | 0 | 3796 |
+| `main.pulls_to_files.again` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 4404 |
+| `main_subject.files_to_commits` | 5 | 1 | 0.0000 | 37 | 37 | 37 | 6273 |
+| `main_subject.commits_to_pulls` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 5429 |
+| `main_subject.pulls_to_files` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 5750 |
+| `main_subject.files_to_pulls` | 5 | 1 | 0.0000 | 37 | 37 | 37 | 5429 |
+| `main_subject.pulls_to_commits` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 6273 |
+| `main_subject.commits_to_files` | 2 | 1 | 0.0000 | 37 | 37 | 37 | 5750 |
+| `commits.first_show` | 4 | 1 | 0.0000 | 37 | 37 | 37 | 3515 |
+| `commits.cold.1` | 3 | 0 | 0.0000 | 0 | 0 | 0 | 4671 |
+| `commits.cold.2` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 4713 |
+| `commits.cold.3` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 5119 |
+| `commits.revisit.1` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 4671 |
+| `commits.revisit.2` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 4713 |
+| `commits.hover_click` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 3820 |
+| `pulls.first_show` | 4 | 2 | 0.0000 | 37 | 37 | 37 | 1875 |
+| `pulls.list_to_pr.cold` | 1 | 2 | 0.0000 | 0 | 0 | 0 | 3508 |
+| `pulls.tab.changes_first` | 0 | 3–4 | 0.0000 | 8 | 8 | 8 | 5944 |
+| `pulls.tab.checks_first` | 0 | 1 | 0.0000 | 8 | 8 | 8 | 3332 |
+| `pulls.tab.conversation_revisit` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 3508 |
+| `pulls.tab.changes_revisit` | 0 | 2 | 0.0000 | 8 | 8 | 8 | 5779 |
+| `pulls.tab.conversation_revisit_2` | 0 | 1 | 0.0000 | 8 | 8 | 8 | 3508 |
+| `pulls.pr_to_pr.cold` | 2 | 0 | 0.0000 | 0 | 0 | 0 | 4063 |
+| `pulls.pr_to_pr.revisit` | 2 | 8 | 0.0000 | 0 | 0 | 0 | 3809 |
+| `pulls.pr_to_pr.hover_click` | 2 | 1 | 0.0000 | 0 | 0 | 0 | 4543 |
+| `pulls.tab.changes_first_2` | 0 | 2 | 0.0000 | 8 | 8 | 8 | 5851 |
+| `pulls.history_back` | 0 | 1 | 0.0000 | 8 | 8 | 8 | 4202 |
+| `pulls.tab.changes_revisit_2` | 0 | 2 | 0.0000 | 8 | 8 | 8 | 5851 |
+| `pulls.pr_changes_to_pr` | 2 | 0 | 0.0000 | 8 | 8 | 8 | 4892 |
+| `tree.expand.docs` | 5 | 8 | 0.0000 | 11 | 11 | 11 | 2177 |
+| `tree.expand.src` | 5 | 3 | 0.0000 | 0 | 0 | 0 | 2326 |
+| `tree.collapse.src` | 0 | 3 | 0.0000 | 0 | 0 | 0 | 2331 |
+| `tree.reexpand.src` | 0 | 3 | 0.0000 | 0 | 0 | 0 | 2331 |
+| `tree.expand_nested.src_metabrowser` | 5 | 1 | 0.0000 | 0 | 0 | 0 | 3124 |
+| `palette.open` | 0 | 0 | 0.0000 | 0 | 0 | 0 | 2311 |
+| `palette.query` | 0 | 1 | 0.0000 | 0 | 0 | 0 | 3513 |
+| `skim.held_arrow_down` | 26 | 0 | 0.0000 | 30 | 0 | 60 | 2297 |
+| `reveal.deep_landing` | 4 | 3–4 | 0.0530–0.0608 | 0 | 0 | 0 | 3450 |
+
+### Milestones
+
+| Transition | Shell tools ready ms | Styled Markdown ms | PR header ms | PR description shown ms | PR description final ms |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `landing.cold_markdown` | 4 | 2 | 0.0033–0.0034 | 0 | 2058–2126 |
-| `landing.reload` | 4 | 1 | 0.0002 | 0 | 2058–2126 |
-| `files.cold.markdown_large` | 5 | 0 | 0.0000 | 0 | 8399–8467 |
-| `files.cold.markdown_mid` | 5 | 0 | 0.0000 | 0 | 6281–6349 |
-| `files.cold.source_large` | 5 | 0 | 0.0000 | 30 | 18634–18702 |
-| `files.cold.source_small` | 3 | 0 | 0.0000 | 0 | 5981–6049 |
-| `files.cold.json` | 3 | 0 | 0.0000 | 30 | 10003–10071 |
-| `files.cold.diff` | 5 | 7 | 0.0000 | 30 | 6381–6449 |
-| `files.cold.image` | 3 | 0 | 0.0000 | 11 | 5715–5783 |
-| `files.cold.binary` | 3 | 0 | 0.0000 | 11 | 5725–5793 |
-| `files.revisit.source_large` | 3 | 0 | 0.0000 | 0 | 18657–18725 |
-| `files.revisit.json` | 3 | 0 | 0.0000 | 30 | 10022–10090 |
-| `files.revisit.markdown_small` | 5 | 0 | 0.0000 | 0 | 6181–6249 |
-| `files.revisit.markdown_large` | 5 | 0 | 0.0000 | 0 | 8423–8491 |
-| `files.history_back` | 5 | 0 | 0.0000 | 0 | 6181–6249 |
-| `files.history_forward` | 5 | 0 | 0.0000 | 0 | 8423–8491 |
-| `files.hover_click.markdown` | 5 | 0 | 0.0000 | 0 | 6819–6887 |
-| `keyboard.down_cold.1` | 5 | 0 | 0.0000 | 11 | 1669–1737 |
-| `keyboard.down_cold.2` | 5 | 0 | 0.0000 | 11 | 1715–1783 |
-| `keyboard.down_cold.3` | 5 | 0 | 0.0000 | 30 | 1598–1666 |
-| `keyboard.up_revisit.1` | 3 | 0 | 0.0000 | 30 | 1716–1784 |
-| `keyboard.up_revisit.2` | 5 | 0 | 0.0000 | 11 | 1670–1738 |
-| `views.markdown.first` | 0 | 0 | 0.0000 | 0 | 2280–2348 |
-| `views.markdown.revisit` | 0 | 0 | 0.0000 | 0 | 2280–2348 |
-| `views.markdown.revisit_2` | 0 | 0 | 0.0000 | 0 | 2280–2348 |
-| `views.json.first` | 0 | 1 | 0.0000 | 0 | 9521–9589 |
-| `views.json.revisit` | 0 | 1 | 0.0000 | 0 | 9521–9589 |
-| `views.json.revisit_2` | 0 | 1 | 0.0000 | 0 | 9521–9589 |
-| `views.folder.first` | 0 | 0 | 0.0000 | 0 | 2180–2248 |
-| `views.folder.revisit` | 0 | 0 | 0.0000 | 0 | 1994–2062 |
-| `views.folder.revisit_2` | 0 | 2 | 0.0000 | 0 | 2180–2248 |
-| `main.files_to_commits.first` | 4 | 1 | 0.0000 | 37 | 3561–3663 |
-| `main.commits_to_files.first` | 2 | 1 | 0.0000 | 37 | 4170–4272 |
-| `main.files_to_commits.again` | 4 | 1 | 0.0000 | 37 | 3561–3663 |
-| `main.commits_to_files.again` | 2 | 1 | 0.0000 | 37 | 4170–4272 |
-| `main.files_to_pulls.first` | 4 | 2 | 0.0000 | 37 | 3597–3699 |
-| `main.pulls_to_files.first` | 2 | 1 | 0.0000 | 37 | 4205–4307 |
-| `main.files_to_pulls.again` | 4 | 1 | 0.0000 | 37 | 3597–3699 |
-| `main.pulls_to_commits` | 1 | 0 | 0.0000 | 0 | 3596–3698 |
-| `main.commits_to_pulls` | 1 | 0 | 0.0000 | 0 | 3597–3699 |
-| `main.pulls_to_files.again` | 2 | 1 | 0.0000 | 37 | 4205–4307 |
-| `main_subject.files_to_commits` | 5 | 1 | 0.0000 | 37 | 6244 |
-| `main_subject.commits_to_pulls` | 2 | 0 | 0.0000 | 0 | 5400 |
-| `main_subject.pulls_to_files` | 2 | 1 | 0.0000 | 37 | 5721 |
-| `main_subject.files_to_pulls` | 5 | 1 | 0.0000 | 37 | 5400 |
-| `main_subject.pulls_to_commits` | 2 | 0 | 0.0000 | 0 | 6244 |
-| `main_subject.commits_to_files` | 2 | 1 | 0.0000 | 37 | 5721 |
-| `commits.first_show` | 4 | 1 | 0.0000 | 37 | 3344–3446 |
-| `commits.cold.1` | 3 | 0 | 0.0000 | 0 | 4500–4602 |
-| `commits.cold.2` | 2 | 0 | 0.0000 | 0 | 4542–4644 |
-| `commits.cold.3` | 2 | 0 | 0.0000 | 0 | 4948–5050 |
-| `commits.revisit.1` | 2 | 0 | 0.0000 | 0 | 4500–4602 |
-| `commits.revisit.2` | 2 | 0 | 0.0000 | 0 | 4542–4644 |
-| `commits.hover_click` | 2 | 0 | 0.0000 | 0 | 3649–3751 |
-| `pulls.first_show` | 4 | 2–3 | 0.0000 | 37 | 1609–1711 |
-| `pulls.list_to_pr.cold` | 1 | 2 | 0.0000 | 0 | 3412 |
-| `pulls.tab.changes_first` | 0 | 3–4 | 0.0000 | 8 | 5683–5848 |
-| `pulls.tab.checks_first` | 0 | 1 | 0.0000 | 8 | 3236 |
-| `pulls.tab.conversation_revisit` | 0 | 0 | 0.0000 | 0 | 3412 |
-| `pulls.tab.changes_revisit` | 0 | 2–3 | 0.0000 | 8 | 5683–5848 |
-| `pulls.tab.conversation_revisit_2` | 0 | 1 | 0.0000 | 8 | 3412 |
-| `pulls.pr_to_pr.cold` | 2 | 0 | 0.0000 | 0 | 3967 |
-| `pulls.pr_to_pr.revisit` | 2 | 8 | 0.0000 | 0 | 3713 |
-| `pulls.pr_to_pr.hover_click` | 2 | 1 | 0.0000 | 0 | 4447 |
-| `pulls.tab.changes_first_2` | 0 | 2 | 0.0000 | 8 | 5755 |
-| `pulls.history_back` | 0 | 1 | 0.0000 | 8 | 4106 |
-| `pulls.tab.changes_revisit_2` | 0 | 2–3 | 0.0000 | 8 | 5755–5756 |
-| `pulls.pr_changes_to_pr` | 2 | 0 | 0.0000 | 8 | 4796 |
-| `tree.expand.docs` | 5 | 8 | 0.0000 | 11 | 1939–2041 |
-| `tree.expand.src` | 5 | 3 | 0.0000 | 0 | 2088–2190 |
-| `tree.collapse.src` | 0 | 3 | 0.0000 | 0 | 2093–2195 |
-| `tree.reexpand.src` | 0 | 3 | 0.0000 | 0 | 2093–2195 |
-| `tree.expand_nested.src_metabrowser` | 5 | 1 | 0.0000 | 0 | 2886–2988 |
+| `landing.cold_markdown` | 257 (242–275) | 275 (266–281) | n/a | n/a | n/a |
+| `landing.reload` | 149 (140–173) | 173 (172–175) | n/a | n/a | n/a |
+| `main_subject.commits_to_pulls` | n/a | n/a | 78 (63–81) | 78 (63–81) | 79 (63–81) |
+| `main_subject.files_to_pulls` | n/a | n/a | 64 (64–65) | 64 (64–65) | 73 (64–81) |
+| `pulls.list_to_pr.cold` | n/a | n/a | 65 (62–68) | 65 (62–68) | 82 (79–84) |
+| `pulls.tab.changes_first` | n/a | n/a | 26 (24–42) | n/a | n/a |
+| `pulls.tab.checks_first` | n/a | n/a | 29 (28–30) | n/a | n/a |
+| `pulls.tab.conversation_revisit` | n/a | n/a | 29 (28–30) | 29 (28–30) | 29 (28–30) |
+| `pulls.tab.changes_revisit` | n/a | n/a | 27 (25–27) | n/a | n/a |
+| `pulls.tab.conversation_revisit_2` | n/a | n/a | 36 (26–44) | 36 (26–44) | 36 (26–44) |
+| `pulls.pr_to_pr.cold` | n/a | n/a | 43 (41–46) | 43 (41–46) | 60 (58–62) |
+| `pulls.pr_to_pr.revisit` | n/a | n/a | 27 (25–46) | 27 (25–46) | 44 (42–63) |
+| `pulls.pr_to_pr.hover_click` | n/a | n/a | 47 (46–49) | 47 (46–49) | 64 (63–65) |
+| `pulls.tab.changes_first_2` | n/a | n/a | 25 (20–43) | n/a | n/a |
+| `pulls.history_back` | n/a | n/a | 47 (38–54) | 47 (38–54) | 47 (38–54) |
+| `pulls.tab.changes_revisit_2` | n/a | n/a | 28 (26–29) | n/a | n/a |
+| `pulls.pr_changes_to_pr` | n/a | n/a | 62 (58–62) | 62 (58–62) | 85 (78–96) |
+
+### Input, lists, and groups
+
+| Transition | Input span ms | Ready after last input ms | File envelopes | POST body bytes | List rows replaced below selection | List row replacements | Tree step px | Tree net px | Tree path px | Tree movement frames | Palette step px |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `landing.cold_markdown` | 0 (0–0) | 275 (266–281) | 1 | 19168 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `landing.reload` | 0 (0–0) | 173 (172–175) | 1 | 19168 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.cold.markdown_large` | 0 (0–0) | 180 (179–181) | 1 | 191142 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.cold.markdown_mid` | 0 (0–0) | 64 (63–65) | 1 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.revisit.markdown_small` | 0 (0–0) | 63 (60–78) | 0 | 19168 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.revisit.markdown_large` | 0 (0–0) | 146 (144–147) | 0 | 191142 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.history_back` | 0 (0–0) | 41 (37–42) | 0 | 19168 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.history_forward` | 0 (0–0) | 122 (118–138) | 0 | 191142 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `files.hover_click.markdown` | 0 (0–0) | 64 (63–65) | 1 | 59712 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `keyboard.down_cold.2` | 0 (0–0) | 56 (50–58) | 1 | 3105 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `keyboard.up_revisit.1` | 0 (0–0) | 48 (41–58) | 0 | 3105 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main.commits_to_files.first` | 0 (0–0) | 78 (63–79) | 0–1 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main.commits_to_files.again` | 0 (0–0) | 62 (62–65) | 0 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main.files_to_pulls.first` | 0 (0–0) | 29 (28–30) | 0 | 62–64 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main.pulls_to_files.first` | 0 (0–0) | 63 (63–65) | 0 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main.pulls_to_files.again` | 0 (0–0) | 64 (63–65) | 0 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main_subject.commits_to_pulls` | 0 (0–0) | 78 (63–81) | 0 | 132 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main_subject.pulls_to_files` | 0 (0–0) | 65 (63–65) | 0 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main_subject.files_to_pulls` | 0 (0–0) | 64 (64–65) | 0 | 99–118 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `main_subject.commits_to_files` | 0 (0–0) | 71 (62–80) | 0 | 42904 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.first_show` | 0 (0–0) | 29 (27–31) | 0 | 62–64 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.list_to_pr.cold` | 0 (0–0) | 65 (62–68) | 0 | 178 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.pr_to_pr.cold` | 0 (0–0) | 43 (41–46) | 0 | 178–180 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.pr_to_pr.revisit` | 0 (0–0) | 27 (25–46) | 0 | 211 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.pr_to_pr.hover_click` | 0 (0–0) | 47 (46–49) | 0 | 178 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `pulls.pr_changes_to_pr` | 0 (0–0) | 62 (58–62) | 0 | 178 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `tree.expand.docs` | 0 (0–0) | 78 (64–79) | 1 | 0 | n/a | n/a | 89–90 | 384 | 384 | 9–10 | 0 |
+| `tree.expand.src` | 0 (0–0) | 46 (42–47) | 1 | 0 | n/a | n/a | 6 | 24 | 24 | 8 | 0 |
+| `tree.collapse.src` | 0 (0–0) | 31 (30–32) | 0 | 0 | n/a | n/a | 6 | 24 | 24 | 7 | 0 |
+| `tree.reexpand.src` | 0 (0–0) | 30 (29–31) | 0 | 0 | n/a | n/a | 6 | 24 | 24 | 8 | 0 |
+| `tree.expand_nested.src_metabrowser` | 0 (0–0) | 47 (45–48) | 1 | 0 | n/a | n/a | 373–377 | 1608 | 1608 | 9 | 0 |
+| `palette.query` | 27 (23–29) | 163 (155–168) | 0 | 0 | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
+| `skim.held_arrow_down` | 333 (329–340) | 47 (42–52) | 6 | 27157 | n/a | n/a | 0 | 0 | 0 | 0 | 0 |
+| `reveal.deep_landing` | 0 (0–0) | 201 (184–203) | 1 | 0 | n/a | n/a | 653–657 | 2808 | 2808 | 9–12 | 0 |
+
+### Cache disposition (network / revalidated / cache)
+
+| Transition | static | plugin-static | kpress-static | data | document |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `landing.cold_markdown` | 41 / 0 / 0 | 29 / 0 / 0 | 16 / 1 / 0 | 19 / 0 / 0 | 1 / 0 / 0 |
+| `landing.reload` | 0 / 0 / 41 | 2 / 27 / 0 | 0 / 13 / 4 | 21 / 1 / 0 | 1 / 0 / 0 |
+| `reveal.deep_landing` | 41 / 0 / 0 | 11 / 0 / 0 | 2–3 / 0 / 0 | 24–33 / 0 / 0 | 1 / 0 / 0 |
 
 What the counts say, at this build:
 
-- File-to-file, keyboard, history, and view-tab transitions had no blank frame and no
-  visible placeholder in any run.
-- Main-tab switches with nothing selected showed the tab’s prompt for 1 to 3 frames once
-  the tab had been shown before (15 to 21 on the first Commits show), and the return to
-  Files showed the prompt for 2 to 6 frames before the file came back.
+- After the ready frame, no transition showed a blank or a placeholder frame in any run.
+- Before it, the cold landing showed 11 or 12 blank frames, 7 to 9 of them with a
+  visible placeholder, a reload 7 or 8, and the deep reveal landing 7 to 9. The first
+  commit view (`commits.cold.1`, which loads the diff plugin’s seven modules) showed 5
+  blank frames, 2 of them with a visible placeholder, the first image 1 or 2 while it
+  decoded, and the first pull request opened from the list 1 or 2. Every other file,
+  keyboard, history, view-tab, tree, palette, and pull request transition had no blank
+  frame.
+- A main tab with nothing selected landed on its prompt with no blank frame, and the
+  return to Files showed 2 blank frames before the file came back, in every run.
   With a commit and a pull request selected, the same switches had no blank frame, but
   each still replaced two to five top-level preview nodes and issued requests.
-- Every switch to or from Files moved the tree region by 37 px.
+- Every switch to or from Files moved the tree region by 37 px, in one step.
   Files that add or drop the view tab bar moved the content by 30 px, and files that add
   or drop the scrollbar changed its width by 11 px.
-  Pull request tab switches moved the tab bar by 8 px.
-- A commit revisit issued one data request, a Markdown revisit one KPress request, and a
-  cold click on a pull request read its record three times (two duplicates).
+  Pull request tab switches moved the tab bar by 8 px, and so did #349’s Changes to
+  #348, whose header is 8 px shorter; #353, #351, and #349 have headers of one height,
+  so a switch among them moved nothing.
+  Expanding `docs` pushed the rows below it 384 px over 9 or 10 frames, the nested
+  expand 1,608 px, and the deep reveal 2,808 px.
+- A cold click on a pull request read its record three times (two duplicates), as did a
+  pull request to pull request click.
+  A revisit read it once and then twice more after the page’s own refresh, which are
+  settlement reads, not duplicates; its preview kept changing until about 1.08 s.
+- A commit revisit issued one data request, and a Markdown revisit one KPress request,
+  uploading the source again (19,168 bytes for `README.md`, 191,142 for
+  `docs/design-system.md`).
+- `files.revisit.source_large` painted in 80 to 96 ms, and a 107 to 143 ms task followed
+  the ready frame. Revision 1 reported this transition at 314 to 362 ms, because its
+  painted ready waited for that task.
 
 ## A/A Resolution
 
-`compare --aa control` made 1,168 comparisons: 73 transitions and 16 metrics.
-Ten had ranges that did not overlap:
+`compare --aa control` paired runs 1 and 2, 3 and 4, and 5 and 6, and made 4,199
+comparisons: 77 transitions and every metric each applies to, with no gap.
+609 of them vary at all; at three runs against three, two identical builds separate on
+one comparison with probability 10% (2 / C(6, 3)), so chance alone predicts about 61
+separations among them.
+33 separated:
 
-- `files.cold.markdown_large` painted_ready_ms: 182 (181–197) → 215 (212–264) (1.18x);
-  higher, ranges apart but within the 1.3x tolerance (not a result)
-- `files.cold.markdown_large` long_task_max_ms: 67 (61–67) → 75 (72–77) (1.12x); higher,
-  ranges apart but within the 1.3x tolerance (not a result)
-- `keyboard.up_revisit.2` painted_ready_ms: 47 (45–47) → 42 (41–44) (0.90x); lower,
-  ranges apart but within the 1.3x tolerance (not a result)
-- `views.folder.revisit_2` painted_ready_ms: 64 (64–65) → 63 (62–64) (0.99x); lower,
-  ranges apart but within the 1.3x tolerance (not a result)
-- `main_subject.pulls_to_files` requests_background: 1–2 → 0; lower, ranges apart
-- `commits.cold.2` painted_ready_ms: 198 (197–199) → 216 (215–230) (1.09x); higher,
-  ranges apart but within the 1.3x tolerance (not a result)
-- `commits.hover_click` painted_ready_ms: 65 (65–80) → 65 (65–65) (0.99x); lower, ranges
-  apart but within the 1.3x tolerance (not a result)
-- `pulls.list_to_pr.cold` painted_ready_ms: 90 (59–91) → 97 (92–102) (1.07x); higher,
-  ranges apart but within the 1.3x tolerance (not a result)
-- `pulls.pr_to_pr.hover_click` painted_ready_ms: 99 (98–115) → 98 (64–98) (0.99x);
-  lower, ranges apart but within the 1.3x tolerance (not a result)
-- `pulls.tab.changes_first_2` requests_background: 4–5 → 6–7; higher, ranges apart
+- Painted ready had no result.
+  `files.cold.image` came apart with one pair of three beyond the tolerance, 77.8
+  (63.4–78.1) → 79.9 (78.9–95.3), which the runbook answers with a rerun of that pair;
+  `commits.cold.1` is bimodal, 113 or 164 ms, three frames apart, in both halves; three
+  more separated with every pair within the tolerance.
+- Five were results: `files.cold.image` blank frames, 1 in every odd run and 2 in every
+  even one, and their milliseconds; `pulls.tab.checks_first` settle time, 9.3 (7.2–9.6)
+  → 9.7 (9.7–24.4); and two figures that are shown but not judged.
+- Fifteen had two pairs beyond the tolerance under overlapping ranges, which a round
+  would have to explain: four are `commits.cold.1`’s bimodal times, and the rest are
+  frame counts of 5 or fewer, settle times under 15 ms, the pull request revisit’s ready
+  read (12 to 32 ms), and the navigation settle time the background catalog walk drives.
 
-No time metric came apart by more than the 1.3x tolerance; the largest ratio among the
-separated times was 1.18x, on `files.cold.markdown_large`, at a load average that
-reached 32 during the series.
-Several separated by less than one frame, which is why a time needs the tolerance as
-well as separate ranges.
-The two background-request counts differ because the Pulls catalog walk runs on its own
-timer; they are not a metric a round should name.
+So on this build a round should not claim a one-frame change in the image’s blank
+frames, or any settle time under about 25 ms, at three runs a side, and should read
+`commits.cold.1` as two populations.
+The full list is the output of the `compare --aa` command above.
 
 ## Limits
 
@@ -498,12 +612,15 @@ timer; they are not a metric a round should name.
 - The server is warm by design; a cold server render is not part of this regime.
 - The corpus has no heavy view such as a multi-megabyte JSONL log, so heavy view-tab
   revisits (H99) are not covered.
-- Painted ready is an upper bound quantized to one frame.
-  A frame changed after its animation frame is not credited, which can add one frame.
-- The command palette, filters, rapid repeated clicks, and held-key skims from the
-  research inventory are not in these journeys.
-- The hypothesis identifiers name the H86 to H106 registry proposed on the research
-  branch, not yet in this branch’s plan.
+- Painted ready is read from the main thread: raster and GPU time are invisible to the
+  page, and a headless Chrome presents earlier than a display would.
+  A product ResizeObserver round after the first can change a frame after it was read.
+- The pull request catalog is live: the open count moves the list that
+  `pulls.first_show` and the main-tab Pulls rows land on, newer pull requests push the
+  subjects down the Closed list, and the palette’s pull request results follow it.
+  Each run records the totals and the subjects’ offsets.
+- The hypothesis identifiers name the H86 to H106 rows of the load-time plan, merged to
+  `main` with #364.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
