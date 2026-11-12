@@ -45,6 +45,7 @@ All notable changes to Metabrowser are documented here.
   Shift+`1` types `!`, and `/` opens Quick Search on layouts that type it with Shift.
   In a text field, Shift with an arrow still selects text.
   The removed keys shipped in 0.12.0 and have no aliases.
+
 - A plugin manifest’s `[[view]]` may declare a one-letter `key` for its tab, and every
   view of a built-in kind with more than one view declares one: Markdown’s Document `D`
   and Source `S`, structured data’s Tree `R` and Source `S`, HTML’s Preview `P` and
