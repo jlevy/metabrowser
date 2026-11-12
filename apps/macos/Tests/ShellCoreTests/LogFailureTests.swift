@@ -58,11 +58,11 @@ import Testing
         let path = directory.appending(path: "x.log").path(percentEncoded: false)
         FileManager.default.createFile(atPath: path, contents: nil)
         let readOnly = try #require(FileHandle(forReadingAtPath: path))  // every write fails
-        let appender = LogAppender(readOnly)
-        let first = appender.append(Data("one\n".utf8))
-        #expect(first?.hasPrefix(ServerLog.appLinePrefix) == true)
-        #expect(first?.contains("could not write the server log") == true)
-        #expect(appender.append(Data("two\n".utf8)) == nil)
-        #expect(LogAppender(nil).append(Data("three\n".utf8)) == nil)
+        let log = ChildLog(path: path, handle: readOnly, start: 0)
+        log.append(Data("one\n".utf8))
+        log.append(Data("two\n".utf8))
+        let shown = try log.recentLines(limit: 10)
+        #expect(shown.count == 1)
+        #expect(shown.first?.hasPrefix("could not write the server log, so it ends here: ") == true)
     }
 }

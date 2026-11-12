@@ -4,7 +4,7 @@ import Foundation
 
 /// Why a server log could not be prepared or written, with its path and the cause.
 public nonisolated struct ServerLogError: Error, Equatable, CustomStringConvertible {
-    /// What was being done: "create", "rotate", "open", or "append to".
+    /// What was being done: "create", "rotate", "open", "append to", or "read".
     public var operation: String
     public var path: String
     public var reason: String
@@ -24,15 +24,30 @@ public nonisolated struct ServerLogError: Error, Equatable, CustomStringConverti
 
 /// One log per served folder under `~/Library/Logs/Metabrowser/`, mode 0600.
 ///
-/// The child's stdout and stderr are appended as written (see `SpawnedProcess`), and
-/// the supervisor's lifecycle events are appended between them, so one file tells the
-/// whole story of a folder's server. Console.app shows the directory under Log Reports.
+/// The child writes its stderr here itself, the app appends its stdout as it reads it
+/// (see `SpawnedProcess`), and the supervisor's lifecycle events go between them, so one
+/// file tells the whole story of a folder's server. Console.app shows the directory
+/// under Log Reports.
 public nonisolated enum ServerLog {
     /// Rotated when a launch finds it larger than this; one previous file is kept.
     public static let rotationBytes = 5_000_000
     /// Starts every line the app itself writes, so a reader can tell them from the
     /// server's own.
     public static let appLinePrefix = "[metabrowser-app "
+    /// The most of a child's log the error view reads, on the main thread: more than
+    /// its newest lines take.
+    static let tailBytes = 64 * 1024
+
+    /// The newest `limit` lines of a run of log bytes, without the app's own lines. A run
+    /// `truncated` at its start begins inside a line, which is dropped.
+    static func recentLines(in data: Data, truncated: Bool, limit: Int) -> [String] {
+        var lines: [String] = []
+        let splitter = LineSplitter()
+        splitter.append(data) { lines.append($0) }
+        splitter.finish { lines.append($0) }
+        if truncated, !lines.isEmpty { lines.removeFirst() }
+        return Array(lines.filter { !$0.hasPrefix(appLinePrefix) }.suffix(limit))
+    }
 
     public static func directory(home: URL = URL(filePath: NSHomeDirectory())) -> URL {
         home.appending(path: "Library/Logs/Metabrowser", directoryHint: .isDirectory)
@@ -90,32 +105,6 @@ public nonisolated enum ServerLog {
         if written < 0 { throw ServerLogError("append to", path, code: errno) }
         if written != bytes.count {
             throw ServerLogError("append to", path, reason: "wrote \(written) of \(bytes.count) bytes")
-        }
-    }
-}
-
-/// Appends a child's output to its log, from the one serial reader of its output.
-///
-/// The first write that fails (a full disk, say) ends the log, and `append` returns a
-/// line saying so, once, for the output the error view shows: the log is where a user
-/// looks next, and it must not just stop without a word.
-nonisolated final class LogAppender: @unchecked Sendable {
-    private var handle: FileHandle?
-
-    init(_ handle: FileHandle?) {
-        self.handle = handle
-    }
-
-    /// Writes `chunk`, and returns a line to show if this write ended the log.
-    func append(_ chunk: Data) -> String? {
-        guard let handle else { return nil }
-        do {
-            try handle.write(contentsOf: chunk)
-            return nil
-        } catch {
-            self.handle = nil
-            return "\(ServerLog.appLinePrefix)\(Date().ISO8601Format())] could not write the server log, "
-                + "so it ends here: \(error.localizedDescription)"
         }
     }
 }

@@ -5,10 +5,10 @@ import os
 /// What the supervisor needs from a running child. Tests substitute a fake.
 public nonisolated protocol ServerProcess: AnyObject, Sendable {
     var pid: pid_t { get }
-    /// Output lines, stdout and stderr interleaved as written. Finishes at EOF.
+    /// Lines of stdout, and of stderr too when there is no log. Finishes at EOF.
     /// Iterate it from one task only.
     var lines: AsyncStream<String> { get }
-    /// The newest output lines, for the error view.
+    /// The newest output lines, stdout and stderr both, for the error view.
     func recentOutput() -> [String]
     /// The wait status once the child has exited, or nil if the waiting task was
     /// cancelled first. The exited child is not reaped yet: it keeps its pid, and so its
@@ -38,7 +38,10 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
     /// A server's stdin stays open as a lifeline: the kernel closes it however this
     /// app exits.
     public var closesStdin: Bool
-    /// Output is appended here, created mode 0600 if missing.
+    /// Output is appended here, created mode 0600 if missing: stderr straight from the
+    /// child, so a stalled app cannot block the child through a full pipe, and stdout
+    /// through the app, which reads it for the announcement. Without a log, stderr
+    /// joins stdout on the pipe.
     public var logURL: URL?
     /// How many lines `ServerProcess.recentOutput()` keeps.
     public var tailLimit: Int
@@ -104,7 +107,10 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     private let output: FileHandle  // must outlive init, or its descriptor closes
     private let exit = Latch<Int32>()
     private let outputEnd = Latch<Void>()
+    /// stdout, and stderr when there is no log: what the error view falls back to.
     private let tail: OutputTail
+    private let tailLimit: Int
+    private let log: ChildLog?
     private let exitSource: DispatchSourceProcess
     private let ownership: ChildOwnership
 
@@ -112,7 +118,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         // posix_spawn resolves a relative path after the working-directory change, so
         // `metab` could otherwise name a file inside the folder being served.
         guard spec.executable.hasPrefix("/") else { throw .relativeExecutable(spec.executable) }
-        let log = try spec.logURL.map(Self.openLog)
+        let log = try spec.logURL.map(ChildLog.open)
         var stdinPipe: [Int32] = [-1, -1]
         var outputPipe: [Int32] = [-1, -1]
         guard pipe(&stdinPipe) == 0 else { throw .pipe(errno) }
@@ -145,7 +151,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         defer { posix_spawn_file_actions_destroy(&actions) }
         posix_spawn_file_actions_adddup2(&actions, stdinPipe[0], 0)
         posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 1)
-        posix_spawn_file_actions_adddup2(&actions, outputPipe[1], 2)
+        posix_spawn_file_actions_adddup2(&actions, log?.handle.fileDescriptor ?? outputPipe[1], 2)
         if let directory = spec.workingDirectory {
             posix_spawn_file_actions_addchdir_np(&actions, directory)
         }
@@ -182,10 +188,11 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
         let tail = OutputTail(limit: spec.tailLimit)
         self.tail = tail
+        tailLimit = spec.tailLimit
+        self.log = log
         let (lineStream, lineSink) = AsyncStream<String>.makeStream(
             bufferingPolicy: .bufferingNewest(spec.tailLimit))
         lines = lineStream
-        let appender = LogAppender(log)
         let splitter = LineSplitter()
         let ended = outputEnd
         let reader = FileHandle(fileDescriptor: outputPipe[0], closeOnDealloc: true)
@@ -203,7 +210,7 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
                 ended.resolve(())
                 return
             }
-            if let failure = appender.append(chunk) { tail.append(failure) }
+            log?.append(chunk)
             splitter.append(chunk, emit: emit)
         }
 
@@ -232,7 +239,21 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     /// A child nobody released, such as one a test spawned, is reaped when it exits.
     deinit { ownership.release() }
 
-    public func recentOutput() -> [String] { tail.snapshot }
+    /// From the log when there is one, since stderr goes only there.
+    public func recentOutput() -> [String] {
+        guard let log else { return tail.snapshot }
+        do {
+            return try log.recentLines(limit: tailLimit)
+        } catch {
+            return tail.snapshot + ["\(error), so these lines are stdout only"]
+        }
+    }
+
+    /// Records why the log ends early, for the recent output.
+    func noteLogFailure(_ reason: String) {
+        log?.noteFailure(reason)
+    }
+
     public func waitForExit() async -> Int32? { await exit.wait() }
     public func waitForOutputEnd() async -> Void? { await outputEnd.wait() }
     public var hasExited: Bool { exit.isResolved }
@@ -257,14 +278,6 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     /// What the kernel does for a child if this app crashes: the child reads EOF.
     public func closeLifeline() {
         try? lifeline?.close()
-    }
-
-    /// Appends, never truncates, and refuses to follow a symlink planted at the path.
-    private static func openLog(_ url: URL) throws(SpawnError) -> FileHandle {
-        let path = url.path(percentEncoded: false)
-        let fd = open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw .log(path: path, code: errno) }
-        return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 }
 
