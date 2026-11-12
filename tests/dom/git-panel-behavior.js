@@ -1340,6 +1340,19 @@ async function run() {
         container.children[0]?.className === "git-graph-list",
     );
     assertEqual("toolbar: nothing above the list shifts it", internals.historyOrigin(), 0);
+    // History that cannot load settles the toolbar at its height, rather than leaving the
+    // pending tally pulsing over a failure.
+    const failedState = internals.emptyState();
+    failedState.failed = true;
+    internals.setStateForTests(failedState);
+    container.replaceChildren();
+    internals.renderPanel();
+    assertTrue(
+      "toolbar: a failed history settles the tally",
+      toolbar.textContent === "History unavailable" &&
+        toolbar.querySelector(".tally-pending") === null &&
+        toolbar.querySelector(".git-history-summary") !== null,
+    );
     document.byId.delete("nav-toolbar-git");
     toolbar.remove();
     internals.setStateForTests(internals.emptyState());

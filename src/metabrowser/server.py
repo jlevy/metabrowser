@@ -1353,7 +1353,11 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
 
 
 async def index(
-    request: Request, *, pull_page: bool = False, pull_list: bool = False
+    request: Request,
+    *,
+    pull_page: bool = False,
+    pull_list: bool = False,
+    commit_page: bool = False,
 ) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine.
 
@@ -1490,29 +1494,44 @@ async def index(
     # that has it draws it at first paint, so the tabs never shift when it arrives.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
-    files_active = "" if pulls_in_front else " active"
-    files_selected = "false" if pulls_in_front else "true"
-    behind_pulls = ' style="display: none"' if pulls_in_front else ""
-    # The navigation's toolbar slot holds the toolbar of the tab in front: the Files filters, or
-    # the Commits tally, or the Pulls filters, each at the slot's one height, so the panel
-    # below starts at one y on every tab (static/main-tabs.js#activateNavPanel). A tab whose
-    # toolbar its script fills later ships the shared pending tally, never an empty slot.
-    filter_bar_behind_pulls = " hidden" if pulls_in_front else ""
-    pending_tally = '<span class="count tally-pending"></span>'
     # Commits is drawn here when the served root is a repository's root, the one root Git
     # discovery accepts (git/repo.py), so the Pulls tab beside it does not move when discovery
     # registers it; discovery removes it in the rare case Git does not agree.
     commits_tab = git_pin or await asyncio.to_thread(
         lambda: (session_filesystem_root().resolve() / ".git").exists()
     )
+    # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
+    # panel's container, and the landing never shows Files and then swaps it. The neutral Git
+    # landing is /view/ with a history entry's state, which only the page can read.
+    commits_in_front = commits_tab and commit_page
+    files_in_front = not (pulls_in_front or commits_in_front)
+    files_active = " active" if files_in_front else ""
+    files_selected = "true" if files_in_front else "false"
+    files_behind = "" if files_in_front else ' style="display: none"'
+    # The navigation's toolbar slot holds the toolbar of the tab in front: the Files filters, or
+    # the Commits tally, or the Pulls filters, each at the slot's one height, so the panel
+    # below starts at one y on every tab (static/main-tabs.js#activateNavPanel). A tab whose
+    # toolbar its script fills later ships the shared pending tally, never an empty slot.
+    filter_bar_behind = "" if files_in_front else " hidden"
+    pending_tally = '<span class="count tally-pending"></span>'
     commits_button = (
-        '\n        <button class="tab-btn" type="button" role="tab" data-tab="git"'
-        ' aria-selected="false">Commits</button>'
+        f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
+        f' role="tab" data-tab="git" aria-selected="{"true" if commits_in_front else "false"}">'
+        "Commits</button>"
         if commits_tab
         else ""
     )
+    git_container = (
+        '\n        <div id="tab-git" data-tab-content="git">'
+        '<div class="loading mb-delayed-loading" role="status">'
+        '<div class="spinner spinner-sm" aria-hidden="true"></div>'
+        '<span class="sr-only">Loading history…</span></div></div>'
+        if commits_in_front
+        else ""
+    )
     toolbars = (
-        '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git" hidden>'
+        '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git"'
+        f"{'' if commits_in_front else ' hidden'}>"
         f'<div class="git-history-summary">{pending_tally}</div></div>'
         if commits_tab
         else ""
@@ -1909,12 +1928,12 @@ async def index(
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind_pulls}>{pending_tally}</div>{toolbars}
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>{toolbars}
       <div class="tree-content" id="tree-content">
-        <div id="tab-files" data-tab-content="files"{behind_pulls}>
+        <div id="tab-files" data-tab-content="files"{files_behind}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
-        </div>{pulls_container}
+        </div>{git_container}{pulls_container}
       </div>
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
@@ -2019,7 +2038,7 @@ async def commit_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
         return PlainTextResponse("Invalid commit route.", status_code=400)
-    return await index(request)
+    return await index(request, commit_page=True)
 
 
 async def pull_shell(request: Request) -> Response:

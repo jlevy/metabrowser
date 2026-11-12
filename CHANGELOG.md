@@ -8,12 +8,12 @@ All notable changes to Metabrowser are documented here.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
   Commits tally of commits, or the Pulls filters, at one height, so what is under it
   starts at the same place on every tab.
-  The Commits tab is drawn at first paint in a repository, every file has a view tab
-  bar, and the tree and the preview keep a scrollbar gutter.
-  A pull request’s header is one size for every pull request and tab: the title holds
-  two lines and is cut short there with the whole of it in a tooltip, the state row is
-  one line with the stack chip at its end, labels have a row of their own, and Refresh
-  has its slot on every tab.
+  The Commits tab is drawn at first paint in a repository, in front at a commit’s
+  address, every file has a view tab bar, and the tree and the preview keep a scrollbar
+  gutter. A pull request’s header is one size for every pull request and tab: the title
+  holds two lines and is cut short there with the whole of it in a tooltip, the state
+  row is one line with the stack chip at its end, labels have a row of their own, and
+  Refresh has its slot on every tab.
   The Pulls tab’s status lines are always there, and its ages have a column of one
   width. A folder’s Overview paints once its first file-type rollup has answered,
   briefly.

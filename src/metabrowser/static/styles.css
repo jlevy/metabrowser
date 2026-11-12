@@ -5604,6 +5604,9 @@ pre.code-block.metabrowser-source-lines > code {
   padding: 0;
   border-bottom: 0;
 }
+.git-history-summary-failed {
+  color: var(--muted);
+}
 .git-history-summary-first {
   display: inline-flex;
   align-items: baseline;

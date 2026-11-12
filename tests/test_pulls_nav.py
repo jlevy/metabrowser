@@ -303,6 +303,49 @@ def test_a_checkout_of_anything_else_draws_no_tab(tmp_path: Path, pull_origin: O
     reset_source_session()
 
 
+@needs_git
+def test_a_commits_address_lands_on_commits_from_first_paint(
+    tmp_path: Path, pull_origin: Origin
+) -> None:
+    """A commit's address draws Commits in front: its tab, its toolbar, and its panel's
+    container, so the landing never shows the Files tree and toolbar and then swaps them."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    checkout = clone_checkout(
+        pull_origin, tmp_path / "checkout", remote="https://gitlab.example/octo/demo.git"
+    )
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": False, "git": True}
+        assert _toolbars(html) == {"files": False, "git": True}
+        assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
+        assert '<div id="tab-git" data-tab-content="git"><div class="loading' in html
+        # Elsewhere Files is in front, and the Commits panel's container is the page's to make.
+        elsewhere = client.get("/view/").text
+        assert _tabs(elsewhere) == {"files": True, "git": False}
+        assert _toolbars(elsewhere) == {"files": True, "git": False}
+        assert 'id="tab-git"' not in elsewhere
+    reset_source_session()
+
+
+def test_a_commits_address_in_a_folder_draws_no_commits(tmp_path: Path) -> None:
+    """With no repository there is no Commits tab to put in front: Files stays."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    (tmp_path / "README.md").write_text("# Local\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": True}
+        assert _toolbars(html) == {"files": True}
+    reset_source_session()
+
+
 def test_a_rows_text_is_only_ever_text() -> None:
     """The one markup the panel parses is the shell's own chip group.
 

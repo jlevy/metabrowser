@@ -2481,7 +2481,11 @@ Heights are in line units, or struts of the controls a row holds, never pixels m
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
 does, the view holds its first paint for that data, briefly, with the previous view
-still shown. `tests/test_reserved_chrome.py` pins the rules.
+still shown.
+The server draws the tab an address lands on in front, a commit’s address on
+Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
+cannot load says so in its slot rather than pulsing.
+`tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome
 

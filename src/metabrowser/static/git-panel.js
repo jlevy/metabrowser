@@ -1395,6 +1395,11 @@
       return;
     }
     if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
+      // The toolbar's tally settles too: it has no count to wait for.
+      const failed = document.createElement("div");
+      failed.className = "git-history-summary git-history-summary-failed";
+      failed.textContent = "History unavailable";
+      historyToolbar()?.replaceChildren(failed);
       renderRefreshState(
         panel,
         viewHelpersFailed
@@ -1451,6 +1456,7 @@
     if (!(row instanceof HTMLElement)) {
       return;
     }
+    row.classList.remove("git-history-summary-failed");
     if (!state.summary) {
       const pending = document.createElement("span");
       pending.className = "count tally-pending";

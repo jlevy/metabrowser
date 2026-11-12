@@ -498,13 +498,22 @@ function createShell(pathname, network, options = {}) {
       },
     }),
   );
-  const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  // The tab the server draws in front: Pulls at its addresses, Commits at a commit's.
+  const initialPanel =
+    options.pulls && pathname.startsWith("/pull")
+      ? "pulls"
+      : pathname.startsWith("/commit/") && panelIds.includes("git")
+        ? "git"
+        : "files";
+  const tabPanels = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { tabContent: tab },
+      style: { display: tab === initialPanel ? "" : "none" },
+    }),
+  );
   // The navigation's toolbar slot: one toolbar per tab the server draws, the one in front shown.
   const toolbars = panelIds.map((tab) =>
-    fakeElement({
-      dataset: { navToolbar: tab },
-      hidden: tab !== (options.pulls && pathname.startsWith("/pull") ? "pulls" : "files"),
-    }),
+    fakeElement({ dataset: { navToolbar: tab }, hidden: tab !== initialPanel }),
   );
   scroller.querySelector = () => ({ remove() {} });
   // A toolbar main-tabs.js adds for a tab the server did not draw goes into the slot.
@@ -512,7 +521,6 @@ function createShell(pathname, network, options = {}) {
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
-  const initialPanel = options.pulls && pathname.startsWith("/pull") ? "pulls" : "files";
   for (const button of tabButtons) {
     button.setAttribute("data-tab", button.dataset.tab);
     button.classList.toggle("active", button.dataset.tab === initialPanel);
@@ -1207,6 +1215,27 @@ async function independentMainTabs() {
     pendingGit.toolbarsShown(),
     ["git"],
     "a toolbar added for a late panel shows with it",
+  );
+
+  // A commit's address is drawn with Commits in front, and the page keeps it in front from
+  // its first script on: the Files toolbar and tree are never shown and then swapped.
+  const commitLanding = createShell(`/commit/${"c".repeat(40)}`, read);
+  const landed = {
+    active: commitLanding.sandbox.mainTabs.active(),
+    toolbars: commitLanding.toolbarsShown(),
+    panels: commitLanding.tabs(),
+  };
+  await commitLanding.sandbox.navigationController.start();
+  await settle();
+  assert.deepEqual(
+    landed,
+    { active: "git", toolbars: ["git"], panels: ["files:none", "git:"] },
+    "a commit landing starts on Commits",
+  );
+  assert.deepEqual(
+    [commitLanding.sandbox.mainTabs.active(), commitLanding.toolbarsShown()],
+    ["git", ["git"]],
+    "and stays there once the address is applied",
   );
 
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
