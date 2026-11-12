@@ -20,6 +20,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
+    /// The searches, rechecks, and choices that change `selection`, and what follows each.
+    private lazy var operations: RuntimeOperations = {
+        let settings = self.settings
+        let operations = RuntimeOperations(
+            selection: selection,
+            work: RuntimeOperations.Work(
+                discover: { await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime)) },
+                validate: { path in
+                    let fingerprint = FileFingerprint.of(path)
+                    return (fingerprint, await RuntimeDiscovery.validate(path, .live(saved: nil)))
+                },
+                tools: { RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile) }))
+        operations.onChange = { [weak self] in self?.presentRuntime() }
+        operations.onStart = { start in
+            if case .recheck(let path) = start {
+                AppLog.app.info("\(path, privacy: .public) changed; checking its version again")
+            }
+        }
+        operations.onFinish = { [weak self] in await self?.finished($0) }
+        return operations
+    }()
     /// Open folders by canonical path (one session, and so one server, per root), plus
     /// the sessions of closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
@@ -281,42 +302,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Runtime
 
-    /// Marks a search as running before returning, so a folder requested in the same
-    /// run-loop turn waits for it, then runs the search.
+    /// A search the launch, Find Again, or the watch starts (`RuntimeOperations`). It
+    /// counts as running before this returns, so a folder requested in the same run-loop
+    /// turn waits for it.
     private func beginDiscovery() {
         guard !selection.isSearching else { return }
-        let ticket = selection.startSearch()
         runtimeModel.notice = nil
-        presentRuntime()
-        Task { await discoverRuntime(ticket) }
+        operations.beginDiscovery()
     }
 
-    /// Searches the documented locations for `metab`; on success, saves the result and
-    /// opens any folder that was waiting for it. Started only by `beginDiscovery`. A
-    /// search that a later Choose metab… overtook changes nothing when it finishes.
-    private func discoverRuntime(_ ticket: RuntimeSelection.Ticket) async {
-        let report = await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime))
-        let outcome = selection.finishSearch(ticket, with: report)
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-            if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
-                openFolder(nil)
+    /// Shows how a search, recheck, or choice ended, and opens the folders that waited
+    /// for a runtime when one was adopted. A search, recheck, or choice that a newer one
+    /// overtook changes nothing when it finishes.
+    private func finished(_ finish: RuntimeOperations.Finish) async {
+        switch (finish.operation, finish.outcome) {
+        case (_, .adopted(let found)):
+            adopted(found, opening: finish.released)
+            switch finish.operation {
+            case .search:
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
+                    openFolder(nil)
+                }
+                showPanelAfterDiscovery = false
+            case .choice:
+                runtimeModel.notice =
+                    "Folders already open keep their server until you restart it with File > Restart Server or Retry."
+            case .recheck:
+                break
             }
-            showPanelAfterDiscovery = false
-        case .notFound:
+        case (.search(let report), .notFound):
             // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no usable metab in \(report.tried.count) places")
             lastLoginPath = report.loginPath
             await prepareGuide()
             showSettings(nil)
-        case .rejected, .superseded:
+        case (.recheck(let path, let result), .notFound):
+            AppLog.app.error(
+                "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
+            )
+        case (.choice(let path), .rejected(.tooOld(let version))):
+            runtimeModel.notice = "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
+        case (.choice(let path), .rejected(let rejected)):
+            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
+        case (.search, _):
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
+        case (.recheck, _):
+            AppLog.app.info("a recheck finished after a newer search or choice; its result is dropped")
+        case (.choice, _):
+            break
         }
     }
 
-    private func adopted(_ found: RuntimeSetup) {
+    private func adopted(_ found: RuntimeSetup, opening waiting: [URL]) {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
@@ -325,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreAfterDiscovery = false
             restoreLastSession()
         }
-        openPendingFolders()
+        waiting.forEach(request)
         let held = folderSessions.filter(\.isWaitingForRuntime)
         offerRestart(for: found.runtime)
         // A paused restore carries on in its own order, each root admitted again in its
@@ -376,30 +413,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Validates the chosen file and uses it, which overtakes a search still running.
+    /// Validates the chosen file and uses it, which overtakes a search still running
+    /// (`RuntimeOperations.choose`).
     private func adoptChosen(_ path: String) async {
         runtimeModel.notice = nil
-        let ticket = selection.startChoice()
-        presentRuntime()
-        let fingerprint = FileFingerprint.of(path)
-        let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        let outcome = selection.finishChoice(ticket, path: path, result: result, fingerprint: fingerprint) {
-            RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
-        }
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-            runtimeModel.notice = "Folders already open keep their server until you restart it with File > Restart Server or Retry."
-        case .rejected(.tooOld(let version)):
-            runtimeModel.notice = "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
-        case .rejected(let rejected):
-            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
-        case .notFound, .superseded:
-            break
-        }
-        // A rejected choice leaves a runtime whose file changed meanwhile still unchecked.
-        if selection.needsRecheck { beginRecheck() }
+        await operations.choose(path)
     }
 
     private func runDoctor() async {
@@ -500,35 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Holds new servers off the runtime, whose file changed, and checks it again, unless
-    /// a search, recheck, or choice already running settles it first.
-    private func beginRecheck() {
-        selection.markUnverified()
-        guard selection.needsRecheck, let previous = selection.setup else { return }
-        let ticket = selection.startRecheck()
-        Task { await recheckRuntime(previous, ticket) }
-    }
-
-    /// Runs `--version` on the runtime again. A new compatible version is adopted, with
-    /// an offer to restart the servers started from the old one; anything else leaves no
+    /// a search, recheck, or choice already running settles it first
+    /// (`RuntimeOperations.beginRecheck`). A new compatible version is adopted, with an
+    /// offer to restart the servers started from the old one; anything else leaves no
     /// runtime, and a search looks for another.
-    private func recheckRuntime(_ previous: RuntimeSetup, _ ticket: RuntimeSelection.Ticket) async {
-        let path = previous.runtime.executable
-        AppLog.app.info("\(path, privacy: .public) changed; checking its version again")
-        let fingerprint = FileFingerprint.of(path)
-        let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        let outcome = selection.finishRecheck(ticket, fingerprint: fingerprint, result: result)
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-        case .notFound:
-            AppLog.app.error(
-                "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
-            )
-            beginDiscovery()
-        case .rejected, .superseded:
-            AppLog.app.info("a recheck finished after a newer search or choice; its result is dropped")
-        }
+    private func beginRecheck() {
+        operations.beginRecheck()
     }
 
     /// Offers to restart the open servers that `current`'s executable started at another
