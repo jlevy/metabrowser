@@ -509,7 +509,7 @@ def test_interrupt_exits_before_any_later_logger_mutation_could_matter() -> None
     uvicorn_logger = logging.getLogger("uvicorn.error")
     original_level = uvicorn_logger.level
     try:
-        with patch("metabrowser.cli.serve.os._exit") as hard_exit:
+        with patch("metabrowser.cli.common.os._exit") as hard_exit:
             server.handle_exit(signal.SIGINT, None)
 
         assert server.interrupted
@@ -535,8 +535,8 @@ def test_one_interrupt_announces_and_stops() -> None:
     original_level = uvicorn_logger.level
     try:
         with (
-            patch("metabrowser.cli.serve.os.write") as raw_write,
-            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+            patch("metabrowser.cli.common.os.write") as raw_write,
+            patch("metabrowser.cli.common.os._exit") as hard_exit,
         ):
             server.handle_exit(signal.SIGINT, None)
 
@@ -562,9 +562,9 @@ def test_a_hangup_while_serving_a_mirror_stops_like_ctrl_c_with_its_own_status()
         assert signal.getsignal(signal.SIGINT) is _stop_now
         assert signal.getsignal(signal.SIGHUP) is _stop_now
         with (
-            patch("metabrowser.cli.serve.os.write"),
+            patch("metabrowser.cli.common.os.write"),
             patch("metabrowser.cli.serve.stop_process_groups") as kill_groups,
-            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+            patch("metabrowser.cli.common.os._exit") as hard_exit,
         ):
             _stop_now(signal.SIGHUP, None)
         kill_groups.assert_called_once_with()

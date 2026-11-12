@@ -24,7 +24,7 @@ import threading
 from collections.abc import Callable
 from typing import Final, NoReturn
 
-from metabrowser.cli.common import write_notice_now_or_never
+from metabrowser.cli.common import exit_after_notices, write_notice_now_or_never
 from metabrowser.errors import CLIError
 from metabrowser.git.process import stop_process_groups
 
@@ -97,9 +97,10 @@ def stop_for_closed_stdin() -> NoReturn:
 
     Runs on the watcher thread while the main thread serves. The notice is a raw write,
     which takes no lock the main thread may hold, and is skipped when stderr cannot take
-    it now, so a full stderr nobody reads cannot hold the stop up. ``os._exit`` ends
-    every thread at once, so neither a request in flight nor a worker thread stuck in a
-    slow read keeps the process alive.
+    it now, so a full stderr nobody reads cannot hold the stop up; stderr's blocking
+    mode is put back as the process exits. ``os._exit`` ends every thread at once, so
+    neither a request in flight nor a worker thread stuck in a slow read keeps the
+    process alive.
 
     Git and ``gh`` that run in process groups of their own are killed first, by
     :func:`stop_process_groups`, which also refuses new ones. It finds them from the
@@ -109,7 +110,7 @@ def stop_for_closed_stdin() -> NoReturn:
     """
     write_notice_now_or_never(2, STDIN_CLOSED_NOTICE)
     stop_process_groups()
-    os._exit(STDIN_CLOSED_EXIT_STATUS)
+    exit_after_notices(STDIN_CLOSED_EXIT_STATUS)
 
 
 __all__ = [
