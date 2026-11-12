@@ -176,12 +176,17 @@ async function run() {
 
   // A revisit, another page of the same document: final at once, with nothing asked.
   session.current = first;
-  // It still waits for the commits the server holds, a local read, before it paints.
+  // It waits for nothing, commits included: the mount's own task paints it final.
   const revisit = session.mount(page, first);
   assert.equal(revisit.plain(), null, "a revisit never paints plain text");
+  assert.equal(revisit.rendered()?.textContent, "rendered first text", "final in the mount's task");
+  assert.equal(
+    [...session.timers.values()].some((timer) => timer.delay === page.DESCRIPTION_HOLD_MS),
+    false,
+    "a kept render holds nothing",
+  );
   await settle();
   assert.equal(revisit.plain(), null);
-  assert.equal(revisit.rendered()?.textContent, "rendered first text");
   assert.equal(revisit.ready(), true);
   assert.deepEqual(session.markdown, ["body"], "a revisit asks for no Markdown");
   revisit.handle.dispose();

@@ -11,9 +11,10 @@ All notable changes to Metabrowser are documented here.
   refresh that leaves a text unchanged shows it at once without asking again.
   When the full record replaces a description preview, the description stays where it is
   and only the sections below it change.
-  Commits Metabrowser already holds are placed among the comments and reviews in
-  GitHub’s order when the conversation first paints; commits fetched from GitHub after
-  that are added after everything shown, so nothing you are reading moves.
+  Commits that arrive after the conversation has painted are added after everything
+  shown, so nothing you are reading moves; a conversation painted with its commits
+  already known, as when you return to it from another tab, places them among the
+  comments and reviews in GitHub’s order.
   The state badge shows the fresher of the cached record and the repository’s list of
   pull requests, so a stale record of a merged pull request no longer shows Open first.
 

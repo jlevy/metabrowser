@@ -54,14 +54,14 @@ export const MARKDOWN_CONCURRENCY = 2;
 // took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
 // stays lazy: what is further off is not asked for until the reader comes nearer.
 export const MARKDOWN_AHEAD = "100% 0px";
-// How long a conversation's first paint waits for its description's Markdown and for the
-// commits the server holds, so the description is final when it first shows and commit rows
-// are placed among the cards then, never pushed between them later. A wait past this paints
-// plain text, and the Markdown replaces it when it comes. Measured 2026-11-11 with curl
-// against a local server on five of this repository's pull requests, at load averages of 6
-// to 36: the Markdown route took 2.3 to 36 ms for descriptions of 5.9 to 20 KB, and a
-// `cached_only` timeline read 2.0 to 8.1 ms. Browser time on top of that is not measured
-// here. A page replacing another keeps that one on screen meanwhile.
+// How long a conversation's first paint waits for the Markdown it asked for its description,
+// so the description is final when it first shows; a kept render waits for nothing. A wait
+// past this paints plain text, and the Markdown replaces it when it comes. Measured
+// 2026-11-11 with curl against a local server on five of this repository's pull requests, at
+// load averages of 6 to 36: the Markdown route took 2.3 to 36 ms for descriptions of 5.9 to
+// 20 KB. A page replacing another keeps that one on screen meanwhile. The exp-065 pilot
+// (2026-11-12) waited for a `cached_only` timeline read too, which ran to this bound on cold
+// and revisited pull requests, so commits no longer hold the paint.
 export const DESCRIPTION_HOLD_MS = 200;
 // Rendered texts kept across pages, the newest first: a revisit, Back, or Forward, and a
 // refreshed record whose text did not change, show the Markdown at once instead of asking
@@ -4873,10 +4873,11 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * Whether the conversation's first paint of a full record waits, starting the wait when it
-   * is the first: until its description's Markdown can be inserted with it and the commits the
-   * server holds have answered, at most `DESCRIPTION_HOLD_MS`. Meanwhile the body shows what it
-   * did, a core preview or nothing, and the page is not ready, so a page replacing another
-   * keeps that one on screen. A record whose description has no text waits only for commits.
+   * is the first: until the Markdown it asked for its description can be inserted with it, at
+   * most `DESCRIPTION_HOLD_MS`. A description whose render is kept, or that has no text, paints
+   * at once. Meanwhile the body shows what it did, a core preview or nothing, and the page is
+   * not ready, so a page replacing another keeps that one on screen. Commits wait for nothing:
+   * they are placed if held at this paint, and otherwise follow what it painted.
    *
    * @param {PullModel} model
    * @returns {boolean}
@@ -4900,13 +4901,9 @@ export function mountPullPage(container, ctx, mb) {
       firstPaint.text = pull.text;
       return true;
     }
-    const commitsHeld =
-      commitTimeline !== null &&
-      commitTimeline.revision === model.recordRevision &&
-      commitTimeline.projection !== null;
     const describedNow =
       pull.text.trim() === "" || insertableNow(controller.renderedFor("body", pull.text));
-    if (describedNow && (commitsHeld || stackIdentity === null)) {
+    if (describedNow) {
       firstPaintSpent = true;
       return false;
     }
@@ -4916,9 +4913,7 @@ export function mountPullPage(container, ctx, mb) {
       plain: false,
       timer: window.setTimeout(releaseFirstPaint, DESCRIPTION_HOLD_MS),
     };
-    if (!describedNow) {
-      controller.requestMarkdown("body", pull.text);
-    }
+    controller.requestMarkdown("body", pull.text);
     return true;
   }
 
@@ -4927,11 +4922,8 @@ export function mountPullPage(container, ctx, mb) {
     if (firstPaint === null) {
       return true;
     }
-    const { revision, text, plain } = firstPaint;
-    const described =
-      plain || text.trim() === "" || insertableNow(controller.renderedFor("body", text));
-    const reading = commitTimeline?.revision === revision && commitTimeline.read !== null;
-    return described && !reading;
+    const { text, plain } = firstPaint;
+    return plain || text.trim() === "" || insertableNow(controller.renderedFor("body", text));
   }
 
   /** Paint the held conversation now, as it is: the hold was met or its time ran out. */
@@ -4957,11 +4949,7 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /**
-   * Timeline work follows an active Conversation with a full record. A held first paint
-   * reads the commits the server holds before it paints, active or not, so they are placed
-   * with it; anything that asks GitHub waits for the page to be active, as before.
-   */
+  /** Timeline work follows an active Conversation with a full record. */
   function followTimeline() {
     const revision = shown?.recordRevision ?? null;
     const source = stackIdentity?.source ?? null;
@@ -4982,9 +4970,10 @@ export function mountPullPage(container, ctx, mb) {
     }
     const held = commitTimeline;
     paintTimeline(held?.projection ?? null, source ?? "");
-    const holding = firstPaint !== null && held !== null && firstPaint.revision === held.revision;
     if (
+      !active ||
       listening.signal.aborted ||
+      discussion === null ||
       held === null ||
       document.visibilityState !== "visible" ||
       !onPageRoute(window.location.pathname, number, "")
@@ -4992,15 +4981,7 @@ export function mountPullPage(container, ctx, mb) {
       cancelTimeline();
       return;
     }
-    if (!holding && (!active || discussion === null)) {
-      // A staged conversation lets the read of held commits it started finish, and starts
-      // nothing until it is active.
-      if (discussion === null || held.read?.cachedOnly !== true) {
-        cancelTimeline();
-      }
-      return;
-    }
-    const providerAllowed = active && controller.timelineAllowed();
+    const providerAllowed = controller.timelineAllowed();
     if (held.read && (held.read.cachedOnly || providerAllowed)) {
       return;
     }
@@ -5009,13 +4990,10 @@ export function mountPullPage(container, ctx, mb) {
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
-    // A held projection can paint during a stale metadata refresh, and with a held first
-    // paint. A cache miss waits for settlement before it asks the provider.
+    // A held projection can paint during a stale metadata refresh. A cache miss waits
+    // for settlement before it asks the provider.
     const cachedOnly = !providerAllowed;
-    if (
-      cachedOnly &&
-      (held.cacheMiss || (!holding && shown?.status !== "stale" && !shown?.refreshing))
-    ) {
+    if (cachedOnly && (held.cacheMiss || (shown?.status !== "stale" && !shown?.refreshing))) {
       return;
     }
     const read = { cachedOnly, abort: new AbortController() };
@@ -5104,16 +5082,10 @@ export function mountPullPage(container, ctx, mb) {
       } else {
         held.settled = true;
       }
-      if (firstPaint !== null && firstPaintReady()) {
-        releaseFirstPaint();
-      }
     };
     if (retrying) {
       const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
-    } else if (holding) {
-      // Nothing is painted to wait for: the first paint waits for this.
-      void load();
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
         frame = window.requestAnimationFrame(() => void load());

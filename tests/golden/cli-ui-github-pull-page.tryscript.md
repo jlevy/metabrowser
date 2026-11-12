@@ -1663,13 +1663,13 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
 
-Conversation’s first paint waits, within its bound, for the commits the server holds,
-and places a held partial timeline’s commit summaries among the cards in provider order
-then, keeping unmatched and pending discussion.
-With none held it paints without them, and the provider’s timeline that answers later
-goes after everything painted, in its order, moving no painted node and keeping the
-rendered Markdown and focus (`appended`). The provider request breathes the header’s age
-line and marks it busy; nothing spins.
+Conversation paints before its commit timeline request, which waits for nothing.
+The timeline that answers once it has painted goes after everything painted, in its
+order, moving no painted node and keeping the rendered Markdown and focus (`appended`).
+A later first paint with that projection held, here the Conversation shown again after
+another tab, places its commit summaries among the cards in provider order, keeping
+unmatched and pending discussion (`interleaved`). The provider request breathes the
+header’s age line and marks it busy; nothing spins.
 A refreshed record keeps the rows it shows until its own timeline answers.
 A stale page can show a held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old

@@ -452,11 +452,11 @@ See
 state, and ordered commit, comment, and review identifiers.
 Commit events carry a subject and optional commit date.
 Discussion IDs are decimal strings.
-The selected Conversation’s first paint waits, within `DESCRIPTION_HOLD_MS`, for a
-`cached_only: true` read of the held projection and places its commit rows among the
-discussion cards then.
-A projection that answers after that paint moves nothing painted: its new commit rows go
-after everything the Conversation shows, in its order.
+The browser asks after the selected Conversation paints; its first paint waits for no
+projection. A projection that answers after that paint moves nothing painted: its new
+commit rows go after everything the Conversation shows, in its order.
+A later first paint with the projection held, such as the Conversation shown again after
+another tab, places its commit rows among the discussion cards.
 During metadata refresh it can set `cached_only: true` to read the held projection.
 Provider work uses a separate slot after that refresh settles.
 A transient provider failure can return a verified prefix with `retryable: true`. The

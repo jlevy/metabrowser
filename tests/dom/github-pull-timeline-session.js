@@ -1,5 +1,5 @@
-// A selected Conversation places the commits the server holds at its first paint, and
-// commits that arrive once it has painted after everything it painted.
+// A selected Conversation paints before its optional GitHub projection, which then goes
+// after everything painted; a first paint with the projection already held places it.
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -214,10 +214,9 @@ function order(body) {
 }
 
 async function run() {
-  const { mountPullPage, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS, DESCRIPTION_HOLD_MS } =
-    await import(
-      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
-    );
+  const { mountPullPage, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+  );
   const commit = {
     kind: "commit",
     oid: firstCommit,
@@ -236,61 +235,57 @@ async function run() {
   ];
   const cachedOnly = { number: 7, record_revision: firstRevision, cached_only: true };
 
-  // Nothing held: the conversation paints without commits, and the provider's arrive after
-  // everything it painted, in their order, with every painted node where it was.
-  const missed = mount(mountPullPage, fixture());
+  // The conversation paints at once, reading no commits; the commits that answer once it is
+  // shown go after everything it painted, in their order, with every painted node in place.
+  const session = mount(mountPullPage, fixture());
+  await session.handle.ready;
   await settle();
-  assert.equal(missed.body().children.length, 0, "the first paint waits for the held commits");
-  assert.deepEqual(missed.timelines[0].request, cachedOnly, "staging reads only held commits");
-  missed.timelines[0].answer("unavailable", []);
-  await settle();
-  await missed.handle.ready;
-  const body = missed.body();
-  const original = order(body);
-  const painted = [...body.children];
-  const description = body.children[0].querySelector(".metabrowser-kpress-host");
-  const focus = body.children[1].querySelector("a[href]");
-  assert.ok(description && focus, "the description's Markdown is in its first paint");
+  session.frame();
+  assert.equal(session.timelines.length, 0, "staging never starts a timeline read");
+  const placed = session.body();
+  const original = order(placed);
+  const painted = [...placed.children];
+  const heldDescription = placed.children[0].querySelector(".metabrowser-kpress-host");
+  const focus = placed.children[1].querySelector("a[href]");
+  assert.ok(heldDescription && focus, "the description's Markdown is in its first paint");
   document.activeElement = focus;
-  assert.ok(missed.markdown.includes(`review/${wideId}`));
-  assert.ok(missed.markdown.includes(`issue_comment/${wideId}`));
-  missed.handle.activate();
-  missed.frame();
-  assert.equal(missed.timelines.length, 1, "the useful Conversation paints first");
-  missed.frame();
-  const provider = missed.timelines[1];
+  assert.ok(session.markdown.includes(`review/${wideId}`));
+  assert.ok(session.markdown.includes(`issue_comment/${wideId}`));
+  session.handle.activate();
+  session.frame();
+  assert.equal(session.timelines.length, 0, "the useful Conversation paints first");
+  session.frame();
+  const [first] = session.timelines;
   // Commits join a conversation already shown: the age breathes, and nothing spins.
-  assert.equal(body.querySelector(".spinner"), null);
-  const age = missed.status().querySelector(".github-pull-freshness");
+  assert.equal(placed.querySelector(".spinner"), null);
+  const age = session.status().querySelector(".github-pull-freshness");
   assert.ok(age.classes.has("mb-refreshing"));
   assert.equal(age.getAttribute("aria-busy"), "true");
-  assert.deepEqual(provider.request, { number: 7, record_revision: firstRevision });
+  assert.deepEqual(first.request, { number: 7, record_revision: firstRevision });
   assert.ok(
-    missed.marks.indexOf("githubPull:conversationReady") <
-      missed.marks.lastIndexOf("timeline request"),
+    session.marks.indexOf("githubPull:conversationReady") <
+      session.marks.indexOf("timeline request"),
   );
-  provider.answer("partial", events);
+  first.answer("partial", events);
   await settle();
   assert.equal(age.getAttribute("aria-busy"), null, "the commits arrived");
-  const appended = order(body);
+  const appended = order(placed);
   assert.deepEqual(
     appended,
     [...original, "<img> First commit", "Last commit", "Some commits may be missing."],
     "late commits go after everything painted",
   );
-  assert.deepEqual(body.children.slice(0, painted.length), painted, "nothing painted moved");
+  assert.deepEqual(placed.children.slice(0, painted.length), painted, "nothing painted moved");
   assert.equal(document.activeElement, focus);
-  missed.handle.dispose();
+  assert.ok(session.marks.includes("githubPull:timelineReady"));
 
-  // Held commits: placed among the cards in provider order at the first paint itself.
-  const session = mount(mountPullPage, fixture());
+  // A first paint with the projection held places its commits among the cards, in provider
+  // order: here the Conversation painted again on a tab's return.
+  window.location.pathname = "/pull/7/checks";
+  session.handle.land({ tab: "checks" });
+  window.location.pathname = "/pull/7";
+  session.handle.land({ tab: "" });
   await settle();
-  const [first] = session.timelines;
-  assert.deepEqual(first.request, cachedOnly);
-  first.answer("partial", events);
-  await settle();
-  await session.handle.ready;
-  const placed = session.body();
   const interleaved = order(placed);
   assert.deepEqual(interleaved.slice(0, 8), [
     "body",
@@ -302,8 +297,7 @@ async function run() {
     "review/15",
     "Some commits may be missing.",
   ]);
-  const heldDescription = placed.children[0].querySelector(".metabrowser-kpress-host");
-  assert.ok(heldDescription);
+  assert.equal(placed.children[0].querySelector(".metabrowser-kpress-host"), heldDescription);
   assert.ok(placed.children[2].textContent.includes("committed 1d ago"));
   assert.doesNotMatch(placed.children[4].textContent, /committed/);
   const link = placed.children[2].querySelector("a[href]");
@@ -313,11 +307,9 @@ async function run() {
   assert.equal(link.getAttribute("target"), "_blank");
   assert.equal(link.getAttribute("rel"), "noopener noreferrer");
   assert.equal(link.children.at(0).getAttribute("data-external-kind"), "github");
-  assert.ok(session.marks.includes("githubPull:timelineReady"));
-  session.handle.activate();
   session.frame();
   session.frame();
-  assert.equal(session.timelines.length, 1, "held commits are not read again");
+  assert.equal(session.timelines.length, 1, "a held projection is not read again");
 
   // The last published result is still shown if this exact record starts refreshing.
   session.replace({ ...fixture(), refreshing: true });
@@ -363,28 +355,24 @@ async function run() {
   // ahead of metadata. A missed lookup is remembered throughout the refresh.
   for (const outcome of ["hit", "miss", "late-miss", "replaced"]) {
     const stale = mount(mountPullPage, fixture("stale"));
+    await stale.handle.ready;
     await settle();
+    assert.equal(stale.timelines.length, 0, "a staged stale page reads no commits");
+    stale.handle.activate();
+    stale.frame();
+    stale.frame();
     const [cached] = stale.timelines;
     assert.deepEqual(cached.request, cachedOnly);
+    assert.equal(stale.body().querySelector(".spinner"), null);
     if (outcome === "hit") {
       cached.answer("complete", [commit]);
       await settle();
-      await stale.handle.ready;
       assert.ok(stale.body().querySelector(".github-pull-commit"));
     } else if (outcome === "miss") {
       cached.answer("unavailable", []);
       await settle();
-      await stale.handle.ready;
       assert.deepEqual(order(stale.body()), original);
-    } else {
-      // A lookup still on its way past the first paint's bound paints without it.
-      stale.timer(DESCRIPTION_HOLD_MS);
-      await stale.handle.ready;
     }
-    stale.handle.activate();
-    stale.frame();
-    stale.frame();
-    assert.equal(stale.body().querySelector(".spinner"), null);
     // A page opened by a click asks for its stale record's refresh at once.
     stale.timer(0);
     stale.frame();
@@ -435,14 +423,12 @@ async function run() {
   // does not compete with metadata or leave its owning Conversation.
   for (const outcome of ["partial", "unavailable", "departed"]) {
     const transient = mount(mountPullPage, fixture());
-    await settle();
-    transient.timelines[0].answer("unavailable", []);
-    await settle();
     await transient.handle.ready;
+    await settle();
     transient.handle.activate();
     transient.frame();
     transient.frame();
-    const firstRead = transient.timelines[1];
+    const firstRead = transient.timelines[0];
     firstRead.answer(
       outcome === "partial" ? "partial" : "unavailable",
       [commit],
@@ -451,7 +437,7 @@ async function run() {
     );
     await settle();
     assert.ok(transient.hasTimer(TIMELINE_RETRY_MS));
-    assert.equal(transient.timelines.length, 2);
+    assert.equal(transient.timelines.length, 1);
     if (outcome === "departed") {
       window.location.pathname = "/pull/7/files";
       transient.handle.setTab("files");
@@ -469,7 +455,7 @@ async function run() {
       transient.replace({ ...fixture(), refreshing: true });
       transient.timer(SLOW_POLL_MS);
       await settle();
-      assert.equal(transient.timelines.length, 2);
+      assert.equal(transient.timelines.length, 1);
       assert.equal(
         transient.body().querySelector(".github-pull-commit")?.querySelector("a[href]"),
         commitLink,
@@ -479,14 +465,14 @@ async function run() {
       await settle();
     }
     transient.timer(TIMELINE_RETRY_MS);
-    assert.equal(transient.timelines.length, 3);
-    assert.deepEqual(transient.timelines[2].request, firstRead.request);
+    assert.equal(transient.timelines.length, 2);
+    assert.deepEqual(transient.timelines[1].request, firstRead.request);
     if (outcome === "partial") {
       assert.equal(
         transient.body().querySelector(".github-pull-commit")?.querySelector("a[href]"),
         commitLink,
       );
-      transient.timelines[2].answer("complete", [
+      transient.timelines[1].answer("complete", [
         { kind: "commit", oid: lastCommit, subject: "Recovered commit", committed_at: null },
         commit,
       ]);
@@ -502,7 +488,7 @@ async function run() {
         1,
       );
     } else {
-      transient.timelines[2].answer("unavailable", [], firstRevision, true);
+      transient.timelines[1].answer("unavailable", [], firstRevision, true);
       await settle();
     }
     assert.equal(transient.hasTimer(TIMELINE_RETRY_MS), false, "the retry budget is exhausted");
