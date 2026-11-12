@@ -39,6 +39,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -693,14 +694,13 @@ async def start_process_group(
 
     prepare_child_listing()
     # Here, on the spawning thread, never in a stop, which may be a signal handler.
-    launched = _launched_file(program, cwd=cwd, env=env)
+    launched = _launched_files(program, cwd=cwd, env=env)
     stop = _GROUP_STOP
     me = threading.get_ident()
     with stop.lock:
         if stop.requested:
             raise ProcessGroupsStoppedError
-        if launched is not None:
-            stop.programs.add(launched)
+        stop.programs.update(launched)
         stop.in_flight[me] = stop.in_flight.get(me, 0) + 1
     try:
         proc = await start()
@@ -713,14 +713,21 @@ async def start_process_group(
     return proc
 
 
-def _launched_file(program: str, *, cwd: Path | None, env: Mapping[str, str] | None) -> str | None:
-    """The file a spawn of *program* executes, every link resolved, as the kernel names it.
+def _launched_files(
+    program: str, *, cwd: Path | None, env: Mapping[str, str] | None
+) -> frozenset[str]:
+    """The files a spawn of *program* runs, every link resolved, as the kernel names them.
 
     Resolved as ``subprocess`` resolves it: a path with a directory part against *cwd*,
     which the child enters before it executes; a bare name against each directory of
     ``PATH`` in *env* (or this process's) in turn, each of which may itself be relative
-    to *cwd*. The first executable file wins. ``None`` when none is found, and the spawn
-    is then known only to the registry.
+    to *cwd*. The first executable file wins. Empty when none is found, and the spawn is
+    then known only to the registry.
+
+    On macOS a launch from ``/usr/bin`` may be an Apple developer-tool shim, as
+    ``/usr/bin/git`` is: within milliseconds it executes the tool of the selected
+    developer directory in the same process, which the kernel then names instead. That
+    tool is added as ``xcrun`` finds it.
     """
 
     base = os.fspath(cwd) if cwd is not None else os.getcwd()
@@ -731,8 +738,44 @@ def _launched_file(program: str, *, cwd: Path | None, env: Mapping[str, str] | N
     for candidate in candidates:
         path = os.path.join(base, candidate)
         if os.path.isfile(path) and os.access(path, os.X_OK):
-            return os.path.realpath(path)
-    return None
+            launched = os.path.realpath(path)
+            if sys.platform != "darwin" or os.path.dirname(launched) != _APPLE_SHIM_DIR:
+                return frozenset({launched})
+            developer_dir = (env if env is not None else os.environ).get("DEVELOPER_DIR")
+            tool = _apple_shim_tool(os.path.basename(launched), developer_dir)
+            return frozenset({launched} if tool is None else {launched, tool})
+    return frozenset()
+
+
+# Where Apple's developer-tool shims are, and how long ``xcrun`` gets to name the tool one
+# runs. It answered in about 10 ms (2026-11-12); the bound covers only one that hangs.
+_APPLE_SHIM_DIR: Final[str] = "/usr/bin"
+_XCRUN_TIMEOUT_S: Final[float] = 2.0
+
+
+@cache
+def _apple_shim_tool(name: str, developer_dir: str | None) -> str | None:
+    """The tool Apple's ``/usr/bin/<name>`` shim runs, as ``xcrun`` finds it, or ``None``.
+
+    Cached for the process, per developer directory, as :func:`git_executable` is.
+    """
+
+    env = {key: value for key, value in os.environ.items() if key != "DEVELOPER_DIR"}
+    if developer_dir is not None:
+        env["DEVELOPER_DIR"] = developer_dir
+    try:
+        found = subprocess.run(
+            ["/usr/bin/xcrun", "--find", name],
+            capture_output=True,
+            text=True,
+            timeout=_XCRUN_TIMEOUT_S,
+            env=env,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    path = found.stdout.strip()
+    return os.path.realpath(path) if found.returncode == 0 and path else None
 
 
 def _end_group_spawn(stop: _GroupStop, me: int, proc: asyncio.subprocess.Process | None) -> None:

@@ -896,3 +896,53 @@ def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
     assert os.path.realpath(target) in process_module._GROUP_STOP.programs
+
+
+def _apple_git() -> str | None:
+    """Apple's ``/usr/bin/git``, when it is a shim that hands over to a developer tool."""
+
+    if sys.platform != "darwin" or not os.path.exists("/usr/bin/git"):
+        return None
+    found = subprocess.run(
+        ["/usr/bin/xcrun", "--find", "git"], capture_output=True, text=True, check=False
+    )
+    return found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else None
+
+
+@pytest.mark.skipif(_apple_git() is None, reason="Apple's git shim is macOS-only")
+@pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
+def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``/usr/bin/git`` on macOS is a shim that execs the selected developer tool's Git.
+
+    Within milliseconds the kernel names that Git, not ``/usr/bin/git``, so a stop that
+    knew only the launch file would leave a stuck start of it once the shim had handed
+    over. The spawn records the tool ``xcrun`` finds as well.
+    """
+
+    tool = os.path.realpath(_apple_git() or "")
+    monkeypatch.setenv("PATH", f"/usr/bin{os.pathsep}{os.environ['PATH']}")
+    assert process_module.git_executable() == "/usr/bin/git"
+    held = _HeldSpawn(monkeypatch)
+    pid_file = tmp_path / "helper.pid"
+
+    async def scenario() -> bool:
+        task = asyncio.ensure_future(
+            run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        pid = held.procs[0].pid
+        deadline = time.monotonic() + 10
+        while process_module.executable(pid) != tool:
+            assert time.monotonic() < deadline, "the shim never handed over"
+            await asyncio.sleep(0.01)
+        process_module.stop_process_groups()
+        killed = await asyncio.to_thread(_group_gone_within, pid)
+        if not killed:
+            os.killpg(pid, signal.SIGKILL)
+        held.release.set()
+        await _end(task)
+        return killed
+
+    assert asyncio.run(asyncio.wait_for(scenario(), timeout=50))
