@@ -1776,9 +1776,29 @@ as one update, and Other stays last and neutral.
 A family’s color does not depend on which folder is open or which views are mounted, so
 a related visualization such as the Treemap agrees with the table without coordinating.
 
-The semantic table is the visual summary and the source of exact values.
-Every row names its category and reports absolute values and percentages; the colored
-fills need no separate circle or legend.
+The semantic table is the source of exact values, and a compact summary above it is what
+a folder shows first.
+That summary follows GitHub’s Languages box in this palette: directly under the
+population bars, a legend of the largest file-type families, each a dot in its color,
+its bold name, and its muted share.
+A caption naming the population the shares are of, such as “Share of Total (9,169
+files)”, labels the legend and the table for assistive technology only; on screen the
+bars and the Show ignored checkbox already say which population it is.
+The legend names at most five families (`LEGEND_TYPE_LIMIT`), from every group, ranked
+by the selected measure in the population the caption names, and only above the 1% share
+floor at which the table folds a row into **N more**, so every named family is also a
+row the table shows unfolded.
+It never names **No extension** or **Other types**, which are the files no family
+claims.
+Whatever the named families leave is one neutral **Other** entry, so the legend’s
+shares add up to the caption’s population.
+The dot is as tall as the population tracks above it and serves as their color key, and
+legend items wrap whole, so a dot never ends a line without its name.
+The table, with every group, family, and **N more** row, sits behind a **Details**
+toggle: the same section-disclosure trigger and bold label as an **N more** row.
+Details starts closed on each mount, keeps its state through every repaint of that
+mount, and is not saved as a preference.
+Every table row names its category and reports absolute values and percentages.
 Detailed breakdown fills do not become tab stops or add duplicate tooltips and are
 hidden from the accessibility tree.
 Labels never rely on color or place text on a category fill.
@@ -1844,9 +1864,9 @@ surface panels share an edge.
 
 The **File Overview** section begins expanded.
 It opens with one control row carrying the shared Files / Bytes measure and the **Show
-ignored** checkbox side by side, then a fixed three-row composition table, then the full
-type distribution beneath it.
-**Files** comes first and reports the unignored population immediately from the
+ignored** checkbox side by side, then a fixed three-row composition table, then the
+compact type summary beneath it, with the full type distribution behind its Details
+toggle. **Files** comes first and reports the unignored population immediately from the
 inventory snapshot. **Ignored** follows with the excluded population.
 Those two are disjoint.
 **Total** follows them, set off by a hairline, and is their sum.

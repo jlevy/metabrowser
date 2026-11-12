@@ -270,6 +270,17 @@ const VISIBLE_ROWS_PER_SUBSECTION = 10;
  */
 const MINIMUM_VISIBLE_SHARE = 1;
 
+/**
+ * How many types the compact summary names before the rest become Other.
+ *
+ * A reading bound, not a cost bound: the legend is at most this many short
+ * items plus Other whatever the folder holds, so there is no cost to measure.
+ * Five is what GitHub's Languages box shows, and the number the Overview was
+ * asked for: enough to say what a folder mostly is in a line or two, with
+ * Details below it for everything else.
+ */
+export const LEGEND_TYPE_LIMIT = 5;
+
 /** @param {ReadonlyArray<any>} rows @param {"files" | "size"} metric */
 function sortRows(rows, metric) {
   const primary = metric === "files" ? "files" : "bytes";
@@ -410,7 +421,7 @@ function buildRegistryRows(
   metric,
 ) {
   if (!population || !envelope.breakdown || !envelope.registry) {
-    return [];
+    return { rows: [], families: [] };
   }
   if (
     runtime.schemaVersion !== envelope.registry.schemaVersion ||
@@ -593,7 +604,73 @@ function buildRegistryRows(
       ),
     );
   }
-  return bounded;
+  return {
+    rows: bounded,
+    // Every populated family, before any group folds its tail into "N more":
+    // the legend ranks families across groups, so it needs the ones a group
+    // folded too.
+    families: populatedRows.filter((row) => row.kind === "family"),
+  };
+}
+
+/**
+ * The compact summary's legend: the folder's largest named types, then Other.
+ *
+ * The rule, from the data model:
+ *
+ * - The candidates are file-type families, from every group. No extension and
+ *   Other types are not candidates: they are the files no family claims, so
+ *   they have no name to put in a legend and no color of their own.
+ * - They rank by the selected measure, in the population the caption names,
+ *   with the order and tie-breaks of the Details table (`sortRows`).
+ * - A family is named only above `MINIMUM_VISIBLE_SHARE`, the floor below which
+ *   Details folds a row into "N more", and at most `LEGEND_TYPE_LIMIT` are. So
+ *   every named entry is also a row Details shows unfolded.
+ * - Whatever the named entries leave of the population is one neutral Other
+ *   entry, so the legend's values add up to the caption's.
+ *
+ * @param {ReadonlyArray<any>} families
+ * @param {"files" | "size"} metric
+ * @param {NonNullable<ReturnType<typeof selectPopulation>>} population
+ * @param {Intl.NumberFormat} percentFormatter
+ */
+export function buildFileTypeLegend(families, metric, population, percentFormatter) {
+  /** @param {{files: number, bytes: number}} row */
+  const measure = (row) => (metric === "files" ? row.files : row.bytes);
+  /** @param {{fileShare: number, byteShare: number}} row */
+  const share = (row) => (metric === "files" ? row.fileShare : row.byteShare);
+  const total = metric === "files" ? population.files : population.bytes;
+  const entries = sortRows(families, metric)
+    .filter((row) => share(row) > MINIMUM_VISIBLE_SHARE)
+    .slice(0, LEGEND_TYPE_LIMIT)
+    .map((row) =>
+      Object.freeze({
+        key: /** @type {string} */ (row.key),
+        label: /** @type {string} */ (row.label),
+        paletteKey: /** @type {string} */ (row.paletteKey),
+        kind: /** @type {"family" | "other"} */ ("family"),
+        value: measure(row),
+        percent: /** @type {string} */ (metric === "files" ? row.filePercent : row.bytePercent),
+        share: share(row),
+      }),
+    );
+  const rest = total - entries.reduce((sum, entry) => sum + entry.value, 0);
+  if (rest > 0) {
+    entries.push(
+      Object.freeze({
+        key: "legend:other",
+        label: "Other",
+        // The neutral, as on the population bars, where the files no family
+        // claims are painted the same way.
+        paletteKey: OTHER_KEY,
+        kind: /** @type {"family" | "other"} */ ("other"),
+        value: rest,
+        percent: formatPercent(rest, total, percentFormatter),
+        share: percentShare(rest, total),
+      }),
+    );
+  }
+  return Object.freeze(entries);
 }
 
 /**
@@ -621,6 +698,7 @@ export function buildFileTypeSummaryModel(
       ),
       metric: selectedMetric,
       rows: [],
+      legend: Object.freeze([]),
       files: 0,
       bytes: 0,
       scanning: envelope?.indexStatus === "scanning",
@@ -636,7 +714,7 @@ export function buildFileTypeSummaryModel(
   if (!envelope.breakdown || !runtime) {
     throw new TypeError("file-type summary requires File Rollup Format data");
   }
-  const rows = buildRegistryRows(
+  const { rows, families } = buildRegistryRows(
     envelope,
     showIgnored,
     population,
@@ -654,11 +732,13 @@ export function buildFileTypeSummaryModel(
   const base = {
     metric: selectedMetric,
     rows,
+    legend: buildFileTypeLegend(families, selectedMetric, population, percentFormatter),
     groups: groupDescriptors,
-    // The rows' percentages match exactly one of the tally rows above them, and which
-    // one follows Show ignored. The numbers are all consistent, so without this a reader
-    // has to compare two tables to tell two populations from a defect. The count is in
-    // the measure the rows show, so it is the number their shares add up to.
+    // The legend's and the rows' percentages match exactly one of the tally rows above
+    // them, and which one follows Show ignored. The count is in the measure the rows
+    // show, so it is the number their shares add up to. The view gives this to
+    // assistive technology as the legend's and the table's name; on screen the tally
+    // bars and the Show ignored checkbox already say which population it is.
     caption: `Share of ${showIgnored ? "Total" : "Files"} (${
       selectedMetric === "size" ? bytesText : filesText
     })`,

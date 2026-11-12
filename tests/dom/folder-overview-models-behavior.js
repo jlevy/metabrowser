@@ -599,6 +599,184 @@ async function importSource(relative) {
     JSON.stringify({ visibleCount: fatVisible.length }),
   );
 
+  // The compact summary's legend. Eight families in four groups, plus the two
+  // rollups of files no family claims, with Other types the largest bucket of
+  // all by files: the legend names families only.
+  const legendRuntime = {
+    schemaVersion: 4,
+    revision: 7,
+    fingerprint: "registry-seven",
+    groups: [
+      { id: "code", label: "Code" },
+      { id: "docs", label: "Documentation" },
+      { id: "data", label: "Data" },
+      { id: "other", label: "Other" },
+    ],
+    families: [
+      { id: "typescript", label: "TypeScript", groupId: "code", extensions: [".ts"] },
+      { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
+      { id: "javascript", label: "JavaScript", groupId: "code", extensions: [".js"] },
+      { id: "rust", label: "Rust", groupId: "code", extensions: [".rs"] },
+      { id: "markdown", label: "Markdown", groupId: "docs", extensions: [".md"] },
+      { id: "json", label: "JSON", groupId: "data", extensions: [".json"] },
+      { id: "yaml", label: "YAML", groupId: "data", extensions: [".yaml"] },
+      { id: "log", label: "Log files", groupId: "other", extensions: [".log"] },
+    ],
+  };
+  // [id, files, bytes, unignored files, unignored bytes]
+  const legendFamilies = [
+    ["typescript", 60, 200, 60, 200],
+    ["python", 33, 150, 33, 150],
+    ["javascript", 25, 120, 25, 120],
+    ["rust", 8, 5, 8, 5],
+    ["markdown", 150, 300, 150, 300],
+    ["json", 240, 100, 40, 20],
+    ["yaml", 170, 50, 170, 50],
+    ["log", 21, 25, 21, 25],
+  ];
+  const legendEnvelope = (families, noExtension, remaining) => {
+    const sum = (index) =>
+      [
+        ...families.map((family) => family[index]),
+        noExtension[index - 1],
+        remaining[index - 1],
+      ].reduce((total, value) => total + value, 0);
+    const familyEntry = ([id, files, bytes, unignoredFiles, unignoredBytes]) => ({
+      id,
+      metrics: metrics(files, bytes, unignoredFiles, unignoredBytes),
+      extensions: [
+        {
+          extension: legendRuntime.families.find((family) => family.id === id).extensions[0],
+          metrics: metrics(files, bytes, unignoredFiles, unignoredBytes),
+        },
+      ],
+    });
+    return modelModule.normalizeRollupEnvelope({
+      path: "",
+      index_status: "done",
+      truncated: false,
+      file_type_breakdown: {
+        schema: "file-type-breakdown-v1",
+        registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
+        metrics: metrics(sum(1), sum(2), sum(3), sum(4)),
+        groups: legendRuntime.groups
+          .map((group) => ({
+            id: group.id,
+            families: families
+              .filter(
+                ([id]) =>
+                  legendRuntime.families.find((family) => family.id === id).groupId === group.id,
+              )
+              .map(familyEntry),
+          }))
+          .filter((group) => group.families.length > 0),
+        no_extension: { metrics: metrics(...noExtension), filenames: [], others: null },
+        remaining_types: { metrics: metrics(...remaining), extensions: [], others: null },
+      },
+    });
+  };
+  const legendRollup = legendEnvelope(legendFamilies, [40, 20, 40, 20], [253, 30, 253, 30]);
+  const legendOf = (envelope, showIgnored, metric, runtime = legendRuntime) =>
+    modelModule.buildFileTypeSummaryModel(envelope, showIgnored, formatters, runtime, metric);
+  const legendKeys = (model) => model.legend.map((entry) => entry.key).join(",");
+  const byFilesLegend = legendOf(legendRollup, true, "files");
+  check(
+    "the legend names the five largest families across groups, then Other",
+    legendKeys(byFilesLegend) ===
+      "family:json,family:yaml,family:markdown,family:typescript,family:python,legend:other",
+    legendKeys(byFilesLegend),
+  );
+  check(
+    "the legend states each share as the Details rows do, and Other as the rest",
+    byFilesLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | ") ===
+      "JSON 24% | YAML 17% | Markdown 15% | TypeScript 6% | Python 3.3% | Other 34.7%",
+    byFilesLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | "),
+  );
+  check(
+    "the legend's values add up to the population the caption names",
+    byFilesLegend.legend.reduce((total, entry) => total + entry.value, 0) === byFilesLegend.files &&
+      byFilesLegend.caption === "Share of Total (1000 files)",
+    JSON.stringify({ files: byFilesLegend.files, caption: byFilesLegend.caption }),
+  );
+  check(
+    "No extension and Other types are never named, however large",
+    byFilesLegend.legend.every((entry) => entry.kind === "family" || entry.key === "legend:other"),
+  );
+  check(
+    "Other takes the neutral, as on the population bars",
+    byFilesLegend.legend.at(-1).paletteKey === "" &&
+      byFilesLegend.legend.slice(0, -1).every((entry) => entry.paletteKey === entry.key),
+  );
+  const unfoldedFamilies = new Set(
+    byFilesLegend.rows.filter((row) => row.kind === "family").map((row) => row.key),
+  );
+  check(
+    "every type the legend names is a row Details shows unfolded",
+    byFilesLegend.legend
+      .filter((entry) => entry.kind === "family")
+      .every((entry) => unfoldedFamilies.has(entry.key)),
+    [...unfoldedFamilies].join(","),
+  );
+  check(
+    "the legend follows the measure",
+    legendKeys(legendOf(legendRollup, true, "size")) ===
+      "family:markdown,family:typescript,family:python,family:javascript,family:json,legend:other",
+    legendKeys(legendOf(legendRollup, true, "size")),
+  );
+  const unignoredLegend = legendOf(legendRollup, false, "files");
+  check(
+    "the legend follows Show ignored",
+    legendKeys(unignoredLegend) ===
+      "family:yaml,family:markdown,family:typescript,family:json,family:python,legend:other" &&
+      unignoredLegend.legend.reduce((total, entry) => total + entry.value, 0) ===
+        unignoredLegend.files,
+    legendKeys(unignoredLegend),
+  );
+  const floorLegend = legendOf(
+    legendEnvelope(
+      [
+        ["python", 995, 995, 995, 995],
+        ["rust", 5, 5, 5, 5],
+      ],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ),
+    true,
+    "files",
+  );
+  check(
+    "a family at or under the share floor is Other, however much room is left",
+    floorLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | ") ===
+      "Python 99.5% | Other 0.5%",
+    floorLegend.legend.map((entry) => `${entry.label} ${entry.percent}`).join(" | "),
+  );
+  const wholeLegend = legendOf(
+    legendEnvelope([["python", 10, 10, 10, 10]], [0, 0, 0, 0], [0, 0, 0, 0]),
+    true,
+    "files",
+  );
+  check(
+    "named types that cover everything leave no Other",
+    legendKeys(wholeLegend) === "family:python" && wholeLegend.legend[0].percent === "100%",
+    legendKeys(wholeLegend),
+  );
+  const zeroBytesLegend = legendOf(
+    legendEnvelope([["python", 10, 0, 10, 0]], [0, 0, 0, 0], [0, 0, 0, 0]),
+    true,
+    "size",
+  );
+  check(
+    "a population of zero bytes has nothing to name by size",
+    zeroBytesLegend.state === "zero-bytes" && zeroBytesLegend.legend.length === 0,
+    `${zeroBytesLegend.state} ${legendKeys(zeroBytesLegend)}`,
+  );
+  check(
+    "a model with no totals has no legend",
+    modelModule.buildFileTypeSummaryModel(null, true, formatters, legendRuntime).legend.length ===
+      0,
+  );
+  check("the legend names at most five types", modelModule.LEGEND_TYPE_LIMIT === 5);
+
   if (failures.length) {
     console.error(`folder overview model FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
