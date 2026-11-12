@@ -748,6 +748,7 @@ corpus frozen at `7a02fed4`; exp-079 is the campaign summary.
 | H103 | Compressing for a loopback client costs event-loop time the client does not need. An opt-in uncompressed mode removes it. | Event-loop compression time per cold landing; cold ready | **Open** (`mb-e500`, reserved exp-076) |
 | H104 | The Pulls walk issues two requests a second for most of a minute after every load, even when steps only read the cache. Bulk preparation removes that traffic. | Background requests per minute after settle | **Open** (`mb-b7ru`, reserved exp-077) |
 | H105 | A first view-tab visit mounts the view at click time. Mounting at idle after the default view settles makes the first visit a toggle. | First view-tab visit painted-ready | **Open** (`mb-yyja`, reserved exp-078) |
+| H106 | The PR description paints as plain text and is then replaced by Markdown, and the full record and commit rows rebuild or insert into the painted Conversation. Caching Markdown by record revision, patching in place, and delivering commits with the record make the body final at first paint. | Body and section movement after first paint; no-input layout shift on PR landings and switches | **Open** (`mb-gsa0`, reserved exp-080) |
 
 ## Debt Carried into v0.10.0
 

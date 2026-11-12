@@ -231,6 +231,80 @@ Most movement comes from chrome that appears and disappears, not from content.
 | Palette results | rows replaced at about 110 ms | Pull request results interleave with file results when they arrive | Give the PR group a fixed position |
 | Main tab bar on load | 78 px | The Commits button is inserted after Git discovery (`main-tabs.js:101`) | Render it in the shell when the root is a repository |
 
+### Page Headers, Section by Section
+
+A second audit tracked the box of every named header and metadata section after each
+frame’s own layout, on the pull request page across ten PRs of different shapes (open,
+draft, merged, closed; with and without labels and stack membership; one- to three-line
+titles; long branch names) and on the file, folder, and commit headers.
+It used cold and warm landings, reloads, PR-to-PR by click, keyboard, and history, tab
+switches, and the Pulls list.
+
+**The pull request header is not a fixed layout.** Its height ranged from 137.6 to 202.6
+px, so the tab bar moved on 26 of 26 PR-to-PR switches, by −65 to +65 px:
+
+| Varies with | Contribution | Cause |
+| --- | --- | --- |
+| Title length | 30 px per line, 1 to 3 lines | No clamp on `.page-heading` (`static/styles.css:3806-3811`) |
+| State row wrap | 21, 26, 51, or 67 px | Long branch names wrap the row; the 26 px stack chip sits in a 21 px row |
+| Labels | 0 or 26 px | The labels row exists only when a PR has labels (`pull-page.js:3632-3641`) |
+
+The title, state, author, branches, ages, and labels all arrive in the first response
+and never moved after first paint.
+What still moves after first paint:
+
+| Shift | Movement | Layout shift | Cause |
+| --- | --- | --- | --- |
+| Stack chip arrives | Everything below the state row +5 px; author and branches 62.8–75.4 px right | 0.020–0.024, no input (3 of 4 cold in-stack loads; a race) | The chip paints from its own `/stacks` subscription (`pull-page.js:4651-4656`, `3483-3523`) |
+| Refresh button on Changes only | Status row 18 to 26 px; tab bar and body ±8 px on every switch into or out of Changes (20 of 20) | 0.002–0.004, with input | `canRefresh` is true on the Changes tab (`pull-page.js:1094-1098`) |
+| Freshness text rewritten | The head offer beside it moves 57–100 px sideways | none | Variable wording (`pull-page.js:1047-1048`, `1101-1118`) |
+| Stale record refreshed | State badge widens 10.4 px (Open to Merged) and the chip moves with it | none | The stale record paints first (`pull-page.js:3556-3567`) |
+| Description becomes Markdown | Body height changes by −3,522 to +2,901 px on 59 of 63 opens, revisits included | up to 0.049 without input on landings | `textBlock` paints plain text and then requests Markdown (`pull-page.js:3243-3266`); the Markdown map lives per page mount, so a revisit asks again |
+| Full record replaces the core preview | The “Discussion” placeholder vanishes, −135.5 px | none | The body is rebuilt (`pull-page.js:3851-3861`) |
+| Commit rows arrive | Rows inserted between painted cards, +36 to +2,196 px | 0.013 without input | `paintTimeline` inserts when `pull-timeline` answers (`pull-page.js:3750`) |
+
+The Pulls panel moves too: its status line is hidden until the list answers
+(`pulls-panel.js:3385`), so the connection line drops 24 px on every load and 42 then
+−18 px on a filter change; counts change the filter chips’ widths; and a selected row’s
+file tree grows when `pull-files` answers, 2 to 5 s after the click, pushing rows down
+with no input (layout shift up to 0.146, the largest measured without input).
+
+**Other headers.** The file header is a fixed 41 px and nothing in it moves after first
+paint; between files it moves by the view tab bar (±30 px), the print button (±32 px), a
+JSONL status badge (+58.8 px), and the scrollbar gutter (±11 px).
+The folder Overview’s first panel grows 143–437 px one frame after it paints on 5 of 7
+opens. The commit view paints header and diff together and nothing moves after first
+paint; between commits the diff’s top varies with the subject (30 or 60 px) and the
+message block. On every PR landing the Pulls tab button moves 78 px when the Commits
+button is inserted, and on commit landings the tree drops 37 px without input (0.010)
+when the filter bar hides.
+
+The rule for every section: its box is decided by the first paint and does not depend on
+data that arrives later.
+
+| Section | Layout rule |
+| --- | --- |
+| PR title | Reserve two lines and clamp to two, with the full title in a tooltip |
+| PR state row | One line at a fixed 26 px; branch chips truncate instead of wrapping; the stack chip has a reserved slot at the row’s end, or its membership comes with the pull envelope |
+| State badge | Minimum width of the widest state |
+| Quiet row and labels | One line each, truncating; labels in a row that always exists |
+| Status row | Fixed 26 px; the Refresh button’s slot exists on every tab, at the row’s end; freshness text in a fixed slot with tabular numerals |
+| Tab bar | Below a header of constant height, so it never moves between PRs or tabs |
+| Loading state | The same skeleton heights as the loaded header |
+| Description | Final at first paint: Markdown cached by record revision across mounts, with a short hold for a request already in flight; never plain text first |
+| Discussion and commit rows | Patch the body in place when the full record lands; deliver commits with the record or never insert between painted cards |
+| Pulls status lines and counts | Always present at fixed height; the window note shares the status line; counts get tabular numerals and a minimum width |
+| Pulls row file tree | Reserve its height at the click, or open only when its rows are known |
+| Scrollers | `scrollbar-gutter: stable` on the tree and preview panes |
+| File header | Always render the view tab bar; keep the print and badge slots |
+| Folder Overview panels | Skeletons at the final height, or hold first paint for the rollup arriving a frame later |
+
+Reserve heights in line units rather than pixels measured in Chrome, because WebKit’s
+font metrics differ slightly.
+WebKit has no `layout-shift` entry, so the gate is region movement: after the first
+frame that shows the subject, the header, state row, status row, tab bar, and body top
+move 0 px, and across a PR-to-PR swap the tab bar moves 0 px.
+
 ### Background Work Competes With Transitions
 
 Every page load starts a walk through the pull request list: 90 requests to

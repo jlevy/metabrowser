@@ -107,6 +107,8 @@ files.
   coalescing, fixed palette group order
 - [ ] PR page: join the click to the peek, same-frame list collapse and expand, hold
   Changes first paint for diffs in flight
+- [ ] PR page body final at first paint: Markdown cached by record revision, the body
+  patched in place when the full record lands, commits delivered with the record
 
 ### Phase 2: Instant Transitions
 
