@@ -717,6 +717,38 @@ source/account/record ownership.
 A range that overlaps supports no speed claim.
 Record rejected explanations with the same provenance as accepted ones.
 
+### Apparent Speed and Layout Stability
+
+The November 11, 2026 campaign (epic `mb-mpo0`) implements the ranking in
+[apparent UI performance for the native app](../../research/research-2026-11-11-ui-apparent-performance.md).
+Its work order is the phase order of
+[the implementation plan](plan-2026-11-11-ui-apparent-performance.md).
+Every round measures with the transition scenario against the exp-058 baseline on the
+corpus frozen at `7a02fed4`; exp-079 is the campaign summary.
+
+| # | Hypothesis | Metric that would show it | Status |
+| --- | --- | --- | --- |
+| H86 | Chrome that toggles (filter bar, view tab bar, scrollbar, print button, status rows, a late tab button) and header sections that fill in late move content during transitions. Reserving each region’s box at first paint removes the movement without slowing the transition. | Region movement and layout-shift value per transition; painted-ready as a guard | **Open** (`mb-4z69`, reserved exp-059) |
+| H87 | Stamped assets carry no `Cache-Control`, and plugin and KPress assets are `no-cache`, so every reload and relaunch revalidates them. Immutable headers on content-keyed URLs remove those requests. | Conditional requests per reload in Chrome and per relaunch in `WKWebView`; reload ready time | **Open** (`mb-3m3l`, reserved exp-060) |
+| H88 | A commit revisit re-fetches its comparison, and git routes recompute on every call. A comparison cache by commit ID and a server memo by refs fingerprint make revisits and repeats cheap. | Requests and painted-ready on a commit revisit; server time of repeated git routes | **Open** (`mb-8a8g`, reserved exp-061) |
+| H89 | Shell tools and KPress assets load one round trip at a time. Fetching them in parallel, in the same execution order, shortens the chain to tools ready and to a styled Markdown view. | Dependent request levels; time to shell tools ready; cold Markdown painted-ready | **Open** (`mb-pdul`, reserved exp-062) |
+| H90 | A Markdown revisit uploads its source and downloads its render again, and leaving Markdown discards the worker. A render cache keyed by content identity and a kept worker make revisits request-free. | Requests and uploaded bytes on a revisit; painted-ready | **Open** (`mb-mbd3`, reserved exp-063) |
+| H91 | Late prose fonts, animated programmatic tree reveals, uncoalesced held keys, and interleaved palette results shift content or render throwaway files. | Shift without input on a first document and a deep reveal; requests per six-key skim; palette row replacement | **Open** (`mb-n3r5`, reserved exp-064) |
+| H92 | A PR click reads the selected record two to four times, the list collapses the previous PR seconds later, and Changes paints before its rendered diffs. Joining the peek, collapsing in one frame, and holding first paint remove the duplicates and the shifts. | Selected-record reads per click; layout-shift value on PR selection and on Changes first paint | **Open** (`mb-6chh`, reserved exp-065) |
+| H93 | Uncapped background work inflates foreground latency 13–26x. A cap of two background requests and a low-priority server lane keep a cheap foreground route near its quiet latency. | Foreground route p50 and p95 under background warm-up | **Open** (`mb-16d7`, reserved exp-066) |
+| H94 | A click waits for the envelope, the worker, and the render in series. One prepare unit per subject, driven by keyboard, pointer-down, and hover, makes a predicted transition as fast as a revisit. | Cold-neighbor and hovered painted-ready; selected-subject requests (one cold, none prepared) | **Open** (`mb-fejb`, reserved exp-067) |
+| H95 | Main tabs destroy the preview on every switch. Retaining each tab’s surface makes a switch one frame with no request and no blank frame. | Main-tab switch painted-ready, blank frames, requests | **Open** (`mb-88mp`, reserved exp-068) |
+| H96 | The cold landing is about 23 dependent request levels deep. Concatenated startup scripts, preloads after them, and an early content request shorten it. | Request levels; cold and reload ready | **Open** (`mb-a1nu`, reserved exp-069) |
+| H97 | A hidden page never finishes its first view, because readiness waits on animation frames. Readiness that does not depend on visibility lets a prewarmed web view show ready content at once. | Show-to-ready in `WKWebView`; hidden first-view completion | **Open** (`mb-touu`, reserved exp-070) |
+| H98 | A file revisit rebuilds the pane. A detached LRU of surfaces with suspend and resume makes revisits a re-attach. | Revisit and history painted-ready; requests; retained memory | **Open** (`mb-d1uo`, reserved exp-071) |
+| H99 | View tabs hidden with `display: none` lose their layout, so a heavy view costs a full layout on every return. Keeping shown views laid out and chunking long source removes those tasks. | Heavy view-tab revisit painted-ready; longest task | **Open** (`mb-1bh1`, reserved exp-072) |
+| H100 | A Markdown mount is laid out twice: once forced in the stage and again after re-parenting. One layout per mount saves the second pass. | Layout passes over 10 ms per mount; painted-ready | **Open** (`mb-jak8`, reserved exp-073) |
+| H101 | Highlighting a large source file is one main-thread task of up to 103 ms. A worker removes it. | Longest task on large source files; time to highlighted | **Open** (`mb-y04k`, reserved exp-074) |
+| H102 | Renders are cached in memory only, so a restart pays cold renders again. A disk cache keyed by source digest returns them at warm cost. | Render route time after restart | **Open** (`mb-4ufj`, reserved exp-075) |
+| H103 | Compressing for a loopback client costs event-loop time the client does not need. An opt-in uncompressed mode removes it. | Event-loop compression time per cold landing; cold ready | **Open** (`mb-e500`, reserved exp-076) |
+| H104 | The Pulls walk issues two requests a second for most of a minute after every load, even when steps only read the cache. Bulk preparation removes that traffic. | Background requests per minute after settle | **Open** (`mb-b7ru`, reserved exp-077) |
+| H105 | A first view-tab visit mounts the view at click time. Mounting at idle after the default view settles makes the first visit a toggle. | First view-tab visit painted-ready | **Open** (`mb-yyja`, reserved exp-078) |
+
 ## Debt Carried into v0.10.0
 
 v0.10.0 shipped with a measured regression on one corpus shape, knowingly and with the

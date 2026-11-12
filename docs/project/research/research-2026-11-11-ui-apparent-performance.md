@@ -480,11 +480,15 @@ later change is measured in `WKWebView` as well as Chrome.
 
 ## Next Steps
 
-- [ ] Review the ranking and the suggested order
-- [ ] File beads for the accepted items, grouped by the three phases
+- [x] Review the ranking and the suggested order
+- [x] File beads for the accepted items, grouped by the three phases: epic `mb-mpo0`,
+  planned in
+  [instant transitions and stable layout](../specs/active/plan-2026-11-11-ui-apparent-performance.md),
+  with hypotheses H86–H105 in
+  [the load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md#apparent-speed-and-layout-stability)
 - [ ] Add a stateful-navigation scenario to `explorations/performance-loop` that records
   the counts above (blank frames, region movement, revisit requests) in Chrome and in a
-  `WKWebView` harness
+  `WKWebView` harness (`mb-4z4u`)
 
 ## Methodology
 
