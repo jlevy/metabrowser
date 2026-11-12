@@ -9,7 +9,8 @@ manifest can know: it must be one letter, and not a key the shell reserves every
 :func:`check_view_keys` judges a kind's merged view list, which spans manifests: a key
 the shell reserves for that kind, or one an earlier view already holds, is dropped from
 the later view. The server serves what it returns, and ``metab --doctor`` and
-``tests/test_keymap.py`` report what it drops.
+``tests/test_keymap.py`` report what it drops. Last, :func:`live_view_keys` removes
+every key from a served list that kept fewer than two views, since one view has no tab.
 
 This module imports nothing beyond the standard library, so the manifest loader and
 ``metab --doctor`` can use it without loading content classification or the server.
@@ -88,18 +89,34 @@ def view_key_error(key: str) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class ViewKeyProblem:
-    """A declared view key the merged list dropped, and why."""
+    """A declared view key the merged list dropped, and why.
+
+    *holder* is the id of the earlier view that keeps the key when the key is a
+    duplicate, and None when the key was dropped for itself.
+    """
 
     kind: str
     view_id: str
     key: object
     reason: str
+    holder: str | None = None
 
-    def __str__(self) -> str:
+    def describe(self, holder_plugin: str | None = None) -> str:
+        """Say which key was dropped and why, naming the holder's plugin when given."""
+        reason = self.reason if self.holder is None else _held_by(self.holder, holder_plugin)
         return (
             f"view {self.view_id!r} of kind {self.kind!r} declares key {self.key!r}, "
-            f"{self.reason}; the view is served without a key"
+            f"{reason}; the view is served without a key"
         )
+
+    def __str__(self) -> str:
+        return self.describe()
+
+
+def _held_by(view_id: str, plugin: str | None = None) -> str:
+    """The reason a duplicate key gives: the earlier view, and its plugin, hold it."""
+    owner = f" (plugin {plugin!r})" if plugin is not None else ""
+    return f"but view {view_id!r}{owner} already holds it"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,14 +146,38 @@ def check_view_keys(kind: str, views: Iterable[Mapping[str, Any]]) -> ViewKeyChe
         key = entry["key"]
         view_id = str(entry.get("id", "?"))
         reason = _key_reason(key, kind) if isinstance(key, str) else "is not one letter a-z"
+        holder: str | None = None
         if reason is not None:
             reason = f"which {reason}"
         elif key.lower() in holders:
-            reason = f"but view {holders[key.lower()]!r} already holds it"
+            holder = holders[key.lower()]
+            reason = _held_by(holder)
         if reason is not None:
             del entry["key"]
-            problems.append(ViewKeyProblem(kind=kind, view_id=view_id, key=key, reason=reason))
+            problems.append(
+                ViewKeyProblem(kind=kind, view_id=view_id, key=key, reason=reason, holder=holder)
+            )
             continue
         entry["key"] = key.lower()
         holders[key.lower()] = view_id
     return ViewKeyCheck(views=out, problems=problems)
+
+
+# The shell draws a view tab strip only for two or more views (``renderFile`` in
+# ``static/app.js``), so a key is live only in a list at least this long.
+MIN_TABBED_VIEWS: Final = 2
+
+
+def live_view_keys(views: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return *views* with every ``key`` removed when fewer than two views remain.
+
+    A view key selects a tab, and a lone view has none, so its key would advertise a
+    shortcut with no target. Filters that run after :func:`check_view_keys`, such as
+    the html kind's capability gate and a Git folder's Overview without a treemap, can
+    leave one view of a multi-view kind; every served view list ends here, so a served
+    key is always a live one. Removing it is not a problem to report: the manifest
+    declared it correctly, and the same kind serves it wherever two views remain.
+    """
+    if len(views) >= MIN_TABBED_VIEWS:
+        return views
+    return [{name: value for name, value in view.items() if name != "key"} for view in views]

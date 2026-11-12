@@ -55,7 +55,10 @@ All notable changes to Metabrowser are documented here.
   it. The manifest loader refuses a key that is not one letter or that the shell reserves
   everywhere: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. When two views of one kind
   share a key, the first keeps it; the later view, like a `pull-request` view that takes
-  the stack keys `N` or `P`, is served without a key, and `metab --doctor` reports it.
+  the stack keys `N` or `P`, is served without a key, and `metab --doctor` reports it,
+  naming the plugin that holds a shared key.
+  A view left alone, as HTML’s Source is without active content, has no tab and is
+  served without its key.
   `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.

@@ -234,9 +234,14 @@ reserved only for the `pull-request` kind.
 A key belongs to one view of a kind.
 When two views of one kind declare the same key, as two plugins that add views to one
 kind can, the first view in tab order keeps it, the later view is served without a key,
-and `metab --doctor` reports the plugin and view that lost it.
-`metab --show PATH` prints each view’s key, and `src/metabrowser/keymap.py` holds the
-reserved keys and the rule.
+and `metab --doctor` reports both plugins: the one whose view lost the key, and the one
+whose view holds it.
+A view that overrides another by id takes its place in tab order, and the report names
+the overriding plugin for it.
+A key is served only when the kind’s list has two or more views, since a single view has
+no tab: HTML served without active content keeps Source alone, and serves it without
+`S`. `metab --show PATH` prints each view’s key, and `src/metabrowser/keymap.py` holds
+the reserved keys and the rule.
 
 `render_runtime` documents whether the view is rendered by the client or by KPress.
 Printable views should also declare a `print_profile` appropriate to documents or source

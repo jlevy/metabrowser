@@ -16,7 +16,7 @@ from collections import Counter
 
 from metabrowser import server
 from metabrowser.file_kinds import VIEW_REGISTRY
-from metabrowser.keymap import check_view_keys, reserved_keys_for
+from metabrowser.keymap import check_view_keys, live_view_keys, reserved_keys_for
 from metabrowser.plugin_loader.manifest import merge_views
 
 
@@ -55,7 +55,29 @@ def test_a_duplicate_view_key_keeps_the_first_view_and_reports_the_second() -> N
 
     assert check.views == [{"id": "main", "key": "m"}, {"id": "alt"}]
     assert [(problem.view_id, problem.key) for problem in check.problems] == [("alt", "M")]
-    assert "view 'main'" in str(check.problems[0])
+    assert check.problems[0].holder == "main"
+    assert "but view 'main' already holds it" in str(check.problems[0])
+    assert "but view 'main' (plugin 'alpha') already holds it" in check.problems[0].describe(
+        "alpha"
+    )
+
+
+def test_a_key_dropped_for_itself_names_no_holder() -> None:
+    [problem] = check_view_keys("text", [{"id": "a", "key": "t"}]).problems
+
+    assert problem.holder is None
+    assert problem.describe("alpha") == str(problem)
+    assert "plugin" not in str(problem)
+
+
+def test_a_lone_view_is_served_without_a_key() -> None:
+    """One view draws no tab, so its key would name a shortcut with nothing to select."""
+    pair = [{"id": "overview", "key": "o"}, {"id": "treemap", "key": "m"}]
+
+    assert live_view_keys(pair) == pair
+    assert live_view_keys(pair[:1]) == [{"id": "overview"}]
+    assert pair[0] == {"id": "overview", "key": "o"}
+    assert live_view_keys([]) == []
 
 
 def test_a_contextual_shell_key_is_reserved_only_for_its_kinds() -> None:

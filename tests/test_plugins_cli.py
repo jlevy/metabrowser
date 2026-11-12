@@ -248,12 +248,47 @@ key = "M"
     [problem] = [line for line in result.stderr.splitlines() if "key" in line]
     assert "plugin 'beta'" in problem
     assert "view 'alt' of kind 'myk'" in problem
-    assert "view 'main' already holds it" in problem
+    assert "view 'main' (plugin 'alpha') already holds it" in problem
 
     json_result = _runner.invoke(_app, ["--doctor", "--json", "--plugins-dir", str(tmp_path)])
     assert json_result.exit_code == 1
     payload = json.loads(json_result.stdout)
     assert [p for p in payload["problems"] if "key" in p] == [problem.removeprefix("  • ")]
+
+
+def test_plugins_doctor_names_the_override_that_takes_a_built_in_views_key(
+    tmp_path: Path,
+) -> None:
+    """An operator plugin that overrides Markdown's Document view with ``S`` holds the key.
+
+    Source, the built-in markdown plugin's view, is the one served without a key, and the
+    report names both plugins: the one whose view lost the key, and the override that holds
+    it, not the built-in plugin whose Document entry it replaced.
+    """
+    _write_plugin(
+        tmp_path,
+        "steal",
+        """
+[plugin]
+name = "steal"
+sdk_version = "0.7"
+
+[[view]]
+kind = "markdown"
+id = "rendered"
+label = "Document"
+key = "s"
+default = true
+""",
+    )
+
+    result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert [line for line in result.stderr.splitlines() if "key" in line] == [
+        "  • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view"
+        " 'rendered' (plugin 'steal') already holds it; the view is served without a key"
+    ]
 
 
 def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Path) -> None:

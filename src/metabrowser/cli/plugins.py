@@ -265,8 +265,11 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
     The server serves the first view's key and drops a later duplicate or a key the
     shell reserves for the kind, without refusing the plugin, so this is where an
     author learns of it. The list is merged as the server merges it, from the built-in
-    registry and the discovered manifests in discovery order, and each problem names
-    the plugin whose view is served. The registry import is local for the reason
+    registry and the discovered manifests in discovery order. Each problem names the
+    plugin whose view lost its key and, for a duplicate, the plugin whose view holds
+    it. A view's plugin is the last manifest to declare its id, because an override
+    replaces the earlier entry, so a plugin that overrides a built-in view and takes a
+    letter is named as the holder. The registry import is local for the reason
     ``_cache_contract_problems`` gives: ``file_kinds`` loads the frontmatter parser that
     ``--version`` is tested not to load, and only ``--doctor`` needs the registry here.
     """
@@ -283,7 +286,9 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
         merged = merge_views(VIEW_REGISTRY.get(kind, []), plugin_views.get(kind, []))
         for problem in check_view_keys(kind, merged).problems:
             owner = owners.get((kind, problem.view_id))
-            problems.append(f"plugin '{owner}': {problem}" if owner else str(problem))
+            holder = owners.get((kind, problem.holder)) if problem.holder is not None else None
+            line = problem.describe(holder)
+            problems.append(f"plugin '{owner}': {line}" if owner else line)
     return problems
 
 
