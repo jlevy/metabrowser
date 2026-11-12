@@ -39,6 +39,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -515,8 +516,8 @@ class _GroupStop:
     fork. Nothing here waits for a spawn to *return*: the stop finds its groups from the
     kernel's list of this process's children (:mod:`metabrowser.git.children`), which
     has a child from its fork on, so a group whose spawn never returns, or fails after
-    the fork, is found all the same. *programs* names what a group spawn runs, which is
-    how a child that leads its own group is known to be one of them.
+    the fork, is found all the same. *programs* holds the files group spawns run, every
+    link resolved, which is how a child that leads its own group is known to be one.
 
     The lock is re-entrant because a stop may run in a signal handler, between two
     bytecodes of the main thread, while that thread holds it for a spawn's bookkeeping.
@@ -553,25 +554,65 @@ def kill_live_process_groups() -> None:
     """
 
     for pid, proc in tuple(_LIVE_PROCESS_GROUPS.items()):
-        if proc.returncode is not None:
+        if proc.returncode is not None or not _unreaped_child(pid):
             continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
+
+
+def _unreaped_child(pid: int) -> bool:
+    """Whether *pid* is, at this moment, a child of this process that is not yet reaped.
+
+    Asked just before a signal: a child that has not been reaped keeps its ID, so the
+    signal reaches its group and no one else's. ``WNOWAIT`` leaves an exited child for
+    its owner to reap, as before. Python before 3.13 has no ``waitid`` on macOS: there
+    the kernel's list of children is asked again, which holds a child until it is
+    reaped. Where neither answers, the caller's own record (the registry's
+    ``returncode``) is all there is.
+
+    What is left is the interval from this check to the signal. Measured 2026-11-12 on
+    a loaded M-series Mac, ``waitid``, ``getpgid``, and ``killpg`` in a row took 1.4 us
+    (median of 2,000) and 1.6 us (99th percentile); longer only if this thread is
+    descheduled between them. For the signal to reach anyone else, another thread
+    would have to reap the child in that interval, and the system give its ID to a new
+    process that has already made itself a group leader. macOS and Linux hand out IDs
+    in rising order and reuse one only after wrapping around, macOS at 99,999 and Linux
+    at its ``pid_max``; and a process forked from this one took 0.87 ms at the least
+    (median 1.08 ms, of 200) to lead a session of its own.
+    """
+
+    if not hasattr(os, "waitid"):
+        listed = child_pids()
+        return listed is None or pid in listed
+    try:
+        os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return False
+    return True
 
 
 def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
     """Refuse new process groups and kill every one this process started, then return.
 
     For a command that must stop at once and then exits without unwinding. It does not
-    need the event loop to make progress, and it returns within about *wait_s*:
+    need the event loop to make progress:
 
     * From now on :func:`start_process_group` refuses.
-    * Every group this process leads is killed: each child the kernel lists that leads
-      its own group and runs a program a group spawn ran, or that the registry holds,
-      whether or not its spawn ever returned.
-    * A spawn under way on another thread may not have forked yet. The stop waits for
-      it, up to *wait_s*, and looks again. One on this thread cannot fork any more: this
-      thread is here, and the caller exits next.
+    * Every group this process leads is killed: each child the kernel lists that the
+      registry holds, or that leads its own group and runs a file a group spawn ran,
+      whether or not its spawn ever returned (see :func:`_kill_owned_groups`).
+    * A spawn under way on another thread may not have forked yet, or may fork and
+      register while the stop first looks. The stop waits for those, up to *wait_s*,
+      and always looks once more at the end.
+
+    It returns after waiting at most *wait_s*, plus the two looks at this process's
+    children. A look is a few system calls per child, but on a Linux kernel without
+    per-thread child lists it reads every process's ``/proc`` entry.
+
+    A spawn on the calling thread gets no such wait: that thread is here, and the caller
+    exits next. If a signal handler interrupted that spawn between the fork and the
+    child's ``exec``, the child is still a copy of this interpreter, runs no file a
+    group spawn ran, and is not killed.
 
     Where the kernel cannot list children (:func:`metabrowser.git.children.child_pids`),
     the registry is all there is. Safe in a signal handler: it takes only a re-entrant
@@ -584,12 +625,11 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
         stop.requested = True
     _kill_owned_groups(stop)
     deadline = time.monotonic() + wait_s
-    waited = False
     while _spawns_elsewhere(stop, me) and time.monotonic() < deadline:
-        waited = True
         time.sleep(_SPAWN_POLL_S)
-    if waited:
-        _kill_owned_groups(stop)
+    # Always: a spawn elsewhere may have forked and registered during the first look,
+    # so that this check found nothing under way and nothing was waited for.
+    _kill_owned_groups(stop)
 
 
 def _spawns_elsewhere(stop: _GroupStop, me: int) -> bool:
@@ -600,12 +640,17 @@ def _spawns_elsewhere(stop: _GroupStop, me: int) -> bool:
 def _kill_owned_groups(stop: _GroupStop) -> None:
     """Kill each group this process leads, as the kernel lists its children.
 
-    A listed child had not been reaped, so its ID was still its own and its group's; one
-    reaped in the moment between the listing and the signal is the race left, as it is
-    for the registry's ``returncode``. Only a child that leads its own group is a
-    candidate, and only one the registry holds, or that runs a program a group spawn
-    ran, is killed. That leaves alone a child that is not ours to end, such as a browser
-    that the standard library starts in a session of its own.
+    A candidate is a child the registry holds, which leads its own group by how it was
+    started, unless its ``returncode`` says it was reaped; or a child that leads its own
+    group and runs a file a group spawn ran, which leaves alone a child that is not ours
+    to end, such as a browser the standard library starts in a session of its own.
+
+    The listing is only numbers, and another thread may reap a listed child at any time,
+    after which its ID is free. So each candidate is confirmed to be this process's
+    unreaped child (:func:`_unreaped_child`) immediately before it is signalled. What is
+    left is that interval, about a microsecond unless this thread is descheduled in it:
+    a child reaped then, and its ID given to a new process that has already made itself
+    a group leader, would take the signal; :func:`_unreaped_child` gives the numbers.
     """
 
     children = child_pids()
@@ -615,12 +660,16 @@ def _kill_owned_groups(stop: _GroupStop) -> None:
     with stop.lock:
         programs = frozenset(stop.programs)
     for pid in children:
-        if not _leads_its_own_group(pid):
-            continue
-        if pid not in _LIVE_PROCESS_GROUPS:
-            path = executable(pid)
-            if path is None or Path(path).name not in programs:
+        registered = _LIVE_PROCESS_GROUPS.get(pid)
+        if registered is not None:
+            if registered.returncode is not None:
                 continue
+        else:
+            path = executable(pid)
+            if path is None or path not in programs or not _leads_its_own_group(pid):
+                continue
+        if not _unreaped_child(pid):
+            continue
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
 
@@ -629,24 +678,29 @@ async def start_process_group(
     start: Callable[[], Awaitable[asyncio.subprocess.Process]],
     *,
     program: str,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> asyncio.subprocess.Process:
     """Spawn, with *start*, a process that leads its own group, and track that group.
 
     Every such spawn goes through here, Git's and another tool's run the same way, such
-    as ``gh``, so a stop can account for it. *program* is the path *start* runs; a stop
-    knows the group by it from the fork on (see :func:`stop_process_groups`). The group
-    is also registered for :func:`kill_live_process_groups` once the spawn returns, and
-    its owner calls :func:`forget_process_group` once it is reaped. Raises
+    as ``gh``, so a stop can account for it. *program*, *cwd*, and *env* are what *start*
+    launches with; the file that resolves to is how a stop knows the group from the
+    fork on (see :func:`stop_process_groups`). The group is also registered for
+    :func:`kill_live_process_groups` once the spawn returns, and its owner calls
+    :func:`forget_process_group` once it is reaped. Raises
     :class:`ProcessGroupsStoppedError`, and starts nothing, once a stop has begun.
     """
 
     prepare_child_listing()
+    # Here, on the spawning thread, never in a stop, which may be a signal handler.
+    launched = _launched_files(program, cwd=cwd, env=env)
     stop = _GROUP_STOP
     me = threading.get_ident()
     with stop.lock:
         if stop.requested:
             raise ProcessGroupsStoppedError
-        stop.programs.add(Path(program).name)
+        stop.programs.update(launched)
         stop.in_flight[me] = stop.in_flight.get(me, 0) + 1
     try:
         proc = await start()
@@ -657,6 +711,71 @@ async def start_process_group(
         raise
     _end_group_spawn(stop, me, proc)
     return proc
+
+
+def _launched_files(
+    program: str, *, cwd: Path | None, env: Mapping[str, str] | None
+) -> frozenset[str]:
+    """The files a spawn of *program* runs, every link resolved, as the kernel names them.
+
+    Resolved as ``subprocess`` resolves it: a path with a directory part against *cwd*,
+    which the child enters before it executes; a bare name against each directory of
+    ``PATH`` in *env* (or this process's) in turn, each of which may itself be relative
+    to *cwd*. The first executable file wins. Empty when none is found, and the spawn is
+    then known only to the registry.
+
+    On macOS a launch from ``/usr/bin`` may be an Apple developer-tool shim, as
+    ``/usr/bin/git`` is: within milliseconds it executes the tool of the selected
+    developer directory in the same process, which the kernel then names instead. That
+    tool is added as ``xcrun`` finds it.
+    """
+
+    base = os.fspath(cwd) if cwd is not None else os.getcwd()
+    if os.path.dirname(program):
+        candidates = [program]
+    else:
+        candidates = [os.path.join(directory, program) for directory in os.get_exec_path(env)]
+    for candidate in candidates:
+        path = os.path.join(base, candidate)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            launched = os.path.realpath(path)
+            if sys.platform != "darwin" or os.path.dirname(launched) != _APPLE_SHIM_DIR:
+                return frozenset({launched})
+            developer_dir = (env if env is not None else os.environ).get("DEVELOPER_DIR")
+            tool = _apple_shim_tool(os.path.basename(launched), developer_dir)
+            return frozenset({launched} if tool is None else {launched, tool})
+    return frozenset()
+
+
+# Where Apple's developer-tool shims are, and how long ``xcrun`` gets to name the tool one
+# runs. It answered in about 10 ms (2026-11-12); the bound covers only one that hangs.
+_APPLE_SHIM_DIR: Final[str] = "/usr/bin"
+_XCRUN_TIMEOUT_S: Final[float] = 2.0
+
+
+@cache
+def _apple_shim_tool(name: str, developer_dir: str | None) -> str | None:
+    """The tool Apple's ``/usr/bin/<name>`` shim runs, as ``xcrun`` finds it, or ``None``.
+
+    Cached for the process, per developer directory, as :func:`git_executable` is.
+    """
+
+    env = {key: value for key, value in os.environ.items() if key != "DEVELOPER_DIR"}
+    if developer_dir is not None:
+        env["DEVELOPER_DIR"] = developer_dir
+    try:
+        found = subprocess.run(
+            ["/usr/bin/xcrun", "--find", name],
+            capture_output=True,
+            text=True,
+            timeout=_XCRUN_TIMEOUT_S,
+            env=env,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    path = found.stdout.strip()
+    return os.path.realpath(path) if found.returncode == 0 and path else None
 
 
 def _end_group_spawn(stop: _GroupStop, me: int, proc: asyncio.subprocess.Process | None) -> None:
@@ -988,7 +1107,7 @@ async def spawn_git_process(
     # A group is registered as soon as it exists, so a stop that cannot unwind kills it
     # too, and a stop that begins while it is starting waits for it.
     spawning = asyncio.ensure_future(
-        start_process_group(spawn, program=exe) if own_group else spawn()
+        start_process_group(spawn, program=exe, cwd=work_cwd, env=env) if own_group else spawn()
     )
     try:
         return await asyncio.shield(spawning)

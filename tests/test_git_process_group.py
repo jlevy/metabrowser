@@ -15,13 +15,16 @@ import asyncio
 import contextlib
 import fcntl
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -281,10 +284,12 @@ class _HeldSpawn:
         self.started = threading.Event()
         self.reaped = threading.Event()
         self.release = threading.Event()
+        self.procs: list[asyncio.subprocess.Process] = []
         real_spawn = asyncio.create_subprocess_exec
 
         async def held_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
             proc = await real_spawn(*args, **kwargs)
+            self.procs.append(proc)
             self.started.set()
             if reap_first:
                 # The child ends and is reaped before the spawn returns to its caller.
@@ -621,3 +626,323 @@ def test_a_stop_kills_a_group_whose_spawn_never_registers(
     assert returncode == status, process.stderr.read() if process.stderr else ""
     assert gone, "the helper of a group whose spawn never registered outlived the stop"
     assert lock_free, "the fetch lock outlived the stop"
+
+
+# ── What a stop may signal ────────────────────────────────────────────────
+
+
+def _group_gone_within(pgid: int, seconds: float = 5.0) -> bool:
+    """Whether nothing of group *pgid* runs any more (a zombie member answers EPERM)."""
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except (ProcessLookupError, PermissionError):
+            return True
+        time.sleep(0.02)
+    return False
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_spawn_that_registers_during_the_first_look_is_still_killed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A spawn on another thread forks and registers between the stop's first look and
+    its check for spawns under way, so the check finds none and nothing waits.
+
+    The stop must still look once more before its caller exits. Before, it looked again
+    only when it had waited, and the Git, its helper and its fetch lock outlived it.
+    """
+
+    pid_file = tmp_path / "helper.pid"
+    lock_path = tmp_path / "fetch.lock"
+    lock_fd = _held_lock(lock_path)
+    fork = threading.Event()
+    ended = threading.Event()
+    real_spawn = asyncio.create_subprocess_exec
+
+    async def admitted_then_forked(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+        # Counted as under way from here, and forked only once the stop has looked.
+        await asyncio.to_thread(fork.wait, 30)
+        return await real_spawn(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", admitted_then_forked)
+    real_end = process_module._end_group_spawn
+
+    def ending(*args: Any) -> None:
+        real_end(*args)
+        ended.set()
+
+    monkeypatch.setattr(process_module, "_end_group_spawn", ending)
+    real_look = process_module._kill_owned_groups
+    looks: list[int] = []
+
+    def look(stop: process_module._GroupStop) -> None:
+        real_look(stop)
+        looks.append(1)
+        if len(looks) == 1:
+            fork.set()
+            assert ended.wait(30), "the spawn never registered"
+
+    monkeypatch.setattr(process_module, "_kill_owned_groups", look)
+
+    def serve() -> None:
+        async def fetch() -> None:
+            with contextlib.suppress(GitError):
+                await run_git(
+                    _alias_args(pid_file),
+                    cwd=tmp_path,
+                    policy=ACQUISITION_POLICY,
+                    pass_fds=(lock_fd,),
+                )
+
+        with contextlib.suppress(TimeoutError):
+            asyncio.run(asyncio.wait_for(fetch(), 40))
+
+    loop = threading.Thread(target=serve, daemon=True)
+    loop.start()
+    deadline = time.monotonic() + 30
+    while not process_module._GROUP_STOP.in_flight:
+        assert time.monotonic() < deadline, "the spawn was never admitted"
+        time.sleep(0.01)
+    try:
+        process_module.stop_process_groups()
+        os.close(lock_fd)  # Forked by now: from here only Git and its helper hold it.
+        lock_free = _lock_free_within(lock_path)
+    finally:
+        process_module.kill_live_process_groups()
+        loop.join(30)
+    helper = int(pid_file.read_text()) if pid_file.exists() and pid_file.read_text() else None
+    if helper is not None:
+        assert _gone_within(helper), "the helper outlived the stop"
+    assert lock_free, "the fetch lock outlived the stop"
+
+
+@pytest.mark.parametrize("entry", ["registered", "registered-reaped", "unregistered"])
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_child_reaped_after_the_listing_is_never_signalled(
+    entry: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another thread reaps a listed child before the stop signals it.
+
+    Its ID is then free, and a new process may lead a group by that ID; here one does,
+    running the same program. The stop must not signal it, whether the registry still
+    holds the child (``returncode`` not yet set, or set) or only the kernel listed it.
+    """
+
+    program = shutil.which("sleep")
+    assert program is not None
+    child = subprocess.Popen([program, "60"], start_new_session=True)
+    pid = child.pid
+    stop = process_module._GROUP_STOP
+    # The program, as a stop knew it before and as it knows it now.
+    stop.programs.update({Path(program).name, os.path.realpath(program)})
+    if entry != "unregistered":
+        stand_in = SimpleNamespace(pid=pid, returncode=-9 if entry == "registered-reaped" else None)
+        monkeypatch.setitem(
+            process_module._LIVE_PROCESS_GROUPS, pid, cast("asyncio.subprocess.Process", stand_in)
+        )
+    process_module.prepare_child_listing()
+    real_list = process_module.child_pids
+
+    def listed_then_reaped() -> list[int] | None:
+        listed = real_list()
+        if child.returncode is None:
+            assert listed is not None and pid in listed
+            child.kill()
+            child.wait()  # Reaped: the ID is free from here.
+        return listed
+
+    real_getpgid = os.getpgid
+    real_executable = process_module.executable
+    monkeypatch.setattr(process_module, "child_pids", listed_then_reaped)
+    # The replacement: a new group by the same ID, running the same program.
+    monkeypatch.setattr(os, "getpgid", lambda p: p if p == pid else real_getpgid(p))
+    monkeypatch.setattr(
+        process_module,
+        "executable",
+        lambda p: os.path.realpath(program) if p == pid else real_executable(p),
+    )
+    signalled: list[int] = []
+    monkeypatch.setattr(os, "killpg", lambda pgid, signum: signalled.append(pgid))
+    try:
+        process_module._kill_owned_groups(stop)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+    assert pid not in signalled
+
+
+def _git_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, launch: str, target: Path
+) -> None:
+    """Put a ``git`` whose launch path is *launch* (``bin/git``) first on ``PATH``."""
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").symlink_to(target)
+    monkeypatch.setenv("PATH", f"{launch}{os.pathsep}{os.environ['PATH']}")
+    process_module.git_executable.cache_clear()
+
+
+def _copy_of_git(tmp_path: Path, name: str) -> Path:
+    real = os.path.realpath(shutil.which("git") or "git")
+    copy = tmp_path / "real" / name
+    copy.parent.mkdir(exist_ok=True)
+    shutil.copyfile(real, copy)
+    copy.chmod(0o755)
+    return copy
+
+
+def _held_git_is_killed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> bool:
+    """Start an acquisition Git whose spawn never returns, stop, and say if it was killed."""
+
+    held = _HeldSpawn(monkeypatch)
+    pid_file = tmp_path / "helper.pid"
+
+    async def scenario() -> bool:
+        task = asyncio.ensure_future(
+            run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        process_module.stop_process_groups()
+        killed = await asyncio.to_thread(_group_gone_within, held.procs[0].pid)
+        if not killed:
+            os.killpg(held.procs[0].pid, signal.SIGKILL)
+        held.release.set()
+        await _end(task)
+        return killed
+
+    return asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+
+
+@pytest.fixture
+def fresh_git_lookup() -> Generator[None]:
+    """``git_executable`` is cached for the process: look it up again around the test."""
+
+    process_module.git_executable.cache_clear()
+    yield
+    process_module.git_executable.cache_clear()
+
+
+@pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
+def test_a_stop_knows_git_by_the_file_it_runs_under_another_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``git`` on ``PATH`` is a link to a binary of another name, as a versioned install is.
+
+    The kernel names the binary, not the link, so the stop matches the file the spawn
+    resolved to. Before, it compared names, ``git`` with ``git2.50``, and left the group.
+    """
+
+    target = _copy_of_git(tmp_path, "git2.50")
+    _git_on_path(tmp_path, monkeypatch, str(tmp_path / "bin"), target)
+    assert _held_git_is_killed(tmp_path, monkeypatch)
+
+
+@pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
+def test_a_stop_knows_git_launched_by_a_relative_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative ``PATH`` entry gives a relative launch path, resolved in Git's cwd."""
+
+    real = Path(os.path.realpath(shutil.which("git") or "git"))
+    monkeypatch.chdir(tmp_path)
+    _git_on_path(tmp_path, monkeypatch, "bin", real)
+    assert process_module.git_executable() == os.path.join("bin", "git")
+    assert _held_git_is_killed(tmp_path, monkeypatch)
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_stop_leaves_an_unrelated_program_of_the_same_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child named ``git`` that is another file is not one of the stop's groups.
+
+    Here it is a copy of Git at another path, started in a session of its own as the
+    standard library starts a browser. Before, any ``git`` matched by name and was killed.
+    """
+
+    other = _copy_of_git(tmp_path, "git")
+    unrelated = subprocess.Popen(
+        [str(other), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        assert _held_git_is_killed(tmp_path, monkeypatch)
+        assert unrelated.poll() is None, "the stop killed a program that only shares a name"
+    finally:
+        unrelated.kill()
+        unrelated.wait()
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """gh's spawn records the file its launch path resolves to, as Git's does."""
+
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    target = tmp_path / "real" / "gh2.50"
+    target.parent.mkdir()
+    target.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    target.chmod(0o755)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh").symlink_to(target)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
+    assert os.path.realpath(target) in process_module._GROUP_STOP.programs
+
+
+def _apple_git() -> str | None:
+    """Apple's ``/usr/bin/git``, when it is a shim that hands over to a developer tool."""
+
+    if sys.platform != "darwin" or not os.path.exists("/usr/bin/git"):
+        return None
+    found = subprocess.run(
+        ["/usr/bin/xcrun", "--find", "git"], capture_output=True, text=True, check=False
+    )
+    return found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else None
+
+
+@pytest.mark.skipif(_apple_git() is None, reason="Apple's git shim is macOS-only")
+@pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
+def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``/usr/bin/git`` on macOS is a shim that execs the selected developer tool's Git.
+
+    Within milliseconds the kernel names that Git, not ``/usr/bin/git``, so a stop that
+    knew only the launch file would leave a stuck start of it once the shim had handed
+    over. The spawn records the tool ``xcrun`` finds as well.
+    """
+
+    tool = os.path.realpath(_apple_git() or "")
+    monkeypatch.setenv("PATH", f"/usr/bin{os.pathsep}{os.environ['PATH']}")
+    assert process_module.git_executable() == "/usr/bin/git"
+    held = _HeldSpawn(monkeypatch)
+    pid_file = tmp_path / "helper.pid"
+
+    async def scenario() -> bool:
+        task = asyncio.ensure_future(
+            run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        pid = held.procs[0].pid
+        deadline = time.monotonic() + 10
+        while process_module.executable(pid) != tool:
+            assert time.monotonic() < deadline, "the shim never handed over"
+            await asyncio.sleep(0.01)
+        process_module.stop_process_groups()
+        killed = await asyncio.to_thread(_group_gone_within, pid)
+        if not killed:
+            os.killpg(pid, signal.SIGKILL)
+        held.release.set()
+        await _end(task)
+        return killed
+
+    assert asyncio.run(asyncio.wait_for(scenario(), timeout=50))

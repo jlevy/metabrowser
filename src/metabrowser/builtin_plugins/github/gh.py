@@ -264,7 +264,7 @@ async def _run(
     # A Ctrl-C, hangup, or closed stdin that cannot unwind kills Git's groups; gh's too,
     # including one whose spawn is under way when the stop begins.
     spawning = asyncio.create_task(
-        start_process_group(spawn, program=exe) if own_group else spawn()
+        start_process_group(spawn, program=exe, cwd=cwd, env=env) if own_group else spawn()
     )
     try:
         proc = await asyncio.shield(spawning)
