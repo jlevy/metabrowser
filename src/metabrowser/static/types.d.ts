@@ -3090,6 +3090,7 @@ declare global {
         label: string;
         values: Array<string>;
       }>;
+      GIT_COMPARISON_CACHE_BYTES?: number;
       GIT_DETAIL_CACHE_SIZE?: number;
       GIT_HISTORY_PAGE_CACHE_PAGES?: number;
       GIT_HISTORY_SEGMENT_REBASE_PX?: number;

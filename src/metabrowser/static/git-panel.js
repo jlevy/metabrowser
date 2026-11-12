@@ -25,6 +25,13 @@
   const SEGMENT_REBASE_PX = settings.GIT_HISTORY_SEGMENT_REBASE_PX || 8_000_000;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
+  // Kept commit comparisons, bounded by the length of their JSON. See settings.py for the
+  // measurement the default is set from.
+  const COMPARISON_CACHE_BYTES = settings.GIT_COMPARISON_CACHE_BYTES || 16 * 1024 * 1024;
+  // A comparison larger than this is shown and not kept: one must not push out every other.
+  const COMPARISON_ENTRY_BYTES = Math.floor(COMPARISON_CACHE_BYTES / 4);
+  // A full SHA-1 or SHA-256 commit ID: the one revision whose comparison cannot change.
+  const FULL_COMMIT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -113,6 +120,19 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
+  /**
+   * Answered comparisons, least recently used first, by the request that asked for them.
+   * Only a comparison named by full commit IDs is kept: its answer cannot change, while a
+   * ref name or HEAD names whatever it points at now. A revisit then mounts the diff with
+   * no request, where the comparison route took 88 to 141 ms each time
+   * (research-2026-11-11-ui-apparent-performance.md).
+   *
+   * @type {Map<string, {raw: unknown, bytes: number}>}
+   */
+  const comparisonCache = new Map();
+  let comparisonCacheBytes = 0;
+  // Moved by every clear, so an answer requested before a clear is not kept after it.
+  let comparisonGeneration = 0;
   // Commits the server answered `commit_not_found` for: the repository does not have
   // them, which is not a failed request. Bounded like the detail cache.
   /** @type {Set<string>} */
@@ -831,6 +851,114 @@
   }
 
   /**
+   * The key a comparison request is kept under, or null when its answer can change.
+   *
+   * The key is the request's own query, so every option the request sends is part of it;
+   * what else the answer depends on, the served repository and the build, is the page's
+   * own and does not change while it is open.
+   *
+   * @param {Record<string, string>} params
+   * @returns {string | null}
+   */
+  function comparisonCacheKey(params) {
+    const revision = params.revision;
+    if (typeof revision !== "string" || !FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    const names = Object.keys(params).sort();
+    return new URLSearchParams(names.map((name) => [name, String(params[name])])).toString();
+  }
+
+  /**
+   * The kept answer for *key*, marked most recently used, or undefined.
+   *
+   * @param {string} key
+   */
+  function keptComparison(key) {
+    const kept = comparisonCache.get(key);
+    if (kept) {
+      comparisonCache.delete(key);
+      comparisonCache.set(key, kept);
+    }
+    return kept;
+  }
+
+  /**
+   * Keep *raw* under *key*, evicting the least recently used answers past the bound.
+   *
+   * The bound is on the answer's JSON length, which is what it cost to receive and, in V8,
+   * 1.0 to 1.5 times what the parsed answer holds (measured 2026-11-11 on answers of 28 KB,
+   * 203 KB, and 3.3 MB). Measuring it costs under a millisecond for a 203 KB answer.
+   *
+   * @param {string} key
+   * @param {unknown} raw
+   */
+  function keepComparison(key, raw) {
+    let bytes;
+    try {
+      bytes = JSON.stringify(raw)?.length ?? 0;
+    } catch {
+      return;
+    }
+    const previous = comparisonCache.get(key);
+    if (previous) {
+      comparisonCache.delete(key);
+      comparisonCacheBytes -= previous.bytes;
+    }
+    if (bytes > COMPARISON_ENTRY_BYTES) {
+      return;
+    }
+    comparisonCache.set(key, { raw, bytes });
+    comparisonCacheBytes += bytes;
+    for (const [oldest, entry] of comparisonCache) {
+      if (comparisonCacheBytes <= COMPARISON_CACHE_BYTES) {
+        break;
+      }
+      comparisonCache.delete(oldest);
+      comparisonCacheBytes -= entry.bytes;
+    }
+  }
+
+  function clearComparisonCache() {
+    comparisonCache.clear();
+    comparisonCacheBytes = 0;
+    comparisonGeneration += 1;
+  }
+
+  /**
+   * One revision's comparison: the kept answer, or a request whose answer is kept.
+   *
+   * A kept answer resolves at once, and the caller's claim checks after each await still
+   * decide whether it is shown, exactly as for an answer that arrived over the network.
+   *
+   * @param {MetabrowserPublicSdk} pluginSdk
+   * @param {string} revision
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<unknown>}
+   */
+  function fetchComparison(pluginSdk, revision, signal) {
+    const params = { revision };
+    const key = comparisonCacheKey(params);
+    const kept = key === null ? undefined : keptComparison(key);
+    return measureAsync(
+      "gitRevision:comparisonData",
+      () => {
+        if (kept) {
+          return Promise.resolve(kept.raw);
+        }
+        const generation = comparisonGeneration;
+        return pluginSdk.fetchPluginData("diff", "comparison", params, { signal }).then((raw) => {
+          if (key !== null && generation === comparisonGeneration) {
+            keepComparison(key, raw);
+          }
+          return raw;
+        });
+      },
+      { revision, kept: kept !== undefined },
+    );
+  }
+
+  /**
    * Start the independent diff work for one revision.
    *
    * @param {string} revision
@@ -843,19 +971,10 @@
           revision,
         })
       : Promise.resolve();
-    const comparison = pluginSdk?.fetchPluginData
-      ? measureAsync(
-          "gitRevision:comparisonData",
-          () =>
-            pluginSdk.fetchPluginData(
-              "diff",
-              "comparison",
-              { revision },
-              { signal: controller?.signal },
-            ),
-          { revision },
-        )
-      : undefined;
+    const comparison =
+      typeof pluginSdk?.fetchPluginData === "function"
+        ? fetchComparison(pluginSdk, revision, controller?.signal)
+        : undefined;
     // Speculative work may be replaced before the diff view awaits it. Attach
     // a rejection handler immediately while preserving the original promise
     // for the view's existing error path. The assets can fail too: the diff
@@ -2426,9 +2545,14 @@
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
+    // A comparison names no refs, but a served folder's answer also
+    // reads its attributes and configuration, which this panel cannot
+    // see change; a refresh is the reader's way to ask again, so it
+    // asks again for both.
     if (!options.preserveDetail) {
       detailCache.clear();
       missingRevisions.clear();
+      clearComparisonCache();
     }
     state.loading = true;
     renderPanel();
@@ -2533,6 +2657,7 @@
     state = emptyState();
     detailCache.clear();
     missingRevisions.clear();
+    clearComparisonCache();
     refusedRevision = null;
     lastSelection = null;
     refColors = new Map();
@@ -2651,6 +2776,14 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      beginDiffPreparation,
+      clearComparisonCache,
+      comparisonCacheKey,
+      comparisonCacheStats: () => ({
+        bytes: comparisonCacheBytes,
+        entries: comparisonCache.size,
+        keys: [...comparisonCache.keys()],
+      }),
       teardown,
       ensurePageLoaded,
       emptyState,

@@ -379,6 +379,8 @@ sandbox.METABROWSER_SETTINGS = {
   GIT_HISTORY_SEGMENT_REBASE_PX: 220,
   GIT_HOVER_DEBOUNCE_MS: 5,
   GIT_DETAIL_CACHE_SIZE: 3,
+  // Four answers of about 930 bytes fit and a fifth evicts; one over 1,000 bytes is not kept.
+  GIT_COMPARISON_CACHE_BYTES: 4000,
 };
 
 const openedPaths = [];
@@ -1730,6 +1732,9 @@ async function run() {
   {
     internals.setStateForTests(internals.emptyState());
     responses.clear();
+    // This block counts preparation requests, so it starts with no comparison kept from
+    // the commits earlier blocks opened.
+    internals.clearComparisonCache();
     const container = document.getElementById("tab-git");
     appendTestPage(
       [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
@@ -1902,23 +1907,29 @@ async function run() {
     rows[2].dispatch("mouseleave");
 
     // A file claiming the pane leaves selectedId intact, but its claim
-    // invalidates the Git selection. Returning must prepare and reopen it.
+    // invalidates the Git selection. Returning must prepare and reopen it,
+    // and the comparison it prepares is the one kept for the commit ID.
     sandbox.MetabrowserShell.claimPreview("file");
     const reopenComparisons = comparisonFetches.length;
     const reopenMounts = renderedDiffRevisions.length;
+    const reopenLabels = measuredLabels.length;
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assertEqual(
+    assertTrue(
       "prepare: another preview owner permits the same selected revision to prepare",
+      measuredLabels.slice(reopenLabels).includes("gitRevision:comparisonData"),
+    );
+    assertEqual(
+      "prepare: that preparation reads the kept comparison instead of asking again",
       comparisonFetches.length,
-      reopenComparisons + 1,
+      reopenComparisons,
     );
     await internals.selectCommit(SHA_E);
     assertEqual(
-      "prepare: reopening joins the comparison prepared after another owner",
+      "prepare: reopening joins the preparation made after another owner",
       comparisonFetches.length,
-      reopenComparisons + 1,
+      reopenComparisons,
     );
     assertEqual(
       "prepare: reopening mounts the selected revision",
@@ -2473,11 +2484,17 @@ async function run() {
     );
     sandbox.metabrowser.getRegisteredView = originalView;
     const comparisonsBefore = comparisonFetches.length;
+    const mountsBefore = renderedDiffRevisions.length;
     await internals.selectCommit(mountedRevision);
     assertEqual(
-      "cross-owner: returning same selected Git revision prepares again",
+      "cross-owner: returning same selected Git revision mounts its diff again",
+      renderedDiffRevisions.length,
+      mountsBefore + 1,
+    );
+    assertEqual(
+      "cross-owner: the remount reads the comparison kept for the commit ID",
       comparisonFetches.length,
-      comparisonsBefore + 1,
+      comparisonsBefore,
     );
     assertContains(
       "cross-owner: returning Git renders its commit",
@@ -3252,6 +3269,188 @@ async function run() {
     await tick();
     assertContains("left commit: the newer preview stays", previewHtml, "the reader moved on");
     freshnessController = null;
+  }
+
+  // ── Kept comparisons ───────────────────────────────────────
+  // A comparison named by a full commit ID cannot change, so a revisit mounts its diff
+  // from the kept answer and asks for nothing. Any other name is asked for every time,
+  // the bound is on bytes, a kept answer still waits on the pane's claim, and a clear
+  // keeps nothing that was in flight when it ran.
+  {
+    internals.setStateForTests(internals.emptyState());
+    internals.clearComparisonCache();
+    const keyOf = internals.comparisonCacheKey;
+    const kept = () => internals.comparisonCacheStats();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "kept: a full SHA-1 commit ID is a key",
+      keyOf({ revision: SHA_A }),
+      `revision=${SHA_A}`,
+    );
+    assertTrue("kept: a full SHA-256 commit ID is a key", keyOf({ revision: "ab".repeat(32) }));
+    for (const name of [
+      "HEAD",
+      "main",
+      "refs/heads/main",
+      SHA_A.slice(0, 7),
+      SHA_A.toUpperCase(),
+      `${SHA_A}^`,
+      "",
+    ]) {
+      assertEqual(
+        `kept: ${JSON.stringify(name)} names what it points at now, so it is no key`,
+        keyOf({ revision: name }),
+        null,
+      );
+    }
+    assertEqual(
+      "kept: every option the request sends is in its key",
+      keyOf({ revision: SHA_A, file: "a.txt" }),
+      `file=a.txt&revision=${SHA_A}`,
+    );
+
+    const revisitA = "71".repeat(20);
+    const revisitB = "72".repeat(20);
+    for (const revision of [revisitA, revisitB]) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], `kept ${revision.slice(0, 2)}`),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    comparisonResponder = async (revision) => ({ comparison_id: revision, answer: {} });
+    const askedBefore = comparisonFetches.length;
+    await internals.selectCommit(revisitA);
+    const firstAnswer = renderedDiffContexts.at(-1)?.raw;
+    await internals.selectCommit(revisitB);
+    await internals.selectCommit(revisitA);
+    assertEqual(
+      "kept: two commits and a revisit ask for two comparisons",
+      comparisonFetches.length,
+      askedBefore + 2,
+    );
+    assertEqual("kept: the revisit mounts its commit", renderedDiffRevisions.at(-1), revisitA);
+    assertTrue(
+      "kept: the revisit mounts the answer kept for it",
+      renderedDiffContexts.at(-1)?.raw === firstAnswer && firstAnswer !== undefined,
+    );
+    assertContains("kept: the revisit shows its commit", previewHtml, "kept 71");
+
+    const symbolicBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation("HEAD", null).comparison;
+    await internals.beginDiffPreparation("HEAD", null).comparison;
+    assertEqual("kept: HEAD is asked for every time", comparisonFetches.length, symbolicBefore + 2);
+    assertEqual(
+      "kept: nothing is kept for HEAD",
+      kept().keys.some((key) => key.includes("HEAD")),
+      false,
+    );
+
+    // A kept answer resolves at once, but the claim still decides what is shown: a file
+    // taking the pane while the diff renderer loads leaves the file on screen.
+    const originalAssets = sandbox.metabrowser.ensureKindAssets;
+    /** @type {() => void} */
+    let releaseAssets = () => {};
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = () => resolve(undefined);
+      });
+    const mountsBefore = renderedDiffRevisions.length;
+    const askedBeforeSuperseded = comparisonFetches.length;
+    const superseded = internals.selectCommit(revisitB);
+    for (let turn = 0; turn < 4; turn += 1) {
+      await tick();
+    }
+    const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
+    sandbox.MetabrowserShell.renderPreviewHtml("<div>a file took the pane</div>", fileClaim);
+    releaseAssets();
+    await superseded;
+    sandbox.metabrowser.ensureKindAssets = originalAssets;
+    assertEqual(
+      "kept: a superseded selection mounts no diff",
+      renderedDiffRevisions.length,
+      mountsBefore,
+    );
+    assertContains("kept: the newer owner's pane stays", previewHtml, "a file took the pane");
+    assertEqual(
+      "kept: the superseded selection asked for nothing",
+      comparisonFetches.length,
+      askedBeforeSuperseded,
+    );
+
+    // The bound is bytes. Four answers of about 930 bytes fit in 4,000; a fifth evicts the
+    // least recently used, which a read refreshes; one over a quarter is shown, not kept.
+    internals.clearComparisonCache();
+    const padded = new Map();
+    comparisonResponder = async (revision) => ({
+      comparison_id: "x",
+      padding: "p".repeat(padded.get(revision) ?? 0),
+    });
+    const sized = [1, 2, 3, 4, 5, 6].map((index) => `8${index}`.repeat(20));
+    for (const revision of sized) {
+      padded.set(revision, 900);
+    }
+    const large = "89".repeat(20);
+    padded.set(large, 1200);
+    for (const revision of sized.slice(0, 4)) {
+      await internals.beginDiffPreparation(revision, null).comparison;
+    }
+    assertEqual("kept: four answers fit", kept().entries, 4);
+    assertTrue("kept: their bytes are counted", kept().bytes > 3600 && kept().bytes <= 4000);
+    const readBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation(sized[0], null).comparison;
+    assertEqual("kept: a kept answer is read, not asked for", comparisonFetches.length, readBefore);
+    await internals.beginDiffPreparation(sized[4], null).comparison;
+    assertEqual("kept: a fifth answer keeps the bound", kept().entries, 4);
+    assertTrue(
+      "kept: the least recently used answer is the one evicted",
+      !kept().keys.includes(`revision=${sized[1]}`) && kept().keys.includes(`revision=${sized[0]}`),
+      JSON.stringify(kept().keys),
+    );
+    assertTrue("kept: the total stays within the bound", kept().bytes <= 4000);
+    const largeBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation(large, null).comparison;
+    await internals.beginDiffPreparation(large, null).comparison;
+    assertEqual(
+      "kept: an answer over a quarter of the bound is asked for each time",
+      comparisonFetches.length,
+      largeBefore + 2,
+    );
+    assertEqual("kept: and it pushes nothing out", kept().entries, 4);
+
+    // A failed request keeps nothing.
+    comparisonResponder = () => Promise.reject(new Error("comparison failed"));
+    const failedRevision = "8a".repeat(20);
+    const failed = internals.beginDiffPreparation(failedRevision, null).comparison;
+    await failed?.catch(() => {});
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
+    const afterFailure = comparisonFetches.length;
+    await internals.beginDiffPreparation(failedRevision, null).comparison;
+    assertEqual(
+      "kept: a failed request is asked for again",
+      comparisonFetches.length,
+      afterFailure + 1,
+    );
+
+    // Teardown forgets every kept answer, and one that was in flight when it ran is not
+    // kept when it lands.
+    /** @type {(value: unknown) => void} */
+    let land = () => {};
+    comparisonResponder = () =>
+      new Promise((resolve) => {
+        land = resolve;
+      });
+    const inFlight = "8b".repeat(20);
+    const landing = internals.beginDiffPreparation(inFlight, null).comparison;
+    internals.teardown();
+    assertEqual("kept: teardown forgets every answer", kept().entries, 0);
+    land({ comparison_id: inFlight });
+    await landing;
+    assertEqual("kept: an answer requested before teardown is not kept", kept().entries, 0);
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
   }
 
   // ── Relative age ───────────────────────────────────────────

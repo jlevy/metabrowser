@@ -347,6 +347,14 @@ GIT_HOVER_DEBOUNCE_MS = 300
 # the detail view so hovering then selecting a row is one request.
 GIT_DETAIL_CACHE_SIZE = 200
 
+# Bytes of comparison JSON the Commits panel keeps, so a revisited commit's
+# diff mounts with no request. Measured 2026-11-11 over this repository's
+# last 200 commits, merges included: 28 KB at the median, 203 KB at the
+# 90th percentile, and 3.3 MB at the largest, 28 MB in all; the parsed
+# answer is 1.0 to 1.5 times its JSON in V8. So this keeps about eighty
+# 90th-percentile commits, and one answer may take a quarter of it.
+GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
+
 
 # ── Client settings export ───────────────────────────────────
 
@@ -386,6 +394,7 @@ def client_settings_dict(
         "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
+        "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
@@ -412,6 +421,7 @@ __all__ = [
     "DOC_MAX_CHARS_DEFAULT",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
+    "GIT_COMPARISON_CACHE_BYTES",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",

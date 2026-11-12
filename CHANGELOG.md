@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A commit opened again in the Commits tab shows its diff without asking the server,
+  because a comparison named by a full commit ID cannot change.
+  `/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer a repeat from memory
+  while the repository’s refs, `HEAD`, and `packed-refs` have not changed, and a later
+  log page no longer runs Git to prove its scope still holds.
+  Each sends an ETag and answers `If-None-Match` with 304.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
