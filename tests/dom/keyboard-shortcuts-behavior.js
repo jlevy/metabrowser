@@ -278,11 +278,23 @@ check(
   }),
 );
 check(
-  "Shift with a named key in a text field belongs to the field",
+  "Shift with a selection key in a text field belongs to the field",
   !shortcuts.eventMatchesBinding(keyboardEvent("ArrowDown", { shiftKey: true, target: field }), {
     key: "ArrowDown",
   }),
 );
+for (const key of ["Enter", "Escape"]) {
+  check(
+    `Shift+${key} in a text field is ${key}, since it selects no text`,
+    shortcuts.eventMatchesBinding(keyboardEvent(key, { shiftKey: true, target: field }), { key }),
+  );
+}
+for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "Home", "End"]) {
+  check(
+    `Shift+${key} in a text field belongs to the field`,
+    !shortcuts.eventMatchesBinding(keyboardEvent(key, { shiftKey: true, target: field }), { key }),
+  );
+}
 // The physical digit row is a second pass the dispatcher takes only when the
 // typed character matched nothing; matching by key never reads the code.
 check(
@@ -549,8 +561,9 @@ typed(
   null,
 );
 
-// A command that opts into a text field still leaves Shift with a named key to
-// the field, as Quick Search's result keys leave Shift+Arrow to text selection.
+// A command that opts into a text field still leaves Shift with a selection key
+// to the field, as Quick Search's result keys leave Shift+Arrow to text
+// selection.
 layouts.register(
   command({
     allowInEditable: true,

@@ -691,10 +691,11 @@ async function main() {
     listbox.children[2].getAttribute("aria-selected") === "true",
   );
 
-  // Inside the query, Shift with a named key belongs to the field: Shift+Up
-  // and Shift+Down extend the text selection, as in any single-line field, and
-  // leave the active result where it is.
-  for (const key of ["ArrowUp", "ArrowDown", "Enter"]) {
+  // Inside the query, Shift with a selection key belongs to the field:
+  // Shift+Up and Shift+Down extend the text selection, as in any single-line
+  // field, and leave the active result where it is. Shift+Enter and
+  // Shift+Escape are not selection keys, so they still act (checked below).
+  for (const key of ["ArrowUp", "ArrowDown"]) {
     const shifted = fakeEvent("keydown", { key, shiftKey: true, target: input });
     input.dispatchEvent(shifted);
     check(
@@ -831,6 +832,16 @@ async function main() {
   check(
     "Escape closes and restores focus",
     overlay.hidden && document.activeElement === initialFocus,
+  );
+
+  // Shift+Escape selects no text, so it closes the palette too.
+  initialFocus.focus();
+  palette.open();
+  const shiftedEscape = fakeEvent("keydown", { key: "Escape", shiftKey: true, target: input });
+  input.dispatchEvent(shiftedEscape);
+  check(
+    "Shift+Escape closes and restores focus",
+    shiftedEscape.defaultPrevented && overlay.hidden && document.activeElement === initialFocus,
   );
   check("closing cancels active work", cancelCalls > 0, String(cancelCalls));
 

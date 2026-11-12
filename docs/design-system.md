@@ -1324,17 +1324,17 @@ If that behavior is advertised in Help or another hint surface, its presentation
 comes from a registered descriptor.
 Document-level commands ignore editable controls, composition, and previously handled
 events. They never match while Ctrl, Alt, or Meta is held, and inside a text field Shift
-with a named key belongs to the field.
+with an arrow, `Home`, or `End` belongs to the field, where it extends the selection.
 They prevent browser behavior only after an enabled handler reports that it acted.
 
 A command may opt back into an editable target only for a key that field does not
 already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
 them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
 leaves the user unable to reach the start or end of what they typed.
-For the same reason, Shift with a named key stays the field’s even for a command that
-opted in: Shift+`↑` and Shift+`↓` extend the selection in Quick Search’s query, while
-plain `↑`, `↓`, and `Enter` still move through and open results.
-When a list needs first-item and last-item reach behind an editable control, its
+For the same reason, Shift with a selection key stays the field’s even for a command
+that opted in: Shift+`↑` and Shift+`↓` extend the selection in Quick Search’s query,
+while plain `↑` and `↓` move through results and `Enter` and `Esc` act with or without
+Shift. When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
 
 ### Navigational Row Collections

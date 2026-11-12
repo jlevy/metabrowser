@@ -78,6 +78,18 @@
     Home: Object.freeze({ aria: "Home", spoken: "Home", visible: "Home" }),
   });
 
+  // Keys that Shift turns into text selection inside a field: a command never
+  // takes Shift+Arrow, Shift+Home, or Shift+End from a text field, even one
+  // that opted in with allowInEditable.
+  const TEXT_SELECTION_KEYS = new Set([
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "End",
+    "Home",
+  ]);
+
   /** @type {Readonly<Record<string, Readonly<{context: string, label: string, order: number}>>>} */
   const GROUP_DEFINITIONS = Object.freeze({
     anywhere: Object.freeze({
@@ -185,9 +197,10 @@
 
   /**
    * Whether an event is this binding's key. Shift is ignored for every key
-   * class, except that inside a text field Shift with a named key belongs to
-   * the field, where Shift+Arrow selects text. Ctrl, Alt, and Meta always
-   * disqualify the event.
+   * class, except that inside a text field Shift with a selection key (an
+   * arrow, Home, or End) belongs to the field, where it extends the text
+   * selection. Shift+Enter and Shift+Escape still act. Ctrl, Alt, and Meta
+   * always disqualify the event.
    *
    * The physical pass matches a digit binding by its digit-row key, for an
    * event whose character is not a digit: US Shift+1 types `!`, and AZERTY's
@@ -218,7 +231,12 @@
     if (eventKey !== normalized.key) {
       return false;
     }
-    return !(bindingClass === "named" && event.shiftKey && isEditableTarget(event.target));
+    return !(
+      bindingClass === "named" &&
+      event.shiftKey &&
+      TEXT_SELECTION_KEYS.has(normalized.key) &&
+      isEditableTarget(event.target)
+    );
   }
 
   /** @param {EventTarget | null} target */
