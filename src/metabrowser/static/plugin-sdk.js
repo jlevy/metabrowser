@@ -411,7 +411,12 @@
     );
   }
 
-  /** A copy key's path to the delegate below, for an owned copy control. @param {HTMLElement | null} control */
+  /**
+   * Copy what a copy control names, as a click on it does: the named entry to the
+   * delegate below, for a key that runs the control without a click. Only a control
+   * page code owns qualifies, as for the click. Reports whether it copied.
+   * @param {HTMLElement | null} control
+   */
   function copyFromControl(control) {
     if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {
       return false;

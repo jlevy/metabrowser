@@ -3750,6 +3750,7 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       flushPull: () => pullPageHost?.page()?.flush?.(),
+      // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
@@ -3806,7 +3807,8 @@ function finishRetainedPullPage() {
   const dispose = retainedPullPageDispose;
   retainedPullPageDispose = null;
   dispose?.();
-  // Every main-pane install ends here; the view tab and header keys follow it.
+  // Every install of new main-pane content ends here, so the keys that act on it follow:
+  // the view tab letters of the bar now committed, or none, and the header's Up and Copy.
   shellKeymap?.syncPane();
 }
 
@@ -4697,6 +4699,7 @@ function renderNavFilterBar() {
         })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
+  // The rebuild replaced the triggers that the file type and modified-within keys badge.
   shellKeymap?.syncFilters();
 }
 
@@ -4722,7 +4725,13 @@ function applyDrawerOpenState() {
   }
 }
 
-/** @param {string} key @param {boolean} open A filter trigger's click. */
+/**
+ * Open or close one filter dropdown, as its trigger does. At most one is open. The
+ * trigger's click and the file type and modified-within keys share this path.
+ *
+ * @param {string} key
+ * @param {boolean} open
+ */
 function toggleFilterMenu(key, open) {
   filterOpenMenu = open ? key : null;
   renderNavFilterBar();
@@ -5952,6 +5961,9 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var pluginRenders = [];
         if (views && views.length > 0) {
           if (views.length > 1) {
+            // A tablist, as the navigation and pull request tab bars are. A view's
+            // declared letter rides its button for the shell keymap, which reads it
+            // only once the bar is committed to the pane.
             html += '<div class="tab-bar" role="tablist">';
             for (let i = 0; i < views.length; i++) {
               const view = views[i];
@@ -6095,8 +6107,10 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (
           !stagedPluginLifecycle.commit(() => {
             preview.replaceChildren(...replacementNodes);
-            // Here, never while staged: a cancelled stage registers nothing, so nothing
-            // goes into stagedPluginDisposers, which cancel() also runs.
+            // The view tab letters and the header's keys move with what the pane
+            // commits, here and never while it is staged; a cancelled stage registered
+            // nothing, so nothing of the keymap goes into stagedPluginDisposers, which
+            // cancel() also runs.
             shellKeymap?.commitViewTabs(shellKeymap.committedBar());
             finishRetainedPullPage();
             options.onCommit?.();
@@ -6210,7 +6224,15 @@ function showPreviewTab(path, tabId) {
   }
 }
 
-/** A view tab's click, letter, and showPreviewTab. @param {HTMLElement} bar @param {string} tabId */
+/**
+ * Select one tab of a view tab bar: mark its button, show its content, mount a view
+ * not shown before, and tell the shell which view is active. The tab's click, its
+ * letter key, and showPreviewTab share this path, and none of them moves focus.
+ * Reports whether the bar has that tab.
+ *
+ * @param {HTMLElement} bar
+ * @param {string} tabId
+ */
 function selectPreviewTab(bar, tabId) {
   var container = bar.parentElement;
   /** @type {HTMLElement | null} */
@@ -8148,6 +8170,8 @@ function initKeyboardInfrastructure() {
     setFolderExpanded: setRowExpanded,
     shortcuts: shortcutRegistry,
   });
+  // Both read what rendered before the registry existed: the keymap the committed view
+  // tabs, header, filters, and selector; the reveal nothing, until Shift is held.
   if (window.MetabrowserShellKeymap) {
     shellKeymap = window.MetabrowserShellKeymap.createShellKeymap({
       shell: shellKeymapShell(),
