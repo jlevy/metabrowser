@@ -30,7 +30,16 @@ class FakeElement {
     return false;
   }
 
-  append(...children) {
+  append(...values) {
+    // A string becomes a text node, as in the DOM, here an element named "#text".
+    const children = values.map((value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+      const text = new FakeElement("#text", this.ownerDocument);
+      text.textContent = value;
+      return text;
+    });
     for (const child of children) {
       if (child.parentNode) {
         child.parentNode.children = child.parentNode.children.filter((node) => node !== child);
@@ -466,6 +475,102 @@ check("Help can reopen and close", closeCount === 2);
 help.open(helpButton);
 check("reopening Help with nothing changed does not render it again", helpRenders === 3);
 shortcuts.invoke("help.close");
+
+// Help ends with one note, its Shift a keycap from the single-key entry point.
+const shiftNote = body.querySelector(".help-shortcut-note");
+check(
+  "Help ends with the Shift note, after the groups",
+  shiftNote?.parentNode?.children.at(-1) === shiftNote &&
+    shiftNote.parentNode.children.at(-2)?.className === "help-shortcut-groups",
+);
+check(
+  "the note's Shift is a keycap in a sentence",
+  JSON.stringify(shiftNote?.children.map((child) => [child.tagName, child.textContent])) ===
+    JSON.stringify([
+      ["#TEXT", "Press "],
+      ["KBD", "Shift"],
+      ["#TEXT", " to see relevant shortcut reminders."],
+    ]),
+  JSON.stringify(shiftNote?.children.map((child) => [child.tagName, child.textContent])),
+);
+
+// While Shift reveals the keys, a second layer lists the live `reveal` surface,
+// reminders only, every binding of a coalesced item; the resting strip stays as it is.
+const stackKeys = [
+  ["n", "test.stack.top", 10],
+  ["p", "test.stack.base", 20],
+].map(([key, id, order]) =>
+  shortcuts.register({
+    bindings: [{ key }],
+    copy: { action: id, description: "Walk the stack.", hint: "Stack" },
+    group: "pull-stack",
+    handler: () => true,
+    id,
+    order,
+    scope: "global",
+    surfaces: { help: "always", reveal: "always" },
+  }),
+);
+const restingButtons = hintHost.querySelectorAll("button");
+let stripBeforeReveal = stripReconciles;
+shortcuts.register({
+  bindings: [{ key: "u" }],
+  copy: { action: "Up", description: "Open the parent folder.", hint: "Up" },
+  group: "controls",
+  handler: () => true,
+  id: "test.targeted",
+  order: 10,
+  scope: "global",
+  surfaces: { help: "always", reveal: "always" },
+  targeted: true,
+})();
+stripBeforeReveal = stripReconciles;
+check("no reveal layer at rest", hintHost.querySelector(".nav-shortcut-reveal") === null);
+shortcuts.setRevealed(true);
+const revealLayer = hintHost.querySelector(".nav-shortcut-reveal");
+check(
+  "revealing adds one hidden reveal layer",
+  revealLayer?.getAttribute("aria-hidden") === "true" && stripReconciles === stripBeforeReveal + 1,
+);
+check(
+  "the reveal layer is reminders, listing live commands only, with every coalesced key",
+  JSON.stringify(
+    revealLayer?.children.map((item) => [
+      item.tagName,
+      item.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+      item.querySelector(".nav-shortcut-label")?.textContent,
+    ]),
+  ) ===
+    JSON.stringify([
+      ["SPAN", ["?"], "Help"],
+      ["SPAN", ["N", "P"], "Stack"],
+    ]),
+  JSON.stringify(
+    revealLayer?.children.map((item) => [
+      item.tagName,
+      item.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+    ]),
+  ),
+);
+check(
+  "the resting strip keeps its buttons while revealed",
+  hintHost.querySelectorAll("button").length === restingButtons.length &&
+    hintHost.querySelectorAll("button").every((button, index) => button === restingButtons[index]),
+);
+shortcuts.setRevealed(false);
+check(
+  "ending the reveal removes its layer",
+  hintHost.querySelector(".nav-shortcut-reveal") === null,
+);
+const stripBeforeRest = stripReconciles;
+shortcuts.refreshBadges();
+const tagged = document.createElement("button");
+document.body.append(tagged);
+shortcuts.attachTarget("test.targeted", tagged).detach();
+check("target events at rest do no strip work", stripReconciles === stripBeforeRest);
+for (const release of stackKeys) {
+  release();
+}
 
 // The tree's own registrations, rendered as Help renders them: a movement row
 // lists its arrow and its letter alias as one "or" group with one spoken phrase.

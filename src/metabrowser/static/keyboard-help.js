@@ -6,6 +6,21 @@
   // gains or loses a command on a registration, and a contextual command
   // appears or goes with its scope.
   const HINT_EVENT_KINDS = new Set(["registration", "scope"]);
+  // The events that change only the revealed strip: the reveal starting or ending, a
+  // target attached, moved, or released, and the liveness read again after a key.
+  // At rest no strip shows them, so they cost nothing then.
+  const REVEAL_EVENT_KINDS = new Set(["dispatch", "reveal", "target"]);
+  // The most items the revealed strip lists; later ones in the surface order drop first
+  // and stay in Help. PROVISIONAL: estimated from styles.css, not yet measured in a
+  // browser. At the navigation pane's minimum width, `.tree-pane`'s 180px, the strip's
+  // 12px side padding leaves 156px; a one-letter keycap is about 18px, with a 4px gap to
+  // its 12px label and 6px between items. The most the `reveal` surface lists at once,
+  // eight, on a file of a mirror's pin (Help, Quick Search, Files, Commits, Pulls, Up,
+  // Copy, Branch), then wraps to four rows, about 100px over the panel. What remains to
+  // measure, in Chrome and Safari at that width and at 200% zoom: the rows those eight
+  // take, and the count that keeps the revealed strip within the panel's bottom quarter
+  // (docs/qa-v012-repository-library.md, the reveal check).
+  const REVEAL_STRIP_MAX_ITEMS = 8;
   /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
@@ -125,12 +140,18 @@
   }
 
   /**
+   * Reconcile one strip layer with a snapshot. The resting strip names one way into each
+   * command and makes the controls it owns buttons; the revealed layer, `actions: false`
+   * with `bindings: "all"`, is a reminder only, every binding of an item that coalesces
+   * several, as `N` or `P`, and at most `limit` items.
+   *
    * @param {HTMLElement} host
    * @param {readonly HelpGroupPresentation[]} snapshot
    * @param {(commandId: string, context: Record<string, unknown>) => boolean} invoke
    * @param {(container: HTMLElement, presentation: HelpBindingPresentation) => void} [append]
+   * @param {{actions?: boolean, bindings?: "all" | "preferred", limit?: number}} [stripOptions]
    */
-  function reconcileHintStrip(host, snapshot, invoke, append) {
+  function reconcileHintStrip(host, snapshot, invoke, append, stripOptions = {}) {
     const hostDocument = host.ownerDocument;
     const appendBinding =
       append ||
@@ -141,12 +162,14 @@
       records = new Map();
       hintStates.set(host, records);
     }
-    const presentations = snapshot.flatMap((group) => group.commands);
+    const presentations = snapshot
+      .flatMap((group) => group.commands)
+      .slice(0, stripOptions.limit ?? Number.POSITIVE_INFINITY);
     const nextKeys = new Set();
     /** @type {HTMLElement[]} */
     const orderedElements = [];
     for (const presentation of presentations) {
-      const actionable = Boolean(presentation.control);
+      const actionable = stripOptions.actions !== false && Boolean(presentation.control);
       const key = actionable ? presentation.id : `hint:${presentation.commandIds.join("+")}`;
       nextKeys.add(key);
       let record = records.get(key);
@@ -181,7 +204,12 @@
       // The strip is a reminder, not the reference. It names one way in; Help
       // carries the aliases. aria-keyshortcuts below still advertises all of
       // them, because every alias really does work.
-      appendBinding(binding, presentation.bindings.preferred || presentation.bindings);
+      appendBinding(
+        binding,
+        stripOptions.bindings === "all"
+          ? presentation.bindings
+          : presentation.bindings.preferred || presentation.bindings,
+      );
       const label = hostDocument.createElement("span");
       label.className = "nav-shortcut-label";
       label.textContent = presentation.copy.hint;
@@ -211,8 +239,12 @@
     host.hidden = orderedElements.length === 0;
   }
 
-  /** @param {Document} hostDocument @param {HTMLElement} modalBody */
-  function buildHelpContent(hostDocument, modalBody) {
+  /**
+   * @param {Document} hostDocument
+   * @param {HTMLElement} modalBody
+   * @param {(container: HTMLElement, key: string) => HTMLElement} appendKey
+   */
+  function buildHelpContent(hostDocument, modalBody, appendKey) {
     const description = hostDocument.createElement("section");
     description.className = "help-description";
     for (const sentence of [
@@ -242,7 +274,14 @@
     shortcutsHeading.textContent = "Keyboard shortcuts";
     const groups = hostDocument.createElement("div");
     groups.className = "help-shortcut-groups";
-    shortcutsSection.append(shortcutsHeading, groups);
+    // Guidance for after Help closes: inside its exclusive scope, a held Shift shows
+    // only Help's own keys. The key in the sentence is a keycap, as every key in prose is.
+    const note = hostDocument.createElement("p");
+    note.className = "help-shortcut-note";
+    note.append("Press ");
+    appendKey(note, "Shift");
+    note.append(" to see relevant shortcut reminders.");
+    shortcutsSection.append(shortcutsHeading, groups, note);
     modalBody.append(description, project, shortcutsSection);
     return { groups, projectLink };
   }
@@ -293,7 +332,11 @@
       shortcuts: options.shortcuts,
       title: "Help",
     });
-    const { groups: groupsHost, projectLink } = buildHelpContent(hostDocument, modal.body);
+    const { groups: groupsHost, projectLink } = buildHelpContent(
+      hostDocument,
+      modal.body,
+      options.shortcuts.appendKey,
+    );
     let disposed = false;
     // Help's groups are rendered when it opens and, while it is open, on a
     // registration. A registration while it is closed only marks them stale, so
@@ -339,7 +382,7 @@
       id: "help.open",
       order: 10,
       scope: "global",
-      surfaces: { help: "always", nav: "always" },
+      surfaces: { help: "always", nav: "always", reveal: "always" },
     });
 
     function renderHelp() {
@@ -358,6 +401,42 @@
         options.shortcuts.invoke,
         options.shortcuts.appendBinding,
       );
+      renderRevealLayer();
+    }
+
+    /** @type {HTMLElement | null} */
+    let revealLayer = null;
+
+    /**
+     * While Shift reveals the keys, a second layer of the strip lists the `reveal`
+     * surface: the common keys that are live now. It is a reminder, hidden from
+     * assistive technology like the badges, and the resting strip under it keeps its
+     * content and height, so the panel above neither reflows nor scrolls. The layer
+     * exists only while revealed.
+     */
+    function renderRevealLayer() {
+      if (!options.shortcuts.isRevealed()) {
+        if (revealLayer) {
+          clearHintStrip(revealLayer);
+          revealLayer.remove();
+          revealLayer = null;
+        }
+        return;
+      }
+      if (!revealLayer) {
+        revealLayer = hostDocument.createElement("div");
+        revealLayer.className = "nav-shortcut-reveal";
+        revealLayer.setAttribute("aria-hidden", "true");
+        revealLayer.setAttribute("data-surface", "reveal");
+        options.hintHost.append(revealLayer);
+      }
+      reconcileHintStrip(
+        revealLayer,
+        options.shortcuts.snapshot("reveal", { live: true }),
+        options.shortcuts.invoke,
+        options.shortcuts.appendBinding,
+        { actions: false, bindings: "all", limit: REVEAL_STRIP_MAX_ITEMS },
+      );
     }
 
     renderHints();
@@ -372,12 +451,22 @@
       }
       if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {
         renderHints();
+      } else if (
+        kinds.some((kind) => REVEAL_EVENT_KINDS.has(kind)) &&
+        (revealLayer !== null || options.shortcuts.isRevealed())
+      ) {
+        renderRevealLayer();
       }
     });
 
     function dispose() {
       disposed = true;
       unsubscribe();
+      if (revealLayer) {
+        clearHintStrip(revealLayer);
+        revealLayer.remove();
+        revealLayer = null;
+      }
       clearHintStrip(options.hintHost);
       unregisterOpen();
       modal?.dispose();
