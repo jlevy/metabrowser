@@ -3,9 +3,9 @@ type: is
 id: is-01m78ttv874k855zfx1arvd5vm
 title: "Address PR #379 reviews C, D, E: Shift reveal blur, badge batching, keymap seams"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 11
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -20,7 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-12T21:32:46.208Z
-updated_at: 2026-11-12T21:33:33.069Z
+updated_at: 2026-11-12T22:39:08.507Z
 started_at: 2026-11-12T21:33:33.068Z
+closed_at: 2026-11-12T22:39:08.506Z
+close_reason: "Reviews C, D, E on PR #379 dispositioned at head 89431194: C1, C2, D1, D2, E1, E2 fixed; D3 deferred as mb-w0dx to the startup-budget re-measurement session. Replies: C https://github.com/jlevy/metabrowser/pull/379#issuecomment-6837880362 , D https://github.com/jlevy/metabrowser/pull/379#issuecomment-6837880767 , E https://github.com/jlevy/metabrowser/pull/379#issuecomment-6836774865"
+resolution: null
+duplicate_of: null
 ---
 Address the senior (C), performance (D), and correctness (E) reviews of https://github.com/jlevy/metabrowser/pull/379 (layer 3 of stack #376) at head 9129aac9. C: https://github.com/jlevy/metabrowser/pull/379#pullrequestreview-5881899630 . D: https://github.com/jlevy/metabrowser/pull/379#pullrequestreview-5881899935 . E: https://github.com/jlevy/metabrowser/pull/379#pullrequestreview-5881900155 . Findings C1, C2, D1, D2, D3, E1, E2.
