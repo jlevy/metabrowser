@@ -307,12 +307,12 @@ _INLINE_LANDING_DEPTH = 8
 # root alone, as before.
 #
 # Measured on landings one to eight folders down, 152 entries a folder, against the root-only
-# shell (headless Chrome 152, median of 5 loads, load average 6 to 13): each folder added
-# 21 KB of shell (2 KB gzipped), about 1 ms on the server, 10 to 13 ms to DOMContentLoaded,
-# and 6 to 9 ms to the first tree row, linearly up to the 1,215 rows of eight such folders
-# (+73 ms to the first row). Two folders, 304 rows, cost 15 to 16 ms, one frame at 60 Hz;
-# the reveal they replace moved the tree by 0.10 to 0.46 with no input. So the budget is
-# about one frame of first tree row.
+# shell (headless Chrome 152, median of 5 loads, two rounds, load average 6 to 13): each
+# folder added 21 KB of shell (2 KB gzipped) and about 1 ms on the server, and the 1,215
+# rows of eight such folders added 84 to 90 ms to DOMContentLoaded and 73 to 75 ms to the
+# first tree row, about 11 and 9 ms a folder. Two folders, 304 rows, cost 15 to 16 ms of
+# first tree row, one frame at 60 Hz; the reveal they replace moved the tree by 0.10 to
+# 0.46 with no input. So the budget is about one frame of first tree row.
 _INLINE_LANDING_ROWS = 300
 
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
