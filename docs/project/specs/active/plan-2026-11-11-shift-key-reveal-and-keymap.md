@@ -323,7 +323,7 @@ disqualify the event:
 | Letter `a`–`z` | `event.key` in either case | Ignored | Never; the event does not match |
 | Digit `1`–`9` | `event.key` equal to the digit; otherwise `event.code` `Digit1`–`Digit9` | Ignored | Never; the event does not match |
 | Punctuation `?`, `/` | `event.key` equal to the character | Ignored | Never; the event does not match |
-| Named key (arrows, Home, End, Enter, Space, Escape, Delete, F2) | `event.key` | Ignored, except in an editable target, where Shift with a named key belongs to the field | Never; the event does not match |
+| Named key (arrows, Home, End, Enter, Space, Escape, Delete, F2) | `event.key` | Ignored, except in an editable target, where Shift with an arrow, Home, or End belongs to the field | Never; the event does not match |
 
 The registry rejects, at registration, any binding that states a modifier policy, so the
 rule cannot erode one command at a time.
@@ -363,12 +363,14 @@ Five consequences follow:
   previous toward its base, in `registerKeys()` in `static/pulls-nav.js`, with the same
   global scope and the same availability while a pull request in a stack is open.
   Shift+`J` on a focused Pulls row now moves the row, as plain `J` does.
-- Inside an editable target, Shift with a named key belongs to the field, because
-  Shift+↑ and Shift+↓ select text there.
-  A named-key binding that opts into editable targets with `allowInEditable`, such as
-  Quick Search’s ↑, ↓, and Enter, does not match while Shift is held in its field, so
-  Shift+↑ and Shift+↓ extend the query’s selection as they do in any single-line field,
-  and plain ↑, ↓, and Enter keep moving and opening results.
+- Inside an editable target, Shift with a selection key (an arrow, Home, or End) belongs
+  to the field, because Shift+↑ and Shift+↓ select text there.
+  A binding that opts into editable targets with `allowInEditable`, such as Quick
+  Search’s ↑ and ↓, does not match while Shift is held with a selection key in its
+  field, so Shift+↑ and Shift+↓ extend the query’s selection as they do in any
+  single-line field, and plain ↑ and ↓ keep moving through results.
+  Enter and Escape select nothing, so Shift+Enter opens the active result and
+  Shift+Escape closes Quick Search, exactly as they do without Shift.
   Outside editable targets Shift stays ignored.
   This is the principle behind the design system’s rule that a combobox may not claim
   Home and End: the field keeps the keys that edit or select its text.
@@ -985,7 +987,7 @@ still holds.
     and `P` instead of `⇧J` and `⇧K`;
   - Keyboard Commands and Help: badge targets and the reveal, and the editable-target
     paragraph, whose “modifiers they did not declare” sentence becomes “Ctrl, Alt, and
-    Meta, and Shift with a named key inside a text field,” beside the combobox rule;
+    Meta, and Shift with a selection key inside a text field,” beside the combobox rule;
   - Navigational Row Collections: the arrows and letter aliases ignore Shift, and the
     first-row and last-row keys are Home and End alone;
   - Descriptor Contract: a binding states no modifier policy;
@@ -1348,8 +1350,8 @@ Badge geometry stays under phase 1’s paint-exempt row.
   types; Numpad digits match
 - `?` and `/` remain distinct; `/` matches when typed with Shift on a German layout
 - In the Quick Search query, Shift+↑ and Shift+↓ leave the active result alone and keep
-  their default text selection, while plain ↑, ↓, and Enter still act; on a tree row,
-  outside any text field, Shift+↑ moves one row
+  their default text selection, while plain ↑ and ↓ and Enter and Escape, with or
+  without Shift, still act; on a tree row, outside any text field, Shift+↑ moves one row
 - Two shell descriptors with one letter in one scope still fail; a global `P` whose
   `available()` is false and a `view-tabs` `P` register together, and `P` reaches the
   view tab; in phase 2 a `plugin`-scope letter under the same `global` letter registers
