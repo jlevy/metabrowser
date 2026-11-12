@@ -3,21 +3,105 @@
 // The registry reads a badge target's liveness from the tree itself: connected, not
 // `disabled`, outside `inert`, and visible by computed style. So this stand-in keeps a
 // real tree with document order, attributes that reflect (`id`, `class`, `hidden`,
-// `inert`, `disabled`, `data-*`), inline styles the computed style reads, focus with
-// `focusin` and `focusout`, event capture and bubbling, and the selectors the shell's
-// modules query with: tags, ids, classes, attribute tests, `:not()`, and the descendant
-// and child combinators, in comma lists. It renders nothing and parses no markup.
+// `inert`, `disabled`, `data-*`), inline styles the computed style reads, focus, event
+// capture and bubbling, and the selectors the shell's modules query with: tags, ids,
+// classes, attribute tests, `:not()`, and the descendant and child combinators, in comma
+// lists. It renders nothing.
+//
+// The window is on every event's path, above the document, as in a browser: a capture
+// listener on it hears every event in the page, including the `focus` and `blur` that do
+// not bubble. Moving focus fires `blur` and `focusout` on the element losing it, then
+// `focus` and `focusin` on the one gaining it, in a browser's order.
+//
+// `innerHTML` parses the markup the shell's string renderers write (elements, quoted and
+// bare attributes, text, and the entities `esc()` produces), so a module that renders
+// HTML, as static/filter-controls.js does, runs whole.
 
 const DOCUMENT_POSITION_PRECEDING = 2;
 const DOCUMENT_POSITION_FOLLOWING = 4;
 
-class FakeNode {
+/** Listeners, and dispatch along an event path of capture, target, and bubble. */
+class FakeEventTarget {
+  constructor() {
+    this.listeners = [];
+  }
+
+  addEventListener(type, listener, options) {
+    const capture = options === true || Boolean(options?.capture);
+    if (
+      !this.listeners.some(
+        (entry) => entry.type === type && entry.listener === listener && entry.capture === capture,
+      )
+    ) {
+      this.listeners.push({ type, listener, capture });
+    }
+  }
+
+  removeEventListener(type, listener, options) {
+    const capture = options === true || Boolean(options?.capture);
+    this.listeners = this.listeners.filter(
+      (entry) => !(entry.type === type && entry.listener === listener && entry.capture === capture),
+    );
+  }
+
+  /** From the outermost target to this one; the window, a document's, comes first. */
+  eventPath() {
+    return [this];
+  }
+
+  /** Capture from the window down, the target itself, then bubble back up. */
+  dispatchEvent(event) {
+    event.target ??= this;
+    event.defaultPrevented ??= false;
+    event.preventDefault ??= function preventDefault() {
+      this.defaultPrevented = true;
+    };
+    let stopped = false;
+    event.stopPropagation = () => {
+      stopped = true;
+    };
+    const path = this.eventPath();
+    const run = (node, phase) => {
+      for (const entry of [...node.listeners]) {
+        if (entry.type !== event.type) {
+          continue;
+        }
+        if (phase === "capture" && !entry.capture) {
+          continue;
+        }
+        if (phase === "bubble" && entry.capture) {
+          continue;
+        }
+        event.currentTarget = node;
+        entry.listener(event);
+      }
+    };
+    for (const node of path.slice(0, -1)) {
+      run(node, "capture");
+      if (stopped) {
+        return !event.defaultPrevented;
+      }
+    }
+    run(this, "target");
+    if (event.bubbles !== false) {
+      for (const node of path.slice(0, -1).reverse()) {
+        if (stopped) {
+          break;
+        }
+        run(node, "bubble");
+      }
+    }
+    return !event.defaultPrevented;
+  }
+}
+
+class FakeNode extends FakeEventTarget {
   constructor(document, nodeName) {
+    super();
     this.ownerDocument = document;
     this.nodeName = nodeName;
     this.childNodes = [];
     this.parentNode = null;
-    this.listeners = [];
   }
 
   get parentElement() {
@@ -114,64 +198,16 @@ class FakeNode {
     return there > here ? DOCUMENT_POSITION_FOLLOWING : DOCUMENT_POSITION_PRECEDING;
   }
 
-  addEventListener(type, listener, options) {
-    const capture = options === true || Boolean(options?.capture);
-    this.listeners.push({ type, listener, capture });
-  }
-
-  removeEventListener(type, listener, options) {
-    const capture = options === true || Boolean(options?.capture);
-    this.listeners = this.listeners.filter(
-      (entry) => !(entry.type === type && entry.listener === listener && entry.capture === capture),
-    );
-  }
-
-  /** Capture from the document down, the target itself, then bubble back up. */
-  dispatchEvent(event) {
-    event.target ??= this;
-    event.defaultPrevented ??= false;
-    event.preventDefault ??= function preventDefault() {
-      this.defaultPrevented = true;
-    };
-    let stopped = false;
-    event.stopPropagation = () => {
-      stopped = true;
-    };
+  /** The node's ancestors, then the window of a connected node's document. */
+  eventPath() {
     const path = [];
     for (let node = this; node; node = node.parentNode) {
       path.unshift(node);
     }
-    const run = (node, phase) => {
-      for (const entry of [...node.listeners]) {
-        if (entry.type !== event.type) {
-          continue;
-        }
-        if (phase === "capture" && !entry.capture) {
-          continue;
-        }
-        if (phase === "bubble" && entry.capture) {
-          continue;
-        }
-        event.currentTarget = node;
-        entry.listener(event);
-      }
-    };
-    for (const node of path.slice(0, -1)) {
-      run(node, "capture");
-      if (stopped) {
-        return !event.defaultPrevented;
-      }
+    if (path[0] instanceof FakeDocument && path[0].defaultView) {
+      path.unshift(path[0].defaultView);
     }
-    run(this, "target");
-    if (event.bubbles !== false) {
-      for (const node of path.slice(0, -1).reverse()) {
-        if (stopped) {
-          break;
-        }
-        run(node, "bubble");
-      }
-    }
-    return !event.defaultPrevented;
+    return path;
   }
 
   querySelectorAll(selector) {
@@ -393,6 +429,9 @@ class FakeElement extends FakeNode {
     };
   }
 
+  /** Move focus here: `blur` and `focusout` on the element losing it, then `focus` and
+   * `focusin` here. `blur` and `focus` do not bubble, but a capture listener on the
+   * window or the document still hears them. */
   focus() {
     const document = this.ownerDocument;
     const previous = document.activeElement;
@@ -401,16 +440,24 @@ class FakeElement extends FakeNode {
     }
     document.activeElement = this;
     if (previous && previous !== document.body) {
-      previous.dispatchEvent({ type: "focusout", relatedTarget: this, target: previous });
+      previous.dispatchEvent({
+        bubbles: false,
+        relatedTarget: this,
+        target: previous,
+        type: "blur",
+      });
+      previous.dispatchEvent({ relatedTarget: this, target: previous, type: "focusout" });
     }
-    this.dispatchEvent({ type: "focusin", relatedTarget: previous, target: this });
+    this.dispatchEvent({ bubbles: false, relatedTarget: previous, target: this, type: "focus" });
+    this.dispatchEvent({ relatedTarget: previous, target: this, type: "focusin" });
   }
 
   blur() {
     const document = this.ownerDocument;
     if (document.activeElement === this) {
       document.activeElement = document.body;
-      this.dispatchEvent({ type: "focusout", relatedTarget: null, target: this });
+      this.dispatchEvent({ bubbles: false, relatedTarget: null, target: this, type: "blur" });
+      this.dispatchEvent({ relatedTarget: null, target: this, type: "focusout" });
     }
   }
 
@@ -421,6 +468,11 @@ class FakeElement extends FakeNode {
   scrollIntoView() {}
 
   select() {}
+
+  /** Replace the children with the elements and text `markup` describes. */
+  set innerHTML(markup) {
+    this.replaceChildren(...parseMarkup(this.ownerDocument, String(markup)));
+  }
 }
 
 for (const name of REFLECTED_BOOLEANS) {
@@ -438,36 +490,128 @@ function toKebab(name) {
   return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
+// ── Markup ────────────────────────────────────────────────────────
+
+const VOID_ELEMENTS = new Set(["br", "hr", "img", "input", "link", "meta", "wbr"]);
+const ENTITIES = { amp: "&", apos: "'", gt: ">", lt: "<", quot: '"' };
+
+/** Text with the named and numeric character references a string renderer writes. */
+function decodeEntities(text) {
+  return text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (reference, name) => {
+    if (name[0] === "#") {
+      const hex = name[1].toLowerCase() === "x";
+      return String.fromCodePoint(Number.parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10));
+    }
+    return ENTITIES[name.toLowerCase()] ?? reference;
+  });
+}
+
+/**
+ * The nodes `markup` describes: start and end tags, attributes quoted either way or bare,
+ * void elements, comments (dropped), and text. Not a general HTML parser: an end tag
+ * that does not close an open element, or an element left open, is an error, so markup a
+ * renderer gets wrong fails loudly rather than parsing into something else.
+ */
+function parseMarkup(document, markup) {
+  const root = document.createElement("template");
+  const open = [root];
+  const token =
+    /<!--[\s\S]*?-->|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)((?:\s+[^\s=>/"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>|([^<]+)/g;
+  const attribute = /([^\s=>/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let consumed = 0;
+  for (const match of markup.matchAll(token)) {
+    if (match.index !== consumed) {
+      throw new Error(`Unparsed markup at ${consumed}: ${markup.slice(consumed, consumed + 40)}`);
+    }
+    consumed = match.index + match[0].length;
+    const [whole, endTag, startTag, attributes, selfClosing, text] = match;
+    const parent = open.at(-1);
+    if (text !== undefined) {
+      parent.append(document.createTextNode(decodeEntities(text)));
+    } else if (endTag !== undefined) {
+      if (open.length < 2 || parent.localName !== endTag.toLowerCase()) {
+        throw new Error(`Unexpected </${endTag}> inside <${parent.localName}>`);
+      }
+      open.pop();
+    } else if (startTag !== undefined) {
+      const node = document.createElement(startTag);
+      for (const [, name, double, single, bare] of (attributes ?? "").matchAll(attribute)) {
+        node.setAttribute(name.toLowerCase(), decodeEntities(double ?? single ?? bare ?? ""));
+      }
+      parent.append(node);
+      if (!selfClosing && !VOID_ELEMENTS.has(node.localName)) {
+        open.push(node);
+      }
+    } else if (!whole.startsWith("<!--")) {
+      throw new Error(`Unparsed markup: ${whole}`);
+    }
+  }
+  if (consumed !== markup.length || open.length !== 1) {
+    throw new Error(`Unclosed or unparsed markup: <${open.at(-1).localName}>`);
+  }
+  return [...root.childNodes];
+}
+
+/** A document's window: on every event's path above the document, and its own target
+ * for what happens to the window itself, such as `blur` when the page loses focus. */
+class FakeWindow extends FakeEventTarget {
+  constructor(document) {
+    super();
+    this.document = document;
+  }
+
+  getComputedStyle(element) {
+    return {
+      get display() {
+        return element.hidden ? "none" : element.style.display || "block";
+      },
+      get visibility() {
+        for (let node = element; node instanceof FakeElement; node = node.parentNode) {
+          if (node.style.visibility) {
+            return node.style.visibility;
+          }
+        }
+        return "visible";
+      },
+      direction: "ltr",
+    };
+  }
+
+  /** The page losing focus to another window: the focused element hears `blur` and
+   * `focusout` and stays the active element, then the window itself hears `blur`. */
+  loseFocus() {
+    const active = this.document.activeElement;
+    if (active && active !== this.document.body) {
+      active.dispatchEvent({ bubbles: false, relatedTarget: null, target: active, type: "blur" });
+      active.dispatchEvent({ relatedTarget: null, target: active, type: "focusout" });
+    }
+    this.dispatchEvent({ bubbles: false, target: this, type: "blur" });
+  }
+
+  /** The page getting focus back: the window hears `focus`, then the element that kept
+   * focus hears `focus` and `focusin` again. */
+  regainFocus() {
+    this.dispatchEvent({ bubbles: false, target: this, type: "focus" });
+    const active = this.document.activeElement;
+    if (active && active !== this.document.body) {
+      active.dispatchEvent({ bubbles: false, relatedTarget: null, target: active, type: "focus" });
+      active.dispatchEvent({ relatedTarget: null, target: active, type: "focusin" });
+    }
+  }
+}
+
 class FakeDocument extends FakeNode {
   constructor() {
     super(null, "#document");
     this.ownerDocument = this;
     this.visibilityState = "visible";
+    this.defaultView = new FakeWindow(this);
     this.documentElement = this.createElement("html");
     this.head = this.createElement("head");
     this.body = this.createElement("body");
     this.documentElement.append(this.head, this.body);
     this.append(this.documentElement);
     this.activeElement = this.body;
-    this.defaultView = {
-      getComputedStyle(element) {
-        return {
-          get display() {
-            return element.hidden ? "none" : element.style.display || "block";
-          },
-          get visibility() {
-            for (let node = element; node instanceof FakeElement; node = node.parentNode) {
-              if (node.style.visibility) {
-                return node.style.visibility;
-              }
-            }
-            return "visible";
-          },
-          direction: "ltr",
-        };
-      },
-      document: this,
-    };
   }
 
   get isConnected() {
@@ -651,4 +795,4 @@ function element(document, tagName, attributes = {}, ...children) {
   return node;
 }
 
-module.exports = { FakeDocument, FakeElement, element, keyEvent };
+module.exports = { FakeDocument, FakeElement, FakeWindow, element, keyEvent };

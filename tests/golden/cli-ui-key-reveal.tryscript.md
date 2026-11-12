@@ -9,32 +9,38 @@ env:
 Holding Shift alone outside a text field, past a short threshold, marks the root with
 `data-key-reveal` and puts a keycap badge on every live shortcut target; the strip turns
 to a second layer listing the common keys that are live.
-A key the registry handles keeps the reveal and moves the badges; any other key, a
-pointer press, a wheel, blur, a hidden page, or a lost `keyup` ends it.
-A capital or `?` typed within the threshold, Shift+wheel, and Shift with the pointer
-travelling never reveal.
+A key the registry handles keeps the reveal and moves the badges, even when it moves
+focus; any other key, a pointer press, a wheel, the window losing focus, a hidden page,
+or a lost `keyup` ends it.
+A capital or `?` typed within the threshold, Shift+wheel, Shift with the pointer
+travelling, and Shift during a press never reveal.
 The shell’s keys are targeted: each acts only while its control is on screen, so `U`
 does nothing at the root and `Y` nothing on a folder, and a view tab’s letter follows
 the bar the main pane commits, never one still staged.
 
 This browserless session loads the production registry, `static/key-reveal.js`,
 `static/shell-keymap.js`, Help with the real overlay layer, the file tree’s keys, Quick
-Search, `static/main-tabs.js`, and `static/pulls-nav.js` whole, with injected time,
-pointer, and visibility.
-It plays the server’s side from `tests/fixtures/key-reveal-responses.json`: the
-`/api/file`, `/api/git/repo`, and `/api/source/status` answers of the in-process
-application, which `tests/test_key_reveal_session.py` records and replays.
+Search, `static/main-tabs.js`, `static/pulls-nav.js`, and the filter bar’s dropdowns
+from `static/filter-controls.js` whole, with injected time, pointer, and visibility.
+Its stand-in DOM puts the window on every event’s path, as a browser does, so a capture
+listener on the window hears an element’s `blur`. It plays the server’s side from
+`tests/fixtures/key-reveal-responses.json`: the `/api/file`, `/api/git/repo`, and
+`/api/source/status` answers of the in-process application, which
+`tests/test_key_reveal_session.py` records and replays.
 `tests/test_keymap.py` holds `shellKeys`, the keys each part’s registry registered for
 the shell, to the reserved table in `src/metabrowser/keymap.py`. Each step records the
 reveal’s state, whether the root is marked, the live keymap as key, command, and target,
 the badges mounted, the strip’s surface and items, and Help’s groups; `did` is what the
 shell’s stand-in activation paths were asked.
+A `cost` is what one navigation or key cost: the registry’s publications, its liveness
+reads of targets, and the keycaps built for badges and the strip.
 
 ## A Folder’s Files
 
-The keymap of a plain folder: the root and a folder below it, a Markdown file, an agent
-log, structured data, and HTML without active content, and the view tab letters
-following the committed bar through a cancelled stage.
+The keymap of a plain folder: the file type filter’s menu, the root and a folder below
+it, a Markdown file and a move to another of its kind, an agent log, structured data,
+and HTML without active content, and the view tab letters following the committed bar
+through a cancelled stage.
 
 ```console
 $ node tests/dom/key-reveal-session.js
@@ -62,7 +68,7 @@ $ node tests/dom/key-reveal-session.js
       "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
     },
     {
-      "step": "X opens the file type filter",
+      "step": "X opens the file type filter and focuses its checked row",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -84,7 +90,40 @@ $ node tests/dom/key-reveal-session.js
         "key": "x",
         "handled": true
       },
+      "focus": {
+        "menu": "filter-type-menu",
+        "row": "Any type",
+        "checked": "true",
+        "open": "true"
+      },
       "did": ["opened the types menu"]
+    },
+    {
+      "step": "↓ moves to the next row, and Escape closes the menu",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["X","filter.type","File type"],
+        ["A","filter.recency","Modified within"]
+      ],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "next": {
+        "menu": "filter-type-menu",
+        "row": ".md",
+        "checked": "false",
+        "open": "true"
+      },
+      "did": ["closed the types menu"]
     },
     {
       "step": "a Markdown file has Document and Source",
@@ -112,6 +151,33 @@ $ node tests/dom/key-reveal-session.js
         "handled": true
       },
       "did": ["selected the source tab"]
+    },
+    {
+      "step": "a move between two files of one kind registers nothing",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["D","view-tabs.d","Document tab"],
+        ["S","view-tabs.s","Source tab"],
+        ["U","header.parent","/ crumb"],
+        ["Y","header.copy","Copy path"],
+        ["X","filter.type","File type"],
+        ["A","filter.recency","Modified within"]
+      ],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "cost": {
+        "publications": ["batch(target)"],
+        "targetReads": 0,
+        "keycapsCreated": 0
+      }
     },
     {
       "step": "a folder below the root has no Copy",
@@ -285,8 +351,9 @@ $ node tests/dom/key-reveal-session.js
 
 ## Holding Shift
 
-What reveals, what never does, and what ends a reveal; Quick Search’s field and Help;
-and the keymap after a `pageshow` rebuild.
+What reveals, what never does, and what ends a reveal; what a navigation and a key cost
+while revealed; Quick Search’s field and Help; and the keymap after a `pageshow`
+rebuild.
 
 ```console
 $ node tests/dom/key-reveal-session.js gestures
@@ -344,6 +411,41 @@ $ node tests/dom/key-reveal-session.js gestures
         "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+    },
+    {
+      "step": "a navigation while revealed moves the badges in one pass",
+      "reveal": "revealed",
+      "rootMarked": true,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["R","view-tabs.r","Tree tab"],
+        ["S","view-tabs.s","Source tab"],
+        ["U","header.parent","/ crumb"],
+        ["Y","header.copy","Copy path"],
+        ["X","filter.type","File type"],
+        ["A","filter.recency","Modified within"]
+      ],
+      "badges": [
+        ["1","Files tab"],
+        ["A","Modified within"],
+        ["X","File type"],
+        ["U","beside, in file-header"],
+        ["Y","beside, in file-header"],
+        ["R","Tree tab"],
+        ["S","Source tab"]
+      ],
+      "strip": {
+        "surface": "reveal",
+        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "cost": {
+        "publications": ["batch(target,registration)"],
+        "targetReads": 10,
+        "keycapsCreated": 12
+      }
     },
     {
       "step": "releasing Shift puts everything back",
@@ -504,6 +606,36 @@ $ node tests/dom/key-reveal-session.js gestures
       "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
     },
     {
+      "step": "Shift during a press that moved focus never reveals",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["D","view-tabs.d","Document tab"],
+        ["S","view-tabs.s","Source tab"],
+        ["U","header.parent","/ crumb"],
+        ["Y","header.copy","Copy path"],
+        ["X","filter.type","File type"],
+        ["A","filter.recency","Modified within"],
+        ["↑ or K","tree.previous",null],
+        ["↓ or J","tree.next",null],
+        ["←","tree.parent-or-collapse",null],
+        ["→","tree.child-or-expand",null],
+        ["Home","tree.first",null],
+        ["End","tree.last",null],
+        ["Enter or Space","tree.activate",null]
+      ],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "focusedRow": "docs"
+    },
+    {
       "step": "↑ on a tree row moves one row and keeps the reveal",
       "reveal": "revealed",
       "rootMarked": true,
@@ -544,7 +676,11 @@ $ node tests/dom/key-reveal-session.js gestures
         "handled": true
       },
       "focusedRow": "README.md",
-      "badgesRemounted": 6,
+      "cost": {
+        "publications": ["dispatch"],
+        "targetReads": 10,
+        "keycapsCreated": 6
+      },
       "did": ["the tree opened README.md"]
     },
     {
@@ -584,7 +720,11 @@ $ node tests/dom/key-reveal-session.js gestures
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
       "focusedRow": "docs",
-      "badgesRemountedByRepeats": 0,
+      "repeats": {
+        "publications": [],
+        "targetReads": 0,
+        "keycapsCreated": 0
+      },
       "did": ["the tree opened data.json","the tree opened docs"]
     },
     {
@@ -600,14 +740,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["Y","header.copy","Copy path"],
         ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
-        ["↑ or K","tree.previous",null],
-        ["↓ or J","tree.next",null],
-        ["←","tree.parent-or-collapse",null],
-        ["→","tree.child-or-expand",null],
-        ["Home","tree.first",null],
-        ["End","tree.last",null],
-        ["Enter or Space","tree.activate",null]
+        ["A","filter.recency","Modified within"]
       ],
       "badges": [],
       "strip": {
@@ -737,9 +870,10 @@ $ node tests/dom/key-reveal-session.js gestures
 
 ## The Main Tabs, a Commit, a Stack, and a Pin
 
-`2` and `1` under a held Shift, a commit view’s Copy revision, Pulls drawn before Git
-discovery, the Preview tab’s `P` beside the stack’s, a pull request in and outside a
-stack, and a mirror’s pin with its branch switcher and no modified-within filter.
+`2` and `1` under a held Shift, a commit view’s Copy revision, Commits registered while
+the registry is down, Pulls drawn before Git discovery, the Preview tab’s `P` beside the
+stack’s, a pull request in and outside a stack, and a mirror’s pin with its branch
+switcher and no modified-within filter.
 
 ```console
 $ node tests/dom/key-reveal-session.js tabs
@@ -909,6 +1043,38 @@ $ node tests/dom/key-reveal-session.js tabs
         "handled": true
       },
       "did": ["copied 0123456789abcdef0123456789abcdef01234567"]
+    },
+    {
+      "step": "Commits registered while the registry is down gets its tab, then its key",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["1","main-tabs.files","Files tab"],
+        ["2","main-tabs.git","Commits tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"]
+      ],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "whileDown": {
+        "threw": null,
+        "tab": true,
+        "container": true,
+        "key": null
+      },
+      "key": "2",
+      "pressed": {
+        "key": "2",
+        "handled": true
+      },
+      "active": "git",
+      "did": ["address /view/"]
     },
     {
       "step": "Pulls drawn before Commits keeps 3, and 2 stays reserved",

@@ -11,6 +11,10 @@ pins the quick-file seams.
 
 from __future__ import annotations
 
+import asyncio
+import re
+from typing import Any, cast
+
 from metabrowser import server as proc_browser
 
 
@@ -88,14 +92,27 @@ def test_the_view_tab_letters_follow_only_a_committed_bar() -> None:
     commit_end = render.index("})", commit_start)
     commit = render[commit_start:commit_end]
     replaced = commit.index("preview.replaceChildren(...replacementNodes);")
-    committed = commit.index(
-        "shellKeymap?.commitViewTabs(previousBar, shellKeymap.committedBar());"
-    )
-    assert commit.index("const previousBar = shellKeymap?.committedBar() ?? null;") < replaced
-    assert replaced < committed
+    committed = commit.index("shellKeymap?.commitViewTabs(shellKeymap.committedBar());")
+    assert replaced < committed < commit.index("finishRetainedPullPage();")
     assert render.count("commitViewTabs") == 1
     assert "shellKeymap" not in render[:commit_start]
     assert "stagedPluginDisposers.push" not in render
+
+
+def test_a_committed_bar_diffs_its_letters_against_the_ones_held() -> None:
+    """``commitViewTabs`` releases nothing itself: ``syncViewTabs`` keeps a letter both bars
+    declare under one label, so a move between two files of one kind registers nothing,
+    and the ``syncPane()`` after it in the same commit finds every target in place."""
+
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    commit = keymap[keymap.index("function commitViewTabs(") :]
+    commit = commit[: commit.index("\n    }\n")]
+    assert "releaseViewTab" not in commit
+    assert "syncViewTabs(nextBar);" in commit
+    assert "syncHeader();" in commit
+    sync = keymap[keymap.index("function syncViewTabs(") :]
+    sync = sync[: sync.index("\n    }\n")]
+    assert "held.target.retarget(button);" in sync
 
 
 def test_every_main_pane_install_brings_the_keys_along() -> None:
@@ -136,3 +153,114 @@ def test_the_commit_view_lends_its_copy_revision_through_the_bridge() -> None:
     panel = proc_browser.STATIC_DIR.joinpath("git-panel.js").read_text()
     assert "bridge.attachHeaderCopy?.(revisionCopy)" in panel
     assert '<div class="git-commit-header" data-kbd-badge-anchor>' in panel
+
+
+def _tags(source: str, token: str) -> list[str]:
+    """Every literal start tag in ``source`` whose class list carries ``token``."""
+
+    return [
+        tag
+        for tag in re.findall(r"<(?:button|div|span)\b[^<>]*>", source)
+        if re.search(rf'class="(?:[^"]*\s)?{re.escape(token)}(?:\s[^"]*)?"', tag)
+    ]
+
+
+def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
+    """``headerControls()`` finds Up and Copy by class and attribute in markup app.js writes,
+    and the session renders its own copy of that markup, so these pin the producers: if
+    one stops emitting a hook, ``U`` or ``Y`` would find nothing and stop working while
+    the session still passed."""
+
+    js = _read_app_js()
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+
+    # Up on a folder: `.folder-up[data-nav-dir]:not([disabled])` inside `.folder-header`.
+    folder = _function_source(js, "renderFolderHeader")
+    assert '<div class="file-header folder-header" data-kbd-badge-anchor>' in folder
+    assert 'header?.classList.contains("folder-header")' in keymap
+    up = _tags(folder, "folder-up")
+    assert len(up) == 2, up
+    enabled = [tag for tag in up if " disabled" not in tag]
+    disabled = [tag for tag in up if " disabled" in tag]
+    assert len(enabled) == 1 and len(disabled) == 1, up
+    assert 'data-nav-dir="${esc(parent)}"' in enabled[0]
+    assert "${ownedControlAttr()}" in enabled[0]
+    assert "data-nav-dir" not in disabled[0]
+    assert '".folder-up[data-nav-dir]:not([disabled])"' in keymap
+    assert (
+        '`<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>`'
+        in folder
+    )
+
+    # Up on a file: the last `.folder-breadcrumb [data-nav-dir]`, a crumb headerAddressHtml
+    # writes for each folder above the file, and for the root.
+    address = _function_source(js, "headerAddressHtml")
+    assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in address
+    assert 'var attr = last && isFile ? "data-nav-file" : "data-nav-dir";' in address
+    assert '${attr}="${esc(walked)}"${ownedControlAttr()}' in address
+    assert '".folder-breadcrumb [data-nav-dir]"' in keymap
+
+    # Copy on a file: `.file-header-copy` in the file header's breadcrumb, an owned copy
+    # control the SDK's copyFromControl() accepts.
+    render = _function_source(js, "renderFile")
+    file_header = render[
+        render.index("html = '<div class=\"file-header\" data-kbd-badge-anchor>';") :
+    ]
+    file_header = file_header[: file_header.index('html += "</div>";')]
+    crumbs = file_header.index("'<span class=\"file-header-path folder-breadcrumb\">' +")
+    assert file_header.index("headerAddressHtml(data.path, true) +") > crumbs
+    copy = _tags(file_header, "file-header-copy")
+    assert len(copy) == 1, copy
+    assert 'data-mb-copy="text"' in copy[0]
+    assert "data-mb-copy-text=" in copy[0]
+    assert "${ownedControlAttr()}" in copy[0]
+    assert file_header.index("file-header-copy") < file_header.index('"</span>";')
+    assert '".file-header-copy"' in keymap
+    sdk = proc_browser.STATIC_DIR.joinpath("plugin-sdk.js").read_text()
+    copy_from_control = sdk[sdk.index("function copyFromControl(") :]
+    copy_from_control = copy_from_control[: copy_from_control.index("\n  }\n")]
+    assert "if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {" in copy_from_control
+    assert "_handleCopyClick(control);" in copy_from_control
+    assert "window.MetabrowserPluginHost?.copyFromControl(target) ?? false" in keymap
+
+
+def test_the_view_tab_markup_carries_the_hooks_the_keymap_reads() -> None:
+    """``committedBar()`` takes the pane's own `.tab-bar` child, and ``declaredTabs()`` reads
+    each `.tab-btn[data-view-key]` and its `data-tab`, all written by renderFile."""
+
+    render = _function_source(_read_app_js(), "renderFile")
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    assert '<div class="tab-bar" role="tablist">' in render
+    assert "'<button class=\"tab-btn' +" in render
+    assert '\'" type="button" role="tab" aria-selected="\' +' in render
+    assert "'\" data-tab=\"' +" in render
+    assert (
+        'typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : ""'
+        in (render)
+    )
+    assert 'child.classList.contains("tab-bar")' in keymap
+    assert 'const VIEW_TAB_SELECTOR = ".tab-btn[data-view-key]";' in keymap
+    assert "button.dataset.tab" in keymap
+
+
+def _shell_html() -> str:
+    class _Request:
+        def __init__(self) -> None:
+            self.query_params: dict[str, str] = {}
+            self.headers: dict[str, str] = {}
+
+    response = asyncio.run(proc_browser.index(cast(Any, _Request())))
+    return bytes(response.body).decode()
+
+
+def test_the_keymap_finds_the_pane_and_the_filter_bar_by_the_shells_ids() -> None:
+    """The keymap reads the main pane and the filter bar by id, not through app.js, so the
+    shell the server renders must carry exactly those ids."""
+
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    assert 'const pane = () => document.getElementById("preview-pane");' in keymap
+    assert 'const filterBar = () => document.getElementById("nav-filter-bar");' in keymap
+    html = _shell_html()
+    assert html.count('id="preview-pane"') == 1
+    assert html.count('id="nav-filter-bar"') == 1
+    assert "pane: () =>" not in _function_source(_read_app_js(), "shellKeymapShell")

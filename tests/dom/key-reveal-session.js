@@ -2,13 +2,17 @@
 //
 // The shortcut registry, the reveal (static/key-reveal.js), the shell keymap
 // (static/shell-keymap.js), Help and its strip with the real overlay layer, the file
-// tree's keys, Quick Search, the main tabs (static/main-tabs.js), and the Pulls tab's keys
-// (static/pulls-nav.js) load whole, with injected time, pointer, and visibility. What
-// app.js would do is played here: it renders each file's header and view tab bar from
-// the server's answer, stages it in an inert layer, and commits it, calling the keymap
-// where app.js does; and it stands in for the activation paths (selectPreviewTab,
-// the filter trigger, the selector's handle, copyFromControl, the Up navigation), recording
-// what each was asked. A stand-in commit view lends its Copy revision through the bridge
+// tree's keys, Quick Search, the main tabs (static/main-tabs.js), the Pulls tab's keys
+// (static/pulls-nav.js), and the filter bar's dropdowns (static/filter-controls.js) load
+// whole, with injected time, pointer, and visibility, on a stand-in DOM whose window is
+// on every event's path. What app.js would do is played here: it renders each file's
+// header and view tab bar from the server's answer, stages it in an inert layer, and
+// commits it, calling the keymap where app.js does; it renders the filter bar from the
+// filter controls' markup and opens a menu as a trigger's click does; and it stands in
+// for the other activation paths (selectPreviewTab, the selector's handle,
+// copyFromControl, the Up navigation), recording what each was asked.
+// tests/test_shell_keymap_integration.py holds app.js's own markup to the hooks the
+// keymap reads. A stand-in commit view lends its Copy revision through the bridge
 // git-panel.js uses, and a stand-in pull request page offers hasStack() and moveStack().
 //
 // The server's side is tests/fixtures/key-reveal-responses.json: the `/api/file`,
@@ -16,7 +20,9 @@
 // tests/test_key_reveal_session.py records and holds the shell keys printed here to.
 //
 // Each step records the reveal's state, the live keymap as key, command, and target, the
-// badges mounted, the strip's surface and items, and Help's groups.
+// badges mounted, the strip's surface and items, and Help's groups. A step with a `cost`
+// records what one navigation or key cost: the registry's publications, its liveness
+// reads of targets, and the keycaps built.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -33,6 +39,7 @@ const recording = JSON.parse(
 const MODULES = [
   "navigation.js",
   "pull-route.js",
+  "filter-controls.js",
   "main-tabs.js",
   "keyboard-shortcuts.js",
   "overlay-layer.js",
@@ -126,23 +133,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       this.state = state;
     },
   };
-  const windowListeners = [];
-  const browserWindow = {
-    addEventListener: (type, listener) => windowListeners.push({ type, listener }),
-    removeEventListener(type, listener) {
-      const at = windowListeners.findIndex(
-        (entry) => entry.type === type && entry.listener === listener,
-      );
-      if (at >= 0) {
-        windowListeners.splice(at, 1);
-      }
-    },
-    fire(type) {
-      for (const entry of windowListeners.filter((candidate) => candidate.type === type)) {
-        entry.listener({ type });
-      }
-    },
-  };
+  // The document's own window, on every event's path: a capture listener there hears an
+  // element's `blur` when a key moves focus, as it does in a browser.
+  const browserWindow = document.defaultView;
   let kbdCreated = 0;
   const createElement = document.createElement.bind(document);
   document.createElement = (tagName) => {
@@ -151,6 +144,31 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     }
     return createElement(tagName);
   };
+  // What a step costs. Without checkVisibility(), as here, the registry reads a target's
+  // liveness through its computed style, and reads the target's own `display` once each
+  // time; a badge placed beside its target reads its `direction` once as it mounts.
+  let targetReads = 0;
+  const computedStyle = browserWindow.getComputedStyle.bind(browserWindow);
+  browserWindow.getComputedStyle = (node) => {
+    const style = computedStyle(node);
+    if (!node.hasAttribute?.("aria-keyshortcuts")) {
+      return style;
+    }
+    return {
+      get display() {
+        targetReads += 1;
+        return style.display;
+      },
+      get visibility() {
+        return style.visibility;
+      },
+      get direction() {
+        return style.direction;
+      },
+    };
+  };
+  /** The registry's publications since the last measure(), by kind. */
+  const published = [];
 
   const context = {
     AbortController,
@@ -170,7 +188,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     TypeError,
     URL,
     URLSearchParams,
-    addEventListener: browserWindow.addEventListener,
+    addEventListener: (type, listener, options) =>
+      browserWindow.addEventListener(type, listener, options),
     clearTimeout: (timer) => clock.cancel(timer),
     console: { error() {}, warn() {}, log() {} },
     document,
@@ -180,8 +199,16 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       decorateExternalLink() {},
       ensureAsset: () => new Promise(() => {}),
     },
+    // plugin-sdk.js's copy delegate, which Copy's key reaches as the control's click does.
+    MetabrowserPluginHost: {
+      copyFromControl(control) {
+        did.push(`copied ${control.getAttribute("data-mb-copy-text")}`);
+        return true;
+      },
+    },
     queueMicrotask,
-    removeEventListener: browserWindow.removeEventListener,
+    removeEventListener: (type, listener, options) =>
+      browserWindow.removeEventListener(type, listener, options),
     setTimeout: (callback, delayMs) => clock.schedule(callback, delayMs),
   };
   context.window = context;
@@ -257,22 +284,17 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let palette = null;
   let selector = null;
   let headerCopyBridge = null;
+  let filterOpenMenu = null;
   const stack = { inStack: false };
 
   const committedBar = () => keymap?.committedBar() ?? null;
 
-  // app.js shellKeymapShell: where the shell's controls are, and the paths they run.
+  // app.js shellKeymapShell: the state only app.js holds, and the paths its controls run.
   const shell = Object.freeze({
-    copyFromControl(control) {
-      did.push(`copied ${control.getAttribute("data-mb-copy-text")}`);
-      return true;
-    },
-    filterBar: () => filterBar,
     lentCopy: () => headerCopyBridge,
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
     },
-    pane: () => preview,
     selectPreviewTab(bar, tabId) {
       for (const button of bar.querySelectorAll(".tab-btn")) {
         const on = button.dataset.tab === tabId;
@@ -283,10 +305,16 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       return true;
     },
     sourceSelector: () => selector,
+    // app.js toggleFilterMenu, a trigger's click: remember the open menu and render the
+    // bar again, which reports the new triggers to the keymap.
     toggleFilterMenu(key, open) {
+      filterOpenMenu = open ? key : null;
+      renderFilters();
       did.push(`${open ? "opened" : "closed"} the ${key} menu`);
     },
   });
+  // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu.
+  context.metabrowser.filterControls.bind(filterBar, { onMenuToggle: shell.toggleFilterMenu });
 
   /** The end of every install of main-pane content: app.js finishRetainedPullPage. */
   function installed() {
@@ -390,9 +418,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     preview.append(staging);
     return {
       commit() {
-        const previousBar = committedBar();
         preview.replaceChildren(...staging.childNodes);
-        keymap?.commitViewTabs(previousBar, committedBar());
+        keymap?.commitViewTabs(committedBar());
         installed();
       },
       cancel() {
@@ -440,24 +467,42 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     };
   }
 
-  /** renderNavFilterBar: a pin has no modified-within filter. */
+  /**
+   * renderNavFilterBar: the two dropdowns, from the production filter controls, so the
+   * triggers, panels, and checked rows the filter keys reach are that module's markup.
+   * A pin has no modified-within filter. The options are a stand-in for the tallies.
+   */
   function renderFilters() {
-    const menu = (key, label, summary) =>
-      element(
-        document,
-        "span",
-        { class: "chip-menu", "data-chip-menu": key },
-        element(
-          document,
-          "button",
-          { "aria-label": label, class: "chip chip-menu-trigger", "data-chip-menu-toggle": key },
-          summary,
-        ),
-      );
-    filterBar.replaceChildren(
-      ...(pin ? [] : [menu("recency", "Modified within", "Any age")]),
-      menu("types", "File type", "Any type"),
-    );
+    const controls = context.metabrowser.filterControls;
+    const recency = pin
+      ? ""
+      : controls.menuGroupHtml({
+          anyLabel: "Any age",
+          anyValue: "all",
+          key: "recency",
+          label: "Modified within",
+          menuId: "filter-recency-menu",
+          open: filterOpenMenu === "recency",
+          options: [
+            { label: "Past hour", value: "1h" },
+            { label: "Past day", value: "24h" },
+          ],
+          select: "one",
+          value: "all",
+        });
+    const types = controls.menuGroupHtml({
+      anyLabel: "Any type",
+      key: "types",
+      label: "File type",
+      menuId: "filter-type-menu",
+      open: filterOpenMenu === "types",
+      options: [
+        { count: 2, label: ".md", value: ".md" },
+        { count: 1, label: ".json", value: ".json" },
+      ],
+      value: null,
+    });
+    filterBar.innerHTML = `<div class="nav-filter-bar-main">${recency}${types}</div>`;
     keymap?.syncFilters();
   }
 
@@ -592,6 +637,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   /** initKeyboardInfrastructure, in app.js's order. */
   function build() {
     shortcuts = context.MetabrowserKeyboardShortcuts.create({ document });
+    shortcuts.subscribe((event) =>
+      published.push(event.kind === "batch" ? `batch(${event.kinds.join(",")})` : event.kind),
+    );
     mainTabs.bindShortcuts(shortcuts);
     if (pulls) {
       unregisterPulls = context.MetabrowserPullsNav.registerKeys(pulls, shortcuts);
@@ -611,13 +659,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       shortcuts,
     });
     keymap = context.MetabrowserShellKeymap.createShellKeymap({ shell, shortcuts });
+    // As app.js creates it: the window is the document's own.
     reveal = context.MetabrowserKeyReveal.createKeyReveal({
       cancel: clock.cancel,
       document,
       schedule: clock.schedule,
       shortcuts,
       visibility: () => document.visibilityState,
-      window: browserWindow,
     });
     palette = context.MetabrowserSearchPalette.create({
       controller: { cancel() {}, subscribe: () => () => {} },
@@ -640,6 +688,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     for (const release of unregisterPulls) {
       release();
     }
+    mainTabs.bindShortcuts(null);
     shortcuts.dispose();
   }
 
@@ -697,6 +746,22 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       : { surface: "nav", items: items(hints) };
   }
 
+  /**
+   * What `work` cost: the registry's publications, how many times it read a target's
+   * liveness, and how many keycaps it built, for badges and the strip together.
+   */
+  function measure(work) {
+    published.length = 0;
+    targetReads = 0;
+    const keycapsBefore = kbdCreated;
+    work();
+    return {
+      publications: published.splice(0),
+      targetReads,
+      keycapsCreated: kbdCreated - keycapsBefore,
+    };
+  }
+
   /** What one step shows, and what the stand-ins were asked since the last step. */
   function record(step, extra = {}) {
     const entry = {
@@ -713,6 +778,21 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       entry.did = did.splice(0);
     }
     return entry;
+  }
+
+  /** The filter menu row that has focus, as its menu, label, and checked state. */
+  function menuFocus() {
+    const row = document.activeElement;
+    const panel = row?.closest(".chip-menu-panel");
+    if (!panel || !row.classList.contains("chip-menu-item")) {
+      return null;
+    }
+    return {
+      menu: panel.id,
+      row: row.querySelector(".menu-item-label")?.textContent ?? null,
+      checked: row.getAttribute("aria-checked"),
+      open: panel.parentNode.getAttribute("aria-expanded"),
+    };
   }
 
   // ── Input ─────────────────────────────────────────────────────
@@ -743,6 +823,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     },
     location,
     mainTabs,
+    measure,
+    menuFocus,
     mountSelector,
     open,
     openCommit,
@@ -815,16 +897,32 @@ const PARTS = {
     const steps = [];
     const plain = plainPage();
     steps.push(plain.record("a plain folder shows Files only"));
+    // The trigger's own path opens the menu, and focus goes to its checked row, so the
+    // menu's arrow keys work next; Escape closes it through the same path.
     steps.push(
-      plain.record("X opens the file type filter", {
+      plain.record("X opens the file type filter and focuses its checked row", {
         pressed: { key: "x", handled: plain.press("x") },
+        focus: plain.menuFocus(),
       }),
     );
+    plain.press("ArrowDown");
+    const next = plain.menuFocus();
+    plain.press("Escape");
+    plain.document.body.focus();
+    steps.push(plain.record("↓ moves to the next row, and Escape closes the menu", { next }));
 
     plain.open(files["README.md"]);
     steps.push(
       plain.record("a Markdown file has Document and Source", {
         pressed: { key: "s", handled: plain.press("S", { shiftKey: true }) },
+      }),
+    );
+    // The letters both bars declare keep their commands and move to the new tabs, so a
+    // move between two files of one kind registers nothing, and the resting strip, which
+    // follows registrations, is not rebuilt; nothing reads a target at rest.
+    steps.push(
+      plain.record("a move between two files of one kind registers nothing", {
+        cost: plain.measure(() => plain.open(files["README.md"])),
       }),
     );
 
@@ -886,6 +984,14 @@ const PARTS = {
     steps.push(plain.record("Shift held below the threshold shows nothing yet"));
     plain.clock.advance(1);
     steps.push(plain.record("Shift held past the threshold reveals"));
+    // A navigation while revealed changes many targets inside one batch, and the badges
+    // follow once, as it ends: one liveness read per target, and one publication.
+    steps.push(
+      plain.record("a navigation while revealed moves the badges in one pass", {
+        cost: plain.measure(() => plain.open(files["data.json"])),
+      }),
+    );
+    plain.open(files["README.md"]);
     plain.shiftUp();
     steps.push(plain.record("releasing Shift puts everything back"));
 
@@ -935,30 +1041,49 @@ const PARTS = {
     plain.pointer("pointerup", 32, 13);
     plain.shiftUp();
 
+    // A press that moves focus is still a press until it ends: the element losing focus
+    // hears `blur`, and Shift pressed before the pointer comes up never arms.
+    plain.rows[0].focus();
+    plain.pointer("pointerdown", 40, 20);
+    plain.rows[2].focus();
+    plain.shiftDown();
+    plain.clock.advance(HOLD_MS);
+    steps.push(
+      plain.record("Shift during a press that moved focus never reveals", {
+        focusedRow: plain.document.activeElement.dataset.path,
+      }),
+    );
+    plain.pointer("pointerup", 40, 20);
+    plain.shiftUp();
+
     // Tree keys keep the reveal; a repeat does no reveal work.
     plain.rows[1].focus();
     revealOn(plain);
-    const mountsBefore = plain.kbdCreated;
-    const up = plain.key("keydown", "ArrowUp", { shiftKey: true });
+    let up = false;
+    const upCost = plain.measure(() => {
+      up = plain.key("keydown", "ArrowUp", { shiftKey: true });
+    });
     steps.push(
       plain.record("↑ on a tree row moves one row and keeps the reveal", {
         pressed: { key: "ArrowUp", handled: up },
         focusedRow: plain.document.activeElement.dataset.path,
-        badgesRemounted: plain.kbdCreated - mountsBefore,
+        cost: upCost,
       }),
     );
     plain.key("keydown", "j", { shiftKey: true });
-    const afterFirst = plain.kbdCreated;
-    plain.key("keydown", "j", { repeat: true, shiftKey: true });
-    plain.key("keydown", "j", { repeat: true, shiftKey: true });
+    const repeats = plain.measure(() => {
+      plain.key("keydown", "j", { repeat: true, shiftKey: true });
+      plain.key("keydown", "j", { repeat: true, shiftKey: true });
+    });
     steps.push(
       plain.record("a held J moves rows and does no reveal work on its repeats", {
         focusedRow: plain.document.activeElement.dataset.path,
-        badgesRemountedByRepeats: plain.kbdCreated - afterFirst,
+        repeats,
       }),
     );
-    plain.window.fire("blur");
+    plain.window.loseFocus();
     steps.push(plain.record("the window losing focus ends the reveal"));
+    plain.window.regainFocus();
     plain.shiftUp();
 
     revealOn(plain);
@@ -1013,6 +1138,8 @@ const PARTS = {
     repo.discoverGit();
     steps.push(repo.record("a Git repository shows Files and Commits"));
 
+    // From a Files row, so the digit moves focus from one element to another.
+    repo.rows[0].focus();
     revealOn(repo);
     const two = repo.press("@", { code: "Digit2", shiftKey: true });
     steps.push(
@@ -1048,6 +1175,40 @@ const PARTS = {
       }),
     );
     repo.press("1");
+    await settle();
+
+    // ── A panel registered while the registry is down ────────────
+    // Git discovery can finish between a real pagehide, which disposes the registry, and
+    // the pageshow that rebuilds it. The tab and its container appear then anyway, and the
+    // rebuild makes the tab its digit's target.
+    const late = createPage({ repository: recording.repository.repo.body.is_repo });
+    late.renderFilters();
+    late.open(files[""]);
+    late.build();
+    late.teardown();
+    let threw = null;
+    try {
+      late.discoverGit();
+    } catch (error) {
+      threw = error.message;
+    }
+    const commitsTab = () => late.document.querySelector('.nav-tab-bar .tab-btn[data-tab="git"]');
+    const whileDown = {
+      threw,
+      tab: commitsTab() !== null,
+      container: late.document.getElementById("tab-git") !== null,
+      key: commitsTab()?.getAttribute("aria-keyshortcuts") ?? null,
+    };
+    late.build();
+    steps.push(
+      late.record("Commits registered while the registry is down gets its tab, then its key", {
+        whileDown,
+        key: commitsTab()?.getAttribute("aria-keyshortcuts") ?? null,
+        pressed: { key: "2", handled: late.press("2") },
+        active: late.mainTabs.active(),
+      }),
+    );
+    late.press("1");
     await settle();
 
     // ── Pulls drawn before Git discovery, and a pull request stack ─
@@ -1120,7 +1281,7 @@ const PARTS = {
       }),
     );
 
-    return { steps, pages: [repo, hosted, pinned] };
+    return { steps, pages: [repo, late, hosted, pinned] };
   },
 };
 

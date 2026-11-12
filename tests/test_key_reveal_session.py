@@ -201,11 +201,44 @@ def test_the_session_runs_on_the_recording() -> None:
         "? within the threshold opens Help and never reveals",
         "Shift+wheel never reveals",
         "Shift with the pointer travelling to a click never reveals",
+        "Shift during a press that moved focus never reveals",
         "Shift in Quick Search's field never reveals",
     ):
         assert by_name[chord]["reveal"] == "idle", chord
+    # A handled key that moves focus keeps the reveal: only the window's own blur ends it.
+    for moved in (
+        "↑ on a tree row moves one row and keeps the reveal",
+        "a held J moves rows and does no reveal work on its repeats",
+        "2 with Shift still held opens Commits, focuses its row, and keeps the reveal",
+        "1 during the reveal shows the filter bar, and X and A gain badges",
+    ):
+        assert by_name[moved]["reveal"] == "revealed", moved
+    assert by_name["the window losing focus ends the reveal"]["reveal"] == "idle"
     one = by_name["1 during the reveal shows the filter bar, and X and A gain badges"]
     assert {"X", "A"} <= {badge[0] for badge in one["badges"]}
+    opened = by_name["X opens the file type filter and focuses its checked row"]
+    assert opened["focus"] == {
+        "menu": "filter-type-menu",
+        "row": "Any type",
+        "checked": "true",
+        "open": "true",
+    }
+
+    # What a navigation and a key cost: one publication, and while revealed one pass.
+    same_kind = by_name["a move between two files of one kind registers nothing"]["cost"]
+    assert same_kind == {"publications": ["batch(target)"], "targetReads": 0, "keycapsCreated": 0}
+    moved_revealed = by_name["a navigation while revealed moves the badges in one pass"]["cost"]
+    assert len(moved_revealed["publications"]) == 1
+    assert by_name["a held J moves rows and does no reveal work on its repeats"]["repeats"] == {
+        "publications": [],
+        "targetReads": 0,
+        "keycapsCreated": 0,
+    }
+
+    late = by_name["Commits registered while the registry is down gets its tab, then its key"]
+    assert late["whileDown"] == {"threw": None, "tab": True, "container": True, "key": None}
+    assert late["key"] == "2"
+    assert late["pressed"] == {"key": "2", "handled": True}
     cancelled = by_name["R follows the committed bar, and a cancelled stage changes nothing"]
     assert cancelled["r"] == {
         "structured": "Tree",
