@@ -13,9 +13,10 @@ import { pipeline } from "node:stream";
 
 /**
  * The files the committed diff benchmark pages load, relative to the checkout: the pages
- * themselves (run.mjs's diff-layout and diff-intraline cases), their stylesheets, and the
- * modules they import. static-server.test.mjs follows the pages' imports and fails if this
- * list misses a file or names one they do not load.
+ * themselves (run.mjs's diff-layout and diff-intraline cases), their stylesheets, the
+ * modules they import, and the diff corpus the layout page fetches. static-server.test.mjs
+ * follows the pages' references and fails if this list misses a file or names one they
+ * do not load.
  */
 export const BENCHMARK_ASSETS = Object.freeze([
   "explorations/diff-intraline/benchmark.html",
@@ -26,6 +27,7 @@ export const BENCHMARK_ASSETS = Object.freeze([
   "src/metabrowser/builtin_plugins/diff/diff-syntax.js",
   "src/metabrowser/builtin_plugins/diff/diff-view.js",
   "src/metabrowser/builtin_plugins/diff/styles.css",
+  "src/metabrowser/data/file-diff-format/file-diff-conformance.json",
   "src/metabrowser/static/styles.css",
 ]);
 

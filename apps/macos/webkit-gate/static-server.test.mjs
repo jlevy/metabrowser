@@ -159,13 +159,16 @@ test("Cleanup closes it, so nothing keeps the harness open", async () => {
 });
 
 /**
- * The checkout-relative files `file` loads: stylesheets, scripts, and module imports.
+ * The checkout-relative files `file` loads: stylesheets, scripts, module imports, and
+ * fetched files.
  * @param {string} file
  */
 function loads(file) {
   const text = fs.readFileSync(path.join(ROOT, file), "utf8");
   const specifiers = [
-    ...text.matchAll(/(?:href|src)="([^"]+)"|(?:\bfrom|^\s*import)\s*["']([^"']+)["']/gm),
+    ...text.matchAll(
+      /(?:href|src)="([^"]+)"|(?:\bfrom|^\s*import|\bfetch\(\s*)\s*["']([^"']+)["']/gm,
+    ),
   ].map((match) => match[1] ?? match[2]);
   // A file the page loads is named by a path; prose such as `from "a filter"` is not.
   return specifiers
