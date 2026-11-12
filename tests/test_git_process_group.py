@@ -270,14 +270,19 @@ class _HeldSpawn:
     Held on events, not for a time, so the stop always lands inside the window.
     """
 
-    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *, reap_first: bool = False) -> None:
         self.started = threading.Event()
+        self.reaped = threading.Event()
         self.release = threading.Event()
         real_spawn = asyncio.create_subprocess_exec
 
         async def held_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
             proc = await real_spawn(*args, **kwargs)
             self.started.set()
+            if reap_first:
+                # The child ends and is reaped before the spawn returns to its caller.
+                await proc.wait()
+                self.reaped.set()
             await asyncio.to_thread(self.release.wait, 30)
             return proc
 
@@ -441,3 +446,52 @@ def test_no_group_is_started_once_a_stop_has_begun(
     with pytest.raises(GitUnavailableError, match="stopping"):
         asyncio.run(spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY))
     assert started == []
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_group_reaped_before_its_spawn_returns_is_never_signalled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that exits and is reaped while its spawn is held has given up its ID.
+
+    The kernel may hand that ID to an unrelated process group at once, so the stop that
+    was waiting for the spawn must finish without ever passing it to ``killpg``.
+    """
+
+    held = _HeldSpawn(monkeypatch, reap_first=True)
+    exits: list[int] = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    signalled: list[int] = []
+    real_killpg = os.killpg
+
+    def recording_killpg(pgid: int, signum: int) -> None:
+        signalled.append(pgid)
+        real_killpg(pgid, signum)
+
+    monkeypatch.setattr(os, "killpg", recording_killpg)
+    real_kill = process_module.kill_live_process_groups
+
+    def kill_then_release() -> None:
+        real_kill()
+        held.release.set()
+
+    monkeypatch.setattr(process_module, "kill_live_process_groups", kill_then_release)
+    monkeypatch.setattr(stdin_lifeline, "kill_live_process_groups", kill_then_release)
+
+    async def scenario() -> int:
+        task = asyncio.ensure_future(
+            spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        await asyncio.to_thread(held.reaped.wait, 30)
+        stopper = threading.Thread(target=stdin_lifeline.stop_for_closed_stdin, daemon=True)
+        stopper.start()
+        await asyncio.to_thread(held.release.wait, 30)
+        proc = await asyncio.wait_for(task, 20)
+        await asyncio.to_thread(stopper.join, 20)
+        assert not stopper.is_alive(), "the stop never finished"
+        return proc.pid
+
+    pid = asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+    assert pid not in signalled
+    assert exits[:1] == [0]
