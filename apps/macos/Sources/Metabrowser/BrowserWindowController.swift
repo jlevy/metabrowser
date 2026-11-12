@@ -316,9 +316,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     private func pageAskedToPrint(_ frame: WKFrameInfo) {
         let sheetOpen = window?.attachedSheet != nil
-        guard policy.allowsPagePrint(from: frame.request.url, isMainFrame: frame.isMainFrame, sheetOpen: sheetOpen)
-        else {
-            AppLog.app.info("a page's print was not answered: not this server's page, or a sheet is open")
+        guard PagePrintRequests.allows(frame, under: policy, sheetOpen: sheetOpen) else {
+            AppLog.app.info("a page's print was not answered: not from this server's own origin, or a sheet is open")
             return
         }
         printPage(nil)

@@ -32,6 +32,9 @@ final class FolderSession: ManagedServer {
     var onLayoutChange: (() -> Void)?
     /// A start or restart is waiting for a runtime the app accepts.
     var onWaitingForRuntime: (() -> Void)?
+    /// A restart or a resumed start of a restored background folder was refused by its
+    /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
+    var onRootRefused: ((FolderSession) -> Void)?
 
     /// `accepted` is the runtime a server may start from at the moment it would start,
     /// which every start, Retry, and Restart Server ask, not `setup`.
@@ -93,7 +96,7 @@ final class FolderSession: ManagedServer {
     /// is ready or has failed. Without an accepted runtime the windows say so, and the
     /// start waits for `resume()`.
     func startServer() async {
-        if await server.start() == .waitingForRuntime { waitForRuntime() }
+        settle(await server.start())
     }
 
     /// A restored folder's turn (`FolderWindows`): the same start, which waits in the
@@ -117,14 +120,25 @@ final class FolderSession: ManagedServer {
     /// not be the one this folder started with. Without one, nothing is stopped, and the
     /// restart waits for `resume()`.
     func retry() {
-        Task {
-            if await server.restart() == .waitingForRuntime { waitForRuntime() }
-        }
+        Task { settle(await server.restart()) }
     }
 
     /// Carries out a start or restart that waited for a runtime, now that one is accepted.
     func resume() async {
-        await server.resume()
+        if let outcome = await server.resume() { settle(outcome) }
+    }
+
+    /// What the windows show, and who is told, after a start or restart that did not spawn.
+    private func settle(_ outcome: FolderServer.Outcome) {
+        switch outcome {
+        case .launched: break
+        case .waitingForRuntime: waitForRuntime()
+        case .refusedByRoot:
+            AppLog.app.info(
+                "\(self.root.lastPathComponent, privacy: .public) changed since it was restored; it starts when its tab is selected")
+            windows.forEach { $0.showWaitingForSelection() }
+            onRootRefused?(self)
+        }
     }
 
     private func waitForRuntime() {

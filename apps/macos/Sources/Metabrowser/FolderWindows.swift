@@ -277,7 +277,7 @@ final class FolderWindows {
                 guard let session = sessionForPath(path) else { continue }
                 switch await session.startRestored() {
                 case .launched:
-                    break
+                    restoreQueue?.finish(path)
                 case .refusedByRoot:
                     restoreQueue?.hold(path)
                     AppLog.app.info(
@@ -296,6 +296,13 @@ final class FolderWindows {
             }
             isStartingRestoredServers = false
         }
+    }
+
+    /// A restored background folder's restart, such as one after an upgrade, was refused
+    /// by its root check: its server stays stopped until one of its tabs is selected,
+    /// which starts it through the restore queue as the user's choice.
+    func rootRefused(_ session: FolderSession) {
+        restoreQueue?.hold(session.path)
     }
 
     /// A runtime was accepted: a restore that paused for want of one carries on.
