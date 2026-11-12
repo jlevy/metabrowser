@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
@@ -29,6 +30,7 @@ from metabrowser.cli.main import _app
 from metabrowser.cli.stdin_lifeline import (
     STDIN_CLOSED_NOTICE,
     require_open_stdin,
+    stop_when_stdin_closes,
     watch_for_eof,
 )
 from metabrowser.errors import CLIError
@@ -113,8 +115,7 @@ def test_serving_watches_stdin_only_when_asked(flag: bool, tmp_path: Path) -> No
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer"),
             patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
-            patch("metabrowser.cli.serve.watch_for_eof") as watch,
-            patch("metabrowser.cli.serve.require_open_stdin") as require,
+            patch("metabrowser.cli.main.stop_when_stdin_closes") as watch,
         ):
             args = [str(tmp_path), "--no-open"] + (["--exit-on-eof"] if flag else [])
             result = runner.invoke(_app, args)
@@ -122,7 +123,18 @@ def test_serving_watches_stdin_only_when_asked(flag: bool, tmp_path: Path) -> No
         signal.signal(signal.SIGINT, previous)
     assert result.exit_code == 0, result.output
     assert watch.call_count == int(flag)
-    assert require.call_count == int(flag)
+
+
+def test_the_watch_refuses_a_closed_stdin_before_it_starts() -> None:
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    os.close(write_end)
+    with (
+        patch("metabrowser.cli.stdin_lifeline.watch_for_eof") as watch,
+        pytest.raises(CLIError, match="--exit-on-eof needs an open stdin"),
+    ):
+        stop_when_stdin_closes(fd=read_end)
+    watch.assert_not_called()
 
 
 def test_the_flag_is_a_serve_option() -> None:
@@ -289,3 +301,115 @@ def test_a_stop_is_not_held_up_by_a_full_stderr(stop: str, status: int, tmp_path
                 process.wait(timeout=5)
     finally:
         os.close(stderr_read)
+
+
+# Runs the real CLI with one step of startup held for good, as a read of a hung network
+# mount would hold it, and prints `held` (with a process group's ID, for a held
+# acquisition) once startup reaches that step.
+_HELD_STARTUP_DRIVER = """
+import asyncio, sys, threading
+from unittest import mock
+
+from metabrowser.cli.entrypoint import main
+from metabrowser.git.process import start_process_group
+
+target, root = sys.argv[1], sys.argv[2]
+
+
+def held(*args, **kwargs):
+    print("held", flush=True)
+    threading.Event().wait()
+
+
+async def held_acquisition(*args, **kwargs):
+    # A fetch's Git stands in as a process group of its own, as acquisition starts it.
+    group = await start_process_group(
+        lambda: asyncio.create_subprocess_exec("sleep", "600", start_new_session=True)
+    )
+    print(f"held {group.pid}", flush=True)
+    await asyncio.Event().wait()
+
+
+holder = held_acquisition if target.endswith("_prove_servable") else held
+with mock.patch(target, holder):
+    sys.argv = ["metab", root, "--no-open", "--exit-on-eof"]
+    sys.exit(main())
+"""
+
+
+def _group_gone_within(pgid: int, seconds: float = 5.0) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.02)
+    return False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and process groups")
+@pytest.mark.parametrize(
+    "held_step",
+    [
+        # The first step that reads the disk: whether ROOT names an existing path.
+        "metabrowser.cli.main._classified_root",
+        # After the server and its plugins are imported, before the banner.
+        "metabrowser.kpress_adapter.prepare_browser_assets",
+        # The last step before the banner.
+        "metabrowser.cli.serve.find_available_local_port",
+        # A Git source's acquisition, with a group of its own running.
+        "metabrowser.cli.git_pin_cli._prove_servable",
+    ],
+    ids=["classify-root", "prepare-assets", "find-port", "acquire"],
+)
+def test_a_stdin_that_closes_while_startup_is_held_stops_the_server(
+    held_step: str, tmp_path: Path
+) -> None:
+    """The watch begins before startup does anything that can block.
+
+    A parent that dies while the server is still starting, held on a slow disk or an
+    acquisition, must not leave it behind once startup gets going again, or never.
+    Before, the watch began only after the banner, so none of these servers stopped.
+    """
+
+    root = tmp_path / "served"
+    root.mkdir()
+    acquiring = held_step.endswith("_prove_servable")
+    # The held acquisition never reads its origin, so none need exist.
+    argument = (tmp_path / "origin.git").as_uri() if acquiring else str(root)
+    process = subprocess.Popen(
+        [sys.executable, "-c", _HELD_STARTUP_DRIVER, held_step, argument],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    group: int | None = None
+    group_gone = True
+    try:
+        held = read_line(process).split()
+        assert held[:1] == ["held"], held
+        group = int(held[1]) if acquiring else None
+        assert process.stdin is not None
+        process.stdin.close()
+        process.stdin = None
+        try:
+            stdout, stderr = process.communicate(timeout=_EXIT_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"stdin closed and the server did not stop, held at {held_step}")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        if group is not None:
+            # Killed here only when it never went away, so the ID is still its own.
+            group_gone = _group_gone_within(group)
+            if not group_gone:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(group, signal.SIGKILL)
+    assert process.returncode == 0, stderr
+    assert STDIN_CLOSED_NOTICE.decode() in stderr
+    assert "Serving " not in stdout
+    assert group_gone, "the acquisition's group outlived the stop"

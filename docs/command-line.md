@@ -125,8 +125,20 @@ metab ./notes --no-open --exit-on-eof
 It is for a program that starts `metab` and holds its stdin open, as the macOS app does:
 however that program ends, by quitting or by crashing, the kernel closes the pipe, and
 the server stops by itself.
-The watch begins once the banner is printed, so the address is always in the output,
-even when stdin was already closed.
+Whatever arrives on stdin before it closes is read and dropped.
+Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
+it, a stdin that is not open at all is refused before serving.
+
+The watch begins as soon as the command line is read, before the server reads ROOT,
+dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
+startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
+A stdin that is closed from the start therefore stops the server before it prints its
+address. Python’s start, the import of `metab` itself, and the reading of its command
+line come before the watch: a stdin that closes during them is seen as soon as they end,
+and a hang there, such as a disk that stops answering while `metab` loads, is not
+covered. A stdin that closes while startup is failing ends the process either way, with
+the failure’s status or with 0.
+
 The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
 the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
 them) and any `gh` are killed, and the process exits at once, with status 0. Those run
@@ -137,10 +149,7 @@ Other Git, which only reads, runs in the server’s own process group and is not
 signalled; it holds no lock, and it ends when it next writes to, or reads from, the
 server that is gone.
 A stderr too full to take the notice at once, because nothing is reading it, gets no
-notice, and the stop goes on without it; so does one Ctrl-C’s. Whatever arrives on stdin
-before it closes is read and dropped.
-Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
-it, a stdin that is not open at all is refused before serving.
+notice, and the stop goes on without it; so does one Ctrl-C’s.
 
 ### Serving a Git source
 

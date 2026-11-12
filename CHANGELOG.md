@@ -7,6 +7,8 @@ All notable changes to Metabrowser are documented here.
 - `metab ROOT --exit-on-eof` stops serving when its stdin closes, so a program that
   starts the server and holds its stdin, such as the macOS app, leaves no server running
   when it exits, even by crashing.
+  The watch begins before startup reads the disk or acquires a Git source, so a server
+  still starting stops too.
   See
   [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
 

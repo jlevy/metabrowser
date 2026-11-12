@@ -8,6 +8,12 @@ kernel may by then have given to an unrelated process.
 
 The flag is opt-in, since a server started from a shell with stdin at ``/dev/null``
 would otherwise stop at once. Whatever arrives on stdin before EOF is read and dropped.
+
+The watch begins as soon as serve mode has its command line (:func:`stop_when_stdin_closes`),
+before anything that can block: reading ROOT, dotenv files, the server's and plugins'
+imports, KPress's assets, a Git source's acquisition, or the port search. A parent that
+ends while startup is held on a slow disk or a network therefore stops the server too.
+Only the interpreter's start, the CLI's own imports, and argument parsing come first.
 """
 
 from __future__ import annotations
@@ -89,6 +95,13 @@ def watch_for_eof(on_eof: Callable[[], object], *, fd: int = 0) -> threading.Thr
     return thread
 
 
+def stop_when_stdin_closes(*, fd: int = 0) -> threading.Thread:
+    """Refuse a stdin that is not open, then stop the process when it closes."""
+
+    require_open_stdin(fd=fd)
+    return watch_for_eof(stop_for_closed_stdin, fd=fd)
+
+
 def _exit_for_closed_stdin() -> NoReturn:
     os._exit(STDIN_CLOSED_EXIT_STATUS)
 
@@ -120,5 +133,6 @@ __all__ = [
     "STDIN_CLOSED_NOTICE",
     "require_open_stdin",
     "stop_for_closed_stdin",
+    "stop_when_stdin_closes",
     "watch_for_eof",
 ]
