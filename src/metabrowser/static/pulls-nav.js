@@ -340,33 +340,35 @@
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
     return [
+      // N and P, next and previous as in Gmail, walk the stack. They are global, so a
+      // focused Pulls row keeps J and K, and Shift changes neither pair.
       shortcuts.register({
-        bindings: [{ key: "j", modifiers: { shift: "require" } }],
+        bindings: [{ key: "n" }],
         available: () => nav.hasStack(),
         copy: {
-          action: "Toward stack base",
-          description: "Open the adjacent pull request toward the stack base.",
+          action: "Next in stack",
+          description: "Open the next pull request toward the top of the stack.",
           hint: "Stack",
         },
         group: "pull-stack",
-        handler: () => nav.moveStack(-1),
-        id: "pulls.stack.base",
+        handler: () => nav.moveStack(1),
+        id: "pulls.stack.top",
         order: 10,
         repeat: false,
         scope: "global",
         surfaces: { help: "always" },
       }),
       shortcuts.register({
-        bindings: [{ key: "k", modifiers: { shift: "require" } }],
+        bindings: [{ key: "p" }],
         available: () => nav.hasStack(),
         copy: {
-          action: "Toward stack top",
-          description: "Open the adjacent pull request toward the stack top.",
+          action: "Previous in stack",
+          description: "Open the previous pull request toward the stack base.",
           hint: "Stack",
         },
         group: "pull-stack",
-        handler: () => nav.moveStack(1),
-        id: "pulls.stack.top",
+        handler: () => nav.moveStack(-1),
+        id: "pulls.stack.base",
         order: 20,
         repeat: false,
         scope: "global",

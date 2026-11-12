@@ -555,7 +555,6 @@ async function main() {
     fakeEvent("keydown", { key, altKey: true }),
     fakeEvent("keydown", { key, ctrlKey: true }),
     fakeEvent("keydown", { key, metaKey: true }),
-    fakeEvent("keydown", { key, shiftKey: true }),
     fakeEvent("keydown", { key, isComposing: true }),
     ...editableTargets.map((target) => fakeEvent("keydown", { key, target })),
     fakeEvent("keydown", { key, target: contentEditable }),
@@ -565,14 +564,23 @@ async function main() {
   }
   check("open-key guards leave the palette closed", overlay.hidden === true);
 
-  // `?` is shift+slash and `T` is shift+t; neither may open the palette.
-  for (const event of [
-    fakeEvent("keydown", { key: "?", target: initialFocus }),
-    fakeEvent("keydown", { key: "T", shiftKey: true, target: initialFocus }),
+  // `?` is the character Shift+/ types on a US layout. Punctuation matches the
+  // character typed, so it is Help's key, never Quick Search's.
+  const question = fakeEvent("keydown", { key: "?", shiftKey: true, target: initialFocus });
+  document.dispatchEvent(question);
+  check("? leaves the palette closed", overlay.hidden === true && !question.defaultPrevented);
+
+  // Shift never changes a key: Shift+T is T, and a slash typed with Shift, as
+  // on a German layout, is a slash.
+  for (const [label, values] of [
+    ["Shift+T opens the palette", { key: "T", shiftKey: true }],
+    ["a slash typed with Shift opens the palette", { code: "Digit7", key: "/", shiftKey: true }],
   ]) {
-    document.dispatchEvent(event);
+    const shifted = fakeEvent("keydown", { ...values, target: initialFocus });
+    document.dispatchEvent(shifted);
+    check(label, !overlay.hidden && shifted.defaultPrevented);
+    palette.close(false);
   }
-  check("shifted open keys stay closed", overlay.hidden === true);
 
   const slash = fakeEvent("keydown", { key: "/", target: initialFocus });
   document.dispatchEvent(slash);
@@ -682,6 +690,20 @@ async function main() {
     "ArrowUp wraps to the last option",
     listbox.children[2].getAttribute("aria-selected") === "true",
   );
+
+  // Inside the query, Shift with a named key belongs to the field: Shift+Up
+  // and Shift+Down extend the text selection, as in any single-line field, and
+  // leave the active result where it is.
+  for (const key of ["ArrowUp", "ArrowDown", "Enter"]) {
+    const shifted = fakeEvent("keydown", { key, shiftKey: true, target: input });
+    input.dispatchEvent(shifted);
+    check(
+      `Shift+${key} in the query keeps its text editing`,
+      !shifted.defaultPrevented &&
+        listbox.children[2].getAttribute("aria-selected") === "true" &&
+        !overlay.hidden,
+    );
+  }
 
   // The query box is an editable combobox, so Home and End belong to its
   // caret. Claiming them would take line-start and line-end away from the

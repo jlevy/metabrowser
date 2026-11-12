@@ -883,9 +883,12 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  assert.equal(press("2", { metaKey: true }), false, "absent Git leaves Command-2 alone");
-  assert.equal(press("3", { metaKey: true }), true, "Pulls keeps Command-3 while Git is absent");
+  assert.equal(press("2", {}), false, "absent Git leaves 2 alone");
+  assert.equal(press("3", { code: "Digit3", metaKey: true }), false, "Command-3 is the browser's");
+  assert.equal(press("3", { code: "Digit3", ctrlKey: true }), false, "Ctrl-3 is the browser's");
+  assert.equal(press("3", { code: "Digit3" }), true, "Pulls keeps 3 while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
+  assert.equal(press("3", { code: "Digit3", shiftKey: true }), true, "Shift does not change 3");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
@@ -893,24 +896,22 @@ async function mainTabShortcuts() {
     tabButtons.map((button) => button.dataset.tab),
     ["files", "git", "pulls"],
   );
-  assert.equal(press("2", { metaKey: true, target: { tagName: "INPUT" } }), false);
-  assert.equal(press("2", { metaKey: true, shiftKey: true }), false);
+  assert.equal(press("2", { code: "Digit2", target: { tagName: "INPUT" } }), false);
+  assert.equal(press("2", { code: "Digit2", metaKey: true }), false, "Command-2 is the browser's");
   const closeModal = shortcuts.activateScope("help", { exclusive: true });
-  assert.equal(press("2", { metaKey: true }), false, "modal scopes own their keys");
+  assert.equal(press("2", { code: "Digit2" }), false, "modal scopes own their keys");
   closeModal();
-  assert.equal(press("2", { metaKey: true }), true);
+  // US Shift+2 types @ and Shift+1 types !: the digit row still names the tab.
+  assert.equal(press("@", { code: "Digit2", shiftKey: true }), true, "Shift+2 opens Commits");
   assert.equal(sandbox.mainTabs.active(), "git");
   await settle();
-  assert.equal(press("1", {}), true, "a plain number is the browser fallback");
+  assert.equal(press("!", { code: "Digit1", shiftKey: true }), true, "Shift+1 opens Files");
   assert.equal(sandbox.mainTabs.active(), "files");
   await settle();
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), [
-    "Command plus 1 or 1",
-    "Command plus 2 or 2",
-    "Command plus 3 or 3",
-  ]);
+  assert.equal(help.context, "Available outside text fields.");
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["1", "2", "3"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),

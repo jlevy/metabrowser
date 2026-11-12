@@ -2094,11 +2094,23 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   }): MetabrowserSearchPaletteApi;
 }>;
 
-type MetabrowserModifierPolicy = "allow" | "forbid" | "require";
-
+/** One key: a binding states no modifier policy, and Shift never changes a key. */
 type MetabrowserShortcutBinding = Readonly<{
   key: string;
-  modifiers?: Partial<Record<"alt" | "control" | "meta" | "shift", MetabrowserModifierPolicy>>;
+}>;
+
+/** A key the formatter names: its ARIA token, spoken name, and keycap label. */
+type MetabrowserKeyDefinition = Readonly<{ aria: string; spoken: string; visible: string }>;
+
+/**
+ * A registry publication. A batch that changed more than one thing publishes one
+ * `batch` event naming each kind it contained.
+ */
+type MetabrowserShortcutEvent = Readonly<{
+  commandId?: string;
+  kind: string;
+  kinds?: ReadonlyArray<string>;
+  scope?: string;
 }>;
 
 type MetabrowserBindingPresentation = Readonly<{
@@ -2150,10 +2162,15 @@ type MetabrowserShortcutGroupPresentation = Readonly<{
 type MetabrowserShortcutRegistry = Readonly<{
   activateScope(scope: string, options?: { exclusive?: boolean }): () => void;
   appendBinding(container: HTMLElement, presentation: MetabrowserBindingPresentation): void;
+  /** Render one key, a binding key or a standalone name such as `Shift`, as one keycap. */
+  appendKey(container: HTMLElement, key: string): HTMLElement;
+  /** Run `work` and publish what it changed once, when the outermost batch ends. */
+  batch<T>(work: () => T): T;
   dispose(): void;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
+  describeKey(key: string): MetabrowserKeyDefinition;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
   present(commandId: string): MetabrowserShortcutPresentation | null;
   register(command: MetabrowserShortcutCommand): () => void;
@@ -2161,9 +2178,7 @@ type MetabrowserShortcutRegistry = Readonly<{
     surface: string,
     options?: { includeInactive?: boolean },
   ): ReadonlyArray<MetabrowserShortcutGroupPresentation>;
-  subscribe(
-    listener: (event: Readonly<{ commandId?: string; kind: string; scope?: string }>) => void,
-  ): () => void;
+  subscribe(listener: (event: MetabrowserShortcutEvent) => void): () => void;
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
@@ -2178,12 +2193,19 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
     container: HTMLElement,
     presentation: MetabrowserBindingPresentation,
   ): void;
+  appendKey(document: Document, container: HTMLElement, key: string): HTMLElement;
   bindingSignature(binding: MetabrowserShortcutBinding): string;
   create(options?: { document?: Document }): MetabrowserShortcutRegistry;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
-  eventMatchesBinding(event: KeyboardEvent, binding: MetabrowserShortcutBinding): boolean;
+  describeKey(key: string): MetabrowserKeyDefinition;
+  /** `physical` matches a digit binding by its digit-row key, the dispatcher's second pass. */
+  eventMatchesBinding(
+    event: KeyboardEvent,
+    binding: MetabrowserShortcutBinding,
+    options?: { physical?: boolean },
+  ): boolean;
   isEditableTarget(target: EventTarget | null): boolean;
   normalizeBinding(binding: MetabrowserShortcutBinding): MetabrowserShortcutBinding;
   validateCommand(command: MetabrowserShortcutCommand): boolean;

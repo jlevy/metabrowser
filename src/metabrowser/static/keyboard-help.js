@@ -18,7 +18,7 @@
   /**
    * @typedef {object} HelpCommand
    * @property {boolean} [allowInEditable]
-   * @property {readonly {key: string, modifiers?: Record<string, string>}[]} bindings
+   * @property {readonly {key: string}[]} bindings
    * @property {HelpControlBinding} [control]
    * @property {{action: string, description: string, hint: string}} copy
    * @property {string} group
@@ -261,7 +261,7 @@
     let modal = null;
     const unregisterClose = options.shortcuts.register({
       allowInEditable: true,
-      bindings: [{ key: "?", modifiers: { shift: "allow" } }, { key: "Escape" }],
+      bindings: [{ key: "?" }, { key: "Escape" }],
       copy: {
         action: "Close Help",
         description: "Close Help and restore focus to the previous control.",
@@ -312,7 +312,7 @@
       }
     }
     const unregisterOpen = options.shortcuts.register({
-      bindings: [{ key: "?", modifiers: { shift: "allow" } }],
+      bindings: [{ key: "?" }],
       control: modal.control,
       copy: {
         action: "Help",

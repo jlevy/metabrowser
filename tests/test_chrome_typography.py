@@ -170,6 +170,22 @@ def test_palette_hint_renders_keys_through_the_kbd_component() -> None:
     assert "↑↓ choose · Enter open · Esc close" not in palette_source
 
 
+def test_single_keys_share_the_registry_keycap() -> None:
+    """A key that is not a binding, such as a standalone Shift, renders as a binding's does.
+
+    Bindings and single keys go through one keycap constructor in the registry,
+    so the two entry points cannot drift into different markup.
+    """
+    shortcut_source = KEYBOARD_SHORTCUTS_JS.read_text()
+    assert shortcut_source.count('createElement("kbd")') == 1
+    keycap = shortcut_source[shortcut_source.index("function createKeycap(") :]
+    keycap = keycap[: keycap.index("\n  }\n")]
+    assert 'keycap.className = "kbd";' in keycap
+    for entry_point in ("function appendBinding(", "function appendKey("):
+        body = shortcut_source[shortcut_source.index(entry_point) :]
+        assert "createKeycap(hostDocument" in body[: body.index("\n  }\n")], entry_point
+
+
 def test_both_open_keys_stay_bound_though_the_hint_names_one() -> None:
     """The alias is unadvertised, not unbound.
 

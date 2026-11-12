@@ -1,13 +1,16 @@
 // Shared command dispatch and presentation for application keyboard shortcuts.
 
 (() => {
-  /** @typedef {"alt" | "control" | "meta" | "shift"} ModifierName */
-  /** @typedef {"allow" | "forbid" | "require"} ModifierPolicy */
   /**
+   * One key, and nothing else: no shortcut uses a modifier, so a binding
+   * states no modifier policy (docs/design-system.md, "Binding Grammar and
+   * Accessibility").
+   *
    * @typedef {object} ShortcutBinding
    * @property {string} key
-   * @property {Partial<Record<ModifierName, ModifierPolicy>>} [modifiers]
    */
+  /** @typedef {"digit" | "letter" | "named" | "punctuation"} KeyClass */
+  /** @typedef {Readonly<{kind: string, commandId?: string, kinds?: readonly string[], scope?: string}>} ShortcutEvent */
   /**
    * @typedef {object} BindingPresentation
    * @property {string} ariaKeyshortcuts
@@ -49,22 +52,14 @@
    * @property {Readonly<ShortcutPresentation>} presentation
    */
 
-  /** @type {readonly ModifierName[]} */
-  const MODIFIER_ORDER = Object.freeze(["control", "alt", "shift", "meta"]);
-  /** @type {Readonly<Record<ModifierName, keyof KeyboardEvent>>} */
-  const MODIFIER_EVENT_FIELDS = Object.freeze({
-    alt: "altKey",
-    control: "ctrlKey",
-    meta: "metaKey",
-    shift: "shiftKey",
-  });
-  /** @type {Readonly<Record<ModifierName, Readonly<{aria: string, spoken: string, visible: string}>>>} */
-  const MODIFIER_DEFINITIONS = Object.freeze({
-    alt: Object.freeze({ aria: "Alt", spoken: "Alt", visible: "Alt" }),
-    control: Object.freeze({ aria: "Control", spoken: "Control", visible: "Ctrl" }),
-    meta: Object.freeze({ aria: "Meta", spoken: "Command", visible: "⌘" }),
-    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "⇧" }),
-  });
+  // A key event with any of these held never matches a shortcut: the chords
+  // belong to the browser and the platform. Shift is ignored instead, so
+  // holding it never changes what a key means. AltGr reports Ctrl and Alt, so
+  // punctuation typed with it stays outside the shortcuts too.
+  /** @type {readonly ("altKey" | "ctrlKey" | "metaKey")[]} */
+  const DISQUALIFYING_MODIFIERS = Object.freeze(["altKey", "ctrlKey", "metaKey"]);
+  // Scopes that are always active below the activated ones, in order.
+  const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs"]);
 
   /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
   const KEY_DEFINITIONS = Object.freeze({
@@ -91,7 +86,7 @@
       order: 10,
     }),
     "main-tabs": Object.freeze({
-      context: "Use the number alone if your browser reserves Command and numbers.",
+      context: "Available outside text fields.",
       label: "Main tabs",
       order: 15,
     }),
@@ -122,6 +117,14 @@
     }),
   });
 
+  // Keys that are named but never bound: the single-key entry point renders
+  // them, as the Shift in Help's closing note, and the binding validator
+  // refuses them.
+  /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
+  const STANDALONE_KEY_DEFINITIONS = Object.freeze({
+    Shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "Shift" }),
+  });
+
   /** @param {string} key */
   function keyDefinition(key) {
     const known = KEY_DEFINITIONS[key];
@@ -135,50 +138,87 @@
     throw new TypeError(`Unsupported shortcut key: ${key}`);
   }
 
+  /**
+   * How a normalized binding key matches an event: a letter in either case, a
+   * digit by the character and then by its digit-row key, punctuation by the
+   * character typed, and a named key by its name.
+   *
+   * @param {string} key
+   * @returns {KeyClass}
+   */
+  function keyClass(key) {
+    if (/^[a-z]$/.test(key)) {
+      return "letter";
+    }
+    if (isDigitKey(key)) {
+      return "digit";
+    }
+    return key === "?" || key === "/" ? "punctuation" : "named";
+  }
+
   /** @param {ShortcutBinding} binding @returns {Readonly<ShortcutBinding>} */
   function normalizeBinding(binding) {
     if (!binding || typeof binding.key !== "string") {
       throw new TypeError("Shortcut bindings require a key");
     }
+    if (/** @type {{modifiers?: unknown}} */ (binding).modifiers !== undefined) {
+      // A policy here would let one command at a time reintroduce a chord, or a
+      // key whose meaning Shift changes.
+      throw new TypeError(`Shortcut bindings state no modifier policy: ${binding.key}`);
+    }
     // Rejects any key the vocabulary cannot name; the definition itself is
     // resolved again at presentation time.
     keyDefinition(binding.key);
     const key = /^[a-z]$/i.test(binding.key) ? binding.key.toLowerCase() : binding.key;
-    const sourceModifiers = binding.modifiers || {};
-    const modifiers = /** @type {Record<ModifierName, ModifierPolicy>} */ ({});
-    for (const name of MODIFIER_ORDER) {
-      const policy = sourceModifiers[name] || "forbid";
-      if (!["allow", "forbid", "require"].includes(policy)) {
-        throw new TypeError(`Unsupported ${name} modifier policy: ${policy}`);
-      }
-      modifiers[name] = policy;
-    }
-    return Object.freeze({ key, modifiers: Object.freeze(modifiers) });
+    return Object.freeze({ key });
   }
 
   /** @param {ShortcutBinding} binding */
   function bindingSignature(binding) {
-    const normalized = normalizeBinding(binding);
-    return `${normalized.key}|${MODIFIER_ORDER.map(
-      (name) => `${name}:${normalized.modifiers?.[name]}`,
-    ).join("|")}`;
+    return normalizeBinding(binding).key;
   }
 
-  /** @param {KeyboardEvent} event @param {ShortcutBinding} binding */
-  function eventMatchesBinding(event, binding) {
+  /** @param {string} key */
+  function isDigitKey(key) {
+    return /^[0-9]$/.test(key);
+  }
+
+  /**
+   * Whether an event is this binding's key. Shift is ignored for every key
+   * class, except that inside a text field Shift with a named key belongs to
+   * the field, where Shift+Arrow selects text. Ctrl, Alt, and Meta always
+   * disqualify the event.
+   *
+   * The physical pass matches a digit binding by its digit-row key, for an
+   * event whose character is not a digit: US Shift+1 types `!`, and AZERTY's
+   * unshifted digit row types `&é"'(`. The dispatcher takes it only after the
+   * character matched nothing, so German Shift+7, which types `/`, stays `/`.
+   * Numpad digits match by character.
+   *
+   * @param {KeyboardEvent} event
+   * @param {ShortcutBinding} binding
+   * @param {{physical?: boolean}} [matchOptions]
+   */
+  function eventMatchesBinding(event, binding, matchOptions = {}) {
     const normalized = normalizeBinding(binding);
+    if (DISQUALIFYING_MODIFIERS.some((field) => event[field])) {
+      return false;
+    }
+    const bindingClass = keyClass(normalized.key);
+    if (matchOptions.physical) {
+      return (
+        bindingClass === "digit" &&
+        // Digit1 through Digit9, the keys the navigation pane's tab digits use.
+        /^[1-9]$/.test(normalized.key) &&
+        !isDigitKey(event.key) &&
+        event.code === `Digit${normalized.key}`
+      );
+    }
     const eventKey = /^[a-z]$/i.test(event.key) ? event.key.toLowerCase() : event.key;
     if (eventKey !== normalized.key) {
       return false;
     }
-    for (const name of MODIFIER_ORDER) {
-      const pressed = Boolean(event[MODIFIER_EVENT_FIELDS[name]]);
-      const policy = normalized.modifiers?.[name];
-      if ((policy === "require" && !pressed) || (policy === "forbid" && pressed)) {
-        return false;
-      }
-    }
-    return true;
+    return !(bindingClass === "named" && event.shiftKey && isEditableTarget(event.target));
   }
 
   /** @param {EventTarget | null} target */
@@ -202,29 +242,13 @@
       throw new TypeError("Presented commands require at least one binding");
     }
     const alternatives = bindings.map((binding) => {
-      const normalized = normalizeBinding(binding);
-      const definition = keyDefinition(normalized.key);
-      const requiredModifiers = MODIFIER_ORDER.filter(
-        (name) => normalized.modifiers?.[name] === "require",
-      );
-      const keys = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].visible),
-        definition.visible,
-      ];
-      const spoken = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].spoken),
-        definition.spoken,
-      ].join(" plus ");
-      const ariaKeys = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].aria),
-        definition.aria,
-      ];
+      const definition = keyDefinition(normalizeBinding(binding).key);
       return Object.freeze({
-        aria: definition.aria ? ariaKeys.join("+") : "",
-        spoken,
+        aria: definition.aria,
+        spoken: definition.spoken,
         visible: Object.freeze({
-          keys: Object.freeze(keys),
-          separators: Object.freeze(keys.slice(1).map(() => "+")),
+          keys: Object.freeze([definition.visible]),
+          separators: Object.freeze([]),
         }),
       });
     });
@@ -282,15 +306,50 @@
           }
           container.append(separator);
         }
-        const keycap = hostDocument.createElement("kbd");
-        keycap.className = "kbd";
-        keycap.textContent = key;
+        const keycap = createKeycap(hostDocument, key);
         if (complex) {
           keycap.setAttribute("aria-hidden", "true");
         }
         container.append(keycap);
       });
     });
+  }
+
+  /** @param {Document} hostDocument @param {string} label */
+  function createKeycap(hostDocument, label) {
+    const keycap = hostDocument.createElement("kbd");
+    keycap.className = "kbd";
+    keycap.textContent = label;
+    return keycap;
+  }
+
+  /**
+   * One key that is not a binding: a binding key, or a standalone name such
+   * as `Shift`, which reads as its name.
+   *
+   * @param {string} key
+   */
+  function describeKey(key) {
+    if (typeof key !== "string") {
+      throw new TypeError("A described key must be a string");
+    }
+    return Object.hasOwn(STANDALONE_KEY_DEFINITIONS, key)
+      ? STANDALONE_KEY_DEFINITIONS[key]
+      : keyDefinition(normalizeBinding({ key }).key);
+  }
+
+  /**
+   * Render one key as one keycap and return it, so a caller can mark it, as a
+   * badge marks its keycap hidden from assistive technology.
+   *
+   * @param {Document} hostDocument
+   * @param {HTMLElement} container
+   * @param {string} key
+   */
+  function appendKey(hostDocument, container, key) {
+    const keycap = createKeycap(hostDocument, describeKey(key).visible);
+    container.append(keycap);
+    return keycap;
   }
 
   /** @param {unknown} value @param {string} label */
@@ -353,17 +412,65 @@
     const commands = new Map();
     /** @type {Array<{exclusive: boolean, scope: string, token: symbol}>} */
     const activations = [];
-    /** @type {Set<(event: Readonly<{kind: string, scope?: string, commandId?: string}>) => void>} */
+    /** @type {Set<(event: ShortcutEvent) => void>} */
     const subscribers = new Set();
     let disposed = false;
+    let batchDepth = 0;
+    /** @type {ShortcutEvent[]} */
+    let batchedEvents = [];
 
-    /** @param {Readonly<{kind: string, scope?: string, commandId?: string}>} event */
-    function publish(event) {
+    /** @param {ShortcutEvent} event */
+    function deliver(event) {
       for (const listener of subscribers) {
         listener(event);
       }
     }
 
+    /** @param {ShortcutEvent} event */
+    function publish(event) {
+      if (batchDepth > 0) {
+        batchedEvents.push(event);
+      } else {
+        deliver(event);
+      }
+    }
+
+    /**
+     * Run `work` and publish what it changed once, when the outermost batch
+     * ends: one event of its own when it changed one thing, otherwise a `batch`
+     * event naming each kind it contained. What a failed batch changed is
+     * still published.
+     *
+     * @template T
+     * @param {() => T} work
+     * @returns {T}
+     */
+    function batch(work) {
+      batchDepth += 1;
+      try {
+        return work();
+      } finally {
+        batchDepth -= 1;
+        if (batchDepth === 0 && batchedEvents.length > 0) {
+          const events = batchedEvents;
+          batchedEvents = [];
+          deliver(
+            events.length === 1
+              ? events[0]
+              : Object.freeze({
+                  kind: "batch",
+                  kinds: Object.freeze([...new Set(events.map((event) => event.kind))]),
+                }),
+          );
+        }
+      }
+    }
+
+    // From highest to lowest: activated scopes, most recent first, until an
+    // exclusive modal; then `global`; then the permanent scopes below it. A
+    // permanent scope lets a letter mean one thing in `global` while that
+    // command is available and fall through to another otherwise, as the
+    // stack's P does to the Preview tab's.
     function activeLayers() {
       /** @type {string[]} */
       const layers = [];
@@ -376,7 +483,11 @@
           return layers;
         }
       }
-      layers.push("global");
+      for (const scope of PERMANENT_SCOPES) {
+        if (!layers.includes(scope)) {
+          layers.push(scope);
+        }
+      }
       return layers;
     }
 
@@ -479,27 +590,49 @@
       return runDescriptor(entry.descriptor, context);
     }
 
-    /** @param {KeyboardEvent} event */
-    function handleKeydown(event) {
-      if (event.defaultPrevented || event.isComposing) {
-        return;
-      }
+    /**
+     * One dispatch pass over the active layers, highest first. A descriptor
+     * whose handler declines leaves the event to the next match. Returns
+     * whether any live binding matched, handled or not.
+     *
+     * @param {KeyboardEvent} event
+     * @param {{physical?: boolean}} matchOptions
+     */
+    function dispatch(event, matchOptions) {
+      const editable = isEditableTarget(event.target);
+      let matched = false;
       for (const scope of activeLayers()) {
         for (const entry of commands.values()) {
           const descriptor = entry.descriptor;
           if (
             descriptor.scope !== scope ||
             (event.repeat && descriptor.repeat !== true) ||
-            (isEditableTarget(event.target) && descriptor.allowInEditable !== true) ||
-            !descriptor.bindings.some((binding) => eventMatchesBinding(event, binding))
+            (editable && descriptor.allowInEditable !== true) ||
+            !descriptor.bindings.some((binding) =>
+              eventMatchesBinding(event, binding, matchOptions),
+            )
           ) {
             continue;
           }
+          matched = true;
           if (runDescriptor(descriptor, { event, trigger: null })) {
             event.preventDefault();
-            return;
+            return true;
           }
         }
+      }
+      return matched;
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleKeydown(event) {
+      if (event.defaultPrevented || event.isComposing) {
+        return;
+      }
+      // The character typed decides first. Only a character that matched
+      // nothing, and is not itself a digit, falls back to its digit-row key.
+      if (!dispatch(event, {}) && !isDigitKey(event.key)) {
+        dispatch(event, { physical: true });
       }
     }
 
@@ -571,7 +704,7 @@
       );
     }
 
-    /** @param {(event: Readonly<{kind: string, scope?: string, commandId?: string}>) => void} listener */
+    /** @param {(event: ShortcutEvent) => void} listener */
     function subscribe(listener) {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
@@ -595,7 +728,11 @@
       /** @param {HTMLElement} container @param {BindingPresentation} presentation */
       appendBinding: (container, presentation) =>
         appendBinding(hostDocument, container, presentation),
+      /** @param {HTMLElement} container @param {string} key */
+      appendKey: (container, key) => appendKey(hostDocument, container, key),
+      batch,
       describeBindings,
+      describeKey,
       dispose,
       invoke,
       present,
@@ -609,9 +746,11 @@
     GROUP_DEFINITIONS,
     KEY_DEFINITIONS,
     appendBinding,
+    appendKey,
     bindingSignature,
     create,
     describeBindings,
+    describeKey,
     eventMatchesBinding,
     isEditableTarget,
     normalizeBinding,

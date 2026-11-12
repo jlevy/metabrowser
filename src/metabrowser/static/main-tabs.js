@@ -6,9 +6,11 @@
     { id: "pulls", label: "Pulls", key: "3" },
   ];
 
+  // The bare digit alone: a browser switches its own tabs on Command or Ctrl
+  // with a digit before the page sees the key, and Shift changes nothing.
   /** @param {string} key @returns {Parameters<Window["MetabrowserKeyboardShortcuts"]["describeBindings"]>[0]} */
   function tabBindings(key) {
-    return [{ key, modifiers: { meta: "require" } }, { key }];
+    return [{ key }];
   }
   /** @param {MetabrowserMainTabsDeps} deps */
   function create(deps) {
