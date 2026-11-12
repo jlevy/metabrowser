@@ -24,6 +24,13 @@ library depends on a newer Softschema than Metabrowser pins.
 Two plugins in a downstream application repository are the other consumers.
 All three are packaged behind `metabrowser.plugins` entry points.
 
+The owner then widened the scope: a repository that checks in a plugin, or that depends
+on a library shipping one, should have it picked up automatically, in internal
+repositories and for libraries that expose Metabrowser views.
+The downstream application repository is the example of both: two of its plugins are its
+own workspace members, and the third comes from the workflow library, vendored as a Git
+submodule and also a workspace member.
+
 This brief reproduces today’s behavior on the macOS app’s branch
 (`claude/v1-final-review`, the top of the stack that starts at jlevy/metabrowser#341),
 evaluates a candidate out-of-process design that a downstream session proposed from
@@ -72,6 +79,22 @@ stdio to a worker that runs in the plugin’s own environment.
   cannot read content on a Git pin, and keeps every plugin environment carrying all of
   Metabrowser and its exact pins.
   The plan replaces that binding with a small, stdlib-only plugin SDK package.
+- **A repository’s plugins can be found without running any of its code.** Reading each
+  `*.dist-info/entry_points.txt` in the downstream repository’s environment found all
+  three plugins in 31 ms over 127 distributions, and `direct_url.json` told the two
+  in-repository workspace members from the library.
+  Its workspace members’ `pyproject.toml` files declare the same entry points, so they
+  are visible before the environment exists.
+  Reproduced.
+- **Today the repository’s plugins work only inside its own frozen environment.**
+  Running that environment’s `metab` finds them; a system `metab` and the macOS app find
+  none. The workspace’s lock carries Metabrowser 0.12.0 only because both plugin packages
+  and the library’s `browser` extra pin it to share its environment.
+- **The trust models people already use split two ways.** VS Code Workspace Trust and
+  `mise trust` record a folder path, and VS Code’s trust of a parent folder covers its
+  subfolders. direnv records approved content: after an edit, direnv 2.36.0 blocked the
+  `.envrc` until it was allowed again (reproduced), and mise’s paranoid mode does the
+  same. The plan offers both, path trust by default.
 
 ## Questions to Answer
 
@@ -81,11 +104,14 @@ stdio to a worker that runs in the plugin’s own environment.
 3. What do the three downstream plugins actually need from the host process?
 4. Is out-of-process hook proxying fast and robust enough, and what does it cost?
 5. What constraints does the macOS app add?
+6. How can a repository’s own plugins, and a library’s, be picked up automatically, and
+   what has to be true before any of their code runs?
 
 ## Scope
 
-In scope: plugin sources, trust, process and dependency isolation, SDK compatibility,
-lifecycle, the macOS app’s part, diagnostics, migration, and an author test harness.
+In scope: plugin sources, automatic discovery of a repository’s plugins, trust, process
+and dependency isolation, SDK compatibility, lifecycle, the macOS app’s part,
+diagnostics, migration, and an author test harness.
 Out of scope: the downstream issues that do not concern sources, such as the 256 KB JSON
 classification cap and the visualization palette’s missing dark-theme values.
 
@@ -314,6 +340,64 @@ The overlay imported the plugin without an error while binding it to the wrong
 Softschema, which is the worst outcome: it works until a code path that differs between
 0.8 and 0.9 runs.
 
+### Repository Plugins Today
+
+The downstream application repository is a uv workspace.
+Its members include its two plugin packages, which declare `metabrowser.plugins` entry
+points in their `pyproject.toml`, and the workflow library, a Git submodule under
+`vendor/` whose own `pyproject.toml` declares the third.
+`uv sync` installs all three into the workspace’s `.venv` as editable packages, so the
+plugins are found when that environment’s own `metab` runs, as
+`uv run --frozen --package <library> metab ...`. A system `metab` or the macOS app sees
+none, by the mechanism in How Plugins Load Today.
+The plugin packages and the library’s `browser` extra each pin `metabrowser==0.12.0` on
+the repository’s main branch, which puts that exact Metabrowser into the workspace lock;
+the repository validates its plugin wheels with a script that builds an isolated
+environment around a pinned Metabrowser.
+
+An import-free reading of the same environment, run with the host’s interpreter:
+
+```text
+127 dist-infos scanned in 30.6 ms; plugin dists:
+  ('<library>-0.5.1.dev43+bff0827.dist-info', {...}, 'editable', 'file://<repo>/vendor/<library>')
+  ('<plugin-a>-0.0.1.dist-info', {...}, 'editable', 'file://<repo>/<plugin-a>')
+  ('<plugin-b>-0.0.1.dist-info', {...}, 'editable', 'file://<repo>/<plugin-b>')
+  member vendor/<library> declares {...}
+  member <plugin-a> declares {...}
+  member <plugin-b> declares {...}
+```
+
+It reads `entry_points.txt` and `direct_url.json` from each `*.dist-info`, and each
+workspace member’s `pyproject.toml`, all of which are data.
+One run, warm page cache.
+An entry point’s value is `module:callable`, so where its plugin directory is can be
+known only by importing the module; the static reading gives names, distributions,
+versions, and origins, which is what a consent prompt needs.
+Entry points are not conditional on extras, so a library that puts its plugin’s
+dependencies behind an extra advertises a plugin that a consumer without the extra
+cannot import (inferred from the packaging metadata format).
+
+The workflow library discovers its own extensions the same way Metabrowser does today:
+`importlib.metadata.entry_points` for several groups in the running environment.
+Its design document describes a second phase that walks up from the working directory to
+the uv workspace root and scans members that are not installed; a search of its source
+found no implementation of that phase (inferred, not run).
+Its processes are files referenced by path, so they need no registry (not verified
+further).
+
+### How Other Tools Decide to Trust a Folder
+
+| Tool | Records | After a change | Parent folder | Revoking |
+| --- | --- | --- | --- | --- |
+| VS Code Workspace Trust | the folder path | not described as asking again | trusting a parent trusts its subfolders | “Don’t Trust”, or remove it from the list |
+| `mise trust` | the config path; a hash in paranoid mode | paranoid mode: the edited file is untrusted again | `trusted_config_paths` trusts by path, without a hash | `--untrust`, `--ignore` |
+| `direnv allow` | the approved content (the allow file is named by a hash) | blocked until allowed again: “Run `direnv allow` to approve its content” (direnv 2.36.0, reproduced with a scratch data home) | each `.envrc` on its own | `direnv deny` |
+
+Sources: the VS Code Workspace Trust guide, mise’s `trust` and paranoid pages, and the
+direnv manual. VS Code’s Restricted Mode also disables tasks, debugging, the terminal,
+and extensions that have not declared support, which is the closest analog to what an
+untrusted repository may do here: be browsed, and run nothing.
+
 ## Options Considered
 
 ### Option A: Reinstall Metabrowser with `--with` (Rejected)
@@ -389,6 +473,36 @@ isolation between roots inside plugin code.
 The plan starts with per-server workers that start on demand and exit when idle, and
 revisits this if the app’s warm-folder budget needs it.
 
+### Option K: Load a Repository’s Plugins Automatically Without Trust (Rejected)
+
+Every folder a user browses, a cloned stranger’s repository included, would run its
+plugin JavaScript in the page and its Python in a worker.
+The served root has never been a plugin source for exactly this reason.
+
+### Option L: An Opt-In Declaration File per Repository (Superseded)
+
+The first version of this design had a repository list its plugin sources in a file that
+the user then trusted.
+The owner asked for automatic pickup instead, and the declaration duplicates what the
+workspace’s `pyproject.toml` files and lock already say.
+
+### Option M: Path Trust Only, or Content Trust Only (Both Offered)
+
+Path trust, as in VS Code, keeps an owner’s own repositories effortless: once trusted, a
+pull, a new plugin, or a lock bump just works, and trusting a parent folder covers every
+repository under it.
+Content trust, as in direnv, makes every change to the plugin set ask again, which suits
+a repository that takes outside contributions.
+The plan makes path trust the default and content trust a per-repository choice, because
+the owner’s case is internal repositories.
+
+### Option N: Metabrowser Builds Its Own Environment for Each Repository (Rejected)
+
+Syncing the lock into a Metabrowser-owned environment in the cache would leave the
+developer’s `.venv` alone, but doubles disk use and downloads for every repository and
+still runs the workspace’s build backends.
+The repository’s own environment is the one its developers already keep current.
+
 ### Option J: HTTP over a Unix Socket Instead of Stdio (Not Chosen)
 
 An HTTP worker needs an HTTP server in every plugin environment, socket-path management,
@@ -402,7 +516,9 @@ Adopt Option H, specified in
 a registry of plugin sources in Metabrowser’s configuration home, a stdlib-only plugin
 SDK package, one worker per plugin environment per server, declarative log-adapter
 detection, a semantic-version SDK gate, and native app settings that run the same CLI
-modes.
+modes. Discover a repository’s plugins statically from its environment and checked-in
+directories, and load them once the user trusts the repository by path (Option M’s
+default) or by content.
 Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent fix.
 
 ## Methodology
@@ -418,6 +534,12 @@ Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent 
 - Ran the spike four times; `explorations/plugin-worker-spike/README.md` gives the
   command. The plugin environment was used read-only, with `-B` so no bytecode was
   written into it.
+- Read the downstream repository’s workspace and plugin `pyproject.toml` files on its
+  main branch through the GitHub API, and scanned its local environment’s `*.dist-info`
+  metadata with a short script that imports nothing from it.
+- Checked direnv’s behavior with direnv 2.36.0 and scratch `XDG_DATA_HOME` and
+  `XDG_CONFIG_HOME`, so the user’s own allow list was not touched; read the VS Code and
+  mise trust documentation.
 - Claims marked inferred rest on reading alone.
 
 ## References
@@ -429,6 +551,10 @@ Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent 
 - `apps/macos/README.md` (A Folder’s Server, The Child’s Environment)
 - [PEP 734](https://peps.python.org/pep-0734/), multiple interpreters in the standard
   library
+- [VS Code Workspace Trust](https://code.visualstudio.com/docs/editing/workspaces/workspace-trust),
+  [`mise trust`](https://mise.jdx.dev/cli/trust.html),
+  [mise paranoid mode](https://mise.jdx.dev/paranoid.html), and the
+  [direnv manual](https://direnv.net/man/direnv.1.html)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

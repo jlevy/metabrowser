@@ -423,9 +423,10 @@ The two standard setup flows come first; see the
 - [ ] A clean-account matrix for both flows, on macOS 26 and later, admin and standard
   accounts, with and without the Command Line Tools (`mb-5fp7`).
 - [ ] Optional: a separate bundle id for release-rehearsal builds (`mb-nneo`).
-- [ ] The project-plugin trust spec (`mb-m1mw`), now Phase 5 of
+- [ ] The project-plugin trust spec (`mb-m1mw`), now the Repository Plugins design and
+  Phase 2 of
   [Plugin sources and out-of-process plugin environments](plan-2026-11-12-plugin-sources.md),
-  whose Phase 3 adds the app’s plugin settings.
+  whose Phase 4 adds the app’s plugin settings.
 - [ ] Later, once both flows pass: `metab` installs, reports, and removes the app from
   the notarized release ZIP, verifying it itself because a command-line download carries
   no quarantine (`mb-92d9`), with the ZIP and a release manifest beside the DMG

@@ -49,10 +49,10 @@ links to the document that covers each in depth.
   folder switching, host mode and the agent front door, and the app-managed runtime,
   tracked under epic `mb-1apq`
 - [Plugin sources and out-of-process plugin environments](specs/active/plan-2026-11-12-plugin-sources.md)
-  — registered directories, environments, managed packages, and trusted project
-  declarations; Python plugins in workers on their own interpreters over a stdlib-only
-  plugin SDK; a caret SDK gate; and the macOS app’s plugin settings, tracked under epic
-  `mb-xbw3`
+  — registered directories, environments, and managed packages, and a repository’s own
+  and its libraries’ plugins picked up automatically once the repository is trusted;
+  Python plugins in workers on their own interpreters over a stdlib-only plugin SDK; a
+  caret SDK gate; and the macOS app’s plugin settings, tracked under epic `mb-xbw3`
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
   — retained surfaces, fixed boxes at first paint, prediction behind admission control,
   and a shorter landing chain, each a measured performance-loop round, tracked under

@@ -1345,9 +1345,9 @@ install unresolvable for the motivating plugin, because of Metabrowser’s exact
 the owner ruled out reinstalling Metabrowser to add a plugin.
 [Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md)
 replaces that section’s install mechanics and its project-plugin sketch: plugins are
-registered sources, Python plugins run in workers on their own interpreters, and an
-app-managed runtime no longer reinstalls plugins when its base changes.
-What the section says about the signed bundle holding no plugins still holds.
+registered sources or a trusted repository’s own, Python plugins run in workers on their
+own interpreters, and an app-managed runtime no longer reinstalls plugins when its base
+changes. What the section says about the signed bundle holding no plugins still holds.
 
 ## References
 
