@@ -134,21 +134,14 @@ final class FolderSession: ManagedServer {
         NSWorkspace.shared.activateFileViewerSelecting([logURL])
     }
 
-    /// Command-click on a link to this folder's server.
+    /// Command-click on a link to this folder's server. The new tab holds the page before
+    /// the health check runs, so a server that fails the check, and comes back with Retry,
+    /// still shows it.
     func openWindow(at url: URL, besides parent: BrowserWindowController) {
-        let controller = makeWindow()
+        let page = PageAddress(url)
+        let controller = makeWindow(page: page)
         addTab(controller, besides: parent)
-        attach(controller, loading: url)
-    }
-
-    /// Loads `url` in a window joining a running server once the server proves it still
-    /// answers, since a live pid is not a working server. A server that does not answer
-    /// fails, which every window shows; one not ready yet loads every window when it is.
-    private func attach(_ controller: BrowserWindowController, loading url: URL) {
-        Task {
-            guard case .healthy = await checkHealth() else { return }
-            controller.load(url)
-        }
+        if let page { controller.show(page) }
     }
 
     /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,

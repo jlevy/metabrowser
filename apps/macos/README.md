@@ -175,6 +175,11 @@ folder="$(mktemp -d)"
    Within about 10 seconds (5 for the check, then the stop: a stopped process holds
    SIGTERM until SIGKILL ends it) the window says “The server stopped answering” and
    offers Retry, and Retry serves the folder again.
+   Done with a Command-click, the new tab shows the clicked page after Retry, not the
+   folder’s first page.
+   With the server answering,
+   `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
+   `open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
 3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
    `INFO:` lines) beside its `Serving` line, which came through stdout.
 4. **After a crash.** With the folder open,

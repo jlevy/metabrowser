@@ -26,6 +26,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// The page to load next: one asked for (a file opened here, a restored tab's page),
     /// else the one shown before the server restarted or the tab gave up its page.
     private var next: NextPage
+    /// Loads waiting on a health check; only the newest may load.
+    private var loads = LoadTickets()
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
     /// Whether the tab gave up its page's web view (`TabDiscardPolicy`). It loads the page
@@ -119,6 +121,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     // MARK: - Server state
 
     func showStarting() {
+        loads.cancelAll()
         rememberPage()
         endpoint = nil
         status.phase = .starting
@@ -126,6 +129,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func showFailure(_ failure: ServerFailure) {
+        loads.cancelAll()
         rememberPage()
         endpoint = nil
         status.phase = .failed(failure)
@@ -142,6 +146,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// Loads the page this window is to show, on the new origin, or the server's entry
     /// page. A discarded tab only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
+        loads.cancelAll()
         policy.origin = endpoint.origin
         self.endpoint = endpoint
         if isDiscarded { status.phase = .reloading }
@@ -174,6 +179,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// page to load again from the folder's server when the tab is shown.
     func discardPage() {
         guard !isDiscarded else { return }
+        loads.cancelAll()
         rememberPage()
         isDiscarded = true
         revealOnCommit = false
@@ -199,11 +205,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     /// Loads from a server that was ready before this window asked, once it proves it
     /// still answers: a live pid is not a working server. One that does not answer fails,
-    /// and every window of the folder says so.
+    /// and every window of the folder says so. Only the newest waiting load loads
+    /// (`LoadTickets`), so overlapping requests end on the newest page.
     private func loadNextPageOnceAnswered(from endpoint: ServerEndpoint) {
+        let ticket = loads.begin()
         Task {
-            guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
-                  !isDiscarded
+            guard let session, case .healthy = await session.checkHealth(), loads.isCurrent(ticket),
+                  self.endpoint == endpoint, !isDiscarded
             else { return }
             loadNextPage(from: endpoint)
         }
@@ -261,6 +269,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func windowWillClose(_ notification: Notification) {
+        loads.cancelAll()
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
