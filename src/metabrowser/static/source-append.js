@@ -48,19 +48,24 @@
    * is the start of the grapheme cluster that holds `end`, so an accent, an emoji
    * sequence, or a flag stays whole. A boundary depends on the text before it, back
    * to the previous boundary: whether a regional indicator starts a flag depends
-   * on how many precede it in its run. The piece's start is a boundary, so the line
-   * is segmented from there, which is exact and never reaches back past the piece.
+   * on how many precede it in its run. So the line is segmented from the last
+   * position known to be a boundary, which makes the cut exact and never reaches
+   * back past the piece: the piece's start, or, when an earlier cut fell inside a
+   * cluster longer than the bound, that cluster's end.
    *
    * Without Intl.Segmenter, or inside one cluster longer than the bound, the cut is
    * the last code point boundary that keeps a surrogate pair and a CRLF whole: an
-   * accent can then be cut from its letter, and the next piece, which starts inside
-   * that cluster, is segmented as though it did not.
+   * accent can then be cut from its letter. With a segmenter, the end of such a
+   * cluster is found once, by segmenting forward from its start, so the cuts after
+   * it are exact again.
    *
    * @param {string} text
    * @param {number} start Where the piece starts; the cut is after it.
    * @param {number} end The furthest cut the bound allows.
+   * @param {{end: number}} inside The end of a cluster longer than the bound that an
+   *   earlier cut fell inside, or 0; this sets it when a cut falls inside one.
    */
-  function cutInsideLine(text, start, end) {
+  function cutInsideLine(text, start, end, inside) {
     const before = text.charCodeAt(end - 1);
     const after = text.charCodeAt(end);
     if (before < 0x80 && after < 0x80 && !(before === 0x0d && after === 0x0a)) {
@@ -72,12 +77,15 @@
           ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
           : null;
     }
-    if (graphemes) {
+    const from = Math.max(start, inside.end);
+    if (graphemes && from <= end) {
       // Through the code point at `end`, which decides whether `end` is a boundary.
-      const cluster = graphemes.segment(text.slice(start, end + 2)).containing(end - start);
-      if (cluster && cluster.index > 0) {
-        return start + cluster.index;
+      const cluster = graphemes.segment(text.slice(from, end + 2)).containing(end - from);
+      if (cluster && (cluster.index > 0 || from > start)) {
+        return from + cluster.index;
       }
+      // One cluster, starting at the piece's start, holds the whole window.
+      inside.end = oversizedClusterEnd(graphemes, text, start, end);
     }
     let cut = end;
     if (cut - 1 > start && isLowSurrogate(after) && isHighSurrogate(before)) {
@@ -87,6 +95,28 @@
       cut -= 1;
     }
     return cut;
+  }
+
+  /**
+   * Where a grapheme cluster longer than the bound ends. It starts at `start`, a
+   * boundary, and holds `end`. Each try segments twice as much text from its start
+   * until the cluster ends inside the slice, so finding it is linear in its length.
+   *
+   * @param {Intl.Segmenter} segmenter
+   * @param {string} text
+   * @param {number} start
+   * @param {number} end
+   */
+  function oversizedClusterEnd(segmenter, text, start, end) {
+    for (let reach = 2 * (end - start); ; reach *= 2) {
+      const stop = Math.min(text.length, start + reach);
+      const cluster = segmenter.segment(text.slice(start, stop)).containing(end - start);
+      const last = cluster ? start + cluster.index + cluster.segment.length : stop;
+      // The code point after a boundary decides it, so it must be in the slice too.
+      if (stop === text.length || last + 2 <= stop) {
+        return last;
+      }
+    }
   }
 
   /**
@@ -101,13 +131,15 @@
   function textPieces(text, limit = TEXT_NODE_MAX_LENGTH) {
     /** @type {string[]} */
     const pieces = [];
+    const inside = { end: 0 };
     let start = 0;
     while (text.length - start > limit) {
       const end = start + limit;
       // Searched within the window only: lastIndexOf on the whole text would scan a
-      // long line back to its start on every piece.
+      // long line back to its start on every piece. A newline always ends its
+      // cluster, so the position after one is a boundary.
       const newline = text.slice(start, end).lastIndexOf("\n");
-      const cut = newline >= 0 ? start + newline + 1 : cutInsideLine(text, start, end);
+      const cut = newline >= 0 ? start + newline + 1 : cutInsideLine(text, start, end, inside);
       pieces.push(text.slice(start, cut));
       start = cut;
     }

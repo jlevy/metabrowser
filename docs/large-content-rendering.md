@@ -247,15 +247,18 @@ Each node ends at its last newline, so ordinary source is split only between lin
 A line longer than the bound is cut between two ASCII characters when the bound falls
 there, which is always a grapheme boundary except inside a CRLF. Otherwise, where the
 engine has `Intl.Segmenter`, the cut is the start of the grapheme cluster the bound
-falls in, segmented from the piece’s start, because a boundary depends on the text
-before it: whether a regional indicator starts a flag depends on how many precede it in
-its run. An accent, an emoji sequence, or a flag then stays whole.
+falls in, because a boundary depends on the text before it: whether a regional indicator
+starts a flag depends on how many precede it in its run.
+So the line is segmented from the last position known to be a boundary: the piece’s
+start, or, after a cut inside one cluster longer than the bound, that cluster’s end,
+found once by segmenting forward from its start.
+An accent, an emoji sequence, or a flag then stays whole.
 Without `Intl.Segmenter`, and inside one cluster longer than the bound, the cut is the
 last code point boundary that keeps a surrogate pair and a CRLF whole, so an accent can
 be cut from its letter.
-Segmenting a piece costs time linear in the piece: an 8 MiB line of nothing but flags
-took 95 to 97 ms to split in V8 (Node 24) and in WebKit, and 8 MiB lines of ASCII, CJK,
-or accented letters and a 1 MiB cluster took 4 to 9 ms.
+Splitting costs time linear in the line: in V8 (Node 24) and in WebKit, 8 MiB lines of
+ASCII, CJK, or accented letters took 4 to 9 ms, a line of nothing but flags 94 to 97 ms,
+and one cluster of 8 MiB 80 to 91 ms.
 Copy, find, and selection read across text nodes and see the same text, as checked in
 both engines.
 

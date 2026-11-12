@@ -408,6 +408,27 @@ function cutsAtGraphemes(name, text, pieces, limit = LIMIT) {
   );
 }
 {
+  // A cut inside a cluster longer than the bound leaves the next piece starting inside
+  // it. Segmenting from there would pair the indicator run that follows the other way:
+  // 65,534 Prepend characters and the first flag are one cluster of 65,538 units, so
+  // the second cut must fall after a whole flag, at 131,070, not between two
+  // indicators at 131,072.
+  const text = `${"؀".repeat(65_534)}${"\u{1F1FA}\u{1F1F8}".repeat(16_386)}z`;
+  const pieces = api.textPieces(text);
+  wellSplit("a Prepend cluster and flags", text, pieces);
+  cutsAtGraphemes("a Prepend cluster and flags", text, pieces);
+  check(
+    "a Prepend cluster and flags: the first cut is a code point inside the cluster",
+    pieces[0].length === LIMIT,
+    lengths(pieces),
+  );
+  check(
+    "a Prepend cluster and flags: the second cut ends a whole flag",
+    pieces[0].length + pieces[1].length === 131_070,
+    lengths(pieces),
+  );
+}
+{
   // Without Intl.Segmenter the cut is at a code point: a surrogate pair and a CRLF stay
   // whole, and a combining accent can be cut from its letter.
   const pair = `${"a".repeat(LIMIT - 1)}\u{1F600}b`;
@@ -438,8 +459,9 @@ function cutsAtGraphemes(name, text, pieces, limit = LIMIT) {
 {
   // Random text against small bounds, so every kind of boundary falls on every
   // position: lines, CRLF, lone CR, surrogate pairs, lone regional indicators that
-  // pair with their neighbors, accents, emoji sequences, and clusters longer than the
-  // bound, which must still split rather than stall. Every cut inside a line is checked
+  // pair with their neighbors, accents, emoji sequences, Prepend characters, and
+  // clusters longer than the bound, which must still split rather than stall and must
+  // not change how the text after them is cut. Every cut inside a line is checked
   // against the whole text's grapheme boundaries.
   let state = 0x9e3779b9;
   const random = () => {
@@ -463,6 +485,7 @@ function cutsAtGraphemes(name, text, pieces, limit = LIMIT) {
     "‍",
     "\u{1F469}",
     "\u{1F3FD}",
+    "\u0600",
     "\u{1F1FA}",
     "\u{1F1F8}",
     "\u{1F1EB}",
@@ -476,6 +499,13 @@ function cutsAtGraphemes(name, text, pieces, limit = LIMIT) {
       const indicators = random() % 4 === 0 ? random() % 41 : 0;
       for (let run = 0; run < indicators; run += 1) {
         parts.push(alphabet[alphabet.length - 3 + (random() % 3)]);
+      }
+      // An eighth are runs of up to 100 Prepend characters or accents: one cluster
+      // longer than most bounds here, with more text after it to cut.
+      const joiners = random() % 8 === 0 ? random() % 101 : 0;
+      const joiner = random() % 2 === 0 ? "\u0600" : "\u0301";
+      for (let run = 0; run < joiners; run += 1) {
+        parts.push(joiner);
       }
       parts.push(alphabet[random() % alphabet.length]);
     }
