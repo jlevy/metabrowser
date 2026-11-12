@@ -3,10 +3,11 @@ type: is
 id: is-01m748xzxmaxg55y30n0xybf63
 title: macOS CI job for the app
 kind: task
-status: open
+status: in_progress
 priority: 3
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies:
   - type: blocks
@@ -14,8 +15,11 @@ dependencies:
   - type: blocks
     target: is-01m76h3hdcp0ek254274recmn5
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+hold: null
+hold_until: null
 created_at: 2026-11-11T03:02:57.202Z
-updated_at: 2026-11-12T00:04:28.154Z
+updated_at: 2026-11-12T00:19:08.763Z
+started_at: 2026-11-12T00:19:08.753Z
 ---
 Phase 5. Build and test apps/macos on a macOS runner, and later sign and notarize release builds from secrets in a temporary keychain.
 

@@ -5,17 +5,21 @@ title: "PR #353 (merge-ready): feat: Name each served folder and mirror, and tit
 kind: task
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-11T22:01:27.877Z
-updated_at: 2026-11-11T22:43:17.177Z
+updated_at: 2026-11-12T00:22:58.905Z
 started_at: 2026-11-11T22:01:28.527Z
 closed_at: 2026-11-11T22:43:17.164Z
 close_reason: "Merge-ready at dbfd82b9 (2026-11-11): Astra senior review A and security review B published at a643077f, both addressed by trusted disposition replies at dbfd82b9 (A1 PR description, B1 doc fix); CI run 43110968834 green (9 checks); mergeable CLEAN; AGENTS.md unchanged. Not merged: the user asked for merge-ready only."
 resolution: null
 duplicate_of: null
 ---
+
+## Notes
+
+2026-11-12: merged at 7a02fed4 on the user's authorization (Merge both), after the gate passed again at a755f8a6 (CI run 43122659247 green, CLEAN).
