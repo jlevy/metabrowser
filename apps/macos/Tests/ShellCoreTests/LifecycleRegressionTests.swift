@@ -10,7 +10,7 @@ private let endpoint = ServerEndpoint(
 private let spec = LaunchSpec(executable: "/usr/bin/false")
 
 private func policy(
-    startup: Duration = .seconds(2), grace: Duration = .milliseconds(100), killWait: Duration = .seconds(2)
+    startup: Duration = startupCeiling, grace: Duration = .milliseconds(100), killWait: Duration = .seconds(2)
 ) -> SupervisorPolicy {
     var policy = SupervisorPolicy()
     policy.startupTimeout = startup
@@ -104,6 +104,11 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
 
     /// A process in uninterruptible I/O survives SIGKILL; the wait for it used to be
     /// unbounded, which hung quit and logout.
+    ///
+    /// The stop takes about 350 ms: the grace, the kill wait, and the output settle. The
+    /// defect was a wait without end, so the bound needs only to be finite and far above
+    /// scheduling delay, and the main actor that every suite shares has stalled for over
+    /// two seconds on a loaded three-core CI runner.
     @Test func aChildThatSurvivesSIGKILLDoesNotHangTheStop() async {
         let child = FakeProcess(ignoresTerm: true, ignoresKill: true)
         let subject = supervisor(child, policy(killWait: .milliseconds(200)))
@@ -111,15 +116,19 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         subject.onEvent = { events.append($0) }
         child.say(servingLine)
         await subject.start()
+        #expect(subject.state == .ready(endpoint))
         let clock = ContinuousClock()
         let began = clock.now
         await subject.stop()
-        #expect(began.duration(to: clock.now) < .seconds(2))
+        #expect(began.duration(to: clock.now) < .seconds(15))
         #expect(subject.state == .stopped)
         #expect(Array(child.signals.prefix(2)) == [SIGTERM, SIGKILL])
         #expect(events.contains { $0.contains("did not exit within") })
     }
 
+    /// About 500 ms: the timeout, the kill wait, and the 300 ms output settle. The bound
+    /// is the one above, for the same reason; it was 2 seconds, which this test exceeded
+    /// on CI.
     @Test func commandRunnerGivesUpOnAChildThatSurvivesSIGKILL() async {
         let child = FakeProcess(ignoresTerm: true, ignoresKill: true)
         let clock = ContinuousClock()
@@ -127,24 +136,26 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         let result = await CommandRunner.finish(child, timeout: .milliseconds(100), killWait: .milliseconds(100))
         #expect(result.timedOut)
         #expect(result.status == nil)
-        #expect(began.duration(to: clock.now) < .seconds(2))
+        #expect(child.signals == [SIGKILL, SIGKILL])  // at the deadline, then the group sweep
+        #expect(began.duration(to: clock.now) < .seconds(15))
     }
 }
 
 /// The app delegate's quit ordering, through the fleet it delegates to.
 @Suite struct ServerFleetTests {
-    private func ready(_ child: FakeProcess, grace: Duration = .milliseconds(200)) async -> ServerSupervisor {
+    private func ready(_ child: FakeProcess, grace: Duration = .milliseconds(200)) async throws -> ServerSupervisor {
         let subject = supervisor(child, policy(grace: grace))
         child.say(servingLine)
         await subject.start()
+        try #require(subject.state == .ready(endpoint), "the start this test builds on failed")
         return subject
     }
 
-    @Test func quitWaitsForAServerStillStoppingFromAClosedWindow() async {
+    @Test func quitWaitsForAServerStillStoppingFromAClosedWindow() async throws {
         let slow = FakeProcess(pid: 1, ignoresTerm: true)
         let quick = FakeProcess(pid: 2)
-        let closed = await ready(slow)
-        let open = await ready(quick)
+        let closed = try await ready(slow)
+        let open = try await ready(quick)
         let fleet = ServerFleet()
         fleet.insert(closed, for: "/a")
         fleet.insert(open, for: "/b")
@@ -172,14 +183,14 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         await starting.value
     }
 
-    @Test func reopeningAFolderWhileItsOldServerStopsTracksBoth() async {
+    @Test func reopeningAFolderWhileItsOldServerStopsTracksBoth() async throws {
         let old = FakeProcess(pid: 1, ignoresTerm: true)
         let new = FakeProcess(pid: 2)
-        let previous = await ready(old)
+        let previous = try await ready(old)
         let fleet = ServerFleet()
         fleet.insert(previous, for: "/a")
         fleet.retire(previous)
-        let current = await ready(new)
+        let current = try await ready(new)
         fleet.insert(current, for: "/a")
         #expect(fleet["/a"] === current as any ManagedServer)
         #expect(fleet.stoppingCount == 1)
@@ -190,11 +201,11 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         #expect(new.hasExited)
     }
 
-    @Test func insertingOverAnOpenServerRetiresIt() async {
+    @Test func insertingOverAnOpenServerRetiresIt() async throws {
         let first = FakeProcess(pid: 1)
         let fleet = ServerFleet()
-        fleet.insert(await ready(first), for: "/a")
-        fleet.insert(await ready(FakeProcess(pid: 2)), for: "/a")
+        fleet.insert(try await ready(first), for: "/a")
+        fleet.insert(try await ready(FakeProcess(pid: 2)), for: "/a")
         await fleet.stopAll()
         #expect(first.hasExited)
     }
@@ -217,16 +228,27 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         }
     }
 
+    /// The kill wait is one no test waits out, like the startup timeout: the first child
+    /// exits when the test lets it, and a wait that expired first would let the restart
+    /// launch before the stop arrived, which is not the race under test.
     private func subject(_ children: Children) -> ServerSupervisor {
         ServerSupervisor(
-            spec: spec, launch: CLIServeLaunch(), policy: policy(grace: .milliseconds(20), killWait: .seconds(5)),
+            spec: spec, launch: CLIServeLaunch(), policy: policy(grace: .milliseconds(20), killWait: startupCeiling),
             makeProcess: { _ in children.make() }, probe: { _ in true })
     }
 
-    @Test func closingTheLastWindowDuringARestartLeavesNothingRunning() async {
-        let children = Children()
+    /// The restart under test begins from a ready server. A start that failed would leave
+    /// the restart nothing to wait for, and its launch, before any stop, is no defect.
+    private func started(_ children: Children) async throws -> ServerSupervisor {
         let server = subject(children)
         await server.start()
+        try #require(server.state == .ready(endpoint), "the start this test builds on failed")
+        return server
+    }
+
+    @Test func closingTheLastWindowDuringARestartLeavesNothingRunning() async throws {
+        let children = Children()
+        let server = try await started(children)
         let fleet = ServerFleet()
         fleet.insert(server, for: "/a")
         let restarting = Task { await server.restart() }
@@ -243,14 +265,20 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         #expect(fleet.childPIDs.isEmpty)
     }
 
-    @Test func aStopDuringARestartWins() async {
+    @Test func aStopDuringARestartWins() async throws {
         let children = Children()
-        let server = subject(children)
-        await server.start()
+        let server = try await started(children)
         let restarting = Task { await server.restart() }
         #expect(await eventually { children.all[0].signals.contains(SIGKILL) })
-        let stopping = Task { await server.stop() }
-        try? await Task.sleep(for: .milliseconds(20))
+        // The stop runs on the main actor, as this test does, without a pause until it
+        // waits on the old child, after it has superseded the restart. So once this test
+        // sees the flag, the stop is in, however late the task began.
+        let stopBegan = Recorder<Bool>()
+        let stopping = Task {
+            stopBegan.append(true)
+            await server.stop()
+        }
+        #expect(await eventually { stopBegan.count == 1 })
         children.all[0].exitOnItsOwn()
         await restarting.value
         await stopping.value

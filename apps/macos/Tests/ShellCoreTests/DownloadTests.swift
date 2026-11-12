@@ -4,12 +4,14 @@ import WebKit
 @testable import ShellCore
 
 /// Downloads through a real `WKDownload` from a local server, with the save panel
-/// replaced by a fixed answer.
+/// replaced by a fixed answer. Runs in a process of its own; see `ignoreSIGPIPELikeTheApp`.
 @Suite(.serialized) struct DownloadTests {
     private let original = Data("the original file\n".utf8)
     /// More than the 512 bytes a loader may buffer to sniff the content type before it
     /// reports the response, so a transfer held open midway still reaches the delegate.
     private let replacement = Data(String(repeating: "the new download\n", count: 512).utf8)
+
+    init() { ignoreSIGPIPELikeTheApp() }
 
     /// A coordinator that saves to `destination` and records each failure it reports.
     private func coordinator(saving destination: URL, failures: Recorder<DownloadFailure>) -> DownloadCoordinator {

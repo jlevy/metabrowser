@@ -81,8 +81,18 @@ nonisolated final class Recorder<Value: Sendable>: Sendable {
     var count: Int { values.withLock { $0.count } }
 }
 
+/// The startup timeout of a start that a test expects to succeed. Nothing waits it out:
+/// the fake child announces itself before the start and the probe answers at once. The
+/// tests once used 2 seconds, which a stalled main actor reached before the first probe
+/// on a loaded three-core CI runner, so a test went on from a failed start.
+nonisolated let startupCeiling: Duration = .seconds(60)
+
 /// Polls `condition` until it holds or `limit` passes.
-func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+///
+/// The limit only stops a test that would otherwise hang, so it sits far above any
+/// scheduling delay: every suite here runs on the main actor, which a loaded three-core
+/// CI runner has stalled for over two seconds at a time.
+func eventually(within limit: Duration = .seconds(30), _ condition: () -> Bool) async -> Bool {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: limit)
     while clock.now < deadline {
@@ -99,6 +109,18 @@ func temporaryDirectory(_ name: String = #function) throws -> URL {
     let url = base.appending(path: "shellcore-\(safe)-\(UUID().uuidString.prefix(8))", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+}
+
+/// Gives this test process the SIGPIPE disposition that the app sets on its first line
+/// (main.swift). The suites that drive WebKit call it as they start: at the default
+/// disposition, loaded runs of the download tests died of SIGPIPE before the test's
+/// server had written a byte, from a write elsewhere in this process.
+///
+/// Those suites also run in a process of their own (the `test` target in the app's
+/// Makefile): WebKit's first web view blocks the main actor, which every suite here
+/// shares, for seconds on a loaded runner.
+func ignoreSIGPIPELikeTheApp() {
+    signal(SIGPIPE, SIG_IGN)
 }
 
 func processExists(_ pid: pid_t) -> Bool {
