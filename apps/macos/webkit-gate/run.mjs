@@ -170,8 +170,8 @@ function binaryCorpus(bytes, text, seed, randomPercent = 45) {
 }
 
 /**
- * Short keys and many numbers, about 140,000 highlight.js spans in 512 KiB: the dense end
- * of the 29,000 to 170,000 spans the 512 KiB bound was measured over.
+ * Short keys and many numbers: about 300,000 highlight.js spans in 512 KiB, past the
+ * dense end of the 29,000 to 170,000 spans the 512 KiB bound was measured over.
  */
 function denseJson() {
   const records = [];

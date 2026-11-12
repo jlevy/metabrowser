@@ -43,6 +43,7 @@ make macos-release                   # the official build; see Building a Releas
 make macos-notarize FILE=path        # notarize and staple one .app or .dmg
 make macos-build                     # debug build only
 make macos-clean                     # remove .build and build
+make macos-webkit-gate               # the WebKit measurement gate; needs Google Chrome
 ```
 
 `make verify` neither needs nor runs Swift, so Linux CI is unchanged; the app has its
@@ -306,6 +307,7 @@ Do not hand one out as a release.
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
+| `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js` both engines run, and `WebKitDriver.swift`, built with the app’s web view sources. Not part of the app. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit.
@@ -448,8 +450,12 @@ Terminal launch.
 - **Browser features:** Back and Forward (Command-\[ and Command-\]), Reload, zoom
   (persisted), Print through `printOperation`, Find through `NSTextFinder` with a find
   bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, and file inputs.
-  If the web content process dies, the window reloads, at most twice in 30 seconds, and
-  then shows the status view.
+  The page’s own Print button calls `window.print()`, which does nothing here: WebKit
+  hands it to private `WKUIDelegate` methods that the app does not implement.
+  A file dropped on a page is cancelled as a `file://` navigation, so nothing happens.
+  [Measured in WebKit](../../docs/large-content-rendering.md#windowprint-and-drag-and-drop)
+  has both checks. If the web content process dies, the window reloads, at most twice in
+  30 seconds, and then shows the status view.
 
 ### Why the Title Is a Title-Bar Accessory
 
@@ -541,7 +547,7 @@ Each gap points to the part of the brief that closes it.
 | **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
 | **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
-| **WebKit measurement gate** | Not run. Large-content bounds were measured in Chrome; `window.print()` and drag and drop are not yet checked by hand. | Recommendation 4 (`mb-etqi`) |
+| **WebKit measurement gate** | Run on 2026-11-11 (`make macos-webkit-gate`), and **failed**: WebKit lays out the source view 1.6 to 5.8 times slower than Chrome, the binary view 1.4 to 2.7 times, and highlighting and the diff layout switch up to 1.5 times; it uses much less memory. The brief’s fallback is the owner’s decision. `window.print()` does nothing in the app, File > Print works, a dropped folder opens, and a dropped file does nothing. See [Measured in WebKit](../../docs/large-content-rendering.md#measured-in-webkit). | Recommendation 4 (`mb-gvtw`; owner acceptance stays `mb-etqi`) |
 | **Multi-root and attach** | One server per root; no attaching to an agent’s server, no state files, no `metabrowser://` hand-off from the CLI. | Use Cases Under Exploration; Sharing an Installation |
 | **Release CI** | `macos-app.yml` builds, tests, and rehearses the release with an ad hoc signature. No job signs and notarizes from secrets or drafts a release on a `macos-v*` tag, so a release is built by hand (`mb-e9fm`). | Next Steps |
 
