@@ -1,0 +1,16 @@
+---
+type: is
+id: is-01m774rwpvf8kz9xzn0c7f9avt
+title: "Phase 2: diff layout toggle L"
+kind: task
+status: open
+priority: 2
+version: 1
+spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+labels: []
+dependencies: []
+parent_id: is-01m76jgfxbadse383jypkzwpm9
+created_at: 2026-11-12T05:47:59.067Z
+updated_at: 2026-11-12T05:47:59.067Z
+---
+toggleLayout through setLayout, badge on the option it would select, retarget after each renderLayoutControl; diff files, commit view, and PR Changes; row diff.layout-key on diff-layout-fit-session.

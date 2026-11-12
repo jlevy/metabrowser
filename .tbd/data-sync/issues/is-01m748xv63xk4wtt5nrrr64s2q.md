@@ -5,7 +5,7 @@ title: "Host mode: ready line after bind, sticky port, stdin token, stdin-EOF ex
 kind: feature
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
@@ -15,9 +15,11 @@ dependencies:
     target: is-01m748xvkxpj29cp9p8wr6vg5w
   - type: blocks
     target: is-01m748y1pa5yyy4wf2t16cpf0y
+  - type: blocks
+    target: is-01m774re9ewc3k6c8hp5x78376
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T03:02:52.354Z
-updated_at: 2026-11-11T22:51:48.711Z
+updated_at: 2026-11-12T05:48:11.661Z
 ---
 Phase 3, core metab. A JSON ready line printed after bind; a sticky port remembered per root with an OS-chosen fallback; a per-launch token on stdin; exit on stdin EOF; --idle-exit. Generalizes the draft VS Code host design (mb-x4y5); a reference-host test covers it.
 
