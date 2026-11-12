@@ -103,7 +103,13 @@ The app finds `metab` in uv’s tool directory, `~/.local/bin`, without needing 
 ### What the App Shows Without a Usable metab
 
 If the app finds no `metab` it accepts, Settings opens and lists only the steps still
-missing, each with a Copy button:
+missing, each with a Copy button.
+While 0.12.1 is not on PyPI, that is uv’s standalone installer if there is no uv (and
+`brew install uv` when Homebrew is installed), then `make install` at the root of the
+checkout you built the app from, and Choose metab… to pick its `.venv/bin/metab`. The
+screen also names any older `metab` it found.
+
+Once 0.12.1 is published, the steps end in a uv install instead:
 
 - without uv, uv’s standalone installer (and `brew install uv` when Homebrew is
   installed), then `uv tool install metabrowser` in a new terminal;
@@ -112,10 +118,11 @@ missing, each with a Copy button:
   `uv tool install --reinstall metabrowser`.
 
 The app keeps watching for `metab`, and when it appears, opens the folders you asked for
-by itself.
+by itself. It runs a uv it finds by itself only to ask where uv installs tools, and only
+one that no other account can change; the screen names any it would not run, and why.
 
 If the `metab` it finds is older than 0.12.1, the app starts no server and shows the
-version it found and the command to upgrade:
+version it found and, once 0.12.1 is published, the command to upgrade:
 
 ```shell
 uv tool install --upgrade 'metabrowser>=0.12.1'

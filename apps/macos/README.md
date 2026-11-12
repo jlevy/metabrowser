@@ -202,19 +202,27 @@ scripts/check-setup-flows.sh disk-image
 
 Each run copies the app under its own bundle identifier,
 `io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
-saved runtime, recents, or LaunchServices entry, and opens it with a scratch `HOME` in
-which discovery finds only what the script puts there.
+saved runtime, recents, saved session, or LaunchServices entry, and opens it with a
+scratch `HOME`. A scratch `HOME` hides only what is under it: discovery and the
+first-run screen still look in `/opt/homebrew/bin`, `/usr/local/bin`, and on the login
+shell’s `PATH`, which with the scratch `HOME` is the system’s own (`/etc/paths` and
+`/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
+found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
+`no-metab` cannot run, and `old-metab` covers the screen with uv.
 It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
 this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
-copy with SIGTERM, reports any server left running as a failure, detaches its image,
-unregisters the copy, and deletes its defaults.
-It refuses to run where a `metab` in `/opt/homebrew/bin` or `/usr/local/bin` would be
-found first.
+copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
+saved session, and recents.
+A copy that needs SIGKILL, a server left running, and a server started from the older
+`metab` in `old-metab` are each a failed check: the script finishes its cleanup, then
+exits nonzero, keeping an earlier nonzero status if it had one.
+`scripts/test-scripts.sh` checks that accounting, and that every script starts with its
+interpreter line, on stand-in processes.
 
 | Case | What it checks |
 | --- | --- |
-| `no-metab` | No uv and no `metab`: both installs are shown, then only `uv tool install metabrowser` once uv appears, then the waiting folder opens by itself once `metab` does |
-| `old-metab` | A stand-in reporting 0.12.0: the upgrade command and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `no-metab` | No uv and no `metab`: the uv install and the source checkout step are shown, then only the checkout step, still for a new Terminal window, once uv appears, then the waiting folder opens by itself once `metab` does |
+| `old-metab` | A stand-in reporting 0.12.0: the checkout step naming it and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
 | `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
 
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
@@ -499,6 +507,12 @@ reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
+Every start asks for the runtime the app accepts at that moment (`FolderServer`): a
+folder’s first start, a restored folder’s start when its turn or its tab comes, Retry,
+Restart Server, and the restart after an upgrade.
+While there is none, because a search found nothing or the runtime’s file changed and
+its check has not answered, a start waits and its windows say so, a restart stops
+nothing, and both go ahead once a runtime is accepted.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one
@@ -511,22 +525,40 @@ a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.
 
 | Found | Steps shown |
 | --- | --- |
-| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then, in a new Terminal window, `uv tool install metabrowser` |
+| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then the `metab` step below in a new Terminal window |
 | uv, no `metab` | `uv tool install metabrowser` |
 | A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
-| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'`, after installing uv if there is none |
+| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'` |
+
+Those are the steps once the minimum is on PyPI (`MetabRequirement.isReleased`). Until
+then uv can install only an older release, so every case ends in one step instead:
+`make install` at the root of the source checkout the app was built from, then Choose
+metab… and its `.venv/bin/metab`, naming the older `metab` found, if any.
+A step after uv’s says to run it in a new Terminal window while uv’s directory is not on
+the login shell’s `PATH` from the search, since the window that ran the installer has
+not read the `PATH` it added.
 
 - **Finding uv:** where its installer puts it (`XDG_BIN_HOME`, `XDG_DATA_HOME/../bin`,
   or `~/.local/bin`), `/opt/homebrew/bin`, `/usr/local/bin`, then the login shell’s
   `PATH` from the search, so a file check suffices.
-- **Where `metab` will appear:** `uv tool dir --bin`, asked of the uv found, with uv’s
-  location variables passed through.
-  Without uv, or if uv fails to answer (logged), uv’s documented default, which the
-  screen names.
+- **Where `metab` will appear:** `uv tool dir --bin`, asked of the first uv found that
+  no other account can change (`ExecutableTrust`), with uv’s location variables passed
+  through. Without one, or if it fails to answer (logged), uv’s documented default, which
+  the screen names.
+- **Which uv it runs:** the app runs a uv it found by itself only if every directory and
+  link from `/` to the file, and the file, belong to this user or root, none is writable
+  by its group or by every account, and no access control entry grants a right to change
+  it. Each one refused is named on the screen and in the log with the reason; the steps
+  still count it as installed, since the user’s Terminal is what runs it.
+  A standard Homebrew prefix is writable by the `admin` group, so its uv is refused,
+  which costs only the question: uv’s default directory is the answer a Finder launch
+  gets.
 - **Continuing by itself:** the app watches that directory, every place discovery looks
-  without a shell, and every place uv may be, once a second and when the app becomes
-  active. When `metab` appears or changes, it searches again, adopts the result, and
-  opens the folders that were waiting.
+  without a shell, every candidate the last search tried (those on the login shell’s
+  `PATH` among them), and every place uv may be, once a second and when the app becomes
+  active. A file’s fingerprint includes its mode, so `chmod +x` alone is a change.
+  When `metab` appears or changes, it searches again, adopts the result, and opens the
+  folders that were waiting.
   When uv appears, the steps shrink to the ones left.
 - **Terminal:** `~/.local/bin` is not on macOS’s default `PATH`. The app needs nothing
   there, but Terminal does, so the screen suggests `uv tool update-shell` unless the
@@ -548,19 +580,28 @@ Its number says only that it was built after 0.12.0: one built before the route 
 
 - **Below the minimum,** discovery skips that `metab` and tries the next place.
   If none qualifies, the app starts no server: Settings shows the version found, the
-  version needed, and `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy, and
-  folders wait. The command asks for a floor rather than an exact version, because uv
-  keeps the requirement in the tool’s receipt and a later `uv tool upgrade` would never
-  move past a pin. Choose metab… refuses an older `metab` the same way.
+  version needed, and, once the minimum is published,
+  `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy (before then, the source
+  checkout step above), and folders wait.
+  The command asks for a floor rather than an exact version, because uv keeps the
+  requirement in the tool’s receipt and a later `uv tool upgrade` would never move past
+  a pin. Choose metab… refuses an older `metab` the same way.
 - **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
-  inode, size, and modification time) from just before `metab --version` ran.
+  inode, size, modification time, and mode) from just before `metab --version` ran.
   The app compares it with the file once a second and when the app becomes active, and
-  checks before each folder it opens.
-  A change counts once two looks agree, so a file caught in the middle of an install is
-  not read; a folder opened then waits for the check.
+  checks before each folder it opens, and at launch before it restores the last session.
+  A change counts once two looks agree, which debounces a file caught in the middle of
+  an install without proving the installer is done: the check reads the file again, and
+  a later change is a new one.
+  From the first look that sees a change, no server starts from the old runtime until a
+  check, a Find Again, or a choice validates one, whichever finishes it; a choice being
+  validated is never overtaken by a check the app starts by itself.
   The check runs `metab --version` again.
   A version the app accepts replaces the old one, and if open folders run servers that
-  the same `metab` started at another version, an alert offers to restart them.
+  the same `metab` started at another version, an alert offers to restart them; a folder
+  whose server never started is not counted.
+  The restart uses the runtime accepted when the alert is answered, and restarts nothing
+  if a later change left none.
   Anything else leaves no runtime, and a search looks for another.
 - **What it cannot prevent:** an upgrade run in Terminal rewrites the environment the
   running servers import from, before the app notices or the user agrees, so a server
