@@ -32,6 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
+import { Cleanup, startMetab, terminate, within } from "./processes.mjs";
 import { markdown, summarize } from "./summary.mjs";
 
 const run = promisify(execFile);
@@ -218,47 +219,6 @@ async function writeCorpora(directory) {
 
 // ── Servers ─────────────────────────────────────────────────────
 
-/** `metab ROOT` on a free port, with its own cache and configuration directories. */
-async function startMetab(binary, root, scratch) {
-  const port = await freePort();
-  const child = spawn(
-    binary,
-    [
-      root,
-      "--port",
-      String(port),
-      "--no-open",
-      "--cache-dir",
-      path.join(scratch, "cache"),
-      "--config-dir",
-      path.join(scratch, "config"),
-    ],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-  let log = "";
-  const ready = new Promise((resolve, reject) => {
-    const onData = (data) => {
-      log += data;
-      const match = /Serving .* at (http:\/\/127\.0\.0\.1:\d+)\/view\//.exec(log);
-      if (match) {
-        resolve(match[1]);
-      }
-    };
-    child.stdout.on("data", onData);
-    child.stderr.on("data", onData);
-    child.on("exit", (code) =>
-      reject(new Error(`metab exited with ${code} before serving:\n${log}`)),
-    );
-  });
-  const origin = await Promise.race([
-    ready,
-    sleep(60_000).then(() => {
-      throw new Error(`metab did not announce a URL in 60 s:\n${log}`);
-    }),
-  ]);
-  return { origin, child };
-}
-
 const MIME = {
   ".css": "text/css",
   ".html": "text/html; charset=utf-8",
@@ -267,8 +227,11 @@ const MIME = {
   ".mjs": "text/javascript",
 };
 
-/** The repository root, read-only, for the committed benchmark pages and their modules. */
-async function startStatic(corpus) {
+/**
+ * The repository root, read-only, for the committed benchmark pages and their modules,
+ * closed by `cleanup` from the moment it is created.
+ */
+async function startStatic(corpus, cleanup) {
   const server = http.createServer((request, response) => {
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
     if (pathname === "/__gate/blank.html") {
@@ -293,19 +256,19 @@ async function startStatic(corpus) {
     });
     fs.createReadStream(file).pipe(response);
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { origin: `http://127.0.0.1:${server.address().port}`, server };
-}
-
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = http.createServer();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
+  cleanup.add(
+    () =>
+      new Promise((resolve) => {
+        // A browser's idle keep-alive connections would hold close() open.
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  );
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
   });
+  return { origin: `http://127.0.0.1:${server.address().port}`, server };
 }
 
 // ── Engines ─────────────────────────────────────────────────────
@@ -375,10 +338,17 @@ async function withChrome(scratch, use) {
     { stdio: "ignore" },
   );
   const exited = new Promise((resolve) => child.on("exit", resolve));
+  let spawnError = null;
+  child.on("error", (error) => {
+    spawnError = error;
+  });
   let connection = null;
   try {
     const portFile = path.join(profile, "DevToolsActivePort");
     for (let waited = 0; !fs.existsSync(portFile); waited += 100) {
+      if (spawnError) {
+        throw new Error(`Chrome did not start: ${spawnError.message}`, { cause: spawnError });
+      }
       if (waited > 30_000) {
         throw new Error("Chrome did not open its DevTools port");
       }
@@ -412,10 +382,9 @@ async function withChrome(scratch, use) {
       // The browser is killed below if it did not close.
     }
     connection?.close();
-    await Promise.race([exited, sleep(10_000)]);
-    if (child.exitCode === null) {
-      child.kill("SIGKILL");
-      await exited;
+    // Browser.close usually ends it; if it has not after 10 s, SIGTERM, then SIGKILL.
+    if (child.pid !== undefined && !(await within(exited, 10_000))) {
+      await terminate(child);
     }
     fs.rmSync(profile, { recursive: true, force: true });
   }
@@ -498,6 +467,10 @@ function driverRun(driver, args, onRecord = async () => {}) {
         reject(error);
       }
       child.stdin.end();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(new Error(`webkit-driver did not start: ${error.message}`, { cause: error }));
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
@@ -798,6 +771,20 @@ async function main() {
       throw new Error(`unknown case ${name}; cases: ${Object.keys(CASES).join(", ")}`);
     }
   }
+  // Every process and listener the run starts is stopped here, however the run ends.
+  const cleanup = new Cleanup();
+  try {
+    await measure(options, caseNames, cleanup);
+  } finally {
+    for (const error of await cleanup.run()) {
+      console.error(`webkit-gate: while stopping: ${error.stack || error}`);
+      process.exitCode = 1;
+    }
+  }
+}
+
+/** The run itself: corpora, driver, servers, then the checks or every case's pairs. */
+async function measure(options, caseNames, cleanup) {
   fs.mkdirSync(options.out, { recursive: true });
   const corpus = path.join(options.out, "corpus");
   const scratch = path.join(options.out, "scratch");
@@ -805,8 +792,8 @@ async function main() {
   const probe = fs.readFileSync(path.join(HERE, "probe.js"), "utf8");
   console.error(`webkit-gate: writing corpora and building webkit-driver in ${options.out}`);
   const [manifest, driver] = await Promise.all([writeCorpora(corpus), buildDriver()]);
-  const metab = await startMetab(options.metab, corpus, scratch);
-  const files = await startStatic(corpus);
+  const metab = await startMetab(options.metab, corpus, scratch, { cleanup });
+  const files = await startStatic(corpus, cleanup);
   const servers = { metab: metab.origin, static: files.origin };
   const meta = {
     ...(await machineFacts(options.metab)),
@@ -818,77 +805,69 @@ async function main() {
     corpora: manifest,
   };
   fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
-  try {
-    if (options.checks) {
-      const checks = await runChecks(driver, servers, corpus, scratch);
-      fs.writeFileSync(
-        path.join(options.out, "checks.json"),
-        `${JSON.stringify(checks, null, 2)}\n`,
-      );
-      console.log(JSON.stringify(checks, null, 2));
-      return;
-    }
-    const samplesPath = path.join(options.out, "samples.jsonl");
-    const samples = [];
-    for (const caseName of caseNames) {
-      const definition = CASES[caseName];
-      const url = definition.url(servers);
-      const script = `globalThis.__webkitGateConfig = ${JSON.stringify({
-        ...definition.config,
-        timeoutMs: DOM_TIMEOUT_MS,
-      })};\n${probe}`;
-      const total = options.warmup + options.pairs;
-      for (let index = 0; index < total; index += 1) {
-        const warmup = index < options.warmup;
-        const pair = index - options.warmup;
-        const order = index % 2 === 0 ? ["chrome", "webkit"] : ["webkit", "chrome"];
-        for (const engine of order) {
-          const load = loadAverage();
-          const locked = await screenLocked();
-          const startedAt = Date.now();
-          // A failed sample is recorded and leaves its pair incomplete; the run goes on.
-          let record = null;
-          let error = null;
-          let metrics = [];
-          try {
-            record =
-              engine === "chrome"
-                ? await chromeSample(url, script, scratch)
-                : await webkitSample(driver, url, script, scratch);
-            metrics = definition.metrics(record);
-          } catch (caught) {
-            error = String(caught?.message || caught);
-          }
-          const sample = {
-            case: caseName,
-            engine,
-            pair: warmup ? null : pair,
-            warmup,
-            load_average: load,
-            screen_locked: locked,
-            wall_ms: Date.now() - startedAt,
-            error,
-            record,
-            metrics,
-          };
-          samples.push(sample);
-          fs.appendFileSync(samplesPath, `${JSON.stringify(sample)}\n`);
-          console.error(
-            `webkit-gate: ${caseName} ${warmup ? "warm-up" : `pair ${pair + 1}`} ${engine} ` +
-              `in ${sample.wall_ms} ms at load ${load[0]}${locked ? ", screen locked" : ""}` +
-              (error ? `: FAILED: ${error}` : ""),
-          );
+  if (options.checks) {
+    const checks = await runChecks(driver, servers, corpus, scratch);
+    fs.writeFileSync(path.join(options.out, "checks.json"), `${JSON.stringify(checks, null, 2)}\n`);
+    console.log(JSON.stringify(checks, null, 2));
+    return;
+  }
+  const samplesPath = path.join(options.out, "samples.jsonl");
+  const samples = [];
+  for (const caseName of caseNames) {
+    const definition = CASES[caseName];
+    const url = definition.url(servers);
+    const script = `globalThis.__webkitGateConfig = ${JSON.stringify({
+      ...definition.config,
+      timeoutMs: DOM_TIMEOUT_MS,
+    })};\n${probe}`;
+    const total = options.warmup + options.pairs;
+    for (let index = 0; index < total; index += 1) {
+      const warmup = index < options.warmup;
+      const pair = index - options.warmup;
+      const order = index % 2 === 0 ? ["chrome", "webkit"] : ["webkit", "chrome"];
+      for (const engine of order) {
+        const load = loadAverage();
+        const locked = await screenLocked();
+        const startedAt = Date.now();
+        // A failed sample is recorded and leaves its pair incomplete; the run goes on.
+        let record = null;
+        let error = null;
+        let metrics = [];
+        try {
+          record =
+            engine === "chrome"
+              ? await chromeSample(url, script, scratch)
+              : await webkitSample(driver, url, script, scratch);
+          metrics = definition.metrics(record);
+        } catch (caught) {
+          error = String(caught?.message || caught);
         }
+        const sample = {
+          case: caseName,
+          engine,
+          pair: warmup ? null : pair,
+          warmup,
+          load_average: load,
+          screen_locked: locked,
+          wall_ms: Date.now() - startedAt,
+          error,
+          record,
+          metrics,
+        };
+        samples.push(sample);
+        fs.appendFileSync(samplesPath, `${JSON.stringify(sample)}\n`);
+        console.error(
+          `webkit-gate: ${caseName} ${warmup ? "warm-up" : `pair ${pair + 1}`} ${engine} ` +
+            `in ${sample.wall_ms} ms at load ${load[0]}${locked ? ", screen locked" : ""}` +
+            (error ? `: FAILED: ${error}` : ""),
+        );
       }
     }
-    meta.finished = new Date().toISOString();
-    meta.load_end = loadAverage();
-    fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
-    console.log(writeSummary(options.out, meta, samples));
-  } finally {
-    metab.child.kill("SIGTERM");
-    files.server.close();
   }
+  meta.finished = new Date().toISOString();
+  meta.load_end = loadAverage();
+  fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
+  console.log(writeSummary(options.out, meta, samples));
 }
 
 main().catch((error) => {
