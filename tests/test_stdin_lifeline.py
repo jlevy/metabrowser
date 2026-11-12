@@ -23,6 +23,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+from metabrowser.cli.common import write_notice_now_or_never
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.main import _app
 from metabrowser.cli.stdin_lifeline import (
@@ -197,3 +198,94 @@ def test_a_server_whose_stdin_closes_stops_and_frees_its_port(tmp_path: Path) ->
     assert STDIN_CLOSED_NOTICE.decode() in stderr
     with socket.socket() as again, pytest.raises(ConnectionRefusedError):
         again.connect(("127.0.0.1", port))
+
+
+def _full_pipe() -> tuple[int, int]:
+    """A pipe whose buffer is full, with both ends blocking, as a reader that stopped
+    reading leaves it."""
+
+    read_end, write_end = os.pipe()
+    os.set_blocking(write_end, False)
+    # Large writes first, then single bytes, until not even one more fits.
+    for size in (1 << 16, 1):
+        with contextlib.suppress(BlockingIOError):
+            while True:
+                os.write(write_end, b"x" * size)
+    os.set_blocking(write_end, True)
+    return read_end, write_end
+
+
+def _drain(fd: int) -> bytes:
+    os.set_blocking(fd, False)
+    chunks: list[bytes] = []
+    with contextlib.suppress(BlockingIOError):
+        while chunk := os.read(fd, 1 << 16):
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes")
+def test_a_notice_is_written_when_it_fits_and_dropped_when_it_does_not() -> None:
+    read_end, write_end = _full_pipe()
+    try:
+        finished = threading.Event()
+
+        def write() -> None:
+            write_notice_now_or_never(write_end, b"notice\n")
+            finished.set()
+
+        # On a thread, so a write that waits fails the test instead of hanging the suite.
+        threading.Thread(target=write, daemon=True).start()
+        assert finished.wait(_EXIT_TIMEOUT_S)
+        assert b"notice" not in _drain(read_end)
+        # The open file is as blocking as it was before, for whoever else shares it.
+        assert os.get_blocking(write_end)
+        write_notice_now_or_never(write_end, b"notice\n")
+        assert _drain(read_end) == b"notice\n"
+        assert os.get_blocking(write_end)
+    finally:
+        os.close(read_end)
+        os.close(write_end)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and signals")
+@pytest.mark.parametrize(
+    ("stop", "status"), [("stdin closes", 0), ("interrupt", 130)], ids=["eof", "sigint"]
+)
+def test_a_stop_is_not_held_up_by_a_full_stderr(stop: str, status: int, tmp_path: Path) -> None:
+    """The stop notice is skipped, not waited on, when stderr cannot take it now.
+
+    A supervisor that holds the server's stderr and has stopped reading it leaves the
+    pipe full. A blocking write of the notice would then wait for good, before any Git
+    is killed or the process exits, for a stdin that closed and for a Ctrl-C alike.
+    """
+
+    root = tmp_path / "served"
+    root.mkdir()
+    console_script = Path(sys.executable).with_name("metab")
+    stderr_read, stderr_write = _full_pipe()
+    try:
+        process = subprocess.Popen(
+            [str(console_script), str(root), "--no-open", "--exit-on-eof"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_write,
+            text=True,
+            start_new_session=True,
+        )
+        os.close(stderr_write)
+        try:
+            _served_port(process)
+            assert process.stdin is not None
+            if stop == "interrupt":
+                process.send_signal(signal.SIGINT)
+            else:
+                process.stdin.close()
+                process.stdin = None
+            assert process.wait(timeout=_EXIT_TIMEOUT_S) == status
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+    finally:
+        os.close(stderr_read)

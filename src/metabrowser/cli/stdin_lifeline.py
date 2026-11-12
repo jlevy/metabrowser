@@ -12,13 +12,13 @@ would otherwise stop at once. Whatever arrives on stdin before EOF is read and d
 
 from __future__ import annotations
 
-import contextlib
 import os
 import select
 import threading
 from collections.abc import Callable
 from typing import Final, NoReturn
 
+from metabrowser.cli.common import write_notice_now_or_never
 from metabrowser.errors import CLIError
 from metabrowser.git.process import kill_live_process_groups
 
@@ -83,13 +83,13 @@ def stop_for_closed_stdin() -> NoReturn:
     """Stop the process on the spot, as one Ctrl-C does (see ``serve._stop_now``).
 
     Runs on the watcher thread while the main thread serves. The notice is a raw write,
-    which takes no lock the main thread may hold, and ``os._exit`` ends every thread at
-    once, so neither a request in flight nor a worker thread stuck in a slow read keeps
-    the process alive. A background refresh's Git, in process groups of its own, is
-    killed first.
+    which takes no lock the main thread may hold, and is skipped when stderr cannot take
+    it now, so a full stderr nobody reads cannot hold the stop up. ``os._exit`` ends
+    every thread at once, so neither a request in flight nor a worker thread stuck in a
+    slow read keeps the process alive. A background refresh's Git, in process groups of
+    its own, is killed first.
     """
-    with contextlib.suppress(OSError):
-        os.write(2, STDIN_CLOSED_NOTICE)
+    write_notice_now_or_never(2, STDIN_CLOSED_NOTICE)
     kill_live_process_groups()
     os._exit(STDIN_CLOSED_EXIT_STATUS)
 

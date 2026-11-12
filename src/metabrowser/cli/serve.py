@@ -9,7 +9,6 @@ implementation.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import signal
@@ -24,7 +23,11 @@ import typer
 import uvicorn
 
 from metabrowser.build_version import build_state
-from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.common import (
+    apply_log_level,
+    validate_contained_path,
+    write_notice_now_or_never,
+)
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
@@ -108,10 +111,10 @@ def _write_stopping_notice() -> None:
     main thread while it may be part-way through a buffered write of its
     own. ``sys.stderr.write`` would take that same non-reentrant stream
     lock and deadlock; a bare ``os.write`` takes no Python-level lock.
-    A closed or full stderr is not worth failing a shutdown over.
+    A closed or full stderr is not worth failing a shutdown over, nor
+    waiting on: see :func:`write_notice_now_or_never`.
     """
-    with contextlib.suppress(OSError):
-        os.write(2, _STOPPING_NOTICE)
+    write_notice_now_or_never(2, _STOPPING_NOTICE)
 
 
 def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:

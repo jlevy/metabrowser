@@ -128,8 +128,10 @@ the server stops by itself.
 The watch begins once the banner is printed, so the address is always in the output,
 even when stdin was already closed.
 The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
-any Git the server started is killed, and the process exits at once, with status 0.
-Whatever arrives on stdin before it closes is read and dropped.
+any Git the server started is killed, and the process exits at once, with status 0. A
+stderr too full to take the notice at once, because nothing is reading it, gets no
+notice, and the stop goes on without it; so does one Ctrl-C’s. Whatever arrives on stdin
+before it closes is read and dropped.
 Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
 it, a stdin that is not open at all is refused before serving.
 
