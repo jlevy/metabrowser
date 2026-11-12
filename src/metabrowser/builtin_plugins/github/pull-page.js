@@ -60,7 +60,7 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // page replacing another keeps that one on screen meanwhile. Measured 2026-11-12 in headless
 // Chrome 152 against a local server on this repository, three cold documents of six pull
 // requests each, load average 5 to 6, from the hold's `githubPull:firstPaintHold` span: a
-// first visit that waited held 9 to 75 ms (median 20, n 14), the 68 and 75 ms holds being a
+// first visit that waited held 9 to 75 ms (median 19, n 14), the 68 and 75 ms holds being a
 // document's first pull request, which also loads `inert-html` and KPress's stylesheets; a
 // revisit's kept renders held 1 to 16 ms, its own paint (n 5); none reached this bound. The
 // exp-065 pilot (2026-11-12) also waited for a `cached_only` timeline read, which ran to the
