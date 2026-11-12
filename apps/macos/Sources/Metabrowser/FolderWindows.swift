@@ -6,8 +6,8 @@ import ShellCore
 /// restored from it.
 ///
 /// The decisions are `ShellCore`'s (`FolderPlacement`, `TabDiscardPolicy`,
-/// `RestoreQueue`, `SavedSession`), where they are tested; this class reads the windows
-/// and tabs from AppKit and applies them.
+/// `RestoreQueue`, `RestoreRun`, `SavedSession`), where they are tested; this class reads
+/// the windows and tabs from AppKit and applies them.
 final class FolderWindows {
     /// How long a change waits before the session is saved, so a burst of changes, such
     /// as a restore or a run of clicks, writes the file once.
@@ -22,10 +22,8 @@ final class FolderWindows {
     /// When each window was last shown, on `shownCount`.
     private var lastShown: [ObjectIdentifier: UInt64] = [:]
     private var shownCount: UInt64 = 0
-    private var restoreQueue: RestoreQueue?
-    private var isStartingRestoredServers = false
-    /// Whether the restore paused because a root found no runtime to start from.
-    private var isWaitingForRuntime = false
+    /// The restore's server starts, while it has roots to start.
+    private var restoreRun: RestoreRun?
     private var pendingSave: Task<Void, Never>?
     /// Saving starts once the last session has been restored or passed over, so a quit
     /// before then cannot replace it with an empty one, and stops at the quit's save, so
@@ -93,9 +91,9 @@ final class FolderWindows {
     func windowShown(_ controller: BrowserWindowController, of session: FolderSession) {
         noteShown(controller)
         // A selection starts the folder as the user's choice, even one already waiting at
-        // the launch gate.
+        // the launch gate (`RestoreRun.select`).
         session.launchCheck = nil
-        if restoreQueue?.select(session.path) == true { startRestoredServers() }
+        if restoreRun?.select(session.path) == true { startRestoredServers() }
         discardBackgroundPages()
         scheduleSave()
     }
@@ -107,7 +105,7 @@ final class FolderWindows {
 
     /// Every tab of `session` has closed.
     func folderClosed(_ session: FolderSession) {
-        restoreQueue?.remove(session.path)
+        restoreRun?.folderClosed(session.path)
     }
 
     private func discardBackgroundPages() {
@@ -258,77 +256,53 @@ final class FolderWindows {
         for path in queue.deferred {
             sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
         }
-        restoreQueue = queue
+        let run = RestoreRun(
+            queue, folder: { [weak self] in self?.sessionForPath($0) },
+            admit: { RootAdmission.admit($0, home: home) })
+        run.onEvent = { [weak self] in self?.restoreChanged($0) }
+        restoreRun = run
         AppLog.app.info(
             "restoring \(session.windows.count) window(s): \(queue.pending.count) server(s) to start, \(queue.deferred.count) waiting for their tabs")
         front?.window?.makeKeyAndOrderFront(nil)
         startRestoredServers()
     }
 
-    /// Starts the restored folders' servers one at a time, each after the one before it is
-    /// ready or has failed, while the restore queue has any. A root that finds no runtime
-    /// goes back to the front of the queue and the restore pauses until `runtimeAccepted()`,
-    /// so each root is still admitted again in its turn, in order, with selected tabs first.
+    /// Starts the restored folders' servers one at a time (`RestoreRun.start`), unless a
+    /// run is going, which picks up what changed.
     private func startRestoredServers() {
-        guard !isStartingRestoredServers else { return }
-        isStartingRestoredServers = true
-        Task {
-            while !isWaitingForRuntime, let path = nextRestoredRoot() {
-                guard let session = sessionForPath(path) else { continue }
-                switch await session.startRestored() {
-                case .launched:
-                    restoreQueue?.finish(path)
-                case .refusedByRoot:
-                    restoreQueue?.hold(path)
-                    AppLog.app.info(
-                        "\(path, privacy: .public) changed while it waited to start; it starts when its tab is selected")
-                    session.windows.forEach { $0.showWaitingForSelection() }
-                case .waitingForRuntime:
-                    restoreQueue?.putBack(path)
-                    // A runtime accepted since the refusal starts it at once.
-                    guard !session.isRuntimeAccepted else { continue }
-                    isWaitingForRuntime = true
-                    AppLog.app.info("the restore waits for a metab Metabrowser can run")
-                    for waiting in restoreQueue?.pending ?? [] {
-                        sessionForPath(waiting)?.windows.forEach { $0.showWaitingForRuntime() }
-                    }
-                }
+        guard let restoreRun else { return }
+        Task { await restoreRun.start() }
+    }
+
+    /// What the restore's windows show, and the log says.
+    private func restoreChanged(_ event: RestoreRun.Event) {
+        switch event {
+        case .changedBeforeItsTurn(let path):
+            AppLog.app.info(
+                "\(path, privacy: .public) changed since the launch admitted it; it starts when its tab is selected")
+            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+        case .changedWhileWaiting(let path):
+            AppLog.app.info(
+                "\(path, privacy: .public) changed while it waited to start; it starts when its tab is selected")
+            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+        case .waitingForRuntime(let pending):
+            AppLog.app.info("the restore waits for a metab Metabrowser can run")
+            for waiting in pending {
+                sessionForPath(waiting)?.windows.forEach { $0.showWaitingForRuntime() }
             }
-            isStartingRestoredServers = false
         }
     }
 
     /// A restored background folder's restart, such as one after an upgrade, was refused
-    /// by its root check: its server stays stopped until one of its tabs is selected,
-    /// which starts it through the restore queue as the user's choice.
+    /// by its root check (`RestoreRun.rootRefused`).
     func rootRefused(_ session: FolderSession) {
-        restoreQueue?.hold(session.path)
+        restoreRun?.rootRefused(session.path)
     }
 
     /// A runtime was accepted: a restore that paused for want of one carries on.
     func runtimeAccepted() {
-        guard isWaitingForRuntime else { return }
-        isWaitingForRuntime = false
-        startRestoredServers()
-    }
-
-    /// The next root to start. A background root is admitted again now, since it can
-    /// change while the servers before it start, and once more just before its server
-    /// spawns, since it can change while it waits at the launch gate; one that no longer
-    /// is admitted waits for its tab. A selected root is not checked.
-    private func nextRestoredRoot() -> String? {
-        let home = self.home
-        let waiting = Set(restoreQueue?.deferred ?? [])
-        let next = restoreQueue?.next { RootAdmission.admit($0, home: home) == .open($0) }
-        for path in restoreQueue?.deferred ?? [] where !waiting.contains(path) {
-            AppLog.app.info(
-                "\(path, privacy: .public) changed since the launch admitted it; it starts when its tab is selected")
-            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
-        }
-        if let next, let session = sessionForPath(next) {
-            session.launchCheck = restoreQueue?.selected.contains(next) == true
-                ? nil : { RootAdmission.admit(next, home: home) == .open(next) }
-        }
-        return next
+        if restoreRun?.runtimeAccepted() == true { startRestoredServers() }
     }
 }
+
+extension FolderSession: RestoredFolder {}
