@@ -773,8 +773,9 @@ metab ./notes --api '/api/cache/sources?limit=20'
 metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
-# A route that takes a POST body.
+# A route that takes a POST body, from a file or, with -, from standard input.
 metab ./notes --api /api/kpress/render --data request.json
+metab ./notes --api /api/kpress/render --data - < request.json
 ```
 
 Output is the route, the HTTP status, and the normalized envelope:

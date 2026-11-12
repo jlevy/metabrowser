@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from typer.testing import CliRunner
 
 from metabrowser.cli.api_cli import (  # pyright: ignore[reportPrivateUsage]
     _emit_api_response,
+    _request_body,
     run_api,
 )
 from metabrowser.cli.asgi_client import ApiResponse
@@ -195,3 +198,18 @@ def test_a_folder_envelope_is_complete_not_pending(root: Path, capsys: Any) -> N
     assert payload["kind"] == "folder"
     assert payload["dir"]["state"] == "complete"
     assert payload["dir"]["total_files"] is not None
+
+
+def test_data_dash_reads_the_body_from_standard_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``echo '{}' | metab … --data -`` is a command a message can name whole."""
+
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b'{"retry": true}\n')))
+    assert _request_body(Path("-")) == b'{"retry": true}\n'
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"")))
+    with pytest.raises(CLIError, match="is empty; --data needs content"):
+        _request_body(Path("-"))
+    # A file named "-" is read by any other path to it; pathlib makes ./- plain -.
+    (tmp_path / "-").write_bytes(b"{}")
+    assert _request_body(tmp_path / "-") == b"{}"

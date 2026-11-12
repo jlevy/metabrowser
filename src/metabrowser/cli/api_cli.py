@@ -16,8 +16,9 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import typer
 import yaml
@@ -151,11 +152,19 @@ def _follow_route(route: str, response: ApiResponse) -> str | None:
     return None
 
 
+# ``--data -`` reads the body from standard input, so a command a message names can be
+# pasted whole, ``echo '{}' | metab … --data -``, without a file beside it. pathlib
+# spells ``./-`` as ``-`` too, so a file of that name is given by another path to it.
+_STDIN: Final = Path("-")
+
+
 def _request_body(data: Path | None) -> bytes:
     if data is None:
         return b""
     try:
-        body = data.expanduser().resolve().read_bytes()
+        body = (
+            sys.stdin.buffer.read() if data == _STDIN else data.expanduser().resolve().read_bytes()
+        )
     except OSError as exc:
         raise CLIError(f"cannot read request body from {data}: {exc}") from exc
     if not body:
