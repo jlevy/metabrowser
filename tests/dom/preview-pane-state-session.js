@@ -481,15 +481,25 @@ function createShell(pathname, network, options = {}) {
   ]);
   const scroller = options.scroller ?? fakeElement({ scrollTop: 0 });
   const panelIds = ["files"];
-  if (!options.withoutGit) {
+  // `gitDrawn` is the Commits tab the server draws at a repository's root, which
+  // discovery has not registered.
+  if (!options.withoutGit || options.gitDrawn) {
     panelIds.push("git");
   }
   if (options.pulls) {
     panelIds.push("pulls");
   }
-  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab }, focus() {} }));
+  const tabButtons = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { tab },
+      focus() {},
+      remove() {
+        tabButtons.splice(tabButtons.indexOf(this), 1);
+      },
+    }),
+  );
   const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
-  scroller.querySelector = () => ({});
+  scroller.querySelector = () => ({ remove() {} });
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
@@ -1133,6 +1143,27 @@ async function independentMainTabs() {
   await pendingGit.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
   assert.match(pendingGit.pane().shows, /Select a commit to preview/);
+
+  // The server draws Commits at a repository's root, before Git discovery registers it,
+  // so Pulls beside it never moves. A press before registration does nothing; discovery
+  // that registers it keeps it, and discovery that does not removes it.
+  const drawnGit = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnGit.sandbox.navigationController.start();
+  drawnGit.clickTab("git");
+  await settle();
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "an unregistered Commits tab waits");
+  assert.equal(drawnGit.sandbox.location.pathname, "/view/");
+  await drawnGit.sandbox.mainTabs.finishGitDiscovery();
+  assert.deepEqual(
+    drawnGit.tabButtons.map((button) => button.dataset.tab),
+    ["files"],
+    "discovery that finds no repository removes the drawn tab",
+  );
+  assert.deepEqual(
+    reloaded.tabButtons.map((button) => button.dataset.tab),
+    ["files", "git"],
+    "discovery that registers Commits keeps the drawn tab",
+  );
 
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
   assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");

@@ -2104,6 +2104,9 @@ html.theme-anim .menu {
 .tree-content {
   flex: 1;
   overflow-y: auto;
+  /* Scrollbars here are classic (the *::-webkit-scrollbar rule), so a tree that
+     starts or stops overflowing would narrow or widen every row by the bar. */
+  scrollbar-gutter: stable;
   padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
 }
@@ -2121,8 +2124,14 @@ html.theme-anim .menu {
   font-size: var(--ui-small-font-size);
   line-height: 1.2;
 }
+/* The server ships the strip empty and hidden, and keyboard-help.js fills it once
+   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   height, so the tree above it is the same height before and after: its border,
+   padding, a hint's padding, and a keycap's border and 1.5 lines. */
 .nav-shortcut-hints[hidden] {
-  display: none;
+  display: flex;
+  visibility: hidden;
+  min-height: calc(1px + 12px + 6px + 2px + 1.5em);
 }
 .nav-shortcut-action,
 .nav-shortcut-hint,
@@ -2439,6 +2448,9 @@ html[data-prose-font="sans"] {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* A classic scrollbar: a file that overflows would otherwise be 11px narrower
+     than one that does not, and every line would rewrap on the switch. */
+  scrollbar-gutter: stable;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -2862,6 +2874,13 @@ a.tab-btn {
   text-align: center;
   text-decoration: none;
 }
+/* A file whose kind has no view still has the bar, holding a tab's height, so
+   content starts at one height in every file. */
+.tab-slot {
+  display: inline-block;
+  line-height: normal;
+  visibility: hidden;
+}
 .tab-btn:hover {
   color: var(--text);
 }
@@ -3208,6 +3227,12 @@ a.tab-btn {
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */
+/* On Commits and Pulls the bar has nothing to filter, but it keeps its slot, so
+   the tree, the history, and the list below start at one height on every tab
+   (main-tabs.js makes it inert there). */
+.nav-filter-bar[inert] {
+  visibility: hidden;
+}
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
 }
@@ -3642,6 +3667,13 @@ a.tab-btn {
    entirely the .icon-btn primitive. It sits beside the copy icon and,
    across the header, the settings gear, so it must not grow chrome
    that those do not have. */
+/* A view that cannot print keeps the button's slot, so switching views never
+   moves the header's size label beside it. Hidden, it is out of the tab order
+   and the accessibility tree all the same. */
+.file-header-print[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}
 
 .file-header-badge {
   display: inline-flex;
@@ -3652,6 +3684,21 @@ a.tab-btn {
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   flex-shrink: 0;
+}
+/* A run's status badge changes its label in place (Running to Live, Live to Run
+   ended), so every status badge is as wide as the widest label: a sizer under
+   the label gives the width and nothing else, in any engine's font metrics. */
+:is(.badge-running, .badge-live, .badge-completed, .badge-failed) {
+  flex-direction: column;
+  gap: 0;
+}
+:is(.badge-running, .badge-live, .badge-completed, .badge-failed)::after {
+  /* The empty alternative keeps it out of the accessible name; hidden, it is
+     out of the accessibility tree in an engine without that syntax too. */
+  content: "Run ended" / "";
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 .badge-completed {
   background: oklch(92.2% 0.037 152.6);

@@ -3904,7 +3904,8 @@ function initNavScrollShadow() {
     // element is no cue at all. Whichever chrome is bottom-most *and
     // visible* carries it, and the other is cleared so a tab switch
     // cannot leave two shadows armed.
-    const target = filterBar && filterBar.offsetParent !== null ? filterBar : tabBar;
+    const target =
+      filterBar && filterBar.offsetParent !== null && !filterBar.inert ? filterBar : tabBar;
     const other = target === filterBar ? tabBar : filterBar;
     other?.classList.remove("scrolled");
     target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
@@ -5936,24 +5937,23 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var initialActiveView = composition.initialView;
         var pluginRenders = [];
         if (views && views.length > 0) {
-          if (views.length > 1) {
-            html += '<div class="tab-bar">';
-            for (let i = 0; i < views.length; i++) {
-              const view = views[i];
-              var active = view.id === initialActiveView?.id ? " active" : "";
-              html +=
-                '<button class="tab-btn' +
-                active +
-                '" type="button" data-tab="' +
-                esc(view.id) +
-                '"' +
-                viewMetaAttrs(view) +
-                ">" +
-                esc(view.label) +
-                "</button>";
-            }
-            html += "</div>";
+          // One view gets the bar too, so content starts at one height in every file.
+          html += '<div class="tab-bar">';
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var active = view.id === initialActiveView?.id ? " active" : "";
+            html +=
+              '<button class="tab-btn' +
+              active +
+              '" type="button" data-tab="' +
+              esc(view.id) +
+              '"' +
+              viewMetaAttrs(view) +
+              ">" +
+              esc(view.label) +
+              "</button>";
           }
+          html += "</div>";
           for (let i = 0; i < views.length; i++) {
             const view = views[i];
             var pluginView = preparedViews[i].renderer;
@@ -6000,10 +6000,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
             }
           }
-        } else if (data.type === "binary") {
-          html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-        } else if (data.type === "error") {
-          html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+        } else {
+          html +=
+            '<div class="tab-bar" aria-hidden="true"><span class="tab-btn tab-slot">&nbsp;</span></div>';
+          if (data.type === "binary") {
+            html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
+          } else if (data.type === "error") {
+            html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+          }
         }
 
         _perf.measure(

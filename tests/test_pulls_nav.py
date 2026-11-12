@@ -166,7 +166,9 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     try:
         with TestClient(app) as client:
             elsewhere = client.get("/view/").text
-            assert _tabs(elsewhere) == {"files": True, "pulls": False}
+            # A pin is a repository, so Commits is drawn at first paint with Pulls after it.
+            assert _tabs(elsewhere) == {"files": True, "git": False, "pulls": False}
+            assert list(_tabs(elsewhere)) == ["files", "git", "pulls"]
             # Fetched with the shell's tools, after the first tree: no startup script.
             assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
             assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
@@ -183,10 +185,11 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 "/pulls?state=closed",
             ):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": False, "pulls": True}, route
-                # The Files tree and its filters are behind the Pulls tab from first paint.
+                assert _tabs(html) == {"files": False, "git": False, "pulls": True}, route
+                # The Files tree is behind the Pulls tab from first paint, and its filters
+                # keep their slot, inert, so the list starts where the tree would.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
-                assert 'id="nav-filter-bar" style="display: none"' in html
+                assert 'id="nav-filter-bar" inert></div>' in html
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1
@@ -213,7 +216,7 @@ def test_a_mirror_of_anything_else_draws_no_tab(
         with TestClient(app) as client:
             for route in ("/view/", "/pull/7", "/pulls"):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": True}, route
+                assert _tabs(html) == {"files": True, "git": False}, route
                 assert "/static/pulls-nav.js" not in _shell_tools(html), route
     finally:
         serve_mirror(None)
@@ -251,6 +254,10 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     with TestClient(app) as client:
         elsewhere = client.get("/view/").text
         assert _tabs(elsewhere)["pulls"] is False
+        # Commits is drawn at first paint at the repository's root only, the one root Git
+        # discovery accepts, and always before Pulls.
+        assert ("git" in _tabs(elsewhere)) is (served == "")
+        assert list(_tabs(elsewhere))[-1] == "pulls"
         assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
         assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
         for route in ("/pull/7", "/pulls"):
@@ -273,6 +280,8 @@ def test_a_checkout_of_anything_else_draws_no_tab(tmp_path: Path, pull_origin: O
         for route in ("/view/", "/pull/7", "/pulls"):
             html = client.get(route).text
             assert "pulls" not in _tabs(html), route
+            # Any repository at the root has Commits from first paint, GitHub or not.
+            assert _tabs(html)["git"] is False, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
     reset_source_session()
 

@@ -195,7 +195,8 @@
 
     /** @param {string} panelId A click on one of the main navigation tabs. */
     function openMainTab(panelId) {
-      if (panelId === activeNavPanelId) {
+      // The server draws Commits for a repository before Git discovery registers it.
+      if (panelId === activeNavPanelId || (panelId === "git" && !hasGitPanel())) {
         return;
       }
       deps.flushPull();
@@ -259,10 +260,11 @@
       // wholesale, and the bar has to survive that and stay put while the
       // tree scrolls. Being outside means the loop above does not reach it,
       // so a panel that is not Files would otherwise keep a bar of file
-      // filters on screen above content they cannot filter.
+      // filters on screen above content they cannot filter. Inert, the bar
+      // keeps its slot, so the panel below starts at one height on every tab.
       const filterBar = document.getElementById("nav-filter-bar");
       if (filterBar) {
-        filterBar.style.display = panelId === "files" ? "" : "none";
+        filterBar.inert = panelId !== "files";
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
@@ -309,6 +311,10 @@
       bindShortcuts,
       finishGitDiscovery() {
         gitDiscoveryFinished = true;
+        // A Commits tab the server drew that discovery did not confirm goes.
+        if (!hasGitPanel() && tabButton("git")) {
+          removeNavPanel("git");
+        }
         return restoreNeutralGitPanel();
       },
       onHistory,

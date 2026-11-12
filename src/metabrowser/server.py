@@ -1493,6 +1493,21 @@ async def index(
     files_active = "" if pulls_in_front else " active"
     files_selected = "false" if pulls_in_front else "true"
     behind_pulls = ' style="display: none"' if pulls_in_front else ""
+    # The filter bar keeps its slot behind Pulls, inert, so the panel below it starts at the
+    # same height on every tab (static/main-tabs.js#activateNavPanel).
+    filter_bar_behind_pulls = " inert" if pulls_in_front else ""
+    # Commits is drawn here when the served root is a repository's root, the one root Git
+    # discovery accepts (git/repo.py), so the Pulls tab beside it does not move when discovery
+    # registers it; discovery removes it in the rare case Git does not agree.
+    commits_tab = git_pin or await asyncio.to_thread(
+        lambda: (session_filesystem_root().resolve() / ".git").exists()
+    )
+    commits_button = (
+        '\n        <button class="tab-btn" type="button" role="tab" data-tab="git"'
+        ' aria-selected="false">Commits</button>'
+        if commits_tab
+        else ""
+    )
     pulls_button = (
         f'\n        <button class="tab-btn{" active" if pulls_in_front else ""}" type="button"'
         f' role="tab" data-tab="pulls" aria-selected="{"true" if pulls_in_front else "false"}">'
@@ -1875,12 +1890,12 @@ async def index(
         </div>
       </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}
+        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{commits_button}{pulls_button}
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar"{behind_pulls}></div>
+      <div class="nav-filter-bar" id="nav-filter-bar"{filter_bar_behind_pulls}></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{behind_pulls}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
