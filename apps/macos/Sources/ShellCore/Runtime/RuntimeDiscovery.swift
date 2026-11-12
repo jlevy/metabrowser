@@ -14,13 +14,17 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
     public var canonicalPath: @Sendable (String) -> String
     public var run: CommandRunner.Run
     public var fingerprint: @Sendable (String) -> FileFingerprint?
+    /// Why a candidate the app found by itself may not be run, or nil if it may
+    /// (`ExecutableTrust`).
+    public var refusal: @Sendable (String) -> String?
 
     public init(
         home: String, environment: [String: String], saved: Runtime?, shell: String?,
         isExecutable: @escaping @Sendable (String) -> Bool,
         canonicalPath: @escaping @Sendable (String) -> String,
         run: @escaping CommandRunner.Run,
-        fingerprint: @escaping @Sendable (String) -> FileFingerprint? = { _ in nil }
+        fingerprint: @escaping @Sendable (String) -> FileFingerprint? = { _ in nil },
+        refusal: @escaping @Sendable (String) -> String? = { ExecutableTrust.refusal($0) }
     ) {
         self.home = home
         self.environment = environment
@@ -30,6 +34,7 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
         self.canonicalPath = canonicalPath
         self.run = run
         self.fingerprint = fingerprint
+        self.refusal = refusal
     }
 
     /// `home` is `HOME` when the app has one, as uv reads it to place `~/.local/bin`, so
@@ -56,6 +61,9 @@ public nonisolated enum CandidateResult: Equatable, Sendable {
     /// A working `metab` older than `MetabRequirement.minimum`.
     case tooOld(version: String)
     case rejected(String)
+    /// Not run: the app found it by itself, and another account can change it, or it could
+    /// not be examined (`ExecutableTrust`).
+    case untrusted(String)
 }
 
 public nonisolated struct CandidateOutcome: Equatable, Sendable {
@@ -76,6 +84,10 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 }
 
 /// Finds the user's CLI install of `metab` once, at setup.
+///
+/// It runs only a candidate no other account can change (`ExecutableTrust`), since running
+/// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
+/// for Settings, the log, and the first-run steps.
 ///
 /// Cheap locations come first, each a file check plus `metab --version`: the saved
 /// path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin directory, and the Homebrew
@@ -106,7 +118,7 @@ public nonisolated enum RuntimeDiscovery {
                 let canonical = env.isExecutable(path) ? env.canonicalPath(path) : path
                 guard seen.insert(canonical).inserted else { continue }
                 let fingerprint = env.fingerprint(path)
-                let result = await validate(path, env)
+                let result = await validate(path, env, source: source)
                 tried.append(CandidateOutcome(path: path, source: source, result: result))
                 if case .valid(let version) = result {
                     return Runtime(executable: path, version: version, source: source, fingerprint: fingerprint)
@@ -160,8 +172,17 @@ public nonisolated enum RuntimeDiscovery {
 
     /// Runs `metab --version` with the same minimal environment a server gets, and holds
     /// the version to `MetabRequirement`.
-    public static func validate(_ path: String, _ env: DiscoveryEnvironment) async -> CandidateResult {
+    ///
+    /// Running it executes the file, whatever it prints, so a file the app found by itself
+    /// (every `source` but `.chosen`, and no source at all) runs only if no other account
+    /// can change it (`env.refusal`, `ExecutableTrust`): discovery's candidates, a saved
+    /// runtime discovery found, and a recheck of one. A file the user chose in Settings is
+    /// run as chosen.
+    public static func validate(
+        _ path: String, _ env: DiscoveryEnvironment, source: RuntimeSource? = nil
+    ) async -> CandidateResult {
         guard env.isExecutable(path) else { return .missing }
+        if source != .chosen, let reason = env.refusal(path) { return .untrusted(reason) }
         let spec = LaunchSpec(
             executable: path, arguments: ["--version"],
             environment: ChildEnvironment.build(inherited: env.environment, toolDirectories: []))

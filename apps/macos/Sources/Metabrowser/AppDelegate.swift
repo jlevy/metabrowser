@@ -27,9 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             selection: selection,
             work: RuntimeOperations.Work(
                 discover: { await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime)) },
-                validate: { path in
+                validate: { path, source in
                     let fingerprint = FileFingerprint.of(path)
-                    return (fingerprint, await RuntimeDiscovery.validate(path, .live(saved: nil)))
+                    return (fingerprint, await RuntimeDiscovery.validate(path, .live(saved: nil), source: source))
                 },
                 tools: { RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile) }))
         operations.onChange = { [weak self] in self?.presentRuntime() }
@@ -315,6 +315,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// for a runtime when one was adopted. A search, recheck, or choice that a newer one
     /// overtook changes nothing when it finishes.
     private func finished(_ finish: RuntimeOperations.Finish) async {
+        if case .search(let report) = finish.operation {
+            for outcome in report.tried {
+                guard case .untrusted(let reason) = outcome.result else { continue }
+                AppLog.app.error("not running \(outcome.path, privacy: .public): \(reason, privacy: .public)")
+            }
+        }
         switch (finish.operation, finish.outcome) {
         case (_, .adopted(let found)):
             adopted(found, opening: finish.released)
@@ -324,9 +330,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     openFolder(nil)
                 }
                 showPanelAfterDiscovery = false
-            case .choice:
-                runtimeModel.notice =
+            case .choice(let path):
+                var notice =
                     "Folders already open keep their server until you restart it with File > Restart Server or Retry."
+                // A chosen file runs as chosen; the check discovery would make is shown, not applied.
+                if let reason = ExecutableTrust.refusal(path) {
+                    notice += " Metabrowser runs \(path) because you chose it, although \(reason)."
+                }
+                runtimeModel.notice = notice
             case .recheck:
                 break
             }

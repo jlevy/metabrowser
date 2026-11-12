@@ -196,6 +196,13 @@ folder="$(mktemp -d)"
    `pgrep -fl -- "--exit-on-eof"` finds no server, and the folder’s log ends with
    “Stopping Metabrowser: stdin closed.”
 5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server.
+6. **A `metab` the app does not run.** Quit, forget the saved runtime (Start over),
+   `printf '#!/bin/sh\necho metab 9.9.9\n' > /tmp/metab; chmod +x /tmp/metab`, and
+   `open --env METABROWSER_METAB=/tmp/metab -a "$app"`. Settings > Places looked lists
+   `/tmp/metab` as not run because `/private/tmp` can be changed by every account, the
+   log says “not running /tmp/metab”, and the runtime is not 9.9.9. Choose metab… and
+   `/tmp/metab` then uses it, saying it runs because you chose it.
+   `rm /tmp/metab` and Start over again afterward.
 
 ### Checking Files, Tabs, Recents, and Restore by Hand
 
@@ -627,7 +634,8 @@ What it does not cover:
 ### Finding the Runtime
 
 Setup runs on the first launch, and again from Settings > Find Again.
-It looks in this order and runs `metab --version` on each candidate that exists:
+It looks in this order and runs `metab --version` on each candidate that exists and may
+be run:
 
 1. the path saved by a previous setup;
 2. `METABROWSER_METAB`;
@@ -640,12 +648,24 @@ It looks in this order and runs `metab --version` on each candidate that exists:
 The login shell comes last and runs only when the earlier locations miss `metab`, `git`,
 or `gh`. It runs your shell startup files in the app’s name, which can take seconds and
 can raise privacy prompts you never saw in Terminal.
+It is the account’s own shell (`SHELL`, else the password database), so the rule below
+does not apply to it.
 One install reached two ways is tried once.
-`~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
-account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
-launches only check that the saved `metab` is still executable and is the file that was
-validated ([The Version It Requires](#the-version-it-requires)), so they start no extra
-process. If nothing usable is found, Settings shows the steps that are missing
+Running `metab --version` executes the file, whatever it prints, so a candidate runs
+only if no other account can change it, by the rule the app applies to uv
+(`ExecutableTrust`, under [The First Run Without metab](#the-first-run-without-metab)):
+one in a folder its group can change, a standard Homebrew prefix among them, or one
+whose access control list cannot be read, is not run, and Settings, the first-run steps,
+and the log name it and why.
+The same rule holds for a runtime a previous search saved, at launch and at each recheck
+after its file changes; a launch whose saved runtime fails it searches again.
+A file chosen with Choose metab… is run as chosen, and Settings says when the rule would
+have refused it. `~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s
+`HOME` is the account’s own.
+Setup saves the runtime and the absolute paths of `git` and `gh`; later launches only
+check that the saved `metab` is still executable, may still be run, and is the file that
+was validated ([The Version It Requires](#the-version-it-requires)), so they start no
+extra process. If nothing usable is found, Settings shows the steps that are missing
 ([The First Run Without metab](#the-first-run-without-metab)) and every place it looked.
 Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
 reveals the logs folder.

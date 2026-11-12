@@ -12,7 +12,9 @@ import Darwin
 /// `admin` group, which a standard Homebrew prefix grants, because that group's members
 /// are other accounts.
 ///
-/// The app applies it to the uv it runs to ask where `uv tool install` puts `metab`.
+/// The app applies it to every `metab` it runs without the user choosing it (discovery,
+/// a saved runtime discovery found, and a recheck of one: `RuntimeDiscovery.validate`) and
+/// to the uv it runs to ask where `uv tool install` puts `metab`.
 public nonisolated enum ExecutableTrust {
     /// One file system object, as `lstat(2)` and its access control list describe it.
     public struct Node: Equatable, Sendable {

@@ -104,10 +104,17 @@ public final class RuntimeSettings {
         defaults.removeObject(forKey: Self.key)
     }
 
-    /// The saved setup if its `metab` is still an executable file at an absolute path.
-    /// A launch checks only that, so it costs no subprocess; Settings re-runs `--version`.
-    public func usable(isExecutable: (String) -> Bool = FileChecks.isExecutableFile) -> RuntimeSetup? {
-        guard let setup = load(), setup.runtime.executable.hasPrefix("/"), isExecutable(setup.runtime.executable)
+    /// The saved setup if its `metab` is still an executable file at an absolute path and,
+    /// unless the user chose it, one no other account can change (`ExecutableTrust`), as
+    /// discovery requires. A launch checks only that, so it costs no subprocess; Settings
+    /// re-runs `--version`. Without a usable one, the launch searches, and the search says
+    /// why it passes over the saved one.
+    public func usable(
+        isExecutable: (String) -> Bool = FileChecks.isExecutableFile,
+        refusal: (String) -> String? = { ExecutableTrust.refusal($0) }
+    ) -> RuntimeSetup? {
+        guard let setup = load(), setup.runtime.executable.hasPrefix("/"), isExecutable(setup.runtime.executable),
+              setup.runtime.source == .chosen || refusal(setup.runtime.executable) == nil
         else { return nil }
         return setup
     }

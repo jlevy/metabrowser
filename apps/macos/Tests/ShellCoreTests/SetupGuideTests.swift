@@ -113,6 +113,18 @@ import Testing
         ])
     }
 
+    /// A `metab` discovery would not run (mb-3o3h) is named with its reason, and with the
+    /// way to run it anyway, which is the user's choice.
+    @Test func aMetabTheAppMayNotRunIsNamedWithItsReason() {
+        let reason = "/opt/homebrew/bin is writable by its group"
+        let untrusted = CandidateOutcome(path: "/opt/homebrew/bin/metab", source: .homebrew, result: .untrusted(reason))
+        let shown = guide(tried: [untrusted], uv: bin + "/uv", loginPath: [bin])
+        #expect(shown.steps == [.installMetab(inNewTerminal: false)])
+        #expect(shown.notices == [
+            "Metabrowser does not run /opt/homebrew/bin/metab itself: \(reason). Choose metab… runs it if you trust it.",
+        ])
+    }
+
     @Test func onlyAUvThatPassesTheTrustCheckIsRun() async {
         let ran = Recorder<String>()
         let env = DiscoveryEnvironment(

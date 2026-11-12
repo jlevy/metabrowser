@@ -33,21 +33,24 @@ private final class Operations {
     var holding: Set<String> = []
     private var held: [String: CheckedContinuation<Void, Never>] = [:]
     private(set) var validated: [String] = []
+    /// Where each validated path came from, as the operation said.
+    private(set) var sources: [RuntimeSource] = []
     private(set) var finishes: [RuntimeOperations.Finish] = []
     let subject: RuntimeOperations
 
     init(setup: RuntimeSetup?) {
         let settings = RuntimeSettings(defaults: UserDefaults(suiteName: "shellcore-operations-\(UUID().uuidString)")!)
         let searches = self.searches
-        var validate: (String) async -> (FileFingerprint?, CandidateResult) = { _ in (nil, .missing) }
+        var validate: (String, RuntimeSource) async -> (FileFingerprint?, CandidateResult) = { _, _ in (nil, .missing) }
         subject = RuntimeOperations(
             selection: RuntimeSelection(settings: settings, setup: setup),
             work: RuntimeOperations.Work(
                 discover: { await searches.discover() },
-                validate: { await validate($0) },
+                validate: { await validate($0, $1) },
                 tools: { Operations.tools }))
-        validate = { [unowned self] path in
+        validate = { [unowned self] path, source in
             validated.append(path)
+            sources.append(source)
             whileValidating(path)
             if holding.contains(path) { await withCheckedContinuation { held[path] = $0 } }
             return (nil, results[path] ?? .missing)
@@ -273,5 +276,69 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
         #expect(RuntimeActivity(isSearching: false, isChoosing: true, isPreparingSteps: false) == .checkingChoice)
         #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingSteps: true) == .preparingSteps)
         #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingSteps: false) == .idle)
+    }
+}
+
+/// A recheck runs the runtime's file again, so it is held to the check the search that
+/// found it was (review D1 on #363, mb-3o3h): the watch saw the file change, and the
+/// recheck ran `--version` on it whoever could change it. Only a file the user chose is
+/// run as chosen.
+@Suite struct RecheckTrustTests {
+    private let shared = "/opt/homebrew/bin is writable by its group"
+
+    /// The operations as the app builds them, with discovery's own validation over a fake
+    /// command runner and trust check.
+    private func operations(
+        setup: RuntimeSetup, refused: [String: String], ran: Recorder<String>
+    ) -> (RuntimeOperations, Searches) {
+        let searches = Searches()
+        let env = DiscoveryEnvironment(
+            home: "/Volumes/Home", environment: [:], saved: nil, shell: nil,
+            isExecutable: { _ in true }, canonicalPath: { $0 },
+            run: { spec, _ in
+                ran.append(spec.executable)
+                return CommandResult(status: 0, output: ["metab 0.13.0"])
+            },
+            refusal: { refused[$0] })
+        let subject = RuntimeOperations(
+            selection: RuntimeSelection(
+                settings: RuntimeSettings(defaults: UserDefaults(suiteName: "shellcore-recheck-trust-\(UUID().uuidString)")!),
+                setup: setup),
+            work: RuntimeOperations.Work(
+                discover: { await searches.discover() },
+                validate: { path, source in (nil, await RuntimeDiscovery.validate(path, env, source: source)) },
+                tools: { ToolPaths() }))
+        return (subject, searches)
+    }
+
+    @Test func aRecheckOfARuntimeAnotherAccountCanChangeNeverRunsIt() async {
+        let homebrew = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/homebrew/bin/metab", version: "0.12.1", source: .homebrew),
+            tools: ToolPaths())
+        let ran = Recorder<String>()
+        let (subject, searches) = operations(setup: homebrew, refused: ["/opt/homebrew/bin/metab": shared], ran: ran)
+        var finishes: [RuntimeOperations.Finish] = []
+        subject.onFinish = { finishes.append($0) }
+        subject.beginRecheck()
+        #expect(await eventually { finishes.count == 1 })
+        #expect(finishes.first?.operation == .recheck("/opt/homebrew/bin/metab", .untrusted(shared)))
+        #expect(finishes.first?.outcome == .notFound)
+        #expect(ran.all.isEmpty)
+        #expect(subject.selection.launchableSetup == nil)
+        #expect(await eventually { searches.started == 1 }, "a search looks for another")
+    }
+
+    @Test func aRecheckOfAChosenRuntimeRunsItAsChosen() async {
+        let chosen = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/homebrew/bin/metab", version: "0.12.1", source: .chosen),
+            tools: ToolPaths())
+        let ran = Recorder<String>()
+        let (subject, _) = operations(setup: chosen, refused: ["/opt/homebrew/bin/metab": shared], ran: ran)
+        var finishes: [RuntimeOperations.Finish] = []
+        subject.onFinish = { finishes.append($0) }
+        subject.beginRecheck()
+        #expect(await eventually { finishes.count == 1 })
+        #expect(ran.all == ["/opt/homebrew/bin/metab"])
+        #expect(subject.selection.launchableSetup?.runtime.version == "0.13.0")
     }
 }

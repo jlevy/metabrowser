@@ -21,15 +21,15 @@ public final class RuntimeOperations {
     public struct Work {
         /// A search of the documented places (`RuntimeDiscovery.discover`).
         public var discover: () async -> DiscoveryReport
-        /// A file's fingerprint, taken before it is validated, and its validation
-        /// (`RuntimeDiscovery.validate`).
-        public var validate: (String) async -> (FileFingerprint?, CandidateResult)
+        /// A file's fingerprint, taken before it is validated, and its validation, given
+        /// where it came from (`RuntimeDiscovery.validate`).
+        public var validate: (String, RuntimeSource) async -> (FileFingerprint?, CandidateResult)
         /// The tool paths for a chosen file when there is no runtime to keep them from.
         public var tools: () -> ToolPaths
 
         public init(
             discover: @escaping () async -> DiscoveryReport,
-            validate: @escaping (String) async -> (FileFingerprint?, CandidateResult),
+            validate: @escaping (String, RuntimeSource) async -> (FileFingerprint?, CandidateResult),
             tools: @escaping () -> ToolPaths
         ) {
             self.discover = discover
@@ -101,7 +101,7 @@ public final class RuntimeOperations {
         let ticket = selection.startChoice()
         onStart(.choice(path))
         onChange()
-        let (fingerprint, result) = await work.validate(path)
+        let (fingerprint, result) = await work.validate(path, .chosen)
         let outcome = selection.finishChoice(
             ticket, path: path, result: result, fingerprint: fingerprint, tools: work.tools)
         onChange()
@@ -123,10 +123,11 @@ public final class RuntimeOperations {
     }
 
     /// A new compatible version is adopted; anything else leaves no runtime, and a search
-    /// looks for another.
+    /// looks for another. The file is validated as where it came from, so one the app found
+    /// by itself runs again only if no other account can change it.
     private func recheck(_ previous: RuntimeSetup, _ ticket: RuntimeSelection.Ticket) async {
         let path = previous.runtime.executable
-        let (fingerprint, result) = await work.validate(path)
+        let (fingerprint, result) = await work.validate(path, previous.runtime.source)
         let outcome = selection.finishRecheck(ticket, fingerprint: fingerprint, result: result)
         onChange()
         await finish(.recheck(path, result), outcome)

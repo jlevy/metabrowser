@@ -54,7 +54,7 @@ import Testing
             let env = DiscoveryEnvironment(
                 home: "/Volumes/Home", environment: [:], saved: nil, shell: nil,
                 isExecutable: { _ in true }, canonicalPath: { $0 },
-                run: { _, _ in CommandResult(status: 0, output: [printed]) })
+                run: { _, _ in CommandResult(status: 0, output: [printed]) }, refusal: { _ in nil })
             return await RuntimeDiscovery.validate("/opt/metab", env)
         }
         #expect(await validate("metab 0.12.0") == .tooOld(version: "0.12.0"))

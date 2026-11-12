@@ -144,6 +144,7 @@ struct RuntimeView: View {
         case .missing: "not found"
         case .tooOld(let version): "metab \(version), older than \(MetabRequirement.minimum)"
         case .rejected(let reason): reason
+        case .untrusted(let reason): "not run: \(reason)"
         }
     }
 }

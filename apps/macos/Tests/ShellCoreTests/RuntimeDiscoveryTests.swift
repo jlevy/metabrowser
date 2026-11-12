@@ -11,12 +11,15 @@ private struct Machine {
     var loginOutput: [String]? = nil
     var environment: [String: String] = [:]
     var saved: Runtime? = nil
+    /// Why the app may not run a path it found (`ExecutableTrust`), by path; the rest pass.
+    var refused: [String: String] = [:]
 
     func discovery(calls: Recorder<String>) -> DiscoveryEnvironment {
         let executables = executables
         let links = links
         let versions = versions
         let loginOutput = loginOutput
+        let refused = refused
         return DiscoveryEnvironment(
             home: "/Volumes/Home", environment: environment, saved: saved, shell: "/bin/zsh",
             isExecutable: { executables.contains($0) || $0 == "/bin/zsh" },
@@ -30,7 +33,8 @@ private struct Machine {
                     return CommandResult(status: 1 << 8, output: ["Traceback (most recent call last):"])
                 }
                 return CommandResult(status: 0, output: [version])
-            })
+            },
+            refusal: { refused[$0] })
     }
 }
 
@@ -226,8 +230,8 @@ private func loginShellOutput(path: String) -> [String] {
             tools: ToolPaths(git: "/usr/bin/git"))
         settings.save(setup)
         #expect(settings.load() == setup)
-        #expect(settings.usable(isExecutable: { _ in true }) == setup)
-        #expect(settings.usable(isExecutable: { _ in false }) == nil)
+        #expect(settings.usable(isExecutable: { _ in true }, refusal: { _ in nil }) == setup)
+        #expect(settings.usable(isExecutable: { _ in false }, refusal: { _ in nil }) == nil)
         settings.clear()
         #expect(settings.load() == nil)
     }
@@ -237,5 +241,126 @@ private func loginShellOutput(path: String) -> [String] {
         settings.save(RuntimeSetup(
             runtime: Runtime(executable: "bin/metab", version: "0.12.0", source: .chosen), tools: ToolPaths()))
         #expect(settings.usable(isExecutable: { _ in true }) == nil)
+    }
+}
+
+/// Discovery ran `metab --version` on every executable candidate it found, Homebrew's and
+/// the login shell's `PATH` entries among them, with no check of who can change it (review
+/// D1 on #363, mb-3o3h): another account that controls one of those places could put a
+/// `metab` there that runs as this user at launch, whatever it prints. Only a file the
+/// user chose in Settings is run without `ExecutableTrust`.
+@Suite struct DiscoveryTrustTests {
+    private let shared = "/opt/homebrew/bin is writable by its group"
+
+    @Test func aCandidateAnotherAccountCanChangeNeverReachesTheCommandRunner() async {
+        var machine = Machine()
+        machine.executables = homebrewTools.union(["/opt/homebrew/bin/metab", "/srv/shared/metab"])
+        machine.versions = ["/opt/homebrew/bin/metab": "metab 0.13.0", "/srv/shared/metab": "metab 0.13.0"]
+        machine.loginOutput = loginShellOutput(path: "/srv/shared:/usr/bin")
+        machine.refused = [
+            "/opt/homebrew/bin/metab": shared,
+            "/srv/shared/metab": "/srv/shared/metab belongs to another account (uid 502)",
+        ]
+        let calls = Recorder<String>()
+        let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
+        #expect(report.setup == nil)
+        #expect(!calls.all.contains { $0.hasSuffix("metab --version") }, "\(calls.all)")
+        #expect(report.tried.filter { $0.result != .missing }.map(\.result) == [
+            .untrusted(shared), .untrusted("/srv/shared/metab belongs to another account (uid 502)"),
+        ])
+    }
+
+    /// A component whose security information or access control list could not be read is
+    /// refused, not run.
+    @Test func anUninspectableCandidateIsNotRun() async {
+        var machine = Machine()
+        machine.executables = homebrewTools.union(["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"])
+        machine.versions = ["/Volumes/Home/.local/bin/metab": "metab 0.12.1", "/opt/homebrew/bin/metab": "metab 0.12.1"]
+        machine.refused = [
+            "/Volumes/Home/.local/bin/metab":
+                "/Volumes/Home/.local/bin has an access control list that could not be read (Permission denied)",
+        ]
+        let calls = Recorder<String>()
+        let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
+        #expect(report.setup?.runtime.executable == "/opt/homebrew/bin/metab")
+        #expect(calls.all.filter { $0.hasSuffix("--version") } == ["/opt/homebrew/bin/metab --version"])
+        #expect(report.tried.first?.result == .untrusted(
+            "/Volumes/Home/.local/bin has an access control list that could not be read (Permission denied)"))
+    }
+
+    /// The live check reads the file system: a candidate in a folder its group can change
+    /// is refused, and the command runner never sees it.
+    @Test func theLiveCheckRefusesACandidateInAGroupWritableFolder() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bin = directory.appending(path: "bin").path(percentEncoded: false)
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        let metab = bin + "/metab"
+        try Data("#!/bin/sh\necho metab 0.13.0\n".utf8).write(to: URL(filePath: metab))
+        chmod(metab, 0o755)
+        chmod(bin, 0o775)
+        let ran = Recorder<String>()
+        let env = DiscoveryEnvironment(
+            home: directory.path(percentEncoded: false), environment: [:], saved: nil, shell: nil,
+            isExecutable: FileChecks.isExecutableFile, canonicalPath: FileChecks.canonicalPath,
+            run: { spec, _ in
+                ran.append(spec.executable)
+                return CommandResult(status: 0, output: ["metab 0.13.0"])
+            })
+        let result = await RuntimeDiscovery.validate(metab, env, source: .loginShell)
+        guard case .untrusted(let reason) = result else {
+            Issue.record("expected a refusal, got \(result)")
+            return
+        }
+        #expect(reason.contains("can be changed by its group"))
+        #expect(ran.all.isEmpty)
+        chmod(bin, 0o755)
+        #expect(await RuntimeDiscovery.validate(metab, env, source: .loginShell) == .valid(version: "0.13.0"))
+        #expect(ran.all == [metab])
+    }
+
+    /// A runtime saved by an earlier search is found by the app too; one the user chose is
+    /// run as chosen, whatever its folder, as Choose metab… runs it.
+    @Test func aSavedRuntimeIsCheckedUnlessTheUserChoseIt() async {
+        var machine = Machine()
+        machine.executables = homebrewTools.union(["/opt/homebrew/bin/metab"])
+        machine.versions = ["/opt/homebrew/bin/metab": "metab 0.13.0"]
+        machine.refused = ["/opt/homebrew/bin/metab": shared]
+        machine.saved = Runtime(executable: "/opt/homebrew/bin/metab", version: "0.13.0", source: .homebrew)
+        let calls = Recorder<String>()
+        let found = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
+        #expect(found.setup == nil)
+        #expect(!calls.all.contains("/opt/homebrew/bin/metab --version"))
+        machine.saved?.source = .chosen
+        let chosen = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
+        #expect(chosen.setup?.runtime.source == .chosen)
+        #expect(calls.all.filter { $0 == "/opt/homebrew/bin/metab --version" }.count == 1)
+    }
+
+    @Test func aFileTheUserChoseIsValidatedAsChosen() async {
+        var machine = Machine()
+        machine.executables = ["/srv/shared/metab"]
+        machine.versions = ["/srv/shared/metab": "metab 0.13.0"]
+        machine.refused = ["/srv/shared/metab": "/srv/shared/metab belongs to another account (uid 502)"]
+        let env = machine.discovery(calls: Recorder())
+        #expect(await RuntimeDiscovery.validate("/srv/shared/metab", env, source: .chosen) == .valid(version: "0.13.0"))
+        #expect(await RuntimeDiscovery.validate("/srv/shared/metab", env) == .untrusted(
+            "/srv/shared/metab belongs to another account (uid 502)"), "no source is one the app found")
+    }
+
+    /// A launch with a saved runtime runs no `--version`; a saved runtime the app found by
+    /// itself that no longer passes the check is not used, so discovery runs and says why.
+    @Test func aLaunchDoesNotUseASavedRuntimeThatFailsTheCheck() {
+        let settings = RuntimeSettings(defaults: UserDefaults(suiteName: "shellcore-trust-\(UUID().uuidString)")!)
+        let homebrew = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/homebrew/bin/metab", version: "0.13.0", source: .homebrew), tools: ToolPaths())
+        settings.save(homebrew)
+        let refuse: (String) -> String? = { _ in "/opt/homebrew/bin is writable by its group" }
+        #expect(settings.usable(isExecutable: { _ in true }, refusal: refuse) == nil)
+        #expect(settings.usable(isExecutable: { _ in true }, refusal: { _ in nil }) == homebrew)
+        var chosen = homebrew
+        chosen.runtime.source = .chosen
+        settings.save(chosen)
+        #expect(settings.usable(isExecutable: { _ in true }, refusal: refuse) == chosen)
     }
 }

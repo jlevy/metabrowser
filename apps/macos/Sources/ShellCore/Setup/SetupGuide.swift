@@ -107,7 +107,8 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
     /// Whether to suggest `uv tool update-shell`, so `metab` also runs in Terminal: the
     /// login shell's `PATH` lacks `binDirectory`, or is unknown. The app needs neither.
     public var suggestsUpdateShell: Bool
-    /// What the screen says besides the steps: each uv the app found and would not run.
+    /// What the screen says besides the steps: each uv and each `metab` the app found and
+    /// would not run (`ExecutableTrust`).
     public var notices: [String]
 
     /// `tried` is the last search's candidates, `uv` the uv found, if any, whether or
@@ -143,7 +144,11 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         self.binDirectory = binDirectory
         self.home = home
         suggestsUpdateShell = !(loginPath?.contains(binDirectory) ?? false)
-        notices = refusedUv.map { "Metabrowser does not run \($0.path) itself: \($0.reason)." }
+        let untrusted = tried.compactMap { outcome -> String? in
+            guard case .untrusted(let reason) = outcome.result else { return nil }
+            return "Metabrowser does not run \(outcome.path) itself: \(reason). Choose metab… runs it if you trust it."
+        }
+        notices = refusedUv.map { "Metabrowser does not run \($0.path) itself: \($0.reason)." } + untrusted
     }
 
     /// Where uv may be, in order: where its installer puts it (`XDG_BIN_HOME`, then
