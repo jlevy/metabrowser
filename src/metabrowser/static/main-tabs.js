@@ -40,6 +40,8 @@
     }
 
     /** The registry the digits are bound to, and each present tab button's target in it.
+     * None between a real `pagehide`, which disposes the registry, and the `pageshow`
+     * that builds the next one, so a panel registered then gets its tab and no target.
      * @type {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} */
     let boundShortcuts = null;
     /** @type {Map<string, ReturnType<ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>["attachTarget"]>>} */
@@ -65,12 +67,20 @@
       }
     }
 
-    /** @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>} shortcuts */
+    /**
+     * Bind the digits to `shortcuts`, or to none: the shell passes `null` as it disposes
+     * the registry, so nothing attaches to a disposed one.
+     *
+     * @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} shortcuts
+     */
     function bindShortcuts(shortcuts) {
       // A rebuilt registry starts with no targets; the old handles belonged to the one
       // a real pagehide disposed.
       boundShortcuts = shortcuts;
       tabTargets.clear();
+      if (!shortcuts) {
+        return;
+      }
       for (const { id, label, key } of MAIN_TABS) {
         const action = `Open ${label}`;
         const bindings = tabBindings(key);
@@ -109,15 +119,17 @@
     }
 
     // Create the button and container for a panel that was not in the
-    // server-rendered markup. Idempotent, so a re-registration after a root
-    // change does not duplicate the tab.
+    // server-rendered markup, then make the button its digit's target. Idempotent, so
+    // a re-registration after a root change does not duplicate the tab. Both elements
+    // exist before the registry is reached, so the tab works whether or not one is bound.
     /** @param {MetabrowserNavPanel} panel */
     function ensureNavPanelElements(panel) {
       const content = document.getElementById("tree-content");
       if (!navBar || !content) {
         return;
       }
-      if (!tabButton(panel.id)) {
+      const created = !tabButton(panel.id);
+      if (created) {
         const btn = document.createElement("button");
         btn.className = "tab-btn";
         btn.type = "button";
@@ -127,7 +139,6 @@
         btn.textContent = panel.label;
         // Pulls can be present in the server shell before Git discovery finishes.
         navBar.insertBefore(btn, panel.id === "git" ? tabButton("pulls") : null);
-        attachTabTarget(panel.id);
       }
       if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
         const container = document.createElement("div");
@@ -135,6 +146,9 @@
         container.dataset.tabContent = panel.id;
         container.style.display = "none";
         content.appendChild(container);
+      }
+      if (created) {
+        attachTabTarget(panel.id);
       }
     }
 

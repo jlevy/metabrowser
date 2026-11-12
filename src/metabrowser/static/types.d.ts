@@ -3004,7 +3004,8 @@ declare global {
   type MetabrowserMainTabsController = {
     active(): string;
     activate(id: string): void;
-    bindShortcuts(shortcuts: MetabrowserShortcutRegistry): void;
+    /** Bind the digits to a registry, or to none as the shell disposes it. */
+    bindShortcuts(shortcuts: MetabrowserShortcutRegistry | null): void;
     finishGitDiscovery(): Promise<void>;
     fileLanding(): void;
     onHistory(): void;

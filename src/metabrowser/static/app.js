@@ -8208,6 +8208,7 @@ function disposeKeyboardInfrastructure() {
   treeKeyboard = null;
   keyboardHelp?.dispose();
   keyboardHelp = null;
+  mainTabs?.bindShortcuts(null);
   shortcutRegistry?.dispose();
   shortcutRegistry = null;
 }
