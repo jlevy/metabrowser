@@ -5,7 +5,7 @@ title: "Native macOS app: thin AppKit shell over metab"
 kind: epic
 status: open
 priority: 1
-version: 56
+version: 61
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
@@ -65,7 +65,12 @@ child_order_hints:
   - is-01m76h3hdcp0ek254274recmn5
   - is-01m76h3hxc44pkpkv2k8syp145
   - is-01m76hn3vv1rhrrqarsym002p3
+  - is-01m76qxj4apwmjny1nb5p5n5s0
+  - is-01m76qxjhwjw45ac6542k3f2wn
+  - is-01m76qxjyje20eat6yeezzb1p3
+  - is-01m76qxkb7bsw50y0qxfr42y0j
+  - is-01m76qxkrsdmw7gmc6sc0gbvay
 created_at: 2026-11-11T03:02:47.974Z
-updated_at: 2026-11-12T00:13:52.378Z
+updated_at: 2026-11-12T02:03:22.264Z
 ---
 Plan: docs/project/specs/active/plan-2026-11-10-native-macos-app.md. Research: research-2026-11-08-macos-app-packaging.md and research-2026-11-10-native-app-server-topology.md. Spike: apps/macos on claude/macos-app-spike (jlevy/metabrowser#341, not to be merged until the user says so). Core metab changes land on main through their own PRs; native app changes stay on the spike branch.
