@@ -785,6 +785,10 @@ start for a landing).
 - requests by class (`data`, `plugin`, `static`, `kpress`, `background`, `stream`,
   `document`, `other`), from the page and its workers, and duplicate requests for the
   selected subject per route.
+  A read of a pull request that follows the page’s own `pull-refresh` POST for that
+  number in the same window is a settlement read, the page polling until a refresh it
+  asked for settles, and is counted apart (`subjectSettlementReads`, shown but not
+  judged), so a duplicate is a read that follows no refresh (`subjectReads`).
   `background` is the Pulls catalog work on its own timers: the core-preparation and
   catalog-refresh POSTs (the palette posts the same refresh, flagged background) and the
   warm walk over All, eight rows at a time (`pulls?state=all&limit=8`); the visible
@@ -863,8 +867,8 @@ It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
 wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
 the wrong direction), a gap, or an expectation not met.
 Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
-`next_frame_ms`, `nav_settled_ms`, `uncredited_frames`, `tree_rows_replaced`, and the
-`revalidated` counts.
+`next_frame_ms`, `nav_settled_ms`, `uncredited_frames`, `tree_rows_replaced`,
+`subject_settlement_reads`, and the `revalidated` counts.
 Write the verdict with the accept rule below, and say what did not move.
 
 `compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even

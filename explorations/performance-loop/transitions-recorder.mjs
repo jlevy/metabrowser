@@ -756,6 +756,64 @@ const postBytesOf = (request) => {
   return request.hasPostData ? null : 0;
 };
 
+// The start of a POST body as text, enough to read a small JSON request's fields.
+const postTextOf = (request) => {
+  if (Array.isArray(request.postDataEntries)) {
+    return Buffer.concat(
+      request.postDataEntries.map((e) =>
+        e.bytes ? Buffer.from(e.bytes, "base64") : Buffer.alloc(0),
+      ),
+    )
+      .toString("utf8")
+      .slice(0, 1024);
+  }
+  return typeof request.postData === "string" ? request.postData.slice(0, 1024) : null;
+};
+
+export const PULL_REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
+
+/**
+ * Reads of the selected subject in one transition's requests, per route pattern. A cold
+ * selection issues each route once, so a further read is a duplicate, except a read of a
+ * pull request that follows the page's own `pull-refresh` POST for that number in the
+ * same window: the page polls the record until a refresh it asked for settles, and those
+ * settlement reads are counted apart. A refresh whose body could not be read is taken to
+ * be for the subject, since only the subject's page posts one.
+ */
+export function subjectReads(requests, patterns, pullNumber = null) {
+  let total = 0;
+  let duplicates = 0;
+  let settlement = 0;
+  for (const pattern of patterns) {
+    const re = new RegExp(pattern);
+    let refreshed = false;
+    let reads = 0;
+    for (const r of requests) {
+      const p = r.url.replace(/^https?:\/\/[^/]+/, "");
+      if (pullNumber !== null && r.method === "POST" && p.split("?")[0] === PULL_REFRESH_ROUTE) {
+        let number = null;
+        try {
+          number = JSON.parse(r.postText ?? "null")?.number ?? null;
+        } catch (_error) {
+          number = null;
+        }
+        if (number === null || Number(number) === Number(pullNumber)) {
+          refreshed = true;
+        }
+      } else if (re.test(p)) {
+        total += 1;
+        if (refreshed) {
+          settlement += 1;
+        } else {
+          reads += 1;
+        }
+      }
+    }
+    duplicates += Math.max(0, reads - 1);
+  }
+  return { total, duplicates, settlement };
+}
+
 /** The request log one browser keeps: entries in order, and an index by session and id. */
 export function networkLog() {
   return { net: [], byId: new Map(), early: new Map() };
@@ -796,6 +854,7 @@ export function applyNetworkEvent(log, method, params, kind, sid) {
       method: params.request.method,
       family: routeFamily(params.request.url, params.type),
       postBytes: params.request.method === "POST" ? postBytesOf(params.request) : 0,
+      postText: params.request.method === "POST" ? postTextOf(params.request) : null,
       encoded: null,
       url: params.request.url,
       type: params.type,
@@ -1734,9 +1793,11 @@ export function driver(browser) {
         try {
           const session = r.sid === page.sessionId ? page : browser.conn.sessions.get(r.sid);
           const body = await session.send("Network.getRequestPostData", { requestId: r.id });
-          r.postBytes = body.base64Encoded
-            ? Buffer.from(body.postData, "base64").length
-            : Buffer.byteLength(body.postData, "utf8");
+          const bytes = body.base64Encoded
+            ? Buffer.from(body.postData, "base64")
+            : Buffer.from(body.postData, "utf8");
+          r.postBytes = bytes.length;
+          r.postText ??= bytes.toString("utf8").slice(0, 1024);
         } catch (_error) {
           // The body is no longer held; the request stays counted with unknown bytes.
         }
@@ -1794,17 +1855,9 @@ export function driver(browser) {
     for (const r of net) {
       byClass[r.cls] = (byClass[r.cls] ?? 0) + 1;
     }
-    // Requests for the selected subject, per route pattern: a cold selection issues each
-    // route once, so every further match is a duplicate.
-    const patterns = [spec.subjectRequest ?? []].flat();
-    let subjectRequests = 0;
-    let subjectDuplicates = 0;
-    for (const pattern of patterns) {
-      const re = new RegExp(pattern);
-      const n = net.filter((r) => re.test(r.url.replace(/^https?:\/\/[^/]+/, ""))).length;
-      subjectRequests += n;
-      subjectDuplicates += Math.max(0, n - 1);
-    }
+    // Requests for the selected subject: duplicates, and a pull request page's settlement
+    // reads after its own refresh, counted apart (see subjectReads).
+    const subject = subjectReads(net, [spec.subjectRequest ?? []].flat(), spec.subjectPull ?? null);
     const readyReadMs = raw.readyRead === null ? null : raw.readyRead;
     const page0 = movement.groups.page;
     return {
@@ -1854,8 +1907,9 @@ export function driver(browser) {
       requests: {
         total: net.filter((r) => r.cls !== "inline").length,
         byClass,
-        subject: subjectRequests,
-        subjectDuplicates,
+        subject: subject.total,
+        subjectDuplicates: subject.duplicates,
+        subjectSettlementReads: subject.settlement,
         byFamily,
         fileEnvelopes: net.filter((r) => /^https?:\/\/[^/]+\/api\/file\?/.test(r.url)).length,
         // Background posts (the Pulls catalog walk) run on their own timer, so they are

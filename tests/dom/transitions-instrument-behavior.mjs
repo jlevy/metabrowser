@@ -148,6 +148,51 @@ check("cache, network, page conditional, failure, pending, redirect", () => {
   });
 });
 
+check("reads after the page's own refresh are settlement reads, not duplicates", () => {
+  const read = (n) => ({ method: "GET", url: `${B}/api/plugin/github/pull?number=${n}` });
+  const refresh = (body) => ({
+    method: "POST",
+    url: `${B}/api/plugin/github/pull-refresh`,
+    postText: body === undefined ? null : JSON.stringify(body),
+  });
+  const pattern = ["^/api/plugin/github/pull\\?number=353(&|$)"];
+  // A cold click: the page's first read and one more, then a refresh and three polls.
+  const r = recorder.subjectReads(
+    [
+      read(353),
+      read(353),
+      refresh({ number: 353, wait_core: true }),
+      read(353),
+      read(351),
+      read(353),
+      read(353),
+    ],
+    pattern,
+    353,
+  );
+  assert.deepEqual(r, { total: 5, duplicates: 1, settlement: 3 });
+  // A refresh for another pull request settles nothing for this one.
+  assert.deepEqual(
+    recorder.subjectReads([read(353), refresh({ number: 351 }), read(353)], pattern, 353),
+    {
+      total: 2,
+      duplicates: 1,
+      settlement: 0,
+    },
+  );
+  // An unreadable refresh body is the subject's own page asking.
+  assert.equal(recorder.subjectReads([refresh(), read(353)], pattern, 353).settlement, 1);
+  // Without a pull request subject nothing is settlement.
+  assert.deepEqual(
+    recorder.subjectReads([read(353), refresh({ number: 353 }), read(353)], pattern),
+    {
+      total: 2,
+      duplicates: 1,
+      settlement: 0,
+    },
+  );
+});
+
 // --------------------------------------------------------------------- frame accounting
 
 const I = 1000 / 60;

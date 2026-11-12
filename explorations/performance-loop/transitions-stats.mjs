@@ -50,6 +50,7 @@ export const METRICS = [
   C("requests_kpress", (t) => t.requests?.byClass?.kpress ?? 0),
   C("requests_background", (t) => t.requests?.byClass?.background ?? 0, null),
   C("subject_duplicates", (t) => t.requests?.subjectDuplicates),
+  C("subject_settlement_reads", (t) => t.requests?.subjectSettlementReads, null),
   C("file_envelope_requests", (t) => t.requests?.fileEnvelopes),
   C("post_body_bytes", (t) => t.requests?.postBytes),
   C("preview_top_replaced", (t) => t.previewTop?.removed),
@@ -633,6 +634,7 @@ const TABLES = [
       ["requests_kpress", "KPress"],
       ["requests_background", "Background"],
       ["subject_duplicates", "Subject duplicates"],
+      ["subject_settlement_reads", "Settlement reads"],
     ],
   },
   {
@@ -831,6 +833,7 @@ export function keepTransition(t) {
     requests: {
       byClass: t.requests?.byClass,
       subjectDuplicates: t.requests?.subjectDuplicates,
+      subjectSettlementReads: t.requests?.subjectSettlementReads,
       byFamily: t.requests?.byFamily,
       fileEnvelopes: t.requests?.fileEnvelopes,
       postBytes: t.requests?.postBytes,
