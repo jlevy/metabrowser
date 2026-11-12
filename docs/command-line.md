@@ -132,19 +132,27 @@ it, a stdin that is not open at all is refused before serving.
 The watch begins as soon as the command line is read, before the server reads ROOT,
 dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
 startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
-A stdin that is closed from the start therefore stops the server before it prints its
-address. Python’s start, the import of `metab` itself, and the reading of its command
-line come before the watch: a stdin that closes during them is seen as soon as they end,
-and a hang there, such as a disk that stops answering while `metab` loads, is not
-covered. A stdin that closes while startup is failing ends the process either way, with
-the failure’s status or with 0.
+A stdin that is closed from the start therefore stops the server, possibly before it
+prints its address: the watch and startup run side by side, so either can come first.
+Python’s start, the import of `metab` itself, and the reading of its command line come
+before the watch: a stdin that closes during them is seen as soon as they end, and a
+hang there, such as a disk that stops answering while `metab` loads, is not covered.
+A stdin that closes while startup is failing ends the process either way, with the
+failure’s status or with 0.
 
 The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
 the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
 them) and any `gh` are killed, and the process exits at once, with status 0. Those run
 in process groups of their own, which would outlive the server, and a fetch holds its
-store’s lock, so each group is killed with every helper in it, including one whose start
-is under way when the stop begins, and no new one is started.
+store’s lock, so each group is killed with every helper in it, and no new one is
+started. The stop finds them in the system’s list of the server’s child processes, so it
+kills one whose start has not finished too, and it does not wait on the server’s event
+loop: it ends within a short bound (`SPAWN_WAIT_S` in `metabrowser/git/process.py`) even
+when that loop is stuck.
+Two things escape it: a child that has not yet begun running Git when that bound runs
+out, and the helpers of a Git whose start failed, which Python’s asyncio kills alone.
+On systems other than macOS and Linux, which cannot list a process’s children this way,
+a start under way is not covered.
 Other Git, which only reads, runs in the server’s own process group and is not
 signalled; it holds no lock, and it ends when it next writes to, or reads from, the
 server that is gone.

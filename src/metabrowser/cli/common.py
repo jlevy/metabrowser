@@ -10,10 +10,11 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import threading
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Final, NoReturn, TextIO
 
 import typer
 
@@ -88,31 +89,57 @@ class PipeTrackingStream:
         return getattr(self.stream, name)
 
 
+# Whether each descriptor a stop notice made nonblocking was blocking before the first
+# notice did, which :func:`exit_after_notices` puts back. Recorded once, by the first
+# notice, so a stop that begins while another has the flag set never takes that for the
+# original. The lock is re-entrant, for a stop in a signal handler on a thread already
+# holding it; no holder keeps it for long, except one that exits while holding it.
+_NOTICE_BLOCKING: dict[int, bool] = {}
+_NOTICE_LOCK: Final = threading.RLock()
+
+
 def write_notice_now_or_never(fd: int, notice: bytes) -> None:
     """Write a stop notice to *fd* if it can be written now, and skip it otherwise.
 
-    For a process about to exit at once, from a signal handler or another thread. A raw
-    ``os.write`` takes no Python lock the interrupted thread may hold, but on a full pipe
-    whose reader has stopped reading it waits for good, and the stop with it. So the
-    write is made with ``O_NONBLOCK``, and a notice that does not fit is dropped.
+    For a stop that ends in :func:`exit_after_notices`, from a signal handler or another
+    thread. A raw ``os.write`` takes no Python lock the interrupted thread may hold, but
+    on a full pipe whose reader has stopped reading it waits for good, and the stop with
+    it. So the write is made with ``O_NONBLOCK``, and a notice that does not fit is
+    dropped. A notice is short, so the write is all or nothing on a pipe. Any error just
+    means there is no notice.
 
     ``O_NONBLOCK`` belongs to the open file, not to the descriptor: a duplicate shares
-    it, and so may other processes, such as a shell writing to the same terminal. It is
-    set for this one write and then put back. A notice is short, so the write is all or
-    nothing on a pipe. Any error just means there is no notice.
+    it, and so may other processes, such as the parent or a shell on the same terminal.
+    It stays set until the stop exits, which puts back what the first notice found. Put
+    back sooner, it could leave another stop's notice to wait on the full pipe after
+    all, and a stop that exits before another restores would leave it set for good.
     """
 
-    try:
-        was_blocking = os.get_blocking(fd)
-        os.set_blocking(fd, False)
-    except OSError:
-        return
-    try:
-        with contextlib.suppress(OSError):
-            os.write(fd, notice)
-    finally:
-        with contextlib.suppress(OSError):
-            os.set_blocking(fd, was_blocking)
+    with _NOTICE_LOCK:
+        try:
+            if fd not in _NOTICE_BLOCKING:
+                _NOTICE_BLOCKING[fd] = os.get_blocking(fd)
+            os.set_blocking(fd, False)
+        except OSError:
+            return
+    with contextlib.suppress(OSError):
+        os.write(fd, notice)
+
+
+def exit_after_notices(status: int) -> NoReturn:
+    """End the process at once with *status*, leaving each notice's descriptor as found.
+
+    ``os._exit`` runs with the lock held, so no notice on another thread can set the
+    flag again between the restoring and the end. A stop in a signal handler on this
+    same thread re-enters the lock and does the same, and exits first.
+    """
+
+    with _NOTICE_LOCK:
+        for fd, was_blocking in _NOTICE_BLOCKING.items():
+            with contextlib.suppress(OSError):
+                os.set_blocking(fd, was_blocking)
+        _NOTICE_BLOCKING.clear()
+        os._exit(status)
 
 
 def silence_broken_pipe(stream: TextIO) -> None:
