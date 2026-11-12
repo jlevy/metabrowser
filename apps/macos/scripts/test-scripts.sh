@@ -203,12 +203,20 @@ else
   fail "stopping a process that honors SIGTERM: $(cat "$work/out")"
 fi
 
-bash -c 'trap "" TERM; exec sleep 30' &
+# The stand-in says it is ready only once its trap is set, after a deliberate delay, and
+# the test waits for that, up to 10 s, rather than guessing how long it takes.
+rm -f "$work/stubborn-ready"
+bash -c 'sleep 0.5; trap "" TERM; : >"$1"; exec sleep 30' _ "$work/stubborn-ready" &
 stubborn=$!
 disown "$stubborn"  # so its SIGKILL is not reported as a job
-sleep 0.2  # until the trap is set
+for _ in $(seq 100); do
+  [[ -e "$work/stubborn-ready" ]] && break
+  sleep 0.1
+done
 stubborn_pids() { alive "$stubborn"; }
-if [[ "$(stop_listed stubborn_pids "the stand-in app" 2 2>"$work/out"; echo "$check_failures")" == 1 ]] \
+if [[ ! -e "$work/stubborn-ready" ]]; then
+  fail "the stand-in that ignores SIGTERM did not get ready within 10 s"
+elif [[ "$(stop_listed stubborn_pids "the stand-in app" 2 2>"$work/out"; echo "$check_failures")" == 1 ]] \
   && [[ -z "$(stubborn_pids)" ]] && grep -q "FAIL: the stand-in app did not stop within 1 s of SIGTERM" "$work/out"; then
   pass "a process that ignores SIGTERM is killed and counted as a failed check"
 else
@@ -239,6 +247,33 @@ FIXTURE
     fail "a check script exiting $code after a $outcome exited $status: $(cat "$work/out")"
   fi
 done
+
+
+# ── refuse_ambient ─────────────────────────────────────────────
+# The setup check's preflight reads one directory per line, so a directory with a space
+# or a glob character in its name is looked in whole (mb-j2qo).
+mkdir -p "$work/ambient/Shared Tools/bin" "$work/ambient/g[l]ob*/bin" "$work/ambient/plain/bin"
+: >"$work/ambient/Shared Tools/bin/uv"
+: >"$work/ambient/g[l]ob*/bin/metab"
+spaced="$work/ambient/plain/bin
+$work/ambient/Shared Tools/bin"
+globbed="$work/ambient/plain/bin
+$work/ambient/g[l]ob*/bin"
+if ! stops refuse_ambient no-metab "$spaced" && grep -q "$work/ambient/Shared Tools/bin/uv would be found" "$work/out"; then
+  pass "a uv in a directory with a space in its name stops no-metab"
+else
+  fail "a uv in a directory with a space in its name: $(cat "$work/out")"
+fi
+if (refuse_ambient old-metab "$spaced") >"$work/out" 2>&1; then
+  pass "a uv elsewhere does not stop old-metab"
+else
+  fail "old-metab stopped for an ambient uv: $(cat "$work/out")"
+fi
+if ! stops refuse_ambient old-metab "$globbed" && grep -qF "$work/ambient/g[l]ob*/bin/metab would be found" "$work/out"; then
+  pass "a metab in a directory with glob characters in its name stops every case"
+else
+  fail "a metab in a directory with glob characters in its name: $(cat "$work/out")"
+fi
 
 if ((failures)); then
   die "$failures script check(s) failed"
