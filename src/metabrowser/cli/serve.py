@@ -17,7 +17,7 @@ import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import NoReturn, override
+from typing import override
 
 import typer
 import uvicorn
@@ -35,7 +35,7 @@ from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.cli.stdin_lifeline import require_open_stdin, stop_for_closed_stdin, watch_for_eof
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
-from metabrowser.git.process import kill_live_process_groups
+from metabrowser.git.process import stop_process_groups
 from metabrowser.server_utils import find_available_local_port, port_search_range
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
@@ -117,7 +117,7 @@ def _write_stopping_notice() -> None:
     write_notice_now_or_never(2, _STOPPING_NOTICE)
 
 
-def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
+def _stop_now(sig: int, _frame: FrameType | None) -> None:
     """Stop the process on the spot, reporting the interrupt exit code.
 
     This is a local, single-user, read-only file browser. There are no
@@ -131,10 +131,15 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     here would leave running, so those groups are killed first. What a killed
     fetch leaves in its store is removed by the next refresh. A terminal hangup
     that lands here exits with the status a shell reports for it.
+
+    Returns only when the interrupt landed while a group's spawn was under way
+    on this thread, between its fork and its registration: the spawn, which
+    only this thread can finish, then kills the group and exits, within
+    milliseconds (see :func:`stop_process_groups`). A second press exits at once.
     """
     _write_stopping_notice()
-    kill_live_process_groups()
-    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
+    status = HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE
+    stop_process_groups(lambda: os._exit(status))
 
 
 class _QuietForceExitServer(uvicorn.Server):
@@ -146,7 +151,10 @@ class _QuietForceExitServer(uvicorn.Server):
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
         if sig == signal.SIGINT:
             self.interrupted = True
+            # Returns only while a group's spawn finishes the stop; uvicorn's own
+            # shutdown is not wanted then either.
             _stop_now(sig, frame)
+            return
         super().handle_exit(sig, frame)
 
 

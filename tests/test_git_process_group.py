@@ -4,22 +4,34 @@ Fetch and clone fork helpers (``upload-pack``, ``index-pack``, ``remote-https``)
 only the ``git`` process orphans them, still holding the staging directory and the
 network. A shell alias stands in for a helper: ``git`` forks ``sh``, which forks
 ``sleep`` and records its pid.
+
+A stop that exits without unwinding (Ctrl-C, a hangup, a closed stdin under
+``--exit-on-eof``) kills the groups first, including one whose spawn is still under way.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import fcntl
 import os
+import signal
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import metabrowser.git.process as process_module
+from metabrowser.cli import stdin_lifeline
+from metabrowser.cli.serve import _stop_now
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     READ_POLICY,
+    GitError,
     GitTimeoutError,
+    GitUnavailableError,
     kill_live_process_groups,
     run_git,
     spawn_git_process,
@@ -238,3 +250,194 @@ def test_the_exit_path_kills_live_groups_and_skips_reaped_ones(
     finally:
         _kill_leftover(helper)
     assert len(signalled) == 1
+
+
+# ── A stop while a group is starting ──────────────────────────────────────
+
+
+@pytest.fixture
+def fresh_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stop is for good and process-wide, so each test that stops gets its own."""
+
+    monkeypatch.setattr(process_module, "_GROUP_STOP", process_module._GroupStop())
+
+
+class _HeldSpawn:
+    """A spawn held after the child exists and before it returns, until ``release``.
+
+    That is the window a stop used to miss: the group's ID is known only once the spawn
+    returns, a few event-loop turns after the fork, and the registry learns it then.
+    Held on events, not for a time, so the stop always lands inside the window.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+        real_spawn = asyncio.create_subprocess_exec
+
+        async def held_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+            proc = await real_spawn(*args, **kwargs)
+            self.started.set()
+            await asyncio.to_thread(self.release.wait, 30)
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", held_spawn)
+
+
+def _held_lock(path: Path) -> int:
+    """A descriptor holding an exclusive ``flock`` on *path*, as a fetch lock is held."""
+
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
+def _lock_free_within(path: Path, seconds: float = 5.0) -> bool:
+    fd = os.open(path, os.O_RDWR)
+    try:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                time.sleep(0.02)
+                continue
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return True
+        return False
+    finally:
+        os.close(fd)
+
+
+async def _end(task: asyncio.Future[bytes]) -> None:
+    """End a ``run_git`` task, killed by the stop or cancelled here, without waiting long."""
+
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, GitError, TimeoutError):
+        await asyncio.wait_for(task, 20)
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_closed_stdin_kills_a_group_still_starting_and_frees_its_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stop begins after the child exists and before its group is registered.
+
+    The group must still be killed, with the helper it forked and the fetch lock it
+    inherited (cache locks are ``flock`` on a descriptor the child holds), and the stop
+    must exit only once the spawn has ended. Before, the stop killed what the registry
+    held at that moment, which did not include this group, and exited, leaving the
+    helper running and the lock held.
+    """
+
+    pid_file = tmp_path / "helper.pid"
+    lock_path = tmp_path / "fetch.lock"
+    lock_fd = _held_lock(lock_path)
+    held = _HeldSpawn(monkeypatch)
+    exits: list[int] = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+
+    # Let the spawn go only once the stop has begun: its first kill of the groups.
+    real_kill = process_module.kill_live_process_groups
+
+    def kill_then_release() -> None:
+        real_kill()
+        held.release.set()
+
+    monkeypatch.setattr(process_module, "kill_live_process_groups", kill_then_release)
+    monkeypatch.setattr(stdin_lifeline, "kill_live_process_groups", kill_then_release)
+
+    async def scenario() -> tuple[int, bool, bool]:
+        task = asyncio.ensure_future(
+            run_git(
+                _alias_args(pid_file),
+                cwd=tmp_path,
+                policy=ACQUISITION_POLICY,
+                pass_fds=(lock_fd,),
+            )
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        os.close(lock_fd)  # From here only Git and its helpers hold the lock.
+        helper = await asyncio.to_thread(_wait_for_pid, pid_file)
+        stopper = threading.Thread(target=stdin_lifeline.stop_for_closed_stdin, daemon=True)
+        stopper.start()
+        await asyncio.to_thread(stopper.join, 20)
+        gone = await asyncio.to_thread(_gone_within, helper)
+        lock_free = await asyncio.to_thread(_lock_free_within, lock_path)
+        await _end(task)
+        return helper, gone, lock_free
+
+    helper, gone, lock_free = asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+    try:
+        assert gone, "the helper of a group still starting outlived the stop"
+        assert lock_free, "the fetch lock outlived the stop"
+        assert exits[:1] == [0]
+    finally:
+        _kill_leftover(helper)
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_an_interrupt_while_a_group_is_starting_exits_once_it_is_killed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl-C lands on the event loop's own thread, between the fork and the registry.
+
+    The handler cannot wait for the spawn on the thread that has to finish it, so it
+    returns, and the spawn's end kills the group and exits with the interrupt's status.
+    Before, the handler exited at once and the group was never killed.
+    """
+
+    pid_file = tmp_path / "helper.pid"
+    held = _HeldSpawn(monkeypatch)
+    exits: list[int] = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    previous = signal.signal(signal.SIGINT, _stop_now)
+
+    async def scenario() -> tuple[int, list[int], bool]:
+        task = asyncio.ensure_future(
+            run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
+        )
+        await asyncio.to_thread(held.started.wait, 30)
+        helper = await asyncio.to_thread(_wait_for_pid, pid_file)
+        # The handler runs here, on this thread, while the spawn is held.
+        signal.raise_signal(signal.SIGINT)
+        during = list(exits)
+        held.release.set()
+        with contextlib.suppress(GitError, TimeoutError):
+            await asyncio.wait_for(asyncio.shield(task), 20)
+        gone = await asyncio.to_thread(_gone_within, helper)
+        await _end(task)
+        return helper, during, gone
+
+    try:
+        helper, during, gone = asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    try:
+        assert during == [], "the interrupt exited before the group it missed was killed"
+        assert gone, "the helper of a group still starting outlived the interrupt"
+        assert exits == [130]
+    finally:
+        _kill_leftover(helper)
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_no_group_is_started_once_a_stop_has_begun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exits: list[int] = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    stdin_lifeline.stop_for_closed_stdin()
+    assert exits[:1] == [0]
+    started: list[asyncio.subprocess.Process] = []
+    real_spawn = asyncio.create_subprocess_exec
+
+    async def recording_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+        proc = await real_spawn(*args, **kwargs)
+        started.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", recording_spawn)
+    with pytest.raises(GitUnavailableError, match="stopping"):
+        asyncio.run(spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY))
+    assert started == []

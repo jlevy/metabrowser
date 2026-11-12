@@ -14,6 +14,11 @@ All notable changes to Metabrowser are documented here.
   stderr that is full because nothing reads it: the stop notice is dropped and the
   process stops.
 
+- Stopping a server by Ctrl-C, a hangup, or `--exit-on-eof` now also kills a fetch’s or
+  clone’s Git, or a `gh`, whose start was under way at that moment, which used to keep
+  running and could keep holding the store’s fetch lock; no new one starts once the stop
+  has begun.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
