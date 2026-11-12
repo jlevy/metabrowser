@@ -20,7 +20,7 @@
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
-// both under TIMER_FLOOR_MS is reported and not judged. Needs macOS, Xcode's Swift,
+// both under TIMER_FLOOR_MS is reported and not judged (summary.mjs). Needs macOS, Xcode's Swift,
 // Google Chrome, Node 24 (for its WebSocket), and a logged-in session; it keeps the
 // display awake while it runs.
 import { execFile, spawn } from "node:child_process";
@@ -32,6 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
+import { markdown, summarize } from "./summary.mjs";
 
 const run = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -39,10 +40,6 @@ const APP = path.resolve(HERE, "..");
 const ROOT = path.resolve(APP, "..", "..");
 const WIDTH = 1200;
 const HEIGHT = 820;
-const PASS_RATIO = 1.3;
-// WebKit coarsens performance.now() to 1 ms (Chrome: 0.1 ms), so a pair whose two times
-// are both under five of those steps has no meaningful ratio. It is reported, not judged.
-const TIMER_FLOOR_MS = 5;
 const SAMPLE_TIMEOUT_MS = 300_000;
 // A safety bound on the print check, far past the few pages its document needs.
 const PRINT_PAGE_LIMIT = 50;
@@ -695,132 +692,6 @@ function viewMetrics(record) {
   return metrics;
 }
 
-// ── Summary ─────────────────────────────────────────────────────
-
-const median = (values) => {
-  const sorted = values.filter((value) => typeof value === "number").sort((a, b) => a - b);
-  if (sorted.length === 0) {
-    return null;
-  }
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-};
-
-const fixed = (value, digits = 1) =>
-  typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "–";
-
-function summarize(samples) {
-  const summary = [];
-  for (const caseName of [...new Set(samples.map((sample) => sample.case))]) {
-    const pairs = new Map();
-    for (const sample of samples.filter((entry) => entry.case === caseName && !entry.warmup)) {
-      const pair = pairs.get(sample.pair) ?? {};
-      pair[sample.engine] = sample;
-      pairs.set(sample.pair, pair);
-    }
-    const metricNames = [];
-    const values = new Map();
-    for (const [pairIndex, pair] of pairs) {
-      for (const engine of ["chrome", "webkit"]) {
-        for (const metric of pair[engine]?.metrics ?? []) {
-          if (!values.has(metric.name)) {
-            metricNames.push(metric.name);
-            values.set(metric.name, { gated: metric.gated, pairs: new Map() });
-          }
-          const entry = values.get(metric.name);
-          const pairValues = entry.pairs.get(pairIndex) ?? {};
-          pairValues[engine] = metric.value;
-          entry.pairs.set(pairIndex, pairValues);
-        }
-      }
-    }
-    const rows = metricNames.map((name) => {
-      const { gated: isGated, pairs: byPair } = values.get(name);
-      const chrome = [...byPair.values()].map((pair) => pair.chrome);
-      const webkit = [...byPair.values()].map((pair) => pair.webkit);
-      const ratios = [...byPair.values()]
-        .filter((pair) => typeof pair.chrome === "number" && typeof pair.webkit === "number")
-        .map((pair) =>
-          pair.chrome > 0 ? pair.webkit / pair.chrome : pair.webkit > 0 ? Infinity : 1,
-        );
-      const complete = ratios.length === byPair.size && ratios.length > 0;
-      const judged = [...byPair.values()]
-        .filter((pair) => typeof pair.chrome === "number" && typeof pair.webkit === "number")
-        .filter(
-          (pair) => !name.endsWith("(ms)") || Math.max(pair.chrome, pair.webkit) >= TIMER_FLOOR_MS,
-        )
-        .map((pair) => (pair.chrome > 0 ? pair.webkit / pair.chrome : Infinity));
-      return {
-        name,
-        gated: isGated,
-        chrome,
-        webkit,
-        ratios: ratios.map((ratio) => Math.round(ratio * 100) / 100),
-        chrome_median: median(chrome),
-        webkit_median: median(webkit),
-        median_ratio: median(ratios),
-        max_ratio: ratios.length ? Math.max(...ratios) : null,
-        verdict: !isGated
-          ? "reported"
-          : !complete
-            ? "incomplete"
-            : judged.length === 0
-              ? `under ${TIMER_FLOOR_MS} ms`
-              : judged.every((ratio) => ratio < PASS_RATIO)
-                ? "pass"
-                : "FAIL",
-        judged_pairs: judged.length,
-      };
-    });
-    const diagnostic = CASES[caseName]?.diagnostic === true;
-    for (const row of rows) {
-      if (diagnostic && row.verdict !== "reported") {
-        row.verdict =
-          row.verdict === "incomplete"
-            ? "diagnostic, incomplete"
-            : `diagnostic, ${row.verdict === "FAIL" ? "over" : "under"} ${PASS_RATIO}x`;
-      }
-    }
-    const failures = samples
-      .filter((entry) => entry.case === caseName && entry.error)
-      .map(
-        (entry) =>
-          `${entry.engine}${entry.warmup ? " warm-up" : ` pair ${entry.pair + 1}`}: ${entry.error}`,
-      );
-    summary.push({ case: caseName, diagnostic, pairs: pairs.size, rows, failures });
-  }
-  return summary;
-}
-
-function markdown(summary, meta) {
-  const lines = [
-    `Run ${meta.started} to ${meta.finished ?? "(unfinished)"}: ${meta.machine}; macOS ${meta.macos};`,
-    `${meta.chrome}; WebKit ${meta.webkit}; ${meta.metab}; commit ${meta.commit};`,
-    `load average ${meta.load_start.join(", ")} at the start` +
-      (meta.load_end ? ` and ${meta.load_end.join(", ")} at the end.` : "."),
-    "",
-  ];
-  for (const { case: caseName, pairs, rows, failures } of summary) {
-    lines.push(`### ${caseName} (${pairs} pairs)`, "");
-    for (const failure of failures) {
-      lines.push(`- Failed sample, ${failure}`);
-    }
-    if (failures.length) {
-      lines.push("");
-    }
-    lines.push("| Metric | Chrome median | WebKit median | Pair ratios | Verdict |");
-    lines.push("| --- | ---: | ---: | --- | --- |");
-    for (const row of rows) {
-      const ratios = row.gated ? row.ratios.map((ratio) => fixed(ratio, 2)).join(", ") : "";
-      lines.push(
-        `| ${row.name} | ${fixed(row.chrome_median)} | ${fixed(row.webkit_median)} | ${ratios} | ${row.verdict} |`,
-      );
-    }
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
 // ── Main ────────────────────────────────────────────────────────
 
 async function machineFacts(metab) {
@@ -887,7 +758,13 @@ async function runChecks(driver, servers, corpus, scratch) {
 
 /** Writes summary.json and summary.md for a run's samples and returns the Markdown. */
 function writeSummary(out, meta, samples) {
-  const summary = summarize(samples);
+  const summary = summarize(samples, {
+    pairs: meta.pairs,
+    // The runs docs/large-content-rendering.md quotes predate meta.cases, so their summary
+    // covers the cases they sampled.
+    cases: meta.cases ?? [],
+    diagnostic: (caseName) => CASES[caseName]?.diagnostic === true,
+  });
   fs.writeFileSync(
     path.join(out, "summary.json"),
     `${JSON.stringify({ meta, summary }, null, 2)}\n`,
@@ -936,6 +813,7 @@ async function main() {
     started: new Date().toISOString(),
     load_start: loadAverage(),
     pairs: options.pairs,
+    cases: caseNames,
     viewport: `${WIDTH} x ${HEIGHT}`,
     corpora: manifest,
   };

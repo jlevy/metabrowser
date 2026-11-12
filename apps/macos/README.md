@@ -41,7 +41,7 @@ From the repository root (each target delegates to `apps/macos/Makefile`, and ea
 prints a skip message on systems other than macOS):
 
 ```shell
-make macos-test                      # unit tests (swift test) and the scripts' checks
+make macos-test                      # unit tests (swift test), the scripts' and the gate's checks
 make macos-app                       # build, assemble, and sign build/dev/Metabrowser.app
 make macos-run FOLDER="$HOME/notes"  # build the app and open a folder with it
 make macos-dmg                       # build/Metabrowser-Dev-0.1.0-arm64.dmg, checked
@@ -136,7 +136,8 @@ suites in three processes: the WebKit suites and the exit stress suite each stal
 main actor, which every suite shares, so they run apart from the rest.
 A bare `swift test` runs them all in one process.
 First it builds the WebKit gate’s driver (`webkit-gate/`), which no product ships, so a
-change to the views or configuration it shares with the app cannot break it unnoticed.
+change to the views or configuration it shares with the app cannot break it unnoticed;
+last it runs the gate’s Node tests (`webkit-gate/*.test.mjs`), which need no browser.
 
 Where to look while it runs:
 

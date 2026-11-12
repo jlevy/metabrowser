@@ -475,6 +475,10 @@ and WebKit passes when every pair is within 1.3 times Chrome.
   metric passes when every pair does.
   WebKit rounds `performance.now()` to 1 ms (Chrome to 0.1 ms), so a pair of times both
   under 5 ms is reported and not judged.
+  A metric that either engine left unmeasured in any pair the run asked for, by a failed
+  sample or a pair that never ran, is incomplete rather than judged
+  ([`summary.mjs`](../apps/macos/webkit-gate/summary.mjs)). Both measurement runs
+  recorded here measured every metric in every pair.
 
 The metrics:
 

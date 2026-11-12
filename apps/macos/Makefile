@@ -1,7 +1,8 @@
 # The native macOS app. See README.md. Needs macOS 26 and Swift 6.3 or later (Xcode 26).
 #
 #   make build                build the debug executable
-#   make test                 run the unit tests and the release scripts' checks
+#   make test                 run the unit tests, the release scripts' checks, and the
+#                             WebKit gate's build and Node tests
 #   make app                  assemble and sign build/dev/Metabrowser.app
 #   make run FOLDER=path      build the app and open a folder with it
 #   make dmg                  build/Metabrowser-Dev-VERSION-arm64.dmg, checked, not notarized
@@ -44,13 +45,14 @@ webkit_suites := DownloadTests WebConfigurationTests PagePrintTests
 #
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and
-# a logged-in session, so only its build is checked here.
+# a logged-in session, so only its build and its Node tests, which need neither, run here.
 test:
 	$(SWIFT) build --product WebKitDriver
 	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %)
 	$(SWIFT) test $(webkit_suites:%=--filter %)
 	$(SWIFT) test --filter ExitObservationStressTests
 	scripts/test-scripts.sh
+	node --test 'webkit-gate/*.test.mjs'
 
 app:
 	VARIANT=$(dev_variant) scripts/build-app.sh
