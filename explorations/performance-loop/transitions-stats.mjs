@@ -6,8 +6,16 @@
 import path from "node:path";
 
 export const SCENARIO = "transition-navigation/v1";
-export const SCENARIO_REVISION = 3;
+export const SCENARIO_REVISION = 4;
 export const MIN_RUNS = 3;
+
+// What an older revision's rows record differently. `compare` judges two sets of rows of
+// one revision against each other, with this note, and refuses to mix revisions.
+export const REVISION_NOTES = {
+  1: "revision 1 credited a frame only when no DOM change followed it, so its times and frame counts mean something else",
+  2: "revision 2 credited a frame only when no DOM change followed it, so its times and frame counts mean something else",
+  3: "revision 3 recorded a request a worker made as network even when the wire answered 304 (the cache disposition counts), took a region's first match even when it was hidden, and gave up looking for useful content after 400 text nodes whether or not they were displayed",
+};
 
 /** A comparison that cannot be made to mean anything; the command exits 2. */
 export class CompareRefusal extends Error {}
@@ -28,6 +36,7 @@ export const METRICS = [
   F("frames_to_ready", (t) => t.framesToReady),
   F("blank_frames", (t) => t.blankFrames),
   F("blank_frames_after_ready", (t) => t.blankFramesAfterReady),
+  F("blank_frames_origin_prompt", (t) => t.blankFramesOriginPrompt, null),
   T("blank_ms", (t) => t.blankMs),
   F("placeholder_visible_frames", (t) => t.placeholderVisibleFrames),
   F("placeholder_visible_frames_after_ready", (t) => t.placeholderVisibleFramesAfterReady),
@@ -36,14 +45,22 @@ export const METRICS = [
   T("settled_ms", (t) => t.settledMs),
   T("nav_settled_ms", (t) => t.navSettledMs, null),
   T("next_frame_ms", (t) => t.nextFrameMs, null),
+  T("window_ms", (t) => t.windowMs, null),
   T("long_task_max_ms", (t) => t.longTasks?.maxMs),
   T("input_span_ms", (t) => t.inputSpanMs, null),
   T("ready_after_last_input_ms", (t) => t.readyAfterLastInputMs),
-  T("shell_tools_ready_ms", (t) => t.milestones?.shellToolsReady),
-  T("styled_markdown_ms", (t) => t.milestones?.styledMarkdown),
-  T("pr_header_ms", (t) => t.milestones?.prHeader),
-  T("pr_description_shown_ms", (t) => t.milestones?.prDescriptionShown),
-  T("pr_description_final_ms", (t) => t.milestones?.prDescriptionFinal),
+  ...[
+    ["shell_tools_ready_ms", "shellToolsReady"],
+    ["styled_markdown_ms", "styledMarkdown"],
+    ["pr_header_ms", "prHeader"],
+    ["pr_description_shown_ms", "prDescriptionShown"],
+    ["pr_description_final_ms", "prDescriptionFinal"],
+  ].map(([key, name]) => ({
+    ...T(key, (t) => t.milestones?.[name]),
+    // A transition that declares the milestone and never reached it has a missing value,
+    // even when no run on either side reached it.
+    declared: (t) => !!t.milestones && name in t.milestones,
+  })),
   C("requests_data", (t) => t.requests?.byClass?.data ?? 0),
   C("requests_plugin", (t) => t.requests?.byClass?.plugin ?? 0),
   C("requests_static", (t) => t.requests?.byClass?.static ?? 0),
@@ -153,7 +170,7 @@ export function collect(condition) {
     for (const journey of run.journeys ?? []) {
       for (const t of journey.transitions ?? []) {
         if (!byId.has(t.id)) {
-          byId.set(t.id, { id: t.id, subjects: new Set(), runs: 0, values: {} });
+          byId.set(t.id, { id: t.id, subjects: new Set(), runs: 0, values: {}, declared: {} });
         }
         const entry = byId.get(t.id);
         entry.subjects.add(t.subject);
@@ -163,6 +180,8 @@ export function collect(condition) {
           if (v !== null && v !== undefined) {
             entry.values[m.key] ??= [];
             entry.values[m.key].push({ v, pair });
+          } else if (m.declared?.(t)) {
+            entry.declared[m.key] = (entry.declared[m.key] ?? 0) + 1;
           }
         }
       }
@@ -242,8 +261,7 @@ export function judge(m, sa, sb, pairs, tolerance) {
     out.wrongWay =
       worse !== null &&
       out.direction === worse &&
-      out.outcome !== "none" &&
-      out.outcome !== "within";
+      !["none", "within", "pair"].includes(out.outcome);
     return out;
   };
   if (m.kind === "count" || m.kind === "value") {
@@ -253,11 +271,12 @@ export function judge(m, sa, sb, pairs, tolerance) {
     }
     return finish();
   }
-  if (sa.median === 0 && sb.median > 0) {
-    if (!overlap) {
-      out.outcome = "result";
-      out.verdict = `${direction} from a zero control, ranges apart (result)`;
-    }
+  // A zero control against a non-zero candidate with separated ranges is a result on the
+  // ranges alone. Under overlapping ranges it goes to the pair rule like any other value,
+  // where a pair whose control is 0 and whose candidate is not has an infinite ratio.
+  if (sa.median === 0 && sb.median > 0 && !overlap) {
+    out.outcome = "result";
+    out.verdict = `${direction} from a zero control, ranges apart (result)`;
     return finish();
   }
   const P = pairs.length;
@@ -276,7 +295,12 @@ export function judge(m, sa, sb, pairs, tolerance) {
     }
     return finish();
   }
-  const beyond = direction === "lower" ? out.pairs.down : out.pairs.up;
+  // Equal medians say nothing about direction; the pairs beyond the tolerance do.
+  if (out.direction === "same" && out.pairs.up.length !== out.pairs.down.length) {
+    out.direction = out.pairs.up.length > out.pairs.down.length ? "higher" : "lower";
+  }
+  const dir = out.direction;
+  const beyond = dir === "lower" ? out.pairs.down : out.pairs.up;
   const k = beyond.length;
   if (!overlap && k >= 2) {
     out.outcome = "result";
@@ -289,7 +313,14 @@ export function judge(m, sa, sb, pairs, tolerance) {
     out.verdict = `${direction}, ranges apart but every pair within the ${tolerance}x tolerance (not a result)`;
   } else if (k >= 2) {
     out.outcome = "explain";
-    out.verdict = `ranges overlap, but ${k} of ${P} pairs are ${direction} beyond the ${tolerance}x tolerance: explain before accepting`;
+    out.verdict = `ranges overlap, but ${k} of ${P} pairs are ${dir} beyond the ${tolerance}x tolerance: explain before accepting`;
+  } else if (k === 1) {
+    // The runbook reruns a pair beyond the tolerance whatever the ranges do, so it is
+    // listed with the pair to rerun. Under overlapping ranges it is not counted as a
+    // wrong-way result: one pair in three beyond 1.3x is common under load (88 of the
+    // 4,199 comparisons of the exp-058 A/A split), and would fail every comparison.
+    out.outcome = "pair";
+    out.verdict = `ranges overlap; one pair of ${P} is ${dir} beyond the ${tolerance}x tolerance (${beyond[0]}): rerun that pair back to back before a release (listed, not a wrong-way result)`;
   }
   return finish();
 }
@@ -363,6 +394,7 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
   }
   sameEverywhere(all, (r) => r.corpus.commit, "the corpus commit", refuse);
   sameEverywhere(all, (r) => r.corpus.trunk, "the corpus trunk", refuse);
+  sameEverywhere(all, (r) => r.corpus.refs, "the hash of the corpus refs", refuse);
   sameEverywhere(all, (r) => r.facts?.git_log_head, "the head of the server's git log", refuse);
   sameEverywhere(all, (r) => r.server?.indexed_files, "the indexed file count", refuse);
   const revision = sameEverywhere(
@@ -379,7 +411,9 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
     `every run served corpus ${corpus.corpus.commit.slice(0, 8)} (trunk ${String(corpus.corpus.trunk).slice(0, 8)}, server git log head ${String(corpus.facts?.git_log_head).slice(0, 8)}, ${corpus.server?.indexed_files} indexed files)`,
   ];
   if (revision !== SCENARIO_REVISION) {
-    notes.push(`runs are scenario revision ${revision}; this reads revision ${SCENARIO_REVISION}`);
+    notes.push(
+      `runs are scenario revision ${revision}, compared with each other; this reads revision ${SCENARIO_REVISION}${REVISION_NOTES[revision] ? `, and ${REVISION_NOTES[revision]}` : ""}`,
+    );
   }
   if (flags.headed || flags.no_warmup || flags.journey_subset) {
     notes.push(
@@ -440,6 +474,16 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
       const va = valuesOf(ea, m.key);
       const vb = valuesOf(eb, m.key);
       if (!va.length && !vb.length) {
+        // Not applicable, unless a run declared it and never reached it.
+        const da = ea.declared[m.key] ?? 0;
+        const db = eb.declared[m.key] ?? 0;
+        if (da || db) {
+          gaps.push({
+            id,
+            metric: m.key,
+            reason: `missing in ${da} of ${ea.runs} ${A.label} run(s) and ${db} of ${eb.runs} ${B.label} run(s), and present in none`,
+          });
+        }
         continue;
       }
       const missA = ea.runs - va.length;
@@ -458,6 +502,16 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
+      // The window ends a settle time after the ready frame, so a candidate that is ready
+      // sooner is watched for less time: a settle time the control reached after the
+      // candidate's window closed cannot be compared.
+      if (m.key === "settled_ms" || m.key === "nav_settled_ms") {
+        const wb = stat(valuesOf(eb, "window_ms"));
+        if (wb && sa.median > wb.min) {
+          j.windowCut = true;
+          j.verdict += `; the control settled at ${fmtNum(sa.median, "time")} ms, after the candidate's shortest window (${fmtNum(wb.min, "time")} ms) closed, so a lower candidate value may only be a shorter window`;
+        }
+      }
       if (j.outcome === "unpaired") {
         gaps.push({ id, metric: m.key, reason: j.verdict });
       }
@@ -559,7 +613,7 @@ export function formatComparison(result) {
     );
   }
   out.push("");
-  const listed = entries.filter((e) => e.outcome !== "none");
+  const listed = entries.filter((e) => e.outcome !== "none" || e.windowCut);
   const line = (e) =>
     `- \`${e.id}\` ${e.metric}: ${fmtStat(e.control, e.kind)} → ${fmtStat(e.candidate, e.kind)}${e.pairs ? `; pairs ${pr(e)}` : ""}; ${e.verdict}${e.judged ? "" : " [not judged]"}${e.wrongWay ? " [WRONG WAY]" : ""}`;
   if (!listed.length) {
@@ -819,6 +873,7 @@ export function keepTransition(t) {
     frameIntervalMs: t.frameIntervalMs,
     blankFrames: t.blankFrames,
     blankFramesAfterReady: t.blankFramesAfterReady,
+    blankFramesOriginPrompt: t.blankFramesOriginPrompt,
     blankMs: t.blankMs,
     placeholderVisibleFrames: t.placeholderVisibleFrames,
     placeholderVisibleFramesAfterReady: t.placeholderVisibleFramesAfterReady,
@@ -826,6 +881,7 @@ export function keepTransition(t) {
     uncreditedFrames: t.uncreditedFrames,
     settledMs: t.settledMs,
     navSettledMs: t.navSettledMs,
+    windowMs: t.windowMs,
     movementPx: t.movementPx,
     movementNetPx: t.movementNetPx,
     movementPathPx: t.movementPathPx,

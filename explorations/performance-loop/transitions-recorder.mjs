@@ -1,5 +1,5 @@
 // In-page recorder and trusted-input driver for the transition-navigation/v1 scenario
-// (revision 3).
+// (revision 4).
 //
 // Measurement only: it drives the unmodified product over the Chrome DevTools Protocol
 // with trusted input and observes it from inside the page. Every in-page time is on the
@@ -335,20 +335,42 @@ function recorderMain(config) {
   // Visible, laid-out content: text on screen outside a placeholder, prompt, or
   // screen-reader-only label, or media that has loaded. Stops at the first hit and looks
   // at no more than 400 candidate text nodes, so a large document costs a few steps.
+  // The walk skips, without counting them, the subtrees of a placeholder, a prompt, or a
+  // screen-reader-only label, of an element with no box, and of an element wholly outside
+  // the viewport, so a view that hides or scrolls away its first lines still finds the
+  // ones on screen. The cap counts only the text nodes it tests.
+  const NOT_CONTENT = `${PLACEHOLDER}, .sr-only, ${EMPTY}`;
+  const outside = (r) =>
+    r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth;
+  const contentFilter = {
+    acceptNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
+      if (node.matches(NOT_CONTENT)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      if (node.getClientRects().length === 0) {
+        return getComputedStyle(node).display === "contents"
+          ? NodeFilter.FILTER_SKIP
+          : NodeFilter.FILTER_REJECT;
+      }
+      return outside(node.getBoundingClientRect())
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_SKIP;
+    },
+  };
   const hasUseful = (root) => {
     if (!root || !rendered(root)) {
       return false;
     }
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+      contentFilter,
+    );
     let candidates = 0;
     for (let node = walker.nextNode(); node && candidates < 400; node = walker.nextNode()) {
-      if (!node.nodeValue?.trim()) {
-        continue;
-      }
-      const parent = node.parentElement;
-      if (parent?.closest(`${PLACEHOLDER}, .sr-only, ${EMPTY}`)) {
-        continue;
-      }
       candidates += 1;
       if (textShown(node)) {
         return true;
@@ -426,13 +448,20 @@ function recorderMain(config) {
   R.state = state;
 
   // A box is [x, y, w, h], and a region with `identity` also carries that attribute.
+  // A region is the first rendered element its selector matches, so a surface kept
+  // mounted but hidden ahead of the one on screen is not taken for it.
   const box = (spec) => {
-    const el = document.querySelector(spec.selector);
-    if (!el) {
-      return null;
+    let el = null;
+    let r = null;
+    for (const candidate of document.querySelectorAll(spec.selector)) {
+      const cr = candidate.getBoundingClientRect();
+      if ((cr.width > 0 || cr.height > 0) && rendered(candidate)) {
+        el = candidate;
+        r = cr;
+        break;
+      }
     }
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) {
+    if (!el) {
       return null;
     }
     let sx = 0;
@@ -816,12 +845,17 @@ export function subjectReads(requests, patterns, pullNumber = null) {
 
 /** The request log one browser keeps: entries in order, and an index by session and id. */
 export function networkLog() {
-  return { net: [], byId: new Map(), early: new Map() };
+  return { net: [], byId: new Map(), byRequest: new Map(), early: new Map() };
 }
 
 /**
  * Apply one DevTools Network event to a request log. The ExtraInfo events can arrive
- * before the event they belong to, so their fields wait in `early` until it does.
+ * before the event they belong to, so their fields wait in `early` until it does. They
+ * can also arrive on another session: for a request a dedicated worker makes, Chrome
+ * sends `requestWillBeSent` and `responseReceived` on the worker's session and both
+ * ExtraInfo events on the page's, with the worker request's ID. So an ExtraInfo event is
+ * matched to its request by session and ID, else by the request ID alone, and waits under
+ * the ID alone, in either order of arrival.
  */
 export function applyNetworkEvent(log, method, params, kind, sid) {
   const key = `${sid}:${params.requestId}`;
@@ -834,11 +868,12 @@ export function applyNetworkEvent(log, method, params, kind, sid) {
     }
   };
   const later = (fields) => {
-    const entry = log.byId.get(key);
+    const entry = log.byId.get(key) ?? log.byRequest.get(params.requestId);
     if (entry) {
       merge(entry, fields);
     } else {
-      log.early.set(key, { ...(log.early.get(key) ?? {}), ...fields });
+      const id = params.requestId;
+      log.early.set(id, { ...(log.early.get(id) ?? {}), ...fields });
     }
   };
   if (method === "Network.requestWillBeSent") {
@@ -869,13 +904,14 @@ export function applyNetworkEvent(log, method, params, kind, sid) {
     if (params.redirectResponse) {
       entry.redirect = true;
     }
-    const early = log.early.get(key);
+    const early = log.early.get(params.requestId);
     if (early) {
       merge(entry, early);
-      log.early.delete(key);
+      log.early.delete(params.requestId);
     }
     log.net.push(entry);
     log.byId.set(key, entry);
+    log.byRequest.set(params.requestId, entry);
   } else if (method === "Network.requestWillBeSentExtraInfo") {
     const headers = Object.keys(params.headers ?? {}).map((h) => h.toLowerCase());
     later({
@@ -1189,6 +1225,7 @@ export function accountFrames({
       last = f[1];
     }
   }
+  const atOrigin = last;
   const window = frames.filter((f) => f[0] >= origin && f[0] <= windowEnd);
   const filled = window.map((f) => {
     if (f[1] !== null) {
@@ -1221,6 +1258,20 @@ export function accountFrames({
     return { before, after, total: before + after, ms: round1(ms) };
   };
   const blank = tally((f) => isBlank(f.code));
+  // Blank frames that still show the prompt that was on screen at the input, before the
+  // first change: counted as blank, and reported apart, since the reader saw the origin's
+  // prompt rather than an empty pane.
+  let originPromptFrames = 0;
+  if (atOrigin.includes("E") && !atOrigin.includes("U")) {
+    for (const f of filled) {
+      if (f.code !== atOrigin) {
+        break;
+      }
+      if (isBlank(f.code)) {
+        originPromptFrames += 1;
+      }
+    }
+  }
   const placeholder = tally((f) => f.code.includes("P"));
   const nav = tally((f) => f.code.includes("N"));
   const uncredited = tally((f) => f.uncredited);
@@ -1247,6 +1298,7 @@ export function accountFrames({
     blankFrames: blank.total,
     blankFramesBeforeReady: blank.before,
     blankFramesAfterReady: blank.after,
+    blankFramesOriginPrompt: originPromptFrames,
     blankMs: blank.ms,
     placeholderVisibleFrames: placeholder.total,
     placeholderVisibleFramesAfterReady: placeholder.after,

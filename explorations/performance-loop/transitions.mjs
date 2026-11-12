@@ -482,9 +482,11 @@ async function oneRun(options) {
   fs.mkdirSync(profileRoot, { recursive: true });
   const row = {
     schema: SCENARIO,
-    // 3 redefines the clocks and the frame accounting (every frame read after its own
+    // 3 redefined the clocks and the frame accounting (every frame read after its own
     // layout, painted ready at the ready frame's presentation, counts over the whole
-    // window); revision 2 rows do not compare with it.
+    // window). 4 reads a worker's 304 as revalidated, takes a region's first rendered
+    // match, and skips hidden and off-screen subtrees when looking for content.
+    // REVISION_NOTES in transitions-stats.mjs says what each older revision differs in.
     scenario_revision: SCENARIO_REVISION,
     exp,
     series,
