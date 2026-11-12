@@ -2123,13 +2123,22 @@ html.theme-anim .menu {
    - inline-end, inside the target over its inline-end padding, vertically
      centered. The registry marks the target .kbd-badge-host while it
      carries a badge. For tabs, chips, and text buttons.
-   - beside, just past the target's inline end, in the nearest
-     [data-kbd-badge-anchor]: the file header, the folder header, or the
-     commit view's heading. The registry measures the target once as the
-     badge mounts and writes its inline end and vertical center, from the
-     anchor's edges, as --kbd-badge-inline and --kbd-badge-block. For icon
-     buttons and for targets in a clipping row, such as the Copy path
-     button and the breadcrumbs inside the path row's overflow: hidden.
+   - beside, also over the target's own inline end, but positioned in the
+     nearest [data-kbd-badge-anchor]: the file header, the folder header,
+     or the commit view's heading. For icon buttons and for targets in a
+     clipping row, such as the Copy path button and the breadcrumbs inside
+     the path row's overflow: hidden, which would cut off a badge inside
+     them. The registry measures the target once as the badge mounts and
+     writes its inline end and vertical center, from the anchor's
+     inline-start and top edges, as --kbd-badge-inline and
+     --kbd-badge-block. The badge's inline end is the anchor's width less
+     that from the anchor's inline end, which is the target's inline end:
+     100% is the anchor's padding box, and no anchor has an inline border.
+     So the badge covers the end of its own control, an icon or a crumb's
+     last letter, and none of the text after it. A crumb narrower than a
+     keycap, such as the root's /, lets the badge reach back over the text
+     before it: at the root, the end of the dimmed root name, the folder Up
+     opens.
 
    The badge fades in over --transition-fast, appears at once under
    reduced motion, and goes at once: the registry removes it when the
@@ -2149,7 +2158,7 @@ html.theme-anim .menu {
   translate: 0 -50%;
 }
 .kbd-badge[data-kbd-placement="beside"] {
-  inset-inline-start: calc(var(--kbd-badge-inline) + 2px);
+  inset-inline-end: calc(100% - var(--kbd-badge-inline));
   top: var(--kbd-badge-block);
   translate: 0 -50%;
 }

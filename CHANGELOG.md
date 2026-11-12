@@ -48,10 +48,10 @@ All notable changes to Metabrowser are documented here.
   about Shift. The main pane’s view tabs are a tablist to assistive technology.
 
 - The keys Shift reveals are drawn in the yellow that marks a newly arrived row.
-  Each keycap sits at the end of its tab or button, or just past an icon button, and is
-  translucent, so the label under its edge still reads; a copy button that otherwise
-  shows only on hover shows while Shift is held.
-  The shortcut strip turns the same yellow and grows upward over the bottom of the
+  Each keycap sits over the end of its own tab, button, icon, or breadcrumb, never over
+  the file name, note, or path after it, and is translucent, so the label under its edge
+  still reads; a copy button that otherwise shows only on hover shows while Shift is
+  held. The shortcut strip turns the same yellow and grows upward over the bottom of the
   navigation pane, so the tree does not move.
   Text on the yellow keeps at least 4.5:1 contrast in both themes.
   The keycaps fade in briefly, appear at once under reduced motion, and never print.

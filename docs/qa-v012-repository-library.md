@@ -955,7 +955,13 @@ line. Open that address with the browser’s developer tools open.
     - Each keycap is a small yellow key with a deeper yellow border and dark text.
       A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
       label’s last letter, which still reads through it.
-      The Up and Copy keycaps sit just past their controls in the file header.
+      In the file header, the Up keycap sits over the end of the folder’s breadcrumb,
+      and the Copy keycap over the copy icon.
+      Each covers no text outside its own control: the file name, the mirror note, and
+      the size read in full.
+      At the root, Up’s control is the `/` crumb, which is narrower than a keycap, so
+      the keycap also reaches back over the last letter or two of the dimmed root name,
+      the folder Up opens.
       No keycap is cut off, and nothing beside one moves.
     - The Copy path button, which otherwise shows only on hover, shows while Shift is
       held, with the pointer away from the header.
@@ -966,6 +972,10 @@ line. Open that address with the browser’s developer tools open.
 
     Repeat in the dark theme, where the yellow is olive and the text light, and
     everything reads as clearly.
+    Open a folder and hold Shift: the Up keycap sits over the Up button, and the path
+    after it reads in full.
+    Open a commit from **Commits** and hold Shift: the Copy keycap sits over the copy
+    icon beside the short commit ID, and the author’s name after it reads in full.
     Repeat each theme at 200% zoom, with the navigation pane dragged to its narrowest,
     and in a window about 480 pixels wide, where a tab cut off by the window’s edge
     takes its keycap with it.
@@ -978,8 +988,13 @@ line. Open that address with the browser’s developer tools open.
     No keycap was clipped except the one on the tab the window’s edge cut off, the
     tree’s box and scroll position did not change while the strip showed, and the
     keycaps and the strip were gone once Shift was released.
-    Under emulated reduced motion the keycaps had no animation, and under print media
-    neither keycap nor strip was displayed.
+    For the Up and Copy keycaps, it ran on a file at the root and a nested file, of a
+    folder and of a mirror’s pin, on a folder, and on a commit, in both themes, and on a
+    nested file and a folder right to left.
+    Each keycap ended within half a pixel of its control’s inline end, and no glyph
+    outside the control lay under one except the end of the dimmed root name at the
+    root. Under emulated reduced motion the keycaps had no animation, and under print
+    media neither keycap nor strip was displayed.
     From the hold timer to the frame that showed the keycaps took about 4 ms on the
     Markdown file and 16 to 18 ms on the Source view of `static/app.js`, a page of about
     15,000 elements. The contrast of the reveal’s text is computed beside its tokens in

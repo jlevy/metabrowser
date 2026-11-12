@@ -1397,12 +1397,17 @@ names for it:
   padding, centered top to bottom: the default, for tabs, chips, and text buttons.
   A keycap is wider than a tab’s padding, so it covers the label’s last letter, which
   reads through the translucent fill.
-  A `beside` badge sits just past its target’s inline end, within the nearest
-  `[data-kbd-badge-anchor]`: the file header, the folder header, or the commit view’s
-  heading. It serves icon buttons and targets in a row that clips, such as the Copy path
-  button and the breadcrumbs.
-  The target and the anchor become containing blocks through zero-specificity rules, so
-  one that already declares a position keeps it.
+  A `beside` badge also sits over its target’s own inline end, but is positioned within
+  the nearest `[data-kbd-badge-anchor]`: the file header, the folder header, or the
+  commit view’s heading.
+  It serves icon buttons and targets in a row that clips, such as the Copy path button
+  and the breadcrumbs, where a badge inside the target would be cut off.
+  It covers the icon or the crumb’s last letter, never the file name, note, size, path,
+  or author that follows.
+  A crumb narrower than a keycap, such as the root’s `/`, lets the keycap reach back
+  over the text before it: at the root, the end of the dimmed root name, the folder Up
+  opens. The target and the anchor become containing blocks through zero-specificity
+  rules, so one that already declares a position keeps it.
 - **Hover-revealed targets show.** A target that otherwise appears only on hover or
   focus, such as either copy button, appears for the reveal, with its pointer events, as
   [Reveal on Hover Keeps Keyboard Reach](#reveal-on-hover-keeps-keyboard-reach) requires

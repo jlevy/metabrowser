@@ -1948,7 +1948,7 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert inline_end["inset-inline-end"] == "0"
     assert (inline_end["top"], inline_end["translate"]) == ("50%", "0 -50%")
     beside = selected['.kbd-badge[data-kbd-placement="beside"]']
-    assert beside["inset-inline-start"] == "calc(var(--kbd-badge-inline) + 2px)"
+    assert beside["inset-inline-end"] == "calc(100% - var(--kbd-badge-inline))"
     assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
     assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
@@ -1958,6 +1958,44 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert '<div class="git-commit-header" data-kbd-badge-anchor>' in git_panel
+
+
+def test_beside_badges_end_at_their_targets_inline_end() -> None:
+    """A `beside` badge covers the end of its own control and no text outside it.
+
+    The registry writes `--kbd-badge-inline` as the target's inline end, measured from the
+    anchor's inline-start edge. The badge's inline end sits that far from the anchor's
+    inline start, which is `100%` less it from the anchor's inline end, so the badge ends
+    where its target ends, as an `inline-end` badge does. A badge that started there
+    instead, just past its target, covered the first glyphs of whatever came next: the
+    file name after Up's crumb, the mirror note after Copy path, the path after the
+    folder's Up, and the author after Copy revision. `100%` is the anchor's padding box,
+    which is the border box the registry measures from only while no anchor has an inline
+    border.
+    """
+
+    registry = (STATIC / "keyboard-shortcuts.js").read_text(encoding="utf-8")
+    measured = "const inline = rtl ? anchorBox.right - box.left : box.right - anchorBox.left;"
+    assert measured in registry, "the registry measures the target's inline end differently"
+    rules = _rules_of(STATIC / "styles.css")
+    beside = [body for selector, body in rules if 'data-kbd-placement="beside"' in selector]
+    assert len(beside) == 1, "a beside badge is placed by one rule"
+    placement = beside[0]
+    offsets = {name for name in placement if name.startswith(("inset", "left", "right", "margin"))}
+    assert offsets == {"inset-inline-end"}, (
+        f"a beside badge is placed by {sorted(offsets)}, not by its inline end alone"
+    )
+    assert placement["inset-inline-end"] == "calc(100% - var(--kbd-badge-inline))"
+    assert placement["translate"].split()[0] == "0", "a beside badge is shifted off its target"
+    anchor = re.compile(r"(\.(file-header|folder-header|git-commit-header))+")
+    for selector, body in rules:
+        if anchor.fullmatch(re.split(r"[\s>+~]+", selector)[-1]):
+            borders = {
+                name
+                for name in body
+                if re.fullmatch(r"border(-width|-style|-(left|right|inline)(-[\w-]+)?)?", name)
+            }
+            assert not borders, f"{selector} gives a badge anchor an inline border: {borders}"
 
 
 def test_hover_revealed_targets_show_while_keys_are_revealed() -> None:
