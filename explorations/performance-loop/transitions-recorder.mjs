@@ -1,4 +1,5 @@
-// In-page recorder and trusted-input driver for the transition-navigation/v1 scenario.
+// In-page recorder and trusted-input driver for the transition-navigation/v1 scenario
+// (revision 2).
 //
 // Measurement only: it drives the unmodified product over the Chrome DevTools Protocol
 // with trusted input and observes it from inside the page. Every in-page time is on the
@@ -14,6 +15,11 @@ export { sleep };
 // Named regions whose per-frame post-layout box is recorded. `track` names the box
 // components that count toward a transition's movement figure; the others are still
 // recorded per region. Add a region here and every later run records it.
+//
+// `group` keeps figures apart: the page group (the default) is `movementPx`, and every
+// other group reports under `movementByGroup`, so adding a group never changes the page
+// figure. A `sameNode` region counts a step only while the selector keeps matching the
+// same element; a different element is a replacement, not a movement.
 export const REGIONS = {
   navTabs: { selector: ".nav-tab-bar", track: ["x", "y", "w", "h"] },
   filterBar: { selector: "#nav-filter-bar", track: ["x", "y", "w", "h"] },
@@ -38,6 +44,35 @@ export const REGIONS = {
   prBody: {
     selector: "#preview-pane > .pull-request-host > .github-pull-body",
     track: ["y"],
+  },
+  // The selected tree row, and the corpus's root folder below `src`, which every reveal
+  // or expansion inside `src` pushes down.
+  treeSelected: {
+    selector: "#tab-files .tree-item.selected",
+    track: ["y"],
+    group: "tree",
+    sameNode: true,
+  },
+  treeRowTests: {
+    selector: '#tab-files .tree-item.tree-folder[data-path="tests"]',
+    track: ["y"],
+    group: "tree",
+    sameNode: true,
+  },
+  paletteDialog: {
+    selector: ".search-palette-overlay:not([hidden]) .search-palette-dialog",
+    track: ["x", "y", "w"],
+    group: "palette",
+  },
+  paletteResults: {
+    selector: ".search-palette-overlay:not([hidden]) .search-palette-results",
+    track: ["x", "y", "w"],
+    group: "palette",
+  },
+  paletteSelected: {
+    selector: '.search-palette-overlay:not([hidden]) [role="option"][aria-selected="true"]',
+    track: ["x", "y"],
+    group: "palette",
   },
 };
 
@@ -73,8 +108,22 @@ function recorderMain(config) {
     frameCount: 0,
     regions: config.regions,
     observers: {},
+    listSpec: null,
+    listLog: [],
+    lastList: null,
+    milestoneFns: null,
+    milestones: {},
   };
   window.__tr = R;
+  const nodeIds = new WeakMap();
+  let nextNodeId = 0;
+  const nodeId = (el) => {
+    if (!nodeIds.has(el)) {
+      nextNodeId += 1;
+      nodeIds.set(el, nextNodeId);
+    }
+    return nodeIds.get(el);
+  };
 
   const nodeName = (n) => {
     if (!n) {
@@ -270,8 +319,9 @@ function recorderMain(config) {
   };
   R.state = state;
 
-  const box = (selector) => {
-    const el = document.querySelector(selector);
+  // A box is [x, y, w, h]; a sameNode region's box also carries the element's id.
+  const box = (spec) => {
+    const el = document.querySelector(spec.selector);
     if (!el) {
       return null;
     }
@@ -279,24 +329,65 @@ function recorderMain(config) {
     if (r.width === 0 && r.height === 0) {
       return null;
     }
-    return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+    const b = [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+    if (spec.sameNode) {
+      b.push(nodeId(el));
+    }
+    return b;
   };
   const sameBox = (a, b) =>
-    a === b || (a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3]);
+    a === b || (a && b && a.length === b.length && a.every((v, i) => v === b[i]));
   R.snapshotRegions = () => {
     const out = {};
     for (const [name, spec] of Object.entries(R.regions)) {
-      out[name] = box(spec.selector);
+      out[name] = box(spec);
     }
     R.lastBox = { ...out };
     return out;
   };
   const trackRegions = (t) => {
     for (const [name, spec] of Object.entries(R.regions)) {
-      const b = box(spec.selector);
+      const b = box(spec);
       if (!sameBox(b, R.lastBox[name])) {
         R.regionLog.push([t, name, b]);
         R.lastBox[name] = b;
+      }
+    }
+  };
+  // An ordered list under watch (the palette's results): each row's key and the selected
+  // index, logged when either changes.
+  const trackList = (t) => {
+    const spec = R.listSpec;
+    if (!spec) {
+      return;
+    }
+    const rows = [...document.querySelectorAll(spec.rows)].slice(0, 12);
+    const keys = rows.map((r) =>
+      (r.getAttribute("aria-label") || r.textContent || "").trim().slice(0, 80),
+    );
+    const selected = rows.findIndex((r) => r.getAttribute("aria-selected") === "true");
+    const sig = `${selected}|${keys.join("\u0001")}`;
+    if (sig !== R.lastList) {
+      R.lastList = sig;
+      R.listLog.push([t, keys, selected]);
+    }
+  };
+  const trackMilestones = (t) => {
+    if (!R.milestoneFns) {
+      return;
+    }
+    for (const [name, fn] of Object.entries(R.milestoneFns)) {
+      if (R.milestones[name]) {
+        continue;
+      }
+      let ok = false;
+      try {
+        ok = Boolean(fn());
+      } catch (_error) {
+        ok = false;
+      }
+      if (ok) {
+        R.milestones[name] = [t, null];
       }
     }
   };
@@ -322,6 +413,11 @@ function recorderMain(config) {
     if (R.readyAt !== null && R.readyNext === null) {
       R.readyNext = t;
     }
+    for (const m of Object.values(R.milestones)) {
+      if (m[1] === null && m[0] < t) {
+        m[1] = t;
+      }
+    }
     if (document.visibilityState !== "visible") {
       R.hiddenFrames += 1;
     }
@@ -338,6 +434,8 @@ function recorderMain(config) {
     R.frames.push([t, code]);
     trackRegions(t);
     checkAlerts(t);
+    trackList(t);
+    trackMilestones(t);
     if (R.readyFn && R.readyAt === null) {
       let ok = false;
       try {
@@ -445,6 +543,73 @@ export function requestClass(url, type) {
   return "other";
 }
 
+// Route families for cache disposition: what kind of thing a request fetched.
+export function routeFamily(url, type) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch (_error) {
+    return "other";
+  }
+  if (u.protocol === "data:" || u.protocol === "blob:") {
+    return "inline";
+  }
+  if (type === "Document") {
+    return "document";
+  }
+  const p = u.pathname;
+  if (p.startsWith("/static/")) {
+    return "static";
+  }
+  if (p.startsWith("/plugin-static/")) {
+    return "plugin_static";
+  }
+  if (p.startsWith("/kpress-static/")) {
+    return "kpress_static";
+  }
+  if (p === "/api/events") {
+    return "stream";
+  }
+  if (p.startsWith("/api/")) {
+    return "data";
+  }
+  return "other";
+}
+
+/**
+ * How a request was satisfied, from its DevTools events: `cache` when the memory or disk
+ * cache answered with no network request, `revalidated` for a 304, `network` for any
+ * other response, `failed`, or `pending` when no response had arrived.
+ */
+export function disposition(entry) {
+  if (entry.cache) {
+    return "cache";
+  }
+  if (entry.failed) {
+    return "failed";
+  }
+  if (entry.status === 304) {
+    return "revalidated";
+  }
+  if (entry.status !== null) {
+    return "network";
+  }
+  return "pending";
+}
+
+const postBytesOf = (request) => {
+  if (Array.isArray(request.postDataEntries)) {
+    return request.postDataEntries.reduce(
+      (a, e) => a + (e.bytes ? Buffer.from(e.bytes, "base64").length : 0),
+      0,
+    );
+  }
+  if (typeof request.postData === "string") {
+    return Buffer.byteLength(request.postData, "utf8");
+  }
+  return request.hasPostData ? null : 0;
+};
+
 const KEYS = {
   ArrowDown: { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 },
   ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
@@ -544,8 +709,12 @@ export async function launchBrowser({ profileDir, headed = false, width = 1440, 
     if (method === "Network.requestWillBeSent") {
       const entry = {
         kind,
+        sid,
         id: params.requestId,
         method: params.request.method,
+        family: routeFamily(params.request.url, params.type),
+        postBytes: params.request.method === "POST" ? postBytesOf(params.request) : 0,
+        encoded: null,
         url: params.request.url,
         type: params.type,
         cls: requestClass(params.request.url, params.type),
@@ -571,6 +740,11 @@ export async function launchBrowser({ profileDir, headed = false, width = 1440, 
       const entry = byId.get(`${sid}:${params.requestId}`);
       if (entry) {
         entry.cache = "memory";
+      }
+    } else if (method === "Network.loadingFinished") {
+      const entry = byId.get(`${sid}:${params.requestId}`);
+      if (entry) {
+        entry.encoded = params.encodedDataLength;
       }
     } else if (method === "Network.loadingFailed") {
       const entry = byId.get(`${sid}:${params.requestId}`);
@@ -647,11 +821,22 @@ const round1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10)
 function regionMovement(snapshot, log, t0, regions) {
   const out = {};
   let movementPx = 0;
+  const movementByGroup = {};
+  // Frames in which some region of the group moved: an animated reveal moves rows over
+  // several frames, an unanimated one in one.
+  const stepsByGroup = {};
   for (const [name, spec] of Object.entries(regions)) {
+    const group = spec.group ?? "page";
+    if (group !== "page") {
+      movementByGroup[group] ??= 0;
+      stepsByGroup[group] ??= new Set();
+    }
     const seq = [snapshot[name] ?? null];
+    const times = [null];
     for (const [t, n, b] of log) {
       if (n === name && t >= t0 - 1) {
         seq.push(b);
+        times.push(t);
       } else if (n === name) {
         seq[0] = b;
       }
@@ -659,6 +844,7 @@ function regionMovement(snapshot, log, t0, regions) {
     let steps = 0;
     let appeared = 0;
     let removed = 0;
+    let replaced = 0;
     const max = [0, 0, 0, 0];
     for (let i = 1; i < seq.length; i++) {
       const a = seq[i - 1];
@@ -674,7 +860,17 @@ function regionMovement(snapshot, log, t0, regions) {
       if (a === null || b === null) {
         continue;
       }
+      if (spec.sameNode && a[4] !== b[4]) {
+        replaced += 1;
+        continue;
+      }
       steps += 1;
+      if (
+        group !== "page" &&
+        spec.track.some((c) => b["xywh".indexOf(c)] !== a["xywh".indexOf(c)])
+      ) {
+        stepsByGroup[group].add(times[i]);
+      }
       for (let k = 0; k < 4; k++) {
         const d = b[k] - a[k];
         if (Math.abs(d) > Math.abs(max[k])) {
@@ -689,7 +885,11 @@ function regionMovement(snapshot, log, t0, regions) {
     }
     const tracked = { x: 0, y: 1, w: 2, h: 3 };
     for (const c of spec.track) {
-      movementPx = Math.max(movementPx, Math.abs(max[tracked[c]]));
+      if (group === "page") {
+        movementPx = Math.max(movementPx, Math.abs(max[tracked[c]]));
+      } else {
+        movementByGroup[group] = Math.max(movementByGroup[group], Math.abs(max[tracked[c]]));
+      }
     }
     out[name] = {
       present: [first !== null, last !== null],
@@ -700,10 +900,53 @@ function regionMovement(snapshot, log, t0, regions) {
       steps,
       appeared,
       removed,
+      ...(spec.sameNode ? { replaced } : {}),
       net: first && last ? [0, 1, 2, 3].map((k) => last[k] - first[k]) : null,
     };
   }
-  return { regions: out, movementPx };
+  const movementStepsByGroup = Object.fromEntries(
+    Object.entries(stepsByGroup).map(([g, set]) => [g, set.size]),
+  );
+  return { regions: out, movementPx, movementByGroup, movementStepsByGroup };
+}
+
+/** What a watched list did after its first rows painted. */
+function listChanges(log, origin) {
+  const after = log.filter((e) => e[0] >= origin - 1);
+  const firstIndex = after.findIndex((e) => e[1].length > 0);
+  if (firstIndex < 0) {
+    return { firstRowsMs: null, changes: 0, rowReplacements: 0, rowsReplacedBelowSelection: 0 };
+  }
+  const first = after[firstIndex];
+  const selected = first[2] < 0 ? 0 : first[2];
+  let rowReplacements = 0;
+  let selectionReplaced = false;
+  const below = new Set();
+  for (let i = firstIndex + 1; i < after.length; i++) {
+    const prev = after[i - 1][1];
+    const cur = after[i][1];
+    for (let k = 0; k < Math.min(prev.length, cur.length); k++) {
+      if (prev[k] !== cur[k]) {
+        rowReplacements += 1;
+        if (k > selected) {
+          below.add(k);
+        } else if (k === selected) {
+          selectionReplaced = true;
+        }
+      }
+    }
+  }
+  const last = after[after.length - 1];
+  return {
+    firstRowsMs: round1(first[0] - origin),
+    lastChangeMs: round1(last[0] - origin),
+    changes: after.length - firstIndex - 1,
+    rowReplacements,
+    rowsReplacedBelowSelection: below.size,
+    selectionReplaced,
+    firstKeys: first[1].slice(0, 8),
+    finalKeys: last[1].slice(0, 8),
+  };
 }
 
 /** Driver bound to one page: evaluation, trusted input, and the measure step. */
@@ -806,6 +1049,40 @@ export function driver(browser) {
     const { width, height } = browser.viewport;
     await moveTo(width - 2, height - 2);
   }
+  // Characters typed back to back, each a keyDown with text and a keyUp.
+  async function typeText(text, intervalMs = 0) {
+    for (const ch of text) {
+      await page.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: ch,
+        text: ch,
+        unmodifiedText: ch,
+        windowsVirtualKeyCode: ch.toUpperCase().charCodeAt(0),
+      });
+      await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
+      if (intervalMs) {
+        await sleep(intervalMs);
+      }
+    }
+  }
+  // A held key: `count` keyDowns flagged autoRepeat, `intervalMs` apart, then one keyUp.
+  async function keyRepeat(name, count, intervalMs) {
+    const k = KEYS[name];
+    if (!k) {
+      throw new Error(`no key definition for ${name}`);
+    }
+    for (let i = 0; i < count; i++) {
+      if (i) {
+        await sleep(intervalMs);
+      }
+      await page.send("Input.dispatchKeyEvent", {
+        type: k.text ? "keyDown" : "rawKeyDown",
+        autoRepeat: true,
+        ...k,
+      });
+    }
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...k, text: undefined });
+  }
   async function historyStep(delta) {
     const h = await page.send("Page.getNavigationHistory");
     const entry = h.entries[h.currentIndex + delta];
@@ -820,8 +1097,12 @@ export function driver(browser) {
    * spec.ready: in-page `() => boolean` source, true once the exact subject is shown
    *   with useful content. spec.converged: in-page `() => string` source, "" when the
    *   whole application agrees on the subject after settling, else what disagrees.
-   * spec.input: { kind: "click" | "hover-click" | "key" | "history" | "navigate" |
-   *   "reload", selector?, hoverMs?, key?, delta?, url? }.
+   * spec.input: { kind: "click" | "hover-click" | "key" | "key-repeat" | "type" |
+   *   "history" | "navigate" | "reload", selector?, hoverMs?, key?, count?, intervalMs?,
+   *   text?, delta?, url? }.
+   * spec.milestones: { name: in-page `() => boolean` source }, each timed like painted
+   *   ready, waited for after the window closes so the other fields keep their window.
+   * spec.list: { rows: selector }, an ordered list whose rows are watched for replacement.
    */
   async function measure(spec) {
     const settleMs = spec.settleMs ?? 400;
@@ -838,13 +1119,19 @@ export function driver(browser) {
     const excMark = browser.exceptions.length;
     const consoleMark = browser.consoleErrors.length;
     const landing = input.kind === "navigate" || input.kind === "reload";
+    const milestoneFns = spec.milestones
+      ? `{ ${Object.entries(spec.milestones)
+          .map(([name, fn]) => `${JSON.stringify(name)}: (${fn})`)
+          .join(", ")} }`
+      : "null";
+    const armExtras = `R.listSpec = ${JSON.stringify(spec.list ?? null)}; R.listLog = []; R.lastList = null; R.milestoneFns = ${milestoneFns}; R.milestones = {};`;
     let armScript = null;
     if (landing) {
       // Marks the outgoing document, so waiting below cannot read its recorder.
       await evaluate("window.__trOld = true");
       armScript = await page.send("Page.addScriptToEvaluateOnNewDocument", {
         // Runs after the recorder's own document-start script, so the recorder exists.
-        source: `window.__tr.readyFn = (${spec.ready}); window.__tr.armedAt = 0;`,
+        source: `(() => { const R = window.__tr; R.readyFn = (${spec.ready}); R.armedAt = 0; ${armExtras} })();`,
       });
     } else {
       await evaluate(`(() => {
@@ -859,6 +1146,7 @@ export function driver(browser) {
         R.spanMark = window.metabrowser?.perf?.snapshot ? window.metabrowser.perf.snapshot().measure_samples_seen : null;
         R.readyAt = null; R.readyNext = null; R.readyFn = (${spec.ready});
         R.dom0 = document.getElementsByTagName("*").length;
+        ${armExtras}
         R.armedAt = performance.now();
       })()`);
     }
@@ -870,6 +1158,10 @@ export function driver(browser) {
       await press(point.x, point.y);
     } else if (input.kind === "key") {
       await key(input.key);
+    } else if (input.kind === "key-repeat") {
+      await keyRepeat(input.key, input.count, input.intervalMs);
+    } else if (input.kind === "type") {
+      await typeText(input.text, input.intervalMs ?? 0);
     } else if (input.kind === "history") {
       await historyStep(input.delta);
     } else if (input.kind === "navigate") {
@@ -889,9 +1181,13 @@ export function driver(browser) {
       });
     }
     await sleep(settleMs);
-    const startEvent = { click: "pointerdown", "hover-click": "pointerdown", key: "keydown" }[
-      input.kind
-    ];
+    const startEvent = {
+      click: "pointerdown",
+      "hover-click": "pointerdown",
+      key: "keydown",
+      "key-repeat": "keydown",
+      type: "keydown",
+    }[input.kind];
     const raw = await evaluate(`(() => {
       const R = window.__tr;
       const pane = document.getElementById("preview-pane");
@@ -913,9 +1209,10 @@ export function driver(browser) {
         armedAt: R.armedAt, observers: R.observers, kept, spans, state0: R.state0 ?? "",
         dom0: R.dom0 ?? null, dom1: document.getElementsByTagName("*").length,
         w: innerWidth, h: innerHeight, vis: document.visibilityState, path: location.pathname,
+        listLog: R.listLog,
       };
     })()`);
-    await evaluate("window.__tr.readyFn = null");
+    await evaluate("window.__tr.readyFn = null; window.__tr.listSpec = null");
     const converged =
       raw.readyAt === null ? "never ready" : await evaluate(`(${spec.converged})()`);
     const net = browser.net.slice(netMark);
@@ -952,6 +1249,42 @@ export function driver(browser) {
     }
     const origin = t0 ?? raw.armedAt;
     const windowFrames = raw.frames.filter((f) => f[0] >= origin);
+    const gesture = raw.inputs.filter((i) => i[0] === (startEvent ?? "popstate") && i[1] >= origin);
+    const inputSpanMs = gesture.length > 1 ? round1(gesture[gesture.length - 1][1] - origin) : 0;
+
+    // Milestones are waited for after the window above has closed, so every other field
+    // keeps the window it had before milestones existed.
+    let milestones;
+    let extraWaitMs = 0;
+    if (spec.milestones) {
+      const names = Object.keys(spec.milestones);
+      const w0 = Date.now();
+      await waitFor(
+        `(() => { const m = window.__tr.milestones; return ${JSON.stringify(names)}.every((n) => m[n] && m[n][1] !== null); })()`,
+        spec.milestoneTimeoutMs ?? 10000,
+        50,
+      );
+      extraWaitMs = Date.now() - w0;
+      const got = await evaluate("window.__tr.milestones");
+      await evaluate("window.__tr.milestoneFns = null");
+      milestones = Object.fromEntries(
+        names.map((n) => [n, got[n] && got[n][1] !== null ? round1(got[n][1] - origin) : null]),
+      );
+    }
+    // A body the DevTools event left out is asked for once the request has been sent.
+    for (const r of net) {
+      if (r.method === "POST" && r.postBytes === null) {
+        try {
+          const session = r.sid === page.sessionId ? page : browser.conn.sessions.get(r.sid);
+          const body = await session.send("Network.getRequestPostData", { requestId: r.id });
+          r.postBytes = body.base64Encoded
+            ? Buffer.from(body.postData, "base64").length
+            : Buffer.byteLength(body.postData, "utf8");
+        } catch (_error) {
+          // The body is no longer held; the request stays counted with unknown bytes.
+        }
+      }
+    }
     if (windowFrames.length < 2) {
       refusals.push(["raf", `${windowFrames.length} animation frames after input`]);
     }
@@ -991,6 +1324,16 @@ export function driver(browser) {
     const loafs = raw.loafs.filter((x) => x[0] + x[1] >= origin && x[0] <= end);
     const events = raw.events.filter((x) => x[0] >= origin - 1);
     const movement = regionMovement(raw.snapshot, raw.regionLog, origin, REGIONS);
+    const byFamily = {};
+    for (const r of net) {
+      if (r.family === "inline") {
+        continue;
+      }
+      byFamily[r.family] ??= {};
+      const d = disposition(r);
+      byFamily[r.family][d] = (byFamily[r.family][d] ?? 0) + 1;
+    }
+    const posts = net.filter((r) => r.method === "POST");
 
     const byClass = {};
     for (const r of net) {
@@ -1023,7 +1366,15 @@ export function driver(browser) {
       uncreditedFrames: upto.filter((f) => f[2]).length,
       frameStates: states.slice(0, 24),
       movementPx: movement.movementPx,
+      movementByGroup: movement.movementByGroup,
+      movementStepsByGroup: movement.movementStepsByGroup,
       regions: movement.regions,
+      inputSpanMs,
+      readyAfterLastInputMs:
+        raw.readyNext === null ? null : round1(rel(raw.readyNext) - inputSpanMs),
+      milestones,
+      extraWaitMs,
+      list: spec.list ? listChanges(raw.listLog, origin) : undefined,
       shifts: {
         available: raw.observers["layout-shift"] === true,
         count: shifts.length,
@@ -1041,6 +1392,21 @@ export function driver(browser) {
         byClass,
         subject: subjectRequests,
         subjectDuplicates,
+        byFamily,
+        fileEnvelopes: net.filter((r) => /^https?:\/\/[^/]+\/api\/file\?/.test(r.url)).length,
+        // Background posts (the Pulls catalog walk) run on their own timer, so they are
+        // reported by class and left out of the total.
+        postBytes: posts
+          .filter((r) => r.cls !== "background")
+          .reduce((a, r) => a + (r.postBytes ?? 0), 0),
+        postBytesByClass: posts.reduce((acc, r) => {
+          acc[r.cls] = (acc[r.cls] ?? 0) + (r.postBytes ?? 0);
+          return acc;
+        }, {}),
+        posts: posts.slice(0, 12).map((r) => ({
+          u: r.url.replace(/^https?:\/\/[^/]+/, "").slice(0, 100),
+          bytes: r.postBytes,
+        })),
         list: net
           .filter((r) => r.cls !== "inline")
           .slice(0, 60)
@@ -1050,6 +1416,7 @@ export function driver(browser) {
             m: r.method === "GET" ? undefined : r.method,
             u: r.url.replace(/^https?:\/\/[^/]+/, "").slice(0, 140),
             st: r.status,
+            d: disposition(r),
             cache: r.cache ?? undefined,
             failed: r.failed ?? undefined,
           })),

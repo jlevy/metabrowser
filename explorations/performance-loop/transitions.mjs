@@ -27,6 +27,7 @@ const REPO = path.resolve(HERE, "../..");
 const BENCH = path.join(REPO, ".bench", "transitions");
 const PORTS = [8890, 8899];
 const MIN_RUNS = 3;
+const SCENARIO_REVISION = 2;
 
 const REGIME = {
   server:
@@ -296,8 +297,16 @@ function logTransition(row) {
   const fmt = (v) => (v === null || v === undefined ? "  n/a" : String(Math.round(v)).padStart(5));
   const flag = row.ok ? "  " : "!!";
   const req = row.requests.byClass;
+  const extra = [
+    ...Object.entries(row.milestones ?? {}).map(([k, v]) => ` ${k} ${fmt(v).trim()}`),
+    row.list ? ` listBelowSel ${row.list.rowsReplacedBelowSelection}` : "",
+    row.movementByGroup?.tree ? ` tree ${row.movementByGroup.tree}` : "",
+    row.movementByGroup?.palette ? ` palette ${row.movementByGroup.palette}` : "",
+    row.requests.postBytes ? ` post ${row.requests.postBytes}B` : "",
+    row.inputSpanMs ? ` afterLast ${fmt(row.readyAfterLastInputMs).trim()}` : "",
+  ].join("");
   console.log(
-    `  ${flag} ${row.id.padEnd(40)} ready ${fmt(row.paintedReadyMs)} blank ${String(row.blankFrames).padStart(2)} ph ${row.placeholderVisibleFrames} data ${req.data ?? 0} plug ${req.plugin ?? 0} kp ${req.kpress ?? 0} dup ${row.requests.subjectDuplicates} top ${row.previewTop.removed} moved ${row.movementPx} shift ${row.shifts.count}${row.ok ? "" : `  ${row.refusals.map((r) => r.join(": ")).join(" | ")}`}`,
+    `  ${flag} ${row.id.padEnd(40)} ready ${fmt(row.paintedReadyMs)} blank ${String(row.blankFrames).padStart(2)} ph ${row.placeholderVisibleFrames} data ${req.data ?? 0} plug ${req.plugin ?? 0} kp ${req.kpress ?? 0} dup ${row.requests.subjectDuplicates} top ${row.previewTop.removed} moved ${row.movementPx} shift ${row.shifts.count}${extra}${row.ok ? "" : `  ${row.refusals.map((r) => r.join(": ")).join(" | ")}`}`,
   );
 }
 
@@ -371,6 +380,9 @@ async function oneRun(options) {
   fs.mkdirSync(profileRoot, { recursive: true });
   const row = {
     schema: SCENARIO,
+    // 2 adds milestones, lists, region groups, cache disposition, POST bytes, and the
+    // palette, skim, and reveal journeys; no revision 1 field changed meaning.
+    scenario_revision: SCENARIO_REVISION,
     exp,
     series,
     condition: condition.label,
@@ -584,6 +596,33 @@ const METRICS = [
   { key: "region_movement_px", kind: "count", get: (t) => t.movementPx },
   { key: "long_task_max_ms", kind: "time", get: (t) => t.longTasks.maxMs },
   { key: "dom_nodes_end", kind: "count", get: (t) => t.dom.end },
+  // Scenario revision 2. A row from revision 1 has none of these, and compare skips a
+  // metric either side lacks.
+  { key: "input_span_ms", kind: "time", get: (t) => t.inputSpanMs },
+  { key: "ready_after_last_input_ms", kind: "time", get: (t) => t.readyAfterLastInputMs },
+  { key: "shell_tools_ready_ms", kind: "time", get: (t) => t.milestones?.shellToolsReady },
+  { key: "styled_markdown_ms", kind: "time", get: (t) => t.milestones?.styledMarkdown },
+  { key: "pr_header_ms", kind: "time", get: (t) => t.milestones?.prHeader },
+  { key: "pr_description_shown_ms", kind: "time", get: (t) => t.milestones?.prDescriptionShown },
+  { key: "pr_description_final_ms", kind: "time", get: (t) => t.milestones?.prDescriptionFinal },
+  { key: "tree_movement_px", kind: "count", get: (t) => t.movementByGroup?.tree },
+  { key: "tree_movement_frames", kind: "count", get: (t) => t.movementStepsByGroup?.tree },
+  { key: "palette_movement_px", kind: "count", get: (t) => t.movementByGroup?.palette },
+  {
+    key: "list_rows_replaced_below_selection",
+    kind: "count",
+    get: (t) => t.list?.rowsReplacedBelowSelection,
+  },
+  { key: "list_row_replacements", kind: "count", get: (t) => t.list?.rowReplacements },
+  { key: "file_envelope_requests", kind: "count", get: (t) => t.requests.fileEnvelopes },
+  { key: "post_body_bytes", kind: "count", get: (t) => t.requests.postBytes },
+  ...["static", "plugin_static", "kpress_static", "data", "document"].flatMap((family) =>
+    ["network", "revalidated", "cache"].map((d) => ({
+      key: `${family}_${d}`,
+      kind: "count",
+      get: (t) => (t.requests.byFamily ? (t.requests.byFamily[family]?.[d] ?? 0) : undefined),
+    })),
+  ),
 ];
 
 function median(xs) {
@@ -723,22 +762,81 @@ const TABLES = [
       ["dom_nodes_end", "DOM nodes after"],
     ],
   },
+  // Revision 2 tables list only the transitions that have a value in them.
+  {
+    title: "Milestones",
+    sparse: true,
+    columns: [
+      ["shell_tools_ready_ms", "Shell tools ready ms"],
+      ["styled_markdown_ms", "Styled Markdown ms"],
+      ["pr_header_ms", "PR header ms"],
+      ["pr_description_shown_ms", "PR description shown ms"],
+      ["pr_description_final_ms", "PR description final ms"],
+    ],
+  },
+  {
+    title: "Input, lists, and groups",
+    sparse: true,
+    columns: [
+      ["input_span_ms", "Input span ms"],
+      ["ready_after_last_input_ms", "Ready after last input ms"],
+      ["file_envelope_requests", "File envelopes"],
+      ["post_body_bytes", "POST body bytes"],
+      ["list_rows_replaced_below_selection", "List rows replaced below selection"],
+      ["list_row_replacements", "List row replacements"],
+      ["tree_movement_px", "Tree movement px"],
+      ["tree_movement_frames", "Tree movement frames"],
+      ["palette_movement_px", "Palette movement px"],
+    ],
+    // A row only when something here differs from a single-input transition's defaults.
+    keep: (v) =>
+      v.list_row_replacements !== undefined ||
+      ["input_span_ms", "post_body_bytes", "tree_movement_px", "palette_movement_px"].some((k) =>
+        v[k]?.some((x) => x > 0),
+      ),
+  },
+  {
+    title: "Cache disposition (network / revalidated / cache)",
+    sparse: true,
+    families: ["static", "plugin_static", "kpress_static", "data", "document"],
+    keep: (_v, id) => id.startsWith("landing.") || id.startsWith("reveal."),
+  },
 ];
 
 function summaryTables(condition) {
   const byId = collect(condition);
   const lines = [];
   for (const table of TABLES) {
-    lines.push(`#### ${table.title}`, "");
-    lines.push(`| Transition | ${table.columns.map((c) => c[1]).join(" | ")} |`);
-    lines.push(`| --- | ${table.columns.map(() => "---:").join(" | ")} |`);
-    for (const entry of byId.values()) {
-      const cells = table.columns.map(([key]) =>
-        fmtStat(stat(entry.values[key]), metric(key).kind),
+    const columns = table.families
+      ? table.families.map((f) => [f, f.replace("_", "-")])
+      : table.columns;
+    const cell = (entry, key) => {
+      if (!table.families) {
+        return fmtStat(stat(entry.values[key]), metric(key).kind);
+      }
+      const parts = ["network", "revalidated", "cache"].map((d) =>
+        fmtStat(stat(entry.values[`${key}_${d}`]), "count"),
       );
-      lines.push(`| \`${entry.id}\` | ${cells.join(" | ")} |`);
+      return parts.every((p) => p === "n/a") ? "n/a" : parts.join(" / ");
+    };
+    const rows = [];
+    for (const entry of byId.values()) {
+      const cells = columns.map(([key]) => cell(entry, key));
+      if (table.sparse && cells.every((c) => c === "n/a")) {
+        continue;
+      }
+      if (table.keep && !table.keep(entry.values, entry.id)) {
+        continue;
+      }
+      rows.push(`| \`${entry.id}\` | ${cells.join(" | ")} |`);
     }
-    lines.push("");
+    if (table.sparse && rows.length === 0) {
+      continue;
+    }
+    lines.push(`#### ${table.title}`, "");
+    lines.push(`| Transition | ${columns.map((c) => c[1]).join(" | ")} |`);
+    lines.push(`| --- | ${columns.map(() => "---:").join(" | ")} |`);
+    lines.push(...rows, "");
   }
   return lines;
 }
@@ -856,6 +954,12 @@ function cmdCompare(argv) {
     throw new Error(`the conditions were measured on different corpora: ${[...corpora]}`);
   }
   const notes = [];
+  const revisions = new Set(all.map((r) => r.scenario_revision ?? 1));
+  if (revisions.size > 1) {
+    notes.push(
+      `runs come from scenario revisions ${[...revisions].join(" and ")}; metrics one revision lacks are not compared`,
+    );
+  }
   const harnesses = new Set(all.map((r) => r.harness.commit));
   if (harnesses.size > 1) {
     notes.push(`runs used ${harnesses.size} harness commits: ${[...harnesses].join(", ")}`);
@@ -975,11 +1079,29 @@ function cmdSamples(argv) {
     placeholderVisibleFrames: t.placeholderVisibleFrames,
     navPlaceholderVisibleFrames: t.navPlaceholderVisibleFrames,
     movementPx: t.movementPx,
-    requests: { byClass: t.requests.byClass, subjectDuplicates: t.requests.subjectDuplicates },
+    requests: {
+      byClass: t.requests.byClass,
+      subjectDuplicates: t.requests.subjectDuplicates,
+      byFamily: t.requests.byFamily,
+      fileEnvelopes: t.requests.fileEnvelopes,
+      postBytes: t.requests.postBytes,
+    },
     previewTop: { removed: t.previewTop.removed },
     shifts: { count: t.shifts.count, sumNoInput: t.shifts.sumNoInput },
     longTasks: { maxMs: t.longTasks.maxMs },
     dom: { end: t.dom.end },
+    // Revision 2; absent from a revision 1 row, and left absent here.
+    inputSpanMs: t.inputSpanMs,
+    readyAfterLastInputMs: t.readyAfterLastInputMs,
+    milestones: t.milestones,
+    movementByGroup: t.movementByGroup,
+    movementStepsByGroup: t.movementStepsByGroup,
+    list: t.list
+      ? {
+          rowReplacements: t.list.rowReplacements,
+          rowsReplacedBelowSelection: t.list.rowsReplacedBelowSelection,
+        }
+      : undefined,
   });
   const lines = readRows(positionals[0]).map((r) => {
     const { journeys, warmup: _warmup, regime: _regime, regions: _regions, ...rest } = r;

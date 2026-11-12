@@ -704,6 +704,9 @@ Each row records the trunk commit and the catalog totals it saw.
 | `commits` | Commits first show, three cold commits, two revisits, hover then click |
 | `pulls` | Pulls first show, list to pull request, its tabs first and again, pull request to pull request cold, revisit, and after a hover, history back, and Changes to another pull request |
 | `tree` | Folder expand, collapse, re-expand, and a nested expand |
+| `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
+| `skim` | ArrowDown held over six rows: six `keyDown` events flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
+| `reveal` | A landing on a file three folders down, its ancestors collapsed |
 
 **What each transition records.** Painted ready is measured from the input event’s own
 `timeStamp` (the first `pointerdown`, `keydown`, or `popstate`; navigation start for a
@@ -726,6 +729,34 @@ Beside it, per transition:
   duplicate requests for the selected subject per route;
 - top-level preview nodes replaced, Long Tasks, Long Animation Frames, Event Timing, the
   application’s own `…ToReady` spans, and the DOM node count.
+
+Scenario revision 2 adds fields and keeps every revision 1 field’s meaning; each row
+carries `scenario_revision`, and `compare` skips a metric either side lacks:
+
+- milestones, each timed like painted ready and waited for after the transition’s window
+  closes, so no other field’s window moves: on a landing, `shellToolsReady` (the shell
+  sets `data-shell-tools-ready` on the document element once its on-demand `shell-tools`
+  bundle has loaded and initialized) and `styledMarkdown` (the Markdown view shown with
+  KPress’s `document.css`, `components.css`, and `syntax.css` loaded); on every pull
+  request transition, `prHeader` (the exact title on screen), and on a Conversation,
+  `prDescriptionShown` (the description on screen in any form) and `prDescriptionFinal`
+  (rendered Markdown or the empty-description note, no plain-text placeholder left);
+- `inputSpanMs` and `readyAfterLastInputMs`, for gestures of several events, such as the
+  held key or a typed query;
+- a watched list (the palette’s results): when its first rows painted, how many row
+  replacements followed, how many rows below the selection were replaced, and whether
+  the selection was;
+- region groups beside the page figure: `tree` (the selected row and the root folder
+  below `src`, counted only while each stays the same element) and `palette` (the
+  dialog, the result list, and the selected option), with the largest step in pixels
+  and, for the tree, the number of frames in which a row moved;
+- cache disposition per request, from DevTools events, by route family (`static`,
+  `plugin_static`, `kpress_static`, `data`, `document`): `network` for a response with
+  its body, `revalidated` for a 304, `cache` when the memory or disk cache answered with
+  no request, and `pending` when no response event reached the recorder (a worker’s own
+  script, for one);
+- request body bytes of every POST, and `postBytes`, their total without the background
+  class; and the number of `/api/file` envelope requests.
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when any of these fails anywhere in its measured pass:
@@ -768,6 +799,8 @@ Painted ready is an upper bound quantized to one frame, and a product
 credited frame by one.
 The Pulls catalog walk runs for about the first minute of every page load and overlaps
 most journeys; its requests are counted as `background`, not as data.
+The palette query’s pull request results come from the live catalog, so which rows
+interleave can change as pull requests are opened; the files answer first either way.
 
 ### Start-Up Work, in Pairs
 

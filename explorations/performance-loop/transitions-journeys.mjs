@@ -54,6 +54,13 @@ export const SUBJECTS = {
   // Merged pull requests, listed under the Closed filter by number.
   pulls: { first: 353, second: 351, third: 349, fourth: 348 },
   tree: ["docs", "src", "src/metabrowser"],
+  // A query that returns both files and pull requests; the files answer first.
+  paletteQuery: "arch",
+  // Six rows below CHANGELOG.md in the root listing.
+  skimStart: "CHANGELOG.md",
+  skimTarget: "README.md",
+  // Three folders down, all collapsed in a fresh profile.
+  revealFile: "src/metabrowser/static/formatters.js",
 };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +210,46 @@ const folderConverged = (p, expanded) => `() => {
   return issues.join("; ");
 }`;
 
+// Milestones (in-page `() => boolean` sources), timed like painted ready.
+const shellToolsReady = `() => document.documentElement.dataset.shellToolsReady === "true"`;
+// The Markdown view is shown and KPress's document stylesheets have loaded.
+const styledMarkdown = (p) => `() => {
+  if (!(${fileReady(p)})()) { return false; }
+  const a = document.querySelector('#preview-pane > [data-active-view="true"]');
+  if (!a || !a.classList.contains("metabrowser-kpress-host")) { return false; }
+  const links = Array.from(document.querySelectorAll('link[rel="stylesheet"][href*="/kpress-static/"]'));
+  return ["/css/document.css", "/css/components.css", "/css/syntax.css"].every((n) => links.some((l) => l.href.includes(n) && l.sheet !== null));
+}`;
+const onScreen = `(el) => { if (!el) { return false; } const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; }`;
+const pullHost = (n) => `(() => {
+  if (!location.pathname.startsWith("/pull/${n}")) { return null; }
+  const host = document.querySelector("#preview-pane > .pull-request-host");
+  const title = host && host.querySelector(".github-pull-title");
+  return title && /#${n}\\b/.test(title.textContent || "") ? host : null;
+})()`;
+const prHeader = (n) =>
+  `() => { const host = ${pullHost(n)}; return !!host && (${onScreen})(host.querySelector(".github-pull-title")); }`;
+// The description on screen in any form, and in its final form: rendered Markdown, or
+// the empty-description note, with no plain-text placeholder left.
+const prDescription = (n, final) => `() => {
+  const host = ${pullHost(n)};
+  const body = host && host.querySelector('.github-pull-text[data-part="body"]');
+  if (!(${onScreen})(body)) { return false; }
+  return !${final} || (!body.querySelector(":scope > .github-pull-plain") && !!body.querySelector(":scope > .metabrowser-kpress-host, :scope > .github-pull-empty"));
+}`;
+const pullMilestones = (n, tab) =>
+  tab
+    ? { prHeader: prHeader(n) }
+    : {
+        prHeader: prHeader(n),
+        prDescriptionShown: prDescription(n, false),
+        prDescriptionFinal: prDescription(n, true),
+      };
+const landingMilestones = (p) => ({
+  shellToolsReady,
+  styledMarkdown: styledMarkdown(p),
+});
+
 const escapeRe = (s) => s.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
 const fileRequest = (p) => `^/api/file\\?path=${escapeRe(encodeURIComponent(p))}(&|$)`;
 const pullRequest = (n) => `^/api/plugin/github/pull\\?number=${n}(&|$)`;
@@ -224,7 +271,9 @@ function context(d, base, journey, rows, options) {
       options.log(row);
     }
     await d.park();
-    await sleep(spec.gapMs ?? 700);
+    // Time spent waiting for milestones comes out of the gap, so the next transition
+    // starts when it did before milestones existed (unless the wait was longer).
+    await sleep(Math.max(0, (spec.gapMs ?? 700) - (row.extraWaitMs ?? 0)));
     return row;
   };
   const setupClick = async (selector, readySource, what, timeoutMs = 30000) => {
@@ -274,17 +323,18 @@ async function expandFolders(ctx, folders) {
 
 async function landing(ctx) {
   const p = SUBJECTS.landing;
-  await ctx.measure({
+  const row = await ctx.measure({
     id: "landing.cold_markdown",
     subject: p,
     input: { kind: "navigate", url: `${ctx.base}/view/${p}` },
     ready: fileReady(p),
     converged: fileConverged(p),
     subjectRequest: fileRequest(p),
+    milestones: landingMilestones(p),
     settleMs: 1500,
     timeoutMs: 60000,
   });
-  await sleep(2000);
+  await sleep(Math.max(0, 2000 - Math.max(0, (row.extraWaitMs ?? 0) - 700)));
   await ctx.measure({
     id: "landing.reload",
     subject: p,
@@ -292,6 +342,7 @@ async function landing(ctx) {
     ready: fileReady(p),
     converged: fileConverged(p),
     subjectRequest: fileRequest(p),
+    milestones: landingMilestones(p),
     settleMs: 1500,
     timeoutMs: 60000,
   });
@@ -337,18 +388,21 @@ async function files(ctx) {
   );
 }
 
+/** The path of the visible tree row `delta` rows from the selected one. */
+const treeNeighbor = (ctx, delta) =>
+  ctx.d.evaluate(`(() => {
+    const rows = Array.from(document.querySelectorAll("#tab-files .tree-item")).filter((r) => r.offsetParent !== null);
+    const i = rows.findIndex((r) => r.classList.contains("selected"));
+    const n = rows[i + ${delta}];
+    return n ? n.dataset.path : null;
+  })()`);
+
 async function keyboard(ctx) {
   const start = SUBJECTS.keyboardStart;
   await ctx.land(start);
   // A real click on the selected row gives the tree keyboard focus.
   await ctx.setupClick(fileRow(start), fileReady(start), start);
-  const neighbor = (delta) =>
-    ctx.d.evaluate(`(() => {
-      const rows = Array.from(document.querySelectorAll("#tab-files .tree-item")).filter((r) => r.offsetParent !== null);
-      const i = rows.findIndex((r) => r.classList.contains("selected"));
-      const n = rows[i + ${delta}];
-      return n ? n.dataset.path : null;
-    })()`);
+  const neighbor = (delta) => treeNeighbor(ctx, delta);
   const step = async (id, keyName, delta, expected) => {
     const p = await neighbor(delta);
     if (p !== expected) {
@@ -511,6 +565,7 @@ async function mainTabs(ctx) {
       ready: pullReady(pr),
       converged: pullConverged(pr),
       subjectRequest: pullRequest(pr),
+      milestones: pullMilestones(pr, ""),
       settleMs: 1200,
       timeoutMs: 30000,
     });
@@ -583,6 +638,7 @@ async function pulls(ctx) {
       ready: pullReady(n, tab),
       converged: pullConverged(n, tab),
       subjectRequest: pullRequest(n),
+      milestones: pullMilestones(n, tab),
       settleMs,
       timeoutMs: 60000,
       gapMs: 1500,
@@ -624,6 +680,89 @@ async function tree(ctx) {
   await toggle("tree.expand_nested.src_metabrowser", nested, true);
 }
 
+const paletteOpen = `() => {
+  const overlay = document.querySelector(".search-palette-overlay");
+  const input = document.querySelector(".search-palette-input");
+  return !!overlay && !overlay.hidden && !!input && document.activeElement === input && input.getBoundingClientRect().height > 0;
+}`;
+const PALETTE_ROWS = '.search-palette-results [role="option"]';
+// Both kinds of result are listed for the exact query.
+const paletteResults = (q) => `() => {
+  if (!(${paletteOpen})()) { return false; }
+  if (document.querySelector(".search-palette-input").value !== ${J(q)}) { return false; }
+  const rows = Array.from(document.querySelectorAll(${J(PALETTE_ROWS)}));
+  return rows.some((r) => r.classList.contains("search-palette-option-pull")) && rows.some((r) => !r.classList.contains("search-palette-option-pull"));
+}`;
+const paletteConverged = (q) => `() => {
+  const issues = [];
+  if (!(${paletteResults(q)})()) { issues.push("results for both kinds not shown"); }
+  const selected = document.querySelectorAll('.search-palette-results [role="option"][aria-selected="true"]').length;
+  if (selected !== 1) { issues.push("selected options " + selected); }
+  const status = (document.querySelector(".search-palette-status") || {}).textContent || "";
+  if (/search/i.test(status)) { issues.push("status " + status.slice(0, 60)); }
+  return issues.join("; ");
+}`;
+
+async function palette(ctx) {
+  await ctx.land(SUBJECTS.landing);
+  if (!(await ctx.d.waitFor(`(${shellToolsReady})()`, 30000))) {
+    throw new Refusal("setup", "shell tools did not load");
+  }
+  await sleep(1000);
+  await ctx.measure({
+    id: "palette.open",
+    subject: "Quick Search",
+    input: { kind: "key", key: "t" },
+    ready: paletteOpen,
+    converged: `() => (${paletteOpen})() ? "" : "palette not open with its input focused"`,
+    settleMs: 600,
+  });
+  const q = SUBJECTS.paletteQuery;
+  await ctx.measure({
+    id: "palette.query",
+    subject: J(q),
+    input: { kind: "type", text: q },
+    ready: paletteResults(q),
+    converged: paletteConverged(q),
+    list: { rows: PALETTE_ROWS },
+    settleMs: 1500,
+  });
+}
+
+async function skim(ctx) {
+  const start = SUBJECTS.skimStart;
+  const target = SUBJECTS.skimTarget;
+  await ctx.land(start);
+  await ctx.setupClick(fileRow(start), fileReady(start), start);
+  const p = await treeNeighbor(ctx, 6);
+  if (p !== target) {
+    throw new Refusal("subject_missing", `six rows below ${start} is ${p}, expected ${target}`);
+  }
+  await ctx.measure({
+    id: "skim.held_arrow_down",
+    subject: target,
+    input: { kind: "key-repeat", key: "ArrowDown", count: 6, intervalMs: 60 },
+    ready: fileReady(target),
+    converged: fileConverged(target),
+    subjectRequest: fileRequest(target),
+    settleMs: 1500,
+  });
+}
+
+async function reveal(ctx) {
+  const p = SUBJECTS.revealFile;
+  await ctx.measure({
+    id: "reveal.deep_landing",
+    subject: p,
+    input: { kind: "navigate", url: `${ctx.base}/view/${p}` },
+    ready: fileReady(p),
+    converged: fileConverged(p),
+    subjectRequest: fileRequest(p),
+    settleMs: 1500,
+    timeoutMs: 60000,
+  });
+}
+
 export const JOURNEYS = {
   landing,
   files,
@@ -633,6 +772,9 @@ export const JOURNEYS = {
   commits,
   pulls,
   tree,
+  palette,
+  skim,
+  reveal,
 };
 
 /** Run one journey on an open browser; transition rows are appended to `rows`. */
