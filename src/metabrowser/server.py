@@ -154,6 +154,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.keymap import check_view_keys
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -4028,14 +4029,18 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
 def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
-    :func:`merge_views` owns the merge order and the override rule.
+    :func:`merge_views` owns the merge order and the override rule, and
+    :func:`check_view_keys` the view key rule: a later view's duplicate or
+    reserved key is dropped here and reported by ``metab --doctor``, and the
+    view itself is still served.
 
     The html kind is the exception that still uses this merger: Preview is
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
     """
-    out = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
+    merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
+    out = check_view_keys(kind, merged).views
     if kind == "html":
         return _html_kind_views(out, target)
     if out and not any(v.get("default") for v in out):

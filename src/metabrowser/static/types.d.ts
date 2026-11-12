@@ -114,6 +114,8 @@ type MetabrowserViewSpec = {
 type MetabrowserViewDescriptor = {
   id: string;
   label?: string;
+  /** The view tab's declared one-letter key, lowercase; absent when none is declared. */
+  key?: string;
   default?: boolean;
   container_class?: string;
   printable?: boolean;

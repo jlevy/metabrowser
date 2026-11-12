@@ -196,6 +196,66 @@ sidekick = "nonexistent.module:nope"
     assert "Logging error" not in json_result.stderr
 
 
+def _write_plugin(root: Path, name: str, manifest: str) -> None:
+    pdir = root / name
+    pdir.mkdir()
+    (pdir / "manifest.toml").write_text(manifest)
+    (pdir / "index.js").write_text("// stub\n")
+
+
+def test_plugins_doctor_reports_a_duplicate_view_key_across_manifests(tmp_path: Path) -> None:
+    """The first view keeps the letter; the second manifest's view is the one reported."""
+    _write_plugin(
+        tmp_path,
+        "alpha",
+        """
+[plugin]
+name = "alpha"
+sdk_version = "0.7"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+
+[[view]]
+kind = "myk"
+id = "main"
+label = "Main"
+default = true
+key = "m"
+""",
+    )
+    _write_plugin(
+        tmp_path,
+        "beta",
+        """
+[plugin]
+name = "beta"
+sdk_version = "0.7"
+
+[[view]]
+kind = "myk"
+id = "alt"
+label = "Alt"
+key = "M"
+""",
+    )
+
+    result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    [problem] = [line for line in result.stderr.splitlines() if "key" in line]
+    assert "plugin 'beta'" in problem
+    assert "view 'alt' of kind 'myk'" in problem
+    assert "view 'main' already holds it" in problem
+
+    json_result = _runner.invoke(_app, ["--doctor", "--json", "--plugins-dir", str(tmp_path)])
+    assert json_result.exit_code == 1
+    payload = json.loads(json_result.stdout)
+    assert [p for p in payload["problems"] if "key" in p] == [problem.removeprefix("  • ")]
+
+
 def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Path) -> None:
     pdir = tmp_path / "local-demo"
     pdir.mkdir()

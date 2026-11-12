@@ -7,7 +7,8 @@ Three modes on the ``metab`` CLI (parsing lives in
 * ``metab --plugin NAME``: full manifest dump for one plugin.
 * ``metab --doctor``: sanity-check every plugin, validating the
   manifest, confirming sidekick handlers import, and checking for
-  asset and kind-id collisions across plugins. It also checks the
+  asset and kind-id collisions across plugins and for view keys the
+  server drops from a kind's merged views. It also checks the
   packaged cache record contracts. Exit code != 0 when any plugin
   or contract is broken.
 
@@ -25,13 +26,15 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.errors import CLIError
+from metabrowser.keymap import check_view_keys
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins
-from metabrowser.plugin_loader.manifest import DataHookSpec
+from metabrowser.plugin_loader.manifest import DataHookSpec, merge_views, view_entry
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -201,8 +204,11 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
     typer.echo("")
     typer.echo("views:")
     for v in plugin.manifest.view:
-        default = " (default)" if v.default else ""
-        typer.echo(f"  - {v.kind}/{v.id} '{v.label}'{default}")
+        notes = ["default"] if v.default else []
+        if v.key is not None:
+            notes.append(f"key {v.key.upper()}")
+        suffix = f" ({', '.join(notes)})" if notes else ""
+        typer.echo(f"  - {v.kind}/{v.id} '{v.label}'{suffix}")
     typer.echo("")
     typer.echo("data hooks:")
     active_hooks = _active_data_hooks(plugin)
@@ -250,6 +256,34 @@ def _cache_contract_problems() -> list[str]:
             f"cache record schema '{entry.partition(':')[0]}' does not match its model"
             for entry in drifted
         )
+    return problems
+
+
+def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
+    """Return the view keys the server drops from each kind's merged view list.
+
+    The server serves the first view's key and drops a later duplicate or a key the
+    shell reserves for the kind, without refusing the plugin, so this is where an
+    author learns of it. The list is merged as the server merges it, from the built-in
+    registry and the discovered manifests in discovery order, and each problem names
+    the plugin whose view is served. The registry import is local for the reason
+    ``_cache_contract_problems`` gives: ``file_kinds`` loads the frontmatter parser that
+    ``--version`` is tested not to load, and only ``--doctor`` needs the registry here.
+    """
+    from metabrowser.file_kinds import VIEW_REGISTRY
+
+    plugin_views: dict[str, list[dict[str, Any]]] = {}
+    owners: dict[tuple[str, str], str] = {}
+    for plugin in plugins:
+        for view in plugin.manifest.view:
+            plugin_views.setdefault(view.kind, []).append(view_entry(view))
+            owners[(view.kind, view.id)] = plugin.name
+    problems: list[str] = []
+    for kind in sorted(VIEW_REGISTRY.keys() | plugin_views.keys()):
+        merged = merge_views(VIEW_REGISTRY.get(kind, []), plugin_views.get(kind, []))
+        for problem in check_view_keys(kind, merged).problems:
+            owner = owners.get((kind, problem.view_id))
+            problems.append(f"plugin '{owner}': {problem}" if owner else str(problem))
     return problems
 
 
@@ -312,6 +346,9 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     # Per-plugin: index.js exists.
     for p in _plugins_with_index_check(result.plugins):
         problems.append(p)
+
+    # Cross-plugin: view keys stay clear of each other and the shell within a kind.
+    problems.extend(_view_key_problems(result.plugins))
 
     if as_json:
         typer.echo(

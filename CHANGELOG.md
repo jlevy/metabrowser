@@ -45,6 +45,17 @@ All notable changes to Metabrowser are documented here.
   Shift+`1` types `!`, and `/` opens Quick Search on layouts that type it with Shift.
   In a text field, Shift with an arrow still selects text.
   The removed keys shipped in 0.12.0 and have no aliases.
+- A plugin manifest’s `[[view]]` may declare a one-letter `key` for its tab, and every
+  view of a built-in kind with more than one view declares one: Markdown’s Document `D`
+  and Source `S`, structured data’s Tree `R` and Source `S`, HTML’s Preview `P` and
+  Source `S`, an agent log’s Log `L`, Charts `C`, and Raw JSON `R`, other JSONL’s Log
+  `L` and Raw JSON `R`, and a folder’s Overview `O` and Treemap `M`. `/api/file` serves
+  it, lowercase, as `views[].key`, and `metab --show` and `metab --plugin NAME` print
+  it. The manifest loader refuses a key that is not one letter or that the shell reserves
+  everywhere: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. When two views of one kind
+  share a key, the first keeps it; the later view, like a `pull-request` view that takes
+  the stack keys `N` or `P`, is served without a key, and `metab --doctor` reports it.
+  `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

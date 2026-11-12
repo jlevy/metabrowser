@@ -25,7 +25,9 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from metabrowser.keymap import view_key_error
 
 # SDK contract version
 
@@ -187,6 +189,15 @@ class ViewSpec(BaseModel):
     kind: str = Field(..., description="Matches a [[kind]].id from this or any plugin.")
     id: str = Field(..., description="View id, unique within a kind.")
     label: str = Field(..., description="Human label for the tab strip.")
+    key: str | None = Field(
+        default=None,
+        description=(
+            "Optional one-letter key for the view's tab, stored lowercase. It may not be "
+            "a key the shell reserves in every context (metabrowser.keymap); uniqueness "
+            "within a kind is checked on the merged view list, where the first view keeps "
+            "a contested letter."
+        ),
+    )
     default: bool = Field(default=False, description="Show as the default view for this kind.")
     container_class: str = Field(
         default="content-body",
@@ -209,12 +220,26 @@ class ViewSpec(BaseModel):
         description="Descriptive runtime for the view renderer; JS registration still dispatches.",
     )
 
+    @field_validator("key")
+    @classmethod
+    def _key_is_a_free_letter(cls, key: str | None) -> str | None:
+        if key is None:
+            return None
+        error = view_key_error(key)
+        if error is not None:
+            raise ValueError(error)
+        return key.lower()
+
 
 def view_entry(view: ViewSpec) -> dict[str, Any]:
-    """Return the entry a file envelope's ``views`` list carries for *view*."""
+    """Return the entry a file envelope's ``views`` list carries for *view*.
+
+    ``key`` is present only when the view declares one.
+    """
     return {
         "id": view.id,
         "label": view.label,
+        **({"key": view.key} if view.key is not None else {}),
         "default": view.default,
         "container_class": view.container_class,
         "printable": view.printable,

@@ -87,7 +87,7 @@ $ metab trustroot --untrusted --show page.html
 show: page.html
 route: /view/page.html
 kind: html
-views: source (default)
+views: source (default, key S)
 model: text envelope; size=49 content_bytes=49 content_truncated=False
 ? 0
 ```
@@ -106,7 +106,7 @@ $ metab trustroot --no-active-content --show page.html
 show: page.html
 route: /view/page.html
 kind: html
-views: source (default)
+views: source (default, key S)
 model: text envelope; size=49 content_bytes=49 content_truncated=False
 ? 0
 ```

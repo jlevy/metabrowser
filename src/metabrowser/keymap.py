@@ -1,0 +1,142 @@
+"""The keys the shell reserves, and the rule a view's declared key follows.
+
+A view of a multi-view kind declares a one-letter ``key`` in its manifest ``[[view]]``,
+and the file envelope serves it as ``views[].key``. Keys are stored lowercase and
+compared without case, because a shortcut means the same with or without Shift.
+
+The rule has two levels. :func:`view_key_error` judges one key alone, which is all one
+manifest can know: it must be one letter, and not a key the shell reserves everywhere.
+:func:`check_view_keys` judges a kind's merged view list, which spans manifests: a key
+the shell reserves for that kind, or one an earlier view already holds, is dropped from
+the later view. The server serves what it returns, and ``metab --doctor`` and
+``tests/test_keymap.py`` report what it drops.
+
+This module imports nothing beyond the standard library, so the manifest loader and
+``metab --doctor`` can use it without loading content classification or the server.
+``docs/plugins.md`` documents the manifest field for plugin authors.
+"""
+
+from __future__ import annotations
+
+import string
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Final
+
+PULL_REQUEST_KIND: Final = "pull-request"
+
+
+@dataclass(frozen=True, slots=True)
+class ReservedKey:
+    """What a reserved shell key does, and the kinds it is reserved for."""
+
+    purpose: str
+    # None reserves the key for every kind. A key live only in some contexts is
+    # still reserved everywhere unless it is listed with kinds here, so a shell key
+    # never means one thing in one place and another elsewhere.
+    kinds: frozenset[str] | None = None
+
+
+# The shell's own keys, which no view may take. The digits select the navigation
+# pane's tabs, one fixed digit per tab, reserved whether or not the tab is shown.
+# `n` and `p` walk a pull request stack and are live only on a pull request page, so
+# they are reserved only for that kind, and an HTML file's Preview tab keeps `p`.
+RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
+    {
+        "t": ReservedKey("Quick Search"),
+        "j": ReservedKey("next row"),
+        "k": ReservedKey("previous row"),
+        "u": ReservedKey("parent folder command"),
+        "w": ReservedKey("branch or tag switcher"),
+        "x": ReservedKey("file type filter"),
+        "y": ReservedKey("copy command"),
+        "a": ReservedKey("modified-within filter"),
+        **{digit: ReservedKey("navigation pane tabs") for digit in string.digits},
+        "n": ReservedKey("next pull request in the stack", frozenset({PULL_REQUEST_KIND})),
+        "p": ReservedKey("previous pull request in the stack", frozenset({PULL_REQUEST_KIND})),
+    }
+)
+
+
+def reserved_keys_for(kind: str) -> frozenset[str]:
+    """Return the shell keys reserved for *kind*: every-kind keys and its contextual ones."""
+    return frozenset(
+        key
+        for key, reserved in RESERVED_SHELL_KEYS.items()
+        if reserved.kinds is None or kind in reserved.kinds
+    )
+
+
+def _key_reason(key: str, kind: str | None) -> str | None:
+    """Why *key* cannot be a view key, or None; *kind* None judges it for every kind."""
+    if len(key) != 1 or key not in string.ascii_letters:
+        return "is not one letter a-z"
+    reserved = RESERVED_SHELL_KEYS.get(key.lower())
+    if reserved is None:
+        return None
+    if reserved.kinds is None or (kind is not None and kind in reserved.kinds):
+        return f"is reserved for the shell's {reserved.purpose}"
+    return None
+
+
+def view_key_error(key: str) -> str | None:
+    """Return why *key* can be no view's key in any kind, or None when it can be one."""
+    reason = _key_reason(key, None)
+    return None if reason is None else f"key {key!r} {reason}"
+
+
+@dataclass(frozen=True, slots=True)
+class ViewKeyProblem:
+    """A declared view key the merged list dropped, and why."""
+
+    kind: str
+    view_id: str
+    key: object
+    reason: str
+
+    def __str__(self) -> str:
+        return (
+            f"view {self.view_id!r} of kind {self.kind!r} declares key {self.key!r}, "
+            f"{self.reason}; the view is served without a key"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ViewKeyCheck:
+    """A kind's views with every rule-breaking key removed, and what was removed."""
+
+    views: list[dict[str, Any]]
+    problems: list[ViewKeyProblem]
+
+
+def check_view_keys(kind: str, views: Iterable[Mapping[str, Any]]) -> ViewKeyCheck:
+    """Apply the view key rule to one kind's merged view list, in tab order.
+
+    A key survives when it is one letter, is not reserved for *kind*, and no earlier
+    view holds it, compared without case; it is served lowercase. Any other key is
+    removed from its view, so the first view keeps a contested letter, and each removal
+    is reported. A view is never dropped for its key.
+    """
+    out: list[dict[str, Any]] = []
+    problems: list[ViewKeyProblem] = []
+    holders: dict[str, str] = {}
+    for view in views:
+        entry = dict(view)
+        out.append(entry)
+        if "key" not in entry:
+            continue
+        key = entry["key"]
+        view_id = str(entry.get("id", "?"))
+        reason = _key_reason(key, kind) if isinstance(key, str) else "is not one letter a-z"
+        if reason is not None:
+            reason = f"which {reason}"
+        elif key.lower() in holders:
+            reason = f"but view {holders[key.lower()]!r} already holds it"
+        if reason is not None:
+            del entry["key"]
+            problems.append(ViewKeyProblem(kind=kind, view_id=view_id, key=key, reason=reason))
+            continue
+        entry["key"] = key.lower()
+        holders[key.lower()] = view_id
+    return ViewKeyCheck(views=out, problems=problems)

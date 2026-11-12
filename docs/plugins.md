@@ -212,6 +212,7 @@ Each `[[view]]` binds a tab to a kind:
 kind = "hello-document"
 id = "source"
 label = "Source"
+key = "s"
 container_class = "content-body metabrowser-source-host"
 printable = true
 print_profile = "source"
@@ -221,6 +222,21 @@ render_runtime = "client"
 View order in the manifest is tab order.
 At most one view per kind may set `default = true`. A plugin may register a view for a
 kind declared by another plugin, which is useful for composing generic renderers.
+
+`key` declares a one-letter keyboard key for the view’s tab.
+It is optional; a kind with more than one view should give each view one, taken from the
+label: its first letter, or its most distinctive free letter when the first is taken, as
+the built-in Tree tab takes `R`. Write it in either case: it is stored and served
+lowercase, as `views[].key` in the `/api/file` envelope, and compared without case.
+The manifest loader refuses a key that is not one ASCII letter, or that the shell
+reserves in every context: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. `N` and `P` are
+reserved only for the `pull-request` kind.
+A key belongs to one view of a kind.
+When two views of one kind declare the same key, as two plugins that add views to one
+kind can, the first view in tab order keeps it, the later view is served without a key,
+and `metab --doctor` reports the plugin and view that lost it.
+`metab --show PATH` prints each view’s key, and `src/metabrowser/keymap.py` holds the
+reserved keys and the rule.
 
 `render_runtime` documents whether the view is rendered by the client or by KPress.
 Printable views should also declare a `print_profile` appropriate to documents or source
