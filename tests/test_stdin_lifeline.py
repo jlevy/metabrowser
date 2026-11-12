@@ -8,12 +8,15 @@ pid, which the kernel may have given to another process by then.
 
 from __future__ import annotations
 
+import contextlib
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
 import threading
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,12 +31,17 @@ from metabrowser.cli.stdin_lifeline import (
     watch_for_eof,
 )
 from metabrowser.errors import CLIError
+from tests.child_io import read_line
+from tests.test_cli_main import _plain_output
 
 runner = CliRunner()
 
 # A child that works stops within a second of its stdin closing; this bounds only a
 # child that does not, so the test fails instead of hanging the suite.
 _EXIT_TIMEOUT_S = 15.0
+# The first line a server prints, naming the address it took, which is not always the
+# one asked for: a port in use sends the search to the next one.
+_SERVING_LINE = re.compile(r"^Serving .* at http://127\.0\.0\.1:(\d+)/view/")
 
 
 def test_the_watcher_reads_everything_and_calls_back_once_at_eof() -> None:
@@ -88,7 +96,26 @@ def test_serving_watches_stdin_only_when_asked(flag: bool, tmp_path: Path) -> No
 def test_the_flag_is_a_serve_option() -> None:
     result = runner.invoke(_app, [".", "--walk", "--exit-on-eof"])
     assert result.exit_code == 2
-    assert "--exit-on-eof not valid with --walk" in result.output
+    assert "--exit-on-eof not valid with --walk" in _plain_output(result)
+
+
+@contextlib.contextmanager
+def _port_in_use() -> Generator[int]:
+    """A loopback port something else is listening on, for as long as the block runs."""
+
+    with socket.socket() as occupant:
+        occupant.bind(("127.0.0.1", 0))
+        occupant.listen()
+        yield occupant.getsockname()[1]
+
+
+def _served_port(process: subprocess.Popen[str]) -> int:
+    """The port the child's banner names, read within a bound."""
+
+    line = read_line(process)
+    match = _SERVING_LINE.match(line)
+    assert match is not None, f"not a banner: {line!r}"
+    return int(match.group(1))
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and process groups")
@@ -96,38 +123,46 @@ def test_a_server_whose_stdin_closes_stops_and_frees_its_port(tmp_path: Path) ->
     root = tmp_path / "served"
     root.mkdir()
     (root / "a.txt").write_text("a")
-    with socket.socket() as port_probe:
-        port_probe.bind(("127.0.0.1", 0))
-        port = port_probe.getsockname()[1]
     console_script = Path(sys.executable).with_name("metab")
-    process = subprocess.Popen(
-        [str(console_script), str(root), "--no-open", "--port", str(port), "--exit-on-eof"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
-    try:
-        ready: list[bool] = []
-        wait_for_http_ok_then(
-            "127.0.0.1",
-            port,
-            f"http://127.0.0.1:{port}/view/",
-            on_ready=lambda: ready.append(True),
-            on_error=lambda message: None,
-            is_cancelled=lambda: process.poll() is not None,
-            timeout_s=20.0,
+    # The port asked for is taken for the whole run, so the server always moves on and
+    # the test always reads where it went, rather than assuming the port asked for.
+    with _port_in_use() as taken:
+        process = subprocess.Popen(
+            [str(console_script), str(root), "--no-open", "--port", str(taken), "--exit-on-eof"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
         )
-        assert ready, f"the server never served (exit={process.poll()})"
-        assert process.stdin is not None
-        process.stdin.close()  # what the kernel does when the parent dies
-        stdout, stderr = process.communicate(timeout=_EXIT_TIMEOUT_S)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
+        try:
+            port = _served_port(process)
+            assert port != taken
+            ready: list[bool] = []
+            wait_for_http_ok_then(
+                "127.0.0.1",
+                port,
+                f"http://127.0.0.1:{port}/view/",
+                on_ready=lambda: ready.append(True),
+                on_error=lambda message: None,
+                is_cancelled=lambda: process.poll() is not None,
+                timeout_s=20.0,
+            )
+            if not ready:
+                process.kill()
+                _, errors = process.communicate(timeout=5)
+                pytest.fail(f"the server never served (exit={process.returncode}): {errors!r}")
+            assert process.stdin is not None
+            process.stdin.close()  # what the kernel does when the parent dies
+            # Closed here, so ``communicate`` must not flush it: Python 3.12 and 3.13
+            # raise ``ValueError`` for a flush of a closed stdin, which 3.14 ignores.
+            process.stdin = None
+            _, stderr = process.communicate(timeout=_EXIT_TIMEOUT_S)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
     assert process.returncode == 0, stderr
-    assert STDIN_CLOSED_NOTICE in stderr
-    assert b"Serving " in stdout
+    assert STDIN_CLOSED_NOTICE.decode() in stderr
     with socket.socket() as again, pytest.raises(ConnectionRefusedError):
         again.connect(("127.0.0.1", port))
