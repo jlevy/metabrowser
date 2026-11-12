@@ -68,11 +68,11 @@ from metabrowser.git.tree_source import (
     GitObjectUnavailableError,
     GitPath,
     GitTreeSource,
-    display_segment,
 )
 from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import store_tag
 from metabrowser.inert_html import fragment_link, kpress_prose
+from metabrowser.invisible_chars import display_segment
 from metabrowser.loading_cache import LoadingCache
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES
 from metabrowser.view_routes import format_pull_href

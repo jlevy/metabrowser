@@ -488,8 +488,9 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
         '<span class="header-revision header-ref">topic</span>'
         f'<span class="header-revision">{origin.second[:12]}</span></a>'
     ) in shell.text
-    # The tab is called what a folder's is: the page names the root in its headings.
-    assert "<title>Metabrowser</title>" in shell.text
+    # The tab is called by the repository's name, as a folder's is by its own: the
+    # title is /api/identity's.
+    assert "<title>origin \u2022 Metabrowser</title>" in shell.text
     assert 'window.METABROWSER_SOURCE_KIND="git_revision"' in shell.text
     assert "window.METABROWSER_REPOSITORY_CONTEXT=null" in shell.text
     # The GitPath codec is a startup script here, ahead of the navigation module that
@@ -547,6 +548,16 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         assert status["name"] == "origin"
         assert status["origin"] == shown_origin
         assert status["location"] == location
+        # What the window is called: the repository, then its origin and the ref served,
+        # and never where the mirror is kept.
+        identity = client.get("/api/identity")
+        assert identity.json() == {
+            "short_name": "origin",
+            "full_name": "~/git/origin.git@topic",
+            "kind": "mirror",
+            "kind_label": "Cached mirror",
+            "title": "origin \u2022 Metabrowser",
+        }
 
         page = client.get(f"/view/{_wire('README.md')}")
         assert (
@@ -560,7 +571,13 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         assert page.text.count(f">{module}</script>") == 1
         # Abbreviated wherever it stands: no answer spells the home directory out, in
         # its body or in a header, though the origin and the mirror are both under it.
-        for response in (answered, page, client.get("/view/"), client.get("/api/tree")):
+        for response in (
+            answered,
+            identity,
+            page,
+            client.get("/view/"),
+            client.get("/api/tree"),
+        ):
             assert str(user) not in response.text, response.url
             assert str(user) not in str(response.headers), response.url
 
@@ -573,6 +590,12 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         assert switched.json()["status"]["name"] == "origin"
         assert str(user) not in switched.text
         assert f'data-mirror-tip="{tip(origin.first)}">' in client.get("/view/").text
+        # A commit pinned by its ID, which is no ref's tip, is named by its short commit.
+        # The page the switch loads again keeps the repository's title.
+        renamed = client.get("/api/identity").json()
+        assert renamed["full_name"] == f"~/git/origin.git@{origin.first[:12]}"
+        assert renamed["title"] == "origin \u2022 Metabrowser"
+        assert "<title>origin \u2022 Metabrowser</title>" in client.get("/view/").text
 
 
 def test_the_api_mode_prints_where_the_mirror_is_kept(
@@ -902,6 +925,7 @@ def _probe_urls(
 # as ``status`` when they have one to give.
 _PAGE_ROUTES = ("/view/{path:path}", "/commit/{rest:path}", "/pull/{rest:path}", "/pulls")
 _STATUS_ROUTE = "/api/source/status"
+_IDENTITY_ROUTE = "/api/identity"
 _PIN_ROUTE = "/api/source/pin"
 _REFRESH_ROUTE = "/api/source/refresh"
 _STATUS_AT: dict[str, str | None] = {
@@ -920,6 +944,8 @@ class _ServedMirror:
     home: Path
     origin_path: Path
     store_key: str
+    # What /api/identity calls the served mirror in full: the origin's path, then the ref.
+    full_name: str
 
     def sentence(self, commit: str) -> str:
         return (
@@ -933,10 +959,12 @@ class _ServedMirror:
         A served mirror says where it is kept and what it mirrors (mb-fndz), and the
         rule is exact about where: the ``origin`` and ``location`` of the status
         envelope, wherever a source route answers with it, and the two attributes of the
-        page's navigation heading that carry the same text. Each is checked to be
-        exactly that text and then taken out, so whatever is found in what is left
-        stands somewhere the rule does not allow: another field, another route, an error
-        message, a header. The second value says whether anything was taken out.
+        page's navigation heading that carry the same text. ``/api/identity``'s
+        ``full_name`` names the origin too, as a window's full name, and not the location.
+        Each is checked to be exactly that text and then taken out, so whatever is found
+        in what is left stands somewhere the rule does not allow: another field, another
+        route, an error message, a header. The second value says whether anything was
+        taken out.
         """
 
         headers = "".join(f"{name}: {value}\n" for name, value in response.headers.items())
@@ -952,6 +980,10 @@ class _ServedMirror:
                 named = (status.pop("origin"), status.pop("location"))
                 assert named == (self.origin, self.location), (path, named)
                 return headers + json.dumps(body), True
+        if path == _IDENTITY_ROUTE and response.status_code == 200:
+            identity = response.json()
+            assert identity.pop("full_name") == self.full_name, path
+            return headers + json.dumps(identity), True
         if path in _PAGE_ROUTES and response.status_code == 200:
             heading = (
                 f' data-mirror-location="{self.location}" data-mirror-tip="{self.sentence(commit)}"'
@@ -987,7 +1019,8 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     No answer names the application home or the served origin either, nor the store's
     key or the directory the stores are in, with one exception that is held to its exact
     form: the status envelope and the page's heading say where the served mirror is kept
-    and what it mirrors (``_ServedMirror.remainder``). That covers each answer's
+    and what it mirrors, and the identity's full name what it mirrors
+    (``_ServedMirror.remainder``). That covers each answer's
     headers as well as its body, the error answers of the GET routes, and what the two
     POST routes that change the served pin answer, their refusals included. A file's
     content, a listing, an error, and every other envelope still name no path.
@@ -1045,6 +1078,9 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
         home=home,
         origin_path=origin.path,
         store_key=store_key,
+        # The origin is outside the home directory, so its path is absolute; the sweep
+        # reads every GET route before any switch, while `topic` is served.
+        full_name=f"{origin.path.resolve()}@topic",
     )
     with TestClient(server.app) as client:
         # The probe can see a leak: the pin's own content does come back.
@@ -1064,9 +1100,10 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
                 named.add(route.path)
             if response.status_code >= 400:
                 errored.add(route.path)
-        # The exception was met: the status and each page did name the location. And
-        # the sweep read error answers too, the listing's own refusal among them.
-        assert named == {_STATUS_ROUTE, *_PAGE_ROUTES}
+        # The exception was met: the status and each page did name the location, and the
+        # identity the origin. And the sweep read error answers too, the listing's own
+        # refusal among them.
+        assert named == {_STATUS_ROUTE, _IDENTITY_ROUTE, *_PAGE_ROUTES}
         assert {"/api/source/refs", "/api/file", "/api/tree"} <= errored
 
         # The two routes that change what is served, with every kind of answer each

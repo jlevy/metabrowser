@@ -760,6 +760,10 @@ metab ./notes --api '/api/file?path=README.md'
 metab ./notes --api '/api/tree?depth=2&types=.md'
 metab ./notes --api '/api/git/log?limit=5'
 
+# What a window is called: the tab's title, a short and a full name, and whether the
+# server serves a local folder or a cached mirror.
+metab ./notes --api /api/identity
+
 # Repository cache state in METABROWSER_CACHE_DIR (default ~/.cache/metabrowser), which is
 # reported as absent rather than created when it does not exist.
 metab ./notes --api /api/cache/layout

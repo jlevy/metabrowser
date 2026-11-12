@@ -35,6 +35,7 @@ from metabrowser.errors import CLIError
 from metabrowser.inventory_engine.contract import (
     canonical_inventory_path,
 )
+from metabrowser.invisible_chars import display_segment
 from metabrowser.normalize import NormalizeContext, normalize_payload
 from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
@@ -195,8 +196,6 @@ def _describe_pull_file(files: dict[str, Any] | None, file: str) -> str:
     a pinned tree's names use, control and invisible characters as U+FFFD. It is never looked
     up on disk: the list is the only thing asked.
     """
-
-    from metabrowser.git.tree_source import display_segment
 
     shown = "/".join(
         display_segment(segment.encode("utf-8", "surrogatepass")) for segment in file.split("/")

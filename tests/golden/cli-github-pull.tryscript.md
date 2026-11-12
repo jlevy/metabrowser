@@ -1005,6 +1005,82 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
 ? 0
 ```
 
+## Test: a window of a pull request’s head is called as GitHub writes one
+
+`/api/identity` names a mirror by its repository, and its full name is the origin
+without its scheme, then what the mirror is pinned to.
+A pull-request URL serves the pull request’s head, `refs/pull/7/head`, so the window is
+called `demo #7` and its full name is `github.com/octo/demo#7`. Nothing names where the
+mirror is kept.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/identity
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/identity
+status: 200
+{
+  "short_name": "demo #7",
+  "full_name": "github.com/octo/demo#7",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "demo #7 • Metabrowser"
+}
+? 0
+```
+
+The repository’s own URL serves its default branch, and a branch’s URL that branch.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "demo",
+  "full_name": "github.com/octo/demo@topic",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "demo • Metabrowser"
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/tree/wip --api /api/identity
+selection: tree
+pin: 7a7d6596e515735d244dc1d942463c95851e139c (branch wip)
+api: /api/identity
+status: 200
+{
+  "short_name": "demo",
+  "full_name": "github.com/octo/demo@wip",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "demo • Metabrowser"
+}
+? 0
+```
+
+A commit’s URL serves that commit, named by its first twelve hex digits.
+`topic moves` is no ref’s tip, so nothing names it but its ID.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/commit/07b55f07793d9ed4e9f3e130c4414d979137bc53 --api /api/identity
+selection: commit
+pin: 07b55f07793d9ed4e9f3e130c4414d979137bc53 (commit)
+api: /api/identity
+status: 200
+{
+  "short_name": "demo",
+  "full_name": "github.com/octo/demo@07b55f07793d",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "demo • Metabrowser"
+}
+? 0
+```
+
 ## Test: a refresh of a pull request returns at once
 
 `pull-refresh` starts the pull request’s refresh in the refresh coordinator and answers

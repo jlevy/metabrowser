@@ -50,8 +50,8 @@ from metabrowser.git.process import (
     run_git,
 )
 from metabrowser.git.shallow import MAX_BOUNDARY_BYTES
-from metabrowser.git.tree_source import display_segment
 from metabrowser.git.wire import is_full_revision
+from metabrowser.invisible_chars import display_segment
 from metabrowser.paths_safe import tilde_path
 from metabrowser.repository_context import (
     MAX_GIT_CONFIG_BYTES,

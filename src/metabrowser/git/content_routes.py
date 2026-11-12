@@ -108,7 +108,6 @@ from metabrowser.git.tree_source import (
     GitTreeSource,
     GitTreeTally,
     blob_logical_ext,
-    display_segment,
     follow_git_symlinks,
     resolve_git_blob_entry,
     split_git_container_wire,
@@ -116,6 +115,7 @@ from metabrowser.git.tree_source import (
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
+from metabrowser.invisible_chars import display_segment
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,

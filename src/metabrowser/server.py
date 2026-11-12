@@ -175,6 +175,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -1363,13 +1364,18 @@ async def index(
 
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
+    # Only a pin has a mirror session; a folder's shell never reads the app's state.
+    mirror = mirror_session(request.app) if pin is not None else None
+    # The tab's title, and a native window's: what the served subject is called, from the
+    # model `/api/identity` answers, so the two cannot disagree. A page changes subject
+    # only by loading again, so the title written here stays current.
+    page_title = html_escape(root_identity(mirror)["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
         from metabrowser.git.tree_source import ref_branch_name
 
         pin_oid = pin.commit_oid
-        mirror = mirror_session(request.app)
         status = source_status(mirror)
         initial_path = _pin_label_html(status)
         # A mirror's served root is the repository's name, as a folder's is its path:
@@ -1788,7 +1794,7 @@ async def index(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <title>Metabrowser</title>
+  <title>{page_title}</title>
   <!-- Reader fonts: preload the chrome's Source Sans face + link KPress's
        @font-face source of truth, version-keyed so chrome and the embedded
        document share one download. Built in kpress_font_head above from the
@@ -4259,6 +4265,8 @@ routes = [
     # What this server serves: the subject and, on a pin, its commit, ref, and
     # freshness, plus the POST routes that refresh the mirror and switch the pin.
     *SOURCE_ROUTES,
+    # What the served subject is called, as the shell's title and a native window say.
+    *IDENTITY_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS),
 ]
 

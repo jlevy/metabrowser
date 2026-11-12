@@ -409,7 +409,7 @@ async function main() {
   // No step wrote the tab's title, which stays the one the server wrote.
   for (const page of observed) {
     assert(page.title.writes.length === 0, `${page.subject}: a step set the tab title`);
-    assert(page.title.afterEveryStep === "Metabrowser", `${page.subject}: the tab is retitled`);
+    assert(page.title.afterEveryStep === page.title.served, `${page.subject}: the tab is retitled`);
   }
 
   // A folder's page is what it was: its path, then the address, and nothing of a mirror.

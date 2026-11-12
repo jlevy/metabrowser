@@ -84,6 +84,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
 from metabrowser.builtin_plugins.github.pull_route import cached_pull_record, pull_host
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_files
 from metabrowser.http_caching import build_scoped_etag
+from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     MAX_PULL_JOBS,
@@ -241,9 +242,6 @@ def display_path(path: str) -> str:
     The rule replaces characters one for one and never a ``/``, so the display's segments
     are the path's.
     """
-
-    # Here, not at the top: the rule's tables are the Git tree source's.
-    from metabrowser.git.tree_source import display_segment
 
     return "/".join(
         display_segment(segment.encode("utf-8", "surrogatepass")) for segment in path.split("/")

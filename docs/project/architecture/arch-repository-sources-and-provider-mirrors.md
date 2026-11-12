@@ -211,6 +211,13 @@ where a folder shows its name, and nothing said its files came out of the cache.
   heading, as the dimmed root of the main heading’s address, and in the heading’s
   tooltip. A pin with no mirror has no origin to take a name from and is headed by its
   ref and commit, as before.
+- **Title.** The tab, and a window of the native app, are called by the name too:
+  `squares • Metabrowser`, or `squares #7 • Metabrowser` on a pull request’s head.
+  `/api/identity` gives that title with a full name that tells two mirrors of one name
+  apart without naming the cache: the origin without its scheme, then what the mirror is
+  pinned to, as in `github.com/jlevy/squares@main`.
+  [The map](arch-views-models-routes.md#data-routes) holds the rules, and a served
+  folder is named by the same route.
 - **Commit.** The ref and the short commit follow the name in the navigation heading,
   and a control after the short commit copies the full one, through the SDK’s
   owner-stamped copy delegate.
@@ -266,6 +273,9 @@ That rule now has one exception, held to an exact form:
 - **One place on the page.** The shell writes the same text into two attributes of the
   navigation heading, `data-mirror-location` and `data-mirror-tip`, as it writes a
   folder’s path into `data-served-root`. `static/mirror-heading.js` reads them back.
+- **The name.** `GET /api/identity` answers `full_name`, built from `origin` and the
+  pin, so for a `file://` origin it holds that path in the same display form.
+  It never holds `location`.
 - **Nothing else.** File content, listings, rollups, history, diffs, plugin hooks, and
   every error stay path-free; the `/api/cache/` routes still answer
   `unsupported_for_subject` on a served pin.
@@ -274,8 +284,8 @@ That rule now has one exception, held to an exact form:
   mirror for its answers, error answers among them, and the two POST routes that change
   the served pin for each kind of answer they give.
   It fails if the application home, the origin’s path, the store’s key, or the name of
-  the stores’ directory stands anywhere in a body or a header but those two fields and
-  those two attributes, each compared to its exact text.
+  the stores’ directory stands anywhere in a body or a header but those two fields,
+  those two attributes, and the identity’s `full_name`, each compared to its exact text.
 
 A served mirror is untrusted content, which is why the rule existed.
 The location still cannot be read by what a repository’s author writes.

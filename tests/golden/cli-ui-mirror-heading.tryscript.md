@@ -64,8 +64,8 @@ $ node tests/dom/mirror-heading-session.js
       "ref_name": null
     },
     "title": {
-      "served": "Metabrowser",
-      "afterEveryStep": "Metabrowser",
+      "served": "squares • Metabrowser",
+      "afterEveryStep": "squares • Metabrowser",
       "writes": []
     },
     "navigationHeading": {
@@ -100,8 +100,8 @@ $ node tests/dom/mirror-heading-session.js
       "ref_name": "topic"
     },
     "title": {
-      "served": "Metabrowser",
-      "afterEveryStep": "Metabrowser",
+      "served": "squares • Metabrowser",
+      "afterEveryStep": "squares • Metabrowser",
       "writes": []
     },
     "navigationHeading": {
@@ -150,8 +150,8 @@ $ node tests/dom/mirror-heading-session.js
       "ref_name": "topic"
     },
     "title": {
-      "served": "Metabrowser",
-      "afterEveryStep": "Metabrowser",
+      "served": "a<b>&�x • Metabrowser",
+      "afterEveryStep": "a<b>&�x • Metabrowser",
       "writes": []
     },
     "navigationHeading": {
