@@ -622,16 +622,28 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # Each hold's span says how it ended (review B1).
         "holdSpans": ["hidden met 1", "hidden bound 1"],
         # A direct landing's loading blocks give way to the held conversation (review B5).
+        # The header waits with the body, so header and body change once (review D1).
         "landing": {
             "blocksBefore": True,
-            "whileHeld": {"holding": True, "blocks": False},
+            "whileHeld": {"holding": True, "blocks": False, "heading": "Pull request #7"},
             "final": True,
+            "heading": "Count to two in the app #7",
         },
         # Blocks that had shown stay, the same node, over the held conversation until it shows,
         # so the body never blinks empty between them (review C2).
         "landingAfterBlocksShowed": {
-            "whileHeld": {"holding": True, "sameBlocks": True, "cover": True},
-            "shown": {"blocks": False, "holding": False, "final": True},
+            "whileHeld": {
+                "holding": True,
+                "sameBlocks": True,
+                "cover": True,
+                "heading": "Pull request #7",
+            },
+            "shown": {
+                "blocks": False,
+                "holding": False,
+                "final": True,
+                "heading": "Count to two in the app #7",
+            },
         },
         # A page replaced during its hold stays out of sight; it never shows plain (review C7).
         "cancelledWhileHeld": {"holding": True},
@@ -640,8 +652,31 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # render is waited for too (review C1). Before, the second comment, or the first, was
         # plain at ready.
         "firstScreen": {
-            scrolled: {"plainOnFirstScreenAtReady": [], "waitedFor": 3, "outcome": "met"}
-            for scrolled in ("0", "5000")
+            **{
+                scrolled: {
+                    "plainOnFirstScreenAtReady": [],
+                    "waitedFor": 3,
+                    "outcome": "met",
+                    "askedBeforeSecondAnswer": 3,
+                }
+                for scrolled in ("0", "5000")
+            },
+            # A text past the screen that fails leaves the hold met (review D4); before, it
+            # was unavailable.
+            "failsPastTheScreen": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 2,
+                "outcome": "met",
+                "askedBeforeSecondAnswer": 4,
+            },
+            # Texts asked ahead of the screen take the cascade in 4 round trips, 6 before
+            # (review D2).
+            "cascade": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 6,
+                "outcome": "met",
+                "rounds": 4,
+            },
         },
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],

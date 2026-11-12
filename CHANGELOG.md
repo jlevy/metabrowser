@@ -10,8 +10,9 @@ All notable changes to Metabrowser are documented here.
   text only past that wait.
   The first screen is the new page’s own top, wherever the page it replaces was
   scrolled. A page shown first as a description preview waits for its description alone.
-  A cold link or reload shows the header and its loading blocks, if they have appeared,
-  until the conversation shows, and never an empty body in between.
+  A cold link or reload keeps its loading heading, and its loading blocks if they have
+  appeared, where they are until the pull request’s header and conversation show
+  together, so nothing moves and the body is never empty in between.
   A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
   refresh that leaves a text unchanged shows it at once without asking again.
   When the full record replaces a description preview, the description stays where it is

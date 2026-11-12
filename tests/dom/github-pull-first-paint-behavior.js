@@ -30,6 +30,8 @@ function host() {
   const held = [];
   let holdMarkdown = false;
   let current = null;
+  /** Parts whose Markdown read the server answers 500. */
+  const failMarkdown = new Set();
   globalThis.document = {
     visibilityState: "visible",
     addEventListener() {},
@@ -66,7 +68,11 @@ function host() {
   });
   globalThis.fetch = async (route) => {
     if (route.startsWith("/api/plugin/github/pull-markdown?")) {
-      markdown.push(new URL(route, "http://localhost").searchParams.get("part"));
+      const asked = new URL(route, "http://localhost").searchParams.get("part");
+      markdown.push(asked);
+      if (failMarkdown.has(asked)) {
+        return response({}, 500);
+      }
       const answer = response({
         record_revision: current.record_revision,
         fetched_at: current.fetched_at,
@@ -87,6 +93,7 @@ function host() {
     timers,
     markdown,
     held,
+    failMarkdown,
     set current(value) {
       current = value;
     },
@@ -136,6 +143,9 @@ function host() {
         rendered: () => description()?.querySelector(":scope > .metabrowser-kpress-host") ?? null,
         // Laid out out of sight while its first paint waits.
         holding: () => body().classes.has("github-pull-body-holding"),
+        heading: () =>
+          [...container.descendants()].find((node) => node.classes.has("github-pull-title"))
+            ?.textContent ?? null,
         texts: () =>
           [...container.descendants()].filter((node) => node.getAttribute("data-part") !== null),
       };
@@ -314,11 +324,16 @@ async function run() {
       [...landing.body().descendants()].some((node) => node.classes.has("github-pull-loading"));
     const before = blocks();
     await settle();
-    const whileHeld = { holding: landing.holding(), blocks: blocks() };
+    const whileHeld = { holding: landing.holding(), blocks: blocks(), heading: landing.heading() };
     session.holdMarkdown(false);
     session.held.shift()();
     await settle();
-    facts.landing = { blocksBefore: before, whileHeld, final: landing.plain() === null };
+    facts.landing = {
+      blocksBefore: before,
+      whileHeld,
+      final: landing.plain() === null,
+      heading: landing.heading(),
+    };
     landing.handle.dispose();
   }
 
@@ -342,8 +357,11 @@ async function run() {
       holding: landing.holding(),
       sameBlocks: before !== null && blocks() === before,
       cover: blocks()?.classes.has("github-pull-loading-cover") ?? false,
+      // The header waits with the body, so the blocks stay where they were (review D1).
+      heading: landing.heading(),
     };
     assert.ok(whileHeld.sameBlocks, "the blocks that showed stay, the same node, while held");
+    assert.equal(whileHeld.heading, "Pull request #7", "the loading heading stays while held");
     session.holdMarkdown(false);
     session.held.shift()();
     await settle();
@@ -353,6 +371,7 @@ async function run() {
         blocks: blocks() !== null,
         holding: landing.holding(),
         final: landing.plain() === null,
+        heading: landing.heading(),
       },
     };
     landing.handle.dispose();
@@ -384,15 +403,27 @@ async function run() {
   // next is. Either way the first screen is the new page's own: no text on it is plain when
   // the page is ready, those that come into it as the texts above render included (review C1).
   facts.firstScreen = {};
-  for (const scrolled of [0, 5000]) {
+  const screens = [
+    { name: "0", scrolled: 0, rendered: 200 },
+    { name: "5000", scrolled: 5000, rendered: 200 },
+    // Renders as tall as their plain texts, so nothing moves; the second comment, past the
+    // screen and asked for ahead of it, fails: the hold met what it waited for (review D4).
+    { name: "failsPastTheScreen", scrolled: 0, rendered: 400, fails: "issue_comment/101" },
+    // Renders an eighth of their plain height, so each brings the next text up, on a page laid
+    // out past the conversation, where no observer asks ahead. Every answer in flight lands at
+    // once, a round trip each: texts asked ahead of the screen fill the Markdown queue's free
+    // slot, so the hold takes fewer rounds; it took 6 before (review D2).
+    { name: "cascade", scrolled: 5000, rendered: 50, rounds: true },
+  ];
+  for (const [index, { name, scrolled, rendered, fails, rounds }] of screens.entries()) {
     const PANE = 700;
-    const threaded = envelope(`${scrolled}`.padStart(64, "8"), `threaded text ${scrolled}`);
+    const threaded = envelope(`${index + 1}`.padStart(64, "8"), `threaded text ${name}`);
     const comment = recorded.current.body.record.issue_comments[0];
     threaded.record.issue_comments = Array.from({ length: 10 }, (_, at) => ({
       ...comment,
       id: 100 + at,
       timeline_id: String(100 + at),
-      body: `comment ${at} of ${scrolled}`,
+      body: `comment ${at} of ${name}`,
     }));
     const container = new Element("main");
     const layout = (node) => {
@@ -405,7 +436,7 @@ async function run() {
         if (text.getAttribute("data-part") === null) {
           continue;
         }
-        const height = text.querySelector(":scope > .github-pull-plain") === null ? 200 : 400;
+        const height = text.querySelector(":scope > .github-pull-plain") === null ? rendered : 400;
         if (text === node) {
           return { top: y, bottom: y + height, width: 800, height };
         }
@@ -458,6 +489,11 @@ async function run() {
     const pane = { clientHeight: PANE, getBoundingClientRect: () => ({ top: 0, bottom: PANE }) };
     session.current = threaded;
     session.holdMarkdown(true);
+    session.failMarkdown.clear();
+    if (fails !== undefined) {
+      session.failMarkdown.add(fails);
+    }
+    const askedBefore = session.markdown.length;
     const screened = session.mount(page, threaded, { container, pane, perf: recording });
     const deliver = () => {
       for (const observer of observers) {
@@ -478,8 +514,20 @@ async function run() {
         )
         .map((text) => text.getAttribute("data-part"));
     let atReady = null;
+    // Asked when the first answer lands, before the second does: the screen's texts and the
+    // next few past it are queued at once, so a slot that frees takes the next (review D2).
+    let askedBeforeSecondAnswer = null;
+    let answered = 0;
+    let trips = 0;
     while (session.held.length > 0 && atReady === null) {
-      session.held.shift()();
+      if (answered === 1) {
+        askedBeforeSecondAnswer = session.markdown.length - askedBefore;
+      }
+      answered += 1;
+      trips += 1;
+      for (const answer of rounds ? session.held.splice(0) : [session.held.shift()]) {
+        answer();
+      }
       await settle();
       deliver();
       await settle();
@@ -494,11 +542,16 @@ async function run() {
     await settle();
     assert.deepEqual(atReady, [], "no text on the page's first screen is plain when it is ready");
     const hold = spans.find((span) => span.label === "githubPull:firstPaintHold")?.meta;
-    facts.firstScreen[scrolled] = {
+    if (fails !== undefined) {
+      assert.equal(hold?.outcome, "met", "a text it never waited for does not make it unavailable");
+    }
+    facts.firstScreen[name] = {
       plainOnFirstScreenAtReady: atReady,
       waitedFor: hold?.parts ?? null,
       outcome: hold?.outcome ?? null,
+      ...(rounds ? { rounds: trips } : { askedBeforeSecondAnswer }),
     };
+    session.failMarkdown.clear();
     screened.handle.dispose();
     delete Element.prototype.getBoundingClientRect;
     delete globalThis.IntersectionObserver;

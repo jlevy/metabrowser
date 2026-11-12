@@ -58,14 +58,21 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // its first screen shows, so each is final when it first shows; kept renders wait for
 // nothing. Past this the texts show plain and their Markdown replaces them when it comes. A
 // page replacing another keeps that one on screen meanwhile. Measured 2026-11-12 in headless
-// Chrome 152 against a local server on this repository, three cold documents of six pull
-// requests each, load average 5 to 6, from the hold's `githubPull:firstPaintHold` span: a
-// first visit that waited held 9 to 75 ms (median 19, n 14), the 68 and 75 ms holds being a
-// document's first pull request, which also loads `inert-html` and KPress's stylesheets; a
-// revisit's kept renders held 1 to 16 ms, its own paint (n 5); none reached this bound. The
-// exp-065 pilot (2026-11-12) also waited for a `cached_only` timeline read, which ran to the
-// bound on cold and revisited pull requests, so commits no longer hold the paint.
+// Chrome 152 against a local server on this repository, from the hold's
+// `githubPull:firstPaintHold` span, each pull request clicked from the previous
+// conversation scrolled by 1,500 px, two documents of five, load average 4 to 7: 23 to 155
+// ms (median 34, n 10), the 100 and 155 ms holds being a document's first pull request,
+// which also loads `inert-html` and KPress's stylesheets; every one waited for one text,
+// the description filling the first screen. None reached this bound. A first screen of
+// several texts waits a round trip per `MARKDOWN_CONCURRENCY` texts: three texts at 40 ms
+// an answer held 84 to 86 ms in a scratch page (review D), so a cold document's first page
+// with several texts leaves less room than these figures. The exp-065 pilot also waited for
+// a `cached_only` timeline read, which ran to the bound, so commits no longer hold the paint.
 export const DESCRIPTION_HOLD_MS = 200;
+// How many plain texts past a held first screen are asked for with it, not waited on: a
+// render shorter than its plain text brings the texts below it up into the screen, and one
+// already asked for is on its way when it does.
+export const FIRST_SCREEN_AHEAD = 3;
 // Rendered texts kept across pages, the newest first: a revisit, Back, or Forward, and a
 // refreshed record whose text did not change, show the Markdown at once instead of asking
 // again. Descriptions and the other parts are kept apart, so reading one long conversation
@@ -3386,9 +3393,9 @@ export function mountPullPage(container, ctx, mb) {
    * - `hidden`, over nothing or the loading blocks: the conversation is painted and laid out
    *   out of sight, and waits for every text that is plain and on its first screen, measured
    *   from the page's own top (`parts`, all it waited for). Its kept renders are already
-   *   final. A text whose Markdown cannot come is `failed` and waits no longer. Loading
-   *   blocks that had shown stay over it until it shows (`cover`), so the body never blinks
-   *   empty between them.
+   *   final. A text whose Markdown cannot come is `failed` and waits no longer. Over the
+   *   loading page the header waits with it (`header`), so the loading heading and any
+   *   blocks that had shown (`cover`) stay as they are, and header and body change once.
    * - `delayed`, over a core preview: the preview stays as it is, and the full record paints
    *   once its description's Markdown can be inserted with it (`text`), or `plain` can.
    *
@@ -3399,6 +3406,7 @@ export function mountPullPage(container, ctx, mb) {
    *   parts: Set<string>,
    *   failed: Set<string>,
    *   cover: HTMLElement | null,
+   *   header: boolean,
    *   since: number,
    *   timer: ReturnType<typeof window.setTimeout>,
    * } | null}
@@ -4943,11 +4951,25 @@ export function mountPullPage(container, ctx, mb) {
     if (model.tab !== "files") {
       wantedFile = null;
     }
-    paintHeader(model);
-    paintStacks(model);
     if (firstPaint !== null && (model.tab !== "" || model.pull === null)) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
+    }
+    // The conversation's first paint is decided before the header, since a hold over the
+    // loading page keeps the loading heading too: header and body then change once.
+    const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
+    const key = conversation ? conversationKey(model) : null;
+    const action =
+      key === null
+        ? null
+        : conversationAction(
+            { key: bodyKey, recordRevision: markdownRevision },
+            { key, recordRevision: model.recordRevision },
+          );
+    const hold = action === "repaint" ? holdFirstPaint(model) : null;
+    if (!(firstPaint?.mode === "hidden" && firstPaint.header)) {
+      paintHeader(model);
+      paintStacks(model);
     }
     // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
@@ -5008,13 +5030,7 @@ export function mountPullPage(container, ctx, mb) {
     if (model.comparison !== null) {
       prefetch.want(model.comparison);
     }
-    const key = conversationKey(model);
-    const action = conversationAction(
-      { key: bodyKey, recordRevision: markdownRevision },
-      { key, recordRevision: model.recordRevision },
-    );
-    const hold = action === "repaint" ? holdFirstPaint(model) : null;
-    if (hold === "delayed") {
+    if (hold === "delayed" || key === null) {
       return;
     }
     bodyKey = key;
@@ -5081,6 +5097,7 @@ export function mountPullPage(container, ctx, mb) {
       parts: new Set(),
       failed: new Set(),
       cover: null,
+      header: !delayed && bodyShows === "loading",
       since: Date.now(),
       timer: window.setTimeout(() => releaseFirstPaint("bound"), DESCRIPTION_HOLD_MS),
     };
@@ -5121,18 +5138,23 @@ export function mountPullPage(container, ctx, mb) {
    * pane's height from the page's own top, where the page shows once installed, and not the
    * pane's view now: a page that replaces another is laid out where that one is scrolled to.
    * It is taken again at every check, since a text that renders changes height and moves the
-   * texts below it. With no layout to measure, every plain text is waited for.
+   * texts below it. With no layout to measure, every plain text is waited for. The next
+   * `FIRST_SCREEN_AHEAD` plain texts past the screen are `ahead`: asked for, not waited
+   * on, so one that comes up as those above render is already on its way. A failed text on
+   * the screen is among the texts waited for, and ends the wait as unavailable.
    *
    * @param {NonNullable<typeof firstPaint>} held
-   * @returns {[string, HTMLElement][]}
+   * @returns {{waiting: [string, HTMLElement][], ahead: [string, HTMLElement][]}}
    */
   function firstScreenPlain(held) {
     const top = boxOf(container)?.top ?? null;
     const height = pane?.clientHeight || window.innerHeight || Number.POSITIVE_INFINITY;
     /** @type {[string, HTMLElement][]} */
     const waiting = [];
+    /** @type {[string, HTMLElement][]} */
+    const ahead = [];
     for (const [part, element] of texts) {
-      if (held.failed.has(part) || element.querySelector(":scope > .github-pull-plain") === null) {
+      if (element.querySelector(":scope > .github-pull-plain") === null) {
         continue;
       }
       const box = boxOf(element);
@@ -5141,10 +5163,16 @@ export function mountPullPage(container, ctx, mb) {
         continue;
       }
       if (top === null || box === null || box.top - top < height) {
-        waiting.push([part, element]);
+        if (held.failed.has(part)) {
+          held.parts.add(part);
+        } else {
+          waiting.push([part, element]);
+        }
+      } else if (!held.failed.has(part) && ahead.length < FIRST_SCREEN_AHEAD) {
+        ahead.push([part, element]);
       }
     }
-    return waiting;
+    return { waiting, ahead };
   }
 
   /**
@@ -5174,9 +5202,12 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     if (held.mode === "hidden") {
-      const waiting = firstScreenPlain(held);
-      for (const [part, element] of waiting) {
+      const { waiting, ahead } = firstScreenPlain(held);
+      for (const [part] of waiting) {
         held.parts.add(part);
+      }
+      // The screen's texts first, then those just past it, as the Markdown queue allows.
+      for (const [part, element] of [...waiting, ...ahead]) {
         const value = textOf.get(element);
         if (value !== undefined) {
           controller.requestMarkdown(part, value);
@@ -5188,7 +5219,9 @@ export function mountPullPage(container, ctx, mb) {
     } else if (!firstPaintReady()) {
       return;
     }
-    releaseFirstPaint(held.failed.size > 0 || held.plain ? "unavailable" : "met");
+    // Unavailable only for a text it waited for: one past the screen may fail unseen.
+    const failedWaited = [...held.failed].some((part) => held.parts.has(part));
+    releaseFirstPaint(failedWaited || held.plain ? "unavailable" : "met");
   }
 
   /**
@@ -5209,6 +5242,11 @@ export function mountPullPage(container, ctx, mb) {
     firstPaint = null;
     firstPaintSpent = true;
     if (reveal) {
+      if (held.header && outcome !== "closed" && shown !== null) {
+        // The header waited with the body: both change in this task, once.
+        paintHeader(shown);
+        paintStacks(shown);
+      }
       body.classList.remove("github-pull-body-holding");
       held.cover?.remove();
     }

@@ -1718,9 +1718,12 @@ The conversation’s first paint of a full record is laid out out of sight until
 Markdown of every text its first screen shows can be inserted, within
 `DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`).
 The first screen is the page’s own, measured from its top, not the view of a scrolled
-page it replaces, and a text that comes into it as those above render is waited for too
-(`firstScreen`). Loading blocks that had shown stay over the held conversation until it
-shows (`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
+page it replaces, and a text that comes into it as those above render is waited for too,
+the next few past it asked for at once (`firstScreen`); a text it never waited for that
+fails leaves the hold met.
+Over the loading page the header waits with the body, so the loading heading and any
+blocks that had shown stay where they were until both change once (`landing`,
+`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
 (`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
 render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
 Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
@@ -1749,20 +1752,24 @@ $ node tests/dom/github-pull-first-paint-behavior.js
     "blocksBefore": true,
     "whileHeld": {
       "holding": true,
-      "blocks": false
+      "blocks": false,
+      "heading": "Pull request #7"
     },
-    "final": true
+    "final": true,
+    "heading": "Count to two in the app #7"
   },
   "landingAfterBlocksShowed": {
     "whileHeld": {
       "holding": true,
       "sameBlocks": true,
-      "cover": true
+      "cover": true,
+      "heading": "Pull request #7"
     },
     "shown": {
       "blocks": false,
       "holding": false,
-      "final": true
+      "final": true,
+      "heading": "Count to two in the app #7"
     }
   },
   "cancelledWhileHeld": {
@@ -1772,12 +1779,26 @@ $ node tests/dom/github-pull-first-paint-behavior.js
     "0": {
       "plainOnFirstScreenAtReady": [],
       "waitedFor": 3,
-      "outcome": "met"
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
     },
     "5000": {
       "plainOnFirstScreenAtReady": [],
       "waitedFor": 3,
-      "outcome": "met"
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
+    },
+    "failsPastTheScreen": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 2,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 4
+    },
+    "cascade": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 6,
+      "outcome": "met",
+      "rounds": 4
     }
   },
   "ages": [
