@@ -1861,6 +1861,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   registerLoadMoreAction(name: string, action: () => unknown): void;
   /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
   isOwnedDelegate(element: Element | null | undefined): boolean;
+  /** Copy what an owned copy control names, as its click does; see plugin-sdk.js. */
+  copyFromControl(element: Element | null | undefined): boolean;
   configureAssets(
     assetsByKind: Record<
       string,
@@ -2140,6 +2142,17 @@ type MetabrowserShortcutCommand = Readonly<{
   repeat?: boolean;
   scope: string;
   surfaces: Readonly<Record<string, "active" | "always">>;
+  /** Live only while one of its attached targets is live; see `attachTarget`. */
+  targeted?: boolean;
+}>;
+
+/** Where a badge sits: inside its target, or past its inline end in a badge anchor. */
+type MetabrowserBadgePlacement = "beside" | "inline-end";
+
+/** What `attachTarget` returns: move the target after a rebuild, or let it go. */
+type MetabrowserShortcutTarget = Readonly<{
+  detach(): void;
+  retarget(element: HTMLElement): void;
 }>;
 
 type MetabrowserShortcutPresentation = Readonly<{
@@ -2165,6 +2178,12 @@ type MetabrowserShortcutRegistry = Readonly<{
   appendBinding(container: HTMLElement, presentation: MetabrowserBindingPresentation): void;
   /** Render one key, a binding key or a standalone name such as `Shift`, as one keycap. */
   appendKey(container: HTMLElement, key: string): HTMLElement;
+  /** Record an element a command acts on: its `aria-keyshortcuts`, liveness, and badge. */
+  attachTarget(
+    commandId: string,
+    element: HTMLElement,
+    options?: { placement?: MetabrowserBadgePlacement },
+  ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
   dispose(): void;
@@ -2173,11 +2192,22 @@ type MetabrowserShortcutRegistry = Readonly<{
   ): MetabrowserBindingPresentation;
   describeKey(key: string): MetabrowserKeyDefinition;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
+  /** Whether a command would run now: active scope, `available()`, and a live target. */
+  isLive(commandId: string): boolean;
+  isRevealed(): boolean;
+  /** The element a command would act on now, its first live target in document order. */
+  liveTarget(commandId: string): HTMLElement | null;
+  /** Hear each key after dispatch as `(event, handled)`, and each `keyup` as unhandled. */
+  observeKeys(observer: (event: KeyboardEvent, handled: boolean) => void): () => void;
   present(commandId: string): MetabrowserShortcutPresentation | null;
+  /** Read target liveness again and move the badges while revealed; publishes `dispatch`. */
+  refreshBadges(): void;
   register(command: MetabrowserShortcutCommand): () => void;
+  /** Show or hide every badge, for the key reveal; publishes `reveal`. */
+  setRevealed(revealed: boolean): void;
   snapshot(
     surface: string,
-    options?: { includeInactive?: boolean },
+    options?: { includeInactive?: boolean; live?: boolean },
   ): ReadonlyArray<MetabrowserShortcutGroupPresentation>;
   subscribe(listener: (event: MetabrowserShortcutEvent) => void): () => void;
 }>;
@@ -2252,6 +2282,62 @@ type MetabrowserOverlayRuntime = Readonly<{
   restoreBackgroundState(records: ReadonlyArray<{ element: HTMLElement; inert: boolean }>): void;
 }>;
 
+/** static/key-reveal.js: the Shift key reveal's state machine. */
+type MetabrowserKeyRevealApi = Readonly<{
+  dispose(): void;
+  snapshot(): Readonly<{ armed: boolean; state: "armed" | "idle" | "revealed" }>;
+}>;
+
+type MetabrowserKeyRevealRuntime = Readonly<{
+  REVEAL_HOLD_MS: number;
+  REVEAL_POINTER_SLOP_PX: number;
+  createKeyReveal(options: {
+    shortcuts: MetabrowserShortcutRegistry;
+    document?: Document;
+    window?: Window;
+    root?: HTMLElement;
+    schedule?: (callback: () => void, delayMs: number) => unknown;
+    cancel?: (handle: unknown) => void;
+    visibility?: () => DocumentVisibilityState;
+    holdMs?: number;
+    slopPx?: number;
+  }): MetabrowserKeyRevealApi;
+}>;
+
+/**
+ * What the shell lends static/shell-keymap.js: where its controls are now, and the
+ * paths that activate them, each the one its control's click runs.
+ */
+type MetabrowserShellKeymapShell = Readonly<{
+  copyFromControl(element: HTMLElement): boolean;
+  /** A filter dropdown's trigger, `types` or `recency`; null when the bar has none. */
+  filterTrigger(key: string): HTMLElement | null;
+  /** The committed main-pane header's Up target and Copy control; null for none. */
+  headerControls(): { copy: HTMLElement | null; parent: HTMLElement | null };
+  openFilterMenu(key: string): boolean;
+  openFolder(dir: string): void;
+  selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
+  sourceSelector(): Readonly<{ activate(): unknown; button: HTMLElement }> | null;
+  /** The view tab bar committed to the main pane, never one still staged. */
+  viewTabBar(): HTMLElement | null;
+}>;
+
+type MetabrowserShellKeymapApi = Readonly<{
+  commitViewTabs(previousBar: HTMLElement | null, nextBar: HTMLElement | null): void;
+  dispose(): void;
+  syncFilters(): void;
+  syncHeader(): void;
+  syncSource(): void;
+  syncViewTabs(bar: HTMLElement | null): void;
+}>;
+
+type MetabrowserShellKeymapRuntime = Readonly<{
+  createShellKeymap(options: {
+    shortcuts: MetabrowserShortcutRegistry;
+    shell: MetabrowserShellKeymapShell;
+  }): MetabrowserShellKeymapApi;
+}>;
+
 type MetabrowserKeyboardHelpApi = Readonly<{
   close(): void;
   dispose(): void;
@@ -2271,6 +2357,7 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     invoke: (commandId: string, context: Record<string, unknown>) => boolean,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
+    options?: { actions?: boolean; bindings?: "all" | "preferred"; limit?: number },
   ): void;
   renderHelpGroups(
     body: HTMLElement,
@@ -2288,6 +2375,8 @@ type MetabrowserTreeMutationSnapshot = Readonly<{
 
 type MetabrowserTreeKeyboardApi = Readonly<{
   dispose(): void;
+  /** Focus the roving anchor row, or the first visible row; false when there is none. */
+  focusCurrent(): boolean;
   focusedRow(): HTMLElement | null;
   prepareForMutation(): MetabrowserTreeMutationSnapshot;
   setAnchor(row: HTMLElement, focus?: boolean): HTMLElement | null;
@@ -2750,6 +2839,13 @@ declare global {
     snapshot(): MetabrowserSourceRefSelectorState & { filterPending: boolean };
   }>;
 
+  /** A mounted selector: its button, and the key's path, which opens the list and focuses its filter. */
+  type MetabrowserSourceRefSelectorMount = MetabrowserSourceRefSelector &
+    Readonly<{
+      activate(): Promise<void>;
+      button: HTMLButtonElement;
+    }>;
+
   type MetabrowserSourceRefSelectorRuntime = Readonly<{
     FILTER_DELAY_MS: number;
     createSelector(
@@ -2757,7 +2853,7 @@ declare global {
       options?: { shown?: MetabrowserSourcePage | null },
     ): MetabrowserSourceRefSelector;
     describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
-    mount(element: HTMLElement): MetabrowserSourceRefSelector;
+    mount(element: HTMLElement): MetabrowserSourceRefSelectorMount;
     moveRow(key: string, index: number, count: number): number | null;
     shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
   }>;
@@ -2883,11 +2979,18 @@ declare global {
     onFirstShow: (() => void) | null;
     onShow?: (() => void) | null;
     onHide?: (() => void) | null;
+    /**
+     * Focus the panel's roving row after its tab's digit opens it; false when the
+     * panel has no row yet, and the tab button keeps focus.
+     */
+    focusRow?: (() => boolean) | null;
   };
 
   type MetabrowserMainTabsDeps = {
     cancelPreview(): void;
     flushPull(): void;
+    /** Focus the Files tree's roving row: the Files panel's `focusRow`. */
+    focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
     isPullAddress(pathname: string): boolean;
     restore(): Promise<unknown>;
@@ -2930,7 +3033,14 @@ declare global {
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
+    /** Lend the header's Copy key a committed commit view's Copy revision; returns its release. */
+    attachHeaderCopy(button: HTMLElement): () => void;
   };
+  type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
+  type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
+  type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
+  type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
+  type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
   type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
@@ -2999,6 +3109,8 @@ declare global {
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
     MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
+    MetabrowserKeyReveal?: MetabrowserKeyRevealRuntime;
+    MetabrowserShellKeymap?: MetabrowserShellKeymapRuntime;
     MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
     METABROWSER_PATH_ENCODING?: "utf16" | "bytes";

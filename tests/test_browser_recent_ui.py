@@ -158,6 +158,8 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/keyboard-shortcuts.js",
         "/static/overlay-layer.js",
         "/static/keyboard-help.js",
+        "/static/key-reveal.js",
+        "/static/shell-keymap.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
     )

@@ -1446,6 +1446,9 @@ async def index(
     keyboard_shortcuts_url = _static_asset_url("keyboard-shortcuts.js")
     overlay_layer_url = _static_asset_url("overlay-layer.js")
     keyboard_help_url = _static_asset_url("keyboard-help.js")
+    # The Shift key reveal and the shell's own keys: neither has work before the registry.
+    key_reveal_url = _static_asset_url("key-reveal.js")
+    shell_keymap_url = _static_asset_url("shell-keymap.js")
     tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
     search_palette_url = _static_asset_url("search-palette.js")
     git_graph_url = _static_asset_url("git-graph.js")
@@ -1639,6 +1642,8 @@ async def index(
             {"src": keyboard_shortcuts_url},
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
+            {"src": key_reveal_url},
+            {"src": shell_keymap_url},
             {"src": tree_keyboard_navigation_url},
             {"src": search_palette_url},
             {"src": git_graph_url},

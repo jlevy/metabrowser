@@ -392,6 +392,13 @@ const shellSource = [
   ),
 ].join("\n\n");
 
+// What makes a stand-in element a live shortcut target to the registry.
+const LIVE_TARGET = Object.freeze({
+  checkVisibility: () => true,
+  isConnected: true,
+  parentElement: null,
+});
+
 function fakeElement(fields = {}) {
   const attributes = new Map();
   const classes = new Set();
@@ -464,15 +471,12 @@ function createShell(pathname, network, options = {}) {
   const refused = options.refused ?? new Set();
   /** @type {string[]} */
   const renderedViews = [];
-  // The shown file's Source tab; a click selects it, as initTabs does.
+  // The shown file's Source tab, in its bar; selecting it is the tab's own path,
+  // selectPreviewTab, which a click and a key share.
   /** @type {string[]} */
   const tabClicks = [];
-  const sourceTab = fakeElement({
-    click() {
-      tabClicks.push(`${preview.dataset.renderedPath}: source`);
-      sourceTab.classList.add("active");
-    },
-  });
+  const tabBar = fakeElement();
+  const sourceTab = fakeElement({ parentElement: tabBar });
   const preview = fakeElement();
   const elements = new Map([
     ["preview-pane", preview],
@@ -486,7 +490,11 @@ function createShell(pathname, network, options = {}) {
   if (options.pulls) {
     panelIds.push("pulls");
   }
-  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab }, focus() {} }));
+  // A tab button is its digit's target, which the registry reads as live: connected,
+  // outside any inert subtree, and visible.
+  const tabButtons = panelIds.map((tab) =>
+    fakeElement({ dataset: { tab }, focus() {}, ...LIVE_TARGET }),
+  );
   const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
   scroller.querySelector = () => ({});
   scroller.querySelectorAll = () => tabPanels;
@@ -600,7 +608,8 @@ function createShell(pathname, network, options = {}) {
       },
       body: { append() {} },
       cookie: "",
-      createElement: () => fakeElement({ focus() {}, remove() {} }),
+      createElement: (tag) =>
+        fakeElement({ focus() {}, remove() {}, ...(tag === "button" ? LIVE_TARGET : {}) }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
       querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
@@ -631,6 +640,9 @@ function createShell(pathname, network, options = {}) {
     },
     mainTabs: null,
     mainTabIntent: 0,
+    // The shell keymap is created with the registry; these scenarios have neither.
+    shellKeymap: null,
+    treeKeyboard: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
@@ -692,6 +704,13 @@ function createShell(pathname, network, options = {}) {
     },
     resetTextChunkGrowth() {},
     responsePerfMeta: () => ({}),
+    selectPreviewTab(bar, tabId) {
+      if (bar === tabBar) {
+        tabClicks.push(`${preview.dataset.renderedPath}: ${tabId}`);
+        sourceTab.classList.add("active");
+      }
+      return bar === tabBar;
+    },
     revealInTree: options.revealInTree ?? (async () => false),
     setSelectedPath() {},
     settleHoverPrefetchForSelection: async () => {},
@@ -905,8 +924,18 @@ async function mainTabShortcuts() {
   assert.equal(press("@", { code: "Digit2", shiftKey: true }), true, "Shift+2 opens Commits");
   assert.equal(sandbox.mainTabs.active(), "git");
   await settle();
+  // The digit hands focus to the panel's roving row, the tree's for Files.
+  const focusedRows = [];
+  sandbox.treeKeyboard = {
+    focusCurrent() {
+      focusedRows.push("files");
+      return true;
+    },
+  };
   assert.equal(press("!", { code: "Digit1", shiftKey: true }), true, "Shift+1 opens Files");
   assert.equal(sandbox.mainTabs.active(), "files");
+  assert.deepEqual(focusedRows, ["files"], "the Files digit focuses the tree's roving row");
+  sandbox.treeKeyboard = null;
   await settle();
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");

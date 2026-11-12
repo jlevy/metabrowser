@@ -622,6 +622,14 @@ event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
 
+// The Files tab's digit hands focus to the row the reader left, the roving anchor.
+check("focusCurrent focuses the roving anchor", navigator.focusCurrent() === true);
+check(
+  "focusCurrent lands on the anchor row, not the first one",
+  document.activeElement === outside,
+  document.activeElement?.dataset?.treeId || document.activeElement?.tagName,
+);
+
 navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);
 // The layer's own async continuations can still call synchronize after

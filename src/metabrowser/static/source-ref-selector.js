@@ -606,13 +606,17 @@
     const mounted = selector;
     const listening = new AbortController();
     const signal = listening.signal;
+    // An open list takes focus in its filter box, so typing narrows it at once.
+    const focusOpenFilter = () => {
+      if (!parts.panel.hidden) {
+        parts.filter.focus();
+      }
+    };
     parts.toggle.addEventListener(
       "click",
       () => {
         void mounted.toggle();
-        if (!parts.panel.hidden) {
-          parts.filter.focus();
-        }
+        focusOpenFilter();
       },
       { signal },
     );
@@ -712,6 +716,14 @@
     );
     return Object.freeze({
       ...mounted,
+      // The control a key's badge marks, and what the key does: the button's path,
+      // except that it opens the list rather than toggling it.
+      button: parts.toggle,
+      activate() {
+        const opened = mounted.open();
+        focusOpenFilter();
+        return opened;
+      },
       dispose() {
         listening.abort();
         unbindKinds();

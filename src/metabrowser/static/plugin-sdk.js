@@ -411,9 +411,25 @@
     );
   }
 
+  /**
+   * Copy what a copy control names, as a click on it does: the named entry to the
+   * delegate below, for a key that runs the control without a click. Only a control
+   * page code owns qualifies, as for the click. Reports whether it copied.
+   * @param {Element | null | undefined} element
+   */
+  function copyFromControl(element) {
+    var control = /** @type {(Element & {dataset?: DOMStringMap}) | null | undefined} */ (element);
+    if (!control?.dataset?.mbCopy || !isOwnedDelegate(control)) {
+      return false;
+    }
+    _handleCopyClick(control);
+    return true;
+  }
+
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
+    copyFromControl,
     isOwnedDelegate,
     loadPluginsForKind,
     registerLoadMoreAction,

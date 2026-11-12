@@ -31,9 +31,11 @@ EXPECTED_LICENSE_METADATA = {
 }
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
 KEYBOARD_STATIC_ASSETS = {
+    "key-reveal.js",
     "keyboard-help.js",
     "keyboard-shortcuts.js",
     "overlay-layer.js",
+    "shell-keymap.js",
     "tree-keyboard-navigation.js",
 }
 ISOLATED_PYTHON_ENV_VARS = ("PYTHONHOME", "PYTHONOPTIMIZE", "PYTHONPATH")

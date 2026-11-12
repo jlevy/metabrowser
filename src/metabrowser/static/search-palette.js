@@ -769,7 +769,7 @@
           id: "quick-file.open",
           order: 20,
           scope: "global",
-          surfaces: { help: "always", nav: "always" },
+          surfaces: { help: "always", nav: "always", reveal: "always" },
         }),
         options.shortcuts.register({
           allowInEditable: true,

@@ -199,5 +199,6 @@ def test_both_open_keys_stay_bound_though_the_hint_names_one() -> None:
     command = source[source.rfind("options.shortcuts.register", 0, command_start) : command_start]
     assert 'bindings: [{ key: "t" }, { key: "/" }]' in command
     assert (
-        'surfaces: { help: "always", nav: "always" }' in source[command_start : command_start + 300]
+        'surfaces: { help: "always", nav: "always", reveal: "always" }'
+        in source[command_start : command_start + 300]
     )

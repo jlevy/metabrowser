@@ -1740,6 +1740,10 @@ async function run() {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    // The Commits tab's digit hands focus back to the row the reader left.
+    document.activeElement = null;
+    assertTrue("focusRow: the roving row takes focus", internals.focusCommitRow());
+    assertTrue("focusRow: focus lands on the row left", document.activeElement === rows[1]);
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────
@@ -2547,6 +2551,10 @@ async function run() {
   assertTrue(
     "gate: a repository registers its real Git tab before helper loading",
     registeredPanel !== null,
+  );
+  assertTrue(
+    "gate: the Commits tab hands its digit's focus to the history",
+    registeredPanel.focusRow === internals.focusCommitRow,
   );
   assertEqual("gate: an unopened Git tab does not load the view helpers", viewAssets, []);
   registeredPanel.onShow();

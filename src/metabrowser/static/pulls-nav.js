@@ -67,7 +67,7 @@
    *   location(): {pathname: string, search: string},
    *   pushHref(href: string): void,
    *   activeTab(): string | null,
-   *   registerPanel(panel: {id: string, label: string, onFirstShow: null, onShow: () => void, onHide: () => void}): void,
+   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void}): void,
    *   activate(panelId: string): void,
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
@@ -213,6 +213,23 @@
     }
 
     /**
+     * Give the list's roving row focus, the selected pull request's when it has one, as
+     * the Pulls tab's digit does after it switches to the tab. Reports whether a row took
+     * focus; before the list has rows, the tab button keeps it.
+     */
+    function focusRow() {
+      const container = deps.container();
+      const row =
+        container?.querySelector('a.github-pulls-row[tabindex="0"]') ??
+        container?.querySelector("a.github-pulls-row");
+      if (!(row instanceof HTMLElement)) {
+        return false;
+      }
+      row.focus();
+      return true;
+    }
+
+    /**
      * What of an address can move a tab: its path, and at the list's address its filter too,
      * which is part of that address. A fragment or a file's query is a step within one place.
      *
@@ -278,7 +295,14 @@
     return Object.freeze({
       /** Register the tab, show it where the address asks, and read ahead where it does not. */
       start() {
-        deps.registerPanel({ id: PANEL_ID, label: "Pulls", onFirstShow: null, onShow, onHide });
+        deps.registerPanel({
+          id: PANEL_ID,
+          label: "Pulls",
+          focusRow,
+          onFirstShow: null,
+          onShow,
+          onHide,
+        });
         const { pathname, search } = deps.location();
         lastPlace = place(pathname, search);
         if (deps.activeTab() === PANEL_ID) {
@@ -356,7 +380,7 @@
         order: 10,
         repeat: false,
         scope: "global",
-        surfaces: { help: "always" },
+        surfaces: { help: "always", reveal: "always" },
       }),
       shortcuts.register({
         bindings: [{ key: "p" }],
@@ -372,7 +396,7 @@
         order: 20,
         repeat: false,
         scope: "global",
-        surfaces: { help: "always" },
+        surfaces: { help: "always", reveal: "always" },
       }),
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],

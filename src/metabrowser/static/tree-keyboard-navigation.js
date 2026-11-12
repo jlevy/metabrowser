@@ -370,6 +370,18 @@
       );
     }
 
+    /**
+     * Give the roving anchor row focus, the row the reader left or else the
+     * first visible one, as the Files tab's digit does after switching to the
+     * tab. Reports whether a row took focus, so the caller can fall back to the
+     * tab button while the tree has no rows yet.
+     */
+    function focusCurrent() {
+      const anchor = focusedRow();
+      const row = anchor?.isConnected ? anchor : (ensureVisibleRows()[0] ?? null);
+      return row !== null && setAnchor(row, true) !== null;
+    }
+
     function ensureVisibleRows() {
       const current = readVisibleRows(container);
       if (
@@ -667,6 +679,7 @@
 
     return Object.freeze({
       dispose,
+      focusCurrent,
       focusedRow,
       prepareForMutation,
       setAnchor,
