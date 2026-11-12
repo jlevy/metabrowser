@@ -153,20 +153,29 @@ function keptBytes(kept) {
  *
  * Each envelope's renders hang off the envelope itself, so an envelope nothing holds takes
  * them with it. The recency list holds the envelope only weakly, so it never keeps one
- * alive; its byte count can include a collected envelope's renders until the next store
- * finds them gone, which only makes eviction come sooner.
+ * alive, and a FinalizationRegistry takes a collected envelope's renders out of the byte
+ * count when the engine reports it gone.
+ *
+ * A store never walks the kept renders, so it costs the same however many are kept. While
+ * each store checked every kept render for a collected envelope, a lookup miss and a store
+ * took 29 µs with 2 kept renders, 56 µs with 300, 1.7 ms with 1,000 and 2.3 ms with 4,000,
+ * and the byte bound alone admits thousands of small renders. Without that walk they take
+ * 1.5 to 7.6 µs at each of those counts (Node 24, 2026-11-12, at a load average of 14 to
+ * 83, 300 steps a count; exp-082 records it).
  *
  * @param {{maxBytes?: number}} [options]
  */
 export function createRenderCache(options = {}) {
   const maxBytes = options.maxBytes ?? RENDER_CACHE_BYTES;
   const maxEntryBytes = Math.floor(maxBytes / 4);
-  const supported = typeof WeakRef === "function";
+  const supported = typeof WeakRef === "function" && typeof FinalizationRegistry === "function";
   /** @type {WeakMap<object, Map<string, {kept: KeptRender, token: object}>>} */
   const byEnvelope = new WeakMap();
   /** @type {Map<object, {envelope: WeakRef<object>, key: string, bytes: number}>} */
   const recency = new Map();
   let total = 0;
+  /** @type {FinalizationRegistry<object> | null} */
+  const collected = supported ? new FinalizationRegistry((token) => evict(token)) : null;
 
   /** @param {object} token */
   function evict(token) {
@@ -175,6 +184,7 @@ export function createRenderCache(options = {}) {
       return;
     }
     recency.delete(token);
+    collected?.unregister(token);
     total -= record.bytes;
     const envelope = record.envelope.deref();
     if (!envelope) {
@@ -229,11 +239,6 @@ export function createRenderCache(options = {}) {
       if (bytes > maxEntryBytes) {
         return false;
       }
-      for (const [token, record] of recency) {
-        if (!record.envelope.deref()) {
-          evict(token);
-        }
-      }
       let renders = byEnvelope.get(envelope);
       if (!renders) {
         renders = new Map();
@@ -242,6 +247,7 @@ export function createRenderCache(options = {}) {
       const token = {};
       renders.set(key, { kept, token });
       recency.set(token, { envelope: new WeakRef(envelope), key, bytes });
+      collected?.register(envelope, token, token);
       total += bytes;
       for (const oldest of recency.keys()) {
         if (total <= maxBytes) {

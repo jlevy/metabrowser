@@ -924,6 +924,71 @@ async function endOfTask() {
       bounded.stats().entries === 6,
   );
 
+  // A store costs the same however many renders are kept: it checks no kept render for a
+  // collected envelope, which made each store linear in the number kept (1.7 ms at 1,000).
+  // The engine reports a collected envelope instead, and its renders leave the count then.
+  const RealWeakRef = globalThis.WeakRef;
+  const RealRegistry = globalThis.FinalizationRegistry;
+  let derefs = 0;
+  globalThis.WeakRef = class CountingWeakRef extends RealWeakRef {
+    deref() {
+      derefs += 1;
+      return super.deref();
+    }
+  };
+  /** @type {Array<{finalize: (target: object) => void, size: () => number}>} */
+  const registries = [];
+  globalThis.FinalizationRegistry = class ControlledRegistry {
+    /** @param {(held: unknown) => void} cleanup */
+    constructor(cleanup) {
+      const held = new Map();
+      this.register = (target, value, token) => held.set(token ?? value, { target, value });
+      this.unregister = (token) => held.delete(token);
+      registries.push({
+        finalize(target) {
+          for (const [token, entry] of [...held]) {
+            if (entry.target === target) {
+              held.delete(token);
+              cleanup(entry.value);
+            }
+          }
+        },
+        size: () => held.size,
+      });
+    }
+  };
+  try {
+    const many = module.createRenderCache({ maxBytes: 64 * 1024 * 1024 });
+    const manyEnvelopes = Array.from({ length: 1000 }, (_, index) => ({ index }));
+    for (const [index, envelope] of manyEnvelopes.entries()) {
+      many.store(envelope, boundedRequest(index), boundedRender(60));
+    }
+    derefs = 0;
+    many.store({ index: 1000 }, boundedRequest(1000), boundedRender(60));
+    check(
+      "a store with 1,000 renders kept checks none of them",
+      derefs === 0 && many.stats().entries === 1001,
+      `${derefs} kept renders checked`,
+    );
+    const before = many.stats();
+    registries[0]?.finalize(manyEnvelopes[3]);
+    const after = many.stats();
+    check(
+      "a collected envelope's render leaves the count when the engine reports it",
+      after.entries === before.entries - 1 && after.bytes === before.bytes - 64,
+      JSON.stringify({ before, after }),
+    );
+    const registered = registries[0]?.size();
+    many.store(manyEnvelopes[4], boundedRequest(4), boundedRender(60));
+    check(
+      "a replaced render is no longer watched for collection",
+      registries[0]?.size() === registered && many.stats().entries === after.entries,
+    );
+  } finally {
+    globalThis.WeakRef = RealWeakRef;
+    globalThis.FinalizationRegistry = RealRegistry;
+  }
+
   elapseIdlePeriod();
   check(
     "no Worker outlives the idle period after the last mount",
