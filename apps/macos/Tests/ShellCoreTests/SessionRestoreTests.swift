@@ -23,6 +23,22 @@ import Testing
         }
     }
 
+    /// Review D1: macOS volumes are usually case-insensitive, and the Data volume's
+    /// firmlinks give every protected location a second spelling.
+    @Test func caseVariantsAndDataVolumeSpellingsAreProtectedToo() {
+        for path in [
+            "/volumes/usb", "/VOLUMES", "/System/Volumes/Data/Volumes/usb", "/Homes/me/documents",
+            "/System/Volumes/Data/Homes/me/Documents/x", "/system/volumes/data/homes/ME/desktop",
+            "/System/Volumes/Data", "/homes",
+        ] {
+            #expect(ProtectedLocations.contains(path, home: home), "\(path)")
+        }
+        #expect(ProtectedLocations.isInside("/volumes/x", home: home))
+        #expect(ProtectedLocations.isInside("/System/Volumes/Data/Homes/me/Downloads", home: home))
+        #expect(!ProtectedLocations.isInside("/System/Volumes/Data", home: home), "it holds them, and may be opened")
+        #expect(!ProtectedLocations.isInside("/homes/me", home: home))
+    }
+
     @Test func everythingElseIsNot() {
         for path in [
             "/Homes/me/wrk/github/fdu", "/Homes/me/Desktop-old", "/Homes/me/Documentsx", "/Homes/me/Library/Logs",
@@ -161,11 +177,11 @@ import Testing
         let session = SavedSession(windows: [
             SavedWindow(tabs: [tab("/wrk/app"), tab("/proj")], selected: 0, frame: nil),
         ])
-        let admitted = session.admitted { $0 == "/proj" ? .deferred("/Homes/me/Documents/secret") : .open($0) }
+        let admitted = session.admitted { $0 == "/proj" ? .deferred("/proj") : .open($0) }
         var queue = RestoreQueue(admitted.session, isProtected: admitted.deferred.contains)
         #expect(queue.next() == "/wrk/app")
         #expect(queue.next() == nil)
-        #expect(queue.deferred == ["/Homes/me/Documents/secret"])
+        #expect(queue.deferred == ["/proj"])
     }
 
     @Test func aSessionPastTheBudgetKeepsItsFrontWindowsAndEachWindowsShownTab() {

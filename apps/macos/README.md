@@ -693,25 +693,37 @@ Terminal launch.
   The next launch reads the file once, through one descriptor: a regular file, not a
   link or a pipe, of at most 1 MB however it changes meanwhile.
   It rebuilds at most the front 20 windows and 50 tabs, each window keeping the tab it
-  shows (`RestoreBudget`, whose basis follows this list), and resolves every saved root
+  shows (`RestoreBudget`, whose basis follows this list), and admits every saved root
   again before deciding anything about it (`RootAdmission`): the file may have been
-  edited, and a folder on the path replaced by a link.
-  The walk goes one component at a time with `lstat` and `readlink`, and stops before it
-  would look at anything in a protected location, where looking can raise the prompt.
-  A root spelled with `.`, `..`, or empty components, or caught in a loop of links, is
-  dropped unlooked at, and so is one whose folder is gone; aliases of one folder become
-  one root, with one server.
+  edited, and a folder on the path replaced or relinked.
+  Only a root whose identity is certain warms in the background.
+  The walk opens each component relative to the one before, with `O_NOFOLLOW`, so a
+  folder replaced after it was opened cannot redirect the rest, and it never opens a
+  protected location or anything inside one, compared without regard to case and in its
+  Data-volume spelling too (`/System/Volumes/Data/Volumes` is `/Volumes`). The folder it
+  reaches must be on the home folder’s volume, and the kernel’s name for it
+  (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
+  location; that name is the root’s identity, so aliases of one folder share one server.
+  A root that falls short (a link anywhere on its path, another volume, a protected
+  spelling) waits for its tab under the spelling it was saved with, untouched, so
+  selecting it serves what that path names then.
+  A root spelled with `.`, `..`, or empty components is dropped unopened, and so is one
+  whose folder is gone.
   The launch recreates the windows and tabs, and only each window’s shown tab loads its
   page. The servers start one at a time, each after the one before it is ready or has
   failed: the front tab’s first, then those of the tabs the other windows show, front to
   back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
+  Each background root is admitted again just before its server starts, and one that
+  changed while the servers before it started waits for its tab instead.
+  The server takes a path, so a process that changes the path between that last check
+  and the server resolving it can still win; the deferral is the app’s own policy, and
+  macOS enforces its privacy grants regardless.
   A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
   other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
   folder that holds one, such as the home folder) starts only when one of its tabs is
   selected, so a launch raises no privacy prompt for a folder nobody is looking at; the
-  front tab is selected, so it starts (`ProtectedLocations`). A root that resolves into
-  such a place, through a link, waits the same way, and a protected folder that is gone
-  says so only when its tab is selected.
+  front tab is selected, so it starts (`ProtectedLocations`). A protected folder that is
+  gone says so only when its tab is selected.
   Settings > “Reopen the last session’s folders when Metabrowser opens” turns the
   restore off; the session is still saved.
   A session file that cannot be read is logged and ignored, and the next save replaces

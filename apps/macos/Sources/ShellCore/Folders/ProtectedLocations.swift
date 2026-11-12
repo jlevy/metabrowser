@@ -11,11 +11,15 @@ public nonisolated enum ProtectedLocations {
     /// Where other volumes mount. An internal second volume asks nothing but mounts here
     /// too; treating it as protected only delays its server until its tab is selected.
     static let mountPoints = ["/Volumes", "/Network"]
+    /// Where the Data volume, home folders and `/Volumes` among its firmlinks, is mounted:
+    /// every location above has a second spelling below it.
+    static let dataVolume = "/System/Volumes/Data"
 
     /// Whether serving `root` reads a protected location: `root` is one, is inside one,
-    /// or holds one, as the home folder holds Documents. `root` and `home` are canonical.
+    /// or holds one, as the home folder holds Documents. Paths compare without regard to
+    /// case, as a macOS volume usually does, which only errs toward protecting.
     public static func contains(_ root: String, home: String) -> Bool {
-        locations(home: home).contains { isWithin(root, $0) || isWithin($0, root) }
+        locations(home: home).contains { isWithin(root, $0) || isWithin($0, root.lowercased()) }
     }
 
     /// Whether `path` is a protected location or inside one, so that looking at it can
@@ -24,12 +28,15 @@ public nonisolated enum ProtectedLocations {
         locations(home: home).contains { isWithin(path, $0) }
     }
 
+    /// Each protected location, lowercased, in its ordinary and its Data-volume spelling.
     static func locations(home: String) -> [String] {
-        homeFolders.map { home + "/" + $0 } + mountPoints
+        let ordinary = homeFolders.map { home + "/" + $0 } + mountPoints
+        return (ordinary + ordinary.map { dataVolume + $0 }).map { $0.lowercased() }
     }
 
-    /// Whether `path` is `ancestor` or inside it.
+    /// Whether `path` is `ancestor` or inside it; `ancestor` is lowercased.
     static func isWithin(_ path: String, _ ancestor: String) -> Bool {
-        path == ancestor || path.hasPrefix(ancestor == "/" ? "/" : ancestor + "/")
+        let path = path.lowercased()
+        return path == ancestor || path.hasPrefix(ancestor == "/" ? "/" : ancestor + "/")
     }
 }
