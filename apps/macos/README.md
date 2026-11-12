@@ -188,6 +188,13 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
    After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
+8. **A dropped file.** Drag `/tmp/mb-check/a/notes.md` from Finder onto the window of
+   `a`: it shows `notes.md`. Dragged onto another folder’s window, it opens `a` (or
+   shows the file in `a`, if open).
+   A drag of text or a web link is still the page’s.
+9. **The page’s Print button.** On a Markdown page, the page’s Print button opens the
+   same print panel as File > Print; pressing it again while the panel is open does
+   nothing.
 
 ### Checking the Setup Flows by Hand
 
@@ -694,21 +701,26 @@ Terminal launch.
 - **Browser features:** Back and Forward (Command-\[ and Command-\]), Reload, zoom
   (persisted), Print through `printOperation`, Find through `NSTextFinder` with a find
   bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, and file inputs.
-  If the web content process dies, the window reloads, at most twice in 30 seconds, and
-  then shows the status view.
+  The page’s own Print button prints the same way as File > Print: WebKit hands a page’s
+  `window.print()` only to private delegate methods, so a user script replaces
+  `window.print` in the main frame with a message to the app (`PagePrintRequests`),
+  which prints the server’s own page when no sheet is open.
+  The page calls only the web’s `window.print()`; frames inside it keep WebKit’s, which
+  does nothing. If the web content process dies, the window reloads, at most twice in 30
+  seconds, and then shows the status view.
 
 ### Files, Tabs, Recents, and the Last Session
 
-- **A file opens in its folder.** `open -a Metabrowser.app FILE` and a file chosen in
-  File > Open show the file’s page in the most specific open folder that contains it, or
-  else in its own folder, as `metab FILE` serves the file’s folder (`OpenTarget`).
-  Symbolic links are resolved first, as `metab` resolves them, so a link opens where it
-  points. The page is the file’s view route, spelled as `metab` spells it
-  (`PageAddress.view`); a live test checks the spelling against the route `metab --path`
-  announces. `open -a` delivers a file although `Info.plist` declares only
-  `public.folder` (checked on macOS 26.5), so Finder’s Open With and the Dock still
-  offer the app for folders only.
-  A file opened while its folder’s server is starting, has failed, or is restarting
+- **A file opens in its folder.** `open -a Metabrowser.app FILE`, a file chosen in File
+  \> Open, and a file dropped on a window (`FileDrop`) show the file’s page in the most
+  specific open folder that contains it, or else in its own folder, as `metab FILE`
+  serves the file’s folder (`OpenTarget`). Symbolic links are resolved first, as `metab`
+  resolves them, so a link opens where it points.
+  The page is the file’s view route, spelled as `metab` spells it (`PageAddress.view`);
+  a live test checks the spelling against the route `metab --path` announces.
+  `open -a` delivers a file although `Info.plist` declares only `public.folder` (checked
+  on macOS 26.5), so Finder’s Open With and the Dock still offer the app for folders
+  only. A file opened while its folder’s server is starting, has failed, or is restarting
   loads once the server is ready: a requested page outlasts the page the window showed
   before, through Retry, a discard, and a save (`NextPage`).
 
@@ -764,8 +776,10 @@ Terminal launch.
   A root that falls short (a link anywhere on its path, another volume, a protected
   spelling) waits for its tab under the spelling it was saved with, untouched, so
   selecting it serves what that path names then.
-  A home folder in a protected place (a network home under `/Volumes`) is not looked at
-  to classify anything, so every root then waits.
+  A home folder in a protected place (a network home under `/Volumes`), or on a mount
+  the walk would not enter, is not looked at to classify anything, so every root then
+  waits. The mount table is read again into a larger buffer whenever a read fills it, and
+  a table that never fits is not trusted.
   A root spelled with `.`, `..`, or empty components, or holding a NUL, is dropped
   unopened, and so is one whose folder is proven gone; a component that a second lookup
   cannot prove missing, or finds changed, waits instead.
@@ -921,7 +935,7 @@ Each gap points to the part of the brief that closes it.
 ## Known Limitations
 
 - Finder’s Open With and the Dock icon accept folders only; a file opens through
-  `open -a` or File > Open.
+  `open -a`, File > Open, or a drop on a window.
 - The restore recreates windows, tabs, frames, and pages, but not full screen, Spaces,
   minimized windows, or each tab’s Back and Forward history.
   A discarded background tab loses the same within one launch: its history, its scroll

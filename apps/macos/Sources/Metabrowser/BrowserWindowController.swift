@@ -43,7 +43,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         discarded: Bool = false
     ) {
         self.session = session
-        webView = Self.makeWebView(configuration ?? WebConfiguration.make())
+        webView = Self.makeWebView(configuration ?? WebConfiguration.make(pagePrints: Self.pagePrints))
         next = NextPage(requested: page)
         isDiscarded = discarded
 
@@ -108,7 +108,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private func wire(_ webView: DropAwareWebView) {
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.onFolderDrop = { urls in
+        webView.onFileDrop = { urls in
             guard let app = NSApp.delegate as? AppDelegate else { return false }
             urls.forEach(app.request)
             return true
@@ -190,8 +190,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         discarded.stopLoading()
         discarded.navigationDelegate = nil
         discarded.uiDelegate = nil
-        discarded.onFolderDrop = nil
-        webView = Self.makeWebView(WebConfiguration.make())
+        discarded.onFileDrop = nil
+        webView = Self.makeWebView(WebConfiguration.make(pagePrints: Self.pagePrints))
         wire(webView)
         container.replaceWebView(webView)
         if endpoint != nil { status.phase = .reloading }
@@ -284,6 +284,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         let operation = webView.printOperation(with: NSPrintInfo.shared)
         operation.view?.frame = webView.bounds
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
+    /// Every window's page Print buttons (`PagePrintRequests`): each prints through File >
+    /// Print's path, in the window whose page asked.
+    static let pagePrints = PagePrintRequests { webView, frame in
+        (webView.window?.windowController as? BrowserWindowController)?.pageAskedToPrint(frame)
+    }
+
+    private func pageAskedToPrint(_ frame: WKFrameInfo) {
+        let sheetOpen = window?.attachedSheet != nil
+        guard policy.allowsPagePrint(from: frame.request.url, isMainFrame: frame.isMainFrame, sheetOpen: sheetOpen)
+        else {
+            AppLog.app.info("a page's print was not answered: not this server's page, or a sheet is open")
+            return
+        }
+        printPage(nil)
     }
 
     /// Menu items carry the `NSTextFinder.Action` in their tag.

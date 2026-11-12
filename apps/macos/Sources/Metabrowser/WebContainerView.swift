@@ -1,4 +1,5 @@
 import AppKit
+import ShellCore
 import WebKit
 
 /// A window's content: the web view, the status view that covers it until the page
@@ -75,27 +76,27 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
     }
 }
 
-/// Hands folders dropped on the page to the app, which opens each in its own window.
-/// Anything else falls through to WebKit's ordinary drag and drop.
+/// Hands files and folders dropped on the page to the app (`FileDrop`), which opens a
+/// folder in its own window or tab and a file at its page. Anything else falls through
+/// to WebKit's ordinary drag and drop.
 final class DropAwareWebView: WKWebView {
-    var onFolderDrop: (([URL]) -> Bool)?
+    var onFileDrop: (([URL]) -> Bool)?
 
-    private func folderURLs(_ info: any NSDraggingInfo) -> [URL] {
-        let urls = info.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        let folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-        return folders.count == urls.count ? folders : []
+    private func fileURLs(_ info: any NSDraggingInfo) -> [URL] {
+        let pasteboard = info.draggingPasteboard
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+        return FileDrop.opens(urls ?? [], items: pasteboard.pasteboardItems?.count ?? 0)
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let operation = super.draggingUpdated(sender)
-        if operation.isEmpty, onFolderDrop != nil, !folderURLs(sender).isEmpty { return .copy }
-        return operation
+        guard onFileDrop != nil, !fileURLs(sender).isEmpty else { return operation }
+        return .copy
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        let folders = folderURLs(sender)
-        if !folders.isEmpty, let onFolderDrop, onFolderDrop(folders) { return true }
+        let files = fileURLs(sender)
+        if !files.isEmpty, let onFileDrop, onFileDrop(files) { return true }
         return super.performDragOperation(sender)
     }
 }

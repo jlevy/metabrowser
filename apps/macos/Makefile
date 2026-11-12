@@ -37,7 +37,7 @@ build:
 # stress suite's spawns, which each stall it for seconds on a loaded runner: see
 # ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
 # ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
-webkit_suites := DownloadTests WebConfigurationTests
+webkit_suites := DownloadTests WebConfigurationTests PagePrintTests
 test:
 	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %)
 	$(SWIFT) test $(webkit_suites:%=--filter %)
