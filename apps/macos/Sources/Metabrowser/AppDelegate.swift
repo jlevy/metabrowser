@@ -141,6 +141,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !isTerminating else { return }
         isTerminating = true
         AppLog.app.info("received signal \(signalNumber); quitting")
+        // AppKit does not quit while a sheet or modal alert waits for an answer, such as
+        // the offer to restart after an upgrade, and a signal has nobody to answer it.
+        for window in NSApp.windows {
+            if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .abort) }
+        }
+        if NSApp.modalWindow != nil { NSApp.abortModal() }
         NSApp.terminate(nil)
     }
 
@@ -445,9 +451,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A runtime that arrived meanwhile, or a newer request, makes this one moot.
         guard request == guideRequests, selection.setup == nil else { return }
         let hasHomebrew = RuntimeDiscovery.homebrewBins.contains { FileChecks.isExecutableFile($0 + "/brew") }
-        runtimeModel.guide = SetupGuide(
+        let guide = SetupGuide(
             tried: selection.tried, uv: uv, binDirectory: binDirectory, home: env.home, loginPath: lastLoginPath,
             hasHomebrew: hasHomebrew)
+        AppLog.app.info(
+            "first-run steps: \(guide.steps.map(\.command).joined(separator: "; "), privacy: .public); waiting for metab in \(binDirectory, privacy: .public)"
+        )
+        runtimeModel.guide = guide
         rewatch()
     }
 
@@ -482,29 +492,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Offers to restart the open servers that `current`'s executable started at another
     /// version. Restarting them is the user's choice: a restart reloads every window.
+    ///
+    /// The offer is a sheet, not `runModal`: this runs inside a main-actor task, and a
+    /// modal loop entered from a main-queue job stops every other main-actor job,
+    /// quitting included, until the alert closes.
     private func offerRestart(for current: Runtime) {
         guard !isOfferingRestart else { return }
         let folders = sessions.openServers.compactMap { $0 as? FolderSession }
-        let outdated = RuntimeUpgrade.outdated(folders.map(\.runtime), current: current)
-        guard !outdated.isEmpty else { return }
-        let prompt = RuntimeUpgrade.prompt(outdated: outdated.map { folders[$0].runtime }, current: current)
+        let outdated = RuntimeUpgrade.outdated(folders.map(\.runtime), current: current).map { folders[$0] }
+        guard let window = outdated.lazy.compactMap({ $0.windows.first?.window }).first else { return }
+        let prompt = RuntimeUpgrade.prompt(outdated: outdated.map(\.runtime), current: current)
         isOfferingRestart = true
         let alert = NSAlert()
         alert.messageText = prompt.title
         alert.informativeText = prompt.message
         alert.addButton(withTitle: "Restart Servers")
         alert.addButton(withTitle: "Not Now")
-        let response = alert.runModal()
-        isOfferingRestart = false
-        guard response == .alertFirstButtonReturn else {
-            AppLog.app.info("restart after the upgrade declined; File > Restart Server restarts a folder")
-            return
+        window.makeKeyAndOrderFront(nil)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            isOfferingRestart = false
+            guard response == .alertFirstButtonReturn else {
+                AppLog.app.info("restart after the upgrade declined; File > Restart Server restarts a folder")
+                return
+            }
+            // Chosen now, not when the sheet opened: an upgrade or restart may have run since.
+            let latest = selection.setup?.runtime ?? current
+            sessions.openServers.compactMap { $0 as? FolderSession }
+                .filter { !RuntimeUpgrade.outdated([$0.runtime], current: latest).isEmpty }
+                .forEach { $0.retry() }
         }
-        // Chosen now, not when the alert opened: an upgrade or restart may have run meanwhile.
-        let latest = selection.setup?.runtime ?? current
-        let stillOutdated = sessions.openServers.compactMap { $0 as? FolderSession }
-            .filter { !RuntimeUpgrade.outdated([$0.runtime], current: latest).isEmpty }
-        stillOutdated.forEach { $0.retry() }
     }
 
     // MARK: - Help

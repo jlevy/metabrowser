@@ -177,6 +177,12 @@ import Testing
             Runtime(executable: "/src/.venv/bin/metab", version: "0.12.1.dev3", source: .chosen),
         ]
         #expect(RuntimeUpgrade.outdated(running, current: current) == [0])
+        // A checkout's description changes with its working tree, not its version.
+        let checkout = Runtime(
+            executable: "/src/.venv/bin/metab", version: "0.12.1.dev3+abc (+3 commits, abc)", source: .chosen)
+        var committed = checkout
+        committed.version = "0.12.1.dev3+abc (+4 commits, def, dirty)"
+        #expect(RuntimeUpgrade.outdated([checkout], current: committed) == [])
     }
 
     @Test func thePromptNamesTheVersionsWithoutACheckoutsDescription() {

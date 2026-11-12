@@ -6,10 +6,11 @@
 public nonisolated enum RuntimeUpgrade {
     /// The indices of `running` whose servers started from `current`'s executable at
     /// another version. A server started from another `metab` is not outdated by this
-    /// one; Restart Server moves it over.
+    /// one; Restart Server moves it over. A checkout's description after the version
+    /// names its working tree, which changes with every commit, so it is not compared.
     public static func outdated(_ running: [Runtime], current: Runtime) -> [Int] {
         running.indices.filter {
-            running[$0].executable == current.executable && running[$0].version != current.version
+            running[$0].executable == current.executable && shortVersion(running[$0]) != shortVersion(current)
         }
     }
 
