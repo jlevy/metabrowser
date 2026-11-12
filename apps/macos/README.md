@@ -144,7 +144,9 @@ Where to look while it runs:
   File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
   A second running copy of the same variant (a development build from another checkout)
   that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
-  window shows the other server’s output (`ServerLogLease`).
+  window shows the other server’s output (`ServerLogLease`). Each launch claims its log
+  before it spawns (`FolderLog`): a claim that fails fails the launch, the window says
+  why, and Retry claims again.
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
