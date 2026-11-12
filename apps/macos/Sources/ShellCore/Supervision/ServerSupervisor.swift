@@ -143,10 +143,15 @@ public final class ServerSupervisor {
 
     /// Starts a server unless one is starting, running, or stopping, or the supervisor has
     /// been shut down.
-    public func start() async {
+    ///
+    /// - Parameter newSpec: what to run from now on, if a server starts, as `restart`
+    ///   takes it; nil runs the same command as before.
+    public func start(using newSpec: LaunchSpec? = nil) async {
         guard !isShutDown else { return }
         switch state {
-        case .stopped, .failed: await launchChild()
+        case .stopped, .failed:
+            if let newSpec { spec = newSpec }
+            await launchChild()
         case .starting, .ready, .stopping: return
         }
     }

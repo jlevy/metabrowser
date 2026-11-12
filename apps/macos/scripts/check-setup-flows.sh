@@ -1,21 +1,22 @@
-  # Before the image is detached, since the copy launched may be on it.
-  [[ -z "$launched" ]] || "$lsregister" -u "$launched" || note "could not unregister $launched"
-  [[ ! -d "$volume" ]] || detach_image "$volume"
 #!/usr/bin/env bash
 # Manual checks of what a new user sees first, on the built development app: the first
 # run without metab, an older metab and an upgrade under a running server, and a launch
 # from a disk image. A person watches the screen; the script sets up each case, says
 # what to look for, waits for Return between steps, and checks that no server is left.
+# It exits nonzero if any check it makes itself failed.
 #
 #   make macos-app            # first, and `make install` at the repository root
 #   scripts/check-setup-flows.sh no-metab|old-metab|disk-image
 #
 # Each run uses a copy of the app with its own bundle identifier, so it never reads or
-# changes the development app's saved runtime, recent folders, or LaunchServices entry,
-# and a scratch HOME, so discovery finds only what the script puts there. Nothing is
-# downloaded or installed: "installing" uv or metab links the uv on PATH and this
-# checkout's .venv/bin/metab into the scratch ~/.local/bin, which is all the app sees
-# of a real install. The scratch folder's server log stays in ~/Library/Logs/Metabrowser.
+# changes the development app's saved runtime, recent folders, saved session, or
+# LaunchServices entry, and a scratch HOME. Discovery still looks in the Homebrew
+# prefixes and on the login shell's PATH, which a scratch HOME does not change, so the
+# script refuses to run where a metab there would be found, and no-metab also where a
+# uv there would. Nothing is downloaded or installed: "installing" uv or metab links the
+# uv on PATH and this checkout's .venv/bin/metab into the scratch ~/.local/bin, which is
+# all the app sees of a real install. The scratch folder's server log stays in
+# ~/Library/Logs/Metabrowser.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
@@ -32,9 +33,6 @@ variant_settings dev
 checkout_metab="$(cd ../.. && pwd)/.venv/bin/metab"
 [[ -x "$checkout_metab" ]] || die "$checkout_metab is missing; run make install at the repository root"
 uv_path="$(command -v uv)" || die "uv is not on PATH"
-for other in /opt/homebrew/bin/metab /usr/local/bin/metab; do
-  [[ ! -e "$other" ]] || die "$other would be found before the scratch HOME's; these checks need a Mac without it"
-done
 
 check_id="io.github.jlevy.metabrowser.setupcheck"
 # Canonical, as the app opens folders, so a server's command line names this path.
@@ -58,19 +56,11 @@ server_pids() {
 }
 
 cleanup() {
-  local pid tries=0
-  for pid in $(running_pids); do kill -TERM "$pid"; done
-  while [[ -n "$(running_pids)" ]] && ((tries < 30)); do
-    sleep 0.5
-    tries=$((tries + 1))
-  done
-  if [[ -n "$(running_pids)" ]]; then
-    note "FAIL: the app did not quit within 15 s of SIGTERM, killing it: $(running_pids)"
-    for pid in $(running_pids); do kill -KILL "$pid"; done
-  fi
+  local status=$?
+  stop_listed running_pids "the app"
   if [[ -n "$(server_pids)" ]]; then
-    note "FAIL: servers left running after the app quit, stopping them: $(server_pids)"
-    pkill -TERM -f -- "metab $folder" || note "could not stop them"
+    check_fail "servers left running after the app quit: $(server_pids | tr '\n' ' ')"
+    stop_listed server_pids "the servers left running" 10
   fi
   # Before the image is detached, since the copy launched may be on it.
   [[ -z "$launched" ]] || "$lsregister" -u "$launched" || note "could not unregister $launched"
@@ -80,8 +70,30 @@ cleanup() {
   rm -rf "$HOME/Library/Application Support/$check_id"
   rm -f "$HOME/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/$check_id".sfl*
   rm -rf "$work"
+  exit "$(check_status "$status")"
 }
 trap cleanup EXIT
+
+# The PATH the app's login shell builds with the scratch HOME: the system's own
+# (/etc/paths and /etc/paths.d), which the scratch HOME's empty startup files leave alone.
+login_path() {
+  env -i HOME="$home" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="$SHELL" TERM=dumb \
+    PATH=/usr/bin:/bin:/usr/sbin:/sbin "$SHELL" -l -i -c 'printf "%s\n" "$PATH"' </dev/null 2>/dev/null | tail -n 1
+}
+
+# The places outside the scratch HOME where discovery and the first-run screen look.
+ambient_dirs="$(
+  {
+    printf '%s\n' /opt/homebrew/bin /usr/local/bin
+    login_path | tr ':' '\n'
+  } | grep '^/' | grep -v "^$home" | awk '!seen[$0]++'
+)"
+for dir in $ambient_dirs; do
+  [[ ! -e "$dir/metab" ]] || die "$dir/metab would be found before the scratch HOME's; these checks need a Mac without it"
+  if [[ "$scenario" == no-metab && -e "$dir/uv" ]]; then
+    die "$dir/uv would be found, so no-metab could not start without uv; run it on a Mac without uv outside ~/.local/bin, or run old-metab"
+  fi
+done
 
 step() {
   echo
@@ -131,14 +143,16 @@ case "$scenario" in
   no-metab)
     launch "$copy" "$folder"
     step "No uv and no metab" \
-      "Settings opens: \"Metabrowser needs the metab command-line tool\"." \
+      "Settings opens: \"Metabrowser needs metab 0.12.1 or later\" (0.12.1 is not on PyPI yet)." \
       "1. Install uv, with the curl command and Copy (and \"brew install uv\" if Homebrew is installed)." \
-      "2. Install metab: \"In a new Terminal window, so that it finds uv:\" and uv tool install metabrowser." \
+      "2. Build metab in the source checkout … then choose its .venv/bin/metab with Choose metab… below." \
+      "   \"In a new Terminal window, so that it finds uv, at the root of the checkout:\" and make install." \
       "\"Waiting for metab in ~/.local/bin…\" and the uv tool update-shell suggestion." \
       "No folder window opens."
     install_link "$uv_path" "$home/.local/bin/uv"
     step "uv installed (linked into the scratch ~/.local/bin)" \
-      "Within a few seconds, without clicking anything, only \"1. Install metab.\" is left."
+      "Within a few seconds, without clicking anything, only \"1. Build metab in the source checkout…\" is left," \
+      "still with \"In a new Terminal window, so that it finds uv\": the scratch login PATH lacks ~/.local/bin."
     install_link "$checkout_metab" "$home/.local/bin/metab"
     step "metab installed (this checkout's, linked into the scratch ~/.local/bin)" \
       "Within a few seconds, without clicking anything, the notes folder opens in its own window." \
@@ -153,11 +167,11 @@ exit 1' "$home/.local/bin/metab"
     launch "$copy" "$folder"
     step "An older metab (a stand-in that reports 0.12.0)" \
       "Settings opens: \"Metabrowser needs metab 0.12.1 or later\"." \
-      "1. Upgrade metab: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs 0.12.1 or later." \
-      "The command is uv tool install --upgrade 'metabrowser>=0.12.1', with Copy." \
+      "1. Build metab in the source checkout …: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs" \
+      "   metab 0.12.1 or later, which is not on PyPI yet. The command is make install, with Copy." \
       "No folder window opens."
     if [[ -n "$(server_pids)" ]]; then
-      note "FAIL: a server started from the older metab: $(server_pids)"
+      check_fail "a server started from the older metab: $(server_pids | tr '\n' ' ')"
     else
       echo "   ok: no server is running for the folder"
     fi

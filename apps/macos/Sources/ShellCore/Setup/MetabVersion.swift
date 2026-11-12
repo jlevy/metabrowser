@@ -55,6 +55,11 @@ public nonisolated enum MetabRequirement {
 
     public static var minimum: String { minimumRelease.map(String.init).joined(separator: ".") }
 
+    /// Whether `minimum` is on PyPI, so that uv can install a `metab` this app runs. Until
+    /// it is, the first-run screen points to the source checkout the app was built from
+    /// instead of `uv tool install`. Set it with the release that publishes `minimum`.
+    public static let isReleased = false
+
     /// A pre-release or development build of the minimum counts as the minimum. A source
     /// checkout reports the next release with `.devN`, which PEP 440 orders before that
     /// release, so without this no development build would run. Its number says only

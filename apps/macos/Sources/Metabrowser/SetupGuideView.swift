@@ -10,8 +10,15 @@ struct SetupGuideView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(guide.heading).font(.headline)
-            Text("Metabrowser runs your own installation of metab. Run these in Terminal; Metabrowser continues by itself once metab is ready.")
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                guide.endsWithChoice
+                    ? "Metabrowser runs your own installation of metab. Run these in Terminal, then choose the metab they build."
+                    : "Metabrowser runs your own installation of metab. Run these in Terminal; Metabrowser continues by itself once metab is ready."
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            ForEach(guide.notices, id: \.self) { notice in
+                Text(notice).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(Array(guide.steps.enumerated()), id: \.offset) { index, step in
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(index + 1). \(step.title(home: guide.home))")

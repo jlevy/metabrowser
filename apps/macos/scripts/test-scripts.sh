@@ -227,6 +227,71 @@ else
   fail "source_commit gave '$clean', '$dirty', and '$outside' (HEAD is $head)"
 fi
 
+# Manual checks: shebangs, failures, and stopping what they launched.
+# Each script that runs directly, all but the sourced common.sh, must name its
+# interpreter on its first line.
+for script in scripts/*.sh; do
+  [[ -x "$script" ]] || continue
+  if [[ "$(head -c 2 "$script")" == "#!" ]]; then
+    pass "$script starts with its interpreter line"
+  else
+    fail "$script does not start with #!, so it cannot run directly"
+  fi
+done
+
+# A live process this test started, or nothing: a zombie no longer counts.
+alive() {
+  [[ -n "$1" ]] && ps -o stat= -p "$1" 2>/dev/null | grep -qv Z && echo "$1" || true
+}
+
+sleep 30 &
+polite=$!
+disown "$polite"
+polite_pids() { alive "$polite"; }
+if [[ "$(stop_listed polite_pids "a process that stops on SIGTERM" 4 2>"$work/out"; echo "$check_failures")" == 0 ]] \
+  && [[ -z "$(polite_pids)" ]]; then
+  pass "a process that stops on SIGTERM is stopped without a failure"
+else
+  fail "stopping a process that honors SIGTERM: $(cat "$work/out")"
+fi
+
+bash -c 'trap "" TERM; exec sleep 30' &
+stubborn=$!
+disown "$stubborn"  # so its SIGKILL is not reported as a job
+sleep 0.2  # until the trap is set
+stubborn_pids() { alive "$stubborn"; }
+if [[ "$(stop_listed stubborn_pids "the stand-in app" 2 2>"$work/out"; echo "$check_failures")" == 1 ]] \
+  && [[ -z "$(stubborn_pids)" ]] && grep -q "FAIL: the stand-in app did not stop within 1 s of SIGTERM" "$work/out"; then
+  pass "a process that ignores SIGTERM is killed and counted as a failed check"
+else
+  fail "stopping a process that ignores SIGTERM: $(cat "$work/out")"
+fi
+
+# A failed check makes the script exit nonzero after its cleanup, and an earlier
+# nonzero status is kept.
+for case in "0 pass 0" "0 fail 1" "4 fail 4" "3 pass 3"; do
+  read -r code outcome expected <<<"$case"
+  cat >"$work/check.sh" <<FIXTURE
+#!/usr/bin/env bash
+set -euo pipefail
+source "$PWD/scripts/common.sh"
+cleanup() { local status=\$?; echo cleaned; exit "\$(check_status "\$status")"; }
+trap cleanup EXIT
+[[ "$outcome" == pass ]] || check_fail "an injected failure"
+exit $code
+FIXTURE
+  chmod 755 "$work/check.sh"
+  set +e
+  "$work/check.sh" >"$work/out" 2>&1
+  status=$?
+  set -e
+  if [[ "$status" == "$expected" ]] && grep -q cleaned "$work/out"; then
+    pass "a check script exiting $code after a $outcome exits $expected, after its cleanup"
+  else
+    fail "a check script exiting $code after a $outcome exited $status: $(cat "$work/out")"
+  fi
+done
+
 if ((failures)); then
   die "$failures script check(s) failed"
 fi
