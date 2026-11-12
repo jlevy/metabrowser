@@ -73,11 +73,39 @@ private final class RestoreHarness {
         run = RestoreRun(
             RestoreQueue(admitted.session, isProtected: admitted.deferred.contains),
             folder: { [unowned self] in self.folder($0) },
-            admit: { RootAdmission.admit($0, home: home) })
+            admit: { RootAdmission.admit($0, home: home) },
+            moveTabs: { [unowned self] in self.moveTabs($0, to: $1) })
         run.onEvent = { [unowned self] in self.events.append($0) }
     }
 
     func folder(_ path: String) -> TestFolder? { fleet[path] as? TestFolder }
+
+    /// What `FolderWindows` does when a selected root now leads to another folder: each
+    /// tab of `saved` becomes a tab of `canonical`'s session, the open one or a new one,
+    /// and `saved`'s session, left with no tab, closes. No session can be made without a
+    /// runtime, as `AppDelegate.session(for:)` needs one.
+    func moveTabs(_ saved: String, to canonical: String) -> Bool {
+        guard folder(canonical) != nil || runtime != nil else { return false }
+        if folder(canonical) == nil { make(canonical) }
+        tabs = tabs.map { $0 == saved ? canonical : $0 }
+        if let old = folder(saved) {
+            fleet.retire(old)
+            run.folderClosed(saved)
+        }
+        return true
+    }
+
+    /// What `AppDelegate.request` does with a folder or a file: the open session that
+    /// shows it (`OpenTarget`), or a new one, started.
+    func open(_ path: String) async -> TestFolder? {
+        let canonical = FileChecks.canonicalPath(path)
+        guard let target = OpenTarget.resolve(canonical, kind: OpenTarget.Kind(of: canonical), openRoots: roots)
+        else { return nil }
+        if let open = folder(target.root) { return open }
+        let made = make(target.root)
+        await made.server.start()
+        return made
+    }
 
     @discardableResult
     func make(_ path: String) -> TestFolder {
@@ -171,5 +199,175 @@ private func window(_ roots: [String], selected: Int = 0) -> SavedSession {
         await restore.run.start()
         #expect(restore.served.all == [folders.notes, folders.b])
         await restore.stopAll()
+    }
+}
+
+/// A restored root that waited under the path it was saved with, and now leads to another
+/// folder (mb-kdku). Selecting its tab only cleared its check, so its server served the
+/// other folder under the saved spelling: opening that folder, or a file in it, started
+/// a second server, and so did selecting the tab when that folder was restored too.
+@Suite struct RestoredAliasTests {
+    /// The review's trace: save A, quit, replace A with a link to B, restore, select A,
+    /// then open B and files in it, directly and through the link.
+    @Test func aDeferredRootLeadingToAnotherFolderJoinsItAndOpeningThatFolderReusesIt() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.b)
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home)
+        #expect(restore.deferredAtLaunch == [folders.a])
+        await restore.run.start()
+        #expect(restore.served.all == [folders.notes])
+        await restore.select(folders.a)
+        #expect(restore.served.all == [folders.notes, folders.b])
+        #expect(restore.tabs == [folders.notes, folders.b])
+        #expect(restore.roots == [folders.notes, folders.b].sorted())
+        let joined = try #require(restore.folder(folders.b))
+        for path in [folders.b, folders.b + "/plan.md", folders.a, folders.a + "/plan.md"] {
+            let shown = await restore.open(path)
+            #expect(shown === joined, "\(path)")
+        }
+        #expect(restore.served.all == [folders.notes, folders.b])
+        #expect(restore.fleet.childPIDs.count == 2)
+        await restore.stopAll()
+    }
+
+    @Test func aDeferredRootLeadingToARestoredFolderJoinsItsRunningServer() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.b)
+        let restore = RestoreHarness(window([folders.notes, folders.b, folders.a]), home: folders.home)
+        await restore.run.start()
+        #expect(restore.served.all == [folders.notes, folders.b])
+        let running = try #require(restore.folder(folders.b))
+        await restore.select(folders.a)
+        #expect(restore.served.all == [folders.notes, folders.b])
+        #expect(restore.tabs == [folders.notes, folders.b, folders.b])
+        #expect(restore.folder(folders.b) === running)
+        #expect(restore.roots == [folders.notes, folders.b].sorted())
+        await restore.stopAll()
+    }
+
+    /// The folder it leads to waits for its own tab, in a protected location: it starts
+    /// once, now, as the user's choice.
+    @Test func aDeferredRootLeadingToAFolderWaitingForItsTabStartsThatFolderOnce() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.documentsB)
+        let restore = RestoreHarness(window([folders.notes, folders.documentsB, folders.a]), home: folders.home)
+        await restore.run.start()
+        #expect(restore.served.all == [folders.notes])
+        #expect(Set(restore.run.queue.deferred) == [folders.documentsB, folders.a])
+        await restore.select(folders.a)
+        #expect(restore.served.all == [folders.notes, folders.documentsB])
+        #expect(restore.run.queue.deferred.isEmpty)
+        #expect(restore.tabs == [folders.notes, folders.documentsB, folders.documentsB])
+        await restore.select(folders.documentsB)  // its own tab, now: nothing more starts
+        #expect(restore.served.all == [folders.notes, folders.documentsB])
+        await restore.stopAll()
+    }
+
+    /// The front tab is selected, so it starts at launch, also when it waited for want of a
+    /// certain identity: under the folder its path leads to.
+    @Test func theFrontTabLeadingToAnotherFolderStartsThatFolder() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.b)
+        let restore = RestoreHarness(window([folders.a, folders.notes]), home: folders.home)
+        await restore.run.start()
+        #expect(restore.served.all == [folders.b, folders.notes])
+        #expect(restore.tabs == [folders.b, folders.notes])
+        #expect(restore.roots == [folders.notes, folders.b].sorted())
+        await restore.stopAll()
+    }
+
+    /// Without a runtime no session can be made for the folder, so the restore waits for
+    /// one with the root at its front, and moves it once one is accepted.
+    @Test func withoutARuntimeTheMoveWaitsForOne() async throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.b)
+        let restore = RestoreHarness(window([folders.notes, folders.a]), home: folders.home)
+        await restore.run.start()
+        restore.runtime = nil
+        await restore.select(folders.a)
+        #expect(restore.events == [.waitingForRuntime([folders.a])])
+        #expect(restore.served.all == [folders.notes])
+        restore.runtime = RestoreHarness.setup
+        #expect(restore.run.runtimeAccepted())
+        await restore.run.start()
+        #expect(restore.served.all == [folders.notes, folders.b])
+        #expect(restore.tabs == [folders.notes, folders.b])
+        await restore.stopAll()
+    }
+}
+
+@Suite struct RootActivationTests {
+    @Test func aPathThatStillNamesItsFolderStartsAsSaved() throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        #expect(RootActivation.resolve(folders.b) == nil)
+    }
+
+    @Test func aPathThatLeadsThroughALinkToAnotherFolderResolvesToIt() throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        try folders.relink(folders.a, to: folders.b)
+        #expect(RootActivation.resolve(folders.a) == folders.b)
+        // A link higher up the path counts too.
+        try folders.relink(folders.home + "/wrk", to: folders.home + "/Documents")
+        #expect(RootActivation.resolve(folders.home + "/wrk/b") == folders.documentsB)
+    }
+
+    /// Its server then says what it finds, as before.
+    @Test func aPathThatLeadsToNoFolderStartsAsSaved() throws {
+        let folders = try Folders()
+        defer { folders.remove() }
+        #expect(RootActivation.resolve(folders.home + "/gone") == nil)
+        try folders.relink(folders.a, to: folders.b + "/plan.md")
+        #expect(RootActivation.resolve(folders.a) == nil)
+    }
+
+    @Test func aFolderThatCannotBeServedIsNotJoined() {
+        let resolved = RootActivation.resolve("/x", canonicalPath: { _ in "/y\nServing" }, isFolder: { _ in true })
+        #expect(resolved == nil)
+    }
+}
+
+@Suite struct RestoreRedirectTests {
+    /// Pending `/f`, `/a`, `/b`, and `/c` waiting for its tab; `/f` started.
+    private func queue() -> RestoreQueue {
+        var queue = RestoreQueue(
+            SavedSession(windows: [
+                SavedWindow(tabs: ["/f", "/a", "/b", "/c"].map { SavedTab(root: $0, page: nil) }, selected: 0, frame: nil),
+            ]),
+            isProtected: { $0 == "/c" })
+        let front = queue.next()
+        queue.finish(front!)
+        return queue
+    }
+
+    @Test func aRootWaitingToStartStartsNextAsTheUsersChoice() {
+        var subject = queue()
+        _ = subject.select("/a")
+        #expect(subject.next() == "/a")
+        subject.redirect("/a", to: "/b", isOpen: true)
+        #expect(subject.pending == ["/b"])
+        #expect(subject.selected.contains("/b") && !subject.selected.contains("/a"))
+        // One waiting for its tab starts too, unchecked.
+        #expect(subject.next() == "/b")
+        subject.redirect("/b", to: "/c", isOpen: true)
+        #expect(subject.pending == ["/c"])
+        #expect(subject.deferred.isEmpty)
+        #expect(subject.next(stillOpen: { _ in false }) == "/c")
+    }
+
+    @Test func aFolderWithNoSessionStartsNextAndAnOpenOneOutsideTheRestoreIsLeftAsItIs() {
+        var subject = queue()
+        subject.redirect("/a", to: "/elsewhere", isOpen: false)
+        #expect(subject.pending == ["/elsewhere", "/b"])
+        #expect(subject.selected.contains("/elsewhere"))
+        subject.redirect("/b", to: "/open", isOpen: true)
+        #expect(subject.pending == ["/elsewhere"])
+        #expect(!subject.selected.contains("/open"))
     }
 }

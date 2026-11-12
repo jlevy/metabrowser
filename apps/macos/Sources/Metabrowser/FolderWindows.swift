@@ -197,8 +197,9 @@ final class FolderWindows {
     /// each window's shown tab loads its page; the others load when they are shown.
     ///
     /// - Parameter makeSession: the folder's session, made without a window or a server,
-    ///   or nil if the folder cannot be served.
-    func restore(using makeSession: (URL) -> FolderSession?) {
+    ///   or nil if the folder cannot be served or there is no runtime; also asked, later,
+    ///   for the folder a selected tab's saved path leads to (`RestoreRun`).
+    func restore(using makeSession: @escaping (URL) -> FolderSession?) {
         defer { isRecording = true }
         guard preferences.restoresLastSession else { return }
         let saved: SavedSession
@@ -258,7 +259,8 @@ final class FolderWindows {
         }
         let run = RestoreRun(
             queue, folder: { [weak self] in self?.sessionForPath($0) },
-            admit: { RootAdmission.admit($0, home: home) })
+            admit: { RootAdmission.admit($0, home: home) },
+            moveTabs: { [weak self] in self?.moveTabs(of: $0, to: $1, making: makeSession) ?? false })
         run.onEvent = { [weak self] in self?.restoreChanged($0) }
         restoreRun = run
         AppLog.app.info(
@@ -290,7 +292,48 @@ final class FolderWindows {
             for waiting in pending {
                 sessionForPath(waiting)?.windows.forEach { $0.showWaitingForRuntime() }
             }
+        case .moved(let saved, let canonical):
+            AppLog.app.info(
+                "\(saved, privacy: .public) now leads to \(canonical, privacy: .public); its tabs show that folder")
         }
+    }
+
+    /// Moves every tab of the folder `saved` to the session of `canonical`, the open one or
+    /// a new one (`RestoreRun`): each is replaced in place by a tab of that session showing
+    /// the same page, and `saved`'s session, left with no window, closes, which takes it
+    /// out of the restore. False if no session can be made for `canonical` now, as without
+    /// a runtime, which leaves the tabs as they are.
+    private func moveTabs(
+        of saved: String, to canonical: String, making makeSession: (URL) -> FolderSession?
+    ) -> Bool {
+        guard let target = sessionForPath(canonical)
+            ?? makeSession(URL(filePath: canonical, directoryHint: .isDirectory))
+        else { return false }
+        for old in sessionForPath(saved)?.windows ?? [] {
+            replace(old, with: target)
+        }
+        return true
+    }
+
+    /// Puts a window of `session`, showing `old`'s page, where `old` is: the tab after it,
+    /// selected and key if `old` was. Then closes `old`.
+    private func replace(_ old: BrowserWindowController, with session: FolderSession) {
+        guard let oldWindow = old.window else { return }
+        let page = old.currentPage
+        let isShown = !Self.isBackgroundTab(oldWindow)
+        let wasKey = oldWindow.isKeyWindow
+        let replacement = session.makeWindow(page: page, discarded: !isShown)
+        guard let window = replacement.window else { return }
+        oldWindow.addTabbedWindow(window, ordered: .above)
+        if isShown {
+            window.tabGroup?.selectedWindow = window
+            // Joining a server that is ready loads nothing by itself. Without a page of its
+            // own, the tab shows the folder's own page, the server's entry page.
+            replacement.show(page ?? .view(of: ""))
+        }
+        lastShown[ObjectIdentifier(replacement)] = lastShown[ObjectIdentifier(old)]
+        if wasKey { window.makeKeyAndOrderFront(nil) }
+        oldWindow.close()
     }
 
     /// A restored background folder's restart, such as one after an upgrade, was refused

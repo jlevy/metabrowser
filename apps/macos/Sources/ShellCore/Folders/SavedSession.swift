@@ -242,6 +242,19 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         selected.remove(root)
     }
 
+    /// The user chose to start `saved`, whose path now leads to the folder `canonical`
+    /// (`RootActivation`), and its tabs moved to that folder's session: `saved` leaves the
+    /// restore, and `canonical` starts next as the user's choice, whether it waited to
+    /// start or for its tab, or has no session yet. One that is open already (`isOpen`)
+    /// and not waiting here is left as it is: starting, running, failed, or waiting for a
+    /// runtime.
+    public mutating func redirect(_ saved: String, to canonical: String, isOpen: Bool) {
+        remove(saved)
+        guard !select(canonical), !isOpen else { return }
+        pending.insert(canonical, at: 0)
+        selected.insert(canonical)
+    }
+
     private mutating func settle() {
         outstanding = nil
         selectedWhileOutstanding = []

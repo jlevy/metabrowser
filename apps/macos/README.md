@@ -243,17 +243,26 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
    then checks that the prompt waits for the tab’s selection: the waiting tab still
    shows the folder’s name and icon, and whether reading those can prompt is untested.
-7. **Off, and empty.** With Settings > “Reopen the last session’s folders when
+7. **A folder replaced by a link.** With `d` as a background tab of `a`’s window and `e`
+   not open, quit, then
+   `mv /tmp/mb-check/d /tmp/mb-check/d-old; ln -s /tmp/mb-check/e /tmp/mb-check/d`, and
+   launch: `d`’s tab says Metabrowser opens it when you select it.
+   Select it: the app log says it “now leads to /private/tmp/mb-check/e”, the tab shows
+   `e`, and `open -a "$APP" /tmp/mb-check/e` and `open -a "$APP" /tmp/mb-check/d` bring
+   that tab forward, while `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one
+   server, for `e`. Put `d` back with
+   `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
+8. **Off, and empty.** With Settings > “Reopen the last session’s folders when
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
    After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
-8. **A dropped file.** Drag `/tmp/mb-check/a/notes.md` from Finder onto the window of
+9. **A dropped file.** Drag `/tmp/mb-check/a/notes.md` from Finder onto the window of
    `a`: it shows `notes.md`. Dragged onto another folder’s window, it opens `a` (or
    shows the file in `a`, if open).
    A drag of text or a web link is still the page’s.
-9. **The page’s Print button.** On a Markdown page, the page’s Print button opens the
-   same print panel as File > Print; pressing it again while the panel is open does
-   nothing.
+10. **The page’s Print button.** On a Markdown page, the page’s Print button opens the
+    same print panel as File > Print; pressing it again while the panel is open does
+    nothing.
 
 ### Checking the Setup Flows by Hand
 
@@ -493,7 +502,7 @@ Do not hand one out as a release.
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session and its restore order, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session, its restore order, and the restore’s starts, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Sources/ShellViews/` | The web view class a window holds, `DropAwareWebView`, and its container, `WebContainerView`: a library of their own so that the WebKit gate’s driver builds the same views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
@@ -904,8 +913,15 @@ Terminal launch.
   it (`F_GETPATH`, which undoes case variants and firmlinks) must hold no protected
   location; that name is the root’s identity, so aliases of one folder share one server.
   A root that falls short (a link anywhere on its path, another volume, a protected
-  spelling) waits for its tab under the spelling it was saved with, untouched, so
-  selecting it serves what that path names then.
+  spelling) waits for its tab under the spelling it was saved with, untouched.
+  Selecting the tab resolves that path then, as opening a folder does
+  (`RootActivation`): a path that now leads to another folder moves its tabs, in place
+  and on the same pages, to that folder’s session, the open one or a new one, and that
+  folder starts in its place, with its own path, so a folder still has one server and a
+  file opened in it finds that server.
+  A path that still names its folder, or leads to nothing that can be served as one,
+  starts as saved, and its server says what it finds.
+  The front tab is resolved the same way, since it is selected.
   A home folder in a protected place (a network home under `/Volumes`), or on a mount
   the walk would not enter, is not looked at to classify anything, so every root then
   waits. The mount table is read again into a larger buffer whenever a read fills it, and
@@ -916,12 +932,14 @@ Terminal launch.
   The launch recreates the windows and tabs, and only each window’s shown tab loads its
   page. The servers start one at a time, each after the one before it is ready or has
   failed: the front tab’s first, then those of the tabs the other windows show, front to
-  back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
-  Each background root is admitted again when its turn comes, and once more just before
-  its server spawns, after the launch gate and any earlier child’s termination
-  (`ServerSupervisor.mayLaunch`); one that changed while it waited is not spawned and
-  waits for its tab instead.
-  Selecting a tab clears the check, even for a server already waiting at the gate.
+  back, then the rest (`RestoreQueue`, `RestoreRun`). A tab that is selected meanwhile
+  starts next. Each background root is admitted again when its turn comes, and once more
+  just before its server spawns, after the launch gate and any earlier child’s
+  termination (`ServerSupervisor.mayLaunch`); one that changed while it waited is not
+  spawned and waits for its tab instead.
+  Selecting a tab clears the check, even for a server already waiting at the gate; such
+  a start was admitted when its turn came, so a link put on its path during that wait is
+  followed by the server under the saved spelling.
   The server takes a path, so a process that changes the path between that last check
   and the server resolving it, about a process start later, can still win; the deferral
   is the app’s own policy, and macOS enforces its privacy grants regardless.
