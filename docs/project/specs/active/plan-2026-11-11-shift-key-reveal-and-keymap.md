@@ -405,7 +405,7 @@ stays in the registry.
 | Revealed | The key observer reports a key the registry handled | Revealed; once the handler returns, re-read every attached target’s liveness and remount the badges |
 | Revealed | The key observer reports any other non-Shift key | Idle; unmount |
 | Revealed | Shift `keyup`, `pointerdown`, `wheel`, Ctrl, Alt, or Meta `keydown` | Idle; unmount |
-| Armed or Revealed | Window `blur`, `visibilitychange` to hidden, focus entering an editable target | Idle |
+| Armed or Revealed | The window’s own `blur`, `visibilitychange` to hidden, focus entering an editable target | Idle |
 | Any | Any key event whose `shiftKey` is false while the machine thinks Shift is down | Idle; recovers a lost `keyup` |
 
 Repeated Shift `keydown` events while held are ignored, and so are repeated keys the
@@ -444,7 +444,9 @@ dispatch loop, it calls an observer the machine registers through a new
 always learns of a key after the registry has decided whether it handled it, and the
 order does not depend on which module registered first, on first build or after a
 `pageshow` rebuild. While an observer is registered, the registry also owns one passive
-capture-phase `keyup` listener and passes Shift releases through the same observer.
+capture-phase `keyup` listener and passes every `keyup` through the same observer, as
+unhandled: a `keyup` without Shift is what recovers a lost Shift release, and an idle
+machine returns from one after two comparisons.
 That keeps `test_registry_is_the_only_application_shortcut_dispatcher` meaningful:
 `key-reveal.js` adds no `keydown` listener, and the registry’s `keyup` listener
 dispatches nothing.
@@ -453,8 +455,11 @@ The machine’s own listeners are passive, cover only `pointermove`, `pointerdow
 `wheel`, `focusin`, window `blur`, and `visibilitychange`, and never call
 `preventDefault()`, so Shift-click, Shift-selection, Shift+wheel, and every Shift chord
 keep their browser behavior.
-It does not read `defaultPrevented`, which component handlers such as the Git rows, the
-gutter, the treemap, and the pull request stack menu also set.
+The window `blur` listener is not a capture listener and acts only when the window
+itself is the event’s target: a capture listener on the window hears every element’s
+`blur`, so a key or a press that moves focus would end the reveal, and the press it is
+part of. It does not read `defaultPrevented`, which component handlers such as the Git
+rows, the gutter, the treemap, and the pull request stack menu also set.
 A key that a component handles in its own listener, rather than through the registry,
 reaches the observer with `handled` false and ends the reveal.
 Today that is the Git history rows’ `J`, `K`, arrows, Enter, and Space, so `J` keeps the
@@ -521,11 +526,13 @@ active scope, `available()` runs only at dispatch, and a handler receives only
   So `U` does nothing at the root, where the Up target is not attached, and `Y` does
   nothing on a folder, which has no copy target.
   Untargeted commands such as Help and Quick Search are unaffected;
-- `snapshot(surface, {live: true})` also evaluates each command’s `available({})` and,
-  for a targeted command, whether any target is live, counting one with no targets as
-  not live; the `reveal` surface is always read that way; Help never is, because opening
-  Help makes every background target `inert`, so Help lists a registered command, shell
-  or plugin, whether or not its targets are live;
+- `snapshot(surface, {live: true})` also requires each command’s scope to be active, so
+  a live snapshot lists what would run now, and with Help open only Help’s keys are live
+  with no special case; it evaluates each command’s `available({})` and, for a targeted
+  command, whether any target is live, counting one with no targets as not live; the
+  `reveal` surface is always read that way; Help never is, because opening Help makes
+  every background target `inert`, so Help lists a registered command, shell or plugin,
+  whether or not its targets are live;
 - `attachTarget()`, `retarget()`, and `detach()` publish a `target` event, so the
   revealed strip and the badges refresh while Shift is held;
 - at dispatch the registry passes the first live target to the handler as
@@ -563,23 +570,36 @@ registered, retargets each one that is, and releases each letter the bar no long
 declares. A path that misses a call therefore leaves, at worst, a command whose targets
 are disconnected, which liveness already excludes; no path can throw a duplicate command
 id. The commit ordering lives in the same strict module, not in `app.js`:
-`shellKeymap.commitViewTabs(previousBar, nextBar)` releases the outgoing bar’s letters
-and then calls `syncViewTabs(nextBar)`, in one batch.
+`shellKeymap.commitViewTabs(nextBar)` calls `syncViewTabs(nextBar)` and syncs the header
+committed with it, in one batch.
+The letters the keymap holds are the outgoing bar’s, so `syncViewTabs()` diffs them: a
+letter both bars declare under one label keeps its command and moves its target, and
+only a letter that comes, goes, or changes label publishes a `registration`, so a move
+between two files of one kind registers nothing.
 `renderFile` calls it inside view composition’s `commit()` callback, beside `replace()`,
 and never while staging.
 Nothing is pushed into the staged disposers (`stagedPluginDisposers`), because
 `cancel()` runs those too: a cancelled stage, such as one a main tab switch abandons
 during a file load, has registered nothing, so it releases nothing, and the bar still on
 screen keeps its keys.
-Replacing the pane with something that has no view tab bar calls
-`commitViewTabs(previousBar, null)`. A bar still in the inert stage registers nothing,
-so the outgoing structured file’s `R` and the incoming log’s `R` never overlap.
+Replacing the pane with something that has no view tab bar calls `commitViewTabs(null)`.
+A bar still in the inert stage registers nothing, and a letter whose label changed is
+released before it registers again, so the outgoing structured file’s `R` and the
+incoming log’s `R` never overlap.
+Every main-pane install, the file view’s and every other, ends in
+`finishRetainedPullPage()`, which calls the keymap’s `syncPane()`: `commitViewTabs()` on
+the committed bar. After `commitViewTabs()` in the same commit it finds every target in
+place and publishes nothing; after a pull request page or another install with no file
+view, it releases the letters and moves Up and Copy.
 
 The main-pane header’s copy target follows the same pattern.
 The file header attaches it in `renderFile`’s commit.
-The commit view attaches its revision button through a shell bridge,
-`attachHeaderCopy(button)`, which `git-panel.js` calls when its staged view commits; it
-runs the returned disposer when the view is replaced.
+The commit view attaches its revision button through the shell keymap’s module,
+`MetabrowserShellKeymap.attachHeaderCopy(button)`, which `git-panel.js`, in the same
+`shell-tools` bundle, calls when its staged view commits; it runs the returned disposer
+when the view is replaced.
+The module keeps the lent button at module level, so the keymap rebuilt after a real
+`pagehide` finds it.
 Plugin keys, in phase 2, register in the `plugin` scope, so the per-scope check never
 sees a shell and plugin pair and the shell key outranks the plugin key by scope order.
 
@@ -597,9 +617,22 @@ The source selector arrives in its own on-demand bundle, and the shell disposes 
 registry on a real `pagehide` and rebuilds it on `pageshow`. Render sites can therefore
 run with no registry.
 They report to the shell keymap only when it exists, and `createShellKeymap()` reads the
-current state when it is created: the navigation tabs in the tab bar, the committed view
-tab bar and its `views[].key`, the main-pane header’s Up and copy controls, the filter
-triggers, and the selector handle once its bundle resolves.
+current state when it is created: the committed view tab bar and its `views[].key`, the
+main-pane header’s Up and copy controls, the filter triggers, and the selector handle
+once its bundle resolves.
+The keymap reads those targets itself, from the main pane and the navigation pane’s
+filter bar, which it finds by the ids the server’s shell gives them, and Copy reaches
+the SDK’s copy delegate directly.
+The selector’s module keeps the selector it mounted, behind `mounted()`, and the keymap
+reads it there. None of these can act before a registry exists, so none rides in the
+eager `app.js`, which lends the keymap only the activation paths only it can run:
+`openFolder`, `selectPreviewTab`, and `toggleFilterMenu`. The main tabs attach their own
+targets in `main-tabs.js`, which creates and removes the tab buttons.
+The shell unbinds them, with `bindShortcuts(null)`, as it disposes the registry, so a
+panel registered before the rebuild gets its button and container, and the rebuild
+attaches its digit. `X`, `A`, and `W` are registered only while their control exists, so
+Help never lists a key the page cannot have; `U` and `Y` stay registered, because
+registering them per navigation would publish a `registration` on every move.
 Creating the keymap is therefore the same as replaying everything that rendered before
 it, on first build and on every rebuild.
 `key-reveal.js` and `shell-keymap.js` join the `shell-tools` bundle, beside the
@@ -896,7 +929,10 @@ This plan changes the subscriber and the publications instead:
 - Help renders when it opens, and on a registration only while it is open; otherwise a
   registration sets a dirty flag that the next open clears;
 - `syncViewTabs()` swaps a tab bar’s letters inside one `shortcuts.batch()`, which
-  coalesces the publications it contains into one.
+  coalesces the publications it contains into one;
+- `batch()` coalesces the badge work too: while revealed, a change inside a batch marks
+  the badges stale, and they reconcile once as the outermost batch ends, before its
+  publication, and a reconcile pass reads each target’s liveness once.
 
 At dispatch, visibility is read only for the targets of the one command that matched,
 and a repeated key does no reveal work.
@@ -921,22 +957,22 @@ Paths are under `src/metabrowser/` unless they begin with `tests/` or `docs/`.
 |  | `GROUP_DEFINITIONS` | `view-tabs` (16), `controls` (18), and `filters` (19) groups; the `main-tabs` context sentence without Command |
 |  | `create`: `register`, `handleKeydown`, `snapshot`, `subscribe`, returned API | `targeted` descriptors, which are live only with a live target; `attachTarget()` with dispatch-time visibility, first-live-target choice, and `context.target`; badge mount and unmount, immediate during a reveal; a `target` event; `snapshot(surface, {live: true})`; `observeKeys()` with its passive `keyup`; `batch()`; the permanent `view-tabs` scope below `global` in `activeLayers()`; `reveal` surface |
 | `static/key-reveal.js` (new, strict) | `createKeyReveal` | The state machine, the root attribute, and calls into the registry’s badge mount |
-| `static/shell-keymap.js` (new, strict) | `createShellKeymap` | View tab, header, filter, and source commands; `syncViewTabs()` and `commitViewTabs()`; all shell targets, including the main tabs; activation injected |
+| `static/shell-keymap.js` (new, strict) | `createShellKeymap` | View tab, header, filter, and source commands; `syncViewTabs()`, `commitViewTabs()`, and `syncPane()`; the module-level `attachHeaderCopy()` for the commit view’s Copy revision; reads its own targets from the main pane and the filter bar; the filter keys’ `openFilterMenu()` focus step; activation injected |
 | `static/main-tabs.js` | `MAIN_TABS`, `tabBindings` | Drop the `meta: "require"` binding; each tab keeps its bare digit |
-|  | `bindShortcuts` | Join the `reveal` surface; the handler runs `openMainTab()` and then the panel’s `focusRow()`, falling back to the tab button; targets come from `attachTarget()` instead of hand-set `aria-keyshortcuts` |
+|  | `bindShortcuts` | Join the `reveal` surface; the handler runs `openMainTab()` and then the panel’s `focusRow()`, falling back to the tab button; targets come from `attachTarget()` instead of hand-set `aria-keyshortcuts`; `bindShortcuts(null)` unbinds as the shell disposes the registry |
 |  | `registerNavPanel`, `ensureNavPanelElements`, `removeNavPanel`, `activateNavPanel` | Attach and detach main tab targets as Commits and Pulls arrive and leave; keep the fixed digits and reserved gaps; supply Files’ `focusRow()` through the new `focusFilesRow()` dependency |
 | `static/pulls-nav.js` | `registerKeys` | `pulls.stack.top` becomes `N` and `pulls.stack.base` becomes `P`, without Shift; both join the `reveal` surface; the `pull-rows` and `pull-files` `J` and `K` follow the Shift rule |
 |  | `createPullsNav` | Supply the Pulls panel’s `focusRow()` |
 | `static/keyboard-help.js` | `buildHelpContent`, `renderHelpGroups`, `reconcileHintStrip`, `create` | Closing Shift note; strip renders `reveal` while revealed, with a coalesced item’s full bindings; `help.open` joins `reveal`; `?` bindings lose their Shift policy; the subscriber reconciles the strip only on events it displays and renders Help only while open, with a dirty flag otherwise |
 | `static/search-palette.js` | `registerCommands` | `quick-file.open` follows the Shift rule and joins the `reveal` surface |
 | `static/tree-keyboard-navigation.js` | `registerCommands` | `J`, `K`, and the arrows follow the Shift rule; `tree.first` and `tree.last` drop Shift+↑ and Shift+↓ and keep Home and End; the controller gains `focusCurrent()` |
-| `static/git-panel.js` | `handleCommitRowKeydown`, the Commits `registerNavPanel` call, the revision copy button | Drop Shift from the modifier guard, for `J`, `K`, and the arrows alike; supply the Commits panel’s `focusRow()`; attach the revision button through `attachHeaderCopy()` when the commit view commits and run its disposer when the view is replaced; mark the commit heading as the `beside` badge anchor for `Y` |
-| `static/app.js` | `initKeyboardInfrastructure`, `disposeKeyboardInfrastructure`, `attachMainTabs` | Create and dispose the reveal module and shell keymap; pass `focusFilesRow()` to the main tabs; add `attachHeaderCopy()` to the shell bridge |
+| `static/git-panel.js` | `handleCommitRowKeydown`, the Commits `registerNavPanel` call, the revision copy button | Drop Shift from the modifier guard, for `J`, `K`, and the arrows alike; supply the Commits panel’s `focusRow()`; attach the revision button through the shell keymap’s `attachHeaderCopy()` when the commit view commits and run its disposer when the view is replaced; mark the commit heading as the `beside` badge anchor for `Y` |
+| `static/app.js` | `initKeyboardInfrastructure`, `disposeKeyboardInfrastructure`, `attachMainTabs` | Create and dispose the reveal module and shell keymap, and unbind the main tabs before disposing the registry; pass `focusFilesRow()` to the main tabs |
 |  | `initTabs`, `showPreviewTab`, new `selectPreviewTab` | Extract the tab switch from the anonymous click listener so the key, the click, and `showPreviewTab()` share it; set tablist semantics |
-|  | `renderFile` (preview tab bar and stage commit) | Render the bar with `role="tablist"`; call `shellKeymap.commitViewTabs(previousBar, nextBar)` inside view composition’s `commit()` callback, never while staging, and push nothing into `stagedPluginDisposers`; a source-order test pins the call’s place |
-|  | `renderNavFilterBar`, `initFilterBar`, new `openFilterMenu` | Retarget `X` and `A` after each rebuild; extract the menu-open path from the `onMenuToggle` closure and move focus into the open menu |
+|  | `renderFile` (preview tab bar and stage commit) | Render the bar with `role="tablist"`; call `shellKeymap.commitViewTabs(nextBar)` inside view composition’s `commit()` callback, never while staging, and push nothing into `stagedPluginDisposers`; a source-order test pins the call’s place; `finishRetainedPullPage()` calls `syncPane()` after every main-pane install |
+|  | `renderNavFilterBar`, `initFilterBar`, new `toggleFilterMenu` | Retarget `X` and `A` after each rebuild; extract the menu-open path from the `onMenuToggle` closure as `toggleFilterMenu()`, which the trigger and the keys share; the focus into the open menu is the keymap’s |
 |  | `renderFolderHeader`, `renderFile` (header copy and breadcrumbs) | Attach Up, except at the root, and Copy; mark the file header and the folder header as `beside` badge anchors |
-|  | `startSourceRefSelector` | Keep the mounted handle for `W`, and hand it to the shell keymap when the bundle resolves |
+|  | `startSourceRefSelector` | Mount the selector and report it to the shell keymap when the bundle resolves; `static/source-ref-selector.js` keeps the mounted handle for `W` behind `mounted()` |
 | `static/plugin-sdk.js` | `MetabrowserPluginHost` | `copyFromControl(element)`, a named entry to the copy delegate |
 | `static/styles.css` | `── Keyboard keys ──` blocks, `.nav-shortcut-hints` | Badge and reveal tokens in both themes, `.kbd-badge` after the base `.kbd` rule, host rule, reveal-on-hover override, strip overlay, reduced motion, print |
 | `static/types.d.ts` | Registry types, `MetabrowserNavPanel`, `MetabrowserMainTabsDeps`, `MetabrowserViewDescriptor`, window globals | `attachTarget`, `observeKeys`, `batch`, `focusRow`, `focusFilesRow`, the view descriptor’s optional `key`, the reveal runtime, the shell keymap |
@@ -1322,7 +1358,15 @@ Badge geometry stays under phase 1’s paint-exempt row.
 - [ ] `mb.shortcuts.attach()` and its queue in `plugin-sdk.js`, with measured eager
   bytes, and `static/plugin-shortcuts.js` in `shell-tools` for validation,
   reserved-letter refusal, `plugin`-scope registration, arbitration, replay, and detach
-  by handle or abort signal plus the view-composition safety net
+  by handle or abort signal plus the view-composition safety net.
+  The eager budget this starts from, measured at layer 3’s head with
+  `check_startup_scripts` (compressed at gzip level 6): layer 3 moved what cannot act
+  before the registry into `shell-tools` and kept its type annotations and comments, and
+  the eager scripts are 180,057 bytes, 346 over the 175 KB gate (`app.js` 90,431 to
+  91,728 and `plugin-sdk.js` 16,872 to 17,040). The gate is being re-measured from what
+  startup JavaScript costs in a separate session, which decides the budget the queue
+  must fit; until then the queue, like layer 3, moves into the on-demand path whatever
+  cannot act before the registry
 - [ ] Pull request page: Conversation `C`, Changes `G`, and Checks `H` through an
   exported `attachTabKeys()` that calls the page handle’s `setTab()`
 - [ ] Diff view: layout toggle `L` through an exported `toggleLayout()`, badged on the
@@ -1368,9 +1412,10 @@ Badge geometry stays under phase 1’s paint-exempt row.
   snapshots and leaves the event unhandled, at dispatch and on the strip
 - Handlers receive the chosen target as `context.target`; attaching, retargeting, and
   detaching publish a `target` event; `snapshot(surface, {live: true})` omits a command
-  whose targets are all dead or whose `available()` is false; `observeKeys()` reports
-  `(event, handled)` after the dispatch loop and reports a Shift `keyup`; `batch()`
-  coalesces its publications into one
+  whose scope is inactive, whose targets are all dead, or whose `available()` is false;
+  `observeKeys()` reports `(event, handled)` after the dispatch loop and reports every
+  `keyup` as unhandled; `batch()` coalesces its publications into one and, while
+  revealed, its badge work into one pass that reads each target once
 
 ### Main Tabs and Pull Keys
 
@@ -1400,13 +1445,19 @@ new ones:
 
 `node tests/dom/key-reveal-session.js`, pinned by
 `tests/golden/cli-ui-key-reveal.tryscript.md`, loads the production registry, reveal
-module, shell keymap, Help renderer, `main-tabs.js`, and `pulls-nav.js` whole, with
-injected time, pointer, and visibility.
+module, shell keymap, Help renderer, `main-tabs.js`, `pulls-nav.js`, and
+`filter-controls.js` whole, with injected time, pointer, and visibility, on a stand-in
+DOM that puts the window on every event’s path and fires `blur`, `focusout`, `focus`,
+and `focusin` in a browser’s order.
+The golden runs it in three parts, `keymap`, `gestures`, and `tabs`, each its own
+command, so no transcript block grows past what tryscript can match;
+`tests/test_keymap.py` asserts that all three print `shellKeys`. Python seam tests pin
+the `app.js` markup the keymap reads, which the session renders its own copy of.
 `main-tabs.js` and `pulls-nav.js` are strict and already load whole in their own
 sessions. The reveal session pairs `pulls-nav.js` with a stand-in pull request page that
 offers `hasStack()` and `moveStack()`, and stands in for `git-panel.js` by calling the
-shell’s `attachHeaderCopy()` with a fixture commit heading, the bridge the commit view
-uses. It plays the server’s side from responses the in-process application gave for
+shell keymap’s `attachHeaderCopy()` with a fixture commit heading, the bridge the commit
+view uses. It plays the server’s side from responses the in-process application gave for
 `/api/file`, `/api/git/repo`, and `/api/source/status`, recorded by its Python test the
 way the source selector session’s are and listed with the golden recorders.
 Each step records the machine state, the live keymap as key, command, and target, the
@@ -1443,7 +1494,12 @@ Steps cover:
   rendered, and again after a `pageshow` rebuild: the same keymap both times
 - Shift in the Quick Search input: no reveal; Help open: only Help’s keys
 - window blur and a lost `keyup` while revealed; a repeated `J` while revealed does not
-  re-mount badges
+  re-mount badges; Shift pressed during a press that moved focus does not arm
+- what a step costs, as publications, liveness reads, and keycaps built: a move between
+  two files of one kind publishes one `target` batch and builds nothing at rest, and a
+  navigation while revealed is one publication and one reconcile pass
+- Commits registered between a real `pagehide` teardown and the rebuild: it throws
+  nothing, its tab and container exist, and the rebuild attaches its digit
 
 ### Keymap Check
 
