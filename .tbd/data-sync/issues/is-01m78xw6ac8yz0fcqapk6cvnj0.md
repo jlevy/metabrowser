@@ -3,14 +3,18 @@ type: is
 id: is-01m78xw6ac8yz0fcqapk6cvnj0
 title: "PR #383 A3: spec phase 2 text no longer describes what shipped"
 kind: bug
-status: open
+status: closed
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m78xvnbykdp66qwvmwnrfzdp
 created_at: 2026-11-12T22:25:56.043Z
-updated_at: 2026-11-12T22:50:05.893Z
+updated_at: 2026-11-12T23:22:16.384Z
+closed_at: 2026-11-12T23:22:16.383Z
+close_reason: "Fixed by the spec commit 'plan: record what the layer 4 and phase 2 reviews changed', 277a7065 before the stack #376 rebase and 07c3b2e7 after it (PR #365's branch). It records the Lifetime change from B1, the Collisions deviations, and heldAbove, isTargetLive, and the attachTarget rank under API Changes."
+resolution: null
+duplicate_of: null
 ---
 Low. PR #383, review A (https://github.com/jlevy/metabrowser/pull/383#pullrequestreview-5882935821). docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md:1092-1093 (Lifetime contradicts B1), 1148-1162 (Collisions lacks the reported deviations: queued malformed input logged, same-element retarget refreshes badges, net covers the queue, facade observes keys), 1230-1236 (API Changes lacks heldAbove, isTargetLive, attachTarget rank). Deferred to the coordinator's single spec-drift commit on PR #365's branch.
 
