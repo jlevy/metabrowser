@@ -5,7 +5,7 @@ title: Transition scenario for the performance loop, and a baseline round
 kind: task
 status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -50,11 +50,13 @@ dependencies:
     target: is-01m774rdb8j84szr2bamkxphvm
   - type: blocks
     target: is-01m774rdstn0r4rtfnn10sdbp9
+  - type: blocks
+    target: is-01m77616mh9yfzy5cq7daccafn
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:27.327Z
-updated_at: 2026-11-12T05:48:42.064Z
+updated_at: 2026-11-12T06:10:00.660Z
 started_at: 2026-11-12T05:48:42.063Z
 ---
 Commit a scenario in explorations/performance-loop that records per transition: painted-ready, blank frames, region movement (works in WebKit), layout-shift entries (Chrome), requests by class, duplicate subject requests. Baseline round exp-058 on main.

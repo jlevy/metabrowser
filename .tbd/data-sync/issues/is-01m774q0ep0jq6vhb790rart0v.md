@@ -5,7 +5,7 @@ title: "Epic: instant transitions and stable layout for the native app"
 kind: epic
 status: open
 priority: 1
-version: 30
+version: 32
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
 dependencies: []
@@ -38,11 +38,12 @@ child_order_hints:
   - is-01m774rerk521sprp8ys3ana0t
   - is-01m774rf6smnw3sw8c2rw322px
   - is-01m774rfn15h0t9ys9eg0nvgyx
+  - is-01m77616mh9yfzy5cq7daccafn
 created_at: 2026-11-12T05:46:57.364Z
-updated_at: 2026-11-12T05:55:54.955Z
+updated_at: 2026-11-12T06:11:47.719Z
 ---
 Implement the ranked improvements in docs/project/research/research-2026-11-11-ui-apparent-performance.md. Every item is a measured performance-loop round (hypothesis in the load-time plan, exp record, verdict) and closes on its verdict. Ends with a campaign summary covering every item, in Chrome and WKWebView.
 
 ## Notes
 
-Operating map (2026-11-11). Corpus: /Users/levy/wrk/github/metabrowser-perf-corpus, detached worktree at 7a02fed4 (frozen). Control build: /Users/levy/wrk/github/metabrowser-perf-control at origin/main 09903292 (.venv/bin/metab). Lanes, each a worktree from origin/main 09903292 with its own node_modules and .venv: research docs claude/ui-perf-research (PR #364: research doc, plan, H86-H105 registry, audit); harness claude/perf-transition-scenario at metabrowser-perf-harness (mb-4z4u, exp-058 baseline, ports 8890-8899); delivery claude/perf-delivery at metabrowser-perf-delivery (mb-3m3l, mb-pdul, mb-rldd, ports 8880-8889); caches claude/perf-caches at metabrowser-perf-caches (mb-8a8g, mb-mbd3, ports 8900-8909); layout claude/perf-layout at metabrowser-perf-layout (mb-n3r5, then mb-4z69 and mb-6chh after the audit mb-eo0s, ports 8910-8919). Research server for audits: port 8872 (8871 belongs to another session). PRs target main without stacks (github-stacked-prs not granted) and merge in order after review and green CI; the owner approved merging once review is complete. Native shell items (mb-w4kd, mb-25nv) stay unmerged with apps/macos. Push with --no-verify after focused checks while the machine is loaded; CI is the full gate.
+Operating map (2026-11-11). Corpus: /Users/levy/wrk/github/metabrowser-perf-corpus, detached worktree at 7a02fed4 (frozen). Control build: /Users/levy/wrk/github/metabrowser-perf-control at origin/main 09903292 (.venv/bin/metab). Lanes, each a worktree from origin/main 09903292 with its own node_modules and .venv: research docs claude/ui-perf-research (PR #364: research doc, plan, H86-H105 registry, audit); harness claude/perf-transition-scenario at metabrowser-perf-harness (mb-4z4u, exp-058 baseline, ports 8890-8899); delivery claude/perf-delivery at metabrowser-perf-delivery (mb-3m3l, mb-pdul, mb-rldd, ports 8880-8889); caches claude/perf-caches at metabrowser-perf-caches (mb-8a8g, mb-mbd3, ports 8900-8909); layout claude/perf-layout at metabrowser-perf-layout (mb-n3r5, then mb-4z69 and mb-6chh after the audit mb-eo0s, ports 8910-8919). Research server for audits: port 8872 (8871 belongs to another session). PRs target main without stacks (github-stacked-prs not granted) and merge in order after review and green CI; the owner approved merging once review is complete. Native shell items (mb-w4kd, mb-25nv) stay unmerged with apps/macos. Push with --no-verify after focused checks while the machine is loaded; CI is the full gate. Added 2026-11-11: PR-page lane claude/perf-prpage at metabrowser-perf-prpage (mb-6chh, mb-gsa0, ports 8920-8929); layout lane keeps mb-n3r5 and mb-4z69. Audit mb-eo0s closed into the research doc at 81b4d2b1.
