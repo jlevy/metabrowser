@@ -253,8 +253,8 @@ environment, which the owner’s requirement rules out.
   source).** The allowlist also drops `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
   `METABROWSER_CONFIG_DIR`, and `METABROWSER_CACHE_DIR`. A user who sets one in a shell
   profile gets one home in Terminal and the default home in app-launched servers.
-  This already affects the repository cache; a plugin registry in the configuration home
-  would inherit it.
+  This already affects the repository cache, and a plugin registry in any of
+  Metabrowser’s homes would inherit it.
 
 ### What the Downstream Plugins Need from the Host
 
@@ -471,6 +471,10 @@ untrusted repository may do here: be browsed, and run nothing.
 
 ## Options Considered
 
+The options that remain choices are Key Decisions in the plan, which gives each one’s
+pros and cons and a recommendation; each heading below names its decision.
+The others are settled by the evidence above.
+
 ### Option A: Reinstall Metabrowser with `--with` (Rejected)
 
 The earlier brief’s plugin mode would re-run
@@ -487,7 +491,7 @@ Persisting `--plugins-dir` values would reach the app, but every view of the mot
 plugin depends on a hook or an adapter, and a directory carries no environment to run
 them in. Directories stay a source for JavaScript-only plugins.
 
-### Option C: Overlay the Plugin Environment In Process (Rejected)
+### Option C: Overlay the Plugin Environment In Process (Rejected; Key Decision 9, Option C)
 
 `site.addsitedir`, `.pth` injection, or `sys.path` edits bind the plugin to whatever
 Metabrowser already imported, as reproduced, and also mix native extensions built for
@@ -514,7 +518,7 @@ The motivating plugin’s hooks compute a process-graph model in its own Python 
 1.2–1.4 s of work in the spike.
 Moving that into the browser means rewriting the library.
 
-### Option G: Out-of-Process Worker Using the Environment’s Own `metabrowser` (Rejected as Written)
+### Option G: Out-of-Process Worker Using the Environment’s Own `metabrowser` (Rejected as Written; Key Decision 1)
 
 The downstream candidate: one worker per registered plugin environment, static assets
 served by the host, hooks proxied over stdio, each environment keeping its own lock.
@@ -527,7 +531,7 @@ version), it has no session from which to read a Git pin’s content, and every 
 environment must still install all of Metabrowser, with its exact pins, only to import a
 dozen helpers.
 
-### Option H: Out-of-Process Workers over a Runtime the Host Injects (Recommended)
+### Option H: Out-of-Process Workers over a Runtime the Host Injects (Recommended; Key Decision 1, Option C)
 
 Option G’s transport and process model, with the plugin-side runtime (the sidekick
 names, the worker loop, and the bounded readers) shipped inside Metabrowser and put
@@ -538,7 +542,7 @@ next Metabrowser; and nothing is installed in plugin environments.
 The second spike ran the three downstream plugins this way unchanged.
 The plan specifies it.
 
-### Option O: A Plugin SDK Package Installed in Each Environment (Rejected)
+### Option O: A Plugin SDK Package Installed in Each Environment (Not Recommended; Key Decision 1, Option A)
 
 An earlier revision of this design: a stdlib-only `metabrowser-plugin-sdk` package that
 each plugin environment installs, with a negotiated worker protocol.
@@ -547,7 +551,7 @@ two plugins in one environment agree on one SDK range, leaves checked-in directo
 plugins with nothing to bring the SDK, gives plugin authors three version axes, and was
 never what a spike ran.
 
-### Option I: One Shared Worker per Environment Across Roots (Deferred)
+### Option I: One Shared Worker per Environment Across Roots (Deferred; Key Decision 9, Option B)
 
 A per-user worker per environment would save the 61–121 MB that each server’s worker
 costs, but needs a supervisor outside any one server, a root on every call, and cache
@@ -568,7 +572,7 @@ the user then trusted.
 The owner asked for automatic pickup instead, and the declaration duplicates what the
 workspace’s `pyproject.toml` files and lock already say.
 
-### Option M: What a Trust Decision Binds To (Per Clone with Named Providers)
+### Option M: What a Trust Decision Binds To (Key Decision 2)
 
 - **Path only**, as in VS Code: never asks again, so anything that can write the tree or
   add a dependency runs code.
@@ -584,7 +588,7 @@ workspace’s `pyproject.toml` files and lock already say.
   The clone is identified by its Git common directory, so its linked worktrees share the
   decision.
 
-### Option N: Metabrowser Builds Its Own Environment for Each Repository (Rejected)
+### Option N: Metabrowser Builds Its Own Environment for Each Repository (Not Recommended; Key Decision 4, Option C)
 
 Syncing the lock into a Metabrowser-owned environment in the cache would leave the
 developer’s `.venv` alone, but doubles disk use and downloads for every repository and
@@ -602,13 +606,14 @@ Stdio gives the lifeline for free and needed no dependencies in the spike.
 Adopt Option H, specified in
 [Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md):
 a runtime the host injects into one worker per plugin environment per server, a registry
-of scoped plugin sources, declarative log-adapter detection, a semantic-version gate on
-one plugin API version, and native app settings that run the same CLI modes.
-Discover a repository’s plugins statically and load them after a per-clone consent that
-names their providers (Option M). The plan’s Key Decisions section lists the choices
-still open.
-Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent
-fix.
+of scoped plugin sources in a state home, declarative log-adapter detection, a caret
+gate on one plugin API version, and native app settings that run the same CLI modes.
+Discover a repository’s plugins statically, and load them after a per-clone consent that
+names their providers.
+The plan’s ten Key Decisions put each remaining choice to the owner with its options,
+their pros and cons, and the recommendation; this brief’s evidence is what those pros
+and cons rest on. Declare dependency ranges in Metabrowser’s `pyproject.toml` as an
+independent fix.
 
 ## Methodology
 

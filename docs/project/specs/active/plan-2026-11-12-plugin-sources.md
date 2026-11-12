@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft, awaiting the owner’s answers to the Key Decisions below.
+**Status:** Draft, awaiting the owner’s answers to the ten Key Decisions below.
 Epic `mb-xbw3` tracks every item as a bead.
 Nothing is implemented; two spikes proved the stdio transport and a host-shipped
 runtime.
@@ -32,134 +32,366 @@ The evidence, the reproductions, and the alternatives rejected are in
 
 ## Key Decisions
 
-Each is awaiting the owner.
-Where this plan agrees with a recommendation, the design below follows it; the other
-options stay here so the choice can be made differently.
+Every decision below is awaiting the owner.
+The design in this plan follows each recommendation, so choosing another option changes
+the sections named in that decision; the options not chosen stay here with their pros
+and cons.
 
-### 1. Who supplies the plugin-side runtime
+### At a Glance
 
-**The concept.** Plugin Python calls a dozen helpers (contained paths, bounded reads,
-log events) and needs a loop that speaks to the host.
-Something must put that code into the plugin’s process, and whoever supplies it decides
-who can fix it and how many versions of it exist at once.
+| # | Decision | Recommendation | Needed before | Hard to reverse? |
+| --- | --- | --- | --- | --- |
+| 1 | Who supplies the plugin-side runtime | Metabrowser injects it, importable as `metabrowser` | Phase 1 | Somewhat: a later rename is one import change in every plugin |
+| 2 | What a trust decision binds to | The clone, with its named plugin providers | Phase 3 | No: stricter levels can be added; weakening a released one is a security change |
+| 3 | Where plugin code comes from when the browsed folder is elsewhere | Worktrees use their clone’s environment; sources can name further folders; checked-in plugins without an environment run isolated | Phase 3 | No |
+| 4 | Whether Metabrowser sets up a repository’s environment | Report only; a declared command later | Phase 3 | No |
+| 5 | Which commands an agent may run outside its sandbox | A separate `metab-plugins` executable, and no `--yes` on trust writes | the first per-command flag, in Phase 1 | Yes: moving flags between executables after release breaks scripts |
+| 6 | The order of the work | Unblock first, then one vertical slice | now | No |
+| 7 | Where sources and trust decisions live | A new state home | Phase 3 | Yes: moving a released record needs a migration |
+| 8 | How many plugin API versions | One, under Cargo’s caret rule | Phase 1 | Somewhat: splitting later adds a field to every manifest |
+| 9 | How widely a worker is shared | One per server and environment | Phase 1 | No: a shared worker can sit behind the same client |
+| 10 | How log adapters are detected | Declarative predicates in the manifest | Phase 2 | Somewhat: manifests carry the predicates |
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| Each plugin environment installs an SDK package | Plugins pin the SDK they tested; host and worker negotiate a protocol | A third long-lived compatibility surface; path and decompression bounds frozen per environment, so a fix waits for every environment to relock; two plugins in one environment must agree on one SDK range; checked-in directory plugins have nothing to bring the SDK |
-| Metabrowser injects its runtime under a new import name | Nothing to install; one artifact | Every plugin changes its imports once; plugin code runs against a newer runtime than it was tested with |
-| Metabrowser injects its runtime as `metabrowser` | Nothing to install, and today’s plugin code runs unchanged: the second spike ran all three downstream plugins that way | Inside a worker, `metabrowser` is the runtime, not the environment’s installed package, so importing anything beyond the documented names fails there; the same newer-runtime risk, held by the plugin API gate |
+Decisions 5, 6, 8, 1, and 9 are needed before Phase 1’s code; the rest can wait for the
+phase named.
 
-**Recommendation:** inject the runtime as `metabrowser`.
+### 1. Who Supplies the Plugin-Side Runtime
 
-### 2. What a trust decision binds to, and what ships first
+**The question.** Plugin Python running in its own environment calls a small library
+(contained paths, bounded reads, log events) and needs a loop that talks to the host.
+Where does that code come from?
 
-**The concept.** Trusting a repository means “code from this place may run as me.”
-What the decision binds to decides what happens when the place changes: a pull, a branch
-from a fork, a new dependency, an agent’s edit.
+**How to think about it.** That code enforces security bounds and is the plugin
+contract.
+What matters is who can fix it, how many versions of it run at once, and what a
+plugin author has to install.
+One owner and one version is simpler and safer; letting each plugin pin its own copy
+lets authors decide when to adopt changes.
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| The path | Never asks again | Anything that can write the tree or add a dependency runs code |
-| The clone, with the named plugin providers | Asks once per clone, and again only when a new distribution or directory starts providing a plugin; version bumps of an approved provider do not ask | One prompt per new provider |
-| The content of the plugin set | Every change asks | In the example workspace, with 10 editable members, nearly every pull asks, with a diff no one reviews |
-| A parent folder scoped by origin URL | Fewest prompts | Not a boundary: a directory’s own `.git/config` can claim any origin (reproduced with two hand-written files) |
+**Options.**
 
-**Recommendation:** ship three states first (undecided, trusted for its named providers
-per clone, and denied) and defer content trust and parent folders.
-If parent-folder trust is added later, describe it as “everything placed under this
-folder runs code.”
+- **A. Each plugin environment installs an SDK package.**
+  - Pros: a plugin runs against exactly the SDK it was tested with; the SDK is an
+    ordinary dependency to type-check and test against.
+  - Cons: a fix to path or decompression bounds reaches a plugin only when its
+    environment relocks; two plugins in one environment must agree on one SDK range, a
+    small copy of the pin conflict this design removes; a checked-in directory plugin
+    has nothing that installs it; authors track three versions (manifest, package,
+    worker protocol); no spike ran it.
+- **B. Metabrowser injects its runtime under a new import name.**
+  - Pros: nothing to install; host and worker are one artifact; the name says plainly
+    that it is not the whole Metabrowser package.
+  - Cons: every plugin changes its imports once; plugin code runs against a newer
+    runtime than it was tested with.
+- **C. Metabrowser injects its runtime as `metabrowser`.**
+  - Pros: nothing to install, and today’s plugin code runs unchanged: the second spike
+    ran all three downstream plugins this way from an environment that holds Metabrowser
+    0.9.1; the same import works in process and in a worker; consuming repositories can
+    drop their exact Metabrowser pins.
+  - Cons: inside a worker, `metabrowser` is the runtime, not the environment’s installed
+    package, so a plugin that imports anything beyond the documented names fails there;
+    plugin code runs against a newer runtime than it was tested with, held by the plugin
+    API gate; type checking needs a published copy of the runtime.
 
-### 3. Where plugin code comes from when the browsed folder is elsewhere
+**Recommendation: C.** It asks nothing of plugin authors or environments, and it is the
+shape the spike proved.
+Choose B if a distinct name matters more than zero migration.
 
-**The concept.** “What code runs” and “what folder is browsed” are different questions.
-One checkout holds the environment, while its worktrees, its run folders, and data kept
-elsewhere are what gets browsed.
+**Affects:** The Plugin Runtime, Phase 1, Phase 2’s author harness.
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| Only the browsed repository’s own environment | Each worktree needs its own consent and its own sync; data outside the repository gets nothing | Manual steps in the owner’s daily cases |
-| A linked worktree uses its clone’s decision and primary environment | A new worktree works with no sync, and code an agent edits in a worktree does not run | A worktree whose branch changes a plugin shows the primary checkout’s plugin until its author opts in for one command |
-| A source’s scope can name more folders | Run folders and data outside the repository get the repository’s plugins | One more field per source |
-| Checked-in directory plugins run on an isolated interpreter when there is no environment | Python hooks work in a repository with no Python environment | Those hooks see only the standard library and the runtime |
+### 2. What a Trust Decision Binds To
 
-**Recommendation:** adopt the last three together, with repository discovery proposing a
-source for the one registry rather than being a second mechanism.
+**The question.** When the user trusts a repository’s plugins, what exactly is approved,
+and what makes Metabrowser ask again?
 
-### 4. Whether Metabrowser creates or changes a repository’s environment
+**How to think about it.** Trust means “code from this place may run as me.”
+The code changes through a pull, a branch from a fork, a new dependency that brings a
+plugin, an agent’s edit, or a different repository cloned to the same path.
+Each binding asks again on some of those and not others.
+Asking too often teaches people to click through; asking too rarely lets new code run
+unseen. And a check is only as good as its input: anything stored inside the directory
+being judged can be written by whatever wrote the directory.
 
-**The concept.** A missing environment is the commonest reason a discovered plugin
-cannot load, and building one runs the repository’s build code and writes into the
-developer’s checkout.
+**Options.**
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| Guess a command such as `uv sync --locked` | One click | Wrong for the example repository, which initializes submodules and syncs `--all-packages`; the default sync also removes packages it did not install |
-| Run a command the repository declares | Correct per repository | One more thing the consent covers |
-| Report only | Never wrong | One manual step |
+- **A. The path,** as VS Code Workspace Trust and `mise trust` do.
+  - Pros: the simplest rule; it never interrupts.
+  - Cons: anything that can write the tree, add a dependency, or put another repository
+    at that path runs code without a prompt.
+- **B. The clone, with its named plugin providers.**
+  - Pros: asks once per clone, and again only when a new distribution or directory
+    starts providing a plugin, which bounds what a growing dependency tree can add; an
+    approved provider’s version bumps do not ask; a reclone at the same path gets a new
+    identity (its Git common directory’s device and inode) and asks again; linked
+    worktrees share the decision.
+  - Cons: a new version of an approved provider, or an edit to approved plugin code,
+    runs without asking; each new provider is one prompt.
+- **C. The content of the plugin set,** as `direnv allow` and mise’s paranoid mode do.
+  - Pros: nothing that changed runs unseen.
+  - Cons: the example workspace has 10 editable members, so nearly every pull asks, with
+    a diff nobody reviews, and prompts people click through protect no one.
+- **D. A parent folder, scoped by origin URL.**
+  - Pros: the fewest prompts; one decision covers every clone of an organization.
+  - Cons: not a boundary.
+    Two hand-written files under `.git` make Git report any origin (reproduced), so an
+    extracted archive or an agent-made folder under the parent runs code without a
+    prompt.
 
-**Recommendation:** report only at first, and add a declared command later.
-Always use the repository’s whole environment, never a reduced one: the motivating
-plugin loads the consuming repository’s own extensions, so a reduced environment would
-render its processes wrongly.
+**Recommendation: B, with three states:** undecided, trusted for the named providers,
+and denied. Defer C as an opt-in for repositories that take outside contributions.
+Add D only if described as what it is: everything placed under the folder runs code.
 
-### 5. Which commands an agent may run outside its sandbox
+**Affects:** Repository Plugins (Decisions), The Registry, the app’s repository bar,
+Phase 3.
 
-**The concept.** The app’s agent design exempts `metab` from an agent’s sandbox so that
-`metab TARGET --present` works.
-This design adds commands that run plugin code or record trust.
-A flat command line cannot be split by a prefix pattern, and the existing
-`--remote … --ssh-options` already makes a blanket `metab *` exemption unsafe.
+### 3. Where Plugin Code Comes From When the Browsed Folder Is Elsewhere
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| Leave it to the skill’s wording | No code | One exemption grants everything |
-| A separate executable for every mode that runs plugin code without a recorded decision, or records one | `metab *` stays safe to exempt | One more command name |
-| Trust writes need a person: a terminal answer, or the app’s confirmation bound to the plugin set it showed | No one-flag self-approval | Scripts use per-command flags, which record nothing |
+**The question.** The folder being browsed is not always where the plugins are
+installed. Which environment runs the code?
 
-**Recommendation:** both the separate executable, named `metab-plugins` here, and no
-`--yes` on trust writes, decided before the first per-command environment flag ships.
-Nothing can tell a person from an unsandboxed process running as the same account; these
-measures keep sandboxed agents out and make approval deliberate.
+**How to think about it.** In the owner’s daily use, one checkout holds the environment;
+agents work in linked worktrees; runs and data live outside the repository; and some
+repositories have no Python environment at all.
+What runs should follow where code is installed and trusted, not only what is on screen.
 
-### 6. The order of the work, and when the in-process path goes
+**Options.**
 
-**The concept.** The consumers are blocked today, and the first version of this plan
-gave them nothing for three phases.
+- **A. Only the browsed repository’s own environment.**
+  - Pros: the simplest rule; what you browse is what runs.
+  - Cons: every linked worktree needs its own consent and its own environment; data
+    outside the repository gets no plugins; a checked-in plugin in a repository without
+    an environment has no Python.
+- **B. A linked worktree uses its clone’s decision and primary environment.**
+  - Pros: a new worktree works at once, with no sync; code an agent edits in a worktree
+    does not run until someone opts in.
+  - Cons: a worktree whose branch changes a plugin shows the primary checkout’s version
+    until its author opts in for one command, which can confuse an author who forgets.
+- **C. A source’s scope can name further folders.**
+  - Pros: run folders and data outside the repository get its plugins; one registry
+    covers every kind of source.
+  - Cons: one more field per source, and the user adds each folder once.
+- **D. Checked-in plugins with no environment run on an isolated interpreter.**
+  - Pros: Python hooks work in a repository with no Python project, and the isolation is
+    real: `python -I -S` sees only the standard library (reproduced).
+  - Cons: those hooks can use only the standard library and the runtime.
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| Mechanism, then repository trust, then migration | A complete system before the first real use | The riskiest pieces are tested last against a real plugin |
-| Unblock first, then one vertical slice | Dependency ranges and the app’s home variables now; then the real plugin served from its own environment through a per-command flag; then adapters, the registry, repository discovery, and the app | The registry arrives later |
+**Recommendation: B, C, and D together,** with repository discovery proposing a source
+in the one registry rather than being a second mechanism.
 
-**Recommendation:** unblock first.
-Remove the in-process path for third-party plugins only after the three plugins have run
-in workers for a release.
+**Affects:** Sources and Scopes, Repository Plugins (Discovery, Checked-In Plugin
+Directories), Phase 3.
 
-### 7. Where plugin sources and trust live
+### 4. Whether Metabrowser Sets Up a Repository’s Environment
 
-**The concept.** Sources and trust decisions name local paths and authorize code on this
-machine. Configuration is what users copy between machines with their dotfiles.
+**The question.** When a clone’s environment is missing or incomplete, does Metabrowser
+build it?
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| The configuration home, beside `config.yml` | One home | A dotfile sync carries a grant to another machine, where the path can hold other code |
-| A new state home (`METABROWSER_STATE_DIR`, `XDG_STATE_HOME/metabrowser`, or `~/.local/state/metabrowser`) | Grants stay on the machine that made them | A third home to resolve, pass from the app, and document |
-| A file in each repository | No central record | Served content could write its own trust; rejected |
+**How to think about it.** A missing environment is the commonest reason a discovered
+plugin cannot load after a fresh clone.
+Building one downloads packages, runs the repository’s build backends, which is code,
+and writes into the developer’s checkout; doing it wrong can remove packages the
+developer installed.
 
-**Recommendation:** the state home, with the configuration home’s ownership checks.
+**Options.**
 
-### 8. One plugin API version, or several
+- **A. Guess a command, such as `uv sync --locked`.**
+  - Pros: one click.
+  - Cons: wrong for the example repository, which initializes its submodules first and
+    then runs `uv sync --all-packages --locked`; the default sync also removes packages
+    it did not install; it runs build code from a click.
+- **B. Run a command the repository declares,** such as `make install`.
+  - Pros: correct for each repository; one click for a teammate.
+  - Cons: the consent must cover that command, since it runs arbitrary repository code;
+    one more setting for repositories to keep current.
+- **C. Metabrowser builds its own environment from the lock, in its cache.**
+  - Pros: never touches the developer’s `.venv`.
+  - Cons: doubles disk use and downloads for every repository, still runs the build
+    backends, and drifts from the environment developers actually use.
+- **D. Report only.**
+  - Pros: never wrong, and never writes to the checkout.
+  - Cons: one manual step after a fresh clone.
 
-**The concept.** A plugin depends on the browser SDK and, when it has Python, on the
-runtime. Both now come from the host.
+**Recommendation: D now, B later.** Whatever is chosen, use the repository’s whole
+environment, never a reduced one: the motivating plugin loads the consuming repository’s
+own extensions, so a reduced environment renders its processes wrongly.
 
-| Option | Leads to | Cost |
-| --- | --- | --- |
-| One version in the manifest gates both, by Cargo’s caret rule | One number for authors to read | A Python-only change bumps the number browser-only plugins declare |
-| Separate browser and Python versions | Finer refusals | Two numbers per plugin |
-| Either, plus a worker protocol version | Separate host and worker releases | Pointless once the host ships the worker |
+**Affects:** Repository Plugins (The Clone’s Environment), the app’s repository bar.
 
-**Recommendation:** one plugin API version.
+### 5. Which Commands an Agent May Run Outside Its Sandbox
+
+**The question.** How does `metab` stay safe to exempt from an agent’s sandbox now that
+some modes run plugin code or record trust?
+
+**How to think about it.** The app’s agent design has agents run
+`metab TARGET --present` outside their sandbox, through an exemption by command name,
+such as `metab *`. Every mode reachable through that name then runs unsandboxed, and a
+flat command line cannot be split by a prefix pattern.
+The existing `--remote … --ssh-options` already passes raw SSH flags (inferred from
+reading). No check can tell a person from an unsandboxed process running as the same
+account, so the aim is to keep sandboxed agents out and make approval deliberate.
+
+**Options.**
+
+- **A. Rely on the skill’s wording.**
+  - Pros: no code, and no new command.
+  - Cons: one exemption grants every mode, so a sandboxed agent can write a plugin into
+    its worktree and run it unsandboxed.
+- **B. A separate executable, `metab-plugins`, for every mode that runs plugin code
+  without a recorded decision, or records one.**
+  - Pros: `metab *` stays safe to exempt; the boundary is visible in the command’s name.
+  - Cons: one more command to learn and document; scripts call two names.
+- **C. Trust writes need a person:** a terminal answer, or the app’s confirmation bound
+  to the plugin set it showed (`--expect SHA256`), and no `--yes`.
+  - Pros: no one-flag self-approval; what the person saw is what is approved.
+  - Cons: scripts cannot record trust and use per-command flags, which record nothing;
+    an unsandboxed agent with a terminal can still answer.
+
+**Recommendation: B and C together,** decided before the first per-command environment
+flag ships. Fix `--ssh-options` separately.
+
+**Affects:** CLI and Routes, Trust and Consent, the CI workflow, Phase 1.
+
+### 6. The Order of the Work
+
+**The question.** What ships first, and when does the in-process path for third-party
+plugins go?
+
+**How to think about it.** The consumers are blocked today.
+Building the whole mechanism first lands a coherent system; building a vertical slice
+first tests the riskiest pieces (the worker binding, calls back to the host in the
+middle of a hook, deadlines) against a real plugin early, and gives the consumers
+something sooner.
+
+**Options.**
+
+- **A. Mechanism, then repository trust, then migration.**
+  - Pros: the full system lands in one coherent order.
+  - Cons: nothing reaches the consumers for three phases, and the risky pieces meet a
+    real plugin last.
+- **B. Unblock first, then one vertical slice.**
+  - Pros: dependency ranges and the app’s home variables help now; the real plugin runs
+    from its own environment in Phase 1; problems surface early.
+  - Cons: the registry and repository plugins arrive later, so Phase 1 offers only a
+    per-command flag that users type.
+
+**Recommendation: B.** Remove the in-process path for third-party plugins only after the
+three plugins have run in workers for a release, and not on Windows until a Windows
+worker exists.
+
+**Affects:** Implementation Plan, Rollout Plan.
+
+### 7. Where Sources and Trust Decisions Live
+
+**The question.** Which home holds the registry of sources and the trust decisions?
+
+**How to think about it.** These records name local paths and authorize code on one
+machine, which makes them state, while configuration is what people copy between
+machines with their dotfiles.
+Moving a released record later needs a migration, so this is cheap to decide now and
+expensive to change after Phase 3 ships.
+
+**Options.**
+
+- **A. The configuration home, beside `config.yml`.**
+  - Pros: no new home; one place for users to look.
+  - Cons: a dotfile sync carries a trust grant to another machine, where the same path
+    can hold other code.
+- **B. A new state home** (`METABROWSER_STATE_DIR`, `XDG_STATE_HOME/metabrowser`, or
+  `~/.local/state/metabrowser`).
+  - Pros: grants stay on the machine that made them, matching what XDG means by state.
+  - Cons: a third home to resolve, protect, pass from the app, and document.
+- **C. A file in each repository.**
+  - Pros: no central record.
+  - Cons: served content could write its own trust.
+    Not viable.
+
+**Recommendation: B,** with the configuration home’s ownership checks.
+
+**Affects:** The Registry, the app’s home variables, Phase 0 and Phase 3.
+
+### 8. How Many Plugin API Versions
+
+**The question.** What does a manifest’s `sdk_version` cover, and how many version
+numbers does a plugin author track?
+
+**How to think about it.** Every version is a gate authors read and the host must keep
+honest. Once the host ships the worker, host and worker can never be out of step, so a
+protocol version would gate nothing.
+
+**Options.**
+
+- **A. One version for the browser SDK and the runtime, under Cargo’s caret rule:**
+  additions bump the patch number, breaks bump the minor, and today’s `0.7` reads as
+  `0.7.0`.
+  - Pros: one number for authors; an addition no longer refuses every plugin, as each
+    bump does today.
+  - Cons: a Python-only change bumps the number that browser-only plugins declare.
+- **B. Separate browser and runtime versions.**
+  - Pros: finer refusals.
+  - Cons: two numbers in every manifest, and two change lists.
+- **C. Either, plus a worker protocol version.**
+  - Pros: would allow host and worker to ship separately.
+  - Cons: gates nothing while the host ships the worker.
+
+**Recommendation: A.**
+
+**Affects:** Plugin API Compatibility, Phase 1.
+
+### 9. How Widely a Worker Is Shared
+
+**The question.** Does each server start its own worker per plugin environment, or do
+servers share one?
+
+**How to think about it.** This trades memory against complexity.
+A worker measured 61 MB after listing three plugins and 113–121 MB after the large hook,
+and the app keeps several folders warm, each with its own server.
+
+**Options.**
+
+- **A. One worker per server and environment, started on demand, exiting when idle.**
+  - Pros: a worker serves one root, so plugin caches and root callbacks keep their
+    meaning; its lifetime is tied to its server by the request pipe; no new supervisor.
+  - Cons: several warm folders on one environment cost one worker each, until idle exit
+    returns the memory.
+- **B. One worker per environment, shared by every server.**
+  - Pros: one worker’s memory per environment, however many folders are open.
+  - Cons: needs a supervisor outside any server, a root on every call, and cache
+    isolation between roots inside plugin code, which plugins do not do today.
+- **C. In process.**
+  - Pros: no extra process.
+  - Cons: the dependency conflicts, GIL contention, and shared crashes this design
+    exists to remove.
+
+**Recommendation: A,** and revisit B if the app’s warm-folder budget needs it.
+
+**Affects:** Process Model, the app’s warm folders.
+
+### 10. How Log Adapters Are Detected
+
+**The question.** When a JSONL file opens, how does Metabrowser decide which plugin’s
+log adapter owns it?
+
+**How to think about it.** Detection runs on every JSONL open and decides the file’s
+kind before anything renders, so it must be fast and should not start a process.
+
+**Options.**
+
+- **A. Declarative predicates in the manifest,** evaluated by the host.
+  - Pros: classification never waits on a worker; both of the motivating plugin’s code
+    detectors fit the predicate language.
+  - Cons: limited expressiveness; a small predicate language to specify, version, and
+    test.
+- **B. Code detectors, run in the worker.**
+  - Pros: any logic.
+  - Cons: the first JSONL open starts a worker, 0.3–0.9 s to listed across both spikes,
+    and each new file pays a round trip.
+- **C. Declarative, with an opt-in worker fallback.**
+  - Pros: covers unusual formats.
+  - Cons: keeps the slow path and both code paths.
+
+**Recommendation: A;** consider C only when a real plugin needs it.
+
+**Affects:** Log Adapters, Phase 2.
 
 ## Goals
 
@@ -380,8 +612,8 @@ Plugins type-check against a published copy of the runtime (Open Questions).
 
 ### Process Model
 
-- **One worker per server and environment.** Plugins of one environment share it; a
-  worker serves one server and one root.
+- **One worker per server and environment** (Key Decision 9). Plugins of one environment
+  share it; a worker serves one server and one root.
 - **Started on evidence.** A worker starts at the first hook call or parse for one of
   its plugins, or when the server first classifies a file into a kind one of them owns,
   so the view’s next hook does not pay the start.
@@ -449,7 +681,8 @@ on the application origin.
 
 ### Log Adapters
 
-Detection moves into the manifest, so classifying a file need not wait on a worker:
+Detection moves into the manifest, so classifying a file need not wait on a worker (Key
+Decision 10):
 
 ```toml
 [[log_adapter]]
@@ -987,14 +1220,13 @@ Independent pull requests, each useful on its own:
 
 ## Open Questions
 
-- The Key Decisions above.
+- The ten Key Decisions above, each awaiting the owner.
 - The names `metab-plugins`, `.metabrowser/`, and `[tool.metabrowser.plugins]`, and the
   name of the published runtime copy, which should not match the
   `metabrowser-plugin-<name>` pattern plugins use.
   Publishing it brings release mechanics for a second distribution: versioning, publish
   order, and the first-party cool-off exemption.
 - The idle-exit period, the default deadline and grace, and the response bound.
-- Whether warm folders need one worker per environment shared across servers.
 - A Windows worker.
 - Whether the workflow library adopts the same repository convention.
 
