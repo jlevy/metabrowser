@@ -15,7 +15,8 @@ A step taken before the panel is ready ends on the entry the reader stepped to, 
 landing that outlives the panel paints nothing.
 An address with a short commit ID says it needs the full lowercase one, a panel that
 went away and came back starts over, and a folder that is not a repository has no Git
-panel listening.
+panel listening. A commit opened again, from its row or by Back, shows its diff from the
+comparison kept for its commit ID, so each commit’s comparison is asked for once.
 
 The panel’s loading session holds paint callbacks and diff assets independently.
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
@@ -254,6 +255,29 @@ $ node tests/dom/git-commit-history-session.js
     "owner": "file",
     "navPanel": "files",
     "requests": []
+  },
+  "a commit opened again": {
+    "reselected": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    },
+    "back": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    },
+    "comparisons": [
+      "comparison aaaaaaa",
+      "comparison bbbbbbb"
+    ]
   }
 }
 ? 0
