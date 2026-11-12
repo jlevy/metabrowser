@@ -130,6 +130,40 @@ Where to look while it runs:
   runtime and the recent folders, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
 
+### Checking the Setup Flows by Hand
+
+What a new user sees first is a window, which no unit test reaches.
+`scripts/check-setup-flows.sh` sets up each case on the built development app, says what
+to look for, and waits for Return between steps:
+
+```shell
+make install && make macos-app   # at the repository root
+cd apps/macos
+scripts/check-setup-flows.sh no-metab
+scripts/check-setup-flows.sh old-metab
+scripts/check-setup-flows.sh disk-image
+```
+
+Each run copies the app under its own bundle identifier,
+`io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
+saved runtime, recents, or LaunchServices entry, and opens it with a scratch `HOME` in
+which discovery finds only what the script puts there.
+It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
+this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
+copy with SIGTERM, reports any server left running as a failure, detaches its image,
+unregisters the copy, and deletes its defaults.
+It refuses to run where a `metab` in `/opt/homebrew/bin` or `/usr/local/bin` would be
+found first.
+
+| Case | What it checks |
+| --- | --- |
+| `no-metab` | No uv and no `metab`: both installs are shown, then only `uv tool install metabrowser` once uv appears, then the waiting folder opens by itself once `metab` does |
+| `old-metab` | A stand-in reporting 0.12.0: the upgrade command and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
+
+Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
+accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the path.
+
 ### Continuous Integration
 
 `.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
@@ -312,6 +346,7 @@ Do not hand one out as a release.
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
+| `scripts/check-setup-flows.sh` | The manual checks of the first-run screens and the launch notice ([Checking the Setup Flows by Hand](#checking-the-setup-flows-by-hand)). |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
