@@ -75,13 +75,16 @@ public final class RuntimeSettings {
         self.defaults = defaults
     }
 
+    /// The saved setup. One this build cannot decode counts as none, so the next launch
+    /// runs setup again and saves what it finds: the saved setup is only what setup found.
     public func load() -> RuntimeSetup? {
         guard let data = defaults.data(forKey: Self.key) else { return nil }
         return try? JSONDecoder().decode(RuntimeSetup.self, from: data)
     }
 
     public func save(_ setup: RuntimeSetup) {
-        guard let data = try? JSONEncoder().encode(setup) else { return }
+        // Strings and string-backed enums, which JSONEncoder always encodes.
+        let data = try! JSONEncoder().encode(setup)
         defaults.set(data, forKey: Self.key)
     }
 

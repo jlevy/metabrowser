@@ -9,15 +9,16 @@ import Foundation
 /// the window, or the folders waiting for a runtime. A search a choice overtook stops
 /// counting as running at once.
 ///
-/// `setup` is the one place the current runtime lives. A search that finds nothing
-/// clears it, not only its display, so a folder opened next waits for a runtime instead
-/// of starting the one that failed; servers already running keep theirs.
+/// `setup` is the one place the current runtime lives, and the saved settings follow
+/// it. A search that finds nothing clears both, not only the display, so neither a
+/// folder opened next nor the next launch starts the runtime that failed; servers
+/// already running keep theirs.
 public final class RuntimeSelection {
     /// What finishing an operation did.
     public enum Outcome: Equatable, Sendable {
         /// The runtime is now this one, and it is saved.
         case adopted(RuntimeSetup)
-        /// The search found nothing, and the runtime is now none.
+        /// The search found nothing, and the runtime is now none, also when saved.
         case notFound
         /// The chosen file is not a working `metab`; nothing changed.
         case rejected(CandidateResult)
@@ -70,6 +71,7 @@ public final class RuntimeSelection {
         isSearching = false
         tried = report.tried
         guard let found = report.setup else {
+            settings.clear()
             setup = nil
             return .notFound
         }
