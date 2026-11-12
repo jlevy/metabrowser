@@ -24,7 +24,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from metabrowser.cli.common import write_notice_now_or_never
+from metabrowser.cli.common import exit_after_notices, write_notice_now_or_never
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.main import _app
 from metabrowser.cli.stdin_lifeline import (
@@ -250,10 +250,14 @@ def test_a_notice_is_written_when_it_fits_and_dropped_when_it_does_not() -> None
         threading.Thread(target=write, daemon=True).start()
         assert finished.wait(_EXIT_TIMEOUT_S)
         assert b"notice" not in _drain(read_end)
-        # The open file is as blocking as it was before, for whoever else shares it.
-        assert os.get_blocking(write_end)
         write_notice_now_or_never(write_end, b"notice\n")
         assert _drain(read_end) == b"notice\n"
+        # Nonblocking until the stop exits, which leaves the open file as blocking as the
+        # first notice found it, for whoever else shares it.
+        assert not os.get_blocking(write_end)
+        with patch("metabrowser.cli.common.os._exit") as hard_exit:
+            exit_after_notices(3)
+        hard_exit.assert_called_once_with(3)
         assert os.get_blocking(write_end)
     finally:
         os.close(read_end)
@@ -285,7 +289,6 @@ def test_a_stop_is_not_held_up_by_a_full_stderr(stop: str, status: int, tmp_path
             text=True,
             start_new_session=True,
         )
-        os.close(stderr_write)
         try:
             _served_port(process)
             assert process.stdin is not None
@@ -299,8 +302,93 @@ def test_a_stop_is_not_held_up_by_a_full_stderr(stop: str, status: int, tmp_path
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
+        # The descriptor kept here shares the open file the server wrote to.
+        assert os.get_blocking(stderr_write), "the stop left stderr nonblocking"
     finally:
         os.close(stderr_read)
+        os.close(stderr_write)
+
+
+# Starts the two stops a server has, Ctrl-C (or a hangup) and a closed stdin, and makes
+# one begin while another has stderr's flag changed for its notice: `nested` raises a
+# hangup inside an interrupt's notice, on the same thread; `overlapping` sends an
+# interrupt from inside the stdin watcher's notice, which then never finishes.
+_OVERLAPPING_NOTICES_DRIVER = """
+import os, signal, sys, threading, time
+
+from metabrowser.cli.serve import stop_on_interrupt
+from metabrowser.cli.stdin_lifeline import stop_when_stdin_closes
+
+how = sys.argv[1]
+real_write = os.write
+begun = []
+
+
+def write(fd, data):
+    if fd == 2 and not begun:
+        if how == "nested":
+            begun.append(True)
+            signal.raise_signal(signal.SIGHUP)
+        elif threading.current_thread().name == "metabrowser-stdin-lifeline":
+            begun.append(True)
+            os.kill(os.getpid(), signal.SIGINT)
+            threading.Event().wait()
+    return real_write(fd, data)
+
+
+os.write = write
+stop_on_interrupt()
+stop_when_stdin_closes()
+print("armed", flush=True)
+if how == "nested":
+    signal.raise_signal(signal.SIGINT)
+while True:
+    time.sleep(1)
+"""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and signals")
+@pytest.mark.parametrize(("how", "status"), [("nested", 129), ("overlapping", 130)])
+def test_overlapping_stop_notices_leave_stderr_as_it_was(how: str, status: int) -> None:
+    """Whichever stop exits, stderr's open file is left as blocking as it found it.
+
+    ``O_NONBLOCK`` belongs to the open file, which the parent shares. A stop that begins
+    while another has set it for its notice must neither take the changed flag for the
+    original nor restore it before the other has written, and the one that exits first
+    must put back what was there. Before, the inner stop saved the flag it found set and
+    put that back as it exited, leaving the parent's stderr nonblocking. On a full pipe,
+    neither notice may wait.
+    """
+
+    stderr_read, stderr_write = _full_pipe()
+    try:
+        process = subprocess.Popen(
+            [sys.executable, "-c", _OVERLAPPING_NOTICES_DRIVER, how],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_write,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            assert read_line(process).strip() == "armed"
+            assert process.stdin is not None
+            if how == "overlapping":
+                process.stdin.close()
+                process.stdin = None
+            try:
+                returncode = process.wait(timeout=_EXIT_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                pytest.fail(f"{how} stop notices: the process did not stop")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+        assert returncode == status
+        assert os.get_blocking(stderr_write), "a stop left stderr nonblocking"
+    finally:
+        os.close(stderr_read)
+        os.close(stderr_write)
 
 
 # Runs the real CLI with one step of startup held for good, as a read of a hung network

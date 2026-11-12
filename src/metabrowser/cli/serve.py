@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 import threading
 import webbrowser
@@ -25,6 +24,7 @@ import uvicorn
 from metabrowser.build_version import build_state
 from metabrowser.cli.common import (
     apply_log_level,
+    exit_after_notices,
     validate_contained_path,
     write_notice_now_or_never,
 )
@@ -135,7 +135,7 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     """
     _write_stopping_notice()
     stop_process_groups()
-    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
+    exit_after_notices(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
 
 
 class _QuietForceExitServer(uvicorn.Server):
