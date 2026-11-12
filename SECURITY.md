@@ -142,13 +142,18 @@ When active content is off, the sandbox omits `allow-scripts` so a direct `/raw`
 still renders markup and loads subresources, but executes nothing.
 
 Those headers belong to the profile that sent them, so no `/raw` response is kept as
-fresh: every one is `Cache-Control: no-cache`, and a browser asks again before each use.
-Its `ETag` names the file (its name, size, modification and change times, and inode),
-the representation, the trust profile, the sandbox policy, and the build, and only a
-matching `If-None-Match` is answered `304`. `If-Modified-Since` alone gets the whole
-response, because a date cannot say which profile made the copy a browser holds.
-So a response stored while one profile served the folder is never reused, unasked or by
-a 304, after another profile serves it on the same host and port.
+fresh: every one, whichever branch answered, is `Cache-Control: no-cache`, and a browser
+asks again before it loads one anew.
+A file’s `ETag` names the file (its name, size, modification and change times, and
+inode), the representation, the trust profile, the sandbox policy, and the build, and
+only a matching tag in `If-None-Match` is answered `304`; `*` and `If-Modified-Since`
+alone get the whole response, because neither can say which profile made the copy a
+browser holds. So a response stored while one profile served the folder is never reused
+by a new load, unasked or by a 304, after another profile serves it on the same host and
+port. Going back or forward in a tab is not a new load: a browser may show again, from
+its history, a `/raw` document it already showed, with the headers it was sent then,
+until it is reloaded.
+Only `no-store` would rule that out, at the cost of every image’s 304.
 
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the

@@ -218,12 +218,14 @@ def stamped_asset_cache_control(*, current: bool) -> str:
 _ENTITY_TAG = re.compile(r'\s*(?:W/)?("[^"]*")\s*(?:,|$)')
 
 
-def matches_if_none_match(request: Request, etag: str) -> bool:
+def matches_if_none_match(request: Request, etag: str, *, wildcard: bool = True) -> bool:
     """Whether the client already holds ``etag``.
 
     RFC 9110 section 13.1.2: the header is ``*`` or a list of tags, compared weakly, so
     ``W/"x"`` matches ``"x"``. ``*`` matches, since every caller answers it only for a
-    representation it has. A malformed list matches nothing, the safe direction.
+    representation it has, unless *wildcard* is false: a route whose copies differ by more
+    than the bytes, as ``/raw``'s differ by trust profile, compares tags only. A malformed
+    list matches nothing, the safe direction.
 
     Header names are case-insensitive and Starlette normalizes them, but the
     call sites did not agree on the spelling; reading it here means they no
@@ -233,7 +235,7 @@ def matches_if_none_match(request: Request, etag: str) -> bool:
     if not header:
         return False
     if header == "*":
-        return True
+        return wildcard
     ours = etag.removeprefix("W/")
     position = 0
     while position < len(header):

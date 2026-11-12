@@ -250,6 +250,7 @@ def test_if_none_match_is_a_list_compared_weakly() -> None:
     assert matches_if_none_match(_conditional(if_none_match=f'"a", {tag}, "b"'), tag)
     assert matches_if_none_match(_conditional(if_none_match=f"W/{tag}"), tag)
     assert matches_if_none_match(_conditional(if_none_match="*"), tag)
+    assert not matches_if_none_match(_conditional(if_none_match="*"), tag, wildcard=False)
     assert not matches_if_none_match(_conditional(if_none_match='"a", "b"'), tag)
     # A malformed list matches nothing: the client gets the body, the safe direction.
     assert not matches_if_none_match(_conditional(if_none_match=f"junk {tag}"), tag)

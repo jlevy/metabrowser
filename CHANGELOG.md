@@ -24,19 +24,21 @@ All notable changes to Metabrowser are documented here.
   absolute `/plugin-static/<name>/<file>` URL still works and is revalidated, but a
   module reached both that way and by a relative URL from a stamped module is two module
   instances, each with its own module-level state.
-  A relative URL that climbs out of the plugin’s directory (`../other/x.js`) now
-  resolves inside the plugin’s own namespace and is not found, and a top-level directory
-  named `@` and sixteen hexadecimal digits can no longer be addressed.
+  A relative URL that climbs out of the plugin’s directory moved one level:
+  `../other/x.js` now resolves inside the plugin’s own namespace and is not found, and a
+  top-level directory named `@` and sixteen hexadecimal digits can no longer be
+  addressed. `/raw` is never kept as fresh, since its headers belong to the trust profile
+  that served it: it now answers a matching `If-None-Match` with `304` instead of
+  sending the file again, under a tag that names the profile, so a copy stored while one
+  profile served the folder is never reused by a new load under another (see
+  `SECURITY.md`).
 
 - `metabrowser.fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`, and
   `formatKpressError` moved from the startup script `plugin-sdk.js` to
   `plugin-sdk-views.js`, the `sdk-views` bundle, which the shell loads before any
   plugin’s code runs, so a plugin still finds them wherever its code runs.
   A browserless test that loads `plugin-sdk.js` alone must load `plugin-sdk-views.js`
-  beside it. `/raw` is never kept as fresh, since its headers belong to the trust profile
-  that served it: it now answers a matching `If-None-Match` with `304` instead of
-  sending the file again, under a tag that names the profile, so a copy stored while one
-  profile served the folder is never reused under another (see `SECURITY.md`).
+  beside it.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

@@ -986,6 +986,11 @@ class _RawTrustHeaderMiddleware:
                 started = True
                 headers = MutableHeaders(scope=message)
                 headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
+                # Never kept as fresh, whichever branch answered: its headers are this
+                # profile's (SECURITY.md). raw_file sets it with its tag; this covers the
+                # rest -- the decompressed stream, a 404 or a 403 -- by construction.
+                if "cache-control" not in headers:
+                    headers["Cache-Control"] = "no-cache"
                 headers["X-Content-Type-Options"] = "nosniff"
                 if not active_content and _SCRIPT_CAPABLE.match(headers.get("content-type", "")):
                     # A browsed script or stylesheet is text to a reader, never code.
@@ -3852,7 +3857,8 @@ async def raw_file(request: Request) -> Response:
         headers = etag_headers(etag)
         if passthrough:
             headers["Vary"] = "Accept-Encoding"
-        if matches_if_none_match(request, etag):
+        # The tag alone: `*` names no profile, so it earns no 304 here.
+        if matches_if_none_match(request, etag, wildcard=False):
             return Response(status_code=304, headers=headers)
         if passthrough:
             headers |= artifact.passthrough_headers()

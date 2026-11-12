@@ -9,6 +9,7 @@ page rendered before an edit must not keep the edited bytes under the old addres
 
 from __future__ import annotations
 
+import gzip
 import os
 import re
 from pathlib import Path
@@ -413,6 +414,32 @@ def test_raw_answers_its_tag_with_304_and_is_always_revalidated(tmp_path: Path) 
     # No address of a reader's file is kept without asking, whatever it carries.
     for query in ({"path": "pic.png", "v": "anything"}, {"path": "pic.png"}):
         assert client.get("/raw", params=query).headers["cache-control"] == "no-cache"
+    # `*` names no trust profile, so it earns no 304 (review D of #372, D2).
+    star = client.get("/raw", params={"path": "pic.png"}, headers={"if-none-match": "*"})
+    assert star.status_code == 200
+
+
+def test_every_raw_answer_is_no_cache_whichever_branch_sent_it(tmp_path: Path) -> None:
+    """Review D of #372, D2: the rule is structural, not one branch's: the decompressed
+    stream, a 404, and a 403 carry `no-cache` too."""
+    client = _raw_fixture(tmp_path)
+    (tmp_path / "notes.txt.gz").write_bytes(gzip.compress(b"some notes\n"))
+    stream = client.get(
+        "/raw", params={"path": "notes.txt.gz"}, headers={"accept-encoding": "identity"}
+    )
+    assert stream.status_code == 200
+    assert stream.content == b"some notes\n"
+    assert stream.headers["cache-control"] == "no-cache"
+    missing = client.get("/raw", params={"path": "absent.png"})
+    assert missing.status_code == 404
+    assert missing.headers["cache-control"] == "no-cache"
+    set_capabilities(Capabilities(active_content=False, mutations=False))
+    try:
+        refused = client.get("/raw", params={"path": "x.js"}, headers={"sec-fetch-dest": "script"})
+        assert refused.status_code == 403
+        assert refused.headers["cache-control"] == "no-cache"
+    finally:
+        set_capabilities(DEFAULT_CAPABILITIES)
 
 
 def test_raw_never_answers_one_trust_profile_with_anothers_response(tmp_path: Path) -> None:

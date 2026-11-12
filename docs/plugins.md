@@ -176,9 +176,12 @@ Reach your plugin’s other files with relative URLs (`import "./part.js"`,
 stamp. An absolute `/plugin-static/<name>/<file>` URL still works, but is revalidated on
 every use, and a module reached both that way and by a relative URL is two module
 instances, each with its own module-level state, so use one form for a module.
-A relative URL cannot reach another plugin’s files: `../other/x.js` resolves inside your
-own plugin’s namespace.
-A top-level directory named `@` and sixteen hexadecimal digits cannot be addressed.
+A relative URL that climbs out of your plugin moved one level: from a stamped module,
+`../other/x.js` resolves inside your own plugin’s namespace and is not found, while
+`../../other/x.js` reaches another plugin’s file at its unstamped, revalidated address.
+Plugins are not isolated from each other; reach another plugin through the SDK
+(`ensureKindAssets`), not by URL. A top-level directory named `@` and sixteen
+hexadecimal digits cannot be addressed.
 `src/metabrowser/asset_stamps.py` documents the policy.
 
 The KPress helpers (`fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`) are

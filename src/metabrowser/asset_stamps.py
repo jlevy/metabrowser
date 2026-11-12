@@ -30,10 +30,12 @@ the edited tree, the way a ``?v=`` stamp follows an edited file.
 **When an answer is immutable.** Only when the address names the content the server has
 now (``http_caching.stamped_asset_cache_control``). A page rendered before an edit still
 asks with the old stamp; the bytes it gets are the new ones, so they are revalidated
-rather than kept under an address that names the old. For a plugin the check is also per
-file: the file must have the size and modification time it had when the stamp was taken.
-KPress resolves its own files, so its check is that the bytes served are among those the
-stamp was taken from.
+rather than kept under an address that names the old. For a plugin and a static file the
+check is also per file: the file must have the size, modification time, change time, and
+inode it had when the stamp was taken. KPress resolves its own files, so its check is
+that the bytes served are among those the stamp was taken from. One exception, as before
+these stamps: a KPress font at an address with no stamp segment, whatever its version
+segment, is immutable (``kpress_static_asset`` in ``server.py``).
 
 The work is bounded: a tree past :data:`MAX_TREE_FILES` files or :data:`MAX_TREE_BYTES`
 bytes is not stamped, and its assets keep unstamped addresses, which are revalidated.

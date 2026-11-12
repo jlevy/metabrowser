@@ -239,6 +239,9 @@ after load, after `reset()`, and after each trusted click or key.
 When one of those starts it, the first interval is measured from that moment, so the
 work a waking click does before its frame is a gap like any other; a gap that ends after
 the window closes is not counted.
+After a load, that first interval runs from `perf.js`’s evaluation to the first frame,
+so it is mostly the rest of startup: a round that wants transitions alone calls
+`reset()` once the first view has settled.
 Where Long Tasks exist, `raf_frame_gaps` is null and no loop runs.
 Where `layout-shift` is missing, `cls` stays null; the transition harness measures
 region movement instead.
