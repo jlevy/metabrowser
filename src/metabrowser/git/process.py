@@ -722,7 +722,9 @@ def _launched_files(
     which the child enters before it executes; a bare name against each directory of
     ``PATH`` in *env* (or this process's) in turn, each of which may itself be relative
     to *cwd*. The first executable file wins. Empty when none is found, and the spawn is
-    then known only to the registry.
+    then known only to the registry. The current directory is asked for only when a
+    relative candidate needs it and no *cwd* is given: it may have been removed, which
+    stops neither an absolute launch nor this.
 
     On macOS a launch from ``/usr/bin`` may be an Apple developer-tool shim, as
     ``/usr/bin/git`` is: within milliseconds it executes the tool of the selected
@@ -730,13 +732,18 @@ def _launched_files(
     tool is added as ``xcrun`` finds it.
     """
 
-    base = os.fspath(cwd) if cwd is not None else os.getcwd()
+    base = os.fspath(cwd) if cwd is not None else None
     if os.path.dirname(program):
         candidates = [program]
     else:
         candidates = [os.path.join(directory, program) for directory in os.get_exec_path(env)]
     for candidate in candidates:
-        path = os.path.join(base, candidate)
+        if not os.path.isabs(candidate) and base is None:
+            try:
+                base = os.getcwd()
+            except OSError:
+                continue
+        path = candidate if base is None else os.path.join(base, candidate)
         if os.path.isfile(path) and os.access(path, os.X_OK):
             launched = os.path.realpath(path)
             if sys.platform != "darwin" or os.path.dirname(launched) != _APPLE_SHIM_DIR:
