@@ -91,6 +91,8 @@ against one that did.
 | exp-054 | [Keep Prepared Descriptions Through an Unrelated Catalog Update](experiments/exp-054-keep-prepared-descriptions-through-a-catalog-update.md) | - | `ready_window_description_ms` | accepted |
 | exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | - | `description_observed_driver_ms` | accepted |
 | exp-056 | [Previous-Release Rehearsal](experiments/exp-056-previous-release-rehearsal.md) | H85 | `first_row_ms` | unresolved |
+| exp-061 | [Commit Comparison Cache and Git Route Memo](experiments/exp-061-commit-comparison-cache-and-git-route-memo.md) | H88 | `requests_data and painted_ready_ms on commits.revisit` | accepted |
+| exp-063 | [Markdown Render Cache and Kept Worker](experiments/exp-063-markdown-render-cache-and-kept-worker.md) | H90 | `requests_kpress and requests_plugin on Markdown revisits and history steps` | accepted |
 
 ## Absolute numbers, per condition
 
