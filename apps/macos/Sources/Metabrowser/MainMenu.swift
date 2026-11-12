@@ -7,18 +7,19 @@ import AppKit
 /// view. The page binds plain keys and Command-1 to Command-3; the shortcuts here
 /// stay clear of those.
 enum MainMenu {
-    static func build(recentFolders: NSMenuDelegate) -> NSMenu {
+    /// `appName` is the bundle's name, which the app menu's items carry.
+    static func build(appName: String, recentFolders: NSMenuDelegate) -> NSMenu {
         let main = NSMenu()
-        main.addSubmenu("Metabrowser", [
-            item("About Metabrowser", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+        main.addSubmenu(appName, [
+            item("About \(appName)", #selector(AppDelegate.showAbout(_:))),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
             .separator(),
-            item("Hide Metabrowser", #selector(NSApplication.hide(_:)), "h"),
+            item("Hide \(appName)", #selector(NSApplication.hide(_:)), "h"),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
             item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
             .separator(),
-            item("Quit Metabrowser", #selector(NSApplication.terminate(_:)), "q"),
+            item("Quit \(appName)", #selector(NSApplication.terminate(_:)), "q"),
         ])
 
         let recent = NSMenu(title: "Open Recent")

@@ -26,7 +26,7 @@ final class FolderSession: ManagedServer {
         self.currentSetup = currentSetup
         self.root = root
         title = WindowTitle(.localFolder(root))
-        let logURL = ServerLog.url(for: root)
+        let logURL = ServerLog.url(for: root, in: appIdentity.logsDirectory())
         self.logURL = logURL
         let launch = CLIServeLaunch()
         let spec = launch.spec(

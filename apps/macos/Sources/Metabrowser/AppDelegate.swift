@@ -2,8 +2,12 @@ import AppKit
 import ShellCore
 import os
 
+/// This build: its name, its variant, and the folders it keeps apart from the other
+/// variant's.
+let appIdentity = AppIdentity.current
+
 enum AppLog {
-    static let subsystem = Bundle.main.bundleIdentifier ?? "io.github.jlevy.metabrowser"
+    static let subsystem = appIdentity.bundleIdentifier
     static let app = Logger(subsystem: subsystem, category: "app")
     static let server = Logger(subsystem: subsystem, category: "server")
 }
@@ -27,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.build(recentFolders: self)
+        NSApp.mainMenu = MainMenu.build(appName: appIdentity.name, recentFolders: self)
         installTerminationSignals()
         presentRuntime()
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
@@ -344,11 +348,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         runtimeModel.doctorOutput = result.transcript(timeout: RuntimeDiscovery.doctorTimeout).joined(separator: "\n")
     }
 
-    // MARK: - Help
+    // MARK: - About and Help
+
+    /// The standard About panel, which reads the version and build from the bundle,
+    /// with a line saying which build this is: both variants are named Metabrowser.
+    @objc func showAbout(_ sender: Any?) {
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let line = NSAttributedString(string: appIdentity.buildLine, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: centered,
+        ])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: line])
+    }
 
     /// Creates the folder first, since it holds nothing until a folder has been served.
     @objc func revealLogsFolder(_ sender: Any?) {
-        let directory = ServerLog.directory()
+        let directory = appIdentity.logsDirectory()
         do {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])

@@ -113,9 +113,11 @@ import Testing
         #expect(ServerLog.fileName(for: URL(filePath: "/")).hasPrefix("root-"))
     }
 
-    @Test func directoryIsUnderLibraryLogs() {
-        #expect(ServerLog.directory(home: URL(filePath: "/Volumes/Home")).path(percentEncoded: false)
-            == "/Volumes/Home/Library/Logs/Metabrowser/")
+    @Test func aFoldersLogIsInTheGivenFolder() {
+        let folder = URL(filePath: "/Volumes/Home/Library/Logs/Metabrowser Dev", directoryHint: .isDirectory)
+        let log = ServerLog.url(for: URL(filePath: "/tmp/notes"), in: folder)
+        #expect(log.deletingLastPathComponent().path(percentEncoded: false) == folder.path(percentEncoded: false))
+        #expect(log.lastPathComponent == ServerLog.fileName(for: URL(filePath: "/tmp/notes")))
     }
 
     @Test func prepareCreatesPrivateFilesAndTightensLooseOnes() throws {

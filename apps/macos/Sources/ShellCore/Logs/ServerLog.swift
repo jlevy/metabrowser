@@ -22,7 +22,8 @@ public nonisolated struct ServerLogError: Error, Equatable, CustomStringConverti
     public var description: String { "could not \(operation) the server log \(path): \(reason)" }
 }
 
-/// One log per served folder under `~/Library/Logs/Metabrowser/`, mode 0600.
+/// One log per served folder, mode 0600, in the variant's logs folder
+/// (`AppIdentity.logsDirectory`): `~/Library/Logs/Metabrowser/` for a release.
 ///
 /// The child writes its stderr here itself, the app appends its stdout as it reads it
 /// (see `SpawnedProcess`), and the supervisor's lifecycle events go between them, so one
@@ -49,10 +50,6 @@ public nonisolated enum ServerLog {
         return Array(lines.filter { !$0.hasPrefix(appLinePrefix) }.suffix(limit))
     }
 
-    public static func directory(home: URL = URL(filePath: NSHomeDirectory())) -> URL {
-        home.appending(path: "Library/Logs/Metabrowser", directoryHint: .isDirectory)
-    }
-
     /// `<folder name>-<8 hex digits of the path's SHA-256>.log`: readable, and distinct
     /// for two folders with the same name.
     public static func fileName(for root: URL) -> String {
@@ -63,8 +60,8 @@ public nonisolated enum ServerLog {
         return (name.isEmpty ? "root" : name) + "-" + digest + ".log"
     }
 
-    public static func url(for root: URL, home: URL = URL(filePath: NSHomeDirectory())) -> URL {
-        directory(home: home).appending(path: fileName(for: root))
+    public static func url(for root: URL, in directory: URL) -> URL {
+        directory.appending(path: fileName(for: root))
     }
 
     /// Creates the directory (0700) and the file (0600), tightens a file that exists
