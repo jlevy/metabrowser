@@ -4,12 +4,14 @@ import WebKit
 public enum WebConfiguration {
     /// Persistent cookies and local storage, since Metabrowser keeps its preferences in
     /// host-only cookies that every folder's server shares across ports, element full
-    /// screen, and the rules in `restrict(_:)`.
-    public static func make() -> WKWebViewConfiguration {
+    /// screen, the rules in `restrict(_:)`, and, given `pagePrints`, the page's own
+    /// Print button (`PagePrintRequests`).
+    public static func make(pagePrints: PagePrintRequests? = nil) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.preferences.isElementFullscreenEnabled = true
         restrict(configuration)
+        pagePrints?.install(in: configuration)
         return configuration
     }
 
