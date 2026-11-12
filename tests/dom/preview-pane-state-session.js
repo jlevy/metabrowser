@@ -515,9 +515,26 @@ function createShell(pathname, network, options = {}) {
   const toolbars = panelIds.map((tab) =>
     fakeElement({ dataset: { navToolbar: tab }, hidden: tab !== initialPanel }),
   );
+  /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
+  const slotToolbar = (toolbar) => {
+    const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
+    if (toolbar.dataset.navToolbar !== "files") {
+      elements.set(id, toolbar);
+    }
+    toolbar.remove = () => {
+      toolbars.splice(toolbars.indexOf(toolbar), 1);
+      elements.delete(id);
+    };
+  };
+  for (const toolbar of toolbars) {
+    slotToolbar(toolbar);
+  }
   scroller.querySelector = () => ({ remove() {} });
   // A toolbar main-tabs.js adds for a tab the server did not draw goes into the slot.
-  scroller.before = (toolbar) => toolbars.push(toolbar);
+  scroller.before = (toolbar) => {
+    toolbars.push(toolbar);
+    slotToolbar(toolbar);
+  };
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
@@ -850,6 +867,8 @@ function createShell(pathname, network, options = {}) {
     sandbox,
     sources,
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
+    /** The toolbars in the navigation's slot, shown or not. */
+    toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1171,8 +1190,9 @@ async function independentMainTabs() {
   assert.match(pendingGit.pane().shows, /Select a commit to preview/);
 
   // The server draws Commits at a repository's root, before Git discovery registers it,
-  // so Pulls beside it never moves. A press before registration does nothing; discovery
-  // that registers it keeps it, and discovery that does not removes it.
+  // so Pulls beside it never moves. A press before registration waits for it and opens
+  // Commits once it is registered; discovery that registers it keeps it, and discovery
+  // that does not removes it, with its toolbar, and forgets the press.
   const drawnGit = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
   await drawnGit.sandbox.navigationController.start();
   drawnGit.clickTab("git");
@@ -1184,6 +1204,24 @@ async function independentMainTabs() {
     drawnGit.tabButtons.map((button) => button.dataset.tab),
     ["files"],
     "discovery that finds no repository removes the drawn tab",
+  );
+  assert.deepEqual(
+    drawnGit.toolbarsPresent(),
+    ["files"],
+    "a removed tab takes its toolbar with it, so the slot keeps no stale tally",
+  );
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "a forgotten press opens nothing");
+  const drawnLate = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnLate.sandbox.navigationController.start();
+  drawnLate.clickTab("git");
+  await settle();
+  assert.equal(drawnLate.sandbox.mainTabs.active(), "files", "Commits waits for registration");
+  drawnLate.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnLate.sandbox.mainTabs.active(),
+    "git",
+    "a press before registration opens Commits once it is registered",
   );
   assert.deepEqual(
     reloaded.tabButtons.map((button) => button.dataset.tab),
@@ -1748,6 +1786,9 @@ async function heldKeyWalk() {
   shell.elapseLoadingDelay();
   await settle();
   const afterSettle = shell.renderedViews.slice(renderedBefore);
+  // The key is let go and held again: a hold that outlasted the quiet period with the key
+  // still down is a slow repeat, whose rows open as single presses do.
+  walk.end();
   const releaseKeys = [await key("g.md", true), await key("h.md", true)];
   const beforeRelease = shell.renderedViews.slice(renderedBefore);
   // Letting the key go is what the tree's keyup does.

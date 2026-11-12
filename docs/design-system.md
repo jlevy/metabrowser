@@ -1355,7 +1355,8 @@ Key repeat remains enabled for fast traversal.
 In the file tree, as in the Pulls tab, a held key selects each row and replaces the
 address as it reaches it, but opens only the row it stops on: when the key is let go, or
 120 ms after its last repeat.
-A single press opens its row at once.
+In the file tree a repeat slower than that opens each row as it reaches it, for the rest
+of the hold. A single press opens its row at once.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
@@ -1481,8 +1482,9 @@ File results lead, and pull requests follow as their own group.
 Files answer from memory and pull requests from the server about 110 ms later, so the
 later group is appended below the painted rows instead of ranked in among them, and a
 late answer never moves a file row or the selection.
-Each group the search runs has an equal share of the result cap, fixed when the search
-starts, so a full file group does not crowd out pull requests.
+Files keep the whole result cap, and pull requests have twenty rows of their own after
+them, so a full file group does not crowd out pull requests and a file search is not cut
+short for a group that matches nothing.
 
 ## Icons and Icon Buttons
 
@@ -2175,7 +2177,8 @@ atomically when the complete, truncated, or failed generation arrives.
 
 Treemap repeats the fixed **Files** context immediately above the map.
 It does not make that context collapsible and does not duplicate totals or scan state in
-a footer sentence. The print action is absent when no mounted contribution is printable.
+a footer sentence. The print action keeps its slot, hidden, when no mounted contribution
+is printable.
 
 An empty folder is still a completed Overview.
 Files remains visible with the message **No files to summarize.** It renders no empty

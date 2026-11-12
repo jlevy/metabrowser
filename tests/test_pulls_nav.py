@@ -279,6 +279,13 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
         assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
         for route in ("/pull/7", "/pulls"):
             assert _tabs(client.get(route).text)["pulls"] is True, route
+        # A cold page shows its own loading state, header rows and tab bar over a body
+        # skeleton, at once: the shell's placeholder is nothing to keep on screen while
+        # the page is staged, so the page is not staged behind it (PR 370 review A9).
+        placeholder = re.search(
+            r'<div class="pull-request-placeholder[^>]*>', client.get("/pull/7").text
+        )
+        assert placeholder is not None and "data-preview-empty" in placeholder.group(0)
     reset_source_session()
 
 

@@ -784,7 +784,9 @@ async function headerShape(page) {
       const meta = container.querySelector(".github-pull-meta");
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
-      const refresh = status.children.at(-1);
+      const end = status.children.at(-1);
+      const refresh = end.children.at(-1);
+      assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(meta.children.at(-1), stacks, `${name} ${tab}: the stack slot ends the row`);
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
@@ -937,13 +939,16 @@ async function run() {
     assert.ok(title.parentNode.classes.has("page-reading-column"));
     assert.ok(container.querySelector(".tab-bar").parentNode.classes.has("page-reading-column"));
     assert.ok(!container.querySelector(".github-pull-body").classes.has("page-reading-column"));
-    const [icon, titleText] = title.children;
+    const [icon, titleText, , number] = title.children;
     assert.equal(icon.className, "github-pull-state-icon");
     assert.equal(icon.dataset.state, "open");
     assert.equal(icon.children[0].tag, "svg");
     assert.equal(icon.getAttribute("aria-hidden"), "true");
     assert.equal(icon.getAttribute("aria-label"), null);
-    assert.equal(titleText.textContent, "Count to two in the app #7");
+    // The number is outside the text a long title is clamped in, so it is never cut off.
+    assert.equal(titleText.textContent, "Count to two in the app");
+    assert.ok(number.classes.has("github-pull-number"));
+    assert.equal(title.textContent.endsWith("Count to two in the app #7"), true);
     const meta = container.querySelector(".github-pull-meta");
     assert.equal(
       title.parentNode.children.indexOf(meta),

@@ -1,4 +1,4 @@
-"""Behavioral checks for the staged file's wait on the faces its layout started."""
+"""Behavioral checks for the staged view's wait on the faces its text is set in."""
 
 from __future__ import annotations
 

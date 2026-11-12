@@ -3236,7 +3236,9 @@ a.tab-btn {
    per main tab, the one in front shown: the Commits tally and the Pulls filters stand
    in the bar's place at its height (main-tabs.js#activateNavPanel), so the tree, the
    history, and the list start at one y on every tab. Before, the bar hid on Commits
-   and Pulls, and what was under it moved 37 px on every switch. */
+   and Pulls, and what was under it moved 37 px on every switch. A toolbar wider than a
+   narrowed pane scrolls along its one line rather than being cut: a control past the
+   pane's edge is still reached, and focus brings it into view (PR 370 review A8). */
 .nav-toolbar {
   display: flex;
   flex-shrink: 0;
@@ -3244,13 +3246,18 @@ a.tab-btn {
   gap: 6px;
   height: var(--nav-toolbar-height);
   padding: 0 var(--pane-header-padding-x);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   white-space: nowrap;
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
+}
+.nav-toolbar::-webkit-scrollbar {
+  display: none;
 }
 .nav-filter-bar[hidden],
 .nav-toolbar[hidden] {
@@ -3716,8 +3723,9 @@ a.tab-btn {
   gap: 0;
 }
 :is(.badge-running, .badge-live, .badge-completed, .badge-failed)::after {
-  /* The empty alternative keeps it out of the accessible name; hidden, it is
-     out of the accessibility tree in an engine without that syntax too. */
+  /* The empty alternative keeps it out of the accessible name. An engine without
+     that syntax drops the declaration, and with it the sizer: the badge is then as
+     wide as its own label, as before. */
   content: "Run ended" / "";
   height: 0;
   overflow: hidden;

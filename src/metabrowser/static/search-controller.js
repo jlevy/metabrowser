@@ -32,6 +32,13 @@
    * replaced the rows under the reader's selection.
    */
   const RESULT_KINDS = /** @type {const} */ (["file", "pull"]);
+  /**
+   * Files keep the whole cap, and pull requests have this many rows of their own after
+   * them. Being below the files, a late group moves no file row whatever the file count
+   * is, so it needs no share of the files' cap: halving the cap for it cut a file query
+   * to 50 of 100 rows even where no pull request matched (PR 370 review A4).
+   */
+  const PULL_RESULT_LIMIT = 20;
 
   /** @param {string} path */
   function knownFileDisplayPath(path) {
@@ -144,7 +151,6 @@
    * @typedef {object} MetabrowserSearchProvider
    * @property {"fallback" | "immediate"} [activation]
    * @property {string} id
-   * @property {"file" | "pull"} [kind] The kind of result it returns; files when unset.
    * @property {number} [priority]
    * @property {(request: MetabrowserSearchRequest, context: MetabrowserSearchContext,
    *   signal: AbortSignal) => MetabrowserSearchBatch | Promise<MetabrowserSearchBatch>} search
@@ -553,7 +559,6 @@
 
     return Object.freeze({
       id: PULL_PROVIDER_ID,
-      kind: /** @type {const} */ ("pull"),
       priority: PULL_PROVIDER_PRIORITY,
       search,
       supports,
@@ -583,12 +588,9 @@
    *   provider: MetabrowserSearchProvider,
    *   priority: number,
    * }>} registrations
-   * @param {number} maxResults
-   * @param {ReadonlySet<string>} kinds The kinds the request's providers return. Each
-   *   has a fixed share of maxResults from the request's start, so a group that
-   *   answers later fills its own share and never displaces another group's rows.
+   * @param {number} maxResults The files' cap; pull requests have PULL_RESULT_LIMIT more.
    */
-  function composeResults(batches, registrations, maxResults, kinds) {
+  function composeResults(batches, registrations, maxResults) {
     /** @type {Map<string, MetabrowserSearchResult>} */
     const byIdentity = new Map();
     for (const [providerId, batch] of batches) {
@@ -636,14 +638,12 @@
         codeUnitCompare(left.providerId, right.providerId)
       );
     });
-    // A provider that returns a kind it did not declare still stays within the cap.
-    const groups = new Set([...kinds, ...allResults.map((result) => result.kind)]);
-    const share = Math.max(1, Math.floor(maxResults / Math.max(1, groups.size)));
     let resultLimitTruncated = false;
     const results = RESULT_KINDS.flatMap((kind) => {
+      const limit = kind === "file" ? maxResults : Math.min(maxResults, PULL_RESULT_LIMIT);
       const group = allResults.filter((result) => result.kind === kind);
-      resultLimitTruncated ||= group.length > share;
-      return group.slice(0, share);
+      resultLimitTruncated ||= group.length > limit;
+      return group.slice(0, limit);
     });
     return { resultLimitTruncated, results: Object.freeze(results) };
   }
@@ -767,14 +767,9 @@
       /** @type {Map<string, string>} */
       const errors = new Map();
 
-      /** The kinds the started providers return, which fix each group's share. */
-      function startedKinds() {
-        return new Set(started.map(({ provider }) => provider.kind ?? "file"));
-      }
-
       /** @param {"searching" | "complete"} phase */
       function publishComposition(phase) {
-        const composition = composeResults(batches, registrations, maxResults, startedKinds());
+        const composition = composeResults(batches, registrations, maxResults);
         const batchMetadata = started.flatMap(({ provider }) => {
           const batch = batches.get(provider.id);
           return batch
@@ -885,12 +880,7 @@
       if (controller.signal.aborted || active?.requestId !== requestId) {
         return null;
       }
-      const immediateComposition = composeResults(
-        batches,
-        registrations,
-        maxResults,
-        startedKinds(),
-      );
+      const immediateComposition = composeResults(batches, registrations, maxResults);
       const immediateCoverageIncomplete =
         immediate.length === 0 ||
         errors.size > 0 ||
@@ -932,6 +922,7 @@
   }
 
   window.MetabrowserSearch = Object.freeze({
+    PULL_RESULT_LIMIT,
     createController,
     createLocalFileProvider,
     createPullProvider,

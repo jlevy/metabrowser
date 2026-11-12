@@ -778,12 +778,20 @@ async function walkSession() {
   check("the walk opens its row once the repeats stop", await settled(stopped));
   check("a settled walk holds nothing", walkNavigator.walking("g.md") === null);
 
+  // The key is still down: its repeat is slower than the settle, so walking would only
+  // make each row wait it out (PR 370 review B2). The rest of the hold opens rows at once.
   press(true);
-  const released = walkNavigator.walking("h.md");
-  check("a new repeat starts a walk", released !== null);
+  equal("a repeat slower than the settle opens its row at once", opened.at(-1), ["h.md", false]);
+  check("a slow repeat starts no timer", timers.size === 0);
   walkContainer.dispatch("keyup", { key: "ArrowDown", target: rows[7] });
+  walkDocument.dispatch(keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true }));
+  const released = walkNavigator.walking("g.md");
+  check("after a release, a held key walks again", released !== null);
+  walkContainer.dispatch("keyup", { key: "ArrowUp", target: rows[6] });
   check("releasing the key opens the row at once", await settled(released));
   check("a release leaves no timer", timers.size === 0);
+  press(false);
+  equal("a press is never held", opened.at(-1), ["h.md", false]);
 
   const upEvent = keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true });
   walkDocument.dispatch(upEvent);

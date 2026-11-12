@@ -64,6 +64,11 @@
       }
     }
 
+    // Commits, asked for before Git discovery registered it: the server draws the tab at
+    // first paint, about 50 to 100 ms before discovery, and a click or its shortcut there
+    // did nothing (PR 370 review A13). It opens on registration, unless discovery removes it.
+    let gitOpenPending = false;
+
     /** @param {MetabrowserNavPanel} panel */
     function registerNavPanel(panel) {
       if (navPanels.some((existing) => existing.id === panel.id)) {
@@ -71,6 +76,11 @@
       }
       navPanels.push(panel);
       ensureNavPanelElements(panel);
+      if (panel.id === "git" && gitOpenPending) {
+        gitOpenPending = false;
+        // After the panel's own registration has finished wiring it.
+        void Promise.resolve().then(() => openMainTab("git"));
+      }
     }
 
     // Create the button and container for a panel that was not in the
@@ -122,6 +132,9 @@
     function removeNavPanel(panelId) {
       navPanels = navPanels.filter((panel) => panel.id !== panelId);
       navPanelsShown.delete(panelId);
+      if (panelId === "git") {
+        gitOpenPending = false;
+      }
       const button = tabButton(panelId);
       const container = document
         .getElementById("tree-content")
@@ -129,6 +142,8 @@
       const wasActive = button?.classList.contains("active");
       button?.remove();
       container?.remove();
+      // Its toolbar goes with it, or the hidden slot keeps the last tally (PR 370 review A15).
+      document.getElementById(`nav-toolbar-${panelId}`)?.remove();
       // Never leave the nav with no active tab: if the panel being removed
       // was the visible one, fall back to Files.
       if (wasActive) {
@@ -204,8 +219,12 @@
 
     /** @param {string} panelId A click on one of the main navigation tabs. */
     function openMainTab(panelId) {
+      if (panelId === activeNavPanelId) {
+        return;
+      }
       // The server draws Commits for a repository before Git discovery registers it.
-      if (panelId === activeNavPanelId || (panelId === "git" && !hasGitPanel())) {
+      if (panelId === "git" && !hasGitPanel()) {
+        gitOpenPending = true;
         return;
       }
       deps.flushPull();

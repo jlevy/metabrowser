@@ -138,6 +138,9 @@ type MetabrowserViewLifecycleStage = Readonly<{
 }>;
 
 type MetabrowserViewCompositionRuntime = Readonly<{
+  FACE_WAIT_MS: number;
+  /** Wait, at most FACE_WAIT_MS, for the faces a staged view's text is set in; `null` when they are there. */
+  settleFaces(root: Element | null | undefined, view?: string): Promise<void> | null;
   createLifecycle(options?: { onDisposeError?: (error: unknown) => void }): Readonly<{
     begin(): MetabrowserViewLifecycleStage;
     disposeActive(): void;
@@ -2018,6 +2021,8 @@ type MetabrowserSearchController = Readonly<{
 }>;
 
 type MetabrowserSearchRuntime = Readonly<{
+  /** Rows pull requests have after the files' cap. */
+  PULL_RESULT_LIMIT: number;
   createController(options?: { maxResults?: number }): MetabrowserSearchController;
   createLocalFileProvider(options: {
     catalog: MetabrowserKnownFileCatalogApi;

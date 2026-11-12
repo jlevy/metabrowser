@@ -57,7 +57,12 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     assert "1.5 *" in css[css.index("--chip-height: calc(") :][:120], "chips are in line units"
     toolbar = _rule(css, ".nav-toolbar")
     assert "height: var(--nav-toolbar-height);" in toolbar
-    assert "overflow: hidden;" in toolbar and "white-space: nowrap;" in toolbar
+    assert "white-space: nowrap;" in toolbar
+    # A toolbar wider than a narrowed pane scrolls along its line; it is never cut.
+    assert "overflow-x: auto;" in toolbar and "overflow-y: hidden;" in toolbar
+    assert "min-width: 0;" not in _rule(
+        _github_css(), ".github-pulls-filters:where(.nav-toolbar > *)"
+    )
     assert "min-height: var(--nav-toolbar-height);" in _rule(css, ".nav-filter-bar")
     assert "display: none;" in _rule(css, ".nav-filter-bar[hidden],\n.nav-toolbar[hidden]")
     assert ".nav-filter-bar[inert]" not in css
@@ -152,7 +157,11 @@ def test_the_state_row_is_one_line_with_the_stacks_slot_at_its_end() -> None:
     assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
     details = _rule(css, ".github-pull-meta-details")
     assert "min-width: 0;" in details and "overflow: hidden;" in details
-    assert "flex-shrink: 1;" in _rule(css, ".github-pull-meta .git-ref")
+    chip = _rule(css, ".github-pull-meta .git-ref")
+    assert "flex-shrink: 1;" in chip and "min-width: 7ch;" in chip
+    # The sentence gives way before the branches do.
+    action = _rule(css, ".github-pull-meta-details > .github-pull-action")
+    assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
     stacks = _rule(css, ".github-pull-stacks")
     assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
@@ -176,6 +185,13 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
     )
     assert sized == {label for label in labels if len(label) == longest}, sized
     assert "flex-direction: column;" in _rule(css, ".github-pull-meta .github-pull-badge")
+    # The label stays the first flex item, whose baseline the badge takes; what the rows
+    # lay out to is checked in Chrome (tests/test_github_pull_header_chrome.py).
+    sizers = _rule(
+        css,
+        ".github-pull-meta .github-pull-badge::before,\n.github-pull-meta .github-pull-badge::after",
+    )
+    assert "order: 1;" in sizers
 
 
 def test_labels_have_a_row_that_always_exists() -> None:
@@ -191,12 +207,21 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     status = _rule(css, ".github-pull-status")
     assert "flex-wrap: nowrap;" in status
     assert "font-variant-numeric: var(--tabular-numerals);" in _rule(css, ".github-pull-freshness")
-    assert "margin-inline-start: auto;" in _rule(css, ".github-pull-refresh")
+    # The offers end the row with Refresh, so the freshness text's width moves none of them.
+    end = _rule(css, ".github-pull-status-end")
+    assert "margin-inline-start: auto;" in end and "flex: none;" in end
+    assert "margin-inline-start" not in _rule(css, ".github-pull-refresh")
     held = _rule(css, ".github-pull-refresh[hidden]")
     assert "visibility: hidden;" in held and "display: inline-block;" in held
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "refresh.hidden = !model.canRefresh;" in page
     assert "if (model.canRefresh) {" not in page
+    assert 'h("span", { class: "github-pull-status-end" }, [refresh])' in page
+    assert 'status.append(h("span", { class: "github-pull-offer" }' not in page
+    # A failure carries its remedy, so it is the one text the row lets wrap.
+    failed = _rule(css, ".github-pull-status.github-pull-status-failed")
+    assert "flex-wrap: wrap;" in failed and "white-space: normal;" in failed
+    assert 'status.classList.toggle("github-pull-status-failed", model.failure !== null)' in page
 
 
 def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
@@ -217,3 +242,5 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     count = _rule(css, ".github-pulls-filters .count")
     assert "min-width: 3ch;" in count
     assert "font-variant-numeric: var(--tabular-numerals);" in count
+    # Pending, the count is as wide as it will be once it lands.
+    assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")

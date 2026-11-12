@@ -271,68 +271,127 @@ async function main() {
   check("one truncated provider keeps composition truncated", composed.truncated === true);
   compositionController.dispose();
 
-  // Files answer first and pull requests later. Each kind the request runs has a
-  // fixed share of the rows from its start, and files lead, so the late group is
-  // appended below the painted rows: it never moves a file row or displaces one.
-  const groupedController = sandbox.MetabrowserSearch.createController({ maxResults: 4 });
-  let answerPulls = () => {};
-  groupedController.registerProvider({
+  // Files answer first and pull requests later. Files keep the whole cap and lead, and
+  // pull requests have rows of their own after them, so the late group is appended below
+  // the painted rows: it never moves a file row or displaces one.
+  const pullProvider = (numbers) => {
+    let answer = () => {};
+    return {
+      answer: () => answer(),
+      provider: {
+        id: "pulls",
+        priority: 15,
+        search: () =>
+          new Promise((resolve) => {
+            answer = () =>
+              resolve({
+                complete: true,
+                providerId: "pulls",
+                results: numbers.map((number, index) => ({
+                  id: `pull:${number}`,
+                  kind: "pull",
+                  label: `PR ${number}`,
+                  matchRanges: [],
+                  number,
+                  providerId: "pulls",
+                  score: numbers.length - index,
+                  state: "open",
+                })),
+                truncated: false,
+              });
+          }),
+      },
+    };
+  };
+  const fileProvider = (names) => ({
     id: "files",
     priority: 10,
     search: async () => ({
       complete: true,
       providerId: "files",
-      results: ["a.md", "b.md", "c.md", "d.md"].map((name, index) => fileResult(name, 4 - index)),
+      results: names.map((name, index) => fileResult(name, names.length - index)),
       truncated: false,
     }),
   });
-  groupedController.registerProvider({
-    id: "pulls",
-    kind: "pull",
-    priority: 15,
-    search: () =>
-      new Promise((resolve) => {
-        answerPulls = () =>
-          resolve({
-            complete: true,
-            providerId: "pulls",
-            results: [7, 8, 9].map((number, index) => ({
-              id: `pull:${number}`,
-              kind: "pull",
-              label: `PR ${number}`,
-              matchRanges: [],
-              number,
-              providerId: "pulls",
-              score: 4 - index,
-              state: "open",
-            })),
-            truncated: false,
-          });
-      }),
-  });
   const rows = (state) =>
     state.results.map((result) => (result.kind === "file" ? result.path : `#${result.number}`));
-  const groupedStates = [];
-  const unsubscribeGrouped = groupedController.subscribe((state) => {
-    groupedStates.push(rows(state));
-  });
-  const groupedSearch = groupedController.search({ match: "fuzzy", query: "x", target: "all" });
-  await new Promise((resolve) => setImmediate(resolve));
-  const beforePulls = groupedStates.at(-1);
-  answerPulls();
-  const grouped = await groupedSearch;
-  unsubscribeGrouped();
-  equal("files paint their share before pull requests answer", beforePulls, ["a.md", "b.md"]);
-  equal("pull requests are appended after the files", rows(grouped), ["a.md", "b.md", "#7", "#8"]);
+  /** Search *files* and *pulls* at a cap of *maxResults*; the states published, and the last. */
+  async function groupedSearchOf(maxResults, files, pulls) {
+    const groupedController = sandbox.MetabrowserSearch.createController({ maxResults });
+    const late = pullProvider(pulls);
+    groupedController.registerProvider(fileProvider(files));
+    groupedController.registerProvider(late.provider);
+    const states = [];
+    const unsubscribe = groupedController.subscribe((state) => {
+      states.push(rows(state));
+    });
+    const search = groupedController.search({ match: "fuzzy", query: "x", target: "all" });
+    await new Promise((resolve) => setImmediate(resolve));
+    const beforePulls = states.at(-1);
+    late.answer();
+    const final = await search;
+    unsubscribe();
+    groupedController.dispose();
+    return { beforePulls, final, states };
+  }
+
+  const grouped = await groupedSearchOf(4, ["a.md", "b.md", "c.md", "d.md"], [7, 8, 9]);
+  equal("files paint the whole cap before pull requests answer", grouped.beforePulls, [
+    "a.md",
+    "b.md",
+    "c.md",
+    "d.md",
+  ]);
+  equal("pull requests are appended after the files", rows(grouped.final), [
+    "a.md",
+    "b.md",
+    "c.md",
+    "d.md",
+    "#7",
+    "#8",
+    "#9",
+  ]);
   check(
     "a late group never moves a painted row",
-    groupedStates.every((state, index) =>
-      groupedStates.slice(index + 1).every((later) => state.every((row, at) => later[at] === row)),
+    grouped.states.every((state, index) =>
+      grouped.states.slice(index + 1).every((later) => state.every((row, at) => later[at] === row)),
     ),
-    JSON.stringify(groupedStates),
+    JSON.stringify(grouped.states),
   );
-  check("a group past its share marks the composition truncated", grouped.truncated === true);
-  groupedController.dispose();
+  check("groups within their caps are not truncated", grouped.final.truncated === false);
+
+  // Review A4: with pull requests searched and none matching, a file query was cut to half
+  // of its cap and marked truncated.
+  const manyFiles = Array.from(
+    { length: 100 },
+    (_, index) => `f${String(index).padStart(3, "0")}.md`,
+  );
+  const noPulls = await groupedSearchOf(100, manyFiles, []);
+  check(
+    "a file query keeps its whole cap when no pull request matches",
+    noPulls.final.results.length === 100 && noPulls.final.truncated === false,
+    JSON.stringify({ rows: noPulls.final.results.length, truncated: noPulls.final.truncated }),
+  );
+
+  const limit = sandbox.MetabrowserSearch.PULL_RESULT_LIMIT;
+  const manyPulls = Array.from({ length: limit + 5 }, (_, index) => 100 + index);
+  const pastLimit = await groupedSearchOf(100, ["a.md"], manyPulls);
+  check(
+    "pull requests have their own rows after the files, and past them mark truncation",
+    rows(pastLimit.final).length === 1 + limit &&
+      rows(pastLimit.final)[0] === "a.md" &&
+      pastLimit.final.truncated === true,
+    JSON.stringify({ rows: rows(pastLimit.final).length, truncated: pastLimit.final.truncated }),
+  );
+  const pastFiles = await groupedSearchOf(4, ["a.md", "b.md", "c.md", "d.md", "e.md"], [7]);
+  equal("files past the cap are cut there", rows(pastFiles.final), [
+    "a.md",
+    "b.md",
+    "c.md",
+    "d.md",
+    "#7",
+  ]);
+  check("files past the cap mark the composition truncated", pastFiles.final.truncated === true);
 
   let fallbackCalls = 0;
   const fallbackController = sandbox.MetabrowserSearch.createController();

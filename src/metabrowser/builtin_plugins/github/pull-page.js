@@ -127,6 +127,8 @@ const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
+/** How far a title may overhang its two-line box and still be whole: its descenders. */
+const TITLE_OVERHANG_PX = 4;
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -3567,11 +3569,15 @@ export function mountPullPage(container, ctx, mb) {
   function paintStateRow(pull) {
     stateRow.hidden = false;
     stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
+    // A narrow row gives way in its sentence first and its branches last: the action is
+    // cut short before either chip is (styles.css, "One line").
     stateDetails.replaceChildren(
       ...(pull.actor === null ? [] : [authorLabel(pull.actor, pull.actorAvatar)]),
-      `${pull.actor === null ? "" : " "}${pull.action} `,
+      h("span", { class: "github-pull-action" }, [
+        `${pull.actor === null ? "" : " "}${pull.action} `,
+      ]),
       mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
-      " from ",
+      h("span", { class: "github-pull-joiner" }, [" from "]),
       mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
     );
     return stateRow;
@@ -3611,19 +3617,23 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
-      const titleText = h("span", { class: "github-pull-title-text" }, [
-        pull.title,
-        " ",
-        h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
-      ]);
+      const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
+      // The number is outside the clamped text, so a title cut short keeps it.
       const title = h(
         "h1",
         { class: "page-heading github-pull-title github-pull-title-with-state" },
-        [pullStateIcon(pull.state, { named: false }), titleText],
+        [
+          pullStateIcon(pull.state, { named: false }),
+          titleText,
+          " ",
+          h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+        ],
       );
       // Two lines at most: a title cut short there carries the whole of it in its tooltip.
+      // Cut short is a line or more hidden; a title of two lines that fit overhangs its box
+      // by a pixel or two of descender (62 against 60 px, Chrome 152).
       title.addEventListener("pointerenter", () => {
-        if (titleText.scrollHeight > titleText.clientHeight) {
+        if (titleText.scrollHeight - titleText.clientHeight > TITLE_OVERHANG_PX) {
           title.dataset.tipText = `${pull.title} #${pull.number}`;
         } else {
           delete title.dataset.tipText;
@@ -3676,6 +3686,8 @@ export function mountPullPage(container, ctx, mb) {
       }
     }
     status.dataset.status = model.status;
+    // A failure is the one text the row lets wrap: it carries its remedy.
+    status.classList.toggle("github-pull-status-failed", model.failure !== null);
     for (const node of [...status.childNodes]) {
       if (node !== freshnessLine) {
         node.remove();
@@ -3708,6 +3720,9 @@ export function mountPullPage(container, ctx, mb) {
       model.status === "absent" ? "Fetch" : "Refresh",
     ]);
     refresh.hidden = !model.canRefresh;
+    // Offers sit at the row's end with Refresh, so the freshness text changing its width
+    // moves nothing after it: it moved an offer by 100 px (PR 370 review A7).
+    const end = h("span", { class: "github-pull-status-end" }, [refresh]);
     refresh.addEventListener("click", () => {
       if (listening.signal.aborted || shown?.canRefresh !== true) {
         return;
@@ -3723,13 +3738,19 @@ export function mountPullPage(container, ctx, mb) {
         "Switch to the head",
       ]);
       button.addEventListener("click", () => void controller.switchToHead());
-      status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
+      end.insertBefore(
+        h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]),
+        refresh,
+      );
     }
     if (model.checkoutAtHead !== null) {
       const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
-      status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
+      end.insertBefore(
+        h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]),
+        refresh,
+      );
     }
-    status.append(refresh);
+    status.append(end);
     children.push(status);
     const visible = children.filter((child) => child !== null);
     /** @type {Set<Node>} */

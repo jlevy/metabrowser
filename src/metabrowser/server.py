@@ -141,6 +141,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     VersionUnavailableError,
+    canonical_inventory_path,
     native_inventory_path,
     parse_inventory_path,
 )
@@ -293,12 +294,26 @@ NAVIGATION_TALLY_LIMIT = 200
 # Set to 0 to disable the inline entirely.
 _INLINE_INITIAL_TREE_ROWS = 200
 
-# How many folders of a landing's path the shell also inlines, expanded, each listing capped
-# at the root's row cap, so a deep landing's first tree paint already shows its row: the
-# reveal that opened them after first paint moved the tree with no input (layout shift
-# 0.050 to 0.057 on a file three folders down, Chrome 152). Past this depth the page
-# reveals the rest itself, as before.
+# How many folders of a landing's path the shell also inlines, expanded, so a deep landing's
+# first tree paint already shows its row: the reveal that opened them after first paint
+# moved the tree with no input (layout shift 0.050 to 0.057 on a file three folders down,
+# Chrome 152). A deeper landing inlines the root alone and the page reveals its path, as
+# before. The depth bounds the queries one shell read makes; what a landing costs the
+# reader is the rows, which _INLINE_LANDING_ROWS bounds.
 _INLINE_LANDING_DEPTH = 8
+
+# How many rows a landing's folders may add to the shell in all, past the root's own. Each
+# folder is inlined with its whole listing, and a path whose folders do not fit inlines the
+# root alone, as before.
+#
+# Measured on landings one to eight folders down, 152 entries a folder, against the root-only
+# shell (headless Chrome 152, median of 5 loads, load average 6 to 13): each folder added
+# 21 KB of shell (2 KB gzipped), about 1 ms on the server, 10 to 13 ms to DOMContentLoaded,
+# and 6 to 9 ms to the first tree row, linearly up to the 1,215 rows of eight such folders
+# (+73 ms to the first row). Two folders, 304 rows, cost 15 to 16 ms, one frame at 60 Hz;
+# the reveal they replace moved the tree by 0.10 to 0.46 with no input. So the budget is
+# about one frame of first tree row.
+_INLINE_LANDING_ROWS = 300
 
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
@@ -1571,8 +1586,13 @@ async def index(
     if pull_list and pulls_in_front:
         preview_loading = '<div class="preview-empty">Select a pull request.</div>'
     elif pull_page:
+        # Nothing to keep on screen while the page is staged: the page's own loading state,
+        # its header rows at their heights and the tab bar over a body skeleton, replaces
+        # this at once (static/app.js#beginPreviewNavigation). Staged, it stayed hidden
+        # behind this skeleton until the record landed, 1.9 s on a cold cache (PR 370 review A9).
         preview_loading = (
-            '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+            '<div class="pull-request-placeholder mb-delayed-loading" role="status"'
+            ' aria-label="Loading pull request" data-preview-empty>'
             '<div class="recent-loading" aria-hidden="true"></div></div>'
         )
     else:
@@ -1597,13 +1617,23 @@ async def index(
     # A landing on a path inlines its folders' listings too, each grafted under its row and
     # expanded, and names the path when its row is among them: the page then selects and
     # shows that row at its first tree paint, and fetches and scrolls nothing for it after
-    # (static/app.js#renderInitialTreeRows).
+    # (static/app.js#renderInitialTreeRows). The inline stays a strict subset of what the
+    # page builds: no route reconciles a folder below the first level once it has rows, so
+    # a folder is grafted only with its whole listing. A path with a folder that cannot be
+    # (its listing has a further page, or the path's rows would pass _INLINE_LANDING_ROWS),
+    # or deeper than _INLINE_LANDING_DEPTH, inlines the root alone and the page reveals the
+    # path as before. The rows carry the canonical path, so the landing is canonicalized
+    # before it is split.
     initial_tree_block = ""
     landed: str | None = None
     if _INLINE_INITIAL_TREE_ROWS and not git_pin:
-        landing_parts = [part for part in (view_path or "").split("/") if part]
-        depth = min(len(landing_parts) - 1, _INLINE_LANDING_DEPTH)
-        ancestors = ["/".join(landing_parts[: index + 1]) for index in range(depth)]
+        landing = canonical_inventory_path(view_path) if view_path else ""
+        landing_parts = [part for part in landing.split("/") if part]
+        ancestors = (
+            ["/".join(landing_parts[: index + 1]) for index in range(len(landing_parts) - 1)]
+            if len(landing_parts) - 1 <= _INLINE_LANDING_DEPTH
+            else []
+        )
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
@@ -1620,35 +1650,53 @@ async def index(
                 )
             )
 
-            def inline_level(index: int, path: str) -> list[dict[str, Any]]:
+            def inline_level(
+                index: int, path: str, *, parent_ignored: bool = False
+            ) -> tuple[list[dict[str, Any]], bool]:
                 projection = initial_read.result.completed_projection(f"initial-tree-{index}")
                 if not isinstance(projection, DirectoryProjection):
                     raise TypeError("the initial-tree read returned the wrong projection")
-                return build_inventory_tree_from_entries(
+                rows = build_inventory_tree_from_entries(
                     entries=projection.entries,
                     parent_rel=path,
                     max_depth=1,
+                    parent_ignored=parent_ignored,
                     max_entries=_INLINE_INITIAL_TREE_ROWS,
                 )
+                return rows, projection.next_page is None
 
-            initial_tree = inline_level(0, "")
+            initial_tree, _ = inline_level(0, "")
+            # Every folder of the path, or none of them: a landing that opened some of its
+            # folders at first paint and the rest after moved the tree no less than one that
+            # opened them all after (layout shift 0.19 to 0.38 against 0.11 to 0.39, two to
+            # eight folders of the fixture measured at _INLINE_LANDING_ROWS), and paid for
+            # the rows it inlined.
+            grafts: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
             level = initial_tree
+            landing_rows = 0
             for index, ancestor in enumerate(ancestors, start=1):
                 row = next((n for n in level if n["path"] == ancestor and n["type"] == "dir"), None)
                 if row is None:
-                    level = []
                     break
                 try:
-                    row["children"] = inline_level(index, ancestor)
+                    children, whole = inline_level(
+                        index, ancestor, parent_ignored=bool(row.get("gitignored"))
+                    )
                 except Exception:
                     LOG.debug("landing ancestry inline stopped at %s", ancestor, exc_info=True)
-                    level = []
                     break
-                row["expanded"] = True
-                level = row["children"]
-            target = "/".join(landing_parts)
-            if len(ancestors) == len(landing_parts) - 1 and any(n["path"] == target for n in level):
-                landed = target
+                landing_rows += len(children)
+                if not whole or landing_rows > _INLINE_LANDING_ROWS:
+                    break
+                grafts.append((row, children))
+                level = children
+            if len(grafts) == len(ancestors):
+                for row, children in grafts:
+                    row["children"] = children
+                    row["expanded"] = True
+                target = "/".join(landing_parts)
+                if any(n["path"] == target for n in level):
+                    landed = target
         except Exception:
             LOG.debug("initial tree inline failed", exc_info=True)
             initial_tree = []

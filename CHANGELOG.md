@@ -14,6 +14,10 @@ All notable changes to Metabrowser are documented here.
   holds two lines and is cut short there with the whole of it in a tooltip, the state
   row is one line with the stack chip at its end, labels have a row of their own, and
   Refresh has its slot on every tab.
+  A cold pull request page shows that header and its tab bar over a loading body until
+  the record arrives; a narrow pane cuts the state row’s sentence before its branch
+  names, and a failure in the status row wraps to show its remedy.
+  A toolbar wider than a narrowed sidebar scrolls along its row instead of being cut.
   The Pulls tab’s status lines are always there, and its ages have a column of one
   width. A folder’s Overview paints once its first file-type rollup has answered,
   briefly.

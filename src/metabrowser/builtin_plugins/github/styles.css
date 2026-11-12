@@ -28,9 +28,12 @@
 .github-pull-title {
   min-height: 2lh;
 }
+/* The icon, the title cut short at two lines, and the number after the title's last line:
+   the number is outside the clamp, so a title cut short keeps it (PR 370 review A5). */
 .github-pull-title-with-state {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, max-content) auto;
+  align-content: start;
   column-gap: 0.35em;
 }
 .github-pull-title-text {
@@ -44,8 +47,14 @@
   color: var(--text);
   font-weight: var(--weight-normal);
 }
+.github-pull-title-with-state > .github-pull-number {
+  align-self: end;
+  white-space: nowrap;
+}
 /* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
-   wrapping the row, which made it 21 to 67 px tall. */
+   wrapping the row, which made it 21 to 67 px tall. A narrow row gives way in its sentence
+   first: the action is cut to nothing before either branch chip shrinks, and a chip keeps a
+   few characters (PR 370 review A5). */
 .github-pull-meta {
   position: relative;
   display: flex;
@@ -62,10 +71,19 @@
   min-width: 0;
   overflow: hidden;
 }
+.github-pull-meta-details > .github-pull-action {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-meta-details > .github-pull-joiner {
+  flex: none;
+}
 /* A branch takes the remote ref chip, smaller than the actor and action beside it. */
 .github-pull-meta .git-ref {
   flex-shrink: 1;
-  min-width: 2em;
+  min-width: 7ch;
   font-size: var(--ui-small-font-size);
   line-height: 20px;
 }
@@ -73,7 +91,9 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+/* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. */
 .github-pull-header > .github-pull-quiet {
+  height: 1lh;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -120,13 +140,17 @@
   white-space: nowrap;
 }
 /* A state's badge is as wide as the widest state's, so a stale record that turns out
-   merged does not widen it under the reader: sizers under the label give the width. */
+   merged does not widen it under the reader: sizers under the label give the width. The
+   label stays the first flex item, because an inline flex container takes its baseline
+   from its first item: a sizer first hung the badge 8.5 px below its line and made the
+   row 31 px (PR 370 review A3; tests/dom/github-pull-header-chrome.mjs). */
 .github-pull-meta .github-pull-badge {
   flex-direction: column;
   gap: 0;
 }
 .github-pull-meta .github-pull-badge::before,
 .github-pull-meta .github-pull-badge::after {
+  order: 1;
   height: 0;
   overflow: hidden;
   visibility: hidden;
@@ -178,7 +202,12 @@
   font-size: var(--ui-small-font-size);
 }
 /* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
-   cut short before it wraps; its controls never are. */
+   cut short before it wraps; its controls never are. A failure is the exception: it says
+   what to do, so the row wraps to show all of it, the one state where the tab bar may move
+   (PR 370 review A6). */
+.github-pull-failure {
+  color: var(--status-warning-strong);
+}
 .github-pull-status {
   display: flex;
   flex-wrap: nowrap;
@@ -193,22 +222,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.github-pull-status.github-pull-status-failed {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.github-pull-status.github-pull-status-failed > .github-pull-failure {
+  overflow: visible;
+}
 .github-pull-freshness {
   font-variant-numeric: var(--tabular-numerals);
 }
-.github-pull-status > :is(.github-pull-offer, a) {
+.github-pull-status > a {
   flex: none;
+}
+/* The offers end the row with Refresh, so the freshness text changing width moves none of
+   them (PR 370 review A7). */
+.github-pull-status-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px 10px;
+  margin-inline-start: auto;
 }
 .github-pull-refresh {
   flex: none;
-  margin-inline-start: auto;
 }
 .github-pull-refresh[hidden] {
   display: inline-block;
   visibility: hidden;
-}
-.github-pull-failure {
-  color: var(--status-warning-strong);
 }
 .github-pull-body {
   display: flex;
@@ -501,8 +542,7 @@
    the filters take its height and keep to one line. */
 .github-pulls-filters:where(.nav-toolbar > *) {
   position: static;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 0 auto;
   padding: 0;
   background: none;
 }
@@ -581,7 +621,7 @@
    its own, with no baseline to share. */
 /* The age has a column of one width, so every row's title is cut at one place and an age
    that grows a digit does not move it. The longest compact age is four characters
-   ("11mo"), and its m is wider than a digit; 5ch of the row's type holds it in the age's
+   ("12mo", 345 to 364 days), and its m is wider than a digit; 5ch of the row's type holds it in the age's
    smaller type in any engine. */
 .github-pulls-row {
   display: grid;
@@ -618,12 +658,17 @@
   justify-self: end;
   white-space: nowrap;
 }
-/* A count that arrives, or changes, keeps its chip's width up to three digits. */
+/* A count that arrives, or changes, keeps its chip's width up to three digits, and so
+   does its pending pulse: at the tally's own 22 px the chips moved 4 to 8 px when the
+   counts landed (PR 370 review A10). */
 .github-pulls-filters .count {
   display: inline-block;
   min-width: 3ch;
   font-variant-numeric: var(--tabular-numerals);
   text-align: end;
+}
+.github-pulls-filters .count.tally-pending {
+  width: 3ch;
 }
 .github-pulls-title,
 .github-pulls-meta {

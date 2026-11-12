@@ -287,8 +287,10 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
 
     js = _read_app_js()
     block = _function_source(js, "initNavScrollShadow")
-    # The visible toolbar in the slot carries it, whichever tab's it is.
-    assert 'queryHtml("[data-nav-toolbar]:not([hidden])")' in block
+    # The visible toolbar in the slot carries it, whichever tab's it is. The chrome is the
+    # pane's own children, so a scroll event visits those and not the whole document.
+    assert 'pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])")' in block
+    assert "queryHtmlAll(" not in block and 'queryHtml("[data-nav-toolbar]' not in block
     # The others are cleared, so a tab switch cannot arm two shadows.
     assert 'chrome.classList.toggle("scrolled", chrome === target' in block
     # A tab switch fires no scroll event, so activation re-runs it.

@@ -3906,13 +3906,16 @@ function initNavScrollShadow() {
     return;
   }
   const scrollContent = content;
+  const pane = content.parentElement ?? content;
   function update() {
     // Resolved per call rather than once at startup: each tab shows its own
     // toolbar in the slot, and a shadow on a hidden one is no cue at all.
     // Whichever chrome is bottom-most *and visible* carries it, and the
     // others are cleared so a tab switch cannot leave two shadows armed.
-    const target = queryHtml("[data-nav-toolbar]:not([hidden])") ?? tabBar;
-    for (const chrome of queryHtmlAll("[data-nav-toolbar], .nav-tab-bar")) {
+    // The chrome is the pane's own children, so a scroll visits those and not
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements, PR 370 review B3).
+    const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
+    for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
       chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
     }
   }
@@ -5813,17 +5816,6 @@ function createFilePreviewStage(preview) {
   return stage;
 }
 
-// The stage is shown once the faces its layout asked for land, at most FONT_WAIT_MS
-// later. Cold, PT Serif landed 13-30 ms after layout and, swapped in after the
-// stage was shown, moved the body 21-23 px (Chrome 152, load average 20-28).
-var FONT_WAIT_MS = 100;
-function stagedFontsSettled() {
-  var fonts = document.fonts;
-  return fonts?.status === "loading"
-    ? Promise.race([fonts.ready, new Promise((done) => setTimeout(done, FONT_WAIT_MS))])
-    : null;
-}
-
 /**
  * @param {Record<string, any>} data
  * @param {string | undefined} preferredViewId
@@ -6077,9 +6069,13 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
-        const fontsSettled = stagedFontsSettled();
-        if (fontsSettled) {
-          await fontsSettled;
+        // Shown once the faces its text is set in land (view-composition.js#settleFaces).
+        const facesSettled = viewComposition.composition.settleFaces(
+          arrivalContent ?? stage,
+          `${compositionKind}:${initialActiveView?.id}`,
+        );
+        if (facesSettled) {
+          await facesSettled;
         }
         if (!renderIsCurrent()) {
           return false;
@@ -8001,8 +7997,8 @@ async function applyNavigationTarget(target, context) {
 // Pair with selectFile() for the body; init() kicks off both legs in
 // parallel so a deep-link doesn't pay tree-walk latency before its own
 // request leaves the client.
-/** @param {string} path @param {{isCurrent?: () => boolean, scroll?: boolean}} [options] */
-async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}) {
+/** @param {string} path @param {{isCurrent?: () => boolean, scroll?: boolean, instant?: boolean}} [options] */
+async function revealInTree(path, { isCurrent = () => true, scroll = true, instant = true } = {}) {
   if (!path) {
     return false;
   }
@@ -8028,8 +8024,11 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
           }
         }
         if (children.classList.contains("tree-children-collapsed")) {
-          // The reader asked for the row, not the disclosure: no travel.
-          await setFolderExpanded(folder, true, { instant: true });
+          // The reader asked for the row, not the disclosure: no travel. A landing's
+          // reveal has no input to answer, and its folders travelling moved the tree less
+          // than their opening at once (layout shift 0.11-0.39 against 0.36-0.83, two to
+          // eight folders of 152 rows, Chrome 152).
+          await setFolderExpanded(folder, true, { instant });
         }
       }
     }
@@ -8241,7 +8240,7 @@ function initQuickFileFinder() {
     describeOpenFailure: window.MetabrowserNavigationRoute.openFailureOutcome,
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
-    maxRows: QUICK_FILE_RESULT_LIMIT,
+    maxRows: QUICK_FILE_RESULT_LIMIT + window.MetabrowserSearch.PULL_RESULT_LIMIT,
     onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
@@ -8433,6 +8432,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (initialPath) {
     const target = navigationController.current();
     revealInTree(initialPath, {
+      instant: false,
       isCurrent: () =>
         navigationController.current() === target && (mainTabs?.active() ?? "files") === "files",
     });

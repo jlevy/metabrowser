@@ -3,8 +3,10 @@
 (() => {
   // How long a held key's walk waits for its next repeat before the row it reached
   // opens. A release opens it at once, so this is only for a release the tree does not
-  // hear. It is past macOS's default repeat of 90 ms, so a held key never waits it out,
-  // and it is the Pulls panel's WALK_SETTLE_MS for the same reason.
+  // hear, and for a repeat slower than this. It is past macOS's default repeat of 90 ms,
+  // so a held key at that rate never waits it out, and it is the Pulls panel's
+  // WALK_SETTLE_MS for the same reason. Reasoned from that default, not measured in a
+  // browser under load; a repeat that does wait it out is handled in createWalk.
   const WALK_SETTLE_MS = 120;
 
   /**
@@ -14,17 +16,29 @@
    * a repeat is a single press, which ends any walk and opens at once, as before.
    * Before this, a skim of six ArrowDowns 60 ms apart read and rendered every row it
    * passed: 14 requests and 28 pane replacements in Chrome 152.
+   *
+   * A repeat slower than WALK_SETTLE_MS outlasts each walk, so walking saved it nothing
+   * and opened every row 125 ms late (PR 370 review B2). Once the settle ends a walk with the
+   * key still down, the rest of that hold opens each row at once, as single presses do,
+   * until the key is released or pressed anew.
    */
   function createWalk() {
     /** @type {{path: string | null, settle: () => void, settled: Promise<void>, timer: ReturnType<typeof setTimeout> | undefined} | null} */
     let walk = null;
+    let slowRepeat = false;
 
-    function end() {
+    function finish() {
       if (walk) {
         window.clearTimeout(walk.timer);
         walk.settle();
         walk = null;
       }
+    }
+
+    /** A release, a new press, or disposal: the hold is over. */
+    function end() {
+      slowRepeat = false;
+      finish();
     }
 
     return Object.freeze({
@@ -40,6 +54,9 @@
           end();
           return;
         }
+        if (slowRepeat) {
+          return;
+        }
         if (!walk) {
           /** @type {() => void} */
           let settle = () => {};
@@ -50,7 +67,10 @@
         }
         window.clearTimeout(walk.timer);
         walk.path = path;
-        walk.timer = window.setTimeout(end, WALK_SETTLE_MS);
+        walk.timer = window.setTimeout(() => {
+          finish();
+          slowRepeat = true;
+        }, WALK_SETTLE_MS);
       },
       /**
        * What a navigation to *path* waits on before it opens the row: the walk that is
