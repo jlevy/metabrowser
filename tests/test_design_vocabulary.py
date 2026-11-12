@@ -523,6 +523,26 @@ def test_branch_chips_are_bold_and_square() -> None:
     assert "--radius-tag:" in styles
 
 
+def test_badges_center_their_capitals_in_the_box_they_had() -> None:
+    """A badge trims its line to the capitals and the baseline, and centers what is left.
+
+    Centered by its line box, a 12px Source Sans 3 word sat 0.93px high in Chrome and in
+    WebKit; trimmed and centered, 0.02-0.09px (the comment above `.file-header-badge`). The
+    box keeps the height its line, pads, and borders gave it, so each badge states that
+    sum against its own pads and borders.
+    """
+    base = dict(_rules_of(STATIC / "styles.css"))[".file-header-badge"]
+    assert base["display"] == "inline-block", "text-box trims a block container's line"
+    assert base["text-box"] == "trim-both cap alphabetic"
+    assert base["align-content"] == "center"
+    assert base["white-space"] == "nowrap", "a fixed-height badge holds one line"
+    assert base["padding"] == "2px 8px" and "border" not in base
+    assert base["block-size"] == "calc(1lh + 2 * 2px)"
+    pull = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull-badge"]
+    assert pull["padding-block"] == "0" and pull["border"].startswith("1px ")
+    assert pull["block-size"] == "calc(1lh + 2 * 1px)"
+
+
 def test_row_targets_share_the_hover_token() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(

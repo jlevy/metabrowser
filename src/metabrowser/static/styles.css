@@ -3660,15 +3660,30 @@ a.tab-btn {
    across the header, the settings gear, so it must not grow chrome
    that those do not have. */
 
+/* A badge is one word or two on one line, and centers its capitals, not
+   the font's line box. Centered by its line box, 12px Source Sans 3
+   left 3.14px above its capitals and 5px below its baseline in a 16px
+   box, so the word sat 0.93px high, in Chrome and in WebKit alike and
+   in both themes. text-box trims the line to the capitals and the baseline, and
+   align-content centers what is left in a box held at the size the line
+   and pads gave it: 1lh plus the block pads and borders. The capitals
+   then sit 0.02-0.04px off center in Chrome and 0.07-0.09px in WebKit,
+   which rounds the trimmed height to a whole pixel. The system font set
+   sat 0.23px high; Chrome now centers it, and WebKit's whole-pixel trim
+   leaves it where it was. An engine without text-box keeps the untrimmed
+   line, centered as before. A variant that changes the block pads or
+   border restates block-size to match. */
 .file-header-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-block;
+  flex-shrink: 0;
+  block-size: calc(1lh + 2 * 2px);
   padding: 2px 8px;
   border-radius: var(--radius-chrome);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
-  flex-shrink: 0;
+  white-space: nowrap;
+  align-content: center;
+  text-box: trim-both cap alphabetic;
 }
 .badge-completed {
   background: oklch(92.2% 0.037 152.6);

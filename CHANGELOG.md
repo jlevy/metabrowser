@@ -10,6 +10,11 @@ All notable changes to Metabrowser are documented here.
   A checkout’s own local branches, in its history, are a blue-green instead of blue, and
   the history line of the branch you are on stays blue.
 
+- The word in a badge is centered in its box instead of sitting about a pixel high: a
+  pull request’s Draft, Open, Merged, or Closed, its review and check states, and a file
+  header’s badges such as Gzip.
+  The badges keep their size.
+
 - A folder’s File Overview is shorter.
   Under the Files, Ignored, and Total bars it shows a legend of the five largest file
   types, each a dot in its color with its name and share, plus **Other** for the rest,
