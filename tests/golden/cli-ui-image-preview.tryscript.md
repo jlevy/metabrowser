@@ -63,7 +63,7 @@ $ node tests/dom/image-preview-session.js
     "committed": true,
     "firstDetached": true,
     "secondAlt": "next/diagram #2.svg",
-    "secondRawUrl": "/raw?path=next%2Fdiagram%20%232.svg",
+    "secondRawUrl": "/raw?path=next%2Fdiagram%20%232.svg&v=diagram_2_svg_42_1700000000000000000_x",
     "staleCommitRejected": true,
     "staleCommitPreservedReplacement": true,
     "status": "mounted"

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from starlette.datastructures import Headers
@@ -30,10 +31,16 @@ from metabrowser.http_caching import (
     BUILD_TAG,
     _newest_source_change,
     build_scoped_etag,
+    editable_install,
     etag_headers,
     matches_if_none_match,
+    not_modified,
+    stamped_asset_cache_control,
     store_tag,
 )
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "metabrowser"
 THIS_MODULE = SRC / "http_caching.py"
@@ -222,3 +229,42 @@ def test_a_validator_identifies_the_response_not_just_the_file() -> None:
     assert first != second
     # Same window, same tag — the caching still works.
     assert first == build_scoped_etag(f"{file_identity}-0-65536")
+
+
+class _ConditionalRequest:
+    def __init__(self, **headers: str) -> None:
+        self.headers = Headers(
+            raw=[
+                (name.replace("_", "-").encode(), value.encode()) for name, value in headers.items()
+            ]
+        )
+
+
+def _conditional(**headers: str) -> Request:
+    return cast("Request", _ConditionalRequest(**headers))
+
+
+def test_if_none_match_decides_before_if_modified_since() -> None:
+    """RFC 9110 section 13.2.2: a present If-None-Match is the whole question."""
+    tag = build_scoped_etag("file")
+    modified = 1_700_000_000.0
+    after = "Wed, 15 Nov 2023 00:00:00 GMT"  # later than *modified*
+    before = "Sat, 01 Jan 2000 00:00:00 GMT"
+    assert not_modified(_conditional(if_none_match=tag), tag, modified)
+    assert not not_modified(
+        _conditional(if_none_match='"other"', if_modified_since=after), tag, modified
+    )
+    assert not_modified(_conditional(if_modified_since=after), tag, modified)
+    assert not not_modified(_conditional(if_modified_since=before), tag, modified)
+    # Unparseable dates are ignored, as the RFC says.
+    assert not not_modified(_conditional(if_modified_since="soon"), tag, modified)
+    assert not not_modified(_conditional(), tag, modified)
+
+
+def test_only_a_current_stamp_earns_immutable() -> None:
+    assert stamped_asset_cache_control(current=True) == "public, max-age=31536000, immutable"
+    assert stamped_asset_cache_control(current=False) == "no-cache"
+
+
+def test_an_absent_distribution_is_not_editable() -> None:
+    assert editable_install("metabrowser-no-such-distribution") is False

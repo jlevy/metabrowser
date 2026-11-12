@@ -49,6 +49,7 @@ import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
+from email.utils import formatdate
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
@@ -70,12 +71,12 @@ from starlette.responses import (
     JSONResponse as _StarletteJSONResponse,
 )
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
 from metabrowser import __version__, kpress_adapter
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
+from metabrowser.asset_stamps import StampedStaticFiles, split_stamp
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
@@ -113,7 +114,10 @@ from metabrowser.http_caching import (
     BUILD_TAG,
     build_scoped_etag,
     etag_headers,
+    immutable_headers,
     matches_if_none_match,
+    not_modified,
+    stamped_asset_cache_control,
     store_tag,
 )
 from metabrowser.inventory_engine.contract import (
@@ -249,6 +253,7 @@ from metabrowser.view_routes import (
 )
 
 if TYPE_CHECKING:
+    from kpress.models import KPressAsset
     from starlette.requests import Request
 
 
@@ -532,11 +537,12 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 # ── Static asset directories ────────────────────────────────────
 #
-# CSS / JS bundles are served as plain static files (Starlette's
-# ``StaticFiles`` mount handles Last-Modified + If-Modified-Since for
-# 304s), not inlined into the index HTML. That way edits show up on a
-# normal browser refresh without restarting the server, and the
-# browser's HTTP cache does the work it's designed to do.
+# CSS / JS bundles are served as plain static files, not inlined into the
+# index HTML. The shell names each with a ``?v=`` stamp of the file
+# (``_static_asset_url``), and the mount answers that address immutable while
+# the stamp is current (``asset_stamps.StampedStaticFiles``), so a reload asks
+# for nothing it already holds, and an edit shows up on a normal refresh
+# without restarting the server because the next shell names a new stamp.
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The reading-width state machine is first-paint configuration and only 1 KiB
@@ -1771,18 +1777,21 @@ async def index(
     # should not wait for Markdown, structured-data, diff, and log modules
     # before its first tree row. The manifest remains the source of every URL;
     # core does not special-case plugin names.
-    plugin_asset_config = _build_plugin_asset_config_block()
+    plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
+    plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
     # style-tokens.css (the @font-face source of truth) and preload the chrome's
-    # always-present Source Sans face, using the SAME version-keyed URLs the
+    # always-present Source Sans face, using the SAME stamped URLs the
     # embedded document requests so the woff2 downloads exactly once and is
-    # served from the immutable font cache (see kpress_static_asset). Preloading
+    # served from the immutable cache (see kpress_static_asset). Preloading
     # only the chrome face avoids an "unused preload" warning on tree-only views;
     # PT Serif (embedded prose) rides the same immutable cache + font-display:
     # block on first document open.
-    _sans_url = kpress_adapter.kpress_static_url("fonts/source-sans-3-latin-wght-normal.woff2")
-    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css")
+    _sans_url = kpress_adapter.kpress_static_url(
+        "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
+    )
+    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
     kpress_font_head = (
         f'<link rel="preload" as="font" type="font/woff2" crossorigin href="{_sans_url}">\n'
         f'  <link rel="stylesheet" href="{_tokens_url}">'
@@ -3617,39 +3626,37 @@ async def api_kpress_export(request: Request) -> JSONResponse:
 
 
 async def kpress_static_asset(request: Request) -> Response:
-    """Serve KPress package assets through Metabrowser's safe asset route."""
+    """Serve KPress package assets through Metabrowser's safe asset route.
 
-    rel = request.path_params.get("path", "")
+    Pages address them under ``@<digest>/``, a stamp of the KPress package's files
+    (:func:`kpress_adapter.kpress_asset_url_prefix`), which is removed before KPress
+    resolves the rest. Under the stamp that names the bytes served, CSS and JS are kept
+    a year without revalidation, which the version-keyed address alone could not allow;
+    see :mod:`metabrowser.asset_stamps`.
+    """
+
+    stamp_digest, rel = split_stamp(request.path_params.get("path", ""))
+
+    def read() -> tuple[KPressAsset, bool]:
+        asset = kpress_adapter.get_kpress_static_asset(rel)
+        return asset, kpress_adapter.kpress_stamp_is_current(stamp_digest, asset.content)
+
     try:
-        asset = await asyncio.to_thread(kpress_adapter.get_kpress_static_asset, rel)
+        asset, current = await asyncio.to_thread(read)
     except kpress_adapter.KPressAssetNotFoundError:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
     is_font = rel.rsplit(".", 1)[-1].lower() in {"woff2", "woff", "ttf", "otf"}
-    if is_font:
-        # Fonts are the one asset class we cache hard. They are large, stable
-        # for a given KPress version (the URL is version-keyed), and — unlike
-        # CSS/JS — are not edited during local development, so the staleness
-        # risk that drives `no-cache` below does not apply. Metabrowser is
-        # opened often, so an immutable cache means repeat visits pay zero font
-        # bytes and skip the revalidation round-trip before first paint.
-        headers = {
-            "ETag": asset.etag,
-            "Cache-Control": "public, max-age=31536000, immutable",
-        }
-    else:
-        headers = {
-            "ETag": asset.etag,
-            # The /kpress-static/ URL is keyed by the KPress *version* (e.g.
-            # v0.0.1), not by content, so the package's own long max-age would
-            # serve stale CSS/JS for a year whenever an asset changes without a
-            # version bump (the constant pain during local development — and
-            # these assets load dynamically, so a hard reload doesn't bust
-            # them). Force revalidation against the content-addressed ETag
-            # instead: a 304 when unchanged (cheap), fresh bytes the moment an
-            # asset changes.
-            "Cache-Control": "no-cache",
-        }
+    # Fonts are cached hard at any address. They are large, stable for a given KPress
+    # version, and not edited during local development. Metabrowser is opened often, so
+    # an immutable cache means repeat visits pay zero font bytes and skip the
+    # revalidation round-trip before first paint. CSS and JS are, at a current stamp; at
+    # an old or missing one they are revalidated against the content-addressed ETag: a
+    # 304 when unchanged, fresh bytes the moment an asset changes.
+    headers = {
+        "ETag": asset.etag,
+        "Cache-Control": stamped_asset_cache_control(current=current or is_font),
+    }
     if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
@@ -3768,6 +3775,7 @@ async def raw_file(request: Request) -> Response:
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
+    accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
     # Uncompressed path: stream the file as-is. ``FileResponse`` streams in
     # fixed-size chunks via aiofiles; the earlier ``read_bytes()`` +
@@ -3775,22 +3783,41 @@ async def raw_file(request: Request) -> Response:
     # hit the wire (a 100 MB image stalled and spiked memory). Streaming
     # keeps the event loop responsive and bounds memory regardless of
     # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
-    if not artifact.is_compressed:
-        return FileResponse(target, media_type=media_type)
-
-    accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
-
+    #
     # Passthrough: client accepts gzip → ship the on-disk bytes verbatim
     # with ``Content-Encoding: gzip`` so the browser decompresses
     # transparently. Zero server CPU. Starlette's ``GZipMiddleware``
     # skips responses with ``Content-Encoding`` already set, so we
     # don't double-wrap.
-    if artifact.is_gzip and accepts_gzip:
-        return FileResponse(
-            target,
-            media_type=media_type,
-            headers=artifact.passthrough_headers(),
+    passthrough = artifact.is_gzip and accepts_gzip
+    if not artifact.is_compressed or passthrough:
+        try:
+            stat = target.stat()
+            identity = file_mtime_hash(target)
+        except OSError:
+            return PlainTextResponse("Not found", status_code=404)
+        # The on-disk bytes are the body, so the file names the validator. A passthrough
+        # body is another representation of it, so its tag differs.
+        etag = _etag_for(f"{identity}:gzip" if passthrough else identity)
+        # The image view writes the envelope's `mtime_hash` into its address as `v`, so
+        # that address names these bytes, and a browser keeps them without asking; an
+        # edit gives the next envelope a new one. `private`: it is the reader's file.
+        # Every other address is revalidated, now with a real 304.
+        headers = (
+            immutable_headers(etag)
+            if request.query_params.get("v") == identity
+            else etag_headers(etag)
         )
+        if passthrough:
+            headers["Vary"] = "Accept-Encoding"
+        if not_modified(request, etag, stat.st_mtime):
+            return Response(
+                status_code=304,
+                headers={**headers, "Last-Modified": formatdate(stat.st_mtime, usegmt=True)},
+            )
+        if passthrough:
+            headers |= artifact.passthrough_headers()
+        return FileResponse(target, media_type=media_type, headers=headers, stat_result=stat)
 
     # Validate every compressed identity response before StreamingResponse sends
     # successful headers. Without this scan, malformed or over-limit gzip data
@@ -3842,6 +3869,8 @@ from metabrowser.plugin_loader.discovery import (
 )
 from metabrowser.plugin_loader.static_assets import (
     build_plugin_routes,
+    plugin_asset_prefix,
+    plugin_asset_trees,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -3870,6 +3899,9 @@ LOG.debug(
     len(_LOADED_PLUGINS),
     [p.name for p in _LOADED_PLUGINS],
 )
+# The stamps the shell addresses each plugin's files under, shared with the route that
+# serves them so it can tell a current stamp from an old one (metabrowser.asset_stamps).
+_PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 
 
 # Pre-compile plugin kind rules and view bindings for fast lookup at
@@ -4077,17 +4109,60 @@ def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[d
     return views
 
 
-def _build_plugin_asset_config_block() -> str:
+def _plugin_asset_prefixes() -> dict[str, str]:
+    """The path each plugin's assets are addressed under now, stamped where the tree is.
+
+    Touches the disk for a live tree (``asset_stamps.StampedTree.stamp``); see
+    :func:`_shell_asset_prefixes` for the caller on the event loop.
+    """
+    return {
+        plugin.name: plugin_asset_prefix(plugin.name, _PLUGIN_ASSET_TREES.get(plugin.name))
+        for plugin in _LOADED_PLUGINS
+    }
+
+
+def prepare_plugin_asset_stamps() -> None:
+    """Stamp every plugin's tree, so the first page names its assets without reading them.
+
+    Serve calls this before Uvicorn starts, beside ``kpress_adapter.prepare_browser_assets``.
+    """
+    _plugin_asset_prefixes()
+
+
+async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
+    """The plugin and KPress asset prefixes a shell names, without a walk on the event loop.
+
+    A released tree is stamped once and answers at once. A live one -- an editable install
+    or an operator's plugin directory -- takes its stamp again for every page, a ``stat``
+    per file, so that page names what is on disk now; that walk runs in a thread.
+    """
+
+    def prefixes() -> tuple[dict[str, str], str]:
+        return _plugin_asset_prefixes(), kpress_adapter.kpress_asset_url_prefix()
+
+    settled = kpress_adapter.kpress_asset_prefix_settled() and all(
+        tree.settled for tree in _PLUGIN_ASSET_TREES.values()
+    )
+    return prefixes() if settled else await asyncio.to_thread(prefixes)
+
+
+def _build_plugin_asset_config_block(prefixes: Mapping[str, str] | None = None) -> str:
     """Configure manifest-owned assets by the kinds that consume them.
 
     No plugin asset is an eager shell dependency. The private plugin host
     loads one descriptor at most once when ``app.js`` selects any kind in its
     manifest. Extra classic scripts retain manifest order before ``index.js``;
     styles load in parallel and settle before the plugin renderer mounts.
+
+    Every URL is under the plugin's stamped prefix (*prefixes*, from
+    :func:`_plugin_asset_prefixes` when not given), so its relative imports,
+    worker, and stylesheet references inherit the stamp.
     """
+    if prefixes is None:
+        prefixes = _plugin_asset_prefixes()
     assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
-        prefix = f"/plugin-static/{plugin.name}"
+        prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
         if plugin.static_root.joinpath("styles.css").is_file():
             styles.append(f"{prefix}/styles.css")
@@ -4254,7 +4329,7 @@ routes = [
     Route("/raw", raw_file),
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
-    Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+    Mount("/static", app=StampedStaticFiles(directory=STATIC_DIR), name="static"),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
     # modes, separate resource bounds.
@@ -4267,7 +4342,7 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
-    *build_plugin_routes(_LOADED_PLUGINS),
+    *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 
 # GZip every response above 1 KiB. This materially reduces tree and file

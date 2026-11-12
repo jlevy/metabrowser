@@ -297,7 +297,8 @@ function stylesOnly(assets) {
     assets: assets.assets.filter(
       (asset) =>
         asset.loading === "stylesheet" &&
-        /^\/kpress-static\/[\w./%-]+\.css$/.test(asset.public_url ?? ""),
+        // `@` begins the asset stamp segment (metabrowser.asset_stamps).
+        /^\/kpress-static\/[\w./%@-]+\.css$/.test(asset.public_url ?? ""),
     ),
   };
 }

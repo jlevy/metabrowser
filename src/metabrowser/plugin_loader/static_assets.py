@@ -5,7 +5,10 @@ plugins:
 
 - ``GET /plugin-static/<plugin>/<resource>`` — serves files from the
   plugin's directory. Path-traversal-guarded; ETag matches the existing
-  /api/file helper.
+  /api/file helper. The shell addresses them as
+  ``/plugin-static/<plugin>/@<digest>/<resource>``, a stamp of the whole
+  directory (:mod:`metabrowser.asset_stamps`), and the answer there is
+  immutable while the stamp is current; the unstamped address is revalidated.
 - ``GET|POST /api/plugin/<plugin>/<route>`` — dispatches to the Python
   sidekick callable declared in the manifest's ``[[data_hook]]`` block.
 
@@ -15,11 +18,12 @@ plugins cannot collide.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import logging
 import mimetypes
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from inspect import isawaitable, iscoroutinefunction
 from pathlib import Path
 from typing import Any, cast
@@ -30,10 +34,12 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 from strif import file_mtime_hash
 
+from metabrowser.asset_stamps import StampedTree, split_stamp
 from metabrowser.http_caching import (
     build_scoped_etag,
-    etag_headers,
+    editable_install,
     matches_if_none_match,
+    stamped_asset_cache_control,
 )
 from metabrowser.plugin_loader.discovery import LoadedPlugin
 
@@ -57,14 +63,45 @@ def _safe_join(static_root: Path, relative: str) -> Path | None:
     return candidate
 
 
+def plugin_tree_is_live(plugin: LoadedPlugin) -> bool:
+    """Whether a plugin's files can change while this process runs.
+
+    An operator's plugin directory can, and so can a plugin of an editable install: a
+    built-in one when Metabrowser itself is, an entry-point one when its distribution is.
+    """
+    if plugin.source.startswith("local:"):
+        return True
+    if plugin.source.startswith("entry-point:"):
+        return editable_install(plugin.source.removeprefix("entry-point:"))
+    return editable_install("metabrowser")
+
+
+def plugin_asset_trees(plugins: list[LoadedPlugin]) -> dict[str, StampedTree]:
+    """One :class:`StampedTree` per plugin, shared by the shell that names its assets and
+    the route that serves them."""
+    return {
+        plugin.name: StampedTree(plugin.static_root, live=plugin_tree_is_live(plugin))
+        for plugin in plugins
+    }
+
+
+def plugin_asset_prefix(name: str, tree: StampedTree | None) -> str:
+    """The path a page addresses *name*'s files under: stamped when the tree is."""
+    stamp = tree.stamp() if tree is not None else None
+    if stamp is None:
+        return f"/plugin-static/{name}"
+    return f"/plugin-static/{name}/@{stamp.digest}"
+
+
 def _make_plugin_static_handler(
     plugins: dict[str, LoadedPlugin],
+    trees: Mapping[str, StampedTree],
 ) -> Callable[[Request], Awaitable[Response]]:
     """Build the /plugin-static/{plugin}/{path:path} handler."""
 
     async def handler(request: Request) -> Response:
         plugin_name = request.path_params["plugin"]
-        rel = request.path_params["path"]
+        stamp_digest, rel = split_stamp(request.path_params["path"])
         plugin = plugins.get(plugin_name)
         if plugin is None:
             return PlainTextResponse(f"unknown plugin '{plugin_name}'", status_code=404)
@@ -74,12 +111,19 @@ def _make_plugin_static_handler(
 
         # The shared validator, so this really is the shape /api/file uses.
         etag = build_scoped_etag(file_mtime_hash(resolved))
+        tree = trees.get(plugin_name)
+        stamp = tree.latest() if tree is not None and stamp_digest is not None else None
+        current = (
+            stamp is not None and stamp.digest == stamp_digest and stamp.holds(rel, resolved.stat())
+        )
+        headers = {"ETag": etag, "Cache-Control": stamped_asset_cache_control(current=current)}
         if matches_if_none_match(request, etag):
-            return Response(status_code=304, headers={"ETag": etag})
+            return Response(status_code=304, headers=headers)
 
         media_type, _ = mimetypes.guess_type(str(resolved))
-        body = resolved.read_bytes()
-        headers = etag_headers(etag)
+        # Off the event loop: the largest built-in asset is a few hundred KB, an operator's
+        # plugin directory has no bound.
+        body = await asyncio.to_thread(resolved.read_bytes)
         return Response(
             content=body,
             status_code=200,
@@ -182,19 +226,24 @@ def _make_data_hook_handler(
 # ── Route assembly ─────────────────────────────────────────────
 
 
-def build_plugin_routes(plugins: list[LoadedPlugin]) -> list[Route]:
+def build_plugin_routes(
+    plugins: list[LoadedPlugin], *, asset_trees: Mapping[str, StampedTree] | None = None
+) -> list[Route]:
     """Return the full list of plugin-static + data-hook Starlette routes.
 
     Order: one global static route (handles every plugin via path params)
     plus one route per declared data hook. The static route uses path
     params so a single Starlette Route handles the whole namespace; data
     hooks get one route each so their HTTP methods can vary per hook.
+
+    *asset_trees* are the stamps the shell names the plugins' assets with
+    (:func:`plugin_asset_trees`); without them every answer is revalidated.
     """
     plugins_by_name = {p.name: p for p in plugins}
     routes: list[Route] = [
         Route(
             "/plugin-static/{plugin}/{path:path}",
-            endpoint=_make_plugin_static_handler(plugins_by_name),
+            endpoint=_make_plugin_static_handler(plugins_by_name, asset_trees or {}),
             methods=["GET"],
             name="plugin-static",
         ),

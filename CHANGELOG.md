@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A reload no longer asks the server again for scripts, stylesheets, and fonts it
+  already holds. The shell’s `/static/<file>?v=<stamp>` addresses, and the plugin and
+  KPress assets now addressed under a stamp of their contents
+  (`/plugin-static/<name>/@<stamp>/…`, `/kpress-static/@<stamp>/v<version>/…`), are
+  answered `immutable` while the stamp is current, and revalidated otherwise.
+  A plugin’s relative imports, workers, and stylesheet references inherit the stamp; an
+  absolute `/plugin-static/<name>/<file>` URL still works and is revalidated.
+  An image preview’s `/raw` address carries the file’s identity and is kept the same
+  way, and `/raw` now answers `If-None-Match` and `If-Modified-Since` with `304` instead
+  of sending the file again.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file

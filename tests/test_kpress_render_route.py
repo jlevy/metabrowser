@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import re
 import zlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,13 +61,17 @@ def _empty_asset_manifest() -> dict[str, object]:
 def test_shell_kpress_asset_url_does_not_load_the_renderer_runtime(monkeypatch) -> None:
     sentinel = object()
     monkeypatch.setattr(kpress_adapter, "_kpress_runtime", sentinel)
-    kpress_adapter._kpress_static_prefix.cache_clear()
+    kpress_adapter._kpress_version_segment.cache_clear()
 
     rel_path = "fonts/source sans.woff2"
     actual = kpress_adapter.kpress_static_url(rel_path)
 
-    assert actual == kpress_runtime.static_asset_url(rel_path)
-    assert actual == f"/kpress-static/v{__version__}/fonts/source%20sans.woff2"
+    # KPress composes the stamped prefix Metabrowser gives it the same way: the
+    # stamp, then its own version segment (metabrowser.asset_stamps).
+    prefix = kpress_adapter.kpress_asset_url_prefix()
+    assert re.fullmatch(r"/kpress-static/@[0-9a-f]{16}/", prefix)
+    assert actual == kpress_runtime.static_asset_url(rel_path, prefix=prefix)
+    assert actual == f"{prefix}v{__version__}/fonts/source%20sans.woff2"
     assert kpress_adapter._kpress_runtime is sentinel
 
 
@@ -439,12 +444,11 @@ def test_kpress_versioned_static_asset_revalidates_via_no_cache() -> None:
         )
     )
     assert response.status_code == 200
-    # The /kpress-static/ URL is keyed by the KPress *version*, not by content,
-    # so a same-version asset change isn't reflected in the URL. A long max-age
-    # would then serve stale CSS/JS until the cache expired — and because these
-    # assets are injected dynamically, even a hard reload doesn't bust them.
-    # `no-cache` forces revalidation against the content-addressed ETag on every
-    # load: a cheap 304 when unchanged, fresh bytes the moment an asset changes.
+    # The version alone is not a content key: an editable KPress serves changed
+    # bytes under the same version, and these assets are injected dynamically, so
+    # even a hard reload doesn't bust them. Without the content stamp the page
+    # names (tests/test_asset_stamps.py), the answer is revalidated against the
+    # content-addressed ETag: a cheap 304 when unchanged, fresh bytes otherwise.
     assert response.headers["Cache-Control"] == "no-cache"
     assert response.headers["ETag"].startswith('"kp-')
 
@@ -546,7 +550,8 @@ def test_kpress_adapter_builds_runtime_request(monkeypatch) -> None:
     assert len(seen) == 1
     assert seen[0].kwargs["source_text"] == "# One\n"
     assert seen[0].kwargs["frontmatter"] == {"title": "One"}
-    assert seen[0].kwargs["asset_url_prefix"] == "/kpress-static/"
+    assert seen[0].kwargs["asset_url_prefix"] == kpress_adapter.kpress_asset_url_prefix()
+    assert re.fullmatch(r"/kpress-static/@[0-9a-f]{16}/", seen[0].kwargs["asset_url_prefix"])
     assert seen[0].kwargs["host"] == "metabrowser"
 
 

@@ -168,6 +168,14 @@ sequentially in stable discovery order.
 A later plugin therefore wins a duplicate `registerView` key deterministically, matching
 the manifest view registry.
 
+The shell addresses a plugin’s files as `/plugin-static/<name>/@<stamp>/<file>`, where
+the stamp names the contents of the plugin’s directory, and a browser keeps them without
+asking until the stamp changes.
+Reach your plugin’s other files with relative URLs (`import "./part.js"`,
+`new URL("./worker.js", import.meta.url)`, `url(icon.svg)` in CSS), which inherit the
+stamp. An absolute `/plugin-static/<name>/<file>` URL still works, but is revalidated on
+every use. `src/metabrowser/asset_stamps.py` documents the policy.
+
 ### Kind Rules
 
 Each `[[kind]]` declares a stable `id`, a `match` table, and an optional `priority`.
