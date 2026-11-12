@@ -42,7 +42,7 @@ from metabrowser.git.process import (
     spawn_git_process,
 )
 from tests.child_io import read_line
-from tests.required_tools import needs_git
+from tests.required_tools import needs_git, require_git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only"),
@@ -731,9 +731,9 @@ def test_a_child_reaped_after_the_listing_is_never_signalled(
     holds the child (``returncode`` not yet set, or set) or only the kernel listed it.
     """
 
-    program = shutil.which("sleep")
-    assert program is not None
-    child = subprocess.Popen([program, "60"], start_new_session=True)
+    # A child that sleeps, as this interpreter; no tool to look up.
+    program = sys.executable
+    child = subprocess.Popen([program, "-c", "import time; time.sleep(60)"], start_new_session=True)
     pid = child.pid
     stop = process_module._GROUP_STOP
     # The program, as a stop knew it before and as it knows it now.
@@ -788,7 +788,7 @@ def _git_on_path(
 
 
 def _copy_of_git(tmp_path: Path, name: str) -> Path:
-    real = os.path.realpath(shutil.which("git") or "git")
+    real = os.path.realpath(require_git())
     copy = tmp_path / "real" / name
     copy.parent.mkdir(exist_ok=True)
     shutil.copyfile(real, copy)
@@ -848,7 +848,7 @@ def test_a_stop_knows_git_launched_by_a_relative_path(
 ) -> None:
     """A relative ``PATH`` entry gives a relative launch path, resolved in Git's cwd."""
 
-    real = Path(os.path.realpath(shutil.which("git") or "git"))
+    real = Path(os.path.realpath(require_git()))
     monkeypatch.chdir(tmp_path)
     _git_on_path(tmp_path, monkeypatch, "bin", real)
     assert process_module.git_executable() == os.path.join("bin", "git")
@@ -909,7 +909,11 @@ def _apple_git() -> str | None:
     return found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else None
 
 
-@pytest.mark.skipif(_apple_git() is None, reason="Apple's git shim is macOS-only")
+@pytest.mark.macos_tier
+@pytest.mark.skipif(
+    _apple_git() is None,
+    reason="Apple's git shim is macOS's, and needs Xcode or its Command Line Tools",
+)
 @pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
 def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
