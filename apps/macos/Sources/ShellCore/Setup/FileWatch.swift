@@ -3,19 +3,23 @@ import Darwin
 /// What a file is on disk, cheap to take and to compare. A new fingerprint means the
 /// file was replaced or rewritten, as `uv tool upgrade` replaces `metab`, without
 /// running it: an installer that renames a new file over the old one changes the
-/// inode, and one that rewrites in place changes the modification time.
+/// inode, one that rewrites in place changes the modification time, and `chmod +x`,
+/// which can be all that stands between a file and a working `metab`, changes the mode.
 public nonisolated struct FileFingerprint: Codable, Equatable, Sendable {
     public var device: Int32
     public var inode: UInt64
     public var size: Int64
     /// The modification time in nanoseconds since 1970.
     public var modified: Int64
+    /// `st_mode`: the file's type and permission bits.
+    public var mode: UInt16
 
-    public init(device: Int32, inode: UInt64, size: Int64, modified: Int64) {
+    public init(device: Int32, inode: UInt64, size: Int64, modified: Int64, mode: UInt16) {
         self.device = device
         self.inode = inode
         self.size = size
         self.modified = modified
+        self.mode = mode
     }
 
     /// The file `path` names, after symbolic links (uv's tool links among them), or nil
@@ -26,15 +30,17 @@ public nonisolated struct FileFingerprint: Codable, Equatable, Sendable {
         let nanosecondsPerSecond: Int64 = 1_000_000_000
         return FileFingerprint(
             device: info.st_dev, inode: info.st_ino, size: info.st_size,
-            modified: Int64(info.st_mtimespec.tv_sec) * nanosecondsPerSecond + Int64(info.st_mtimespec.tv_nsec))
+            modified: Int64(info.st_mtimespec.tv_sec) * nanosecondsPerSecond + Int64(info.st_mtimespec.tv_nsec),
+            mode: info.st_mode)
     }
 }
 
 /// Notices files that change and then stay changed.
 ///
-/// A change counts once two looks in a row see the same new state, so a file seen in
-/// the middle of an install, removed and not yet written again, is reported only when
-/// the installer has finished with it.
+/// A change counts once two looks in a row see the same new state. That debounces an
+/// install seen halfway, a file removed and not yet written again, without proving the
+/// installer is done with it: whatever the change leads to checks the file again, and a
+/// later change is a new one.
 public final class FileWatch {
     private enum Seen: Equatable {
         case nothing
@@ -120,6 +126,19 @@ public final class SetupWatch {
         files = FileWatch(watching: metabPaths + uvPaths, fingerprint: fingerprint)
         self.metabPaths = Set(metabPaths)
         watchesRuntime = false
+    }
+
+    /// Where to wait for `metab`, in order and once each: the places discovery looks
+    /// without a shell, every candidate the last search tried (those it found on the
+    /// login shell's `PATH` among them, so upgrading one found there is noticed too), and
+    /// the directory uv said it installs into.
+    public static func metabPaths(cheap: [String], tried: [CandidateOutcome], binDirectory: String?) -> [String] {
+        var paths: [String] = []
+        for path in cheap + tried.map(\.path) + [binDirectory.map { $0 + "/metab" }].compactMap(\.self)
+        where !paths.contains(path) {
+            paths.append(path)
+        }
+        return paths
     }
 
     public func look() -> Action? {

@@ -139,6 +139,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container.showsStatus = true
     }
 
+    /// A folder whose start waits for a metab the app accepts: none was found, or the one
+    /// found changed and is being checked again.
+    func showWaitingForRuntime() {
+        rememberPage()
+        endpoint = nil
+        status.phase = .waitingForRuntime
+        container.showsStatus = true
+    }
+
     /// Loads the page this window is to show, on the new origin, or the server's entry
     /// page. A discarded tab only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {

@@ -8,7 +8,7 @@ import Testing
     private let tools = ToolPaths(git: "/usr/bin/git")
 
     private func stamp(_ n: UInt64) -> FileFingerprint {
-        FileFingerprint(device: 1, inode: n, size: 348, modified: 1_000)
+        FileFingerprint(device: 1, inode: n, size: 348, modified: 1_000, mode: 0o100755)
     }
 
     /// The files a watch sees, changed by the test between looks.
@@ -84,6 +84,56 @@ import Testing
         #expect(watch.look() == .discover)  // metab wins: discovery replans too
     }
 
+    /// PR #361 C5: `chmod +x` changes nothing else about a file, so a candidate that
+    /// discovery saw as missing because it could not run stayed missing.
+    @Test func aChangeOfModeAloneIsANewFingerprint() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "metab").path
+        try "#!/bin/sh\necho metab 0.12.1\n".write(toFile: file, atomically: false, encoding: .utf8)
+        #expect(chmod(file, 0o644) == 0)
+        let before = try #require(FileFingerprint.of(file))
+        #expect(chmod(file, 0o755) == 0)
+        let after = try #require(FileFingerprint.of(file))
+        #expect(after != before)
+        #expect(after.inode == before.inode && after.modified == before.modified)
+    }
+
+    @Test func aWaitingWatchDiscoversWhenACandidateBecomesExecutable() {
+        let disk = Disk()
+        var notExecutable = stamp(4)
+        notExecutable.mode = 0o100644
+        disk.files["/Volumes/Home/.local/bin/metab"] = notExecutable
+        let watch = SetupWatch(
+            waitingFor: ["/Volumes/Home/.local/bin/metab"], uv: [], fingerprint: disk.fingerprint)
+        #expect(watch.look() == nil)
+        disk.files["/Volumes/Home/.local/bin/metab"] = stamp(4)
+        #expect(watch.look() == nil)
+        #expect(watch.look() == .discover)
+    }
+
+    /// PR #361 C4: an old `metab` found only on the login shell's `PATH` was shown in
+    /// Settings but not watched, so upgrading it released no waiting folder.
+    @Test func aWaitingWatchCoversEveryCandidateTheLastSearchTried() {
+        let tried = [
+            CandidateOutcome(path: "/Volumes/Home/.local/bin/metab", source: .localBin, result: .missing),
+            CandidateOutcome(path: "/Volumes/Tools/bin/metab", source: .loginShell, result: .tooOld(version: "0.12.0")),
+        ]
+        let paths = SetupWatch.metabPaths(
+            cheap: ["/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab"], tried: tried,
+            binDirectory: "/Volumes/Home/.local/share/bin")
+        #expect(paths == [
+            "/Volumes/Home/.local/bin/metab", "/opt/homebrew/bin/metab", "/Volumes/Tools/bin/metab",
+            "/Volumes/Home/.local/share/bin/metab",
+        ])
+        let disk = Disk()
+        disk.files["/Volumes/Tools/bin/metab"] = stamp(5)
+        let watch = SetupWatch(waitingFor: paths, uv: [], fingerprint: disk.fingerprint)
+        disk.files["/Volumes/Tools/bin/metab"] = stamp(6)  // upgraded in place, nothing else changed
+        #expect(watch.look() == nil)
+        #expect(watch.look() == .discover)
+    }
+
     @Test func aRuntimeIsCurrentOnlyWithItsOwnFileAndAnAcceptedVersion() {
         let runtime = Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin, fingerprint: stamp(1))
         #expect(runtime.isCurrent(fingerprint: stamp(1)))
@@ -109,7 +159,7 @@ import Testing
             },
             fingerprint: { path in
                 order.append("fingerprint")
-                return path == "/Volumes/Home/.local/bin/metab" ? FileFingerprint(device: 1, inode: 7, size: 1, modified: 1) : nil
+                return path == "/Volumes/Home/.local/bin/metab" ? FileFingerprint(device: 1, inode: 7, size: 1, modified: 1, mode: 0o100755) : nil
             })
         let report = await RuntimeDiscovery.discover(env)
         #expect(report.setup?.runtime.fingerprint?.inode == 7)
@@ -150,6 +200,61 @@ import Testing
             #expect(!subject.isRechecking)
             #expect(subject.tried == [CandidateOutcome(path: "/opt/metab", source: .localBin, result: result)])
         }
+    }
+
+    /// PR #361 C3: Find Again during a recheck kept the changed file's hold only until
+    /// the search started, so a folder opened meanwhile started the unchecked file.
+    @Test func aSearchStartedDuringARecheckKeepsFoldersWaiting() {
+        let old = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin, fingerprint: stamp(1)),
+            tools: tools)
+        let (subject, _) = selection(with: old)
+        let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
+        _ = subject.startRecheck()
+        let search = subject.startSearch()
+        #expect(subject.launchableSetup == nil)
+        #expect(subject.setupForOpening(folder) == nil)
+        #expect(subject.waitingFolders == [folder])
+        let found = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: "0.13.0", source: .localBin, fingerprint: stamp(2)),
+            tools: tools)
+        #expect(subject.finishSearch(search, with: DiscoveryReport(setup: found, tried: [])) == .adopted(found))
+        #expect(subject.launchableSetup == found)
+        #expect(subject.setupForOpening(folder) == found)
+    }
+
+    /// A choice that overtook a recheck and was rejected leaves the changed file
+    /// unchecked, so folders still wait and the recheck is due again.
+    @Test func aRejectedChoiceDuringARecheckLeavesTheRecheckDue() {
+        let old = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: tools)
+        let (subject, _) = selection(with: old)
+        _ = subject.startRecheck()
+        let choice = subject.startChoice()
+        #expect(!subject.needsRecheck)  // the choice settles it first
+        #expect(subject.finishChoice(choice, path: "/opt/b/metab", result: .missing) { tools } == .rejected(.missing))
+        #expect(subject.launchableSetup == nil)
+        #expect(subject.needsRecheck)
+    }
+
+    /// PR #361 A3: a watch that settled while a chosen file was being validated started
+    /// a recheck, whose newer ticket dropped the user's choice.
+    @Test func aChoiceInProgressCountsAsBusy() {
+        let old = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: tools)
+        let (subject, _) = selection(with: old)
+        let choice = subject.startChoice()
+        #expect(subject.isChoosing)
+        #expect(subject.isBusy)
+        // The old file changed meanwhile: folders wait, and no recheck starts over the choice.
+        subject.markUnverified()
+        #expect(!subject.needsRecheck)
+        #expect(subject.launchableSetup == nil)
+        let chosen = subject.finishChoice(choice, path: "/opt/b/metab", result: .valid(version: "0.13.0")) { tools }
+        #expect(chosen == .adopted(RuntimeSetup(
+            runtime: Runtime(executable: "/opt/b/metab", version: "0.13.0", source: .chosen), tools: tools)))
+        #expect(!subject.isBusy)
+        #expect(subject.launchableSetup?.runtime.executable == "/opt/b/metab")
     }
 
     @Test func aChoiceOvertakesARecheck() {
