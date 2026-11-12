@@ -91,6 +91,7 @@ against one that did.
 | exp-054 | [Keep Prepared Descriptions Through an Unrelated Catalog Update](experiments/exp-054-keep-prepared-descriptions-through-a-catalog-update.md) | - | `ready_window_description_ms` | accepted |
 | exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | - | `description_observed_driver_ms` | accepted |
 | exp-056 | [Previous-Release Rehearsal](experiments/exp-056-previous-release-rehearsal.md) | H85 | `first_row_ms` | unresolved |
+| exp-058 | [Transition Navigation Baseline](experiments/exp-058-transition-baseline.md) | H86, H88, H90, H92, H94, H95, H98, H101, H105 | `painted_ready_ms` | baseline |
 
 ## Absolute numbers, per condition
 
