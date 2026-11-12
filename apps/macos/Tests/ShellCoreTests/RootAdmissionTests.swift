@@ -271,3 +271,81 @@ private final class Fixture {
         }
     }
 }
+
+/// A mount table that `getfsstat` fills from `table`, which a test can grow between the
+/// sizing call and the filling one, or make fail.
+private final class FakeMountTable {
+    var table: [String]
+    var growsAfterSizing: [String] = []
+    var failsFilling = false
+    private(set) var fills = 0
+
+    init(_ table: [String]) {
+        self.table = table
+    }
+
+    func fsstat(_ buffer: UnsafeMutablePointer<Darwin.statfs>?, _ bytes: Int32, _ mode: Int32) -> Int32 {
+        guard let buffer else {
+            defer { table += growsAfterSizing }
+            return Int32(table.count)
+        }
+        fills += 1
+        if failsFilling { return -1 }
+        let capacity = Int(bytes) / MemoryLayout<Darwin.statfs>.stride
+        let written = min(capacity, table.count)
+        for (index, path) in table.prefix(written).enumerated() {
+            var entry = Darwin.statfs()
+            withUnsafeMutableBytes(of: &entry.f_mntonname) { bytes in
+                for (offset, byte) in path.utf8.enumerated() { bytes[offset] = byte }
+            }
+            buffer[index] = entry
+        }
+        return Int32(written)
+    }
+}
+
+@Suite struct MountTableTests {
+    /// Review F1: a home folder on a mount the walk would not enter is not looked at to
+    /// classify another root, outside that mount.
+    @Test func aHomeOnAMountBarrierIsNotLookedAt() throws {
+        let fixture = try Fixture()
+        var looked: [String] = []
+        for home in ["/srv/homes/account", "/System/Volumes/Data/srv/homes/account", "/SRV/homes"] {
+            let admission = RootAdmission.admit(
+                fixture.home + "/wrk/app", home: home, mounts: ["/", "/System/Volumes/Data", "/srv/homes"]
+            ) { looked.append($0) }
+            #expect(admission == .deferred(fixture.home + "/wrk/app"), "\(home)")
+        }
+        #expect(looked.isEmpty, "\(looked)")
+    }
+
+    /// Review F2: the table grew between the call that sized the buffer and the one that
+    /// filled it. The spare room, and a retry when the buffer fills, still find the new
+    /// mount.
+    @Test func aTableThatGrowsBetweenSizingAndFillingIsReadWhole() {
+        let initial = ["/", "/System/Volumes/Data"] + (0..<4).map { "/Volumes/v\($0)" }
+        let fake = FakeMountTable(initial)
+        fake.growsAfterSizing = (0..<40).map { "/srv/new\($0)" }
+        let mounts = RootAdmission.mountPoints(fsstat: fake.fsstat)
+        #expect(mounts?.count == initial.count + 40)
+        #expect(mounts?.contains("/srv/new39") == true)
+        #expect(fake.fills >= 2, "the first fill was saturated, so it was read again")
+    }
+
+    @Test func aTableThatKeepsFillingTheBufferOrFailsIsNotTrusted() {
+        let growing = FakeMountTable(["/", "/System/Volumes/Data"])
+        growing.growsAfterSizing = []
+        let keepsGrowing = { (buffer: UnsafeMutablePointer<Darwin.statfs>?, bytes: Int32, mode: Int32) -> Int32 in
+            // Each fill finds the table exactly as large as the buffer: never proven whole.
+            guard buffer != nil else { return 2 }
+            growing.table = Array(repeating: "/srv/x", count: Int(bytes) / MemoryLayout<Darwin.statfs>.stride)
+            return growing.fsstat(buffer, bytes, mode)
+        }
+        #expect(RootAdmission.mountPoints(fsstat: keepsGrowing) == nil)
+        let failing = FakeMountTable(["/"])
+        failing.failsFilling = true
+        #expect(RootAdmission.mountPoints(fsstat: failing.fsstat) == nil)
+        #expect(RootAdmission.mountPoints(fsstat: { _, _, _ in -1 }) == nil)
+        #expect(RootAdmission.mountPoints(fsstat: { _, _, _ in 0 }) == nil)
+    }
+}
