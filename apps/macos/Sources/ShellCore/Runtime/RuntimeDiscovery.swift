@@ -58,7 +58,9 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
 public nonisolated enum CandidateResult: Equatable, Sendable {
     case valid(version: String)
     case missing
-    /// A working `metab` older than `MetabRequirement.minimum`.
+    /// A working `metab` older than `MetabRequirement.minimum`, or, whatever its number,
+    /// one built before `CLIServeLaunch.exitOnEOF`, which it rejects
+    /// (`MetabRequirement.flagShortfall`).
     case tooOld(version: String)
     case rejected(String)
     /// Not run: the app found it by itself, and another account can change it, or it could
@@ -89,11 +91,12 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 /// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
 /// for Settings, the log, and the first-run steps.
 ///
-/// Cheap locations come first, each a file check plus `metab --version`: the saved
-/// path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin directory, and the Homebrew
-/// prefixes. The login shell is consulted only when they do not answer for `metab`,
-/// `git`, or `gh`, because it runs the user's shell startup files in this app's name,
-/// which can take seconds and can raise privacy prompts the user never saw in Terminal.
+/// Cheap locations come first, each a file check plus `metab --exit-on-eof --version`
+/// (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
+/// directory, and the Homebrew prefixes. The login shell is consulted only when they do
+/// not answer for `metab`, `git`, or `gh`, because it runs the user's shell startup files
+/// in this app's name, which can take seconds and can raise privacy prompts the user
+/// never saw in Terminal.
 public nonisolated enum RuntimeDiscovery {
     public static let homebrewBins = ["/opt/homebrew/bin", "/usr/local/bin"]
     public static let installCommand = "uv tool install metabrowser"
@@ -170,8 +173,16 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --version` with the same minimal environment a server gets, and holds
-    /// the version to `MetabRequirement`.
+    /// Runs `metab --exit-on-eof --version` with the same minimal environment a server
+    /// gets, and holds the version to `MetabRequirement`.
+    ///
+    /// The flag is the one every server gets (`CLIServeLaunch.exitOnEOF`), and a version
+    /// number cannot show it: a development build of the minimum from before the flag
+    /// counts as the minimum. Click rejects an unknown option before the eager `--version`
+    /// runs, so such a build exits 2 here. Only a run that ends that way, or fails
+    /// otherwise, is followed by `--version` alone; a `metab` that answers it with a
+    /// version this app reads is too old whatever its number. A run that could not start
+    /// or did not finish is not repeated, and a current `metab` costs one run.
     ///
     /// Running it executes the file, whatever it prints, so a file the app found by itself
     /// (every `source` but `.chosen`, and no source at all) runs only if no other account
@@ -183,19 +194,32 @@ public nonisolated enum RuntimeDiscovery {
     ) async -> CandidateResult {
         guard env.isExecutable(path) else { return .missing }
         if source != .chosen, let reason = env.refusal(path) { return .untrusted(reason) }
-        let spec = LaunchSpec(
-            executable: path, arguments: ["--version"],
-            environment: ChildEnvironment.build(inherited: env.environment, toolDirectories: []))
-        let result = await env.run(spec, versionTimeout)
-        if let error = result.launchError { return .rejected("could not run: \(error)") }
-        if result.timedOut { return .rejected("--version did not finish within \(versionTimeout)") }
-        guard result.succeeded, let version = parseVersion(result.output) else {
-            return .rejected("--version printed: \(result.output.last ?? "nothing")")
+        let environment = ChildEnvironment.build(inherited: env.environment, toolDirectories: [])
+        func run(_ arguments: [String]) async -> CommandResult {
+            await env.run(LaunchSpec(executable: path, arguments: arguments, environment: environment), versionTimeout)
         }
-        guard let parsed = MetabVersion(version) else {
-            return .rejected("--version printed a version this app cannot read: \(version)")
+        func unfinished(_ result: CommandResult) -> CandidateResult? {
+            if let error = result.launchError { return .rejected("could not run: \(error)") }
+            if result.timedOut { return .rejected("--version did not finish within \(versionTimeout)") }
+            return nil
         }
-        return MetabRequirement.accepts(parsed) ? .valid(version: version) : .tooOld(version: version)
+        func reading(_ result: CommandResult, _ judge: (String, MetabVersion) -> CandidateResult) -> CandidateResult {
+            guard result.succeeded, let version = parseVersion(result.output) else {
+                return .rejected("--version printed: \(result.output.last ?? "nothing")")
+            }
+            guard let parsed = MetabVersion(version) else {
+                return .rejected("--version printed a version this app cannot read: \(version)")
+            }
+            return judge(version, parsed)
+        }
+        let probe = await run([CLIServeLaunch.exitOnEOF, "--version"])
+        if let rejection = unfinished(probe) { return rejection }
+        if probe.succeeded {
+            return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
+        }
+        let plain = await run(["--version"])
+        if let rejection = unfinished(plain) { return rejection }
+        return reading(plain) { version, _ in .tooOld(version: version) }
     }
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.

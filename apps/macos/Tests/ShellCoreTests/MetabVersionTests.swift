@@ -43,6 +43,17 @@ import Testing
         #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.0.post1.dev2"))))
     }
 
+    /// mb-sugi: validation finds a build whose number meets the minimum too old only for
+    /// rejecting `--exit-on-eof`, so that is what the screens say about it.
+    @Test func aTooOldBuildThatMeetsTheNumberLacksTheFlag() {
+        #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
+            == "built before --exit-on-eof")
+        #expect(MetabRequirement.flagShortfall("0.13.0") == "built before --exit-on-eof")
+        #expect(MetabRequirement.flagShortfall("0.12.0") == nil)
+        #expect(MetabRequirement.flagShortfall("0.12.0.post1.dev2") == nil)
+        #expect(MetabRequirement.flagShortfall("soon") == nil)
+    }
+
     /// A floor rather than an exact pin: uv keeps the requirement in the tool's receipt,
     /// so a pin would stop every later `uv tool upgrade`.
     @Test func theUpgradeCommandAsksForTheMinimumAsAFloor() {

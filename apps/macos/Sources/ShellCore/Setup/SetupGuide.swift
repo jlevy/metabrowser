@@ -14,7 +14,8 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         case installMetab(inNewTerminal: Bool)
         /// A `metab` in uv's tool directory that does not run.
         case reinstallMetab(path: String, reason: String, inNewTerminal: Bool)
-        /// A working `metab` older than `MetabRequirement.minimum`.
+        /// A working `metab` older than `MetabRequirement.minimum`, or built before the flag
+        /// the app needs (`CandidateResult.tooOld`).
         case upgradeMetab(path: String, version: String, inNewTerminal: Bool)
         /// The minimum is not on PyPI yet: `make install` in the checkout, then Choose
         /// metab…. `oldPath` and `oldVersion` name an older `metab` found, if any.
@@ -31,12 +32,16 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
             case .reinstallMetab(let path, let reason, _):
                 return "Reinstall metab: \(shown(path)) does not run (\(reason))."
             case .upgradeMetab(let path, let version, _):
-                return "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
-                    + " and Metabrowser needs \(MetabRequirement.minimum) or later."
+                let found = "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
+                if let shortfall = MetabRequirement.flagShortfall(version) {
+                    return found + " \(shortfall), which Metabrowser needs."
+                }
+                return found + " and Metabrowser needs \(MetabRequirement.minimum) or later."
             case .buildFromCheckout(let oldPath, let oldVersion, _):
                 var found = ""
                 if let oldPath, let oldVersion {
-                    found = "\(shown(oldPath)) is metab \(MetabVersion(oldVersion)?.text ?? oldVersion), and "
+                    found = "\(shown(oldPath)) is metab \(MetabVersion(oldVersion)?.text ?? oldVersion), "
+                        + (MetabRequirement.flagShortfall(oldVersion).map { "\($0), " } ?? "") + "and "
                 }
                 return "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
                     + " with Choose metab… below: \(found)Metabrowser needs metab \(MetabRequirement.minimum) or"

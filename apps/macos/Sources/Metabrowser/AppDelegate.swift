@@ -357,7 +357,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
             )
         case (.choice(let path), .rejected(.tooOld(let version))):
-            runtimeModel.notice = "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
+            runtimeModel.notice = MetabRequirement.flagShortfall(version).map {
+                "\(path) is metab \(version), \($0), which Metabrowser needs."
+            } ?? "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
         case (.choice(let path), .rejected(let rejected)):
             runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
         case (.search, _):

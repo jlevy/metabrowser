@@ -50,6 +50,10 @@ public nonisolated protocol ServerLaunch: Sendable {
 public nonisolated struct CLIServeLaunch: ServerLaunch {
     public static let defaultBasePort = 8411
     public static let host = "127.0.0.1"
+    /// The flag that ends a server when its stdin closes. `RuntimeDiscovery.validate`
+    /// passes it with `--version`, so setup refuses a `metab` built before the flag rather
+    /// than every window failing on an unknown option.
+    public static let exitOnEOF = "--exit-on-eof"
 
     public var basePort: Int
 
@@ -58,7 +62,7 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
     }
 
     public func arguments(serving root: URL) -> [String] {
-        [root.path(percentEncoded: false), "--no-open", "--exit-on-eof", "--host", Self.host, "--port", String(basePort)]
+        [root.path(percentEncoded: false), "--no-open", Self.exitOnEOF, "--host", Self.host, "--port", String(basePort)]
     }
 
     public var stdinLine: String? { nil }

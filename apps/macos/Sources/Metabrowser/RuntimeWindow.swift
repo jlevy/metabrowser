@@ -142,7 +142,8 @@ struct RuntimeView: View {
         switch result {
         case .valid(let version): "metab \(version)"
         case .missing: "not found"
-        case .tooOld(let version): "metab \(version), older than \(MetabRequirement.minimum)"
+        case .tooOld(let version):
+            "metab \(version), \(MetabRequirement.flagShortfall(version) ?? "older than \(MetabRequirement.minimum)")"
         case .rejected(let reason): reason
         case .untrusted(let reason): "not run: \(reason)"
         }

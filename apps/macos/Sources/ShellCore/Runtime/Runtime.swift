@@ -21,7 +21,7 @@ public nonisolated enum RuntimeSource: String, Codable, Sendable {
     }
 }
 
-/// The `metab` the app runs: a CLI install, validated with `metab --version`.
+/// The `metab` the app runs: a CLI install, validated with `metab --exit-on-eof --version`.
 public nonisolated struct Runtime: Codable, Equatable, Sendable {
     public var executable: String
     public var version: String

@@ -49,8 +49,8 @@ public nonisolated enum MetabRequirement {
     /// The first release with `GET /api/identity`, which names each window, and with
     /// `--exit-on-eof`, which ends a server with the app. 0.12.0, the latest published
     /// release, lacks both; until a release that has them is on PyPI, only builds from a
-    /// source checkout meet this, and one built before the flag existed fails to start
-    /// with an unknown-option error, which the window shows.
+    /// source checkout meet this, and `RuntimeDiscovery.validate` finds one built before
+    /// the flag too old, whatever its number.
     public static let minimumRelease = [0, 12, 1]
 
     public static var minimum: String { minimumRelease.map(String.init).joined(separator: ".") }
@@ -63,11 +63,22 @@ public nonisolated enum MetabRequirement {
     /// A pre-release or development build of the minimum counts as the minimum. A source
     /// checkout reports the next release with `.devN`, which PEP 440 orders before that
     /// release, so without this no development build would run. Its number says only
-    /// that it was built after 0.12.0, not which changes it has: one built before the
-    /// route reached `main` runs too, and its windows keep the names derived from their
-    /// paths.
+    /// that it was built after 0.12.0, not which changes it has, so
+    /// `RuntimeDiscovery.validate` also runs it with `--exit-on-eof`, and one that rejects
+    /// the flag is too old. The flag reached the source after the identity route, so a
+    /// build that has the flag has the route too.
     public static func accepts(_ version: MetabVersion) -> Bool {
         version.hasRelease(atLeast: minimumRelease)
+    }
+
+    /// What a `metab` that `RuntimeDiscovery.validate` found too old lacks when its number
+    /// meets the minimum: "built before --exit-on-eof". Nil when its number is below the
+    /// minimum, which then says why. `validate` finds a build that meets the number too old
+    /// only when it rejects `CLIServeLaunch.exitOnEOF`, so the screens that name one say
+    /// that, rather than compare its number with a minimum it meets.
+    public static func flagShortfall(_ version: String) -> String? {
+        guard let parsed = MetabVersion(version), accepts(parsed) else { return nil }
+        return "built before \(CLIServeLaunch.exitOnEOF)"
     }
 
     /// Replaces an older CLI install with one this app runs. It asks for a floor, not an

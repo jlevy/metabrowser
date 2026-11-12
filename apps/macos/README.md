@@ -734,7 +734,7 @@ a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.
 | No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then the `metab` step below in a new Terminal window |
 | uv, no `metab` | `uv tool install metabrowser` |
 | A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
-| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'` |
+| A `metab` older than the minimum, or built before `--exit-on-eof` | `uv tool install --upgrade 'metabrowser>=0.12.1'` |
 
 Those are the steps once the minimum is on PyPI (`MetabRequirement.isReleased`). Until
 then uv can install only an older release, so every case ends in one step instead:
@@ -783,12 +783,21 @@ latest published release, lacks the route, and 0.12.1 is not published yet, so f
 only a source checkout’s `metab` meets it.
 A development build of 0.12.1 (`0.12.1.dev214+8b0603f7`, which PEP 440 orders before
 0.12.1) counts as 0.12.1, or no checkout would run.
-Its number says only that it was built after 0.12.0: one built before the route reached
-`main` runs too, and its windows keep the names derived from their paths.
+Its number says only that it was built after 0.12.0, not whether it has `--exit-on-eof`,
+which every server gets.
+So validation runs `metab --exit-on-eof --version`. Click rejects an unknown option
+before the eager `--version` runs, so a build from before the flag exits 2, and only
+then does `--version` run alone.
+A `metab` that answers it is too old whatever its number, and Settings and the first-run
+steps say it was built before `--exit-on-eof` instead of comparing numbers.
+A current `metab` costs one run.
+The flag reached the source after the identity route, so a build with the flag has the
+route too.
 
-- **Below the minimum,** discovery skips that `metab` and tries the next place.
+- **Below the minimum, or built before the flag,** discovery skips that `metab` and
+  tries the next place.
   If none qualifies, the app starts no server: Settings shows the version found, the
-  version needed, and, once the minimum is published,
+  version or the flag it lacks, and, once the minimum is published,
   `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy (before then, the source
   checkout step above), and folders wait.
   The command asks for a floor rather than an exact version, because uv keeps the
