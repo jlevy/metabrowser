@@ -98,9 +98,20 @@ final class FolderSession: ManagedServer {
 
     /// Starts the server from the runtime accepted now, unless one is starting, running,
     /// or stopping, and returns once that start is ready or has failed. Without an
-    /// accepted runtime the windows say so, and the start waits for `resume()`.
-    func startServer() async {
+    /// accepted runtime the windows say so, and the start waits for `resume()`. False if
+    /// `launchCheck` refused it.
+    @discardableResult
+    func startServer() async -> Bool {
         if await !server.start() { waitForRuntime() }
+        return !supervisor.launchWasRefused
+    }
+
+    /// For a restored background folder, the check made just before its server would
+    /// spawn, after the launch gate (`ServerSupervisor.mayLaunch`); nil once one of its
+    /// tabs is selected, which starts it as the user's choice.
+    var launchCheck: (() -> Bool)? {
+        get { supervisor.mayLaunch }
+        set { supervisor.mayLaunch = newValue }
     }
 
     /// Retry and Restart Server: a fresh server from the runtime accepted now, which may

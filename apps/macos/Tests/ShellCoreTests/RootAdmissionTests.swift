@@ -4,14 +4,14 @@ import Testing
 @testable import ShellCore
 
 /// A home folder in a temporary directory, with Documents in it, and a record of every
-/// path admission is about to open.
+/// path admission is about to look up.
 private final class Fixture {
     let directory: URL
     /// Canonical, as `F_GETPATH` names it.
     let home: String
     private(set) var looked: [String] = []
-    /// Runs before admission opens a path, as the test's chance to change the filesystem.
-    var beforeOpening: ((String) -> Void)?
+    /// Runs before admission looks a path up, as the test's chance to change the filesystem.
+    var beforeLooking: ((String) -> Void)?
 
     init(_ name: String = #function) throws {
         directory = try temporaryDirectory(name)
@@ -24,10 +24,11 @@ private final class Fixture {
 
     deinit { try? FileManager.default.removeItem(at: directory) }
 
-    func admit(_ root: String, homeDevice: dev_t? = nil) -> RootAdmission {
-        RootAdmission.admit(root, home: home, homeDevice: homeDevice) { path in
+    /// `mounts` stands in for the mount table; nil reads the real one.
+    func admit(_ root: String, homeDevice: dev_t? = nil, mounts: [String]? = nil) -> RootAdmission {
+        RootAdmission.admit(root, home: home, homeDevice: homeDevice, mounts: mounts) { path in
             self.looked.append(path)
-            self.beforeOpening?(path)
+            self.beforeLooking?(path)
         }
     }
 
@@ -118,7 +119,7 @@ private final class Fixture {
         let fixture = try Fixture()
         try FileManager.default.createDirectory(atPath: fixture.home + "/Documents/secret/sub", withIntermediateDirectories: true)
         let ancestor = fixture.home + "/wrk/app"
-        fixture.beforeOpening = { path in
+        fixture.beforeLooking = { path in
             guard path == ancestor + "/sub" else { return }
             // app is open; replace it with a link into Documents before sub is opened.
             try? FileManager.default.moveItem(atPath: ancestor, toPath: fixture.home + "/wrk/app-moved")
@@ -128,7 +129,7 @@ private final class Fixture {
         #expect(fixture.admit(ancestor + "/sub") == .open(fixture.home + "/wrk/app-moved/sub"))
         #expect(!fixture.documentsLooked, "\(fixture.looked)")
         // Swapped before it is opened, the component is a link, and the root waits.
-        fixture.beforeOpening = { path in
+        fixture.beforeLooking = { path in
             guard path == fixture.home + "/other/leaf" else { return }
             try? FileManager.default.moveItem(atPath: path, toPath: path + "-moved")
             try? FileManager.default.createSymbolicLink(atPath: path, withDestinationPath: fixture.home + "/Documents/secret")
@@ -196,5 +197,77 @@ private final class Fixture {
         var queue = RestoreQueue(SavedSession(windows: [window]), isProtected: { _ in false })
         let front = queue.next(stillOpen: { _ in false })
         #expect(front == "/front")
+    }
+
+    /// Review E3: a NUL ends the C string `openat` sees, so the protection check would
+    /// compare a different path than the one opened. Such a path is refused unlooked at.
+    @Test func aPathWithANulIsRefusedUnlooked() throws {
+        let fixture = try Fixture()
+        for root in [fixture.home + "/Documents\u{0}/secret", "/Volumes\u{0}/x", fixture.home + "/wrk\u{0}"] {
+            #expect(fixture.admit(root) == .invalid, "\(root.debugDescription)")
+        }
+        #expect(fixture.looked.isEmpty, "\(fixture.looked)")
+    }
+
+    /// Review E2: a volume mounted under an ordinary folder is not entered: its mount
+    /// point, in either spelling, is found in the mount table before the walk reaches it.
+    @Test func aMountUnderAnOrdinaryFolderWaitsUnentered() throws {
+        let fixture = try Fixture()
+        let mount = fixture.home + "/wrk/app"
+        for table in [["/", "/System/Volumes/Data", mount], ["/", "/System/Volumes/Data/" + mount.dropFirst()]] {
+            #expect(fixture.admit(mount + "/sub", mounts: table) == .deferred(mount + "/sub"), "\(table)")
+            #expect(!fixture.lookedWithin(mount), "\(fixture.looked)")
+        }
+        // The system and Data volumes' own mount points are crossed as usual.
+        #expect(fixture.admit(mount, mounts: ["/", "/System/Volumes/Data"]) == .open(mount))
+    }
+
+    @Test func theLiveMountTableHoldsTheSystemAndDataVolumes() {
+        let mounts = RootAdmission.mountPoints()
+        #expect(mounts?.contains("/") == true)
+        #expect(mounts?.contains("/System/Volumes/Data") == true)
+    }
+
+    /// Review E2: a home folder in a protected place (a network home under `/Volumes`) is
+    /// not looked at to classify another root; every root then waits for its tab.
+    @Test func aProtectedHomeIsNotLookedAtToClassifyAnotherRoot() throws {
+        let fixture = try Fixture()
+        var looked: [String] = []
+        let admission = RootAdmission.admit(fixture.home + "/wrk/app", home: "/Volumes/Home/me") { looked.append($0) }
+        #expect(admission == .deferred(fixture.home + "/wrk/app"))
+        #expect(looked.isEmpty, "\(looked)")
+    }
+
+    /// Review E4: a component refused as a link that is a folder by the time it is looked
+    /// at again was raced, not proven absent: the root waits rather than being dropped.
+    @Test func aComponentThatTurnsIntoAFolderBetweenTheTwoLookupsWaits() throws {
+        let fixture = try Fixture()
+        try fixture.link("swing", to: "other/leaf")
+        let swing = fixture.home + "/swing"
+        var lookups = 0
+        fixture.beforeLooking = { path in
+            guard path == swing else { return }
+            lookups += 1
+            if lookups == 2 {  // after openat refused the link, before the second lookup
+                try? FileManager.default.removeItem(atPath: swing)
+                try? FileManager.default.createDirectory(atPath: swing, withIntermediateDirectories: false)
+            }
+        }
+        #expect(fixture.admit(swing) == .deferred(swing))
+        #expect(lookups == 2)
+    }
+
+    /// Review E4: only proven absence, or proof that the entry is not a folder, drops a
+    /// tab; a link, a folder, or a failed second lookup defers it.
+    @Test func onlyProvenAbsenceDropsATab() {
+        let saved = "/r"
+        #expect(RootAdmission.refusedComponent(.failure(ENOENT), saved) == .gone)
+        #expect(RootAdmission.refusedComponent(.success(S_IFREG), saved) == .gone)
+        #expect(RootAdmission.refusedComponent(.success(S_IFIFO), saved) == .gone)
+        #expect(RootAdmission.refusedComponent(.success(S_IFLNK), saved) == .deferred(saved))
+        #expect(RootAdmission.refusedComponent(.success(S_IFDIR), saved) == .deferred(saved))
+        for error in [EIO, EACCES, ELOOP, ENOTDIR, EINTR] {
+            #expect(RootAdmission.refusedComponent(.failure(error), saved) == .deferred(saved), "errno \(error)")
+        }
     }
 }

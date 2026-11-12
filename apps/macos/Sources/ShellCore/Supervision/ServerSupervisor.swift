@@ -83,6 +83,13 @@ public final class ServerSupervisor {
     public var onChange: ((ServerState) -> Void)?
     /// Lifecycle events for the server log.
     public var onEvent: ((String) -> Void)?
+    /// Asked just before each child would spawn, after the launch gate and any earlier
+    /// child's termination: false spawns nothing and leaves the server stopped, with
+    /// `launchWasRefused` set. A restored background folder is admitted again here, at the
+    /// last moment before its server would read it.
+    public var mayLaunch: (() -> Bool)?
+    /// Whether the latest launch was refused by `mayLaunch`.
+    public private(set) var launchWasRefused = false
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -272,6 +279,13 @@ public final class ServerSupervisor {
         if let gate { await gate.acquire() }
         defer { gate?.release() }
         guard current == generation else { return }
+        launchWasRefused = false
+        if let mayLaunch, !mayLaunch() {
+            launchWasRefused = true
+            event("not starting: the check before spawning refused it")
+            state = .stopped
+            return
+        }
 
         let started = clock.now
         // The first event follows the factory, which may prepare (and rotate) the log the

@@ -90,6 +90,9 @@ final class FolderWindows {
     /// give up their pages.
     func windowShown(_ controller: BrowserWindowController, of session: FolderSession) {
         noteShown(controller)
+        // A selection starts the folder as the user's choice, even one already waiting at
+        // the launch gate.
+        session.launchCheck = nil
         if restoreQueue?.select(session.path) == true { startRestoredServers() }
         discardBackgroundPages()
         scheduleSave()
@@ -267,14 +270,22 @@ final class FolderWindows {
         isStartingRestoredServers = true
         Task {
             while let path = nextRestoredRoot() {
-                await sessionForPath(path)?.startServer()
+                guard let session = sessionForPath(path) else { continue }
+                if await !session.startServer() {
+                    restoreQueue?.hold(path)
+                    AppLog.app.info(
+                        "\(path, privacy: .public) changed while it waited to start; it starts when its tab is selected")
+                    session.windows.forEach { $0.showWaitingForSelection() }
+                }
             }
             isStartingRestoredServers = false
         }
     }
 
-    /// The next root to start. A background root is admitted again first, since it can
-    /// change while the servers before it start; one that no longer is waits for its tab.
+    /// The next root to start. A background root is admitted again now, since it can
+    /// change while the servers before it start, and once more just before its server
+    /// spawns, since it can change while it waits at the launch gate; one that no longer
+    /// is admitted waits for its tab. A selected root is not checked.
     private func nextRestoredRoot() -> String? {
         let home = self.home
         let waiting = Set(restoreQueue?.deferred ?? [])
@@ -283,6 +294,10 @@ final class FolderWindows {
             AppLog.app.info(
                 "\(path, privacy: .public) changed since the launch admitted it; it starts when its tab is selected")
             sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+        }
+        if let next, let session = sessionForPath(next) {
+            session.launchCheck = restoreQueue?.selected.contains(next) == true
+                ? nil : { RootAdmission.admit(next, home: home) == .open(next) }
         }
         return next
     }

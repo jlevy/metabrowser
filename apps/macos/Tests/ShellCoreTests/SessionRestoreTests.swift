@@ -108,6 +108,21 @@ import Testing
         #expect(drain(&queue) == ["/d", "/b", "/c"])
     }
 
+    /// A background root whose launch was refused at the last check waits for its tab, and
+    /// starts once that is selected.
+    @Test func aRootRefusedAtLaunchWaitsForItsTab() {
+        let session = SavedSession(windows: [window(["/front", "/b"])])
+        var queue = RestoreQueue(session, isProtected: { _ in false })
+        let started = [queue.next(), queue.next()]
+        #expect(started == ["/front", "/b"])
+        queue.hold("/b")
+        queue.hold("/front")  // selected: it never waits
+        #expect(queue.deferred == ["/b"])
+        let selected = queue.select("/b")
+        let next = queue.next(stillOpen: { _ in false })
+        #expect(selected && next == "/b")
+    }
+
     @Test func aRootWhoseTabsAllClosedIsForgotten() {
         let session = SavedSession(windows: [window(["/a", "/b", "/docs"])])
         var queue = RestoreQueue(session, isProtected: { $0 == "/docs" })
