@@ -8,11 +8,14 @@ All notable changes to Metabrowser are documented here.
   on its first screen, as Markdown from the first paint: the page waits up to 200 ms for
   them, out of sight, keeping the page it replaces on screen meanwhile, and shows plain
   text only past that wait.
-  A cold link or reload shows the header with an empty body for that wait instead of
-  loading blocks. A rendered text is kept for the rest of the session, so a revisit,
-  Back, Forward, or a refresh that leaves a text unchanged shows it at once without
-  asking again. When the full record replaces a description preview, the description
-  stays where it is and only the sections below it change; ages in kept cards still read
+  The first screen is the new page’s own top, wherever the page it replaces was
+  scrolled. A page shown first as a description preview waits for its description alone.
+  A cold link or reload shows the header and its loading blocks, if they have appeared,
+  until the conversation shows, and never an empty body in between.
+  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
+  refresh that leaves a text unchanged shows it at once without asking again.
+  When the full record replaces a description preview, the description stays where it is
+  and only the sections below it change; ages in kept cards and commit rows still read
   as of each paint. Commits that arrive after the conversation has painted are added
   after everything shown, so nothing you are reading moves; a conversation painted with
   its commits already known, as when you return to it from another tab, places them

@@ -138,6 +138,17 @@
 .github-pull-body-holding {
   visibility: hidden;
 }
+/* Loading blocks that had shown before the conversation's hold began stay over it until it
+   shows, so the body never blinks empty between them. Out of flow, where they were, so the
+   layout the hold measures is the conversation's own. */
+.github-pull-body-holding {
+  position: relative;
+}
+.github-pull-body-holding > .github-pull-loading-cover {
+  position: absolute;
+  inset: var(--content-padding-y) var(--content-padding-x) auto;
+  visibility: visible;
+}
 .github-pull-body {
   display: flex;
   flex-direction: column;

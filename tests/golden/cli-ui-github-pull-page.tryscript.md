@@ -1671,8 +1671,9 @@ another tab, places its commit summaries among the cards in provider order, keep
 unmatched and pending discussion (`interleaved`). The provider request breathes the
 header’s age line and marks it busy; nothing spins.
 A refreshed record keeps the rows it shows until its own timeline answers, and retires
-them when that timeline answers with nothing (`supersededRowsRetired`). A stale page can
-show a held timeline before its metadata refresh.
+them when that timeline answers with nothing (`supersededRowsRetired`). A kept commit
+row tells its age as of each paint (`keptCommitRowsRetellAges`). A stale page can show a
+held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
@@ -1705,7 +1706,8 @@ $ node tests/dom/github-pull-timeline-session.js
   "departedReadAborted": true,
   "unavailableKeepsDiscussion": true,
   "transientRetryIsBoundedAndKeepsPartial": true,
-  "supersededRowsRetired": true
+  "supersededRowsRetired": true,
+  "keptCommitRowsRetellAges": true
 }
 ? 0
 ```
@@ -1714,14 +1716,18 @@ $ node tests/dom/github-pull-timeline-session.js
 
 The conversation’s first paint of a full record is laid out out of sight until the
 Markdown of every text its first screen shows can be inserted, within
-`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`). A
-revisit and a refreshed record with the same text paint the render kept for that text at
-once, keeping its node (`revisit`, `refreshedSameText`). Past the bound the text shows
-plain and its Markdown follows (`pastTheBound`). The state badge’s first paint is the
-fresher of the cached record and the repository’s list (`listedState`). Changes with
-rendered Markdown stays out of sight until its first screen settles or
-`CHANGES_FIRST_SCREEN_MS` passes (`changes`). The kept renders are bounded by count and
-by characters, descriptions apart from other parts (`bounded`).
+`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`).
+The first screen is the page’s own, measured from its top, not the view of a scrolled
+page it replaces, and a text that comes into it as those above render is waited for too
+(`firstScreen`). Loading blocks that had shown stay over the held conversation until it
+shows (`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
+(`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
+render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
+Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
+badge’s first paint is the fresher of the cached record and the repository’s list
+(`listedState`). Changes with rendered Markdown stays out of sight until its first
+screen settles or `CHANGES_FIRST_SCREEN_MS` passes (`changes`). The kept renders are
+bounded by count and by characters, descriptions apart from other parts (`bounded`).
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1746,6 +1752,33 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "blocks": false
     },
     "final": true
+  },
+  "landingAfterBlocksShowed": {
+    "whileHeld": {
+      "holding": true,
+      "sameBlocks": true,
+      "cover": true
+    },
+    "shown": {
+      "blocks": false,
+      "holding": false,
+      "final": true
+    }
+  },
+  "cancelledWhileHeld": {
+    "holding": true
+  },
+  "firstScreen": {
+    "0": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met"
+    },
+    "5000": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met"
+    }
   },
   "ages": [
     "186 min",

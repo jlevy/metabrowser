@@ -3384,9 +3384,11 @@ export function mountPullPage(container, ctx, mb) {
    * the Markdown of the texts it shows. Spent once a page. Two ways, by what the body showed:
    *
    * - `hidden`, over nothing or the loading blocks: the conversation is painted and laid out
-   *   out of sight, and waits for every text that is plain and in the pane's first screen
-   *   (`parts`, once the observer has `reported` which those are). Its kept renders are
-   *   already final. A text whose Markdown cannot come is `failed` and waits no longer.
+   *   out of sight, and waits for every text that is plain and on its first screen, measured
+   *   from the page's own top (`parts`, all it waited for). Its kept renders are already
+   *   final. A text whose Markdown cannot come is `failed` and waits no longer. Loading
+   *   blocks that had shown stay over it until it shows (`cover`), so the body never blinks
+   *   empty between them.
    * - `delayed`, over a core preview: the preview stays as it is, and the full record paints
    *   once its description's Markdown can be inserted with it (`text`), or `plain` can.
    *
@@ -3396,7 +3398,7 @@ export function mountPullPage(container, ctx, mb) {
    *   plain: boolean,
    *   parts: Set<string>,
    *   failed: Set<string>,
-   *   reported: boolean,
+   *   cover: HTMLElement | null,
    *   since: number,
    *   timer: ReturnType<typeof window.setTimeout>,
    * } | null}
@@ -3533,29 +3535,13 @@ export function mountPullPage(container, ctx, mb) {
     typeof IntersectionObserver === "function"
       ? new IntersectionObserver(
           (entries) => {
-            // A held first paint waits for the plain texts its first screen shows; this is the
-            // first report of where they are, taken while the conversation is out of sight.
-            const first = firstPaint?.mode === "hidden" && !firstPaint.reported ? firstPaint : null;
-            const view = first === null ? null : (pane?.getBoundingClientRect() ?? null);
             for (const entry of entries) {
               const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
               const value = textOf.get(entry.target);
               if (part !== null && value !== undefined) {
                 observer?.unobserve(entry.target);
-                const box = entry.boundingClientRect;
-                if (
-                  first !== null &&
-                  box.top < (view?.bottom ?? window.innerHeight) &&
-                  box.bottom > (view?.top ?? 0)
-                ) {
-                  first.parts.add(part);
-                }
                 controller.requestMarkdown(part, value);
               }
-            }
-            if (first !== null) {
-              first.reported = true;
-              settleFirstPaint();
             }
           },
           { root: pane, rootMargin: MARKDOWN_AHEAD },
@@ -3675,8 +3661,6 @@ export function mountPullPage(container, ctx, mb) {
    * @param {HTMLElement[]} elements
    */
   function askForTexts(elements) {
-    const held = firstPaint?.mode === "hidden" ? firstPaint : null;
-    let observed = 0;
     for (const element of elements) {
       const part = element.getAttribute("data-part");
       const value = textOf.get(element);
@@ -3688,16 +3672,10 @@ export function mountPullPage(container, ctx, mb) {
         continue;
       }
       if (part === "body" || observer === null) {
-        // Asked for at once, so shown at once: a held first paint waits for it.
-        held?.parts.add(part);
         controller.requestMarkdown(part, value);
       } else {
-        observed += 1;
         observer.observe(element);
       }
-    }
-    if (held !== null && observed === 0) {
-      held.reported = true;
     }
   }
 
@@ -3769,7 +3747,7 @@ export function mountPullPage(container, ctx, mb) {
       if (held?.mode === "delayed" && part === "body" && held.text === text) {
         held.plain ||= inert === null;
         if (firstPaintReady()) {
-          releaseFirstPaint("met");
+          settleFirstPaint();
           return;
         }
       }
@@ -4227,6 +4205,7 @@ export function mountPullPage(container, ctx, mb) {
   function commitRow(event, source, shownRows) {
     const shownRow = shownRows.get(event.oid);
     if (shownRow !== undefined) {
+      retellAges(shownRow);
       return shownRow;
     }
     const href = timelineCommitHref(source, number, event.oid);
@@ -4489,11 +4468,16 @@ export function mountPullPage(container, ctx, mb) {
     const before = discussion;
     const inserts = model.corePreview ? new Map() : (before?.inserts ?? new Map());
     const rows = new Set(inserts.values());
+    for (const row of rows) {
+      retellAges(row);
+    }
     const placed = new Set(order);
-    // The body holds only these sections and commit rows, all elements.
+    const cover = firstPaint?.cover ?? null;
+    // The body holds only these sections and commit rows, all elements, and the loading
+    // blocks a held first paint keeps over them.
     for (const child of [...body.childNodes]) {
       const node = /** @type {HTMLElement} */ (child);
-      if (!placed.has(node) && !rows.has(node)) {
+      if (!placed.has(node) && !rows.has(node) && node !== cover) {
         node.remove();
       }
     }
@@ -5035,6 +5019,10 @@ export function mountPullPage(container, ctx, mb) {
     }
     bodyKey = key;
     if (action === "repaint") {
+      if (firstPaint?.mode === "hidden" && firstPaint.cover === null) {
+        firstPaint.cover = shownLoading();
+        firstPaint.cover?.classList.add("github-pull-loading-cover");
+      }
       bodyShows = "conversation";
       paintConversation(model);
     } else if (action === "reask") {
@@ -5092,7 +5080,7 @@ export function mountPullPage(container, ctx, mb) {
       plain: false,
       parts: new Set(),
       failed: new Set(),
-      reported: !delayed && observer === null,
+      cover: null,
       since: Date.now(),
       timer: window.setTimeout(() => releaseFirstPaint("bound"), DESCRIPTION_HOLD_MS),
     };
@@ -5102,34 +5090,105 @@ export function mountPullPage(container, ctx, mb) {
     return firstPaint.mode;
   }
 
-  /** Whether what a held first paint waits for has come: it then shows final. */
+  /** Whether the description a delayed first paint waits for has come: it then shows final. */
   function firstPaintReady() {
     const held = firstPaint;
-    if (held === null) {
+    if (held === null || held.mode !== "delayed") {
       return true;
     }
-    if (held.mode === "delayed") {
-      return (
-        held.plain ||
-        held.text.trim() === "" ||
-        insertableNow(controller.renderedFor("body", held.text))
-      );
-    }
     return (
-      held.reported &&
-      [...held.parts].every(
-        (part) =>
-          held.failed.has(part) ||
-          texts.get(part)?.querySelector(":scope > .github-pull-plain") == null,
-      )
+      held.plain ||
+      held.text.trim() === "" ||
+      insertableNow(controller.renderedFor("body", held.text))
     );
   }
 
-  /** Release a held first paint whose wait is over. */
-  function settleFirstPaint() {
-    if (firstPaint !== null && firstPaintReady()) {
-      releaseFirstPaint(firstPaint.failed.size > 0 || firstPaint.plain ? "unavailable" : "met");
+  /**
+   * An element's box, or null where nothing is laid out.
+   *
+   * @param {Element} element
+   * @returns {DOMRect | null}
+   */
+  function boxOf(element) {
+    return typeof element.getBoundingClientRect === "function"
+      ? element.getBoundingClientRect()
+      : null;
+  }
+
+  /**
+   * The texts a hidden first paint still waits for: each plain, not failed, and on the page's
+   * first screen, from the conversation's own layout, out of sight as it is. The screen is one
+   * pane's height from the page's own top, where the page shows once installed, and not the
+   * pane's view now: a page that replaces another is laid out where that one is scrolled to.
+   * It is taken again at every check, since a text that renders changes height and moves the
+   * texts below it. With no layout to measure, every plain text is waited for.
+   *
+   * @param {NonNullable<typeof firstPaint>} held
+   * @returns {[string, HTMLElement][]}
+   */
+  function firstScreenPlain(held) {
+    const top = boxOf(container)?.top ?? null;
+    const height = pane?.clientHeight || window.innerHeight || Number.POSITIVE_INFINITY;
+    /** @type {[string, HTMLElement][]} */
+    const waiting = [];
+    for (const [part, element] of texts) {
+      if (held.failed.has(part) || element.querySelector(":scope > .github-pull-plain") === null) {
+        continue;
+      }
+      const box = boxOf(element);
+      if (box !== null && box.width === 0 && box.height === 0) {
+        // Not laid out, so not shown.
+        continue;
+      }
+      if (top === null || box === null || box.top - top < height) {
+        waiting.push([part, element]);
+      }
     }
+    return waiting;
+  }
+
+  /**
+   * The loading blocks, once they have shown: a held first paint keeps them over itself, since
+   * taking them away first would blink the body empty. Blocks not shown yet go at once.
+   *
+   * @returns {HTMLElement | null}
+   */
+  function shownLoading() {
+    const blocks = /** @type {HTMLElement | null} */ (
+      body.querySelector(":scope > .mb-delayed-loading")
+    );
+    return blocks !== null &&
+      typeof window.getComputedStyle === "function" &&
+      window.getComputedStyle(blocks).visibility === "visible"
+      ? blocks
+      : null;
+  }
+
+  /**
+   * Release a held first paint whose wait is over. A hidden one asks for the first screen's
+   * plain texts it finds, at its start and each time a text lands, until none is left.
+   */
+  function settleFirstPaint() {
+    const held = firstPaint;
+    if (held === null) {
+      return;
+    }
+    if (held.mode === "hidden") {
+      const waiting = firstScreenPlain(held);
+      for (const [part, element] of waiting) {
+        held.parts.add(part);
+        const value = textOf.get(element);
+        if (value !== undefined) {
+          controller.requestMarkdown(part, value);
+        }
+      }
+      if (waiting.length > 0) {
+        return;
+      }
+    } else if (!firstPaintReady()) {
+      return;
+    }
+    releaseFirstPaint(held.failed.size > 0 || held.plain ? "unavailable" : "met");
   }
 
   /**
@@ -5138,8 +5197,10 @@ export function mountPullPage(container, ctx, mb) {
    * holds that ran to their bound.
    *
    * @param {"met" | "bound" | "unavailable" | "closed"} outcome
+   * @param {boolean} [reveal] False for the page's own cancellation: its body stays as the
+   *   page that is replacing it found it, out of sight, until that one is ready.
    */
-  function releaseFirstPaint(outcome) {
+  function releaseFirstPaint(outcome, reveal = true) {
     const held = firstPaint;
     if (held === null) {
       return;
@@ -5147,7 +5208,10 @@ export function mountPullPage(container, ctx, mb) {
     window.clearTimeout(held.timer);
     firstPaint = null;
     firstPaintSpent = true;
-    body.classList.remove("github-pull-body-holding");
+    if (reveal) {
+      body.classList.remove("github-pull-body-holding");
+      held.cover?.remove();
+    }
     mb.perf.measure("githubPull:firstPaintHold", () => {}, {
       number,
       heldMs: Date.now() - held.since,
@@ -5501,7 +5565,7 @@ export function mountPullPage(container, ctx, mb) {
 
   /** Stop ownership-bound work while preserving this page's inert handoff DOM. */
   function cancelPending() {
-    releaseFirstPaint("closed");
+    releaseFirstPaint("closed", false);
     resolveReady();
     filesRefresh = null;
     wantedFile = null;

@@ -94,7 +94,11 @@ function host() {
       holdMarkdown = on;
     },
     mount(page, initial, how = {}) {
-      const container = new Element("main");
+      const container = how.container ?? new Element("main");
+      if (how.pane !== undefined) {
+        // The pane the page scrolls in, which the shell marks.
+        container.closest = () => how.pane;
+      }
       let ready = false;
       const handle = page.mountPullPage(
         container,
@@ -316,6 +320,188 @@ async function run() {
     await settle();
     facts.landing = { blocksBefore: before, whileHeld, final: landing.plain() === null };
     landing.handle.dispose();
+  }
+
+  // A landing whose loading blocks have shown when the record comes: they stay over the held
+  // conversation, the same blocks, until it shows, so the body never blinks empty between
+  // them (review C2). Blocks not shown yet go at once, as in the landing above.
+  {
+    const landed = envelope("6".repeat(64), "late landing text");
+    session.current = landed;
+    session.holdMarkdown(true);
+    // The loading blocks' reveal has run: the browser reports them visible.
+    window.getComputedStyle = (element) => ({
+      visibility: element.classes.has("mb-delayed-loading") ? "visible" : "hidden",
+    });
+    const landing = session.mount(page, null);
+    const blocks = () =>
+      [...landing.body().children].find((node) => node.classes?.has("mb-delayed-loading")) ?? null;
+    const before = blocks();
+    await settle();
+    const whileHeld = {
+      holding: landing.holding(),
+      sameBlocks: before !== null && blocks() === before,
+      cover: blocks()?.classes.has("github-pull-loading-cover") ?? false,
+    };
+    assert.ok(whileHeld.sameBlocks, "the blocks that showed stay, the same node, while held");
+    session.holdMarkdown(false);
+    session.held.shift()();
+    await settle();
+    facts.landingAfterBlocksShowed = {
+      whileHeld,
+      shown: {
+        blocks: blocks() !== null,
+        holding: landing.holding(),
+        final: landing.plain() === null,
+      },
+    };
+    landing.handle.dispose();
+    delete window.getComputedStyle;
+  }
+
+  // A page replaced while its first paint is held keeps what it holds out of sight: it stays
+  // as the page replacing it found it until that one is ready, and never shows plain text
+  // (review C7).
+  {
+    const replaced = envelope("7".repeat(64), "replaced text");
+    session.current = replaced;
+    session.holdMarkdown(true);
+    const going = session.mount(page, replaced);
+    await settle();
+    going.handle.cancelPending();
+    assert.equal(going.holding(), true, "a cancelled held page stays out of sight");
+    facts.cancelledWhileHeld = { holding: going.holding() };
+    session.holdMarkdown(false);
+    session.held.shift()();
+    await settle();
+    going.handle.dispose();
+  }
+
+  // The first screen in a browser, where an observer reports texts as they near the pane:
+  // the page is laid out by a stub, each text 400 px tall plain and 200 rendered, so a text
+  // that renders moves those below it up. The page that it replaces is at its top, or
+  // scrolled past the whole conversation, as a reader who read one conversation and clicks the
+  // next is. Either way the first screen is the new page's own: no text on it is plain when
+  // the page is ready, those that come into it as the texts above render included (review C1).
+  facts.firstScreen = {};
+  for (const scrolled of [0, 5000]) {
+    const PANE = 700;
+    const threaded = envelope(`${scrolled}`.padStart(64, "8"), `threaded text ${scrolled}`);
+    const comment = recorded.current.body.record.issue_comments[0];
+    threaded.record.issue_comments = Array.from({ length: 10 }, (_, at) => ({
+      ...comment,
+      id: 100 + at,
+      timeline_id: String(100 + at),
+      body: `comment ${at} of ${scrolled}`,
+    }));
+    const container = new Element("main");
+    const layout = (node) => {
+      const top = -scrolled;
+      if (node === container) {
+        return { top, bottom: top + 6000, width: 800, height: 6000 };
+      }
+      let y = top + 100;
+      for (const text of container.descendants()) {
+        if (text.getAttribute("data-part") === null) {
+          continue;
+        }
+        const height = text.querySelector(":scope > .github-pull-plain") === null ? 200 : 400;
+        if (text === node) {
+          return { top: y, bottom: y + height, width: 800, height };
+        }
+        y += height + 50;
+      }
+      return { top: 0, bottom: 0, width: 0, height: 0 };
+    };
+    const observers = [];
+    globalThis.IntersectionObserver = class {
+      constructor(callback) {
+        this.callback = callback;
+        this.observed = new Set();
+        observers.push(this);
+      }
+      observe(element) {
+        this.observed.add(element);
+      }
+      unobserve(element) {
+        this.observed.delete(element);
+      }
+      disconnect() {
+        this.observed.clear();
+      }
+      // What a browser reports for what it watches: within a pane's height of the pane.
+      deliver() {
+        const entries = [...this.observed].map((target) => {
+          const box = target.getBoundingClientRect();
+          return {
+            target,
+            boundingClientRect: box,
+            isIntersecting: box.bottom > -PANE && box.top < 2 * PANE,
+          };
+        });
+        if (entries.length > 0) {
+          this.callback(entries);
+        }
+      }
+    };
+    Element.prototype.getBoundingClientRect = function () {
+      return layout(this);
+    };
+    const spans = [];
+    const recording = {
+      measure(label, work, meta) {
+        spans.push({ label, meta });
+        return work();
+      },
+      measureAsync: async (_label, work) => work(),
+    };
+    const pane = { clientHeight: PANE, getBoundingClientRect: () => ({ top: 0, bottom: PANE }) };
+    session.current = threaded;
+    session.holdMarkdown(true);
+    const screened = session.mount(page, threaded, { container, pane, perf: recording });
+    const deliver = () => {
+      for (const observer of observers) {
+        observer.deliver();
+      }
+    };
+    await settle();
+    deliver();
+    await settle();
+    /** The plain texts on the page's first screen, from its own top. */
+    const plainOnFirstScreen = () =>
+      screened
+        .texts()
+        .filter(
+          (text) =>
+            text.querySelector(":scope > .github-pull-plain") !== null &&
+            layout(text).top - layout(container).top < PANE,
+        )
+        .map((text) => text.getAttribute("data-part"));
+    let atReady = null;
+    while (session.held.length > 0 && atReady === null) {
+      session.held.shift()();
+      await settle();
+      deliver();
+      await settle();
+      if (screened.ready()) {
+        atReady = plainOnFirstScreen();
+      }
+    }
+    session.holdMarkdown(false);
+    while (session.held.length > 0) {
+      session.held.shift()();
+    }
+    await settle();
+    assert.deepEqual(atReady, [], "no text on the page's first screen is plain when it is ready");
+    const hold = spans.find((span) => span.label === "githubPull:firstPaintHold")?.meta;
+    facts.firstScreen[scrolled] = {
+      plainOnFirstScreenAtReady: atReady,
+      waitedFor: hold?.parts ?? null,
+      outcome: hold?.outcome ?? null,
+    };
+    screened.handle.dispose();
+    delete Element.prototype.getBoundingClientRect;
+    delete globalThis.IntersectionObserver;
   }
 
   // A kept section tells its ages again at every paint (review A5): three hours after two

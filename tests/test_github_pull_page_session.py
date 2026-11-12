@@ -627,6 +627,22 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
             "whileHeld": {"holding": True, "blocks": False},
             "final": True,
         },
+        # Blocks that had shown stay, the same node, over the held conversation until it shows,
+        # so the body never blinks empty between them (review C2).
+        "landingAfterBlocksShowed": {
+            "whileHeld": {"holding": True, "sameBlocks": True, "cover": True},
+            "shown": {"blocks": False, "holding": False, "final": True},
+        },
+        # A page replaced during its hold stays out of sight; it never shows plain (review C7).
+        "cancelledWhileHeld": {"holding": True},
+        # The first screen is the page's own, from its top, whether the page it replaces is at
+        # its top or scrolled past the conversation; a text that comes into it as those above
+        # render is waited for too (review C1). Before, the second comment, or the first, was
+        # plain at ready.
+        "firstScreen": {
+            scrolled: {"plainOnFirstScreenAtReady": [], "waitedFor": 3, "outcome": "met"}
+            for scrolled in ("0", "5000")
+        },
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.

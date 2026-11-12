@@ -59,7 +59,7 @@ const response = (body, status = 200) => ({
   json: async () => body,
 });
 
-function mount(mountPullPage, envelope) {
+function mount(mountPullPage, envelope, how = {}) {
   const frames = new Map();
   const timers = new Map();
   const marks = [];
@@ -157,7 +157,7 @@ function mount(mountPullPage, envelope) {
       ensureAsset: async () => {},
       loadKpressAssets: async () => {},
       ...refHelpers(document),
-      formatAge: () => ({ label: "1d ago", className: "age" }),
+      formatAge: how.formatAge ?? (() => ({ label: "1d ago", className: "age" })),
       formatTimestamp: () => "Sep 16, 2026",
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
@@ -379,6 +379,47 @@ async function run() {
   assert.deepEqual(order(superseded.body()), original);
   superseded.handle.dispose();
 
+  // A kept commit row tells its age again at each paint, as a kept card does: three hours on,
+  // a refresh that adds a comment and a timeline that answers the same commit read it as of
+  // now (review C5).
+  {
+    let clock = Date.parse("2026-09-16T18:00:00Z");
+    const minutesAgo = (seconds) => ({
+      label: `${Math.round((clock - seconds * 1000) / 60_000)} min`,
+      className: "age",
+    });
+    const aged = mount(mountPullPage, fixture(), { formatAge: minutesAgo });
+    await aged.handle.ready;
+    await settle();
+    aged.handle.activate();
+    aged.frame();
+    aged.frame();
+    const recent = { ...commit, committed_at: "2026-09-16T17:50:00Z" };
+    aged.timelines[0].answer("complete", [recent]);
+    await settle();
+    const commitAge = () =>
+      aged.body().querySelector(".github-pull-commit")?.querySelector(".github-pull-age")
+        ?.textContent;
+    const atFirst = commitAge();
+    clock += 180 * 60_000;
+    const later = { ...fixture(), record_revision: nextRevision };
+    later.record.issue_comments.push({
+      ...later.record.issue_comments[0],
+      id: 99,
+      timeline_id: "99",
+      body: "A later comment.",
+    });
+    aged.replace(later);
+    aged.timer(SLOW_POLL_MS);
+    await settle();
+    aged.frame();
+    aged.frame();
+    aged.timelines.at(-1).answer("complete", [recent]);
+    await settle();
+    assert.deepEqual([atFirst, commitAge()], ["10 min", "190 min"], "a kept commit row's age");
+    aged.handle.dispose();
+  }
+
   // A stale page can show held commits without putting a timeline provider read
   // ahead of metadata. A missed lookup is remembered throughout the refresh.
   for (const outcome of ["hit", "miss", "late-miss", "replaced"]) {
@@ -535,6 +576,7 @@ async function run() {
     unavailableKeepsDiscussion: true,
     transientRetryIsBoundedAndKeepsPartial: true,
     supersededRowsRetired: true,
+    keptCommitRowsRetellAges: true,
   };
 }
 
