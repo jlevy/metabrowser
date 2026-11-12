@@ -81,7 +81,6 @@ Both are named Metabrowser:
 | Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
 | About box | “Development build · 0.1.0 (2476) · 3c7b937” | “Release · 0.1.0 (2476) · 3c7b937” |
 | Server logs | `~/Library/Logs/Metabrowser Dev/` | `~/Library/Logs/Metabrowser/` |
-| Server records | `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` | `~/Library/Application Support/io.github.jlevy.metabrowser/servers/` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
 
@@ -151,10 +150,6 @@ Where to look while it runs:
   Deleting `~/Library/Application Support/io.github.jlevy.metabrowser.dev/session.json`
   forgets the last session, and File > Open Recent > Clear Menu the recent folders,
   which macOS keeps.
-- **Server records:**
-  `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` holds one
-  `app-<pid>.json` per running app process with servers (see
-  [After a Crash](#after-a-crash)).
 
 ### Checking by Hand
 
@@ -163,7 +158,6 @@ Quit any other copy of the development build first: both have one bundle identif
 
 ```shell
 app="$PWD/apps/macos/build/dev/Metabrowser.app"
-records="$HOME/Library/Application Support/io.github.jlevy.metabrowser.dev/servers"
 logs="$HOME/Library/Logs/Metabrowser Dev"
 folder="$(mktemp -d)"
 ```
@@ -180,13 +174,11 @@ folder="$(mktemp -d)"
    offers Retry, and Retry serves the folder again.
 3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
    `INFO:` lines) beside its `Serving` line, which came through stdout.
-4. **After a crash.** `cat "$records"/app-*.json` lists the folder’s server.
-   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"` leaves it running
-   (`pgrep -fl -- "--no-open"`). `open -a "$app"`: within 5 seconds the server is gone,
-   the folder’s log ends with “ended the server pid PID …, with SIGTERM”, and the
-   crashed process’s records file is gone.
-5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server and no records
-   file.
+4. **After a crash.** With the folder open,
+   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"`. Within a second
+   `pgrep -fl -- "--exit-on-eof"` finds no server, and the folder’s log ends with
+   “Stopping Metabrowser: stdin closed.”
+5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server.
 
 ### Checking Files, Tabs, Recents, and Restore by Hand
 
@@ -446,7 +438,7 @@ Do not hand one out as a release.
 | Path | Holds |
 | --- | --- |
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, stopping it, and the records that let the next launch end a crashed app’s servers. |
+| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
 | `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
@@ -477,16 +469,17 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
    A file opens inside a folder (see
    [Files, Tabs, Recents, and the Last Session](#files-tabs-recents-and-the-last-session)).
 2. **Spawn.** `ServerSupervisor` runs
-   `metab ROOT --no-open --host 127.0.0.1 --port 8411` with `posix_spawn`: in its own
-   process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is given
-   (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and with the
-   folder as its working directory, so `.env` lookup matches `metab .` in Terminal.
-   Its stderr is the server log itself, opened before the spawn, so an app that stalls
-   cannot block the server through a full pipe.
+   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port 8411` with `posix_spawn`:
+   in its own process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is
+   given (`POSIX_SPAWN_CLOEXEC_DEFAULT`), with default signal handling restored, and
+   with the folder as its working directory, so `.env` lookup matches `metab .` in
+   Terminal. Its stderr is the server log itself, opened before the spawn, so an app that
+   stalls cannot block the server through a full pipe.
    Its stdout is a pipe the app reads for the announcement and appends to the log.
    A log that cannot be prepared, opened, or rotated fails the launch with its path and
    cause, and a log write that fails midway says so in the window’s output.
-   Its stdin is a pipe the app holds open, ready to become the parent-death signal.
+   Its stdin is a pipe the app holds open, and `--exit-on-eof` makes it the parent-death
+   signal (see [After a Crash](#after-a-crash)).
 3. **Ready.** The server prints `Serving ROOT at http://127.0.0.1:PORT/view/` before its
    socket listens, so the supervisor parses that line and then polls the URL for a 2xx,
    within 60 seconds. The line must start with `Serving ` and end with the URL, and a
@@ -539,31 +532,30 @@ without changing the supervisor or the windows.
 
 ### After a Crash
 
-An orderly quit stops every server, but an app that crashes or is force-quit cannot, and
-today’s server does not exit when its stdin closes.
-So each app process records its servers, and the next launch ends the ones it left
-(`ServerRecords`, `OrphanReaper`):
+An orderly quit stops every server, but an app that crashes or is force-quit cannot.
+So each server ends with the app instead: the app starts it with `--exit-on-eof` and
+holds its stdin pipe open, the kernel closes that pipe however the app ends, and the
+server reads EOF and stops by itself, within a second, as one Ctrl-C stops it (see
+`metab`’s
+[command-line guide](../../docs/command-line.md#stopping-when-the-parent-exits)).
+`LiveMetabTests` closes the pipe of a real server and checks that it exits 0 and frees
+its port.
 
-- **Recorded.** Each server is recorded once it has spawned: its pid, which is also its
-  process group, the kernel’s start time for it, and its folder.
-  The record leaves when the server has been released and has exited; a server given up
-  on in uninterruptible I/O stays recorded until it exits.
-- **One file per app process.** `servers/app-<pid>.json`, owner-only (0600 in a 0700
-  folder) in the variant’s Application Support folder, names the app process that owns
-  it, and is rewritten whole, with a temporary file and a rename, at each change.
-  The last server’s exit deletes it.
-  A second copy of the app with the same bundle identifier, such as a development build
-  run from another checkout, keeps its own file, and its live servers are never taken
-  for orphans: a file is an orphan’s only once its owner is no longer running.
-- **Reaped at launch.** In the background, each orphaned server whose leader still has
-  the recorded start time and group gets SIGTERM, then SIGKILL after 5 seconds; that
-  check, made before each signal, keeps a pid the kernel has since given to another
-  process from being signaled.
-  A server that outlasts SIGKILL becomes the new app’s record, for the next launch to
-  try again. Each ending goes to the unified log and to the folder’s server log.
-- **Not reached.** A group whose leader has exited is not signaled, since nothing then
-  holds its id for the app, and descendants in other groups are not reached either (see
-  [Gaps to Close](#gaps-to-close)).
+Nothing is recorded and nothing is signaled later.
+An earlier design kept each server’s pid and start time on disk and signaled the groups
+it found at the next launch, but on macOS a signal cannot be bound to the process that
+was checked: between the check and `kill`, the process can exit and its pid can go to
+another process. The lifeline has no such window, because no pid is involved.
+
+What it does not cover:
+
+- **A server too wedged to run its watcher.** The watcher is a thread reading stdin; a
+  server whose interpreter cannot run any thread at all, such as one stuck in native
+  code that holds Python’s global lock, does not see the EOF. An orderly quit still ends
+  it with SIGKILL.
+- **Descendants in other groups**, as for every stop (see
+  [Gaps to Close](#gaps-to-close)): the stop kills the Git the server started, which it
+  tracks, and nothing else.
 
 ### Finding the Runtime
 
@@ -870,11 +862,8 @@ AppKit and WebKit. What is left as it is, on purpose:
   counts as none, so setup runs again; an unreadable volume ends the path menu at `/`;
   and a staging directory left after a failed download is in the volume’s temporary
   items, which macOS empties.
-- **Errors only logged, with a reason.** A server records file that cannot be read or
-  saved goes to the unified log and stops nothing: the server runs, and only the cleanup
-  after a crash is lost, which is how the app behaved before it kept records.
-  A lifecycle event that cannot be appended to a server log is in the unified log
-  already.
+- **Errors only logged, with a reason.** A lifecycle event that cannot be appended to a
+  server log is in the unified log already.
 - **Layout numbers in views.** SwiftUI paddings and spacings stay inline, as SwiftUI
   code reads; numbers that set behavior (timeouts, limits, window and zoom sizes) are
   named and say why.
@@ -914,7 +903,6 @@ Each gap points to the part of the brief that closes it.
 | --- | --- | --- |
 | **Session token and cookie exchange** | None: like the CLI, the server answers any local process. `WebAuthorization.cookie` is the slot. | Layering item 1; Security Models |
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
-| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app’s servers keep running until its next launch ends them (see [After a Crash](#after-a-crash)). | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness, and the health check before a window joins a running server, poll the `/view/` entry page. | Layering item 1 |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |

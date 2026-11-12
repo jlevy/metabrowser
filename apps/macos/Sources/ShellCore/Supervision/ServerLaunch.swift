@@ -40,7 +40,9 @@ public nonisolated protocol ServerLaunch: Sendable {
     func authorization(for endpoint: ServerEndpoint) -> WebAuthorization
 }
 
-/// Today's `metab ROOT --no-open` serve mode, unchanged.
+/// Today's `metab ROOT --no-open` serve mode, with `--exit-on-eof`: the server stops
+/// when the stdin pipe this app holds closes, which the kernel does however the app
+/// ends, so a crashed or force-quit app leaves no server running.
 ///
 /// It serves on the first free port walking up from `basePort` (`--port 0` is
 /// rejected), and prints `Serving <root> at http://127.0.0.1:<port>/view/…` to stdout
@@ -56,7 +58,7 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
     }
 
     public func arguments(serving root: URL) -> [String] {
-        [root.path(percentEncoded: false), "--no-open", "--host", Self.host, "--port", String(basePort)]
+        [root.path(percentEncoded: false), "--no-open", "--exit-on-eof", "--host", Self.host, "--port", String(basePort)]
     }
 
     public var stdinLine: String? { nil }

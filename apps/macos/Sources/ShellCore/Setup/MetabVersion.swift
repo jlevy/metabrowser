@@ -46,9 +46,11 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 /// versioned boundary: below the minimum the app starts no server and shows
 /// `upgradeCommand`. The host-protocol version replaces it once host mode exists.
 public nonisolated enum MetabRequirement {
-    /// The first release with `GET /api/identity`, which names each window. 0.12.0, the
-    /// latest published release, lacks the route; until a release that has it is on
-    /// PyPI, only builds from a source checkout meet this.
+    /// The first release with `GET /api/identity`, which names each window, and with
+    /// `--exit-on-eof`, which ends a server with the app. 0.12.0, the latest published
+    /// release, lacks both; until a release that has them is on PyPI, only builds from a
+    /// source checkout meet this, and one built before the flag existed fails to start
+    /// with an unknown-option error, which the window shows.
     public static let minimumRelease = [0, 12, 1]
 
     public static var minimum: String { minimumRelease.map(String.init).joined(separator: ".") }
