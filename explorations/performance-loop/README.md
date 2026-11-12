@@ -917,8 +917,11 @@ its recorder in headless Chrome on synthetic pages built to fail each definition
 **Limits.** Headless Chrome only; the native app’s WebKit is not measured.
 Painted ready is read from the main thread: raster and GPU time are not visible to the
 page, so a frame whose raster is slow reaches the screen later than its estimate, and a
-headless Chrome presents earlier than a display would (Event Timing’s presentation time
-for a click is within a frame of painted ready).
+headless Chrome presents earlier than a display would.
+Painted ready is at most a frame after Chrome presents the frame (Event Timing’s
+presentation time for the click, which Chrome rounds to 8 ms), and can be before it by
+the compositor, raster, and GPU time after the main thread: for a long frame, by 9 to 12
+ms in five CI runs and 23 to 43 ms with the renderer’s CPU throttled fourfold.
 A ResizeObserver round after the first (the product’s own observers of content deeper
 than the document element) can change a frame after the recorder read it.
 The Pulls catalog walk runs for about the first minute of every page load and overlaps
