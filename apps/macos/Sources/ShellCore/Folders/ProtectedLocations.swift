@@ -15,8 +15,17 @@ public nonisolated enum ProtectedLocations {
     /// Whether serving `root` reads a protected location: `root` is one, is inside one,
     /// or holds one, as the home folder holds Documents. `root` and `home` are canonical.
     public static func contains(_ root: String, home: String) -> Bool {
-        let locations = homeFolders.map { home + "/" + $0 } + mountPoints
-        return locations.contains { isWithin(root, $0) || isWithin($0, root) }
+        locations(home: home).contains { isWithin(root, $0) || isWithin($0, root) }
+    }
+
+    /// Whether `path` is a protected location or inside one, so that looking at it can
+    /// raise the prompt. A folder that only holds one, such as the home folder, is not.
+    public static func isInside(_ path: String, home: String) -> Bool {
+        locations(home: home).contains { isWithin(path, $0) }
+    }
+
+    static func locations(home: String) -> [String] {
+        homeFolders.map { home + "/" + $0 } + mountPoints
     }
 
     /// Whether `path` is `ancestor` or inside it.

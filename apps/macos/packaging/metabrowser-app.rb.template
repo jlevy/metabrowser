@@ -21,7 +21,7 @@ cask "metabrowser-app" do
   end
 
   depends_on arch: {{ARCH_SYMBOL}}
-  depends_on macos: ">= :sequoia"
+  depends_on macos: :tahoe
 
   app "Metabrowser.app"
 

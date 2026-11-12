@@ -33,8 +33,10 @@ release_variant = $(or $(VARIANT),release)
 build:
 	$(SWIFT) build
 
+# The stress suite runs alone after the rest: see ExitObservationStressTests.swift.
 test:
-	$(SWIFT) test
+	$(SWIFT) test --skip ExitObservationStressTests
+	$(SWIFT) test --filter ExitObservationStressTests
 	scripts/test-scripts.sh
 
 app:

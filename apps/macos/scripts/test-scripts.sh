@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests the release scripts' shared checks in scripts/common.sh against real codesign
-# results and generated casks, without building the app. `make test` runs it after the
-# Swift tests.
+# results and generated casks, and the icon renderer's reject check (scripts/build-icon.sh
+# --check) on a copy of its fixtures, without building the app. `make test` runs it after
+# the Swift tests.
 #
 #   scripts/test-scripts.sh
 set -euo pipefail
@@ -67,9 +68,28 @@ else
   fail "a signature with entitlements stopped the check for another reason: $(cat "$work/out")"
 fi
 
+# ── The app's minimum macOS ────────────────────────────────────
+# Package.swift's deployment target and Info.plist's LSMinimumSystemVersion name one
+# release, the one every cask below must require.
+minimum="$(app_minimum_macos)"
+deployment="$(sed -n 's/.*platforms: \[\.macOS(\.v\([0-9_]*\))\].*/\1/p' Package.swift)"
+deployment="${deployment//_/.}"
+if [[ -n "$deployment" && "$deployment" == "${minimum%.0}" ]]; then
+  pass "Package.swift and Info.plist both require macOS $minimum"
+else
+  fail "Package.swift deploys to macOS '$deployment', but Info.plist requires $minimum"
+fi
+if macos_name="$(homebrew_macos_name "$minimum")"; then
+  pass "Homebrew names macOS $minimum :$macos_name"
+else
+  fail "homebrew_macos_name knows no name for macOS $minimum"
+  macos_name=""
+fi
+
 # ── write_cask ─────────────────────────────────────────────────
 # Each architecture label a build can produce: the cask must download the image whose
-# checksum it carries, and declare the architecture the image runs on.
+# checksum it carries, declare the architecture the image runs on, and require the macOS
+# the app requires, so Homebrew refuses to install it where it cannot launch.
 check_cask() {
   local label="$1" dmg cask url
   dmg="$work/$(basename "$(dmg_path Metabrowser 1.2.3 "$label")")"
@@ -91,8 +111,10 @@ check_cask() {
       ;;
     *) grep -qx "  depends_on arch: :$label" "$cask" || fail "the $label cask does not declare :$label" ;;
   esac
+  grep -qx "  depends_on macos: :$macos_name" "$cask" ||
+    fail "the $label cask requires $(sed -n 's/^ *depends_on macos: //p' "$cask"), not macOS $minimum (:$macos_name)"
   ! grep -q '^#' "$cask" || fail "the $label cask kept the template's comment"
-  pass "the $label cask downloads Metabrowser-1.2.3-$label.dmg with its checksum"
+  pass "the $label cask downloads Metabrowser-1.2.3-$label.dmg with its checksum and requires macOS $minimum"
 }
 for label in arm64 x86_64 universal; do
   check_cask "$label"
@@ -106,6 +128,50 @@ if stops write_cask "$work/Metabrowser-1.2.3-arm64.dmg" "$work/cask-bad.rb" 1.2.
   fail "write_cask accepted the architecture label ppc"
 else
   pass "an unknown architecture label stops the release"
+fi
+# A template left behind when the app's minimum moved, as macOS 15 was: write_cask, run
+# from a copy of the folder with that template, refuses it.
+mkdir -p "$work/stale/packaging" "$work/stale/Resources"
+cp Resources/Info.plist "$work/stale/Resources/"
+sed 's/^  depends_on macos: .*/  depends_on macos: :sequoia/' packaging/metabrowser-app.rb.template \
+  >"$work/stale/packaging/metabrowser-app.rb.template"
+if ! grep -qx '  depends_on macos: :sequoia' "$work/stale/packaging/metabrowser-app.rb.template"; then
+  fail "the template has no depends_on macos line to make stale"
+elif (cd "$work/stale" && stops write_cask "$work/Metabrowser-1.2.3-arm64.dmg" "$work/cask-stale.rb" 1.2.3 arm64); then
+  fail "write_cask wrote a cask that admits macOS 15 for an app that requires $minimum"
+elif grep -q "does not require macOS $minimum" "$work/out"; then
+  pass "a cask that admits a macOS older than the app's minimum stops the release"
+else
+  fail "a stale macOS requirement stopped write_cask for another reason: $(cat "$work/out")"
+fi
+
+# ── build-icon.sh --check ──────────────────────────────────────
+# On a copy of the reject fixtures with one more, sorted last, that the renderer accepts:
+# every real fixture is refused for its reason, the accepted one stops the check, and
+# nothing the check started outlives it. Each process it starts inherits descriptor 9,
+# so any holder of that file after the check exits is a process it left running.
+mkdir -p "$work/icon/scripts" "$work/icon/AppIcon/rejects"
+cp scripts/build-icon.sh "$work/icon/scripts/"
+cp AppIcon/render-svg.swift "$work/icon/AppIcon/"
+cp AppIcon/rejects/*.svg "$work/icon/AppIcon/rejects/"
+cat >"$work/icon/AppIcon/rejects/zz-renders.svg" <<'EOF'
+<!-- render-svg refuses: nothing; it renders this square -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="16" height="16" fill="#FF0000"/>
+</svg>
+EOF
+if "$work/icon/scripts/build-icon.sh" --check >"$work/out" 2>&1 9>"$work/held"; then
+  fail "the reject check passed a fixture the renderer accepts"
+elif grep -q "^AppIcon/rejects/zz-renders.svg: render-svg accepted it" "$work/out"; then
+  pass "the reject check refuses every fixture and stops at one the renderer accepts"
+else
+  fail "the reject check stopped for another reason: $(cat "$work/out")"
+fi
+left="$(lsof -t "$work/held" 2>/dev/null | tr '\n' ',' || true)"
+if [[ -z "$left" ]]; then
+  pass "the reject check leaves no process running"
+else
+  fail "the reject check left processes running: $(ps -o pid=,command= -p "${left%,}" | tr '\n' ';')"
 fi
 
 if ((failures)); then

@@ -208,9 +208,20 @@ final class FolderWindows {
                 "could not read the saved session at \(self.store.url.path(percentEncoded: false), privacy: .public), so none is restored: \(error, privacy: .public)")
             return
         }
+        // Cut to the budget before anything is resolved or built, then resolve each root
+        // again: the file may have been edited, and a folder replaced by a link.
+        let limited = saved.limited(to: .standard)
+        if limited.tabCount < saved.tabCount {
+            AppLog.app.error(
+                "the saved session has \(saved.windows.count) window(s) and \(saved.tabCount) tab(s); restoring the front \(limited.windows.count) and \(limited.tabCount), the restore budget")
+        }
         let home = self.home
-        let isProtected = { ProtectedLocations.contains($0, home: home) }
-        let session = saved.restorable(isProtected: isProtected, isFolder: FileChecks.isDirectory)
+        let admitted = limited.admitted { RootAdmission.admit($0, home: home) }
+        let session = admitted.session
+        if session.tabCount < limited.tabCount {
+            AppLog.app.info(
+                "not restoring \(limited.tabCount - session.tabCount) tab(s) whose folders are gone or whose saved paths are not canonical")
+        }
         var front: BrowserWindowController?
         // Back to front, so that each window ordered in lands in front of the ones behind it.
         for (index, savedWindow) in session.windows.enumerated().reversed() {
@@ -238,7 +249,7 @@ final class FolderWindows {
             if let window = shownTab.window { first.tabGroup?.selectedWindow = window }
             if index == 0 { front = shownTab }
         }
-        let queue = RestoreQueue(session, isProtected: isProtected)
+        let queue = RestoreQueue(session, isProtected: admitted.deferred.contains)
         for path in queue.deferred {
             sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
         }
