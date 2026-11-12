@@ -1,12 +1,17 @@
 import ShellCore
 import SwiftUI
 
-/// What a folder window shows in place of the page: the server is starting, or it
-/// failed and here is why.
+/// What a folder window shows in place of the page: the server is starting, it failed
+/// and here is why, it waits for its tab to be selected, or a discarded tab reloads.
 @Observable final class WindowStatus {
     enum Phase: Equatable {
         case starting
         case failed(ServerFailure)
+        /// A restored folder in a protected location, whose server starts only once its tab
+        /// is selected, so that a launch raises no privacy prompt for it.
+        case waitingForSelection
+        /// A tab that gave up its page loads it again from the running server.
+        case reloading
     }
 
     var phase: Phase = .starting
@@ -30,6 +35,15 @@ struct StatusView: View {
                 FailureView(
                     folderName: folderName, failure: failure, retry: retry, revealLogs: revealLogs,
                     showSettings: showSettings)
+            case .waitingForSelection:
+                VStack(spacing: 12) {
+                    Text("Metabrowser opens \(folderName) when you select it.").font(.headline)
+                    Text("macOS can ask your permission before an app reads this location.")
+                    Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                .padding(32)
+            case .reloading:
+                DelayedSpinner()
             }
         }
     }
@@ -38,22 +52,29 @@ struct StatusView: View {
 private struct StartingView: View {
     let folderName: String
     let folderPath: String
-    /// A start that finishes quickly never flashes a spinner.
-    @State private var showsSpinner = false
-    /// Below this, a delay reads as instant, and a spinner would only flash.
-    private static let spinnerDelay: Duration = .milliseconds(300)
 
     var body: some View {
         VStack(spacing: 12) {
-            ProgressView().opacity(showsSpinner ? 1 : 0)
+            DelayedSpinner()
             Text("Starting Metabrowser for \(folderName)…").font(.headline)
             Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
         }
         .padding(32)
-        .task {
-            try? await Task.sleep(for: Self.spinnerDelay)  // cancelled: the view went away
-            showsSpinner = true
-        }
+    }
+}
+
+/// A spinner that appears only after `delay`, so a quick start or reload never flashes one.
+private struct DelayedSpinner: View {
+    /// Below this, a delay reads as instant, and a spinner would only flash.
+    static let delay = Duration.milliseconds(300)
+    @State private var showsSpinner = false
+
+    var body: some View {
+        ProgressView().opacity(showsSpinner ? 1 : 0)
+            .task {
+                try? await Task.sleep(for: Self.delay)  // cancelled: the view went away
+                showsSpinner = true
+            }
     }
 }
 

@@ -238,13 +238,4 @@ private func loginShellOutput(path: String) -> [String] {
             runtime: Runtime(executable: "bin/metab", version: "0.12.0", source: .chosen), tools: ToolPaths()))
         #expect(settings.usable(isExecutable: { _ in true }) == nil)
     }
-
-    @Test func recentFoldersPersist() {
-        let store = RecentFolderStore(defaults: defaults())
-        var folders = store.folders
-        folders.add("/a")
-        folders.add("/b")
-        store.folders = folders
-        #expect(store.folders.paths == ["/b", "/a"])
-    }
 }

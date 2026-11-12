@@ -28,7 +28,8 @@
     <key>NSAllowsLocalNetworking</key>   <true/>
   </dict>
 
-  <!-- Folders dropped on the Dock icon, opened with Open With, or passed to open -a. -->
+  <!-- Folders dropped on the Dock icon or opened with Open With. Declaring them also lets
+       NSDocumentController list them as recents. open -a passes files too, undeclared. -->
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

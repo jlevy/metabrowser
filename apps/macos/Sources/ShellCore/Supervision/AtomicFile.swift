@@ -31,7 +31,7 @@ nonisolated enum AtomicFile {
         var template = Array(directory.appending(path: ".\(url.lastPathComponent).XXXXXX").path(percentEncoded: false).utf8CString)
         let fd = template.withUnsafeMutableBufferPointer { mkstemp($0.baseAddress!) }
         guard fd >= 0 else { throw failure(path, errno) }
-        let temporary = String(cString: template)
+        let temporary = template.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
         var written = 0
         let count = data.count
         let code: Int32 = data.withUnsafeBytes { buffer in

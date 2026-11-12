@@ -7,7 +7,9 @@ import Testing
 ///     METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab swift test --filter LiveMetab
 nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABROWSER_SHELL_TEST_METAB"]
 
-@Suite(.enabled(if: liveMetab != nil, "set METABROWSER_SHELL_TEST_METAB to a metab executable"))
+/// Serialized: `metab` picks its port by probing and binds it later, so two servers
+/// started at once can announce the same port, which the app's `LaunchGate` prevents.
+@Suite(.serialized, .enabled(if: liveMetab != nil, "set METABROWSER_SHELL_TEST_METAB to a metab executable"))
 struct LiveMetabTests {
     @Test func discoveryValidatesIt() async throws {
         let path = try #require(liveMetab)
@@ -60,5 +62,35 @@ struct LiveMetabTests {
         #expect(subject.state == .stopped)
         #expect(!processExists(try #require(pid)))
         #expect(try String(contentsOf: log, encoding: .utf8).contains("Serving "))
+    }
+
+    /// The page the app opens for a file is the view route `metab ROOT --path FILE`
+    /// announces for it, spelled the same, and the server serves it.
+    @Test func aFilesPageIsTheRouteMetabAnnounces() async throws {
+        let path = try #require(liveMetab)
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let relative = "sub dir/Café notes #1~ (draft)?.md"
+        let file = root.appending(path: relative)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# Hello\n".write(to: file, atomically: true, encoding: .utf8)
+        let launch = CLIServeLaunch()
+        let subject = ServerSupervisor(
+            spec: LaunchSpec(
+                executable: path, arguments: launch.arguments(serving: root) + ["--path", relative],
+                environment: ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: []),
+                workingDirectory: root.path),
+            launch: launch)
+        await subject.start()
+        try await stoppingAfterward(subject) {
+            guard case .ready(let endpoint) = subject.state else {
+                Issue.record("expected ready, got \(subject.state)")
+                return
+            }
+            let page = PageAddress.view(of: relative)
+            #expect(PageAddress(endpoint.entryURL) == page)
+            let (_, response) = try await URLSession.shared.data(from: try #require(page.url(on: endpoint.origin)))
+            #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        }
     }
 }

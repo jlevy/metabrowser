@@ -80,28 +80,6 @@ import Testing
     }
 }
 
-@Suite struct RecentFoldersTests {
-    @Test func newestFirstWithoutDuplicatesAndBounded() {
-        var folders = RecentFolders(limit: 3)
-        for path in ["/a", "/b", "/c", "/a", "/d"] { folders.add(path) }
-        #expect(folders.paths == ["/d", "/a", "/c"])
-        folders.remove("/a")
-        #expect(folders.paths == ["/d", "/c"])
-        folders.clear()
-        #expect(folders.paths.isEmpty)
-    }
-
-    @Test func initialListKeepsItsOrder() {
-        #expect(RecentFolders(paths: ["/x", "/y", "/x"]).paths == ["/x", "/y"])
-    }
-
-    @Test func menuShowsOnlyFoldersThatExist() {
-        let folders = RecentFolders(paths: ["/gone", "/here"])
-        #expect(folders.existing { $0 == "/here" } == ["/here"])
-        #expect(folders.paths == ["/gone", "/here"])
-    }
-}
-
 @Suite struct ServerLogTests {
     @Test func fileNameIsReadableAndDistinctPerPath() {
         let first = ServerLog.fileName(for: URL(filePath: "/tmp/one/My Notes!"))

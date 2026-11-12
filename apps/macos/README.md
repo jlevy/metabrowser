@@ -7,8 +7,8 @@ a hand-written Swift app that uses an existing command-line install of `metab`.
 ## What It Is
 
 A native macOS app, written with AppKit and `WKWebView`, that finds your CLI install of
-`metab`, starts one server per folder you open, and shows each folder in its own window.
-It is a thin wrapper.
+`metab`, starts one server per folder you open, and shows each folder in its own window
+or tab. It is a thin wrapper.
 Everything Metabrowser shows comes from `metab`, the page talks to its server directly
 over HTTP and server-sent events, and the page never calls a shell API. The app adds
 only what a browser tab cannot give: a Dock icon, folders dropped on it or opened with
@@ -138,8 +138,11 @@ Where to look while it runs:
 - **Web Inspector:** Safari’s Develop menu, in debug builds or after
   `defaults write io.github.jlevy.metabrowser.dev WebInspectorEnabled -bool true`.
 - **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
-  runtime and the recent folders, so the next launch runs discovery again.
+  runtime and the window preferences, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
+  Deleting `~/Library/Application Support/io.github.jlevy.metabrowser.dev/session.json`
+  forgets the last session, and File > Open Recent > Clear Menu the recent folders,
+  which macOS keeps.
 - **Server records:**
   `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` holds one
   `app-<pid>.json` per running app process with servers (see
@@ -176,6 +179,56 @@ folder="$(mktemp -d)"
    crashed process’s records file is gone.
 5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server and no records
    file.
+
+### Checking Files, Tabs, Recents, and Restore by Hand
+
+The decisions behind these are tested in `ShellCore`; what AppKit and macOS do with them
+is checked against the built app.
+Set `APP` to the development build and make some folders:
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+LOGS="$HOME/Library/Logs/Metabrowser Dev"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
+echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
+log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
+```
+
+1. **A file.** `open -a "$APP" /tmp/mb-check/a/notes.md` opens a window for `a` showing
+   `notes.md`. `open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md` in that same
+   window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
+   `open -a "$APP" /dev/null` shows an alert.
+   File > Open… chooses a file too.
+2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
+   above `a`; Clear Menu empties both.
+   `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
+3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
+   as tabs of the front window; set to Windows, opening `e` gives it a window, and
+   Window > Merge All Windows then merges every folder into one window.
+   With the setting on System Settings and Desktop & Dock > “Prefer tabs when opening
+   documents” at Always, a new folder opens as a tab.
+4. **Discarded pages.** With `a` to `e` as tabs of one window, select each in turn: the
+   app log says “discarding the page of background tab” for the tab shown longest ago
+   once four tabs are in the background, and
+   `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
+   Selecting that tab reloads its page, with no “Starting” text.
+5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
+   with `c`, and quit. `session.json` (see Start over) now lists them; the next launch
+   logs “restoring 2 window(s): 3 server(s) to start”, the windows and tabs come back,
+   and `grep -h 'started pid' "$LOGS"/{a,b,c}-*.log` with its timestamps shows `b`
+   started first, then `c`, then `a`, each after the one before it was ready.
+6. **Protected locations.** Add `~/Documents/mb-check` as a background tab, quit, and
+   launch again: that tab says Metabrowser opens it when you select it, and
+   `pgrep -fl 'Documents/mb-check'` finds no server until you select the tab.
+   Once Documents access is granted, no prompt appears either way.
+   To see that the restore raises none, the person at the Mac first resets that grant
+   (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
+   then checks that the prompt waits for the tab’s selection: the waiting tab still
+   shows the folder’s name and icon, and whether reading those can prompt is untested.
+7. **Off, and empty.** With Settings > “Reopen the last session’s folders when
+   Metabrowser opens” off, a launch restores nothing.
+   With it on, closing every window before quitting restores nothing.
+   After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
 
 ### Continuous Integration
 
@@ -349,10 +402,10 @@ Do not hand one out as a release.
 | Path | Holds |
 | --- | --- |
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
+| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, stopping it, and the records that let the next launch end a crashed app’s servers. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`): its name, its variant, and the folders it keeps apart from the other variant’s. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session and its restore order, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
 | `Resources/Info.plist` | The bundle’s property list. |
@@ -370,10 +423,13 @@ finding a runtime before one exists, windows, menus, the Dock, and file events.
 
 ### A Folder’s Server
 
-1. **Open.** File > Open Folder, File > Open Recent, a drop on the Dock icon or on a
-   window, Open With, and `open -a Metabrowser.app FOLDER` all arrive at one method.
-   The folder’s canonical path keys one session, so one root has one server and one
-   window (plus any tabs the page opens).
+1. **Open.** File > Open, File > Open Recent, the Dock menu’s recents, a drop on the
+   Dock icon or on a window, Open With, `open -a Metabrowser.app FOLDER`, and the last
+   session’s restore all arrive at one session per folder.
+   The folder’s canonical path keys it, so one root has one server, whatever number of
+   windows and tabs show it.
+   A file opens inside a folder (see
+   [Files, Tabs, Recents, and the Last Session](#files-tabs-recents-and-the-last-session)).
 2. **Spawn.** `ServerSupervisor` runs
    `metab ROOT --no-open --host 127.0.0.1 --port 8411` with `posix_spawn`: in its own
    process group (`POSIX_SPAWN_SETPGROUP`), with only the descriptors it is given
@@ -546,6 +602,82 @@ Terminal launch.
   If the web content process dies, the window reloads, at most twice in 30 seconds, and
   then shows the status view.
 
+### Files, Tabs, Recents, and the Last Session
+
+- **A file opens in its folder.** `open -a Metabrowser.app FILE` and a file chosen in
+  File > Open show the file’s page in the most specific open folder that contains it, or
+  else in its own folder, as `metab FILE` serves the file’s folder (`OpenTarget`).
+  Symbolic links are resolved first, as `metab` resolves them, so a link opens where it
+  points. The page is the file’s view route, spelled as `metab` spells it
+  (`PageAddress.view`); a live test checks the spelling against the route `metab --path`
+  announces. `open -a` delivers a file although `Info.plist` declares only
+  `public.folder` (checked on macOS 26.5), so Finder’s Open With and the Dock still
+  offer the app for folders only.
+
+- **Tabs.** Every folder window shares one tabbing identifier, so Merge All Windows,
+  Move Tab to New Window, and dragging a tab combine any folders.
+  Settings > Open folders in places a newly opened folder: as a tab of the front folder
+  window, in a window of its own, or, by default, as System Settings > Desktop & Dock >
+  “Prefer tabs when opening documents” says (`FolderPlacement`). Windows a page opens
+  (`target=_blank`, Command-click) are tabs of their window, as before.
+
+- **Background tabs give up their pages.** Each window’s shown tab keeps its page; of
+  the background tabs, the three shown most recently keep theirs too.
+  Every other background tab gives up its web view, which ends its WebContent process,
+  and reloads its page from the folder’s running server when it is shown
+  (`TabDiscardPolicy`). The limit’s basis follows this list.
+
+- **Recents are macOS’s.** Opening a folder registers it with
+  `NSDocumentController.noteNewRecentDocumentURL`, and File > Open Recent lists
+  `recentDocumentURLs` each time it opens; the Dock menu shows the same list.
+  macOS keeps the membership, the order, and the length (System Settings > Desktop &
+  Dock > Recent documents, apps, and servers), and Clear Menu empties it: the app keeps
+  no list of its own. A file registers the folder it opened in.
+  A scratch bundle that declares only `public.folder` showed, on macOS 26.5, that a
+  folder is recorded and is still listed at the next launch.
+  This is the platform exemption the server-topology brief records; recent roots kept in
+  `metab`, with a route, are Phase 4 (`mb-a5ru`).
+
+- **The last session comes back.** The app saves its folder windows, front window first,
+  with each window’s tabs, shown tab, and frame and each tab’s folder and page, to
+  `~/Library/Application Support/<bundle identifier>/session.json`, mode 0600 in a 0700
+  folder, half a second after a window opens or closes, a tab is shown, or a page loads,
+  and once more at quit, before the servers stop.
+  A save writes a private temporary file beside the session and renames it over the old
+  one (`SessionStore`), so a launch after a crash finds the previous session or the new
+  one, never part of one.
+  The next launch recreates the windows and tabs, and only each window’s shown tab loads
+  its page. The servers start one at a time, each after the one before it is ready or has
+  failed: the front tab’s first, then those of the tabs the other windows show, front to
+  back, then the rest (`RestoreQueue`). A tab that is selected meanwhile starts next.
+  A folder in a protected location (Desktop, Documents, Downloads, iCloud Drive and
+  other cloud storage, other apps’ data, anything under `/Volumes` or `/Network`, or a
+  folder that holds one, such as the home folder) starts only when one of its tabs is
+  selected, so a launch raises no privacy prompt for a folder nobody is looking at; the
+  front tab is selected, so it starts (`ProtectedLocations`). A folder that no longer
+  exists is dropped, except a protected one, which is not looked at until it is selected
+  and then says it is gone.
+  Settings > “Reopen the last session’s folders when Metabrowser opens” turns the
+  restore off; the session is still saved.
+  A session file that cannot be read is logged and ignored, and the next save replaces
+  it.
+
+The discard limit’s basis, measured on macOS 26.5.2 with
+`scripts/measure-web-views.swift` against this repository’s own server:
+
+| Measure | Result |
+| --- | --- |
+| WebContent processes for N web views | N, one each |
+| One view’s WebContent footprint, 8 s after loading | 120–143 MB on the folder page (4 views), 111–112 MB on a Markdown page (3 views); the server-topology brief measured 155–210 MB with real pages |
+| A released view’s WebContent process | gone within 1 s |
+| A view that never loaded | no WebContent process |
+| A fresh view loading the page from the warm server, to `didFinish` | 155–489 ms in 9 of 10 loads, and one of 3.7 s; in a run started 5 s after the server, while it was likely still walking the tree, two of five took 3.6 and 17.9 s |
+
+Three background pages hold at most about 0.6 GB at the brief’s upper figure.
+The limit is a conservative default, not a measured optimum: showing a discarded tab
+costs a reload of a few hundred milliseconds, and how often people return to a tab past
+the third is unmeasured.
+
 ### Why the Title Is a Title-Bar Accessory
 
 AppKit draws a system title in one font and one color, so the window hides it
@@ -596,11 +728,6 @@ engineering, supply-chain hardening, and backward compatibility.
 Decision logic lives in `ShellCore` with tests, and the app target only connects it to
 AppKit and WebKit. What is left as it is, on purpose:
 
-- **Code the next milestone steps replace.** `AppDelegate.request(_:)` decides whether a
-  dropped or opened URL is served, and `DropAwareWebView` accepts only folders; opening
-  a file (`mb-tssz`) rewrites both.
-  The File > Open Recent menu and its `RecentFolders` list give way to the system’s
-  recent documents (`mb-cqxd`).
 - **Errors ignored with a reason.** Each remaining `try?` names why at its line: a
   readiness probe that fails means not ready yet; the stdin line can fail only once the
   child has exited, and that exit is reported; a saved setup this build cannot read
@@ -669,7 +796,17 @@ Each gap points to the part of the brief that closes it.
 
 ## Known Limitations
 
-- Only folders open; a dropped file shows an alert.
+- Finder’s Open With and the Dock icon accept folders only; a file opens through
+  `open -a` or File > Open.
+- The restore recreates windows, tabs, frames, and pages, but not full screen, Spaces,
+  minimized windows, or each tab’s Back and Forward history.
+  A page reached by the page’s own history changes, without a load, is saved at the next
+  save or at quit.
+- A restored folder’s server starts once the one before it answers, not once that one
+  has finished walking its tree: `metab` reports no walk’s end, so the launch gate
+  schedules starts, not crawls.
+- The tab bar has no new-tab button: a new folder tab comes from File > Open with
+  Settings set to tabs, or from Merge All Windows.
 - Closing a folder’s last window stops its server, so reopening it starts a new one.
 - A restarted server comes back on a new port, and local storage is per origin, as with
   the CLI.
