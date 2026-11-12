@@ -58,6 +58,7 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     refresh_wanted,
     search_query,
 )
+from metabrowser.builtin_plugins.github.pull_record import clear_pulls
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PullListName
 from metabrowser.home import ensure_private_directory, write_private_file_atomic
@@ -523,6 +524,34 @@ def test_empty_initialization_recovers_but_future_schema_refuses_explicitly(
         asyncio.run(refresh_pull_list(repository, "all", retry=True))
     assert caught.value.state == "cache_unwritable"
     assert _path(repository).read_bytes() == before
+
+
+def test_clearing_removes_only_the_plugins_cache_and_never_follows_a_link(
+    repository: ListedRepository, tmp_path: Path
+) -> None:
+    _seed(repository, [generated_item(1)])
+    pulls = _path(repository).parent
+    write_list_refresh(
+        repository.home,
+        repository.slug,
+        "all",
+        PullRefreshStamp(outcome="cache_unwritable", message="refused", at=STAMP),
+    )
+    outside = tmp_path / "outside.json"
+    outside.write_text("kept")
+    (pulls / "7.json").symlink_to(outside)
+    source = repository.home / f"sources/{repository.slug}"
+    kept = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
+    assert clear_pulls(repository.home, repository.slug) == 3
+    assert list(pulls.iterdir()) == []
+    assert outside.read_text() == "kept"
+    assert {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()} == kept
+    assert read_list_refresh(repository.home, repository.slug, "all") is None
+    assert clear_pulls(repository.home, repository.slug) == 0
+
+    unclaimed = repository.home / "sources/github-com--octo--other--000000000000"
+    assert clear_pulls(repository.home, unclaimed.name) == 0
+    assert not unclaimed.exists()
 
 
 def test_lock_waiter_cancellation_cannot_publish_later(repository: ListedRepository) -> None:

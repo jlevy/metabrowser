@@ -78,6 +78,19 @@ class PullDataError(Exception):
         self.reset_at = reset_at
 
 
+def cache_failure_reason(exc: BaseException) -> str:
+    """Why the cache refused, in words that name no path.
+
+    A home refusal's own sentence already names no path and says what to do, as SQLite's
+    and a cache record's do. An ``OSError`` gives only the system's ``strerror``: its other
+    text can carry a file name, which below the home can be a private repository's slug.
+    """
+
+    if isinstance(exc, OSError):
+        return exc.strerror or "the file system refused it"
+    return str(exc).rstrip(".") or type(exc).__name__
+
+
 def utc_stamp(moment: datetime) -> str:
     """*moment* as every cached record and stamp spells a time."""
 
@@ -264,6 +277,7 @@ __all__ = [
     "UnreadableItemError",
     "active_account",
     "as_dict",
+    "cache_failure_reason",
     "get_response",
     "login_of",
     "read_list",

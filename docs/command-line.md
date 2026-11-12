@@ -545,6 +545,18 @@ subject to a reported rate-limit reset.
 Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
 reads.
 
+Everything Metabrowser caches of a repository’s pull requests, the list, records,
+changed files, and refresh outcomes, is discarded by one command and fetched again when
+next wanted; the repository’s Git store stays:
+
+```shell
+echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -
+```
+
+In a checkout, run it as `metab .` instead, since the address would clone a repository
+that has no store yet.
+It prints how many files it `cleared`.
+
 Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
 Use a current maintained release and verify the active account with
 `gh auth status --active --hostname github.com`; see

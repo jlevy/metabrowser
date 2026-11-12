@@ -17,8 +17,10 @@ show: a refresh that completes, the requests it made, and a list that is ``curre
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
@@ -66,6 +68,7 @@ pytestmark = [
 PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
 PREPARE = "/api/plugin/github/pull-cores-prepare"
+CLEAR = "/api/plugin/github/cache-clear"
 
 
 class _Session:
@@ -139,6 +142,13 @@ class _Session:
             project=_watch_summary if summarize else None,
             body=[text],
         )
+
+    def clear(self) -> Invocation:
+        """The command a cache failure names, its ``{}`` on standard input as pasted."""
+
+        with self.monkeypatch.context() as patched:
+            patched.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"{}\n")))
+            return self._run(CANONICAL, "--api", CLEAR, "--data", "-", body=["{}"])
 
     def local(self, route: str) -> Invocation:
         """A route read from a local root, which opens no source and asks gh nothing."""
@@ -413,6 +423,26 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
+
+    session.say(
+        "Clearing the repository's GitHub cache removes every file the plugin keeps for it, "
+        "and nothing of the source or its store; the list is then not cached until a "
+        "refresh fetches it again."
+    )
+    source = session.home / "sources" / origin_identity(CANONICAL).slug
+    kept = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
+    cleared = session.clear()
+    assert cleared.exit_code == 0, cleared.stderr
+    assert cleared.payload()["cleared"] > 0
+    assert list((source / "pulls").iterdir()) == []
+    assert {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()} == kept
+    emptied = session.get("?limit=0").payload()
+    assert (emptied["state"], emptied["reason"]) == ("absent", "not_cached")
+    session.answer(online)
+    refetched = _after(session.post({}))
+    assert refetched["last_refresh"]["outcome"] == "succeeded"
+    assert refetched["catalog_fetched"] > 0
+
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
