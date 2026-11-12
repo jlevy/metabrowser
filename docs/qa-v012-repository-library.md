@@ -914,6 +914,39 @@ line. Open that address with the browser’s developer tools open.
     Back in Safari and Firefox is unmeasured; `mb-etqi` tracks it, in Part 4 of the
     walk-through.
 
+13. **The Shift key reveal, and its three provisional numbers.** With focus on a tree
+    row, hold Shift alone: after about a fifth of a second a keycap appears on the Files
+    and Commits tabs, the view tabs of the open file, the header’s Up and Copy, and the
+    two filters, and the strip lists Help, Quick Search, the tabs, Up, and Copy.
+    Release Shift: all of them go.
+    Type `?`, a capital, and Shift+`↑` at your normal speed: no keycap flashes.
+    Hold Shift and press `2`: Commits opens with its first row focused, and the keycaps
+    follow; press `1`: the filters get theirs back.
+    Click while holding Shift, or scroll: the keycaps go.
+    Until the presentation layer lands, the keycaps and the strip’s layer are plain, not
+    yet yellow or overlaid.
+
+    Three constants are set by hand, not yet by measurement, and this check measures
+    them. Paste each snippet into the developer tools console, in Chrome and then Safari,
+    and note the largest number it logs.
+
+    - `REVEAL_HOLD_MS` in `static/key-reveal.js`, now 200. Paste
+      `let s; addEventListener("keydown", (e) => { if (e.key === "Shift") s = e.timeStamp; else if (s !== undefined) { console.log(e.key, Math.round(e.timeStamp - s)); s = undefined; } }, true);`
+      then type `?`, capitals, and Shift+`↑` twenty times each at your normal speed.
+      The constant should be the smallest round number above every gap logged.
+    - `REVEAL_POINTER_SLOP_PX` in `static/key-reveal.js`, now 4. Paste
+      `let o; addEventListener("pointermove", (e) => { o ??= [e.clientX, e.clientY]; console.log(Math.round(Math.hypot(e.clientX - o[0], e.clientY - o[1]))); }, true);`
+      then rest a hand on the mouse for five seconds, reload, and do the same on a
+      trackpad. The constant should be just above the largest drift logged.
+    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 8, estimated from the
+      stylesheet. Once the presentation layer overlays the strip, drag the navigation
+      pane to its narrowest, open a file of a mirror’s pin, and hold Shift at 100% and
+      200% zoom. The revealed strip should list all eight of Help, Quick Search, Files,
+      Commits, Pulls, Up, Copy, and Branch within the bottom quarter of the panel; lower
+      the cap until it does.
+
+    Record each measurement beside its constant.
+
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which
 this server answers 404; no request leaves `127.0.0.1`. Stop the server with Ctrl-C: it

@@ -248,6 +248,10 @@ The sidebar orders Files, Commits, and Pulls in that order.
 Help shows the fixed shortcuts: `1` for Files, `2` for Commits, and `3` for Pulls.
 A missing tab keeps its number reserved.
 The digits work outside text fields and dialogs, with or without Shift.
+A digit opens its tab, or keeps the tab already shown, and moves focus to the panel’s
+roving row, so `1` then `↓` walks the file tree; while the panel has no rows yet, the
+tab button takes focus.
+A missing tab has no target, so its digit does nothing.
 Command and Ctrl with a digit stay the browser’s, which switches its own tabs with them.
 
 #### Binding Grammar and Accessibility
@@ -1337,6 +1341,46 @@ while plain `↑` and `↓` move through results and `Enter` and `Esc` act with 
 Shift. When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
 
+### Badge Targets and the Shift Reveal
+
+A command whose key acts on a control on screen attaches that control as its target with
+the registry’s `attachTarget()`, which returns `retarget()` for a rebuilt control and an
+idempotent `detach()`. While attached, the control carries the command’s
+`aria-keyshortcuts`, so the key is announced at rest.
+A command marked `targeted` is live only while one of its targets is: connected, not
+`disabled`, outside any `inert` subtree, and visible by `checkVisibility()` or, without
+it, by computed style.
+The registry reads that at dispatch, so a key whose control is hidden, staged, or behind
+a modal leaves the event to the browser.
+The first live target in document order runs the command, as `context.target`, and
+carries its badge. A component that rebuilds its markup calls `retarget()` after each
+rebuild.
+
+Every key runs a named activation path, the one its control’s click runs, plus the focus
+a keyboard user needs next; no command synthesizes a click.
+A main tab’s digit opens the tab and then focuses the panel’s roving row; a view tab’s
+letter selects the tab and leaves focus where it was; a filter’s letter opens its menu
+and focuses the checked row; `W` opens the branch list and focuses its filter; `U` opens
+the parent folder; and `Y` copies the main-pane header’s path or revision.
+View tab letters are commands in a permanent `view-tabs` scope below `global`, one per
+letter, held for the bar the main pane commits and never for one still staged, so the
+stack’s `P` outranks a Preview tab’s `P` only while a pull request in a stack is open.
+
+Holding Shift alone outside a text field for the hold threshold reveals the keys: the
+root gains `data-key-reveal`, each live command’s first live target carries one
+`.kbd.kbd-badge` keycap, hidden from assistive technology, and the shortcut strip shows
+a second layer listing the `reveal` surface’s live commands, with every binding of an
+item that combines several, such as `N` or `P`. A key the registry handles keeps the
+reveal and moves the badges to what is live after it; any other key, a modifier, a
+pointer press, a wheel, the window losing focus, a hidden page, focus entering a text
+field, or a lost `keyup` ends it.
+Another key within the threshold, or pointer travel past the slop, keeps the reveal from
+starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without a
+flash. The reveal never calls `preventDefault()` and never announces itself; badges and
+the revealed strip exist only while it shows.
+`static/key-reveal.js` is the state machine, and `static/shell-keymap.js` holds the
+shell’s targeted commands.
+
 ### Navigational Row Collections
 
 A row collection whose primary action replaces the main content behaves as one keyboard
@@ -1459,6 +1503,10 @@ instead of duplicating it.
 The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
+The shortcut groups end with one note, “Press `Shift` to see relevant shortcut
+reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. The View
+tabs, Controls, and Filters groups say “Available while the tabs are shown.”, “Available
+while the control is shown.”, and “Available while the Files tab is shown.”
 
 ### Quick Search Results
 

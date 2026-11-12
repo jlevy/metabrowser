@@ -34,6 +34,19 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- Hold Shift outside a text field to see the keys: a keycap appears on each control a
+  key reaches now, and the shortcut strip lists the common keys that are live.
+  Releasing Shift, a click, or a scroll hides them, and `?`, capitals, Shift+click, and
+  Shift+wheel never show them.
+  A file’s view tabs answer to their letters, such as `D` and `S` for a Markdown file’s
+  Document and Source, `O` and `M` for a folder’s Overview and Treemap; `U` opens the
+  parent folder; `Y` copies the file’s path, or a commit’s revision; `X` opens the file
+  type filter and `A` the modified-within filter; and `W` opens a pin’s branch and tag
+  switcher. A key does nothing while its control is not on screen.
+  `1`, `2`, and `3` now also move focus to the panel’s rows.
+  Help lists the new keys under View tabs, Controls, and Filters, and ends with a note
+  about Shift. The main pane’s view tabs are a tablist to assistive technology.
+
 - Every keyboard shortcut is a single key, and Shift no longer changes what any of them
   does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls; `1`, `2`, and `3`
   still do, and the browser keeps Command and Ctrl with a digit for its own tabs.
