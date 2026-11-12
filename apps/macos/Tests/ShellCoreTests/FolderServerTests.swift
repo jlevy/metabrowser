@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// One gate for every server start (PR #361 A1, A2, B2, C1, C2): a folder's first start,
+/// One gate for every server start (mb-9lh2, mb-bqxx): a folder's first start,
 /// a restored folder's later start, Retry, Restart Server, and the restart after an
 /// upgrade all run the runtime the app accepts at that moment, or nothing.
 @Suite struct FolderServerTests {
@@ -100,7 +100,7 @@ import Testing
         #expect(subject.startedRuntime == found.runtime)
     }
 
-    /// A1, B2: replacing a running folder's metab with an older one, and rechecking it,
+    /// Replacing a running folder's metab with an older one, and rechecking it,
     /// left no runtime, and Restart Server ran the rejected file again.
     @Test func aRestartAfterTheRuntimeWasRejectedKeepsTheRunningServer() async {
         let children = Children(line: servingLine)
@@ -122,7 +122,7 @@ import Testing
         #expect(subject.startedRuntime == old.runtime)
     }
 
-    /// A1, B2, C2: during a recheck the folder's own runtime is unchecked, so a restart
+    /// During a recheck the folder's own runtime is unchecked, so a restart
     /// waits for the recheck's answer instead of reusing it.
     @Test func aRestartDuringARecheckWaitsForItsAnswer() async {
         let children = Children(line: servingLine)
@@ -142,7 +142,7 @@ import Testing
         #expect(subject.held == nil)
     }
 
-    /// A2, C1: a restored folder in a protected location had a runtime from the moment
+    /// A restored folder in a protected location had a runtime from the moment
     /// its session was made, so an upgrade counted it as an outdated server and
     /// restarting started it, raising the privacy prompt the restore deferred.
     @Test func anUpgradeOffersToRestartOnlyServersThatStarted() async {
@@ -175,7 +175,7 @@ import Testing
         #expect(children.launched.count == 1)
     }
 
-    /// C2: the offer was answered after a later replacement left no runtime, and the
+    /// The offer was answered after a later replacement left no runtime, and the
     /// restart fell back to the runtime the offer was made for.
     @Test func noRestartIsOutdatedWithoutAnAcceptedRuntime() {
         let started: [Runtime?] = [setup("/opt/metab", "0.12.1").runtime, nil]

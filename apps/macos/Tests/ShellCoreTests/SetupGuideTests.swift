@@ -60,7 +60,7 @@ import Testing
         #expect(guide(tried: [elsewhere], uv: bin + "/uv", loginPath: [bin]).steps == [.installMetab(inNewTerminal: false)])
     }
 
-    /// PR #361 A5: once the watch saw the uv just installed, the note went away, though
+    /// mb-99ee: once the watch saw the uv just installed, the note went away, though
     /// the Terminal that ran the installer still cannot find it.
     @Test func theNewTerminalNoteStaysUntilTheLoginShellFindsUv() {
         let before = guide(loginPath: ["/usr/bin", "/bin"]).steps
@@ -72,7 +72,7 @@ import Testing
         #expect(guide(uv: bin + "/uv", loginPath: [bin]).steps[0].note == nil)
     }
 
-    /// PR #361 A4: until the minimum is on PyPI, uv installs only older releases, so the
+    /// mb-w8to: until the minimum is on PyPI, uv installs only older releases, so the
     /// steps end in this checkout's own metab and Choose metab….
     @Test func beforeTheMinimumIsReleasedTheStepsEndInTheSourceCheckout() {
         let fresh = guide(released: false)
@@ -102,7 +102,7 @@ import Testing
         #expect(MetabRequirement.isReleased == false)
     }
 
-    /// PR #361 B1: a uv another account can change is not run, and the screen says why.
+    /// mb-2i0h: a uv another account can change is not run, and the screen says why.
     @Test func aUvTheAppMayNotRunIsNamedWithItsReason() {
         let refused = [UvRefusal(path: "/opt/homebrew/bin/uv", reason: "/opt/homebrew belongs to another account (uid 502)")]
         let shown = guide(uv: "/opt/homebrew/bin/uv", loginPath: ["/opt/homebrew/bin"], refused: refused)

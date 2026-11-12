@@ -84,7 +84,7 @@ import Testing
         #expect(watch.look() == .discover)  // metab wins: discovery replans too
     }
 
-    /// PR #361 C5: `chmod +x` changes nothing else about a file, so a candidate that
+    /// mb-oa5u: `chmod +x` changes nothing else about a file, so a candidate that
     /// discovery saw as missing because it could not run stayed missing.
     @Test func aChangeOfModeAloneIsANewFingerprint() throws {
         let directory = try temporaryDirectory()
@@ -112,7 +112,7 @@ import Testing
         #expect(watch.look() == .discover)
     }
 
-    /// PR #361 C4: an old `metab` found only on the login shell's `PATH` was shown in
+    /// mb-d4g5: an old `metab` found only on the login shell's `PATH` was shown in
     /// Settings but not watched, so upgrading it released no waiting folder.
     @Test func aWaitingWatchCoversEveryCandidateTheLastSearchTried() {
         let tried = [
@@ -202,7 +202,7 @@ import Testing
         }
     }
 
-    /// PR #361 C3: Find Again during a recheck kept the changed file's hold only until
+    /// mb-2mpn: Find Again during a recheck kept the changed file's hold only until
     /// the search started, so a folder opened meanwhile started the unchecked file.
     @Test func aSearchStartedDuringARecheckKeepsFoldersWaiting() {
         let old = RuntimeSetup(
@@ -237,7 +237,7 @@ import Testing
         #expect(subject.needsRecheck)
     }
 
-    /// PR #361 A3: a watch that settled while a chosen file was being validated started
+    /// mb-hlkm: a watch that settled while a chosen file was being validated started
     /// a recheck, whose newer ticket dropped the user's choice.
     @Test func aChoiceInProgressCountsAsBusy() {
         let old = RuntimeSetup(

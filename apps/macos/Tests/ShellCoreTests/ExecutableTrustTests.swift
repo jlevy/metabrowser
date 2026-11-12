@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// Which executables the app runs without being asked (PR #361 B1): only one that no
+/// Which executables the app runs without being asked (mb-2i0h): only one that no
 /// other account can change, nor any directory or link on the way to it.
 @Suite struct ExecutableTrustTests {
     private let me: uid_t = 501
@@ -50,7 +50,7 @@ import Testing
         #expect(refusal("/opt/homebrew/bin/uv", in: target)
             == "/opt/homebrew/Cellar/uv/0.9.0/bin/uv belongs to another account (uid 502)")
         var repointed = tree()
-        repointed["/opt/homebrew/bin/uv"] = link("/Users/other/uv", 502)
+        repointed["/opt/homebrew/bin/uv"] = link("/Volumes/Other/uv", 502)
         #expect(refusal("/opt/homebrew/bin/uv", in: repointed) == "/opt/homebrew/bin/uv belongs to another account (uid 502)")
     }
 
