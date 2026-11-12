@@ -48,6 +48,10 @@ links to the document that covers each in depth.
   and window titles, the icon and release pipeline adapted from a sister app, warm
   folder switching, host mode and the agent front door, and the app-managed runtime,
   tracked under epic `mb-1apq`
+- [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
+  — retained surfaces, fixed boxes at first paint, prediction behind admission control,
+  and a shorter landing chain, each a measured performance-loop round, tracked under
+  epic `mb-mpo0`
 - [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
   — the original mirror design and its delivery record; the checkout plan below extends
   it with borrowed stores and explicit recovery
@@ -99,6 +103,7 @@ Once its questions are answered and its measurements are superseded, it moves to
 - [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md)
 - [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md)
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md)
+- [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md)
 
 ### Archived Research
 
