@@ -51,8 +51,9 @@ links to the document that covers each in depth.
 - [Plugin sources and out-of-process plugin environments](specs/active/plan-2026-11-12-plugin-sources.md)
   — registered directories, environments, and managed packages, and a repository’s own
   and its libraries’ plugins picked up automatically once the repository is trusted;
-  Python plugins in workers on their own interpreters over a stdlib-only plugin SDK; a
-  caret SDK gate; and the macOS app’s plugin settings, tracked under epic `mb-xbw3`
+  Python plugins in workers on their own interpreters, running a runtime the host
+  injects; one plugin API version under a caret gate; and the macOS app’s plugin
+  settings, with the key decisions awaiting the owner, tracked under epic `mb-xbw3`
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
   — retained surfaces, fixed boxes at first paint, prediction behind admission control,
   and a shorter landing chain, each a measured performance-loop round, tracked under

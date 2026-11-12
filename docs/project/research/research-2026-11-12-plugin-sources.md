@@ -54,9 +54,8 @@ stdio to a worker that runs in the plugin’s own environment.
   Only entry points inside the CLI install reach an app window.
   The `.env` refusal is reproduced; the allowlist is read from source.
 - **Overlaying a plugin environment onto Metabrowser’s interpreter is silently wrong.**
-  After `site.addsitedir` of the downstream environment, the plugin imported and ran
-  against Metabrowser’s Softschema 0.8.1, although its own environment holds 0.9.1.
-  Reproduced.
+  After `site.addsitedir` of the downstream environment, the plugin imported against
+  Metabrowser’s Softschema 0.8.1, although its own environment holds 0.9.1. Reproduced.
 - **Subinterpreters cannot host these environments.** `pydantic_core` refuses to load in
   a PEP 734 subinterpreter.
   Reproduced.
@@ -73,16 +72,31 @@ stdio to a worker that runs in the plugin’s own environment.
   Out of process, that contention leaves the server’s event loop; in process, it is the
   server’s. And proxied log parsing cost 2.5–3.5 times the parse itself in each run on a
   synthetic 100,000-line log, mostly JSON encoding and decoding.
+  An independent measurement put the server’s own in-process pipeline (parse, `asdict`,
+  one `json.dumps`) at about 2.4 times the bare parse, so the proxied path is a modest
+  regression over today’s (the reviewer’s measurement under a load average near 30, not
+  reproduced here).
 - **The candidate design’s transport and process model hold; its binding does not.** A
   worker that imports the plugin environment’s own `metabrowser` must set private module
   state of whatever Metabrowser version that environment holds (the spike had to),
   cannot read content on a Git pin, and keeps every plugin environment carrying all of
   Metabrowser and its exact pins.
-  The plan replaces that binding with a small, stdlib-only plugin SDK package.
+  The plan replaces that binding with a runtime the host ships and injects.
+- **A host-shipped runtime runs the real plugins unchanged.** A second spike put the
+  host’s own runtime first on the worker’s path, importable as `metabrowser`, and ran
+  the three downstream plugins’ current code from their own environment, which still
+  holds Metabrowser 0.9.1. The process-graph hook returned the same 429,248 bytes; the
+  charts hook asked the host twice in the middle of a call; a plugin subprocess could
+  not reach the protocol descriptors; SIGINT left the worker running; and a synchronous
+  handler past its deadline was killed at deadline plus grace, with the worker back and
+  listed in 369–426 ms.
+  Reproduced twice.
 - **A repository’s plugins can be found without running any of its code.** Reading each
   `*.dist-info/entry_points.txt` in the downstream repository’s environment found all
-  three plugins in 31 ms over 127 distributions, and `direct_url.json` told the two
-  in-repository workspace members from the library.
+  three plugins in 31 ms over 127 distributions.
+  `direct_url.json` does not tell the repository’s own plugins from the library’s: all
+  three are editable installs from paths inside the repository, and only the library’s
+  `vendor/` path differs.
   Its workspace members’ `pyproject.toml` files declare the same entry points, so they
   are visible before the environment exists.
   Reproduced.
@@ -94,7 +108,21 @@ stdio to a worker that runs in the plugin’s own environment.
   `mise trust` record a folder path, and VS Code’s trust of a parent folder covers its
   subfolders. direnv records approved content: after an edit, direnv 2.36.0 blocked the
   `.envrc` until it was allowed again (reproduced), and mise’s paranoid mode does the
-  same. The plan offers both, path trust by default.
+  same. Neither a path nor an origin URL is a boundary on its own: two hand-written files
+  under `.git` make Git report any origin (reproduced).
+  The plan records consent per clone, keyed by the clone’s Git common directory, with
+  the plugin providers it approved.
+- **The example repository’s environment is not what a guessed command builds.** Its
+  `make install` initializes submodules first and then runs
+  `uv sync --all-packages --locked`; a plain `uv sync --locked` fails on a fresh clone
+  and otherwise builds an environment without the plugins (read from its Makefile and
+  `uv sync --help`; no sync was run).
+  Its lock has 10 editable members, so hashing editable source trees would ask again on
+  nearly every pull.
+- **An isolated interpreter has only the standard library.** `python -I -S` on
+  Metabrowser’s own interpreter found none of Starlette, Pydantic, Softschema, or
+  Metabrowser (reproduced), so a checked-in plugin in a repository with no environment
+  can still run hooks, against the standard library and the host’s runtime.
 
 ## Questions to Answer
 
@@ -290,7 +318,7 @@ other work. Four runs; the ranges are across runs.
 | Trivial hooks issued beside the large one | median 8.2–8.5 ms, max 47–68 ms |
 | Adapter detection on a 20-line head | 0.2–0.7 ms |
 | 100,000-line log, 2,000-line batches, events echo `raw` | 1.23–1.34 s total, 0.36–0.39 s parsing, 41.8 MB of events |
-| The same, events without `raw` | 1.01–1.10 s total, 0.40–0.43 s parsing, 24.6 MB of events |
+| The same, events without `raw` (three runs) | 1.01–1.10 s total, 0.40–0.43 s parsing, 24.6 MB of events |
 | Exit after stdin closes | 4.2–4.6 ms, status 0 |
 
 What this shows:
@@ -298,8 +326,9 @@ What this shows:
 - **Transport is not the cost.** A tenth of a millisecond per call and 10–27 ms on a 429
   KB body are small beside a 1.3 s handler, and well inside the shell’s 50 ms spinner
   threshold for small hooks.
-- **The lifeline works.** The worker exits when its stdin closes, so a worker cannot
-  outlive the server that started it, the same mechanism as `metab --exit-on-eof`.
+- **The lifeline works.** The worker exits when its stdin closes (in the second spike,
+  its request pipe), so a worker cannot outlive the server that started it, the same
+  mechanism as `metab --exit-on-eof`.
 - **Version skew between host and plugin environment is harmless at this boundary.** The
   host read the manifests itself and the worker answered from a different Metabrowser
   version, because only manifests, frames, and the plugin’s own code cross it.
@@ -311,13 +340,53 @@ What this shows:
 - **Proxied log parsing needs its own design.** Transport and JSON codec work cost more
   than the parse: 0.87–0.96 s against 0.36–0.39 s with `raw` echoed, and 0.62–0.67 s
   against 0.40–0.43 s without it.
-  Dropping the echoed `raw` saved about 41% of the bytes and 30% of the transport.
+  Dropping the echoed `raw` saved about 41% of the bytes and 30% of the transport, but
+  the measurement only decoded the events: the host would also have to reattach each
+  source line and encode again, so the saving is not net.
   The plan makes detection declarative, so classification need not wait on a worker, and
-  sends events without `raw`; whether to splice the worker’s JSON into the response
-  without decoding it is measured there.
+  measures splicing the worker’s serialized events into the response before choosing a
+  wire shape.
 - **Memory is per worker.** 61–121 MB for one environment is close to a server’s own
   footprint, so workers start on demand and exit when idle rather than with every
   server.
+
+### The Second Spike: A Host-Shipped Runtime
+
+`host_runtime.py`, `runtime_worker.py`, and `runtime_metabrowser.py` in the same folder
+try the shape the plan now recommends.
+The host assembles a runtime folder from its own code, the shim installed as
+`metabrowser/__init__.py` beside verbatim copies of its `gz_io.py` and
+`content_errors.py`, and spawns the worker with `posix_spawn`: the request pipe on
+descriptor 3 and the reply pipe on 4, `/dev/null` on 0, the log on 1 and 2. The worker
+puts the runtime first on `sys.path`, marks 3 and 4 close-on-exec, and ignores SIGINT.
+Hooks get a small request object with `query_params`, not a Starlette `Request`. The
+worker asks the host for built-in adapter detection and for the agent-log chart
+projection, which the host computes after checking the path against that worker’s root.
+
+The same downstream environment and checkout as above, two runs, under a load average
+near 30:
+
+| Measure | Result |
+| --- | --- |
+| Plugins listed from the environment, through the injected runtime | all three, no errors; both adapters registered through the public `register_log_adapter` |
+| Spawn to listed (imports included) | 779–898 ms |
+| Trivial hook round trip, 200 calls | median 0.26–0.52 ms |
+| Process-graph hook | status 200, 429,248 bytes, 1.8–2.6 s in the handler |
+| Charts hook on a pool log | status 200, through the runtime’s `ArtifactPath` and `register_root_callback` |
+| Charts hook on an agent log | status 200, one chart, after two host calls (built-in detection, chart projection) |
+| A plugin subprocess printing, reading stdin, and writing to descriptor 4 | its output went to the log, `cat` saw end of file, `Bad file descriptor` on 4, and the next hook answered |
+| SIGINT sent to the worker | the next hook answered |
+| A synchronous handler that sleeps 60 s, deadline 1 s plus 1 s grace | killed after 2.0 s; respawned and listed in 369–426 ms |
+| Resident memory after the large hook | 113–118 MB |
+| Exit after the request pipe closes | 2–4 ms, status 0 |
+
+So the plugins’ current code needs no change to run this way, and the environment does
+not need the SDK or Metabrowser installed for it.
+What the spike leaves out is in its README: the identity codec, the content reader’s
+handle table, cancelling an async handler, and live streams.
+The host’s log-parsing module imports `prettyfmt`, so the built-in detectors are
+answered by the host here; shipping them in the runtime means separating them from that
+dependency.
 
 ### Subinterpreters and In-Process Overlays
 
@@ -372,10 +441,12 @@ workspace member’s `pyproject.toml`, all of which are data.
 One run, warm page cache.
 An entry point’s value is `module:callable`, so where its plugin directory is can be
 known only by importing the module; the static reading gives names, distributions,
-versions, and origins, which is what a consent prompt needs.
-Entry points are not conditional on extras, so a library that puts its plugin’s
-dependencies behind an extra advertises a plugin that a consumer without the extra
-cannot import (inferred from the packaging metadata format).
+versions, and where each was installed from, which is what a consent prompt needs.
+It cannot say which plugins are the repository’s own: `direct_url.json` records all
+three as editable installs from `file://` paths inside the repository, and the library
+differs only by living under `vendor/`. Entry points are not conditional on extras, so a
+library that puts its plugin’s dependencies behind an extra advertises a plugin that a
+consumer without the extra cannot import (inferred from the packaging metadata format).
 
 The workflow library discovers its own extensions the same way Metabrowser does today:
 `importlib.metadata.entry_points` for several groups in the running environment.
@@ -456,14 +527,25 @@ version), it has no session from which to read a Git pin’s content, and every 
 environment must still install all of Metabrowser, with its exact pins, only to import a
 dozen helpers.
 
-### Option H: Out-of-Process Workers over a Small Plugin SDK (Recommended)
+### Option H: Out-of-Process Workers over a Runtime the Host Injects (Recommended)
 
-Option G’s transport and process model, with the helpers moved into a stdlib-only
-`metabrowser-plugin-sdk` package that both the host and plugin environments import.
-In a worker, the SDK binds to the worker’s session: the root arrives in the handshake,
-filesystem helpers run locally, and content reads on a pin call back to the host.
-Plugins stop depending on Metabrowser itself, which removes the Softschema conflict from
-their resolution. The plan specifies it.
+Option G’s transport and process model, with the plugin-side runtime (the sidekick
+names, the worker loop, and the bounded readers) shipped inside Metabrowser and put
+first on the worker’s path at spawn, importable under the documented name `metabrowser`.
+Host and worker are then one artifact, as the repository’s rule for internal contracts
+assumes; security fixes to path and decompression bounds reach every plugin with the
+next Metabrowser; and nothing is installed in plugin environments.
+The second spike ran the three downstream plugins this way unchanged.
+The plan specifies it.
+
+### Option O: A Plugin SDK Package Installed in Each Environment (Rejected)
+
+An earlier revision of this design: a stdlib-only `metabrowser-plugin-sdk` package that
+each plugin environment installs, with a negotiated worker protocol.
+It freezes security-sensitive code at whatever version each environment locked, makes
+two plugins in one environment agree on one SDK range, leaves checked-in directory
+plugins with nothing to bring the SDK, gives plugin authors three version axes, and was
+never what a spike ran.
 
 ### Option I: One Shared Worker per Environment Across Roots (Deferred)
 
@@ -486,15 +568,21 @@ the user then trusted.
 The owner asked for automatic pickup instead, and the declaration duplicates what the
 workspace’s `pyproject.toml` files and lock already say.
 
-### Option M: Path Trust Only, or Content Trust Only (Both Offered)
+### Option M: What a Trust Decision Binds To (Per Clone with Named Providers)
 
-Path trust, as in VS Code, keeps an owner’s own repositories effortless: once trusted, a
-pull, a new plugin, or a lock bump just works, and trusting a parent folder covers the
-repositories under it whose origins it names.
-Content trust, as in direnv, makes every change to the plugin set ask again, which suits
-a repository that takes outside contributions.
-The plan makes path trust the default and content trust a per-repository choice, because
-the owner’s case is internal repositories.
+- **Path only**, as in VS Code: never asks again, so anything that can write the tree or
+  add a dependency runs code.
+- **A parent folder scoped by origin**: fewest prompts, but not a boundary, because the
+  origin is data inside the directory being judged (reproduced above).
+  Kept only as a later convenience whose description says that everything under the
+  folder runs code.
+- **Content**, as in direnv: asks on nearly every pull in a workspace with 10 editable
+  members.
+- **Per clone, with the named plugin providers** (recommended): asks once per clone, and
+  again only when a new distribution starts providing a plugin; version bumps of an
+  approved provider do not ask.
+  The clone is identified by its Git common directory, so its linked worktrees share the
+  decision.
 
 ### Option N: Metabrowser Builds Its Own Environment for Each Repository (Rejected)
 
@@ -513,13 +601,14 @@ Stdio gives the lifeline for free and needed no dependencies in the spike.
 
 Adopt Option H, specified in
 [Plugin Sources and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md):
-a registry of plugin sources in Metabrowser’s configuration home, a stdlib-only plugin
-SDK package, one worker per plugin environment per server, declarative log-adapter
-detection, a semantic-version SDK gate, and native app settings that run the same CLI
-modes. Discover a repository’s plugins statically from its environment and checked-in
-directories, and load them once the user trusts the repository by path (Option M’s
-default) or by content.
-Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent fix.
+a runtime the host injects into one worker per plugin environment per server, a registry
+of scoped plugin sources, declarative log-adapter detection, a semantic-version gate on
+one plugin API version, and native app settings that run the same CLI modes.
+Discover a repository’s plugins statically and load them after a per-clone consent that
+names their providers (Option M). The plan’s Key Decisions section lists the choices
+still open.
+Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent
+fix.
 
 ## Methodology
 
@@ -540,6 +629,13 @@ Declare dependency ranges in Metabrowser’s `pyproject.toml` as an independent 
 - Checked direnv’s behavior with direnv 2.36.0 and scratch `XDG_DATA_HOME` and
   `XDG_CONFIG_HOME`, so the user’s own allow list was not touched; read the VS Code and
   mise trust documentation.
+- Ran the second spike twice against the same environment and checkout, and checked a
+  forged origin with two hand-written files under a scratch `.git`.
+- Read the example repository’s `Makefile` install target and counted the editable
+  members in its lock; ran `python -I -S` on Metabrowser’s own interpreter.
+- An independent design review checked this brief and the plan.
+  Its in-process parsing baseline is quoted with its conditions and was not reproduced
+  here.
 - Claims marked inferred rest on reading alone.
 
 ## References
