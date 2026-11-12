@@ -9,15 +9,15 @@
 //   node apps/macos/webkit-gate/run.mjs --summarize DIR  # recompute a run's summary
 //
 // It writes deterministic corpora, serves them with this checkout's `metab` (one server
-// for both engines), serves the repository root for the committed diff benchmark pages,
-// builds webkit-driver, the app package's WebKitDriver target, then runs each case as
-// pairs: Chrome then WebKit, then WebKit then Chrome, alternating, each sample a fresh
-// browser with a cold cache at the app's 1200 x 820 content size. Both engines run
-// probe.js, so they time the same intervals with the same code. Results go to
-// attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora), samples.jsonl
-// (every record), summary.json, and summary.md, the table docs/large-content-rendering.md
-// quotes. Every process and listener a run starts is stopped when it ends, however it
-// ends (processes.mjs).
+// for both engines), serves the committed diff benchmark pages and only the files they
+// load (static-server.mjs), builds webkit-driver, the app package's WebKitDriver target,
+// then runs each case as pairs: Chrome then WebKit, then WebKit then Chrome, alternating,
+// each sample a fresh browser with a cold cache at the app's 1200 x 820 content size.
+// Both engines run probe.js, so they time the same intervals with the same code. Results
+// go to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora),
+// samples.jsonl (every record), summary.json, and summary.md, the table
+// docs/large-content-rendering.md quotes. Every process and listener a run starts is
+// stopped when it ends, however it ends (processes.mjs).
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
@@ -27,13 +27,13 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
 import { Cleanup, startMetab, terminate, within } from "./processes.mjs";
+import { BENCHMARK_ASSETS, startStatic } from "./static-server.mjs";
 import { markdown, summarize } from "./summary.mjs";
 
 /**
@@ -258,70 +258,6 @@ async function writeCorpora(directory) {
     };
   }
   return manifest;
-}
-
-// ── Servers ─────────────────────────────────────────────────────
-
-/** @type {Record<string, string>} */
-const MIME = {
-  ".css": "text/css",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".json": "application/json",
-  ".mjs": "text/javascript",
-};
-
-/**
- * The repository root, read-only, for the committed benchmark pages and their modules,
- * closed by `cleanup` from the moment it is created.
- * @param {string} corpus
- * @param {Cleanup} cleanup
- */
-async function startStatic(corpus, cleanup) {
-  const server = http.createServer((request, response) => {
-    // A server's request always has a URL; the type allows none for client requests.
-    const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
-    if (pathname === "/__gate/blank.html") {
-      response.writeHead(200, { "content-type": MIME[".html"] });
-      response.end("<!doctype html><title>blank</title><body></body>");
-      return;
-    }
-    const [base, relative] = pathname.startsWith("/__gate/corpus/")
-      ? [corpus, pathname.slice("/__gate/corpus/".length)]
-      : [ROOT, pathname];
-    const file = path.resolve(base, `./${relative}`);
-    if (
-      !file.startsWith(`${base}${path.sep}`) ||
-      !fs.statSync(file, { throwIfNoEntry: false })?.isFile()
-    ) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, {
-      "cache-control": "no-store",
-      "content-type": MIME[path.extname(file)] || "application/octet-stream",
-    });
-    fs.createReadStream(file).pipe(response);
-  });
-  cleanup.add(
-    () =>
-      /** @type {Promise<void>} */ (
-        new Promise((resolve) => {
-          // A browser's idle keep-alive connections would hold close() open.
-          server.closeAllConnections();
-          server.close(() => resolve());
-        })
-      ),
-  );
-  /** @type {Promise<void>} */
-  const listening = new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
-  await listening;
-  // A server listening on a TCP port reports its address as an AddressInfo.
-  const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
-  return { origin: `http://127.0.0.1:${port}`, server };
 }
 
 // ── Engines ─────────────────────────────────────────────────────
@@ -950,7 +886,13 @@ async function measure(options, caseNames, cleanup) {
   console.error(`webkit-gate: writing corpora and building webkit-driver in ${options.out}`);
   const [manifest, driver] = await Promise.all([writeCorpora(corpus), buildDriver()]);
   const metab = await startMetab(options.metab, corpus, scratch, { cleanup });
-  const files = await startStatic(corpus, cleanup);
+  const files = await startStatic({
+    root: ROOT,
+    assets: BENCHMARK_ASSETS,
+    corpus,
+    corpusFiles: Object.keys(manifest),
+    cleanup,
+  });
   const servers = { metab: metab.origin, static: files.origin };
   /**
    * @type {RunMeta & {
