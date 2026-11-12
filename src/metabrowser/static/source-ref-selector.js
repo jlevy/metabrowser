@@ -567,6 +567,11 @@
     return { root: element, toggle, label, panel, kinds, tabs, filter, list, note, error };
   }
 
+  /** The selector this page mounted, kept for the branch or tag key, which runs the
+   * button's path through it; null until it mounts and after it is disposed.
+   * @type {MetabrowserSourceRefSelectorMount | null} */
+  let mountedSelector = null;
+
   /**
    * Start the selector on this page with the browser's fetch, timers, focus, and paint.
    *
@@ -714,7 +719,7 @@
       },
       { signal },
     );
-    return Object.freeze({
+    const handle = Object.freeze({
       ...mounted,
       // The control a key's badge marks, and what the key does: the button's path,
       // except that it opens the list rather than toggling it.
@@ -731,8 +736,13 @@
         parts.releaseCopies?.();
         element.replaceChildren();
         element.hidden = true;
+        if (mountedSelector === handle) {
+          mountedSelector = null;
+        }
       },
     });
+    mountedSelector = handle;
+    return handle;
   }
 
   window.MetabrowserSourceRefSelector = Object.freeze({
@@ -740,6 +750,7 @@
     createSelector,
     describe,
     mount,
+    mounted: () => mountedSelector,
     moveRow,
     shownLabel,
   });

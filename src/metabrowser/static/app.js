@@ -3786,17 +3786,17 @@ function initNavTabs() {
   });
 }
 
-// The commit view's Copy revision, lent to `Y`.
-var headerCopyBridge = null;
-
-/** What the shell keymap reaches the shell through; see shell-keymap.js.
- * @returns {MetabrowserPublicShellKeymapShell} */
+/**
+ * What the shell keymap's commands reach their controls through: the activation paths
+ * only app.js can run, each the one its control's click runs; see shell-keymap.js. The
+ * keymap reads its targets itself, and the commit view's Copy revision and the branch
+ * selector reach it through its own module and the selector's.
+ * @returns {MetabrowserPublicShellKeymapShell}
+ */
 function shellKeymapShell() {
   return Object.freeze({
-    lentCopy: () => headerCopyBridge,
     openFolder: navigateToFolder,
     selectPreviewTab,
-    sourceSelector: () => sourceRefSelector,
     toggleFilterMenu,
   });
 }
@@ -3897,18 +3897,6 @@ window.MetabrowserShell = Object.freeze({
   stagePreviewNode,
   shortcuts: () => shortcutRegistry,
   sourceFreshness,
-  /** The commit view lends its Copy revision to `Y`; the disposer takes it back. */
-  /** @param {HTMLElement} button */
-  attachHeaderCopy: (button) => {
-    headerCopyBridge = button;
-    shellKeymap?.syncHeader();
-    return () => {
-      if (headerCopyBridge === button) {
-        headerCopyBridge = null;
-        shellKeymap?.syncHeader();
-      }
-    };
-  },
 });
 
 // Toggle the nav chrome's drop shadow based on whether the
@@ -8405,11 +8393,11 @@ async function startSourceRefSelector() {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
-  sourceRefSelector = window.MetabrowserSourceRefSelector?.mount(element) ?? null;
+  // The selector's module keeps what it mounted, which the branch or tag key runs the
+  // button's path through, and the keymap reads it from there.
+  window.MetabrowserSourceRefSelector?.mount(element);
   shellKeymap?.syncSource();
 }
-
-var sourceRefSelector = null;
 
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried

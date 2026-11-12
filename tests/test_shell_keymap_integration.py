@@ -69,9 +69,20 @@ def test_a_filter_key_opens_its_menu_through_the_triggers_path() -> None:
     assert ".click()" not in open_menu
 
 
-def test_the_branch_switcher_handle_is_kept() -> None:
+def test_the_branch_switcher_handle_is_kept_by_its_module() -> None:
+    """The selector's module keeps what it mounted, and the keymap reads it there, so the
+    eager app.js keeps no handle: it mounts the selector and reports it."""
+
     start = _function_source(_read_app_js(), "startSourceRefSelector")
-    assert "sourceRefSelector = window.MetabrowserSourceRefSelector?.mount(element)" in start
+    assert start.index("window.MetabrowserSourceRefSelector?.mount(element);") < start.index(
+        "shellKeymap?.syncSource();"
+    )
+    assert "sourceRefSelector" not in _read_app_js()
+    selector = proc_browser.STATIC_DIR.joinpath("source-ref-selector.js").read_text()
+    assert "mountedSelector = handle;" in selector
+    assert "mounted: () => mountedSelector," in selector
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    assert "window.MetabrowserSourceRefSelector?.mounted() ?? null" in keymap
 
 
 def test_the_files_tab_hands_focus_to_the_tree_read_when_called() -> None:
@@ -139,8 +150,7 @@ def test_header_controls_are_read_from_the_committed_pane_and_anchor_their_badge
     assert '".folder-up[data-nav-dir]:not([disabled])"' in controls
     assert '".folder-breadcrumb [data-nav-dir]"' in controls
     assert '".file-header-copy"' in controls
-    assert "shell.lentCopy()" in controls
-    assert "lentCopy: () => headerCopyBridge," in _function_source(js, "shellKeymapShell")
+    assert "lentCopy && pane()?.contains(lentCopy)" in controls
     assert '<div class="file-header folder-header" data-kbd-badge-anchor>' in js
     assert '<div class="file-header" data-kbd-badge-anchor>' in js
     filters = _function_source(js, "renderNavFilterBar")
@@ -149,10 +159,21 @@ def test_header_controls_are_read_from_the_committed_pane_and_anchor_their_badge
     )
 
 
-def test_the_commit_view_lends_its_copy_revision_through_the_bridge() -> None:
+def test_the_commit_view_lends_its_copy_revision_through_the_keymaps_module() -> None:
+    """The Git panel and the shell keymap load in one on-demand bundle, so the lent Copy
+    lives in the keymap's module, where a rebuilt keymap finds it, and not in app.js."""
+
     panel = proc_browser.STATIC_DIR.joinpath("git-panel.js").read_text()
-    assert "bridge.attachHeaderCopy?.(revisionCopy)" in panel
+    assert "window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy)" in panel
     assert '<div class="git-commit-header" data-kbd-badge-anchor>' in panel
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    assert "Object.freeze({ attachHeaderCopy, createShellKeymap })" in keymap
+    js = _read_app_js()
+    assert "attachHeaderCopy" not in js
+    assert "headerCopyBridge" not in js
+    bundle = proc_browser.STATIC_DIR.joinpath("..", "server.py").read_text()
+    tools = bundle[bundle.index('"shell-tools": [') :]
+    assert tools.index('{"src": shell_keymap_url}') < tools.index('{"src": git_panel_url}')
 
 
 def _tags(source: str, token: str) -> list[str]:

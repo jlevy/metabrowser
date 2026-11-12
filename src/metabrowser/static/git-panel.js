@@ -2186,13 +2186,14 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
-      // The committed view lends its Copy revision to the header's Copy key, and the
-      // view that replaces it gives the previous one back.
+      // The committed view lends its Copy revision to the header's Copy key, through the
+      // shell keymap's module in this same bundle, and the view that replaces it gives
+      // the previous one back.
       releaseHeaderCopy?.();
       const revisionCopy = stage.querySelector(".git-commit-revision-copy");
       releaseHeaderCopy =
         revisionCopy instanceof HTMLElement
-          ? (bridge.attachHeaderCopy?.(revisionCopy) ?? null)
+          ? (window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy) ?? null)
           : null;
     } finally {
       unstage();

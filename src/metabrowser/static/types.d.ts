@@ -2305,16 +2305,15 @@ type MetabrowserKeyRevealRuntime = Readonly<{
 }>;
 
 /**
- * What app.js lends static/shell-keymap.js: the state only it holds, and the paths that
- * activate the shell's controls, each the one its control's click runs. The keymap finds
- * the main pane and the filter bar by their ids, and copies through the SDK.
+ * What app.js lends static/shell-keymap.js: the paths that activate the shell's controls,
+ * each the one its control's click runs, and which only app.js can reach. The keymap
+ * finds the main pane and the filter bar by their ids, copies through the SDK, takes the
+ * commit view's lent Copy through its own `attachHeaderCopy()`, and asks the selector's
+ * module for its mounted selector.
  */
 type MetabrowserShellKeymapShell = Readonly<{
-  /** The commit view's Copy revision while that view lends it; see `attachHeaderCopy`. */
-  lentCopy(): HTMLElement | null;
   openFolder(dir: string): void;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
-  sourceSelector(): Readonly<{ activate(): unknown; button: HTMLElement }> | null;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
   toggleFilterMenu(key: string, open: boolean): void;
 }>;
@@ -2334,6 +2333,8 @@ type MetabrowserShellKeymapApi = Readonly<{
 }>;
 
 type MetabrowserShellKeymapRuntime = Readonly<{
+  /** Lend the header's Copy key a committed commit view's Copy revision; returns its release. */
+  attachHeaderCopy(button: HTMLElement): () => void;
   createShellKeymap(options: {
     shortcuts: MetabrowserShortcutRegistry;
     shell: MetabrowserShellKeymapShell;
@@ -2856,6 +2857,8 @@ declare global {
     ): MetabrowserSourceRefSelector;
     describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
     mount(element: HTMLElement): MetabrowserSourceRefSelectorMount;
+    /** The selector this page mounted, for the branch or tag key; null until it mounts. */
+    mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
     shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
   }>;
@@ -3036,8 +3039,6 @@ declare global {
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
-    /** Lend the header's Copy key a committed commit view's Copy revision; returns its release. */
-    attachHeaderCopy(button: HTMLElement): () => void;
   };
   type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;

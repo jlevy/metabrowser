@@ -199,6 +199,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       decorateExternalLink() {},
       ensureAsset: () => new Promise(() => {}),
     },
+    // source-ref-selector.js, which keeps the selector it mounted for the branch key.
+    MetabrowserSourceRefSelector: {
+      mounted: () => selector,
+    },
     // plugin-sdk.js's copy delegate, which Copy's key reaches as the control's click does.
     MetabrowserPluginHost: {
       copyFromControl(control) {
@@ -283,7 +287,6 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let reveal = null;
   let palette = null;
   let selector = null;
-  let headerCopyBridge = null;
   let filterOpenMenu = null;
   const stack = { inStack: false };
 
@@ -291,7 +294,6 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
 
   // app.js shellKeymapShell: the state only app.js holds, and the paths its controls run.
   const shell = Object.freeze({
-    lentCopy: () => headerCopyBridge,
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
     },
@@ -304,7 +306,6 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       did.push(`selected the ${tabId} tab`);
       return true;
     },
-    sourceSelector: () => selector,
     // app.js toggleFilterMenu, a trigger's click: remember the open menu and render the
     // bar again, which reports the new triggers to the keymap.
     toggleFilterMenu(key, open) {
@@ -456,15 +457,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     preview.replaceChildren(view);
     installed();
     releaseCopy?.();
-    // MetabrowserShell.attachHeaderCopy in app.js.
-    headerCopyBridge = copy;
-    keymap?.syncHeader();
-    releaseCopy = () => {
-      if (headerCopyBridge === copy) {
-        headerCopyBridge = null;
-        keymap?.syncHeader();
-      }
-    };
+    // git-panel.js lends it through the shell keymap's module, as here.
+    releaseCopy = context.MetabrowserShellKeymap.attachHeaderCopy(copy);
   }
 
   /**

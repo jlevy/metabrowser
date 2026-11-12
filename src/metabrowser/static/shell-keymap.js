@@ -21,6 +21,38 @@
 
   /** What the shell lends the keymap; see types.d.ts. @typedef {MetabrowserPublicShellKeymapShell} ShellKeymapShell */
 
+  // The commit view's Copy revision while that view lends it to `Y`, and the keymap of
+  // the live registry, which a lend and its return report to. Both live here, in the
+  // on-demand bundle, rather than in app.js: neither can act before a registry exists,
+  // and a lent Copy outlives the keymap a real `pagehide` disposes, so the keymap
+  // rebuilt on `pageshow` finds it.
+  /** @type {HTMLElement | null} */
+  let lentCopy = null;
+  /** @type {MetabrowserPublicShellKeymapApi | null} */
+  let liveKeymap = null;
+
+  /**
+   * Lend the header's Copy key the commit view's Copy revision, once its staged view has
+   * committed; the returned disposer gives it back when the view is replaced. The Git
+   * panel calls this.
+   *
+   * @param {HTMLElement} button
+   */
+  function attachHeaderCopy(button) {
+    lentCopy = button;
+    liveKeymap?.syncHeader();
+    return () => {
+      if (lentCopy === button) {
+        lentCopy = null;
+        liveKeymap?.syncHeader();
+      }
+    };
+  }
+
+  /** The mounted branch and tag selector of a served mirror's pin, once its bundle has
+   * mounted it; see static/source-ref-selector.js. */
+  const sourceSelector = () => window.MetabrowserSourceRefSelector?.mounted() ?? null;
+
   /**
    * One command the keymap may hold, and the slot of the one target it badges.
    *
@@ -105,7 +137,7 @@
      * The committed header's controls for Up and Copy. Up is the folder header's Up
      * button, which has no parent to open at the root, or for a file the crumb of its
      * folder; Copy is the file header's Copy path, or the commit view's Copy revision,
-     * which the shell lends while that view is shown.
+     * which the Git panel lends while that view is shown.
      */
     function headerControls() {
       const header = committed().find((child) => child.classList.contains("file-header"));
@@ -123,9 +155,8 @@
           ).at(-1) ?? null;
         copy = header.querySelector(".file-header-copy");
       }
-      const lent = shell.lentCopy();
-      if (!copy && lent && pane()?.contains(lent)) {
-        copy = lent;
+      if (!copy && lentCopy && pane()?.contains(lentCopy)) {
+        copy = lentCopy;
       }
       return { copy, parent };
     }
@@ -336,7 +367,7 @@
       if (disposed) {
         return;
       }
-      const selector = shell.sourceSelector();
+      const selector = sourceSelector();
       holdWhilePresent("source.switch-ref", selector?.button ?? null, () =>
         registerCommand({
           copy: {
@@ -346,7 +377,7 @@
           },
           group: "controls",
           handler: () => {
-            const current = shell.sourceSelector();
+            const current = sourceSelector();
             if (!current) {
               return false;
             }
@@ -473,6 +504,9 @@
         releaseCopy();
       });
       disposed = true;
+      if (liveKeymap === keymap) {
+        liveKeymap = null;
+      }
     }
 
     /**
@@ -492,7 +526,7 @@
       syncSource();
     });
 
-    return Object.freeze({
+    const keymap = Object.freeze({
       commitViewTabs,
       committedBar,
       dispose,
@@ -502,7 +536,9 @@
       syncSource,
       syncViewTabs,
     });
+    liveKeymap = keymap;
+    return keymap;
   }
 
-  window.MetabrowserShellKeymap = Object.freeze({ createShellKeymap });
+  window.MetabrowserShellKeymap = Object.freeze({ attachHeaderCopy, createShellKeymap });
 })();
