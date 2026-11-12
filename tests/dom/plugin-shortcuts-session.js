@@ -337,6 +337,14 @@ async function main() {
   mb.shortcuts.attach(stale, spec("demo.stale", "q", "Stale")).detach();
   mb.shortcuts.attach(before, spec("demo.moved", "m", "Moved")).retarget(after);
   mb.shortcuts.attach("#not-an-element", spec("demo.broken", "b", "Broken"));
+  // A signal that aborts before the facade loads takes its entry out of the queue, as
+  // detach() does, so the count below stays at the three still attached.
+  const dropping = new AbortController();
+  mb.shortcuts.attach(
+    control("Dropped"),
+    spec("demo.dropped", "d", "Dropped", { signal: dropping.signal }),
+  );
+  dropping.abort();
   steps.push(
     page.record("attached before the facade loads: the SDK queues each one still attached", {
       queued: context.MetabrowserPluginHost.shortcutQueue.size,

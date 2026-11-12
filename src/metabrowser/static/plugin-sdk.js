@@ -151,7 +151,7 @@
       return _attachedFileCatalog?.subscribe(listener) || (() => {});
     },
   });
-  // Plugin keys until static/plugin-shortcuts.js loads and takes them: 233 bytes of
+  // Plugin keys until static/plugin-shortcuts.js loads and takes them: 252 bytes of
   // startup transfer, by devtools/check_startup_scripts.py.
   const _shortcutQueue = new Set();
   function queueShortcut(element, options) {
@@ -161,6 +161,7 @@
     }
     const queued = { element, options };
     _shortcutQueue.add(queued);
+    options?.signal?.addEventListener?.("abort", () => _shortcutQueue.delete(queued));
     return {
       retarget(next) {
         queued.element = next;
