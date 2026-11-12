@@ -12,7 +12,7 @@ experiment:
   hypotheses:
     - H90
   subject:
-    corpus: Detached checkout of this repository at 7a02fed4, frozen and clean; the same series as exp-061.
+    corpus: Standalone clone of this repository at 7a02fed4 (corpus v2), clean; the same series as exp-061.
     corpus_files: 1286
     host_cpu: 10 CPUs
     host_system: Darwin 25.5.0 arm64, Node 24.19.0
@@ -20,28 +20,22 @@ experiment:
     viewport: 1440x900
     cold: false
   method:
-    runs_per_condition: 5
+    runs_per_condition: 6
     interleaved: true
-    control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean, one server process per run.
-    candidate: metab 0.12.1.dev165+9903292 (+169 commits, 9e1630db7), the editable checkout of claude/perf-caches at 9e1630db, clean, one server process per run. It carries this round's commit (9e1630db) and exp-061's (3594c291, a627d915, 45f2b8d3), which touch disjoint code and metrics.
+    control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run, a fresh server process per run.
+    candidate: metab 0.12.1.dev165+9903292 (+174 commits, 4b0e12332), the editable checkout of claude/perf-caches at 4b0e1233, clean at the start and end of every run, a fresh server process per run. It carries this round's change and exp-061's, which touch disjoint code.
     record: exp-061-transition-samples.jsonl
   results:
-    - metric: requests_kpress.files.revisit.markdown_large
-      control_median: 1
-      candidate_median: 0
-      control_range: [1, 1]
-      candidate_range: [0, 0]
-      overlapping: false
     - metric: requests_kpress.files.revisit.markdown_small
       control_median: 1
       candidate_median: 0
       control_range: [1, 1]
       candidate_range: [0, 0]
       overlapping: false
-    - metric: requests_plugin.files.revisit.markdown_small
-      control_median: 3
+    - metric: requests_kpress.files.revisit.markdown_large
+      control_median: 1
       candidate_median: 0
-      control_range: [3, 3]
+      control_range: [1, 1]
       candidate_range: [0, 0]
       overlapping: false
     - metric: requests_kpress.files.history_back
@@ -56,252 +50,293 @@ experiment:
       control_range: [1, 1]
       candidate_range: [0, 0]
       overlapping: false
-    - metric: painted_ready_ms.files.revisit.markdown_large
-      control_median: 128.9
-      candidate_median: 114.7
-      control_range: [113.3, 184.6]
-      candidate_range: [113.4, 147.2]
-      overlapping: true
+    - metric: post_body_bytes.files.revisit.markdown_small
+      control_median: 19168
+      candidate_median: 0
+      control_range: [19168, 19168]
+      candidate_range: [0, 0]
+      overlapping: false
+    - metric: post_body_bytes.files.revisit.markdown_large
+      control_median: 191142
+      candidate_median: 0
+      control_range: [191142, 191142]
+      candidate_range: [0, 0]
+      overlapping: false
+    - metric: post_body_bytes.files.history_back
+      control_median: 19168
+      candidate_median: 0
+      control_range: [19168, 19168]
+      candidate_range: [0, 0]
+      overlapping: false
+    - metric: post_body_bytes.files.history_forward
+      control_median: 191142
+      candidate_median: 0
+      control_range: [191142, 191142]
+      candidate_range: [0, 0]
+      overlapping: false
+    - metric: requests_plugin.files.revisit.markdown_small
+      control_median: 3
+      candidate_median: 0
+      control_range: [3, 3]
+      candidate_range: [0, 0]
+      overlapping: false
     - metric: painted_ready_ms.files.revisit.markdown_small
-      control_median: 62.5
-      candidate_median: 63
-      control_range: [46.4, 116.8]
-      candidate_range: [38.6, 64.4]
-      overlapping: true
+      control_median: 62.7
+      candidate_median: 45.2
+      control_range: [62.0, 64.5]
+      candidate_range: [44.4, 47.1]
+      overlapping: false
+    - metric: painted_ready_ms.files.revisit.markdown_large
+      control_median: 145.9
+      candidate_median: 114.2
+      control_range: [130.6, 147.0]
+      candidate_range: [111.9, 129.6]
+      overlapping: false
     - metric: painted_ready_ms.files.history_back
-      control_median: 41.6
-      candidate_median: 58.9
-      control_range: [41.1, 72.8]
-      candidate_range: [41.7, 60.3]
+      control_median: 40.1
+      candidate_median: 29.8
+      control_range: [37.2, 41.3]
+      candidate_range: [23.8, 38.6]
       overlapping: true
     - metric: painted_ready_ms.files.history_forward
-      control_median: 109.7
-      candidate_median: 109.4
-      control_range: [105.5, 155.6]
-      candidate_range: [92.2, 125.1]
-      overlapping: true
-    - metric: painted_ready_ms.keyboard.up_revisit.1
-      control_median: 44.4
-      candidate_median: 28.4
-      control_range: [40.7, 50.2]
-      candidate_range: [27.4, 29.9]
-      overlapping: false
-    - metric: painted_ready_ms.keyboard.up_revisit.2
-      control_median: 44.3
-      candidate_median: 28.2
-      control_range: [39.8, 59.9]
-      candidate_range: [19.2, 28.3]
-      overlapping: false
-    - metric: painted_ready_ms.main.pulls_to_files.first
-      control_median: 63.9
-      candidate_median: 30.1
-      control_range: [63.4, 65.2]
-      candidate_range: [29.9, 30.6]
-      overlapping: false
-    - metric: blank_frames.main.pulls_to_files.first
-      control_median: 2
-      candidate_median: 0
-      control_range: [2, 2]
-      candidate_range: [0, 0]
+      control_median: 126.2
+      candidate_median: 113.8
+      control_range: [124.1, 142.6]
+      candidate_range: [103.0, 120.9]
       overlapping: false
     - metric: long_task_max_ms.files.revisit.markdown_large
       control_median: 0
-      candidate_median: 84
+      candidate_median: 0
       control_range: [0, 0]
-      candidate_range: [83, 93]
-      overlapping: false
+      candidate_range: [0, 0]
+      overlapping: true
     - metric: long_task_max_ms.files.history_forward
       control_median: 0
-      candidate_median: 81
-      control_range: [0, 0]
-      candidate_range: [80, 84]
+      candidate_median: 0
+      control_range: [0, 54]
+      candidate_range: [0, 0]
+      overlapping: true
+    - metric: painted_ready_ms.keyboard.up_revisit.1
+      control_median: 44.3
+      candidate_median: 23.0
+      control_range: [43.4, 55.2]
+      candidate_range: [19.6, 27.2]
       overlapping: false
-    - metric: event_timing_max_ms.files.revisit.markdown_large
-      control_median: 16
-      candidate_median: 96
-      control_range: [16, 56]
-      candidate_range: [96, 120]
-      overlapping: false
+    - metric: ready_ms.keyboard.down_cold.1
+      control_median: 35.0
+      candidate_median: 41.7
+      control_range: [28.3, 43.6]
+      candidate_range: [27.9, 44.9]
+      overlapping: true
+    - metric: settled_ms.views.markdown.revisit_2
+      control_median: 1.4
+      candidate_median: 2.3
+      control_range: [1.3, 3.0]
+      candidate_range: [1.4, 2.5]
+      overlapping: true
   complexity:
-    lines_changed: 400
+    lines_changed: 474
     new_dependencies: []
     new_failure_modes:
-      - A kept render is placed in the input's own task, so on a large document the first paint after the click is the finished document at about 96 ms rather than click feedback at 16 ms.
       - A render whose server inputs change while the page is open without changing the file's identity, such as a server restarted with other trust flags, is served from the page's copy until the shell drops the envelope.
-    notes: 400 lines of product code in builtin_plugins/markdown/rendered.js and markdown-worker-client.js, none in an eager startup script; tests and documentation are another 648.
+      - A kept render over 52,335 characters is placed after the input's first paint, so the click's first frame shows the old document marked pending, as it did before the change.
+    notes: 474 changed lines of product code (430 added, 44 removed) in builtin_plugins/markdown/rendered.js and markdown-worker-client.js, none in an eager startup script.
   verdict:
     decision: unresolved
-    primary_metric: requests_kpress and requests_plugin on Markdown revisits and history steps
-    reason: A pilot, not a verdict. It ran on harness revision 1 (22af6103), whose painted-ready measure and compare labels review A of the harness found unsound; its candidate was 9e1630db, which carries this round's and exp-061's changes in one build measured in one series against 09903292, and which places a large kept render in the input's task, as the head no longer does (60a4e623); and the corpus's refs moved during the series. Its request counts stand as pilot evidence; the official round on the fixed harness decides.
-    commit: 9e1630db
+    primary_metric: requests_kpress and post_body_bytes on files.revisit.markdown_small and .markdown_large and files.history_back and .history_forward, and requests_plugin on files.revisit.markdown_small
+    reason: "All nine deciding metrics moved as predicted with ranges apart, painted ready on the four named transitions moved the right way or not at all, and the pilot's long tasks are gone (0 against 0). The declared guard fails: keyboard.down_cold.1 (ready and frames to ready), keyboard.down_cold.3 (frames to ready), and views.markdown.revisit_2 (settled) are each higher in 2 or 3 of 6 pairs under overlapping ranges, which compare counts as wrong-way and nothing here accounts for."
+    commit: 4b0e1233
 ---
-**Status:** Pilot, not a verdict.
-Five interleaved pairs, ten valid runs, none refused, on harness revision 1
-(`22af6103`). The official round on the fixed harness will reuse this id and keep this
-pilot as one of its sections.
-
-Why this is a pilot:
-
-- The harness revision the series ran on had unsound painted-ready crediting and
-  `compare` labels, which review A of the harness found after the series; the times
-  below are reported as the instrument gave them and are not a result.
-- The candidate was `9e1630db`, one build carrying this round’s commit and exp-061’s,
-  measured in one series against `09903292`.
-- The candidate placed every kept render in the task of the input that found it.
-  The responsiveness cost recorded below led to `60a4e623`, which places a large kept
-  render after the input’s first paint, so the head does not behave as this candidate
-  did.
-- The corpus’s refs moved during the series (exp-061 says how).
-
-What stands: the request counts, which do not depend on frame crediting.
+**Status:** Official round, on harness revision 4. H90: **unresolved**. Six interleaved
+pairs, twelve valid runs, none refused: the series of
+[exp-061](exp-061-commit-comparison-cache-and-git-route-memo.md).
+Every deciding metric moved as predicted, and the declared guard did not hold; see
+[Verdict](#verdict).
 
 ## Why This Round
 
 H90, in the hypothesis registry of the research branch’s load-time plan (“Apparent Speed
-and Layout Stability”), says a Markdown revisit uploads its source and downloads its
-render again, and leaving Markdown discards the preprocessing Worker; and that a render
-cache keyed by content identity and a kept Worker make revisits request-free.
-The exp-058 baseline recorded one KPress request on every Markdown revisit and history
-step, and three plugin module requests (the Worker’s) when a Markdown revisit followed a
-file of another kind.
-The bead is `mb-mbd3`.
+and Layout Stability”), says two things are thrown away.
+A Markdown revisit uploads its source and downloads its render again, and leaving
+Markdown discards the preprocessing Worker.
+A render cache keyed by content identity and a kept Worker would make revisits
+request-free. The bead is `mb-mbd3`.
 
 The change keeps each render, with its preparation’s diagnostics, on the file envelope
-the shell’s file cache holds, keyed beside it by path, `mtime_hash`, view, profile,
-table-of-contents option, and preparation; and it keeps the Worker for 60 s after its
-last reference, ended early by page hide.
+that the shell’s file cache holds.
+It is keyed by path, `mtime_hash`, view, profile, table-of-contents option, and
+preparation. A kept render of up to 52,335 characters is placed in the input’s own task,
+and a larger one after the input’s first paint (`60a4e623`, and review round 1). The
+Worker is kept for 60 s after its last reference, and page hide ends it early.
 
-**One series measured two rounds.** This is the series of
-[exp-061](exp-061-commit-comparison-cache-and-git-route-memo.md) (H88, the commit
-comparison cache and the Git route memo).
-The candidate build carries both changes; they touch disjoint code, and their metrics
-are on disjoint transitions: this round reads the transitions with a Markdown subject.
-Both artifacts read the same [samples](exp-061-transition-samples.jsonl).
-The protocol, regime, identities, and guards are exp-061’s and are not repeated here.
+**One series measured two rounds.** The candidate carries this round’s change and
+exp-061’s (H88). The two touch disjoint code, and this round reads the transitions with
+a Markdown subject. Both artifacts read the same
+[samples](exp-061-transition-samples.jsonl).
+The regime, identities, load, and guards of the series are in exp-061 and are not
+repeated here.
 
 ## Protocol
 
-Declared before the measured series:
+Declared before the series started, and not changed after.
+Decided by the transition scenario.
+All of the following must hold:
 
-- Named metrics: render requests and painted ready on a Markdown revisit and on history
-  Back and Forward (`files.revisit.markdown_small`, `files.revisit.markdown_large`,
-  `files.history_back`, `files.history_forward`). Prediction: no render request and no
-  Worker preparation on a revisit.
+- `requests_kpress` lower on `files.revisit.markdown_small`,
+  `files.revisit.markdown_large`, `files.history_back`, and `files.history_forward`
+  (counts on their ranges: 1 to 0 expected);
+- `post_body_bytes` lower on the same four (the upload);
+- `requests_plugin` lower on `files.revisit.markdown_small` (no Worker preparation: 3 to
+  0 expected).
 
-- Guards: every other transition’s counts unchanged, no new blank frames or region
-  movement, and every transition converged on the exact file.
+Painted ready on the four was predicted to be no worse, with no wrong-way result; a
+lower one was not required.
+Guards:
 
-The scenario’s request classes name the two effects separately: `kpress` counts the
-render request and `plugin` counts module loads, which on a revisit are the Worker and
-its imports. The scenario does not record a request’s body size, so the bytes a control
-revisit uploaded are not measured here; the research that registered H90 measured 19 KB
-for README.md and 190 KB for design-system.md.
+- no wrong-way `long_task_max_ms` on `files.revisit.markdown_large` and
+  `files.history_forward`, the pilot’s regression, which `60a4e623` addresses;
+- no wrong-way result on any other `files.*`, `keyboard.*`, or `views.markdown.*`
+  transition, or on `main.*_to_files`;
+- every run valid.
 
-The extra input-to-next-paint, long-animation-frame, and application-span columns below
-are from [exp-061-transition-detail.jsonl](exp-061-transition-detail.jsonl), the same
-runs’ fields for the named transitions, which `samples` does not keep.
+The `compare` call, with this round’s nine expectations, is in exp-061’s protocol.
 
 ## Results
 
-Times are painted ready as median and range over five runs; counts are one value when
-every run agreed and a range otherwise.
+Every number here is from `compare` over the committed samples: times as median and
+range over six runs, and pair ratios as candidate over control.
 
 ### Revisits and History Steps
 
-| Transition | Subject | Painted ready ms, control → candidate | Ratio | KPress requests | Plugin requests |
-| --- | --- | --- | ---: | --- | --- |
-| `files.revisit.markdown_small` | `README.md` | 63 (46–117) → 63 (39–64) | 1.01x | 1 → 0 | 3 → 0 |
-| `files.revisit.markdown_large` | `docs/design-system.md` | 129 (113–185) → 115 (113–147) | 0.89x | 1 → 0 | 0 → 0 |
-| `files.history_back` | `README.md` | 42 (41–73) → 59 (42–60) | 1.42x | 1 → 0 | 0 → 0 |
-| `files.history_forward` | `docs/design-system.md` | 110 (106–156) → 109 (92–125) | 1.00x | 1 → 0 | 0 → 0 |
-| `keyboard.up_revisit.1` | `CONTRIBUTING.md` | 44 (41–50) → 28 (27–30) | 0.64x | 1 → 0 | 3 → 0 |
-| `keyboard.up_revisit.2` | `CLAUDE.md` | 44 (40–60) → 28 (19–28) | 0.64x | 1 → 0 | 0 → 0 |
-| `main.pulls_to_files.first` | `docs/architecture.md` | 64 (63–65) → 30 (30–31) | 0.47x | 1 → 0 | 3 → 0 |
-| `main.pulls_to_files.again` | `docs/architecture.md` | 65 (62–65) → 31 (31–32) | 0.48x | 1 → 0 | 3 → 0 |
-| `main.commits_to_files.first` | `docs/architecture.md` | 64 (64–79) → 64 (63–65) | 1.00x | 1 → 0 | 3 → 0 |
-| `main.commits_to_files.again` | `docs/architecture.md` | 63 (62–75) → 64 (30–65) | 1.01x | 1 → 0 | 3 → 0 |
-| `main_subject.pulls_to_files` | `docs/architecture.md` | 77 (64–96) → 64 (63–64) | 0.82x | 1 → 0 | 3 → 0 |
-| `main_subject.commits_to_files` | `docs/architecture.md` | 64 (62–64) → 64 (63–65) | 1.01x | 1 → 0 | 3 → 0 |
+| Transition | Subject | Painted ready ms, control → candidate | Pair ratios | KPress | POST bytes | Plugin modules |
+| --- | --- | --- | --- | --- | --- | --- |
+| `files.revisit.markdown_small` | `README.md` | 62.7 (62.0–64.5) → 45.2 (44.4–47.1) | 0.72x (0.71–0.74), 6 of 6 beyond | 1 → 0 | 19,168 → 0 | 3 → 0 |
+| `files.revisit.markdown_large` | `docs/design-system.md` | 145.9 (130.6–147.0) → 114.2 (111.9–129.6) | 0.83x (0.77–0.89), 0 of 6 beyond | 1 → 0 | 191,142 → 0 | 0 → 0 |
+| `files.history_back` | `README.md` | 40.1 (37.2–41.3) → 29.8 (23.8–38.6) | 0.74x (0.59–0.99), 3 of 6 beyond | 1 → 0 | 19,168 → 0 | 0 → 0 |
+| `files.history_forward` | `docs/design-system.md` | 126.2 (124.1–142.6) → 113.8 (103.0–120.9) | 0.86x (0.76–0.97), 1 of 6 beyond | 1 → 0 | 191,142 → 0 | 0 → 0 |
 
-Every nonzero control count above fell to zero in every candidate run, ranges apart: no
-candidate run made a render request or loaded a Worker module on any of these
-transitions.
-The four click and history transitions the hypothesis named show no detected
-difference in painted ready.
-`keyboard.up_revisit.1` and `.2` and `main.pulls_to_files.first` and `.again` are lower,
-apart, and beyond the 1.3x tolerance, and the main-tab returns from Pulls to Files lost
-their 2 blank frames (2 → 0 in every run).
-The plugin requests counted together the two halves of the change: a revisit that finds
-its render needs no Worker, and a Worker kept from the previous Markdown document needs
-no modules. This series does not separate them.
+Each count fell to zero in every candidate run, ranges apart.
 
-`files.history_back` was 41 to 43 ms in four control runs and 58 to 60 ms in four
-candidate runs, a frame later, with one run each at the other’s level, so the ranges
-overlap and it is not a result.
-The candidate’s frames there are uncredited one more time than the control’s (2 against
-1 in those runs): a DOM change followed the first frame that showed README.md, which the
-scenario’s limits say can delay the credited frame by one.
-The application’s own `fileNavigation:selectToReady` span on that step fell from 38
-(27–80) to 24 (21–25) ms.
+- `files.revisit.markdown_small`’s painted ready is lower, apart, and beyond the
+  tolerance in six of six pairs: a result.
+- `files.revisit.markdown_large`’s is lower and apart with every pair within 1.3x, not a
+  result.
+- `files.history_back`’s ranges overlap with three pairs lower beyond the tolerance.
+- `files.history_forward`’s is lower and apart with one pair beyond, a rerun owed in the
+  right direction.
 
-### Responsiveness
+None is wrong-way.
 
-| Transition | Input to next paint ms, control → candidate | Longest task ms | Longest animation frame ms | Its blocking ms | `selectToReady` span ms |
-| --- | --- | --- | --- | --- | --- |
-| `files.revisit.markdown_large` | 16 (16–56) → 96 (96–120) | 0 → 84 (83–93) | 84 (80–102) → 87 (86–96) | 28 (26–41) → 36 (35–45) | 119 (116–181) → 82 (82–105) |
-| `files.history_forward` | not recorded for `popstate` | 0 → 81 (80–84) | 86 (81–94) → 90 (88–92) | 30 (26–41) → 35 (35–38) | 116 (111–164) → 87 (86–89) |
-| `files.revisit.markdown_small` | 16 (16–24) → 32 (32–40) | 0 → 0 | 0 → 0 | 0 → 0 | 52 (39–105) → 21 (21–30) |
-| `main.pulls_to_files.first` | 16 (16–24) → 32 (32–32) | 0 → 0 | 0 → 0 | 0 → 0 | 61 (57–62) → 26 (25–27) |
-| `keyboard.up_revisit.1` | 16 (16–16) → 16 (16–16) | 0 → 0 | 0 → 0 | 0 → 0 | 43 (41–51) → 27 (27–29) |
+Ready was lower and apart on all of these:
 
-These moved the wrong way, and this is why.
-On the control, a revisit’s click handler starts the Worker preparation and the render
-request and returns, so the next paint, 16 ms after the input, shows the selected row
-and the old document marked pending (the recorder’s `Ub` frames), and the document is
-placed in a later task when the render arrives.
-On the candidate, the render is found during the click’s own task and placed in it.
-The next paint after the input is then the finished document: one frame later than the
-feedback for a small one (32 ms), and 96 to 120 ms later for design-system.md, whose
-placement is one 80 to 93 ms task.
-The longest animation frame is about the same length on both builds (84 against 87 ms on
-the revisit, 86 against 90 on Forward); what changed is that the click’s first paint
-waits for it instead of preceding it.
-On design-system.md’s revisit and Forward, every control run showed the old document
-marked pending and no candidate run did, and painted ready shows no detected difference.
+- `files.revisit.markdown_small`: 56.2 (52.5–58.2) → 32.3 (30.2–36.6) ms;
+- `files.history_back`: 35.2 (31.8–35.4) → 22.9 (21.9–25.7) ms;
+- `files.revisit.markdown_large`: 130.2 (124.3–140.1) → 103.8 (98.1–116.9) ms, with
+  frames to ready 3 (3–4) → 2.
 
-## What Did Not Move
+Blank and visible placeholder frames were 0 on both builds on all four.
 
-`compare` found 37 metrics with ranges apart.
-28 are on the transitions above: the request counts, the painted-ready and blank-frame
-changes named above, and the two long tasks.
-Nine belong to exp-061’s Git transitions.
-No other transition’s request counts, blank frames, placeholder frames, preview
-replacements, layout shifts, or region movement came apart, and views, tree, Pulls, and
-cold file transitions are within their control ranges.
+### The Pilot’s Long Tasks
 
-## What the Pilot Shows
+`long_task_max_ms` on `files.revisit.markdown_large` was 0 (0–0) on both builds, against
+the pilot’s 0 → 84 ms.
+On `files.history_forward` it was 0 (0–54) → 0 (0–0), with two pairs lower and none
+higher. The kept large render no longer runs as one long task in the input’s turn.
 
-No verdict: the accept rule is applied by the official round.
-As pilot evidence:
+### Other Markdown Transitions
 
-- No candidate run made a render request, or loaded a Worker module, on any Markdown
-  revisit, history step, keyboard revisit, or main-tab return to a Markdown file.
-- The painted-ready times above came from the harness revision with the unsound
-  crediting and are not evidence either way.
-- The responsiveness cost on design-system.md was real enough to act on: `60a4e623`
-  places a kept render over a measured size after the input’s first paint, and review
-  round 1 of the change lowered that size to the largest one measured without a long
-  task. The official round measures that code, not this candidate.
+| Transition | Painted ready ms, control → candidate | Pair ratios | Counts |
+| --- | --- | --- | --- |
+| `keyboard.up_revisit.1` | 44.3 (43.4–55.2) → 23.0 (19.6–27.2) | 0.49x (0.36–0.62), 6 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 3,105 → 0 |
+| `keyboard.up_revisit.2` | 44.0 (39.6–54.9) → 25.8 (25.4–29.3) | 0.59x (0.49–0.74), 6 of 6 beyond | KPress 1 → 0 |
+| `main.pulls_to_files.first` | 63.4 (62.8–115.1) → 46.9 (42.6–48.4) | 0.74x (0.40–0.75), 6 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0, blank frames 2 (2–5) → 1 |
+| `main.pulls_to_files.again` | 64.6 (62.5–79.2) → 46.0 (45.2–47.4) | 0.72x (0.58–0.73), 6 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0 |
+| `main.commits_to_files.first` | 77.8 (62.8–80.4) → 54.2 (45.8–63.0) | 0.74x (0.61–0.80), 4 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0 |
+| `main.commits_to_files.again` | 62.9 (61.7–94.8) → 46.3 (44.7–48.6) | 0.72x (0.50–0.79), 5 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0, blank frames 2 (2–4) → 1 |
+| `main_subject.pulls_to_files` | 64.4 (63.4–191.7) → 47.7 (47.2–48.4) | 0.75x (0.25–0.76), 6 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0 |
+| `main_subject.commits_to_files` | 65.3 (64.3–95.2) → 55.4 (47.6–63.0) | 0.85x (0.51–0.97), 3 of 6 beyond | KPress 1 → 0, plugin 3 → 0, POST 42,904 → 0 |
+| `files.hover_click.markdown` | 64.0 (63.5–79.7) → 63.5 (63.3–65.5) | 1.00x (0.80–1.03), 0 of 6 beyond | KPress 1 → 1, POST 59,712 → 59,712 |
+| `views.markdown.first`, `.revisit`, `.revisit_2` | 29.8, 30.0, 29.9 → 29.4, 29.9, 29.5 | 0.97x to 1.00x, 0 of 6 beyond | none on either build |
+| `files.cold.markdown_large` | 187.3 (179.0–196.8) → 180.1 (162.1–197.6) | 0.96x (0.91–1.10), 0 of 6 beyond | no detected difference |
+
+The plugin-module counts include both halves of the change: a revisit that finds its
+render needs no Worker, and a Worker kept from the previous Markdown document needs no
+modules. This series does not separate them.
+`files.hover_click.markdown` opens a file not seen before, so it renders on both builds.
+
+### The Guard’s Wrong-Way Flags
+
+`compare` lists four wrong-way results in this round’s guard set.
+In each the ranges overlap and two or three pairs are higher beyond 1.3x; none has its
+ranges apart and none is on painted ready:
+
+| Transition | Metric | Control → candidate | Pair ratios | Higher in pairs |
+| --- | --- | --- | --- | --- |
+| `keyboard.down_cold.1` | ready ms | 35.0 (28.3–43.6) → 41.7 (27.9–44.9) | 1.08x (0.93–1.40) | 5, 6 |
+| `keyboard.down_cold.1` | frames to ready | 2 (2–3) → 2.5 (2–3) | 1.00x (0.67–1.50) | 4, 5 |
+| `keyboard.down_cold.3` | frames to ready | 2 (2–3) → 2 (2–3) | 1.00x (0.67–1.50) | 2, 4 |
+| `views.markdown.revisit_2` | settled ms | 1.4 (1.3–3.0) → 2.3 (1.4–2.5) | 1.38x (0.70–1.92) | 1, 5, 6 |
+
+Painted ready on the same transitions showed no detected difference:
+
+- `keyboard.down_cold.1`: 49.0 (42.7–56.4) → 55.9 (41.5–57.8);
+- `keyboard.down_cold.3`: 44.0 (40.7–56.6) → 42.3 (40.3–56.9);
+- `views.markdown.revisit_2`: 29.9 (25.7–30.2) → 29.5 (27.9–30.3).
+
+On the journeys neither change addresses, `compare` lists flags of the same kind: 10
+higher and 25 lower among 1,085 judged comparisons (exp-061 lists them).
+That base rate suggests these four are noise under this load, but it is a suggestion and
+not an account of any one of them.
+The cold keyboard steps open files the page has not rendered, so the render cache cannot
+answer them. The kept Worker and the new render path are on them, and nothing measured
+here separates their cost.
+
+## Verdict
+
+**H90: unresolved.** Decided by the transition scenario under the accept rule:
+
+1. Moved as predicted: yes, all nine deciding metrics.
+   - KPress requests went 1 → 0 on each of the four transitions.
+   - POST bytes went 19,168 → 0 and 191,142 → 0 on the README and design-system steps.
+   - Plugin modules went 3 → 0 on `files.revisit.markdown_small`.
+
+   Painted ready on the four moved the right way or did not move.
+
+2. Ranges apart at six runs: yes, all nine.
+
+3. Nothing else wrong-way unaccounted for: **no.** The long-task guard holds (0 against
+   0, and 0 (0–54) against 0). The declared guard on `keyboard.*` and `views.markdown.*`
+   has the four flags above, none accounted for.
+
+4. Complexity judgment: 474 changed lines in two lazily loaded Markdown modules, no
+   dependency, and one stated staleness, a server restarted with other trust flags.
+   In return, a revisit or history step no longer uploads 19 to 191 KB or round-trips a
+   render, and a small revisit paints in 45 instead of 63 ms.
+   Worth it, if the guard’s flags are shown to be noise.
+
+What would resolve it: a declared rerun of the flagged pairs, as the runbook prescribes,
+or an A/A split at this n that sets the base rate for two-of-six flags.
+
+## Pilot
+
+The pilot ran on 2026-11-12 on harness revision 1 (`22af6103`), with five pairs.
+Its candidate was `9e1630db`. That build placed every kept render in the input’s own
+task, which on `docs/design-system.md` made an 84 ms long task and delayed the click’s
+first paint to 96 ms.
+`60a4e623` changed that, and this round shows the long task gone.
+Its painted-ready times came from a harness revision whose crediting review A of the
+harness found unsound, and are not evidence either way.
+Its request counts agreed with this round’s. Its records are exp-061’s pilot files.
 
 ## Limits
 
 - Headless Chrome only; the native app’s WebKit is not measured, and WebKit has no Long
   Tasks or Long Animation Frames API.
-- The scenario does not record request body sizes, so uploaded bytes are inferred from
-  the request count.
-- The Worker keep-alive’s own effect, a Markdown file opened cold after a file of
-  another kind, is not a transition this scenario has; here it is inseparable from the
-  render cache.
+- `compare` does not judge Event Timing, so the click’s first-paint delay that the pilot
+  found is judged here only through the long task.
+- The Worker keep-alive’s own effect is inseparable from the render cache here.
+  That effect is a Markdown file opened cold after a file of another kind, and the
+  scenario has no such transition.
 - The render cache’s memory was not measured in a browser; its bound is the render JSON
   measured over this repository’s 269 Markdown files.
 - H90 is registered in the plan on the research branch, not yet in this branch’s plan.

@@ -12,7 +12,7 @@ experiment:
   hypotheses:
     - H88
   subject:
-    corpus: Detached checkout of this repository at 7a02fed4, frozen and clean. It is a linked worktree, so its refs are the main checkout's, and they moved during the series.
+    corpus: Standalone clone of this repository at 7a02fed4 (corpus v2), clean, with the same refs at the start and end of every run.
     corpus_files: 1286
     host_cpu: 10 CPUs
     host_system: Darwin 25.5.0 arm64, Node 24.19.0
@@ -20,10 +20,10 @@ experiment:
     viewport: 1440x900
     cold: false
   method:
-    runs_per_condition: 5
+    runs_per_condition: 6
     interleaved: true
-    control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean, one server process per run.
-    candidate: metab 0.12.1.dev165+9903292 (+169 commits, 9e1630db7), the editable checkout of claude/perf-caches at 9e1630db, clean, one server process per run. It carries this round's commits (3594c291, a627d915, 45f2b8d3) and exp-063's (9e1630db), which touch disjoint code and metrics.
+    control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run, a fresh server process per run.
+    candidate: metab 0.12.1.dev165+9903292 (+174 commits, 4b0e12332), the editable checkout of claude/perf-caches at 4b0e1233, clean at the start and end of every run, a fresh server process per run. It carries this round's change and exp-063's, which touch disjoint code.
     record: exp-061-transition-samples.jsonl
   results:
     - metric: requests_data.commits.revisit.1
@@ -33,10 +33,10 @@ experiment:
       candidate_range: [0, 0]
       overlapping: false
     - metric: painted_ready_ms.commits.revisit.1
-      control_median: 131.5
-      candidate_median: 80.4
-      control_range: [130.2, 161.7]
-      candidate_range: [78.7, 81.4]
+      control_median: 146.8
+      candidate_median: 31.0
+      control_range: [97.4, 349.2]
+      candidate_range: [29.8, 31.6]
       overlapping: false
     - metric: requests_data.commits.revisit.2
       control_median: 1
@@ -45,10 +45,34 @@ experiment:
       candidate_range: [0, 0]
       overlapping: false
     - metric: painted_ready_ms.commits.revisit.2
-      control_median: 213.1
-      candidate_median: 80.5
-      control_range: [180.1, 294.9]
-      candidate_range: [79.8, 81.8]
+      control_median: 188.9
+      candidate_median: 29.6
+      control_range: [146.9, 198.0]
+      candidate_range: [28.5, 30.8]
+      overlapping: false
+    - metric: painted_ready_ms.commits.hover_click
+      control_median: 30.8
+      candidate_median: 47.8
+      control_range: [30.7, 94.0]
+      candidate_range: [47.0, 49.1]
+      overlapping: true
+    - metric: painted_ready_ms.commits.cold.1
+      control_median: 114.2
+      candidate_median: 147.8
+      control_range: [113.3, 231.3]
+      candidate_range: [114.2, 196.1]
+      overlapping: true
+    - metric: painted_ready_ms.commits.first_show
+      control_median: 280.4
+      candidate_median: 95.8
+      control_range: [263.8, 295.9]
+      candidate_range: [93.3, 97.3]
+      overlapping: false
+    - metric: painted_ready_ms.main.files_to_commits.first
+      control_median: 238.0
+      candidate_median: 45.3
+      control_range: [229.1, 388.3]
+      candidate_range: [44.1, 46.9]
       overlapping: false
     - metric: requests_data.main_subject.files_to_commits
       control_median: 2
@@ -57,73 +81,54 @@ experiment:
       candidate_range: [1, 1]
       overlapping: false
     - metric: painted_ready_ms.main_subject.files_to_commits
-      control_median: 230.7
-      candidate_median: 148.1
-      control_range: [214.2, 311.7]
-      candidate_range: [146.6, 197.7]
+      control_median: 213.1
+      candidate_median: 96.8
+      control_range: [182.1, 297.4]
+      candidate_range: [96.5, 98.4]
       overlapping: false
     - metric: painted_ready_ms.main_subject.pulls_to_commits
-      control_median: 213.5
-      candidate_median: 163.3
-      control_range: [197.5, 291.9]
-      candidate_range: [146.2, 180.1]
+      control_median: 213.9
+      candidate_median: 105.3
+      control_range: [181.5, 284.8]
+      candidate_range: [96.4, 114.2]
       overlapping: false
-    - metric: painted_ready_ms.commits.first_show
-      control_median: 298.6
-      candidate_median: 97.8
-      control_range: [297.6, 363.3]
-      candidate_range: [96.1, 406.4]
-      overlapping: true
     - metric: client_ms.api_git_log_limit_250
-      control_median: 173.9
-      candidate_median: 8.3
-      control_range: [167.16, 182.34]
-      candidate_range: [7.89, 9.2]
+      control_median: 182
+      candidate_median: 6.8
+      control_range: [174.57, 238.86]
+      candidate_range: [6.21, 65.54]
       overlapping: false
     - metric: client_ms.api_git_summary
-      control_median: 172.4
-      candidate_median: 4.4
-      control_range: [165.71, 262.17]
-      candidate_range: [3.18, 68.23]
+      control_median: 184.1
+      candidate_median: 3.4
+      control_range: [171.5, 279.4]
+      candidate_range: [2.96, 53.49]
       overlapping: false
     - metric: client_ms.api_git_refs
-      control_median: 32
-      candidate_median: 6.4
-      control_range: [30.68, 37.85]
-      candidate_range: [5.7, 7.05]
-      overlapping: false
+      control_median: 28.4
+      candidate_median: 3.6
+      control_range: [23.49, 86.31]
+      candidate_range: [3.02, 71.96]
+      overlapping: true
   complexity:
-    lines_changed: 856
+    lines_changed: 1007
     new_dependencies: []
     new_failure_modes:
       - A served folder's commit comparison kept by the page does not reflect an edit to the working tree's .gitattributes or Git configuration until Refresh, the same lifetime the page already gives commit detail.
       - The route memo does not notice Git configuration outside the repository, or an object lost from under a ref that still names it.
       - A repository with more than 16,384 entries under its ref directories gets no ref state and is answered uncached, as before.
-    notes: 856 lines of product code in git/ref_state.py, git/route_memo.py, git/history.py, git/routes.py, static/git-panel.js, settings.py, and types.d.ts; tests and documentation are another 708.
+    notes: 1,007 changed lines of product code (914 added, 93 removed) in git/ref_state.py, git/route_memo.py, git/history.py, git/routes.py, git/log.py, git/process.py, static/git-panel.js, settings.py, and types.d.ts; 821 of them are the server half's.
   verdict:
     decision: unresolved
-    primary_metric: requests_data and painted_ready_ms on commits.revisit
-    reason: A pilot, not a verdict. It ran on harness revision 1 (22af6103), whose painted-ready measure and compare labels review A of the harness found unsound; its candidate was 9e1630db, which carries this round's and exp-063's changes in one build measured in one series against 09903292; and the corpus's refs moved during the series. Its request counts and the separately measured route timings stand as pilot evidence; the official round on the fixed harness decides.
-    commit: 45f2b8d3
+    primary_metric: "H88(a): requests_data and painted_ready_ms on commits.revisit.1 and .2; H88(b): client ms of /api/git/log?limit=250, /api/git/summary, and /api/git/refs"
+    reason: "Neither half meets the accept rule. H88(a), the comparison cache, meets its four deciding metrics, but its declared guard fails: commits.hover_click is higher in 5 of 6 pairs (30.8 to 47.8 ms, ranges overlapping through one control run), and commits.cold.1 and commits.first_show's settle time are higher in 2 of 6, none of them accounted for. H88(b), the route memo, meets its criterion for the log page and the summary, but the refs route's ranges overlap (23.49 to 86.31 against 3.02 to 71.96 ms), so it does not meet the criterion it declared for all three routes. Its guard, B8, was correct in 45 of 45 checks."
+    commit: 4b0e1233
 ---
-**Status:** Pilot, not a verdict.
-Five interleaved pairs, ten valid runs, none refused, on harness revision 1
-(`22af6103`). The official round on the fixed harness will reuse this id and keep this
-pilot as one of its sections.
-
-Why this is a pilot:
-
-- The harness revision the series ran on had unsound painted-ready crediting and
-  `compare` labels, which review A of the harness found after the series; the times
-  below are reported as the instrument gave them and are not a result.
-- The candidate was `9e1630db`, one build carrying this round’s commits and exp-063’s,
-  measured in one series against `09903292`; the plan asks for each item’s control to be
-  the build just before that item.
-- The corpus is a linked worktree of an active repository, and its refs moved during the
-  series.
-
-What stands: the request counts, which do not depend on frame crediting, and the route
-timings, measured apart from the harness.
+**Status:** Official round, on harness revision 4. H88(a), the comparison cache:
+**unresolved**. H88(b), the route memo: **unresolved**. Six interleaved pairs, twelve
+valid runs, none refused.
+Both halves moved their deciding metrics in the predicted direction, and neither met the
+accept rule; see [Verdicts](#verdicts).
 
 ## Why This Round
 
@@ -131,42 +136,46 @@ H88, in the hypothesis registry of the research branch’s load-time plan (“Ap
 and Layout Stability”), says a commit revisit fetches its comparison again and the Git
 routes recompute on every call, and that a comparison cache by commit ID and a server
 memo by a refs fingerprint make revisits and repeats cheap.
-The exp-058 baseline measured 88 to 141 ms for each revisit’s comparison request, and
-177 ms for `/api/git/log?limit=250` and 186 ms for a 67-byte `/api/git/summary`. The
-bead is `mb-8a8g`.
+The bead is `mb-8a8g`.
 
-The change has two halves.
-In the browser, the Commits panel keeps an answered comparison, keyed by the request’s
-own query, when its revision is a full commit ID, bounded at 16 MiB of JSON. On the
-server, `git/ref_state.py` names the refs’ state with one `stat` per entry, and the refs
-and summary bodies, the history scope, and the first log page’s session are kept under
-that state, with an ETag.
+The change has two halves, judged separately:
 
-**One series measured two rounds.** The candidate build carries this round’s commits and
-those of [exp-063](exp-063-markdown-render-cache-and-kept-worker.md) (H90, the Markdown
-render cache and the kept Worker).
-The two changes touch disjoint code and their metrics are on disjoint transitions: this
-round reads the transitions with a Git subject and exp-063 the ones with a Markdown
-subject. Both artifacts read the same samples.
+- **(a) In the browser,** the Commits panel keeps an answered comparison, keyed by the
+  request’s own query, when its revision is a full commit ID, bounded at 16 MiB of JSON.
+- **(b) On the server,** `git/ref_state.py` names the refs’ state with one `stat` per
+  entry, and the refs and summary bodies, the history scope, and the first log page’s
+  session are kept under that state, with an entity tag.
+
+**One series measured two rounds.** The candidate carries this round’s change and
+[exp-063](exp-063-markdown-render-cache-and-kept-worker.md)’s (H90, the Markdown render
+cache and the kept Worker).
+The two touch disjoint code, and each round reads its own transitions from the same
+[samples](exp-061-transition-samples.jsonl): this one the transitions with a Git
+subject, exp-063 those with a Markdown subject.
 
 ## Protocol
 
-Declared before the measured series:
+Declared before the series started, and not changed after:
 
-- Named metrics: requests and painted ready on a commit revisit (`commits.revisit.1` and
-  `commits.revisit.2`). Prediction: no comparison request on a revisit, and a shorter
-  painted ready. Server half: client time of repeated `/api/git/log?limit=250`,
-  `/api/git/summary`, and `/api/git/refs`, at least ten each, control against candidate,
-  back to back.
+- **H88(a)**, decided by the transition scenario.
+  All four must hold: `commits.revisit.1` and `.2` `requests_data` lower (a count,
+  judged on its ranges: 1 to 0 expected) and `painted_ready_ms` lower (the pair rule:
+  ranges apart and at least two pairs beyond 1.3x). Guards: no wrong-way result on any
+  `commits.*` or `main_subject.*commits*` transition, and every run valid.
 
-- Guards: every other transition’s counts unchanged, no new blank frames or region
-  movement, and every transition converged on the exact commit.
+- **H88(b)**, decided by [git-route-pairs.mjs](../git-route-pairs.mjs), the pilot’s
+  instrument with the B8 check added.
+  All three must hold, each by the same pair rule: the client time of
+  `GET /api/git/log?limit=250`, `GET /api/git/summary`, and `GET /api/git/refs` lower.
+  Guard (B8): between timed pairs a ref moves in a scratch clone with about 1,000 loose
+  refs, and the candidate’s refs, summary in both scopes, and first log page must equal
+  the control’s. It is reported as correct or wrong, not timed.
 
-- Series, from the frozen harness checkout at `22af6103`, the scenario of exp-058:
+- Series, from a frozen harness checkout at `5031dc16` (scenario revision 4):
 
   ```shell
   node explorations/performance-loop/transitions.mjs run --exp exp-061 \
-    --corpus /path/to/frozen-checkout --runs 5 \
+    --corpus /path/to/corpus-v2 --runs 6 \
     --condition control=/path/to/control/.venv/bin/metab \
     --condition candidate=/path/to/candidate/.venv/bin/metab
   node explorations/performance-loop/transitions.mjs samples \
@@ -174,158 +183,241 @@ Declared before the measured series:
     --out explorations/performance-loop/experiments/exp-061-transition-samples.jsonl
   node explorations/performance-loop/transitions.mjs compare \
     explorations/performance-loop/experiments/exp-061-transition-samples.jsonl \
-    --control control --candidate candidate
+    --control control --candidate candidate \
+    --expect commits.revisit.1:requests_data:lower \
+    --expect commits.revisit.2:requests_data:lower \
+    --expect commits.revisit.1:painted_ready_ms:lower \
+    --expect commits.revisit.2:painted_ready_ms:lower
   ```
 
-- Regime: the scenario’s standard one.
-  Each run started a fresh server on its own port in 8890 to 8899, ran every journey
-  once unrecorded, and then measured them, each journey in a fresh Chrome profile.
-  The first `--condition` led odd pairs, so the order was control, candidate; candidate,
-  control; and so on.
+  The one `compare` call also carried exp-063’s nine `--expect` flags.
+  Regime: the scenario’s standard one, a fresh server per run on a port in 8890 to 8899
+  (fixed by the harness), one unrecorded warm-up pass of every journey, then the
+  measured pass, each journey in a fresh Chrome profile.
+  The first `--condition` led odd pairs.
 
-- Server half, after the series: one server per build on the same corpus, each with its
-  own empty cache and configuration directory, both done indexing, then
-  `node explorations/performance-loop/git-route-pairs.mjs --n 15`. For each route, one
-  unrecorded warm-up request per server, then fifteen pairs, odd pairs control first.
-  Each request sent `accept-encoding: gzip` and no `If-None-Match`, so a kept answer was
-  a 200 with its body.
+- Server half, right after the series, with no other series on the machine: four
+  servers, each with its own empty cache and configuration directory, all done indexing.
+  Control and candidate served the corpus on ports 8910 and 8911, and served the B8
+  scratch clone on 8912 and 8913. Then:
+
+  ```shell
+  node explorations/performance-loop/git-route-pairs.mjs \
+    --control http://127.0.0.1:8910 --candidate http://127.0.0.1:8911 --n 15 \
+    --out exp-061-git-routes-samples.json --check-repo /path/to/scratch-clone \
+    --check-control http://127.0.0.1:8912 --check-candidate http://127.0.0.1:8913
+  ```
+
+  Per route, one unrecorded warm-up request per server, then fifteen pairs, odd pairs
+  control first, with a B8 check after each pair.
+  Each timed request sent `accept-encoding: gzip` and no `If-None-Match`, so a kept
+  answer was a 200 with its body.
   The record is [exp-061-git-routes-samples.json](exp-061-git-routes-samples.json).
 
-- Load: the one-minute load average was 7.4 to 13.17 at the control runs’ starts and
-  ends and 8.02 to 18.47 at the candidate runs’, and the five-minute average reached
-  16.12. Each run took 418 to 457 s. Another agent’s transition series (exp-059) shared
-  the machine and the corpus for at least the last pair.
-  The server half ran at a one-minute load of 7.09 to 7.45.
-
-## Identities
+## Identities and Load
 
 | Item | Value |
 | --- | --- |
-| Control build | `metab 0.12.1.dev165+9903292 (+165 commits, 099032928)`, editable checkout at `09903292`, clean in every run |
-| Candidate build | `metab 0.12.1.dev165+9903292 (+169 commits, 9e1630db7)`, editable checkout at `9e1630db`, clean in every run |
-| Corpus | Checkout at `7a02fed4`, clean, 1,286 indexed files |
-| Trunk seen by Commits | `09903292` in pairs 1 and 2, `9fad3080` in control run 3, `02db045a` from candidate run 3 on |
-| Pull request catalog | Absent at run 1’s server start for each condition; 354 to 356 in all, 16 or 17 open, afterwards |
-| Harness | `22af6103`, clean, in all ten runs |
+| Control build | `metab 0.12.1.dev165+9903292 (+165 commits, 099032928)`, editable checkout at `09903292`, clean at the start and end of every run and of the server half |
+| Candidate build | `metab 0.12.1.dev165+9903292 (+174 commits, 4b0e12332)`, editable checkout at `4b0e1233`, clean at the start and end of every run and of the server half |
+| Harness | `5031dc16`, scenario revision 4, clean in all twelve runs |
+| Corpus | Standalone clone at `7a02fed4`, clean, 1,286 indexed files; trunk `083e78e4` and server log head `7a02fed4` in every run; the same refs fingerprint at every run’s start and end, and the same `for-each-ref` digest before and after the server half |
 | Chrome | 152.0.7977.83, headless |
-
-The commit subjects are named by full ID, so the trunk moving changed only which commits
-head the list.
-It did change the ref state the candidate keeps its answers under; see the
-first Commits show below.
+| Series | `2026-11-12T15-12-37-832Z`, 15:12 to 16:45 UTC; 455 to 487 s a run |
+| Load, series | One-minute load 4.3 to 9.14 at the control runs’ starts and ends and 4.3 to 6.82 at the candidate runs’ (from `compare`); the five-minute load reached 8.94. Other agents’ processes raised it during the last control run, which ended at 9.14 |
+| Load, server half | One-minute load 8.51 at its start and 11.27 at its end, 16:45 to 16:47 UTC |
 
 ## Guards
 
-Every measured and warm-up pass of all ten runs passed every guard, including
-`converged`: each commit transition ended on the requested commit with its route,
-selected row, rendered subject, and owner in agreement.
+Every measured and warm-up pass of all twelve runs passed every guard of the scenario,
+including `converged`. `compare` found no gap and no refusal.
+
+**B8: correct.** The scratch clone was a clone of the corpus with 1,000 loose branches
+(`refs/heads/loose/b0` to `b999`, at HEAD’s last 1,000 commits), 19 packed refs, 1,019
+refs in all, and a detached HEAD. The timed servers never served it.
+Between timed pairs it moved 45 times in turn: 12 commits on the detached HEAD, 11 loose
+branches moved, 11 tags added, and 11 loose branches deleted.
+Before each move the candidate was asked twice, so a kept answer existed.
+After each move, for `/api/git/refs`, `/api/git/summary`, `/api/git/summary?scope=all`,
+and `/api/git/log?limit=50`:
+
+- the candidate’s answer equaled the control’s in 45 of 45 checks on each route, the
+  refs and summaries byte for byte and the log page in every field but its cursors;
+- the candidate’s entity tag changed in 45 of 45 checks on each route.
 
 ## Results
 
 Times are painted ready, from the input event to the frame after the first frame that
-showed the exact subject, as median and range over five runs.
-Counts are one value when every run agreed and a range otherwise.
-Each number is from the committed samples, through `compare` and `summarize`, except the
-input-to-next-paint column, which is from
-[exp-061-transition-detail.jsonl](exp-061-transition-detail.jsonl), the same runs’ Event
-Timing, Long Animation Frame, and request fields for the named transitions.
+showed the exact subject, as median and range over six runs.
+Every number in this section and the next is from `compare` over the committed samples,
+except the server half’s, which are from the instrument’s record.
 
-### Commit Revisits
+### H88(a): Commit Revisits
 
-| Transition | Painted ready ms, control | Painted ready ms, candidate | Ratio | Data requests | Input to next paint ms |
-| --- | ---: | ---: | ---: | --- | --- |
-| `commits.revisit.1` | 132 (130–162) | 80 (79–81) | 0.61x | 1 → 0 | 16 (16–16) → 24 (16–24) |
-| `commits.revisit.2` | 213 (180–295) | 81 (80–82) | 0.38x | 1 → 0 | 16 (16–16) → 24 (16–24) |
+| Transition | Painted ready ms, control → candidate | Pair ratios | Data requests | Verdict |
+| --- | --- | --- | --- | --- |
+| `commits.revisit.1` | 146.8 (97.4–349.2) → 31.0 (29.8–31.6) | 0.21x (0.09–0.32), 6 of 6 beyond | 1 → 0 | lower, apart, result |
+| `commits.revisit.2` | 188.9 (146.9–198.0) → 29.6 (28.5–30.8) | 0.16x (0.14–0.21), 6 of 6 beyond | 1 → 0 | lower, apart, result |
 
-Both are apart and beyond the 1.3x tolerance.
-The one data request each control revisit made was `/api/plugin/diff/comparison`; the
-candidate made none, and its blank frames, placeholder frames, preview replacements, and
-region movement were the control’s (0, 0, 2, 0). The application’s own
-`gitRevision:selectToReady` span fell from 141 (136–163) and 197 (185–310) ms to 65
-(64–66) and 66 (65–67) ms.
+Blank frames, visible placeholder frames, and region movement were 0 on both builds, and
+both replaced the preview’s top nodes twice.
+
+### H88(b): Server Half
+
+| Route | Control ms | Candidate ms | Pair ratios | Apart | Body bytes |
+| --- | --- | --- | --- | --- | ---: |
+| `/api/git/log?limit=250` | 182 (174.57–238.86) | 6.8 (6.21–65.54) | 26.06x (3.47–29.02), 15 of 15 beyond | yes | 87,303 |
+| `/api/git/summary` | 184.1 (171.5–279.4) | 3.4 (2.96–53.49) | 51.79x (4.17–63.4), 15 of 15 beyond | yes | 67 |
+| `/api/git/refs` | 28.4 (23.49–86.31) | 3.6 (3.02–71.96) | 7.48x (1.2–11.7), 13 of 15 beyond | no | 2,311 |
+
+Pair ratios here are control over candidate, so above 1 favors the candidate.
+Each route’s body had the same length on both builds in every sample, every status was
+200, and every candidate answer carried an entity tag.
+
+The candidate’s slow samples fell every fourth pair: log pairs 4, 8, and 12 (56 to 66
+ms), summary pairs 5, 9, and 13 (51 to 53 ms), and refs pairs 2, 6, 10, and 14 (51 to 72
+ms). On the refs pairs the control was slow too (74 to 86 ms against 23 to 39 ms on its
+other pairs).
+This fits the repository identity’s five-second lifetime, which both builds
+have: with a B8 check after each pair, four pairs take about five seconds.
+That reading is not verified, and it does not change the verdict.
 
 ### Other Transitions With a Git Subject
 
-| Transition | Control | Candidate | Ratio | Verdict |
-| --- | ---: | ---: | ---: | --- |
-| `main_subject.files_to_commits` | 231 (214–312) | 148 (147–198) | 0.64x | lower, beyond the tolerance; data requests 2 → 1 |
-| `main_subject.pulls_to_commits` | 214 (198–292) | 163 (146–180) | 0.76x | lower, beyond the tolerance; data requests 2 → 1 |
-| `commits.first_show` | 299 (298–363) | 98 (96–406) | 0.33x | no detected difference |
-| `main.files_to_commits.first` | 298 (262–394) | 249 (247–265) | 0.83x | no detected difference |
-| `commits.hover_click` | 65 (64–66) | 49 (47–114) | 0.75x | no detected difference |
-| `commits.cold.1` to `.3` | 181, 197, 130 | 180, 198, 131 | 0.99x to 1.01x | no detected difference |
+| Transition | Painted ready ms, control → candidate | Pair ratios | Verdict |
+| --- | --- | --- | --- |
+| `commits.first_show` | 280.4 (263.8–295.9) → 95.8 (93.3–97.3) | 0.34x (0.32–0.37), 6 of 6 beyond | lower, result |
+| `main.files_to_commits.first` | 238.0 (229.1–388.3) → 45.3 (44.1–46.9) | 0.19x (0.11–0.20), 6 of 6 beyond | lower, result |
+| `main_subject.files_to_commits` | 213.1 (182.1–297.4) → 96.8 (96.5–98.4) | 0.45x (0.33–0.54), 6 of 6 beyond | lower, result; data requests 2 → 1 |
+| `main_subject.pulls_to_commits` | 213.9 (181.5–284.8) → 105.3 (96.4–114.2) | 0.51x (0.34–0.53), 6 of 6 beyond | lower, result; data requests 2 → 1 |
+| `commits.cold.2` | 205.7 (161.5–266.1) → 195.9 (148.7–228.5) | 0.96x (0.61–1.21), 1 of 6 beyond | no detected difference |
+| `commits.cold.3` | 154.7 (146.5–195.7) → 146.1 (98.5–148.0) | 0.83x (0.61–0.99), 3 of 6 beyond | overlap, lower, to explain |
+| `commits.cold.1` | 114.2 (113.3–231.3) → 147.8 (114.2–196.1) | 1.07x (0.70–1.58), 2 of 6 beyond | overlap, higher, to explain |
+| `commits.hover_click` | 30.8 (30.7–94.0) → 47.8 (47.0–49.1) | 1.55x (0.50–1.60), 5 of 6 beyond | overlap, higher, to explain |
 
-Returning to the Commits tab with a commit selected remounts that commit, which is a
-revisit: its comparison came from the kept answer.
+The first Commits show and the first switch to Commits read `git/refs`, `git/log`, and
+`git/summary`, which the warm-up pass had asked for, so the candidate answered them from
+the memo. They are the server half’s effect, seen in the browser; the round did not
+declare them as deciding metrics.
+Returning to a selected commit through a main tab made one data request instead of two:
+the comparison came from the page’s keep.
 
-The first Commits show reads `git/repo`, `git/refs`, `git/log`, and `git/summary`, all
-of which the warm-up pass had asked for.
-In three candidate runs it painted in 96 to 98 ms with 5 blank frames, against 298 to
-363 ms and 17 to 21 in every control run.
-In candidate runs 3 and 4 it took 296.5 and 406.4 ms with 17 and 24 blank frames, as the
-control does: the warm-up pass’s answers no longer applied.
-The trunk moved to `02db045a` just before candidate run 3, other agents commit to this
-repository’s branches continually, and a change to any ref in the repository moves the
-state. Which ref moved during each run was not recorded.
-The ranges overlap, so this is not a result.
+### Wrong-Way Flags
 
-### Server Half
+`compare` exited 1 with 31 wrong-way results and no gap: in each, the ranges overlap and
+two or more pairs are higher beyond 1.3x (“explain before accepting”). None has its
+ranges apart. By the round each falls in:
 
-| Route | Control ms | Candidate ms | Ratio | Server-Timing `srv` ms, control → candidate | Body bytes |
-| --- | ---: | ---: | ---: | --- | ---: |
-| `/api/git/log?limit=250` | 173.9 (167.2–182.3) | 8.3 (7.9–9.2) | 21x | 171.1 → 5.4 | 90,487 |
-| `/api/git/summary` | 172.4 (165.7–262.2) | 4.4 (3.2–68.2) | 39x | 170.0 → 2.4 | 67 |
-| `/api/git/refs` | 32.0 (30.7–37.9) | 6.4 (5.7–7.1) | 5.0x | 29.5 → 3.8 | 80,805 |
+- **H88’s guard, 11:**
+  - `commits.hover_click`: painted ready, ready, frames to ready (1 (1–5) → 2), settled,
+    and ready after the last input, each higher in pairs 1 to 5. Ready went from 15.8
+    (14.6–79.9) to 35.2 (33.1–36.4) ms.
+  - `commits.cold.1`: painted ready, ready, visible placeholder frames, and ready after
+    the last input, each higher in two pairs.
+  - `commits.first_show` settled, 5.0 (4.5–10.1) → 6.8 (4.9–9.4) ms, higher in pairs 1
+    and 2.
+- **Other Git transitions, 2:** `main.files_to_commits.first` settled, 9.2 (4.8–20.3) →
+  9.7 (4.9–10.0) ms, and `main.commits_to_pulls` settled, 6.3 (6.0–6.9) → 7.1 (5.5–9.6)
+  ms.
+- **H90’s guard, 4:** see exp-063.
+- **Neither round’s transitions, 14:**
+  - `views.json.revisit`: painted ready, ready, settled, and ready after the last input.
+  - `main_subject.files_to_pulls` settled, 606.6 (67.0–1064.1) → 1053.3 (1044.7–1071.5)
+    ms.
+  - `pulls.tab.changes_revisit`, 4 metrics.
+  - `pulls.pr_to_pr.revisit` ready.
+  - `pulls.history_back`, 5 metrics.
 
-Fifteen pairs per route; client time is the whole request, body included.
-Every range is apart and every ratio is beyond the tolerance.
-Each route’s body had the same length on both builds in every sample, and every
-candidate answer carried an ETag.
-The candidate’s one 68 ms summary (66 ms at the server) is probably a
-repository-identity rediscovery, which the five-second identity cache causes on both
-builds; the control’s three slowest summaries, 242 to 262 ms, fell in the same pairs.
-That reading is not verified.
-The refs did not move during the half: `git for-each-ref` hashed the same before and
-after.
+On the journeys that neither change addresses (landing, Pulls, tree, palette, skim, and
+reveal), `compare` lists 10 flags of this kind higher and 25 lower among 1,085 judged
+comparisons. So two-of-six flags under overlapping ranges occur on this machine where no
+code changed. That base rate does not account for `commits.hover_click`, which is higher
+in five of six pairs.
+The application’s own `gitRevision:selectToReady` span in the raw runs agrees with it.
+The code read so far does not explain it: the hover and the click share one preparation,
+and its comparison never reaches the page’s keep.
+It was not investigated in a browser.
 
-### What Did Not Move
+## Verdicts
 
-`compare` found 37 metrics with ranges apart.
-Eight are the four commit transitions above, painted ready and data requests each.
-One is `main_subject.commits_to_pulls` painted ready, 81 (66–127) to 64 (63–65), apart
-and within the tolerance, so not a result.
-The other 28 are on transitions with a Markdown subject and belong to exp-063. No other
-transition’s request counts, blank frames, placeholder frames, preview replacements,
-layout shifts, or region movement came apart.
+The accept rule: the named metric moved as predicted; the ranges do not overlap at three
+or more runs; nothing else moved the wrong way unaccounted for; and the complexity is
+worth it.
 
-## What the Pilot Shows
+**H88(a), the browser comparison cache: unresolved.** Decided by the transition
+scenario.
 
-No verdict: the accept rule is applied by the official round.
-As pilot evidence:
+1. Moved as predicted: yes.
+   `commits.revisit.1` data requests went 1 → 0 and painted ready 146.8 (97.4–349.2) →
+   31.0 (29.8–31.6) ms.
+   `commits.revisit.2` went 1 → 0 and 188.9 (146.9–198.0) → 29.6 (28.5–30.8) ms.
+2. Ranges apart at six runs: yes, all four.
+   Both times were beyond 1.3x in 6 of 6 pairs, with pair ratios 0.21x (0.09–0.32) and
+   0.16x (0.14–0.21).
+3. Nothing else wrong-way unaccounted for: **no.** The declared guard names every
+   `commits.*` transition.
+   `commits.hover_click` is a frame later in five of six pairs, and `commits.cold.1` and
+   `commits.first_show`’s settle time are flagged in two.
+   None is accounted for.
+4. Complexity judgment: 173 changed lines in `git-panel.js`, `settings.py`, and
+   `types.d.ts`, no dependency, and one stated staleness (`.gitattributes` until
+   Refresh) for 1 request and about 115 to 160 ms per revisit.
+   Worth it if the hover-click frame is explained or removed; not on this evidence.
 
-- A commit revisit made no comparison request in any candidate run (1 → 0 in every run),
-  and returning to a selected commit through a main tab made one data request instead of
-  two.
-- The three routes, measured apart from the harness, answered a repeat 5x to 39x faster
-  with ranges apart.
-- The painted-ready times above came from the harness revision with the unsound
-  crediting and are not evidence either way.
-- Since the pilot, review round 1 of the change made the ref state cover a reftable
-  linked worktree’s own refs and made `summary?scope=all` count the log’s scope instead
-  of `--all`, and it changed the state’s walk and bounds.
-  The official round measures that code, not this candidate.
+What would resolve it: an explanation of `commits.hover_click`, from a trace of the
+hover and the click on both builds, then a declared rerun.
+
+**H88(b), the server route memo: unresolved.** Decided by `git-route-pairs.mjs`, fifteen
+interleaved pairs per route.
+
+1. Moved as predicted: yes, on all three routes.
+   Log 182 → 6.8 ms, summary 184.1 → 3.4 ms, refs 28.4 → 3.6 ms.
+2. Ranges apart: log and summary yes, **refs no**. Refs’ control range was 23.49 to
+   86.31 ms and its candidate range 3.02 to 71.96 ms, with 13 of 15 pairs beyond 1.3x
+   and the lowest pair ratio 1.2x. The criterion named all three routes, so it is not
+   met.
+3. Guard: B8 correct in 45 of 45 checks.
+   In the browser, the transitions the memo serves came out lower: `commits.first_show`
+   and `main.files_to_commits.first`, apart and beyond the tolerance.
+4. Complexity judgment: 821 changed lines across six server modules, no dependency, and
+   two stated limits (outside configuration, lost objects).
+   Worth it for the log page and the summary, about 175 and 181 ms per repeat; refs
+   alone, about 25 ms here, would not carry it.
+
+What would resolve it: a declared rerun of the server half that times the refs route
+apart from the B8 checks, or one that names the identity period as a separate sample
+class.
+
+## Pilot
+
+The pilot ran on 2026-11-12 on harness revision 1 (`22af6103`), with five pairs.
+Its candidate was `9e1630db`, both rounds’ code before review round 1, and its corpus
+was a linked worktree of an active repository, whose refs moved during it.
+Its painted-ready times came from a harness revision whose crediting review A of the
+harness found unsound, and its candidate predates the review-round-1 fixes.
+It is not evidence either way.
+Its request counts agreed with this round’s: 1 → 0 on each revisit, 2 → 1 on a main-tab
+return to a selected commit.
+Its server half measured 5x to 39x faster repeats, with ranges apart, on a corpus whose
+refs body was 80,805 bytes.
+Its records: [samples](exp-061-pilot-transition-samples.jsonl),
+[detail](exp-061-pilot-transition-detail.jsonl), and
+[route timings](exp-061-pilot-git-routes-samples.json).
 
 ## Limits
 
 - Headless Chrome only; the native app’s WebKit is not measured.
-- The corpus shares its refs with an active repository, so the memo’s hit rate here
-  depends on how often other worktrees commit.
-  A served repository that nobody else writes to keeps its state longer.
-- The browser cache’s cost in memory was not measured in a browser; its bound is the
-  JSON length measured over this repository’s last 200 commits (V8 heap 0.97 to 1.66
-  times that, in Node, over five answers).
-- A served folder’s comparison also reads its working tree’s `.gitattributes`; the page
-  asks again only on Refresh.
+- One candidate carried both rounds’ changes.
+  That H90’s code is not on the commit path is inferred from reading it: the diff’s
+  Markdown view uses `diff-markdown.js` and its own route, not `rendered.js`. It was not
+  measured.
+- The harness fixes its own ports at 8890 to 8899; only the server half used 8910 to
+  8913\.
+- The corpus’s refs body is 2,311 bytes (20 refs), smaller than an active repository’s,
+  so the refs route’s saving here is smaller than in the pilot.
+- The browser keep’s memory was not measured in a browser.
+  Its bound is the JSON length measured over this repository’s last 200 commits; the
+  parsed answers held 0.97 to 1.66 times that in V8’s heap, in Node, over five answers.
 - H88 is registered in the plan on the research branch, not yet in this branch’s plan.
 
 <!-- This document follows common-doc-guidelines.md.
