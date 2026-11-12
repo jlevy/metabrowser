@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import select
 import threading
 from collections.abc import Callable
 from typing import Final, NoReturn
@@ -40,17 +41,37 @@ def require_open_stdin(*, fd: int = 0) -> None:
         raise CLIError(f"--exit-on-eof needs an open stdin to watch: {exc.strerror}") from exc
 
 
-def watch_for_eof(on_eof: Callable[[], object], *, fd: int = 0) -> threading.Thread:
-    """Read ``fd`` on a daemon thread until EOF, then call ``on_eof`` once.
+def _read_until_eof(fd: int) -> None:
+    """Read and drop what arrives on ``fd`` until its end.
 
     A read error counts as the end too: a stdin that can no longer be read, such as a
-    terminal that hung up, has lost its parent just as surely.
+    terminal that hung up, has lost its parent just as surely. ``EAGAIN`` does not: a
+    stdin inherited with ``O_NONBLOCK`` reads it while its writer is alive and has sent
+    nothing yet. The wait for it to be readable blocks, so it does not spin, and it
+    returns at the end as well as for data. The flag is left as inherited, because it
+    belongs to the open file, which other processes may share.
     """
 
+    while True:
+        try:
+            chunk = os.read(fd, _READ_BYTES)
+        except BlockingIOError:
+            try:
+                select.select([fd], [], [])
+            except OSError:
+                return
+            continue
+        except OSError:
+            return
+        if not chunk:
+            return
+
+
+def watch_for_eof(on_eof: Callable[[], object], *, fd: int = 0) -> threading.Thread:
+    """Read ``fd`` on a daemon thread until EOF, then call ``on_eof`` once."""
+
     def watch() -> None:
-        with contextlib.suppress(OSError):
-            while os.read(fd, _READ_BYTES):
-                pass
+        _read_until_eof(fd)
         on_eof()
 
     thread = threading.Thread(target=watch, name="metabrowser-stdin-lifeline", daemon=True)
