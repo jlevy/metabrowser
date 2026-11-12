@@ -32,7 +32,9 @@ outranking a plugin key; two mounts of one command id; a rebuilt control retarge
 control taken out of the page and put back; the inert stage; an aborted signal and an
 idempotent detach; malformed input, which throws with the `shortcuts.attach:` prefix;
 the registry torn down and rebuilt; and view composition releasing a key that a view’s
-own `dispose()` forgot, whether or not the facade had loaded.
+own `dispose()` forgot, whether or not the facade had loaded, including one whose
+`dispose()` takes its own root out of the container, a render that finishes after its
+stage was cancelled, and a render that attaches a key and then fails.
 `tests/test_keymap.py` holds the printed reserved table and refused letters to
 `src/metabrowser/keymap.py`.
 
@@ -243,6 +245,22 @@ $ node tests/dom/plugin-shortcuts-session.js
       "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none"],
       "ariaWhileMounted": "V",
       "handled": false
+    },
+    {
+      "step": "a view whose dispose removed its own root and forgot its key: released",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none"],
+      "ariaWhileMounted": "R"
+    },
+    {
+      "step": "a render that finished after its stage was cancelled: released",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none","Slow: none"]
+    },
+    {
+      "step": "a render that attached a key and then failed: released",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none","Slow: none","Failing: none"]
     },
     {
       "step": "disposed while queued, before the facade loaded: never bound",

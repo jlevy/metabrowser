@@ -164,15 +164,14 @@
         return;
       }
       record.disposed = true;
-      try {
-        if (typeof record.handle?.dispose === "function") {
-          record.handle.dispose();
-        }
-        if (typeof renderer.dispose === "function") {
-          renderer.dispose(container);
-        }
-      } finally {
-        releaseShortcutsWithin(container);
+      // The net runs before the view's own dispose, which may take its DOM, and the keys
+      // attached inside it, out of the container. Detaching twice is harmless.
+      releaseShortcutsWithin(container);
+      if (typeof record.handle?.dispose === "function") {
+        record.handle.dispose();
+      }
+      if (typeof renderer.dispose === "function") {
+        renderer.dispose(container);
       }
     });
     try {
@@ -182,6 +181,8 @@
           ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
           : null;
       if (record.disposed) {
+        // Rendered after the net ran: it is cast again over what this render attached.
+        releaseShortcutsWithin(container);
         handle?.dispose?.();
         return "cancelled";
       }
@@ -195,6 +196,9 @@
       options.afterMount?.(container);
       return "mounted";
     } catch (error) {
+      // A render that failed may have attached keys first, and the error state below
+      // takes its DOM out of the container, past the net.
+      releaseShortcutsWithin(container);
       if (record.disposed) {
         return "cancelled";
       }

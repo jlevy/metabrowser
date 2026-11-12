@@ -675,6 +675,98 @@ async function main() {
   );
   leaky.remove();
 
+  // A view's own root, which its dispose takes out of the container, as the diff view's does.
+  const rootedHost = element(document, "div", { class: "content-body rooted-host" });
+  preview.append(rootedHost);
+  const rootedStage = lifecycle.begin();
+  let rooted = null;
+  const rootedMount = composition.mount(
+    rootedHost,
+    {
+      render(container) {
+        const root = element(document, "div", { class: "rooted-root" });
+        rooted = track(control("Rooted"));
+        root.append(rooted);
+        container.append(root);
+        mb.shortcuts.attach(rooted, spec("demo.rooted", "r", "Rooted"));
+        // Its dispose removes its root and forgets the key.
+        return {
+          dispose() {
+            root.remove();
+          },
+        };
+      },
+    },
+    {},
+    rootedStage.disposers,
+  );
+  assert((await rootedMount) === "mounted", "the rooted view did not mount");
+  rootedStage.commit(() => {});
+  const rootedAria = rooted.getAttribute("aria-keyshortcuts");
+  lifecycle.disposeActive();
+  steps.push(
+    page.record("a view whose dispose removed its own root and forgot its key: released", {
+      ariaWhileMounted: rootedAria,
+    }),
+  );
+  rootedHost.remove();
+
+  // A render that finishes after its stage was cancelled, which view composition disposes.
+  const slowHost = element(document, "div", { class: "content-body slow-host" });
+  preview.append(slowHost);
+  const slowStage = lifecycle.begin();
+  let finishSlow = () => {};
+  const slowMount = composition.mount(
+    slowHost,
+    {
+      async render(container) {
+        await new Promise((resolve) => {
+          finishSlow = resolve;
+        });
+        const root = element(document, "div", { class: "slow-root" });
+        const slow = track(control("Slow"));
+        root.append(slow);
+        container.append(root);
+        mb.shortcuts.attach(slow, spec("demo.slow", "s", "Slow"));
+        return {
+          dispose() {
+            root.remove();
+          },
+        };
+      },
+    },
+    {},
+    slowStage.disposers,
+  );
+  slowStage.cancel();
+  finishSlow();
+  assert((await slowMount) === "cancelled", "the slow view was not cancelled");
+  steps.push(page.record("a render that finished after its stage was cancelled: released"));
+  slowHost.remove();
+
+  // A render that attached a key and then failed, whose error state replaces its DOM.
+  const failingHost = element(document, "div", { class: "content-body failing-host" });
+  preview.append(failingHost);
+  const failingStage = lifecycle.begin();
+  const failingMount = composition.mount(
+    failingHost,
+    {
+      render(container) {
+        const failing = track(control("Failing"));
+        container.append(failing);
+        mb.shortcuts.attach(failing, spec("demo.failing", "f", "Failing"));
+        throw new Error("the demo view failed");
+      },
+    },
+    {},
+    failingStage.disposers,
+    { renderError: (container) => container.replaceChildren() },
+  );
+  assert((await failingMount) === "error", "the failing view did not fail");
+  steps.push(page.record("a render that attached a key and then failed: released"));
+  failingStage.cancel();
+  failingHost.remove();
+
   // The same net before the facade has loaded, on a page of its own.
   const early = createPage();
   early.load("view-composition.js");
