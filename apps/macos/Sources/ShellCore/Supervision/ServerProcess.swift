@@ -203,23 +203,25 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         // kqueue EVFILT_PROC with NOTE_EXIT, then read the status with WNOWAIT, which
         // leaves the child a zombie: its pid, and so its group id, stays this child's
         // while the stop sweeps the group, and `release()` reaps it afterwards.
+        //
+        // NOTE_EXIT can arrive before the exited child is waitable, and it arrives once,
+        // so the event handler waits for the child to become waitable. The first look,
+        // for a child that exited before the source was armed, must not wait: the child
+        // may run for hours.
         let latch = exit
         let ownership = ChildOwnership(pid: child)
         self.ownership = ownership
         let source = DispatchSource.makeProcessSource(
             identifier: child, eventMask: .exit, queue: .global())
-        let observe: @Sendable () -> Void = {
-            var info = siginfo_t()
-            guard waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == child
-            else { return }
-            let status = Self.waitStatus(info)
+        let observe: @Sendable (_ waiting: Bool) -> Void = { waiting in
+            guard !latch.isResolved, let status = Self.observedExit(of: child, waiting: waiting) else { return }
             ownership.exited { latch.resolve(status) }
             source.cancel()
         }
-        source.setEventHandler(handler: observe)
+        source.setEventHandler { observe(true) }
         source.resume()
         exitSource = source
-        DispatchQueue.global().async(execute: observe)  // it may have exited before arming
+        DispatchQueue.global().async { observe(false) }  // it may have exited before arming
     }
 
     /// A child nobody released, such as one a test spawned, is reaped when it exits.
@@ -236,6 +238,19 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
 
     public func release() {
         ownership.release()
+    }
+
+    /// The wait status of `child` once it has exited, read with `WNOWAIT`, so the child
+    /// stays unreaped. Unless `waiting`, nil while the child runs; when `waiting`, the call
+    /// returns once the child is waitable, which closely follows NOTE_EXIT. Nil, too, if
+    /// `child` is no longer this process's to wait for.
+    static func observedExit(of child: pid_t, waiting: Bool) -> Int32? {
+        var info = siginfo_t()
+        let options = WEXITED | WNOWAIT | (waiting ? 0 : WNOHANG)
+        while waitid(P_PID, id_t(child), &info, options) != 0 {
+            guard errno == EINTR else { return nil }
+        }
+        return info.si_pid == child ? waitStatus(info) : nil
     }
 
     /// `waitid`'s account of an exit as the `waitpid` status `ExitStatus` decodes.
