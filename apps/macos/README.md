@@ -140,6 +140,42 @@ Where to look while it runs:
 - **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
   runtime and the recent folders, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
+- **Server records:**
+  `~/Library/Application Support/io.github.jlevy.metabrowser.dev/servers/` holds one
+  `app-<pid>.json` per running app process with servers (see
+  [After a Crash](#after-a-crash)).
+
+### Checking by Hand
+
+What the unit tests cannot reach, against a built development app.
+Quit any other copy of the development build first: both have one bundle identifier.
+
+```shell
+app="$PWD/apps/macos/build/dev/Metabrowser.app"
+records="$HOME/Library/Application Support/io.github.jlevy.metabrowser.dev/servers"
+logs="$HOME/Library/Logs/Metabrowser Dev"
+folder="$(mktemp -d)"
+```
+
+1. **Which build.** `open -a "$app" "$folder"`, then Metabrowser > About Metabrowser.
+   Below the version is “Development build · VERSION (BUILD) · COMMIT”, the commit with
+   `-dirty` for uncommitted changes.
+   The Dock shows the canary icon, and Help > Reveal Logs Folder opens `$logs`.
+2. **Health check.** With the folder open, find its server (`pgrep -f -- "--no-open"`)
+   and stop it without ending it: `kill -STOP PID`. Bring the folder back (Command-click
+   a link in it, or open the folder again).
+   Within about 10 seconds (5 for the check, then the stop: a stopped process holds
+   SIGTERM until SIGKILL ends it) the window says “The server stopped answering” and
+   offers Retry, and Retry serves the folder again.
+3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
+   `INFO:` lines) beside its `Serving` line, which came through stdout.
+4. **After a crash.** `cat "$records"/app-*.json` lists the folder’s server.
+   `pkill -9 -f "$app/Contents/MacOS/Metabrowser"` leaves it running
+   (`pgrep -fl -- "--no-open"`). `open -a "$app"`: within 5 seconds the server is gone,
+   the folder’s log ends with “ended the server pid PID …, with SIGTERM”, and the
+   crashed process’s records file is gone.
+5. **An orderly quit.** Metabrowser > Quit Metabrowser leaves no server and no records
+   file.
 
 ### Continuous Integration
 
