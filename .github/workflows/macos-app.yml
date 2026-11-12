@@ -1,0 +1,170 @@
+name: macOS app
+
+# Builds and tests the native macOS app in apps/macos on macOS runners, and rehearses its
+# release with an ad hoc signature (apps/macos/README.md, Continuous Integration). Nothing
+# here signs with a Developer ID, notarizes, or publishes, so it uses no secrets.
+
+on:
+  # As in ci.yml: pushes to main, and every pull request whatever its base, so a stacked
+  # pull request is built too. A path filter names whole files, so any change to the root
+  # Makefile runs this, for the macos-* targets there.
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/macos/**"
+      - "Makefile"
+      - ".github/workflows/macos-app.yml"
+  pull_request:
+    paths:
+      - "apps/macos/**"
+      - "Makefile"
+      - ".github/workflows/macos-app.yml"
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request or branch supersedes a running build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_EXCLUDE_NEWER: "14 days"
+
+defaults:
+  run:
+    # Named explicitly so that every step runs with -e and -o pipefail.
+    shell: bash
+
+jobs:
+  app:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The toolchain the app is developed and built with: Xcode 26.6 (Swift 6.3)
+          # on macOS 26. Only this leg packages the app and rehearses the release, so
+          # its images come from that compiler.
+          - name: macOS 26, Xcode 26.6
+            runner: macos-26
+            xcode: "26.6"
+            package: true
+          # The oldest the app supports: macOS 15, its deployment target, and Xcode
+          # 26.0.1, whose Swift 6.2 is the swift-tools-version Package.swift declares.
+          # No other job tests the app on either.
+          - name: macOS 15, Xcode 26.0.1
+            runner: macos-15
+            xcode: "26.0.1"
+            package: false
+    # Named images rather than macos-latest, and an Xcode selected below rather than the
+    # image's default, so that an image update cannot change the OS or the compiler
+    # silently. Both images are arm64, the one architecture the app builds by default.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      # The live tests run the real server: the metab this checkout locks.
+      METABROWSER_SHELL_TEST_METAB: ${{ github.workspace }}/.venv/bin/metab
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # The bundle's build number is the commit count, so a shallow clone is refused.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode
+        env:
+          XCODE: ${{ matrix.xcode }}
+        run: |
+          sudo xcode-select --switch "/Applications/Xcode_$XCODE.app"
+          sw_vers
+          xcodebuild -version
+          swift --version
+          test "$(xcodebuild -version | head -n 1)" = "Xcode $XCODE"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install the locked environment
+        run: make install
+
+      - name: Confirm the live tests' metab runs
+        run: '"$METABROWSER_SHELL_TEST_METAB" --version'
+
+      - name: Run the unit, live, and script tests
+        run: |
+          make macos-test 2>&1 | tee "$RUNNER_TEMP/macos-test.log"
+          # The live suite skips itself when METABROWSER_SHELL_TEST_METAB is unset, so a
+          # renamed variable would pass by testing less. Fail unless the suite ran.
+          if ! grep -qF 'Suite LiveMetabTests passed' "$RUNNER_TEMP/macos-test.log"; then
+            echo "::error::LiveMetabTests did not run and pass"
+            exit 1
+          fi
+
+      - name: Build the app
+        run: make macos-app
+
+      - name: Build the development image
+        if: matrix.package
+        run: make macos-dmg
+
+      - name: Rehearse the release with an ad hoc signature
+        if: matrix.package
+        run: make macos-release NOTARIZE=0
+
+      # Each build above checks its own image. This checks both again once both builds
+      # are done, and names the files to upload. The rehearsal's image carries the
+      # published icon on an ad hoc signature, so it is checked and never uploaded.
+      - name: Check both images as a downloader meets them
+        if: matrix.package
+        id: images
+        working-directory: apps/macos
+        run: |
+          source scripts/common.sh
+          variant_settings release
+          scripts/check-dmg.sh "$dmg"
+          variant_settings dev
+          scripts/check-dmg.sh "$dmg"
+          # ditto keeps the bundle's symlinks, modes, and signature, which a plain upload
+          # would not.
+          zip="build/${product// /-}-$version-$arch_label.app.zip"
+          ditto -c -k --keepParent "$app" "$zip"
+          echo "app=apps/macos/$zip" >>"$GITHUB_OUTPUT"
+          echo "dmg=apps/macos/$dmg" >>"$GITHUB_OUTPUT"
+
+      # Short-lived: long enough to try a pull request's build during its review. Each
+      # file is uploaded as itself, so the download is the zip or the image.
+      - name: Upload the development app
+        if: matrix.package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.images.outputs.app }}
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+      - name: Upload the development image
+        if: matrix.package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.images.outputs.dmg }}
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7

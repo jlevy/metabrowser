@@ -17,8 +17,10 @@ Open With, native menus and windows, and server lifetimes it controls.
 It is not yet a distribution.
 It installs nothing: no Python, no uv, no Metabrowser.
 It has a [release pipeline](#building-a-release) (Developer ID signing, notarization, a
-DMG, and a draft Homebrew cask) that has not yet made a release, and no updater, URL
-scheme, or CI job. It runs on arm64 Macs with macOS 15 or later.
+DMG, and a draft Homebrew cask) that has not yet made a release, a
+[CI workflow](#continuous-integration) that builds, tests, and rehearses it, and no
+updater or URL scheme.
+It runs on arm64 Macs with macOS 15 or later.
 [Gaps to Close](#gaps-to-close) maps what is missing to the brief.
 
 ## Build, Test, and Run
@@ -43,7 +45,8 @@ make macos-build                     # debug build only
 make macos-clean                     # remove .build and build
 ```
 
-`make verify` neither needs nor runs Swift, so Linux CI is unchanged.
+`make verify` neither needs nor runs Swift, so Linux CI is unchanged; the app has its
+own [macOS workflow](#continuous-integration).
 
 `scripts/build-app.sh` builds a release binary, strips it, lays out the bundle, stamps
 the variant’s identity and the version, copies the variant’s icon, and signs.
@@ -76,11 +79,12 @@ The rule: **the canary icon is for development builds, and the published icon on
 official releases.**
 
 - **Every development build is dev**: `make app`, `make run`, `make dmg`, their
-  `macos-*` forms, any ad hoc build, and any build CI makes from a branch, a pull
+  `macos-*` forms, any ad hoc build, and every build CI uploads from a branch, a pull
   request, or `main`.
-- **Only the release path builds release**: `make release`, and CI on a `macos-v*` tag.
-  An official build must be signed with a Developer ID, notarized, built from a commit,
-  and carry the published icon; `make release` checks all four before it builds.
+- **Only the release path builds release**: `make release`; its rehearsal, which CI runs
+  on every change and never uploads; and a CI release job on a `macos-v*` tag, once one
+  exists. An official build must be signed with a Developer ID, notarized, built from a
+  commit, and carry the published icon; `make release` checks all four before it builds.
   `make release NOTARIZE=0` rehearses the same steps with an ad hoc signature and says
   it is a rehearsal.
 - **Release only on request**: elsewhere, `VARIANT=release` on the `make` command line
@@ -119,6 +123,42 @@ Where to look while it runs:
 - **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
   runtime and the recent folders, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
+
+### Continuous Integration
+
+`.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
+that changes `apps/macos`, the root `Makefile`, or the workflow.
+It uses no secrets and signs only ad hoc.
+It runs on two pinned runner images, each with its Xcode selected explicitly:
+
+| Runner | Xcode | Why | Runs |
+| --- | --- | --- | --- |
+| `macos-26` | 26.6 (Swift 6.3) | The toolchain the app is developed and built with | Every step below |
+| `macos-15` | 26.0.1 (Swift 6.2) | The oldest macOS and Swift the app supports | Steps 1 to 3 |
+
+1. `make install`, after setting up uv, Python, and Node as `ci.yml` does.
+2. `make macos-test` with `METABROWSER_SHELL_TEST_METAB` set to that environment’s
+   `metab`, so the live tests run against the server this checkout locks.
+   The step fails unless `LiveMetabTests` ran and passed.
+3. `make macos-app`.
+4. `make macos-dmg` and `make macos-release NOTARIZE=0`, then `scripts/check-dmg.sh` on
+   both images.
+5. The development app, zipped with `ditto`, and the development image, uploaded as
+   artifacts kept for 7 days.
+   The rehearsal’s image carries the published icon on an ad hoc signature, so it is
+   checked and never uploaded.
+   Like any ad hoc build, a downloaded artifact runs only after Open Anyway (see
+   [What a Downloader Experiences](#what-a-downloader-experiences)).
+
+The same steps on a Mac, from the repository root:
+
+```shell
+make install
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test
+make macos-app
+make macos-dmg                 # checks its image with scripts/check-dmg.sh
+make macos-release NOTARIZE=0  # the rehearsal, which checks its image too
+```
 
 ## Building a Release
 
@@ -212,8 +252,8 @@ gh release create macos-v0.1.0 --draft --verify-tag --latest=false \
 
 `--latest=false` keeps the Python package’s release as the repository’s latest.
 Then copy `build/metabrowser-app.rb` to `Casks/` in a personal tap.
-The draft CI workflow for all of this is not yet in `.github/workflows`, and the PyPI
-publish workflow must first learn to ignore `macos-v*` releases (see
+Publishing the release does not publish to PyPI: `publish.yml` runs its job only for a
+`v` tag, the Python package’s. No workflow builds, signs, or drafts the release yet (see
 [Gaps to Close](#gaps-to-close)).
 
 ### What a Downloader Experiences
@@ -503,7 +543,7 @@ Each gap points to the part of the brief that closes it.
 | **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
 | **WebKit measurement gate** | Not run. Large-content bounds were measured in Chrome; `window.print()` and drag and drop are not yet checked by hand. | Recommendation 4 (`mb-etqi`) |
 | **Multi-root and attach** | One server per root; no attaching to an agent’s server, no state files, no `metabrowser://` hand-off from the CLI. | Use Cases Under Exploration; Sharing an Installation |
-| **macOS CI** | `swift test` and the pipeline run locally only. A workflow is drafted, not added, and the PyPI publish workflow would fail on a published `macos-v*` release. | Next Steps |
+| **Release CI** | `macos-app.yml` builds, tests, and rehearses the release with an ad hoc signature. No job signs and notarizes from secrets or drafts a release on a `macos-v*` tag, so a release is built by hand (`mb-e9fm`). | Next Steps |
 
 ## Known Limitations
 
