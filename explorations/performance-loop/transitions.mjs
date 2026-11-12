@@ -526,7 +526,13 @@ async function cmdRun(argv) {
     `${SCENARIO} ${values.exp} series ${series}: ${runs} run(s) x ${conditions.map((c) => c.label).join(", ")}, journeys ${journeys.join(",")}, ${values.headed ? "headed" : "headless"}, writing ${path.relative(REPO, outFile)}`,
   );
   let refused = 0;
+  // Run numbers continue across series written to the same file, one sequence per label.
   const runCount = {};
+  if (fs.existsSync(outFile)) {
+    for (const row of readRows(outFile)) {
+      runCount[row.condition] = Math.max(runCount[row.condition] ?? 0, row.run ?? 0);
+    }
+  }
   for (let pair = 0; pair < runs; pair++) {
     const order =
       conditions.length === 2 && values.order === "alternate" && pair % 2 === 1
