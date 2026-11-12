@@ -280,7 +280,10 @@ Strict mode is off on a developer machine, which can add these:
 - a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs, and
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
-  above.
+  above;
+- `Chrome is not installed`, for the transition recorder’s checks in
+  `tests/test_transitions_instrument.py`, which measure paint and the frame clock in a
+  real headless Chrome; the CI runners have Chrome, so CI runs them.
 
 ### Timeouts
 

@@ -60,6 +60,30 @@ def require_git() -> str:
     return _require("git")
 
 
+MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CHROME_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+
+
+def require_chrome() -> str:
+    """Return a Chrome for the tests that measure paint in a real browser, or skip.
+
+    Chrome is not a prerequisite of the repository, so its absence skips, with the reason
+    ``docs/e2e-testing.md`` lists; strict mode turns that skip into a failure in CI, whose
+    runners have Chrome. ``CHROME_BIN`` names one explicitly.
+    """
+
+    named = os.environ.get("CHROME_BIN")
+    if named:
+        return named
+    if os.path.exists(MAC_CHROME):
+        return MAC_CHROME
+    for name in CHROME_NAMES:
+        found = shutil.which(name)
+        if found is not None:
+            return found
+    pytest.skip("Chrome is not installed")
+
+
 # For a whole module or a parametrized case, where no test body is at hand to call the
 # functions above. The fixtures they name are in tests/conftest.py.
 needs_node = pytest.mark.usefixtures("node_on_path")
