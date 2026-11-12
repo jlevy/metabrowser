@@ -31,17 +31,23 @@ write(path.join(root, "src/app.js"), "export const app = 1;\n");
 write(path.join(root, ".env"), "TOKEN=hidden\n");
 write(path.join(root, "notes.txt"), "not listed\n");
 write(path.join(root, "unreadable.js"), "export {};\n");
+write(path.join(root, "src/swap.js"), "export const swap = 1;\n");
+write(path.join(root, "swapdir/file.js"), "export const file = 1;\n");
+write(path.join(root, "elsewhere/file.js"), "elsewhere, not listed\n");
 write(path.join(outside, "secret.txt"), "outside the root\n");
 write(path.join(corpus, "source.txt"), "corpus\n");
 fs.symlinkSync(outside, path.join(root, "escape"));
 fs.symlinkSync(path.join(outside, "secret.txt"), path.join(corpus, "leak.txt"));
-fs.chmodSync(path.join(root, "unreadable.js"), 0o000);
+fs.symlinkSync("../notes.txt", path.join(root, "src/alias.js"));
 
 const assets = [
   "explorations/bench/benchmark.html",
   "src/app.js",
   "escape/secret.txt",
   "unreadable.js",
+  "src/alias.js",
+  "src/swap.js",
+  "swapdir/file.js",
 ];
 const corpusFiles = ["source.txt", "leak.txt"];
 
@@ -50,6 +56,8 @@ const cleanup = new Cleanup();
 let origin = "";
 before(async () => {
   ({ origin } = await server.startStatic({ root, assets, corpus, corpusFiles, cleanup }));
+  // Readable when the server starts, so it is a listed file that later cannot be read.
+  fs.chmodSync(path.join(root, "unreadable.js"), 0o000);
 });
 after(async () => {
   await cleanup.run();
@@ -116,6 +124,29 @@ test("refuses a listed path that a symlink takes outside its root", async () => 
     const answer = await request(origin, pathname);
     assert.equal(answer.status, 404, pathname);
     assert.doesNotMatch(answer.body, /outside the root/, pathname);
+  }
+});
+
+test("refuses a listed path that a symlink in its root points at an unlisted file", async () => {
+  const answer = await request(origin, "/src/alias.js");
+  assert.equal(answer.status, 404);
+  assert.doesNotMatch(answer.body, /not listed/);
+});
+
+test("refuses a listed file, or one in a listed directory, replaced after it was checked", async () => {
+  // The server checks each file when it starts, so replacing one now falls between that
+  // check and the open, every time.
+  for (const pathname of ["/src/swap.js", "/swapdir/file.js"]) {
+    assert.equal((await request(origin, pathname)).status, 200, `${pathname} before`);
+  }
+  fs.rmSync(path.join(root, "src/swap.js"));
+  fs.symlinkSync("../notes.txt", path.join(root, "src/swap.js"));
+  fs.renameSync(path.join(root, "swapdir"), path.join(root, "swapdir-checked"));
+  fs.symlinkSync("elsewhere", path.join(root, "swapdir"));
+  for (const pathname of ["/src/swap.js", "/swapdir/file.js"]) {
+    const answer = await request(origin, pathname);
+    assert.equal(answer.status, 404, pathname);
+    assert.doesNotMatch(answer.body, /not listed/, pathname);
   }
 });
 

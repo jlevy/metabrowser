@@ -1,9 +1,10 @@
 // The gate's static server: the committed diff benchmark pages and the files they load,
 // the generated corpus, and a blank page, on loopback. It serves those files and nothing
-// else in the checkout, each only while its real path stays under its own root, and only
-// to requests addressed to its own 127.0.0.1 origin. Every failure inside a request,
-// from a malformed path to a file that cannot be read, becomes an error response, never an
-// exception that would end the harness. static-server.test.mjs covers it.
+// else in the checkout, each only if what it opens is the very plain file, with no symlink
+// on its path, that it found there when it started, and only to requests addressed to its
+// own 127.0.0.1 origin. Every failure inside a request, from a malformed path to a file
+// that cannot be read, becomes an error response, never an exception that would end the
+// harness. static-server.test.mjs covers it.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -56,6 +57,48 @@ function refuse(response, status) {
   response.writeHead(status, { "cache-control": "no-store", "content-length": 0 }).end();
 }
 
+// Never through a final symlink, and without waiting on a FIFO put in a file's place.
+const OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;
+
+/**
+ * Whether `error` is the operating system's, as a missing or unreadable file raises.
+ * @param {unknown} error
+ */
+function isSystemError(error) {
+  return (
+    error instanceof Error &&
+    typeof (/** @type {NodeJS.ErrnoException} */ (error).errno) === "number"
+  );
+}
+
+/**
+ * The device and inode of the plain file at `file`, or null if the server may not serve
+ * it: `file` must be its own real path, with no symlink anywhere on it, and what an open
+ * reaches must be what the path names. It opens first and checks after, so a symlink
+ * swapped in or out between the two steps is caught either way.
+ * @param {string} file an absolute path under a root's real path
+ * @returns {Promise<{ dev: bigint, ino: bigint } | null>}
+ */
+async function identify(file) {
+  /** @type {fs.promises.FileHandle | undefined} */
+  let handle;
+  try {
+    handle = await fs.promises.open(file, OPEN_FLAGS);
+    const opened = await handle.stat({ bigint: true });
+    const real = await fs.promises.realpath(file);
+    const named = await fs.promises.stat(file, { bigint: true });
+    const same = named.dev === opened.dev && named.ino === opened.ino;
+    return opened.isFile() && real === file && same ? { dev: opened.dev, ino: opened.ino } : null;
+  } catch (error) {
+    if (isSystemError(error)) {
+      return null;
+    }
+    throw error;
+  } finally {
+    await handle?.close();
+  }
+}
+
 /**
  * Starts the server on a free loopback port, closed by `cleanup` from the moment it is
  * created. `assets` are checkout-relative paths under `root`; `corpusFiles` are names
@@ -67,19 +110,32 @@ function refuse(response, status) {
  * @returns {Promise<{ origin: string, server: http.Server }>}
  */
 export async function startStatic({ root, assets, corpus, corpusFiles, cleanup }) {
-  // Each URL path names one file under one root; anything else is not found. The roots'
-  // real paths are taken once, and a file is served only if its own stays inside.
+  // Each URL path names one file under one root; anything else is not found. Each file is
+  // identified once, here: one that is missing, is not a plain file, or has a symlink on
+  // its path is never served, and one replaced while the run goes on is refused.
   const [realRoot, realCorpus] = await Promise.all([
     fs.promises.realpath(root),
     fs.promises.realpath(corpus),
   ]);
-  /** @type {Map<string, { base: string, name: string }>} */
-  const files = new Map([
-    ...assets.map((name) => /** @type {const} */ ([`/${name}`, { base: realRoot, name }])),
+  /** @type {[string, string, string][]} URL path, root, and name under it */
+  const listed = [
+    ...assets.map((name) => /** @type {[string, string, string]} */ ([`/${name}`, realRoot, name])),
     ...corpusFiles.map(
-      (name) => /** @type {const} */ ([`${CORPUS_PREFIX}${name}`, { base: realCorpus, name }]),
+      (name) =>
+        /** @type {[string, string, string]} */ ([`${CORPUS_PREFIX}${name}`, realCorpus, name]),
     ),
-  ]);
+  ];
+  /** @type {Map<string, { file: string, dev: bigint, ino: bigint }>} */
+  const files = new Map();
+  await Promise.all(
+    listed.map(async ([pathname, base, name]) => {
+      const file = path.join(base, name);
+      const identity = file.startsWith(`${base}${path.sep}`) ? await identify(file) : null;
+      if (identity) {
+        files.set(pathname, { file, ...identity });
+      }
+    }),
+  );
   let host = "";
 
   /**
@@ -110,25 +166,23 @@ export async function startStatic({ root, assets, corpus, corpusFiles, cleanup }
       refuse(response, 404);
       return;
     }
-    const real = await fs.promises.realpath(path.join(entry.base, entry.name));
-    if (!real.startsWith(`${entry.base}${path.sep}`)) {
-      refuse(response, 404);
-      return;
-    }
-    const handle = await fs.promises.open(real, "r");
-    const stat = await handle.stat().catch(async (error) => {
+    // The open does not follow a symlink put in the file's place, and the file it reaches
+    // must be the one identified at startup, so a symlink put in place of a directory
+    // above it, which the open does follow, reaches some other file and is refused.
+    const handle = await fs.promises.open(entry.file, OPEN_FLAGS);
+    const stat = await handle.stat({ bigint: true }).catch(async (error) => {
       await handle.close();
       throw error;
     });
-    if (!stat.isFile()) {
+    if (!stat.isFile() || stat.dev !== entry.dev || stat.ino !== entry.ino) {
       await handle.close();
       refuse(response, 404);
       return;
     }
     response.writeHead(200, {
       "cache-control": "no-store",
-      "content-length": stat.size,
-      "content-type": MIME[path.extname(real)] || "application/octet-stream",
+      "content-length": String(stat.size),
+      "content-type": MIME[path.extname(entry.file)] || "application/octet-stream",
     });
     if (request.method === "HEAD") {
       await handle.close();
@@ -145,8 +199,8 @@ export async function startStatic({ root, assets, corpus, corpusFiles, cleanup }
 
   const server = http.createServer((request, response) => {
     serve(request, response).catch((error) => {
-      // A file that is gone or unreadable is an answer, not a crash.
-      refuse(response, error?.code === "ENOENT" || error?.code === "ENOTDIR" ? 404 : 500);
+      // A file that is gone, unreadable, or now a symlink is an answer, not a crash.
+      refuse(response, ["ENOENT", "ENOTDIR", "ELOOP"].includes(error?.code) ? 404 : 500);
     });
   });
   // A client that drops its connection mid-request is no error of the server's.
