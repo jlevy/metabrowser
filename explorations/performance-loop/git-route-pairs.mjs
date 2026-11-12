@@ -11,12 +11,15 @@
 // server, then n pairs; odd pairs ask the control first and even pairs the candidate.
 // Each request sends `accept-encoding: gzip`, as a browser does, and reads the whole body.
 // It records client wall time, status, body bytes, whether an ETag came back, and
-// Server-Timing, with no If-None-Match, so a kept answer is served as a 200.
+// Server-Timing, with no If-None-Match, so a kept answer is served as a 200, and when the
+// request started, in ms from the run's start (`at_ms`), so a sample can be placed against
+// the server's five-second repository-identity period; each check records its own start
+// and end the same way. exp-081 is the round that added the times.
 //
 // The check, when asked for, runs between pairs and is not timed. Its repository is a
 // scratch clone the timed servers never serve, with loose refs, served by both builds.
 // Before each move it asks the candidate twice, so a kept answer exists; it then moves a
-// ref (a commit on the checked-out branch, a loose branch moved, a tag added, a loose
+// ref (a commit on HEAD, a loose branch moved, a tag added, a loose
 // branch deleted, in turn) and asks both builds for the refs, the summary in both scopes,
 // and the first log page. The candidate's answers must equal the control's, which keeps
 // nothing: the refs and summaries byte for byte, and every field of the log page but its
@@ -47,12 +50,17 @@ const CHECK_ROUTES = [
   "/api/git/log?limit=50",
 ];
 
+// The run's time origin; `started_at` records about the same instant as a date.
+const T0 = performance.now();
+const at = (t) => Math.round((t - T0) * 10) / 10;
+
 async function once(base, route) {
   const started = performance.now();
   const response = await fetch(`${base}${route}`, { headers: { "accept-encoding": "gzip" } });
   const body = await response.arrayBuffer();
   const ms = performance.now() - started;
   return {
+    at_ms: at(started),
     ms: Math.round(ms * 100) / 100,
     status: response.status,
     bytes: body.byteLength,
@@ -115,6 +123,7 @@ function moveRef() {
 }
 
 async function check() {
+  const checkStarted = performance.now();
   const before = {};
   for (const route of CHECK_ROUTES) {
     await answer(values["check-candidate"], route);
@@ -136,7 +145,7 @@ async function check() {
       tag_moved: before[route] !== null ? before[route] !== candidate.etag : null,
     };
   }
-  return { move, correct, routes };
+  return { move, correct, routes, at_ms: at(checkStarted), end_ms: at(performance.now()) };
 }
 
 const servers = { control: values.control, candidate: values.candidate };
