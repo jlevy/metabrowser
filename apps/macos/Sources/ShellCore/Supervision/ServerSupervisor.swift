@@ -61,7 +61,8 @@ public final class ServerSupervisor {
     /// Lifecycle events for the server log.
     public var onEvent: ((String) -> Void)?
 
-    public let spec: LaunchSpec
+    /// What the next launch runs. `restart(using:)` replaces it.
+    public private(set) var spec: LaunchSpec
     public let launch: any ServerLaunch
     private let policy: SupervisorPolicy
     private let gate: LaunchGate?
@@ -125,9 +126,13 @@ public final class ServerSupervisor {
     /// Stops whatever is running, then starts a fresh child, unless a stop, another
     /// restart, or a shutdown arrived while the old child was stopping: the newest request
     /// wins, so closing a folder's last window during a restart leaves nothing running.
-    public func restart() async {
+    ///
+    /// - Parameter newSpec: what to run from now on, such as the command of a runtime
+    ///   chosen since the server started; nil runs the same command again.
+    public func restart(using newSpec: LaunchSpec? = nil) async {
         let mine = await halt()
         guard mine == generation, !isShutDown else { return }
+        if let newSpec { spec = newSpec }
         await launchChild()
     }
 

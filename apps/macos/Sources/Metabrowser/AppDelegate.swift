@@ -14,12 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let recents = RecentFolderStore()
     private let launchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
-    private var setup: RuntimeSetup?
+    /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
+    private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
     /// Open folders by canonical path (one session, and so one server, per root), plus
     /// the sessions of closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
-    /// Folders asked for before a runtime was found.
-    private var pendingFolders: [URL] = []
     private var runtimeWindow: RuntimeWindowController?
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
@@ -30,16 +29,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build(recentFolders: self)
         installTerminationSignals()
-        setup = settings.usable()
-        runtimeModel.setup = setup
+        presentRuntime()
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
         // before applicationDidFinishLaunching. Marking the search as running now makes
         // such a folder wait for it, instead of opening Settings as if none was found.
-        if setup == nil { beginDiscovery() }
+        if selection.setup == nil { beginDiscovery() }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let setup {
+        if let setup = selection.setup {
             AppLog.app.info("using saved runtime \(setup.runtime.executable, privacy: .public)")
             openPendingFolders()
         }
@@ -56,8 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        if setup != nil {
-            if sessions.openServers.isEmpty && pendingFolders.isEmpty { openFolder(nil) }
+        if selection.setup != nil {
+            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty { openFolder(nil) }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -131,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !hasVisibleWindows {
             if let session = sessions.openServers.first as? FolderSession {
                 session.showFrontWindow()
-            } else if setup != nil {
+            } else if selection.setup != nil {
                 openFolder(nil)
             } else {
                 showSettings(nil)
@@ -161,12 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.showFrontWindow()
             return
         }
-        guard let setup else {
-            if !pendingFolders.contains(root) { pendingFolders.append(root) }
-            if !runtimeModel.isSearching { showSettings(nil) }
+        guard let setup = selection.setupForOpening(root) else {
+            if !selection.isSearching { showSettings(nil) }
             return
         }
-        let session = FolderSession(root: root, setup: setup, gate: launchGate)
+        let session = FolderSession(
+            root: root, setup: setup, gate: launchGate, currentSetup: { [weak self] in self?.selection.setup })
         session.onAllWindowsClosed = { [weak self] closed in self?.sessions.retire(closed) }
         sessions.insert(session, for: key)
         session.start()
@@ -180,9 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func openPendingFolders() {
-        let folders = pendingFolders
-        pendingFolders.removeAll()
-        folders.forEach(request)
+        selection.takeWaitingFolders().forEach(request)
     }
 
     @objc func openFolder(_ sender: Any?) {
@@ -234,37 +230,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Marks a search as running before returning, so a folder requested in the same
     /// run-loop turn waits for it, then runs the search.
     private func beginDiscovery() {
-        guard !runtimeModel.isSearching else { return }
-        runtimeModel.isSearching = true
+        guard !selection.isSearching else { return }
+        let ticket = selection.startSearch()
         runtimeModel.notice = nil
-        Task { await discoverRuntime() }
+        presentRuntime()
+        Task { await discoverRuntime(ticket) }
     }
 
     /// Searches the documented locations for `metab`; on success, saves the result and
-    /// opens any folder that was waiting for it. Started only by `beginDiscovery`.
-    private func discoverRuntime() async {
+    /// opens any folder that was waiting for it. Started only by `beginDiscovery`. A
+    /// search that a later Choose metab… overtook changes nothing when it finishes.
+    private func discoverRuntime(_ ticket: RuntimeSelection.Ticket) async {
         let report = await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime))
-        runtimeModel.isSearching = false
-        runtimeModel.tried = report.tried
-        guard let found = report.setup else {
+        let outcome = selection.finishSearch(ticket, with: report)
+        presentRuntime()
+        switch outcome {
+        case .adopted(let found):
+            adopted(found)
+            if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
+                openFolder(nil)
+            }
+            showPanelAfterDiscovery = false
+        case .notFound:
+            // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no metab found in \(report.tried.count) places")
-            runtimeModel.setup = nil
             showSettings(nil)
-            return
+        case .rejected, .superseded:
+            AppLog.app.info("a search finished after a newer choice; its result is dropped")
         }
-        use(found)
-        if showPanelAfterDiscovery, sessions.openServers.isEmpty, pendingFolders.isEmpty { openFolder(nil) }
-        showPanelAfterDiscovery = false
     }
 
-    private func use(_ found: RuntimeSetup) {
+    private func adopted(_ found: RuntimeSetup) {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
-        settings.save(found)
-        setup = found
-        runtimeModel.setup = found
         openPendingFolders()
+    }
+
+    /// The Settings window shows what `selection` holds.
+    private func presentRuntime() {
+        runtimeModel.setup = selection.setup
+        runtimeModel.isSearching = selection.isSearching
+        runtimeModel.tried = selection.tried
     }
 
     @objc func showSettings(_ sender: Any?) {
@@ -297,21 +304,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Validates the chosen file and uses it, which overtakes a search still running.
     private func adoptChosen(_ path: String) async {
         runtimeModel.notice = nil
+        let ticket = selection.startChoice()
+        presentRuntime()
         let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        guard case .valid(let version) = result else {
-            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(result))."
-            return
+        let outcome = selection.finishChoice(ticket, path: path, result: result) {
+            RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
         }
-        let tools = setup?.tools
-            ?? RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
-        use(RuntimeSetup(runtime: Runtime(executable: path, version: version, source: .chosen), tools: tools))
-        runtimeModel.notice = "Folders already open keep their server until you restart it."
+        presentRuntime()
+        switch outcome {
+        case .adopted(let found):
+            adopted(found)
+            runtimeModel.notice = "Folders already open keep their server until you restart it with File > Restart Server or Retry."
+        case .rejected(let rejected):
+            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
+        case .notFound, .superseded:
+            break
+        }
     }
 
     private func runDoctor() async {
-        guard let setup else { return }
+        guard let setup = selection.setup else { return }
         runtimeModel.isRunningDoctor = true
         let result = await CommandRunner.run(
             LaunchSpec(

@@ -351,6 +351,13 @@ check that the saved `metab` is still executable, so they start no extra process
 If nothing is found, Settings shows the install command and every place it looked.
 Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
 reveals the logs folder.
+The runtime chosen there or found by Find Again is what folders opened afterwards start,
+and what an open folder starts at its next Retry or File > Restart Server; until then,
+open folders keep their servers.
+When Find Again and a choice overlap, the one started last wins: a search that finishes
+after a newer choice changes nothing.
+A Find Again that finds nothing leaves no runtime, so the next folder waits for one
+instead of starting the `metab` that failed.
 
 ### The Child’s Environment
 

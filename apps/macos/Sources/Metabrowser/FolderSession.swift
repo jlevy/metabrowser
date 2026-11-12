@@ -18,9 +18,12 @@ final class FolderSession: ManagedServer {
     /// server answers `/api/identity`.
     private(set) var title: WindowTitle
     private var identityRequest: Task<Void, Never>?
+    /// The runtime the app would start now, which Retry and Restart Server use.
+    private let currentSetup: () -> RuntimeSetup?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
 
-    init(root: URL, setup: RuntimeSetup, gate: LaunchGate) {
+    init(root: URL, setup: RuntimeSetup, gate: LaunchGate, currentSetup: @escaping () -> RuntimeSetup?) {
+        self.currentSetup = currentSetup
         self.root = root
         title = WindowTitle(.localFolder(root))
         let logURL = ServerLog.url(for: root)
@@ -31,15 +34,8 @@ final class FolderSession: ManagedServer {
             AppLog.app.error("could not prepare \(logURL.path, privacy: .public): \(error, privacy: .public)")
         }
         let launch = CLIServeLaunch()
-        let spec = LaunchSpec(
-            executable: setup.runtime.executable,
-            arguments: launch.arguments(serving: root),
-            environment: ChildEnvironment.build(
-                inherited: ProcessInfo.processInfo.environment, toolDirectories: setup.tools.directories),
-            // `metab .` run from Terminal reads `.env` files upward from the folder.
-            workingDirectory: root.path(percentEncoded: false),
-            stdinLine: launch.stdinLine,
-            logURL: logURL)
+        let spec = launch.spec(
+            serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
         supervisor = ServerSupervisor(spec: spec, launch: launch, gate: gate)
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
@@ -60,8 +56,15 @@ final class FolderSession: ManagedServer {
         Task { await supervisor.start() }
     }
 
+    /// Retry and Restart Server: a fresh server from the runtime chosen now, which may not
+    /// be the one this folder started with. With no runtime (a search found none), the
+    /// folder keeps its own.
     func retry() {
-        Task { await supervisor.restart() }
+        let spec = currentSetup().map {
+            supervisor.launch.spec(
+                serving: root, with: $0, inherited: ProcessInfo.processInfo.environment, logURL: logURL)
+        }
+        Task { await supervisor.restart(using: spec) }
     }
 
     func shutDown() async {

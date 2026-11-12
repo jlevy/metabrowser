@@ -105,3 +105,21 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
         return ServerEndpoint(origin: origin, entryURL: url)
     }
 }
+
+extension ServerLaunch {
+    /// The command that serves `root` with `setup`'s `metab`: its arguments and stdin line,
+    /// the allowlisted environment with `setup`'s tool directories first on `PATH`, and
+    /// the folder as the working directory, since `metab .` run from Terminal reads
+    /// `.env` files upward from the folder.
+    public func spec(
+        serving root: URL, with setup: RuntimeSetup, inherited: [String: String], logURL: URL?
+    ) -> LaunchSpec {
+        LaunchSpec(
+            executable: setup.runtime.executable,
+            arguments: arguments(serving: root),
+            environment: ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories),
+            workingDirectory: root.path(percentEncoded: false),
+            stdinLine: stdinLine,
+            logURL: logURL)
+    }
+}
