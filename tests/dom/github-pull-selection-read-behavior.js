@@ -68,15 +68,17 @@ async function story(panel, page, script) {
   /** A record read the session answers when it says, or at once for a revalidation. */
   function readRecord(who, route, options) {
     const number = Number(new URL(route, "http://localhost").searchParams.get("number"));
-    reads.push({ who, at: now, etag: options.etag ?? null });
+    const read = { who, at: now, etag: options.etag ?? null, number, aborted: false };
+    reads.push(read);
     if (options.etag) {
       return Promise.resolve({ status: 304, etag: options.etag, body: null, verified: null });
     }
     return new Promise((resolve, reject) => {
       held.push({ resolve: () => resolve(record(number)) });
-      options.signal?.addEventListener("abort", () =>
-        reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
-      );
+      options.signal?.addEventListener("abort", () => {
+        read.aborted = true;
+        reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      });
     });
   }
   const controller = panel.createPullsController(
@@ -120,6 +122,8 @@ async function story(panel, page, script) {
           },
           { number: route.number, tab: route.tab, reader: route.reader },
         );
+        // As the page host does, a page that another replaces is disposed.
+        pagesOpened.at(-1)?.dispose();
         pagesOpened.push(opened);
         void opened.start();
       },
@@ -133,7 +137,7 @@ async function story(panel, page, script) {
     held.shift().resolve();
     await settle();
   };
-  const result = await script({ controller, advance, answerRead, reads, pagesOpened });
+  const result = await script({ controller, advance, answerRead, reads, pagesOpened, held });
   for (const opened of pagesOpened) {
     opened.dispose();
   }
@@ -207,11 +211,34 @@ async function run() {
     await advance(40 + panel.OPEN_WAIT_MS + page.FAST_POLL_MS - 1);
     return reads.map((read) => read.who);
   });
+  // A busy server answers nothing while the reader clicks four rows 300 ms apart: each read
+  // handed to a page ends when the next row opens, and the last when its page goes.
+  facts.superseded = await story(
+    panel,
+    page,
+    async ({ controller, advance, reads, pagesOpened }) => {
+      const rows = list.body.rows.slice(0, 4).map((row) => row.number);
+      for (const [index, number] of rows.entries()) {
+        await advance(index * 300);
+        controller.peek(number);
+        controller.activate(number);
+        await advance(index * 300 + panel.OPEN_WAIT_MS + 1);
+      }
+      const inFlight = reads.filter((read) => !read.aborted).length;
+      pagesOpened.at(-1).dispose();
+      await settle();
+      return {
+        reads: reads.length,
+        inFlight,
+        afterLastPageWent: reads.filter((read) => !read.aborted).length,
+      };
+    },
+  );
   return facts;
 }
 
 run()
-  .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+  .then((result) => process.stdout.write(`${JSON.stringify(result, null, 2)}\n`))
   .catch((error) => {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;

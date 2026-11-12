@@ -1441,7 +1441,8 @@ export function renderedTextsHeld() {
  *   reader?: {
  *     fetchAfterMs: number,
  *     initial: {etag: string | null, body: unknown, verified?: string | null, at?: number} | null,
- *     pending?: Promise<{etag: string | null, body: unknown, verified?: string | null} | null> | null,
+ *     pending?: Promise<{etag: string | null, body: unknown, verified?: string | null, at?: number} | null> | null,
+ *     abandon?: () => void,
  *     walking?: () => boolean,
  *   } | null,
  *   checkoutHead?: string | null,
@@ -1914,6 +1915,9 @@ export function createPullController(deps, options) {
     }
   }
 
+  /** The page is waiting on the Pulls tab's read, which it would end if it went. */
+  let joining = false;
+
   /**
    * The page's first read is the Pulls tab's, when the selection that opened it read the
    * record: one still on its way is joined, and one that answered within a fast poll is as
@@ -1926,8 +1930,9 @@ export function createPullController(deps, options) {
     const answered = reader?.initial ?? null;
     if (reader?.pending) {
       polling = true;
+      joining = true;
       const request = ++sent;
-      /** @type {{etag: string | null, body: unknown, verified?: string | null} | null} */
+      /** @type {{etag: string | null, body: unknown, verified?: string | null, at?: number} | null} */
       let joined = null;
       try {
         joined = await reader.pending;
@@ -1935,6 +1940,7 @@ export function createPullController(deps, options) {
         joined = null;
       } finally {
         polling = false;
+        joining = false;
       }
       if (disposed) {
         return;
@@ -1946,8 +1952,14 @@ export function createPullController(deps, options) {
         { status: 200, etag: joined.etag, body: joined.body, verified: joined.verified },
         request,
       );
+      // An answer that landed longer than a fast poll before the page started is not its first
+      // read: it is read again, with its tag, as an older adopted answer is.
+      const joinedAge = deps.now() - Number(joined.at ?? deps.now());
+      if (!(joinedAge < FAST_POLL_MS)) {
+        return poll(true);
+      }
       hasPolled = true;
-      afterRead(FAST_POLL_MS);
+      afterRead(FAST_POLL_MS - Math.max(0, joinedAge));
       return;
     }
     const age = answered === null ? Number.NaN : deps.now() - Number(answered.at);
@@ -2427,6 +2439,10 @@ export function createPullController(deps, options) {
 
   function dispose() {
     disposed = true;
+    // The Pulls tab's read this page joined is its own now: a page that goes ends it.
+    if (joining) {
+      reader?.abandon?.();
+    }
     clearTimer();
     cancelAsk();
     cancelIdleComparison();

@@ -530,6 +530,7 @@ function pinChanged(response) {
  *       initial: RecordAnswer | null,
  *       pending: Promise<RecordAnswer | null> | null,
  *       walking: () => boolean,
+ *       abandon?: () => void,
  *     },
  *   }): unknown,
  *   filterChanged(state: string): void,
@@ -641,6 +642,9 @@ export function createPullsController(deps, options = {}) {
   const peeked = new Map();
   /** @type {{number: number, controller: AbortController, done: Promise<RecordAnswer | null>} | null} */
   let reading = null;
+  /** The read last handed to an opening page, which its page ends, or this panel's end. */
+  /** @type {{number: number, controller: AbortController, done: Promise<RecordAnswer | null>} | null} */
+  let handed = null;
   /** @type {CoreDemand | null} */
   let coreWanted = null;
   /** @type {CoreDemand | null} */
@@ -2167,25 +2171,33 @@ export function createPullsController(deps, options = {}) {
    * *replace* is a key's: a skim replaces the history entry, as the file tree's and Git's do,
    * so Back leaves the list in one step however many rows were passed; a click or Enter pushes.
    *
-   * A row whose page already holds the pane, *shown*, opens at once and reads nothing: that
-   * page reads its own record. Otherwise a read still on its way when the wait ends goes to
-   * the page as `pending`, which the page joins instead of reading the record again.
+   * A row that was already the current one before this selection, *current*, opens at once
+   * and reads nothing: its page holds the pane or is opening, and reads its own record. That
+   * is a second click before the first one's open, or a click on a row a held key walked to.
+   * Otherwise a read still on its way when the wait ends goes to the page as `pending`, which
+   * the page joins instead of reading the record again, with `abandon` to end it if the page
+   * goes first: the page host disposes a page that another replaces, so a read for a row the
+   * reader left ends with its page.
    *
    * @param {number} number
    * @param {number} fetchAfterMs
    * @param {boolean} replace
-   * @param {boolean} [shown]
+   * @param {boolean} [wasCurrent]
    */
-  async function openRow(number, fetchAfterMs, replace, shown = false) {
+  async function openRow(number, fetchAfterMs, replace, wasCurrent = false) {
     clearWalk();
     const ticket = ++opening;
     /** @type {RecordAnswer | null} */
     let initial = null;
     /** @type {Promise<RecordAnswer | null> | null} */
     let pending = null;
-    if (shown) {
+    /** @type {AbortController | null} */
+    let ends = null;
+    if (wasCurrent) {
       if (reading?.number === number) {
         pending = reading.done;
+        ends = reading.controller;
+        handed = reading;
         reading = null;
       }
     } else {
@@ -2207,7 +2219,9 @@ export function createPullsController(deps, options = {}) {
         return;
       }
       if (!answered && reading?.number === number) {
-        // Handed to the page: no later read of another row here aborts it.
+        // Handed to the page: a peek of another row does not abort it, the page does.
+        ends = reading.controller;
+        handed = reading;
         reading = null;
         pending = read;
       }
@@ -2216,7 +2230,22 @@ export function createPullsController(deps, options = {}) {
     // While a key is still held the page waits to fetch, whatever its wait was: a first press
     // held past it would otherwise fetch the row the walk left long ago.
     const walking = () => !disposed && walkingTo !== null;
-    deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, pending, walking } });
+    const handedRead = handed;
+    const abandon =
+      ends === null
+        ? undefined
+        : () => {
+            ends?.abort();
+            if (handed === handedRead) {
+              handed = null;
+            }
+          };
+    deps.open({
+      number,
+      tab: "",
+      replace,
+      reader: { fetchAfterMs, initial, pending, walking, ...(abandon ? { abandon } : {}) },
+    });
     // A row opens once the reader stops on it, a walk included, so its neighbours are next.
     prefetch(false);
   }
@@ -2238,6 +2267,8 @@ export function createPullsController(deps, options = {}) {
     windowRead = null;
     reading?.controller.abort();
     reading = null;
+    handed?.controller.abort();
+    handed = null;
     for (const controller of refreshReads) {
       controller.abort();
     }
@@ -2369,7 +2400,7 @@ export function createPullsController(deps, options = {}) {
       const previous = anchor;
       anchor = number;
       deps.markAnchor(previous, number, true);
-      const shown = current === number;
+      const wasCurrent = current === number;
       setCurrentRow(number);
       // Keep rows arriving ahead of a walk, so a held key does not stall on the window's end.
       if (list.rows.length - target <= 2 && list.nextAfter !== null) {
@@ -2383,7 +2414,7 @@ export function createPullsController(deps, options = {}) {
           void openRow(number, REFRESH_ASK_MS, true);
         }, WALK_SETTLE_MS);
       } else {
-        void openRow(number, REFRESH_ASK_MS, true, shown);
+        void openRow(number, REFRESH_ASK_MS, true, wasCurrent);
       }
       return true;
     },
@@ -2403,23 +2434,23 @@ export function createPullsController(deps, options = {}) {
       if (disposed) {
         return;
       }
-      const shown = current === number;
+      const wasCurrent = current === number;
       setCurrentRow(number);
       if (anchor !== number) {
         const previous = anchor;
         anchor = number;
         deps.markAnchor(previous, number, false);
       }
-      void openRow(number, 0, false, shown);
+      void openRow(number, 0, false, wasCurrent);
     },
     /** Open the anchor row on Enter. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
       }
-      const shown = current === anchor;
+      const wasCurrent = current === anchor;
       setCurrentRow(anchor);
-      void openRow(anchor, 0, false, shown);
+      void openRow(anchor, 0, false, wasCurrent);
       return true;
     },
     /**

@@ -37,7 +37,14 @@ type MetabrowserPullReader = {
   /** The tab's answer, its catalog verdict header, and when it landed by `Date.now()`. */
   initial: { etag: string | null; body: unknown; verified?: string | null; at?: number } | null;
   /** The tab's read still on its way when the page opened, which the page joins. */
-  pending?: Promise<{ etag: string | null; body: unknown; verified?: string | null } | null> | null;
+  pending?: Promise<{
+    etag: string | null;
+    body: unknown;
+    verified?: string | null;
+    at?: number;
+  } | null> | null;
+  /** End the pending read: the page that joined it went before it answered. */
+  abandon?: () => void;
   /** Whether the key that opened the page is still held, so the page waits to ask. */
   walking?: () => boolean;
 };

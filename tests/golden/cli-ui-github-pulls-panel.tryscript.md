@@ -1068,3 +1068,39 @@ $ node tests/dom/github-pr-prefetch-behavior.js
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
+
+## A Selection Reads Its Record Once
+
+A click reads the selected record once.
+The production Pulls controller opens the production page controller, which joins the
+read the row’s peek started (`slowRead`) or takes an answer it gave within a fast poll
+(`fastRead`); the pointer resting on the clicked row reads nothing more.
+A record read ahead long before the click is read again with its tag (`oldReadAhead`).
+Another row’s peek does not take the joined read from the page (`hoverAway`), and a read
+handed to a page ends with that page when another replaces it (`superseded`).
+
+```console
+$ node tests/dom/github-pull-selection-read-behavior.js
+{
+  "slowRead": [
+    "panel"
+  ],
+  "fastRead": [
+    "panel"
+  ],
+  "oldReadAhead": [
+    "panel",
+    "page revalidates"
+  ],
+  "hoverAway": [
+    "panel",
+    "panel"
+  ],
+  "superseded": {
+    "reads": 4,
+    "inFlight": 1,
+    "afterLastPageWent": 0
+  }
+}
+? 0
+```
