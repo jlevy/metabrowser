@@ -922,6 +922,12 @@ Painted ready is at most a frame after Chrome presents the frame (Event Timing�
 presentation time for the click, which Chrome rounds to 8 ms), and can be before it by
 the compositor, raster, and GPU time after the main thread: for a long frame, by 9 to 12
 ms in five CI runs and 23 to 43 ms with the renderer’s CPU throttled fourfold.
+Frames are placed in a transition’s window by their begin time (the rAF timestamp),
+which Chrome can set before the input’s own `timeStamp` for a frame it draws after the
+input: a probe page’s ready frame began 0.2 ms before the press and showed what the
+press’s handler did.
+Such a ready frame is outside the window, so its transition reads `framesToReady` 0 and
+leaves that frame out of the blank and placeholder counts.
 A ResizeObserver round after the first (the product’s own observers of content deeper
 than the document element) can change a frame after the recorder read it.
 The Pulls catalog walk runs for about the first minute of every page load and overlaps

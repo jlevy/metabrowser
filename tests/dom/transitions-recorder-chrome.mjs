@@ -192,6 +192,21 @@ async function framesBeforeClick(r) {
     ([t, , readAt]) => t >= pressAt(r) && readAt !== null && readAt < handledAt,
   ).length;
 }
+// The ready frame is the first frame read after the click handler started: the frame read
+// before it, if any, was read before the handler, to the recorder's 0.1 ms. This is
+// checked on the frames themselves rather than through `framesToReady`, which counts
+// frames by their begin time from the press, and reads 0 when Chrome begins the ready
+// frame before the press's own time stamp (README, "Limits").
+async function assertReadyInFirstFrameAfterClick(r) {
+  const handledAt = await d.evaluate("window.clickHandledAt");
+  const i = r.raw.frames.findIndex(([t]) => t === r.raw.readyAt);
+  const prev = r.raw.frames.slice(0, i).findLast(([, , readAt]) => readAt !== null);
+  assert.ok(r.raw.readyRead > handledAt, "the ready frame was read before the click");
+  assert.ok(
+    !prev || prev[2] <= handledAt + 0.05,
+    `a frame read at ${prev?.[2]}, after the click at ${handledAt}, was not ready: ${JSON.stringify(r.frameStates)}`,
+  );
+}
 // Painted ready against Chrome's presentation of the click's next paint (Event Timing),
 // which is the ready frame on these pages. Chrome presents a frame after its main-thread
 // rendering ends, and painted ready is the first frame boundary after that end, so painted
@@ -280,9 +295,8 @@ try {
           // ready is that frame's presentation, not the end of the 600 ms of DOM work after
           // it. A busy machine can be slow to draw that frame (CI once read 198.7 ms here),
           // so the bound is Chrome's presentation of it, not a fixed time.
-          const early = await framesBeforeClick(r);
-          assert.equal(r.framesToReady, early + 1, JSON.stringify(r.frameStates));
-          assert.equal(r.blankFrames, early, JSON.stringify(r.frameStates));
+          await assertReadyInFirstFrameAfterClick(r);
+          assert.equal(r.blankFrames, await framesBeforeClick(r), JSON.stringify(r.frameStates));
           assert.equal(r.uncreditedFrames, 0);
           assertPaintedByPresentation(r);
           assert.ok(r.navSettledMs > 400, `nav settled ${r.navSettledMs}`);
@@ -370,9 +384,8 @@ try {
       const r = await measure("hiddenAhead", { timeoutMs: 5000 });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
       // Found in the first frame read after the click.
-      const early = await framesBeforeClick(r);
-      assert.equal(r.framesToReady, early + 1, JSON.stringify(r.frameStates));
-      assert.equal(r.blankFrames, early, JSON.stringify(r.frameStates));
+      await assertReadyInFirstFrameAfterClick(r);
+      assert.equal(r.blankFrames, await framesBeforeClick(r), JSON.stringify(r.frameStates));
     });
     await check("a hidden retained page is not taken for the one on screen", async () => {
       await d.click("#go-reset");
