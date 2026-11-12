@@ -3,9 +3,9 @@ type: is
 id: is-01m774qxq0w386b8ap8fq2nyyx
 title: Transition scenario for the performance loop, and a baseline round
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 24
+version: 26
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -56,11 +56,15 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:27.327Z
-updated_at: 2026-11-12T07:42:00.803Z
+updated_at: 2026-11-12T14:01:01.366Z
 started_at: 2026-11-12T05:48:42.063Z
+closed_at: 2026-11-12T14:01:01.365Z
+close_reason: "Harness merged in #373 at 27ea216c; baseline exp-058 recorded"
+resolution: null
+duplicate_of: null
 ---
 Commit a scenario in explorations/performance-loop that records per transition: painted-ready, blank frames, region movement (works in WebKit), layout-shift entries (Chrome), requests by class, duplicate subject requests. Baseline round exp-058 on main.
 
 ## Notes
 
-Scenario and exp-058 baseline committed on claude/perf-transition-scenario (f571f0ea, 047a41d9, 22af6103); frozen copy for rounds at metabrowser-perf-harness-v1 (22af6103). Additions for H87, H89, H91, H106, H90 in progress.
+Merged in jlevy/metabrowser#373 at 27ea216c (head 5031dc16), after reviews A (senior), B and C (follow-ups). Scenario revision 4: 11 journeys, 77 transitions; recorder reads every frame after layout; painted ready ends at the ready frame's presentation; compare judges per back-to-back pair with every gap listed. exp-058 baseline recorded on revision 3 (6 valid runs on corpus-v2 at 7a02fed4, A/A 33 separations against about 61 by chance) with a dated correction for worker 304s. Frozen copy for official rounds: metabrowser-perf-harness-v4 (5031dc16). Deferred recorder work: mb-86b9 (content search under zero-size ancestors, bounded cost), mb-5xzz (hidden retained surfaces; compare nits).

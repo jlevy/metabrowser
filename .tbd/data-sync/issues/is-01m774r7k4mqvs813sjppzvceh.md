@@ -5,7 +5,7 @@ title: "PR page: join the click to the peek, same-frame list collapse, hold Chan
 kind: task
 status: in_progress
 priority: 2
-version: 6
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -16,11 +16,17 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:37.443Z
-updated_at: 2026-11-12T10:08:36.142Z
+updated_at: 2026-11-12T16:24:15.182Z
 started_at: 2026-11-12T06:11:46.651Z
 ---
 One read of the selected PR per click (join the mousedown peek); collapse the old and expand the new Pulls row in one frame; reserve a selected row's file-tree height at the click or open it only when rows are known; hold Changes first paint for rendered diffs already in flight or reserve their heights. Measured as selected-record reads per click and no-input shift (largest today 0.146 from the late file tree).
 
 ## Notes
 
-Implemented on claude/perf-prpage (80333755, c8d2c557, 8d4527ba), PR #369. Pilot: selected-record reads per cold click 2 to 1; Changes first-paint shift 0.2 to 0 with painted-ready unchanged; revisit still 2 reads (held answer older than FAST_POLL_MS), fix in progress. Official exp-065 on the fixed harness.
+PR #369. Round-1 reviews at 9484c273: A senior (5876269909), B performance (5876272262); 0 Blocker, 0 High, 11 Medium, 10 Low. Addressed at 593beceb (337b6526 tree offers and focus; d717bb1a reads aborted; cc79ca24 superseded commit rows; f3707613 holds cover comments and reviews, Changes lands first, ages refresh; d62da2ce parity rows; bb06bf56; 593beceb). Dispositions 6827909624/6827910292; coordinator note 6827956671; deferrals mb-5lfu (A15), mb-fejb note (B4), mb-nebu (B6). Measured holds (Chrome 152, n=5-24): firstPaintHold median 19 ms p90 68; changesHold 39/90; openingHold 23/42; none hit bound. Follow-up review C in progress. Official exp-065 and exp-080 on harness v4 after review C, behind the series lock.
+
+
+Follow-up review C (round 2, 593beceb, 5877695054): approve; 2 Medium (C1 hold picks the first screen from the replaced page's scroll; C2 slow landing shows blocks, then empty, then content), 5 Low. Fixing before the official rounds.
+
+
+Review C addressed at 3afd3131 (4ff1cf9f C1 first screen from the new page's own top, re-measured as texts land; C2 visible blocks stay until content; C5; 3afd3131 C3, C4, C6, C7); dispositions 6829270629. Holds re-measured from scrolled conversations (n=10-14): firstPaintHold median 34 ms, changesHold 39, openingHold 31; none hit bound. Follow-up review D (round 3, narrow) in progress. exp-065 and exp-080 queued behind the series lock at 3afd3131.
