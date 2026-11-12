@@ -916,6 +916,12 @@ Terminal launch.
   A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
   and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
   The page’s `<title>` is not used.
+- **Logo:** the title starts with the app’s icon, the one the Dock shows, in the row of
+  window buttons, in every folder window, whether it shows a page or the status view.
+  In a local folder’s window it stands in for the proxy icon: drag it to use the folder
+  elsewhere, and Command-click or right-click it for the path menu.
+  [Why the Title Is a Title-Bar Accessory](#why-the-title-is-a-title-bar-accessory) has
+  its measurements.
 - **Navigation:** the server’s origin (scheme, host, and port) stays in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, form, or Back and Forward is
@@ -1104,22 +1110,39 @@ AppKit draws a system title in one font and one color, so the window hides it
 - **It sits where the system title sits.** macOS 26 puts a plain window’s title at the
   leading edge, after the window buttons: the proxy icon at x 82 and the text at x 100,
   in the 13-point title-bar font.
-  A leading accessory starts at x 78, so the drawn title lands on the same points in the
+  A leading accessory starts at x 78, so the drawn text lands on the same point in the
   same font, and the title bar stays 32 points tall.
   AppKit places accessories for tabs, full screen, and right-to-left layouts.
 - **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
   76 points tall, centers the title where macOS 26 no longer puts it, and, with the
   title hidden, AppKit shows no proxy icon there either.
-- **The accessory draws the proxy icon.** AppKit drops the proxy icon when a leading
-  accessory is present, so the accessory draws one for a local folder, from
+- **The logo sits in the window buttons’ row.** The buttons are 14-point circles 9
+  points apart, from x 9 to 69 and 9 to 23 points below the top.
+  The logo is the app icon at 16 points, from x 78, and its squircle fills the middle
+  14: x 79 to 93 and 9 to 23 points down, the buttons’ size and row.
+  The text’s first glyph, at x 102, falls 9 points after it.
+- **The logo is the bundle’s icon file.** It is the icon `CFBundleIconFile` names, the
+  one the Dock shows, so a development build shows the canary icon.
+  At 16 points it draws the icon’s own 16- and 32-pixel images unscaled.
+  `NSApp.applicationIconImage` is a single 256-pixel snapshot, and the named application
+  icon, which IconServices renders, drew an empty placeholder the first time.
+  In light mode the near-black panel stands at 16:1 against the title bar, and a slight
+  drop shadow, close to the one macOS draws under the icon at that size, lifts it.
+  In dark mode the panel and the release icon’s rim nearly match the title bar (1.2:1),
+  so a half-point hairline in the tertiary label color, white at a quarter, traces the
+  squircle (2.3:1) instead.
+- **The logo stands in for the proxy icon.** AppKit drops the proxy icon when a leading
+  accessory is present, so in a local folder’s window the logo takes its part, from
   `representedURL`. Dragging it copies or aliases the folder, never moves it, since a
-  move would pull the folder out from under its server.
-  Command-click or right-click on the icon or the title opens the path menu.
-  A cached mirror has neither.
+  move would pull the folder out from under its server, and the drag shows the folder’s
+  own icon. Command-click or right-click on the logo or the title opens the path menu.
+  A cached mirror’s window shows the logo with neither, and clicks on it move the
+  window.
 - **It behaves like a system title.** It dims when its window is not the main window of
   the active app (the tertiary label color, which an inactive system title measured
-  close to), follows light and dark mode through label colors, and passes plain clicks
-  to the title bar, which drags and double-clicks the window.
+  close to), and AppKit dims the logo with it.
+  It follows light and dark mode through label colors, and passes plain clicks to the
+  title bar, which drags and double-clicks the window.
   In a narrow window, “• Metabrowser” goes first and whole, then the short name
   truncates (`WindowTitle.segments(fitting:)`).
 

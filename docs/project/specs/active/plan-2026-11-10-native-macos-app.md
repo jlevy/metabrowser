@@ -119,8 +119,12 @@ through `metab --api`:
 - The window’s plain title is the same text, for the Window menu, Mission Control, the
   Dock, and accessibility.
 - A native tab shows only the short name; its tooltip shows the full name.
+- The title starts with the app’s logo beside the window buttons, in every window: the
+  bundle’s own icon, so the canary icon in a development build, with a slight drop
+  shadow in light mode and a hairline edge in dark mode (`mb-ndym`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
-  window’s represented URL, so the proxy icon and Command-click path menu work.
+  window’s represented URL, so the logo, in the proxy icon’s place, drags the folder and
+  Command-click opens the path menu.
 
 ### Icon and Brand
 

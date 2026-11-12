@@ -1,17 +1,18 @@
 import AppKit
 import ShellCore
 
-/// The window title, drawn in two weights: the folder's short name bold, then a bullet
-/// and "Metabrowser" in a secondary style.
+/// The app's logo and the window title, drawn in two weights: the folder's short name
+/// bold, then a bullet and "Metabrowser" in a secondary style.
 ///
 /// AppKit draws a system title in one style, so the window hides it
 /// (`titleVisibility = .hidden`) and shows this leading title-bar accessory instead,
 /// which AppKit places beside the window buttons, where macOS 26 puts the system title.
-/// The insets and fonts below reproduce that title as measured on macOS 26.5.
+/// The text's inset and fonts below reproduce that title as measured on macOS 26.5.
 ///
-/// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5),
-/// so the accessory draws one: drag it to use the folder elsewhere, and Command-click
-/// or right-click it, or the title, for the path menu.
+/// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5).
+/// In its place the accessory draws the app's logo, which stands in for the proxy icon
+/// when the window shows a local folder: drag it to use the folder elsewhere, and
+/// Command-click or right-click it, or the title, for the path menu.
 final class TitleAccessoryController: NSTitlebarAccessoryViewController {
     private let titleView = TitleBarTitleView()
 
@@ -25,7 +26,8 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 
     override func loadView() { view = titleView }
 
-    /// `url` is the folder the proxy icon stands for, or nil for no icon.
+    /// `url` is the folder the logo stands for, or nil when the window shows no local
+    /// folder, so the logo is only a logo.
     func show(_ title: WindowTitle, representing url: URL?) {
         loadViewIfNeeded()
         titleView.show(title, representing: url)
@@ -33,20 +35,29 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 }
 
 final class TitleBarTitleView: NSView {
-    /// Where AppKit draws a plain window's proxy icon and title, from the accessory's
-    /// leading edge (78 points from the window's, after the window buttons).
-    private static let iconInset: CGFloat = 4
-    private static let iconSize: CGFloat = 16
-    private static let textInsetWithIcon: CGFloat = 22
-    private static let textInsetWithoutIcon: CGFloat = 4
+    /// The title bar as measured on macOS 26.5: 32 points tall, with the window buttons
+    /// 14-point circles, 9 points apart, from 9 to 23 points below its top, and the
+    /// accessory's leading edge at x 78, a button gap after the zoom button.
+    ///
+    /// The logo, at the accessory's leading edge and centered in its height, is 16
+    /// points (`TitleBarLogoView.size`), and its squircle fills the middle 14, a window
+    /// button's size. So the squircle sits in the buttons' row: x 79 to 93, 10 points
+    /// after the zoom button, and 9 to 23 points below the title bar's top, as they are.
+    private static let logoSize = TitleBarLogoView.size
+    /// Where AppKit draws a plain window's title text beside its proxy icon, from the
+    /// accessory's leading edge: x 100, so the text's first glyph falls about 9 points,
+    /// a button gap, after the logo's squircle.
+    private static let textInset: CGFloat = 22
     /// Space kept between the end of the title and the window's trailing edge.
     private static let windowMargin: CGFloat = 12
+    /// The path menu's folder icons, as the system title's path menu draws them.
+    private static let menuIconSize: CGFloat = 16
 
     private static let primaryFont = NSFont.titleBarFont(ofSize: 0)
     private static let secondaryFont = NSFont.systemFont(ofSize: primaryFont.pointSize)
 
     private let label = NSTextField(labelWithString: "")
-    private let proxyIcon = ProxyIconView()
+    private let logo = TitleBarLogoView()
     /// Measures runs of segments as `label` would draw them.
     private let scratch = NSTextField(labelWithString: "")
     private var title: WindowTitle?
@@ -60,9 +71,8 @@ final class TitleBarTitleView: NSView {
             field.maximumNumberOfLines = 1
         }
         label.cell?.truncatesLastVisibleLine = true
-        proxyIcon.onPathMenu = { [weak self] in self?.showPathMenu() }
-        proxyIcon.isHidden = true
-        addSubview(proxyIcon)
+        logo.onPathMenu = { [weak self] in self?.showPathMenu() }
+        addSubview(logo)
         addSubview(label)
     }
 
@@ -72,30 +82,30 @@ final class TitleBarTitleView: NSView {
     func show(_ title: WindowTitle, representing url: URL?) {
         self.title = title
         self.url = url
-        proxyIcon.url = url
+        logo.url = url
         toolTip = title.subtitle
-        proxyIcon.toolTip = title.subtitle
+        logo.toolTip = title.subtitle
         updateWidth()
         needsLayout = true
     }
 
     // MARK: - Layout
 
-    private var textInset: CGFloat { url == nil ? Self.textInsetWithoutIcon : Self.textInsetWithIcon }
     private var isRightToLeft: Bool { userInterfaceLayoutDirection == .rightToLeft }
 
     override func layout() {
         super.layout()
         let height = ceil(measure(title?.segments ?? []).height)
         let y = ((bounds.height - height) / 2).rounded()
-        var text = NSRect(x: textInset, y: y, width: max(0, bounds.width - textInset), height: height)
-        var icon = NSRect(x: Self.iconInset, y: y + 1, width: Self.iconSize, height: Self.iconSize)
+        let logoY = ((bounds.height - Self.logoSize) / 2).rounded()
+        var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
+        var icon = NSRect(x: 0, y: logoY, width: Self.logoSize, height: Self.logoSize)
         if isRightToLeft {
             text.origin.x = bounds.width - text.maxX
             icon.origin.x = bounds.width - icon.maxX
         }
         label.frame = text
-        proxyIcon.frame = icon
+        logo.frame = icon
         render()
     }
 
@@ -103,9 +113,9 @@ final class TitleBarTitleView: NSView {
     /// narrow window truncates it.
     private func updateWidth() {
         guard let window, let title else { return }
-        let ideal = textInset + measure(title.segments).width
+        let ideal = Self.textInset + measure(title.segments).width
         let available = window.frame.width - leadingDistance(in: window) - Self.windowMargin
-        let width = ceil(max(textInset + Self.iconSize, min(ideal, available)))
+        let width = ceil(max(Self.textInset + Self.logoSize, min(ideal, available)))
         if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
     }
 
@@ -192,13 +202,13 @@ final class TitleBarTitleView: NSView {
 
     // MARK: - Mouse
 
-    /// The title moves the window like the system title; only the proxy icon keeps its
-    /// clicks, for dragging.
+    /// The title moves the window like the system title; only the logo of a folder's
+    /// window keeps its clicks, for dragging the folder.
     override var mouseDownCanMoveWindow: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
-        return hit === proxyIcon ? proxyIcon : self
+        return hit === logo && url != nil ? logo : self
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -227,10 +237,10 @@ final class TitleBarTitleView: NSView {
             item.target = self
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
             item.image = NSWorkspace.shared.icon(forFile: path)
-            item.image?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
+            item.image?.size = NSSize(width: Self.menuIconSize, height: Self.menuIconSize)
             menu.addItem(item)
         }
-        let anchor = NSPoint(x: proxyIcon.frame.minX - 10, y: label.frame.maxY + 4)
+        let anchor = NSPoint(x: logo.frame.minX - 10, y: label.frame.maxY + 4)
         menu.popUp(positioning: menu.items.first, at: anchor, in: self)
     }
 
@@ -244,28 +254,102 @@ final class TitleBarTitleView: NSView {
     }
 }
 
-/// The folder's icon at the start of the title, standing in for the proxy icon AppKit
-/// drops beside a leading accessory.
-final class ProxyIconView: NSImageView, NSDraggingSource {
-    var onPathMenu: (() -> Void)?
-    private var pressed: NSEvent?
+/// The app's logo at the start of the title: the bundle's own icon, the one the Dock
+/// shows, so a development build shows the canary icon and a release the published one.
+/// The icon brings its own background, the squircle with its rim and panel.
+///
+/// In a local folder's window it also stands in for the proxy icon AppKit drops beside
+/// a leading accessory; elsewhere, as in a cached mirror's window, it is only a logo.
+final class TitleBarLogoView: NSImageView, NSDraggingSource {
+    /// The icon's smallest size, whose own 16- and 32-pixel images a 1x and a Retina
+    /// screen draw unscaled. Its squircle fills the middle 14 points (14 of 16 pixels,
+    /// and 28 of 32, measured), and the transparent point around it holds the shadow.
+    static let size: CGFloat = 16
+    private static let squircleSize: CGFloat = 14
+    /// A rounded rectangle's corner radius that follows the squircle's corners at that
+    /// size. The rim's corner is 94 of its 434 units at 60% smoothing
+    /// (`AppIcon/README.md`), 3 points unsmoothed; the smoothing carries the curve
+    /// further, and of 3, 3.5, and 4 points, 4 followed the corners most closely,
+    /// leaving no gap there (compared at 8 times on macOS 26.5).
+    private static let squircleRadius: CGFloat = 4
+    /// A very slight drop shadow, close by eye and by pixel to the one macOS 26.5 draws
+    /// under the same icon at this size (`NSImage.applicationIconName`): it darkens the
+    /// light title bar beside the squircle by at most a few percent, and a little more
+    /// below it.
+    private static let shadowOffset = NSSize(width: 0, height: -0.5)
+    private static let shadowBlurRadius: CGFloat = 1
+    private static let shadowAlpha: CGFloat = 0.3
+    /// In dark mode the icon's near-black panel and dark rim almost match the title bar:
+    /// the release icon's rim measured 1.2:1 against it on macOS 26.5, where the panel
+    /// measured 16:1 against the light one. So in dark mode a hairline just outside the
+    /// squircle draws its edge, as macOS 26 lights icons' edges in dark mode, and the
+    /// shadow, which would not show, is left off.
+    private static let darkEdgeWidth: CGFloat = 0.5
 
-    var url: URL? {
-        didSet {
-            image = url.map { NSWorkspace.shared.icon(forFile: $0.path(percentEncoded: false)) }
-            isHidden = url == nil
-        }
-    }
+    /// The icon file `CFBundleIconFile` names, with every size the icon has: drawn from
+    /// its bitmaps at once. `NSApp.applicationIconImage` is a single 256-pixel snapshot,
+    /// and `NSImage(named: NSImage.applicationIconName)`, which IconServices renders,
+    /// first drew as an empty placeholder (both measured on macOS 26.5). Outside a bundle,
+    /// as in `swift run`, the application icon stands in.
+    private static let icon: NSImage? = {
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String
+        return name.flatMap { Bundle.main.image(forResource: $0) } ?? NSApp.applicationIconImage
+    }()
+
+    var onPathMenu: (() -> Void)?
+    /// The folder the logo stands for, or nil.
+    var url: URL?
+    private var pressed: NSEvent?
 
     init() {
         super.init(frame: .zero)
         imageScaling = .scaleProportionallyUpOrDown
         isEditable = false
         unregisterDraggedTypes()
+        updateImage()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateImage()
+    }
+
+    private func updateImage() {
+        guard let icon = Self.icon else { return }
+        guard effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua else {
+            let shadow = NSShadow()
+            shadow.shadowOffset = Self.shadowOffset
+            shadow.shadowBlurRadius = Self.shadowBlurRadius
+            shadow.shadowColor = NSColor.black.withAlphaComponent(Self.shadowAlpha)
+            self.shadow = shadow
+            image = icon
+            return
+        }
+        shadow = nil
+        // The tertiary label color, white at a quarter, resolved in the plain dark
+        // appearance: the title bar's own is the vibrant one, whose label colors are
+        // opaque grays meant for a visual effect view to blend (its tertiary measured
+        // gray 0.25), and this image is drawn without vibrancy.
+        var edge = NSColor.tertiaryLabelColor
+        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+            edge = NSColor(cgColor: NSColor.tertiaryLabelColor.cgColor) ?? edge
+        }
+        let side = Self.squircleSize, radius = Self.squircleRadius, width = Self.darkEdgeWidth
+        image = NSImage(size: NSSize(width: Self.size, height: Self.size), flipped: false) { rect in
+            icon.draw(in: rect)
+            let squircle = rect.insetBy(dx: (rect.width - side) / 2, dy: (rect.height - side) / 2)
+            let hairline = NSBezierPath(
+                roundedRect: squircle.insetBy(dx: -width / 2, dy: -width / 2),
+                xRadius: radius + width / 2, yRadius: radius + width / 2)
+            hairline.lineWidth = width
+            edge.setStroke()
+            hairline.stroke()
+            return true
+        }
+    }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -287,7 +371,8 @@ final class ProxyIconView: NSImageView, NSDraggingSource {
         guard dx * dx + dy * dy >= 9 else { return }
         pressed = nil
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        item.setDraggingFrame(bounds, contents: image)
+        // The folder's own icon, since the folder is what is dragged.
+        item.setDraggingFrame(bounds, contents: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
         beginDraggingSession(with: [item], event: start, source: self)
     }
 
