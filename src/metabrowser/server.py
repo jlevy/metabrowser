@@ -293,6 +293,13 @@ NAVIGATION_TALLY_LIMIT = 200
 # Set to 0 to disable the inline entirely.
 _INLINE_INITIAL_TREE_ROWS = 200
 
+# How many folders of a landing's path the shell also inlines, expanded, each listing capped
+# at the root's row cap, so a deep landing's first tree paint already shows its row: the
+# reveal that opened them after first paint moved the tree with no input (layout shift
+# 0.050 to 0.057 on a file three folders down, Chrome 152). Past this depth the page
+# reveals the rest itself, as before.
+_INLINE_LANDING_DEPTH = 8
+
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
@@ -1358,6 +1365,7 @@ async def index(
     pull_page: bool = False,
     pull_list: bool = False,
     commit_page: bool = False,
+    view_path: str | None = None,
 ) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine.
 
@@ -1585,36 +1593,69 @@ async def index(
     # server has not been told about at this point, so inlining a filtered view
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
+    #
+    # A landing on a path inlines its folders' listings too, each grafted under its row and
+    # expanded, and names the path when its row is among them: the page then selects and
+    # shows that row at its first tree paint, and fetches and scrolls nothing for it after
+    # (static/app.js#renderInitialTreeRows).
     initial_tree_block = ""
+    landed: str | None = None
     if _INLINE_INITIAL_TREE_ROWS and not git_pin:
+        landing_parts = [part for part in (view_path or "").split("/") if part]
+        depth = min(len(landing_parts) - 1, _INLINE_LANDING_DEPTH)
+        ancestors = ["/".join(landing_parts[: index + 1]) for index in range(depth)]
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
                 ReadRequest(
-                    queries=(
+                    queries=tuple(
                         DirectoryQuery(
-                            query_id="initial-tree",
-                            path="",
+                            query_id=f"initial-tree-{index}",
+                            path=path,
                             max_depth=1,
                             max_rows=_INLINE_INITIAL_TREE_ROWS,
-                        ),
+                        )
+                        for index, path in enumerate(["", *ancestors])
                     )
                 )
             )
-            initial_projection = initial_read.result.completed_projection("initial-tree")
-            if not isinstance(initial_projection, DirectoryProjection):
-                raise TypeError("the initial-tree read returned the wrong projection")
-            initial_tree = build_inventory_tree_from_entries(
-                entries=initial_projection.entries,
-                parent_rel="",
-                max_depth=1,
-                max_entries=_INLINE_INITIAL_TREE_ROWS,
-            )
+
+            def inline_level(index: int, path: str) -> list[dict[str, Any]]:
+                projection = initial_read.result.completed_projection(f"initial-tree-{index}")
+                if not isinstance(projection, DirectoryProjection):
+                    raise TypeError("the initial-tree read returned the wrong projection")
+                return build_inventory_tree_from_entries(
+                    entries=projection.entries,
+                    parent_rel=path,
+                    max_depth=1,
+                    max_entries=_INLINE_INITIAL_TREE_ROWS,
+                )
+
+            initial_tree = inline_level(0, "")
+            level = initial_tree
+            for index, ancestor in enumerate(ancestors, start=1):
+                row = next((n for n in level if n["path"] == ancestor and n["type"] == "dir"), None)
+                if row is None:
+                    level = []
+                    break
+                try:
+                    row["children"] = inline_level(index, ancestor)
+                except Exception:
+                    LOG.debug("landing ancestry inline stopped at %s", ancestor, exc_info=True)
+                    level = []
+                    break
+                row["expanded"] = True
+                level = row["children"]
+            target = "/".join(landing_parts)
+            if len(ancestors) == len(landing_parts) - 1 and any(n["path"] == target for n in level):
+                landed = target
         except Exception:
             LOG.debug("initial tree inline failed", exc_info=True)
             initial_tree = []
         if initial_tree:
-            initial_tree_json = _json.dumps({"tree": initial_tree}).replace("<", "\\u003c")
+            initial_tree_json = _json.dumps(
+                {"tree": initial_tree, **({"path": landed} if landed else {})}
+            ).replace("<", "\\u003c")
             initial_tree_block = (
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
@@ -2024,7 +2065,7 @@ async def view_shell(request: Request) -> Response:
         decoded = decode_safe_view_path(raw_path)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
-    return await index(request)
+    return await index(request, view_path=decoded)
 
 
 async def commit_shell(request: Request) -> Response:

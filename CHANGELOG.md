@@ -21,10 +21,11 @@ All notable changes to Metabrowser are documented here.
 - Less moves on its own.
   The first document after a cold start appears in its reading font instead of swapping
   the serif in after it is shown.
-  Navigation that opens folders to reveal a file opens them in place, while a folder the
-  reader toggles still slides open.
-  A held arrow key in the file tree moves the selection and the address on every repeat
-  and opens only the file it stops on.
+  A page that lands on a file deep in the tree paints with its folders already open and
+  its row in view, and navigation that opens folders to reveal a file opens them in
+  place and keeps the row you were on where it was, while a folder you toggle still
+  slides open. A held arrow key in the file tree moves the selection and the address on
+  every repeat and opens only the file it stops on.
   In Quick Search, pull requests follow the file results as their own group, so their
   later arrival never moves a file row or the selection.
 

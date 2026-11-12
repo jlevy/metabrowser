@@ -1043,6 +1043,14 @@ function renderInitialTreeRows() {
   // touched, which is what the repaint and render-span counts read.
   const painted = _perf.measure("renderTreeNodes:inline", () => renderFilesFromTree());
   _inlineTreeBaseline = painted ? rows : null;
+  // A landing whose folders the shell expanded: its row, selected and shown now.
+  var landed = painted && window.METABROWSER_INITIAL_TREE?.path;
+  if (landed) {
+    setSelectedPath(landed);
+    queryHtml(`.tree-item[data-path="${escapePathForSelector(landed)}"]`)?.scrollIntoView({
+      block: "nearest",
+    });
+  }
   // Not authoritative — the fetch that follows reconciles newer values into it.
   _lastTreeRender = null;
   return painted;
@@ -8000,6 +8008,10 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
   }
   var segments = path.split("/");
   var current = "";
+  // Opening folders keeps the reader's row in place rather than scrolling to the new one.
+  var held = queryHtml("#tab-files .tree-item.selected");
+  var heldTop = held?.getBoundingClientRect().top ?? 0;
+  var opened = false;
   for (var i = 0; i < segments.length - 1; i++) {
     if (!isCurrent()) {
       return false;
@@ -8014,6 +8026,7 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
         // for a folder whose rows are already on screen, and reloading it
         // swaps those rows for a spinner before restoring them.
         if (children.querySelector(":scope > .tree-lazy-placeholder")) {
+          opened = true;
           await loadSubtree(current, children);
           if (!isCurrent()) {
             return false;
@@ -8021,6 +8034,7 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
         }
         if (children.classList.contains("tree-children-collapsed")) {
           // The reader asked for the row, not the disclosure: no travel.
+          opened = true;
           await setFolderExpanded(folder, true, { instant: true });
         }
       }
@@ -8034,7 +8048,10 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
     return false;
   }
   setSelectedPath(path);
-  if (scroll) {
+  var scroller = document.getElementById("tree-content");
+  if (opened && held?.isConnected && scroller) {
+    scroller.scrollTop += held.getBoundingClientRect().top - heldTop;
+  } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
   synchronizeTreeNow();

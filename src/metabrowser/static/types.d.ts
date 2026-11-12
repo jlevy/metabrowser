@@ -2951,7 +2951,8 @@ declare global {
      * once and then replaced by the fetch; absent when the index was not warm
      * enough to answer at render time.
      */
-    METABROWSER_INITIAL_TREE?: { tree: TreeNode[] };
+    /** The root rows, and a landing path whose folders are inlined expanded. */
+    METABROWSER_INITIAL_TREE?: { tree: TreeNode[]; path?: string };
     MetabrowserAssets?: {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;

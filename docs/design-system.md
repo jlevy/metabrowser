@@ -707,6 +707,11 @@ When navigation reveals a path, as a link, Back, or Quick Search does, the tree 
 the folders on the way with `.tree-children-instant`, which lands them in place.
 Animated, a deep reveal moved the rows below it 43–131 px a frame with no input.
 The reader’s next toggle of that folder travels again.
+Such a reveal also keeps the row the reader was on where it was, rather than scrolling
+the tree a long way to the new one.
+A landing needs no reveal: the server inlines the folders of the address’s path, open,
+and the tree’s first paint selects and shows its row, so nothing is fetched, opened, or
+scrolled after it. Opening them after the first paint had moved the tree with no input.
 
 ## Notices and Partial Content
 
