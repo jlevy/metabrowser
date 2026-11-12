@@ -274,7 +274,8 @@ make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
    `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and `-universal.dmg`
    (`ARCHES="arm64 x86_64"`) declares none.
    The release stops if the cask’s URL would name another image than the one
-   checksummed.
+   checksummed, or if its `depends_on macos:` admits a macOS older than the app’s
+   `LSMinimumSystemVersion`.
 
 The outputs, at 0.1.0:
 

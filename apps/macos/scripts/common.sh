@@ -138,12 +138,30 @@ require_no_entitlements() {
   fi
 }
 
+# The oldest macOS the app runs on: LSMinimumSystemVersion in Resources/Info.plist, the
+# release Package.swift deploys to (scripts/test-scripts.sh checks that they agree).
+app_minimum_macos() {
+  /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" Resources/Info.plist 2>/dev/null ||
+    die "Resources/Info.plist sets no LSMinimumSystemVersion"
+}
+
+# Homebrew's name for the macOS release $1, the form a cask's `depends_on macos:` takes
+# for its minimum (MacOSVersion::RELEASES in Homebrew). Homebrew names major releases
+# only. Add a release here when the app's minimum moves to it.
+homebrew_macos_name() {
+  case "$1" in
+    26 | 26.0) echo tahoe ;;
+    *) return 1 ;;
+  esac
+}
+
 # Writes the Homebrew cask for the release image $1 to $2 from packaging/: the version $3,
 # the image's checksum, and its architecture label $4 (arm64, x86_64, or universal), so
 # the cask downloads the image it was checksummed from. A universal image declares no
-# architecture. Then checks that the cask's URL names that image and carries its checksum.
+# architecture. Then checks that the cask's URL names that image and carries its checksum,
+# and that it requires the macOS the app does, so Homebrew installs it only where it runs.
 write_cask() {
-  local dmg="$1" cask="$2" version="$3" label="$4" sha256 url
+  local dmg="$1" cask="$2" version="$3" label="$4" sha256 url minimum release
   sha256="$(cut -d' ' -f1 "$dmg.sha256")"
   local -a arch_rule
   case "$label" in
@@ -158,6 +176,11 @@ write_cask() {
   url="${url//\#\{version\}/$version}"
   [[ "${url##*/}" == "$(basename "$dmg")" ]] || die "$cask downloads ${url##*/}, not $(basename "$dmg")"
   grep -qx "  sha256 \"$sha256\"" "$cask" || die "$cask does not carry the checksum of $(basename "$dmg")"
+  minimum="$(app_minimum_macos)" || exit 1
+  release="$(homebrew_macos_name "$minimum")" ||
+    die "homebrew_macos_name knows no name for macOS $minimum, the app's minimum; add Homebrew's"
+  grep -qx "  depends_on macos: :$release" "$cask" ||
+    die "$cask does not require macOS $minimum (:$release), the app's minimum; correct packaging/metabrowser-app.rb.template"
   ! grep -q '{{' "$cask" || die "$cask has an unfilled placeholder"
 }
 
