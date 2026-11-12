@@ -3,10 +3,11 @@ type: is
 id: is-01m76cd12z5wpxyzfqnwtn3zvr
 title: Swift app code meets the tbd coding guidelines
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies:
   - type: blocks
@@ -36,7 +37,10 @@ dependencies:
   - type: blocks
     target: is-01m76hn3vv1rhrrqarsym002p3
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+hold: null
+hold_until: null
 created_at: 2026-11-11T22:42:04.510Z
-updated_at: 2026-11-12T00:13:53.088Z
+updated_at: 2026-11-12T00:37:52.072Z
+started_at: 2026-11-12T00:37:52.070Z
 ---
 No Swift guideline exists in tbd, so apply the language-neutral ones to apps/macos: general-coding-rules, general-comment-rules, error-handling-rules (no swallowed errors; preserve causes; handle only what the layer can), general-testing-rules and general-tdd-guidelines (decision logic in ShellCore with tests; app-target code thin), filesystem-rules (atomic writes, safe paths), release-engineering-rules and supply-chain-hardening for scripts, backward-compatibility-rules (no speculative layers). Record anything deliberately left, with its reason, in apps/macos/README.md.
