@@ -82,11 +82,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A last resort for any server child still unreaped here, which the normal quit
     /// path never leaves.
     func applicationWillTerminate(_ notification: Notification) {
-        for pid in sessions.childPIDs {
-            AppLog.app.error("server \(pid) still running at exit; stopping its group")
-            kill(-pid, SIGTERM)
-            for _ in 0..<20 where kill(pid, 0) == 0 { usleep(50_000) }
-            kill(-pid, SIGKILL)
+        let remaining = sessions.childPIDs
+        guard !remaining.isEmpty else { return }
+        AppLog.app.error("servers \(remaining, privacy: .public) still running at exit; stopping their groups")
+        let survivors = ExitSweep.end(remaining)
+        if !survivors.isEmpty {
+            AppLog.app.error("servers \(survivors, privacy: .public) outlasted SIGTERM; their groups got SIGKILL")
         }
     }
 
@@ -338,21 +339,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 executable: setup.runtime.executable, arguments: ["--doctor"],
                 environment: ChildEnvironment.build(
                     inherited: ProcessInfo.processInfo.environment, toolDirectories: setup.tools.directories)),
-            timeout: .seconds(60))
+            timeout: RuntimeDiscovery.doctorTimeout)
         runtimeModel.isRunningDoctor = false
-        var lines = result.output
-        if let error = result.launchError { lines.append("could not run: \(error)") }
-        if result.timedOut { lines.append("(stopped after 60 seconds)") }
-        if let status = result.status { lines.append("(\(ExitStatus(waitStatus: status)))") }
-        runtimeModel.doctorOutput = lines.joined(separator: "\n")
+        runtimeModel.doctorOutput = result.transcript(timeout: RuntimeDiscovery.doctorTimeout).joined(separator: "\n")
     }
 
     // MARK: - Help
 
+    /// Creates the folder first, since it holds nothing until a folder has been served.
     @objc func revealLogsFolder(_ sender: Any?) {
         let directory = ServerLog.directory()
-        try? FileManager.default.createDirectory(
-            at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        } catch {
+            AppLog.app.error("could not create the logs folder: \(error, privacy: .public)")
+            return refuse(
+                "Could not open the logs folder",
+                "\(directory.path(percentEncoded: false)) could not be created: \(error.localizedDescription) "
+                    + "Check that ~/Library/Logs is a folder you can write to.")
+        }
         NSWorkspace.shared.open(directory)
     }
 

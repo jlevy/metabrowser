@@ -74,8 +74,15 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 public nonisolated enum RuntimeDiscovery {
     public static let homebrewBins = ["/opt/homebrew/bin", "/usr/local/bin"]
     public static let installCommand = "uv tool install metabrowser"
+    /// A first run after `uv tool install` compiles bytecode, so `--version` can take
+    /// seconds; one that takes longer than this is broken.
     static let versionTimeout: Duration = .seconds(20)
+    /// A login shell whose startup files take longer is given up on, and setup goes on
+    /// without its `PATH`.
     static let shellTimeout: Duration = .seconds(8)
+    /// Settings > Run Doctor stops `metab --doctor` after this, so a check stuck on a
+    /// hung tool or network leaves the window usable.
+    public static let doctorTimeout: Duration = .seconds(60)
     static let beginMarker = "__METABROWSER_LOGIN_ENV_BEGIN__"
     static let endMarker = "__METABROWSER_LOGIN_ENV_END__"
 

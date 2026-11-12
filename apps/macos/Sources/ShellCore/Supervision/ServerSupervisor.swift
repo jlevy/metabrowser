@@ -26,6 +26,8 @@ public nonisolated struct SupervisorPolicy: Sendable {
     public var startupTimeout: Duration = .seconds(60)
     /// `metab` sets uvicorn's graceful-shutdown timeout to 0, so SIGTERM returns fast.
     public var shutdownGrace: Duration = .seconds(5)
+    /// Between readiness probes: short, since the socket listens moments after the
+    /// announcement.
     public var probeInterval: Duration = .milliseconds(50)
     /// How long to let the output pipe drain after an exit, so the error view shows
     /// the child's last lines.
@@ -34,6 +36,10 @@ public nonisolated struct SupervisorPolicy: Sendable {
     /// (a hung network mount) ignores even SIGKILL until the I/O returns; quitting and
     /// logging out must not wait on it.
     public var killWait: Duration = .seconds(2)
+    /// How long a start that ended early (the child exited, or closed its output) waits
+    /// for the child's own exit before signaling it, so the failure reports the exit
+    /// status the child chose.
+    public var earlyExitWait: Duration = .seconds(1)
 
     public init() {}
 }
@@ -259,7 +265,7 @@ public final class ServerSupervisor {
         generation += 1  // this exit is expected now; childExited must not report it
         let mine = generation
         if process === child { process = nil }
-        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : .seconds(1)).value
+        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : policy.earlyExitWait).value
         let summary: String
         if timedOut {
             summary = "The server did not \(what) within \(policy.startupTimeout)."

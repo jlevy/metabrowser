@@ -21,9 +21,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private var revealOnCommit = false
     /// The page to return to when the server comes back on a new port.
     private var resumeURL: URL?
-    /// Reloads after the web content process dies: two within 30 s, then the status view.
-    private var contentRecoveries = RecoveryBudget(limit: 2, within: .seconds(30))
+    /// Reloads after the web content process dies, then the status view.
+    private var contentRecoveries = RecoveryBudget.webContent
     private static var cascadePoint = NSPoint.zero
+    /// A new window's content size: most of a 14-inch laptop's screen.
+    private static let initialSize = NSSize(width: 1200, height: 820)
+    /// Narrow enough to tile two windows side by side on a laptop screen, and wide
+    /// enough for the status view.
+    private static let minimumSize = NSSize(width: 480, height: 320)
 
     /// Pass `configuration` only from `createWebViewWith`, which requires the web view
     /// it returns to be built from the configuration WebKit hands it.
@@ -33,7 +38,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         webView.isInspectable = Self.isInspectable
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.pageZoom = Self.savedZoom
+        webView.pageZoom = PageZoom.restored(UserDefaults.standard.double(forKey: Self.zoomKey))
 
         let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
         let statusView = NSHostingView(rootView: StatusView(
@@ -44,11 +49,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container = WebContainerView(webView: webView, statusView: statusView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            contentRect: NSRect(origin: .zero, size: Self.initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.contentView = container
-        window.minSize = NSSize(width: 480, height: 320)
+        window.minSize = Self.minimumSize
         window.titleVisibility = .hidden  // TitleAccessoryController draws the title
         window.addTitlebarAccessoryViewController(titleAccessory)
         window.tabbingIdentifier = "folder:" + session.root.path(percentEncoded: false)
@@ -77,18 +82,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     required init?(coder: NSCoder) { fatalError("unused") }
 
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
-    /// `defaults write io.github.jlevy.metabrowser WebInspectorEnabled -bool true`.
+    /// `defaults write <bundle identifier> WebInspectorEnabled -bool true`.
     private static var isInspectable: Bool {
         #if DEBUG
             true
         #else
             UserDefaults.standard.bool(forKey: inspectorKey)
         #endif
-    }
-
-    private static var savedZoom: Double {
-        let zoom = UserDefaults.standard.double(forKey: zoomKey)
-        return zoom > 0 ? zoom : 1
     }
 
     // MARK: - Server state
@@ -177,11 +177,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }
     @objc func reloadPage(_ sender: Any?) { webView.reload() }
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
-    @objc func zoomIn(_ sender: Any?) { setZoom(webView.pageZoom * 1.1) }
-    @objc func zoomOut(_ sender: Any?) { setZoom(webView.pageZoom / 1.1) }
+    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
 
     private func setZoom(_ zoom: Double) {
-        webView.pageZoom = min(3, max(0.5, zoom))
+        webView.pageZoom = zoom
         UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
     }
 
@@ -252,8 +252,10 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
-        let attachment = disposition?.lowercased().hasPrefix("attachment") ?? false
-        decisionHandler(response.canShowMIMEType && !attachment ? .allow : .download)
+        switch ResponsePolicy.decide(canShowMIMEType: response.canShowMIMEType, contentDisposition: disposition) {
+        case .show: decisionHandler(.allow)
+        case .download: decisionHandler(.download)
+        }
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

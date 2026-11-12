@@ -42,11 +42,13 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
     public var logURL: URL?
     /// How many lines `ServerProcess.recentOutput()` keeps.
     public var tailLimit: Int
+    /// More lines than the error view shows.
+    public static let defaultTailLimit = 200
 
     public init(
         executable: String, arguments: [String] = [], environment: [String: String] = [:],
         workingDirectory: String? = nil, stdinLine: String? = nil, closesStdin: Bool = false,
-        logURL: URL? = nil, tailLimit: Int = 200
+        logURL: URL? = nil, tailLimit: Int = LaunchSpec.defaultTailLimit
     ) {
         self.executable = executable
         self.arguments = arguments
