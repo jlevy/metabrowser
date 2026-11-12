@@ -957,7 +957,9 @@ var quickFileCatalogFeed = null;
 var shortcutRegistry = null;
 var keyboardHelp = null;
 var treeKeyboard = null;
+/** @type {MetabrowserPublicShellKeymapApi | null} */
 var shellKeymap = null;
+/** @type {MetabrowserPublicKeyRevealApi | null} */
 var keyReveal = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
@@ -3791,12 +3793,8 @@ var headerCopyBridge = null;
  * @returns {MetabrowserPublicShellKeymapShell} */
 function shellKeymapShell() {
   return Object.freeze({
-    copyFromControl: (/** @type {HTMLElement} */ element) =>
-      window.MetabrowserPluginHost?.copyFromControl(element) ?? false,
-    filterBar: () => document.getElementById("nav-filter-bar"),
     lentCopy: () => headerCopyBridge,
     openFolder: navigateToFolder,
-    pane: () => document.getElementById("preview-pane"),
     selectPreviewTab,
     sourceSelector: () => sourceRefSelector,
     toggleFilterMenu,

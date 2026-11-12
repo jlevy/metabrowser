@@ -1,8 +1,9 @@
 // The shell's own keys: the main pane's view tabs, the header's Up and Copy, the
 // navigation pane's filters, and a pin's branch switcher.
 //
-// Each command runs an activation path the shell injects, the one its control's click
-// runs, plus the focus a keyboard user needs next; none synthesizes a click. Each is
+// Each command runs the activation path its control's click runs, which the shell
+// injects, or for Copy the SDK's copy delegate, plus the focus a keyboard user needs
+// next; none synthesizes a click. Each is
 // targeted, so it is live only while the control it badges is on screen, and the
 // registry reads that at dispatch. The main tabs' digits stay in static/main-tabs.js
 // and the pull keys in static/pulls-nav.js, which own those controls.
@@ -85,8 +86,13 @@
     const conditional = new Map();
     let disposed = false;
 
+    // The main pane and the navigation pane's filter bar, by the ids the server's shell
+    // gives them, read here rather than lent, so app.js eagerly carries none of this.
+    const pane = () => document.getElementById("preview-pane");
+    const filterBar = () => document.getElementById("nav-filter-bar");
+
     /** The main pane's own children, never what the inert stage holds. */
-    const committed = () => Array.from(shell.pane()?.children ?? []);
+    const committed = () => Array.from(pane()?.children ?? []);
 
     /** The view tab bar the main pane shows. */
     function committedBar() {
@@ -118,7 +124,7 @@
         copy = header.querySelector(".file-header-copy");
       }
       const lent = shell.lentCopy();
-      if (!copy && lent && shell.pane()?.contains(lent)) {
+      if (!copy && lent && pane()?.contains(lent)) {
         copy = lent;
       }
       return { copy, parent };
@@ -127,7 +133,7 @@
     /** @param {string} key A filter dropdown, `types` or `recency`. */
     const filterTrigger = (key) =>
       /** @type {HTMLElement | null} */ (
-        shell.filterBar()?.querySelector(`[data-chip-menu-toggle="${key}"]`) ?? null
+        filterBar()?.querySelector(`[data-chip-menu-toggle="${key}"]`) ?? null
       );
 
     /** @param {Record<string, unknown>} context */
@@ -190,7 +196,8 @@
         hint: "Copy",
       },
       group: "controls",
-      handler: (target) => shell.copyFromControl(target),
+      // The SDK's copy delegate, as the control's click reaches it; an owned control only.
+      handler: (target) => window.MetabrowserPluginHost?.copyFromControl(target) ?? false,
       id: "header.copy",
       key: "y",
       order: 20,
@@ -273,9 +280,9 @@
      */
     function openFilterMenu(key) {
       shell.toggleFilterMenu(key, true);
-      const menu = shell
-        .filterBar()
-        ?.querySelector(`.chip-menu[data-chip-menu="${key}"] .chip-menu-panel`);
+      const menu = filterBar()?.querySelector(
+        `.chip-menu[data-chip-menu="${key}"] .chip-menu-panel`,
+      );
       const row = /** @type {HTMLElement | null} */ (
         menu?.querySelector('.chip-menu-item[aria-checked="true"]') ??
           menu?.querySelector(".chip-menu-item") ??

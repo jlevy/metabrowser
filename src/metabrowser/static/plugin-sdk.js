@@ -411,10 +411,9 @@
     );
   }
 
-  /** A copy key's path to the delegate below; an owned control only. @param {Element | null | undefined} element */
-  function copyFromControl(element) {
-    var control = /** @type {(Element & {dataset?: DOMStringMap}) | null | undefined} */ (element);
-    if (!control?.dataset?.mbCopy || !isOwnedDelegate(control)) {
+  /** A copy key's path to the delegate below, for an owned copy control. @param {HTMLElement | null} control */
+  function copyFromControl(control) {
+    if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {
       return false;
     }
     _handleCopyClick(control);

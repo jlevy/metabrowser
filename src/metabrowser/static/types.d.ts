@@ -1862,7 +1862,7 @@ type MetabrowserPluginHostRuntime = Readonly<{
   /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
   isOwnedDelegate(element: Element | null | undefined): boolean;
   /** Copy what an owned copy control names, as its click does; see plugin-sdk.js. */
-  copyFromControl(element: Element | null | undefined): boolean;
+  copyFromControl(control: HTMLElement | null): boolean;
   configureAssets(
     assetsByKind: Record<
       string,
@@ -2305,18 +2305,14 @@ type MetabrowserKeyRevealRuntime = Readonly<{
 }>;
 
 /**
- * What the shell lends static/shell-keymap.js: where its controls are now, and the
- * paths that activate them, each the one its control's click runs.
+ * What app.js lends static/shell-keymap.js: the state only it holds, and the paths that
+ * activate the shell's controls, each the one its control's click runs. The keymap finds
+ * the main pane and the filter bar by their ids, and copies through the SDK.
  */
 type MetabrowserShellKeymapShell = Readonly<{
-  copyFromControl(element: HTMLElement): boolean;
-  /** The navigation pane's filter bar, whose triggers the filter keys badge. */
-  filterBar(): HTMLElement | null;
   /** The commit view's Copy revision while that view lends it; see `attachHeaderCopy`. */
   lentCopy(): HTMLElement | null;
   openFolder(dir: string): void;
-  /** The main pane, whose own children are what it has committed. */
-  pane(): HTMLElement | null;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   sourceSelector(): Readonly<{ activate(): unknown; button: HTMLElement }> | null;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
