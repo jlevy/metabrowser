@@ -92,7 +92,7 @@ import Testing
     }
 
     @Test func aFoldersLogIsInTheGivenFolder() {
-        let folder = URL(filePath: "/Volumes/Home/Library/Logs/Metabrowser Dev", directoryHint: .isDirectory)
+        let folder = URL(filePath: "/Volumes/Home/Library/Logs/Metabrowser", directoryHint: .isDirectory)
         let log = ServerLog.url(for: URL(filePath: "/tmp/notes"), in: folder)
         #expect(log.deletingLastPathComponent().path(percentEncoded: false) == folder.path(percentEncoded: false))
         #expect(log.lastPathComponent == ServerLog.fileName(for: URL(filePath: "/tmp/notes")))

@@ -2,8 +2,9 @@ import AppKit
 import ShellCore
 import os
 
-/// This build: its name, its variant, and the folders it keeps apart from the other
-/// variant's.
+/// This build: its name, its variant, its bundle identifier, which keeps its settings
+/// and recents apart from the other variant's, and the log and session folders, named
+/// for the app, that both variants share.
 nonisolated let appIdentity = AppIdentity.current
 
 nonisolated enum AppLog {

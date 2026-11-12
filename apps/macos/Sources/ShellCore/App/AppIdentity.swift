@@ -3,9 +3,10 @@ import Foundation
 /// Which build of the app is running, read from its bundle's property list.
 ///
 /// Both variants are named Metabrowser. Their bundle identifiers differ, which keeps
-/// their user defaults, privacy grants, and LaunchServices records apart, and the
-/// variant the build stamps keeps their logs and support files apart and says in the
-/// About box which build this is (see README.md, Variants).
+/// their user defaults, recent folders, privacy grants, and LaunchServices records apart.
+/// Their logs and saved session go to folders named for the app, which both share, and
+/// the variant the build stamps says in the About box which build this is (see
+/// README.md, Variants).
 public nonisolated struct AppIdentity: Equatable, Sendable {
     public enum Variant: String, Equatable, Sendable {
         case dev
@@ -52,14 +53,19 @@ public nonisolated struct AppIdentity: Equatable, Sendable {
         return ([kind, numbered] + [commit].compactMap(\.self)).joined(separator: " · ")
     }
 
-    /// `~/Library/Logs/Metabrowser/`, and `Metabrowser Dev/` for a development build.
+    /// `~/Library/Logs/Metabrowser/`, named for the app, for either variant; Console.app
+    /// lists it under Log Reports. Copies running at once, a development build and a
+    /// release among them, keep their servers' logs apart in it (`ServerLogLease`).
     public func logsDirectory(home: URL = URL(filePath: NSHomeDirectory())) -> URL {
-        let folder = variant == .release ? name : "\(name) Dev"
-        return home.appending(path: "Library/Logs/\(folder)", directoryHint: .isDirectory)
+        home.appending(path: "Library/Logs/\(name)", directoryHint: .isDirectory)
     }
 
-    /// `~/Library/Application Support/<bundle identifier>/`, as Apple names it.
+    /// `~/Library/Application Support/Metabrowser/`, named for the app rather than the
+    /// bundle identifier, for either variant, so a development build and a release
+    /// restore the same windows (`SessionStore`). Settings stay apart, in the user
+    /// defaults the bundle identifier names, and so do the recent folders macOS keeps for
+    /// it. A copy with another name, such as the setup check's, keeps its own.
     public func supportDirectory(home: URL = URL(filePath: NSHomeDirectory())) -> URL {
-        home.appending(path: "Library/Application Support/\(bundleIdentifier)", directoryHint: .isDirectory)
+        home.appending(path: "Library/Application Support/\(name)", directoryHint: .isDirectory)
     }
 }
