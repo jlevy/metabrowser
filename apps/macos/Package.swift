@@ -14,7 +14,8 @@ let package = Package(
     ],
     targets: [
         // Everything testable without a window: supervision, runtime discovery, the
-        // child environment, logs, recent folders, and the navigation policy.
+        // child environment, logs, files opened in folders, tabs, the saved session, and
+        // the navigation policy.
         .target(name: "ShellCore", swiftSettings: settings),
         // The AppKit app: lifecycle, menus, windows, and WKWebView.
         .executableTarget(

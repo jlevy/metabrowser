@@ -7,7 +7,7 @@ import WebKit
 /// `WKWebView` is not inside an `NSScrollView`, so `NSTextFinder` needs this container
 /// to hold its bar (the pattern from the macOS WebView shell guideline).
 final class WebContainerView: NSView, NSTextFinderBarContainer {
-    let webView: WKWebView
+    private(set) var webView: WKWebView
     private let statusView: NSView
 
     init(webView: WKWebView, statusView: NSView) {
@@ -28,6 +28,15 @@ final class WebContainerView: NSView, NSTextFinderBarContainer {
             statusView.isHidden = !showsStatus
             needsLayout = true
         }
+    }
+
+    /// Swaps in the view of a tab that gave up its page, hidden like the old one would be.
+    func replaceWebView(_ replacement: WKWebView) {
+        webView.removeFromSuperview()
+        webView = replacement
+        addSubview(replacement, positioned: .below, relativeTo: statusView)
+        replacement.isHidden = showsStatus
+        needsLayout = true
     }
 
     var findBarView: NSView? {

@@ -26,7 +26,7 @@ enum MainMenu {
         let recentHolder = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         recentHolder.submenu = recent
         main.addSubmenu("File", [
-            item("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"),
+            item("Open…", #selector(AppDelegate.openFolder(_:)), "o"),
             recentHolder,
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
