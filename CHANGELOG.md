@@ -10,6 +10,10 @@ All notable changes to Metabrowser are documented here.
   See
   [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
 
+- Stopping a server, by Ctrl-C, a hangup, or `--exit-on-eof`, no longer waits on a
+  stderr that is full because nothing reads it: the stop notice is dropped and the
+  process stops.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
