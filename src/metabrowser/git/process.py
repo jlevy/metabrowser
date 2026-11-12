@@ -515,8 +515,8 @@ class _GroupStop:
     fork. Nothing here waits for a spawn to *return*: the stop finds its groups from the
     kernel's list of this process's children (:mod:`metabrowser.git.children`), which
     has a child from its fork on, so a group whose spawn never returns, or fails after
-    the fork, is found all the same. *programs* names what a group spawn runs, which is
-    how a child that leads its own group is known to be one of them.
+    the fork, is found all the same. *programs* holds the files group spawns run, every
+    link resolved, which is how a child that leads its own group is known to be one.
 
     The lock is re-entrant because a stop may run in a signal handler, between two
     bytecodes of the main thread, while that thread holds it for a spawn's bookkeeping.
@@ -597,9 +597,9 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
     need the event loop to make progress, and it returns within about *wait_s*:
 
     * From now on :func:`start_process_group` refuses.
-    * Every group this process leads is killed: each child the kernel lists that leads
-      its own group and runs a program a group spawn ran, or that the registry holds,
-      whether or not its spawn ever returned.
+    * Every group this process leads is killed: each child the kernel lists that the
+      registry holds, or that leads its own group and runs a file a group spawn ran,
+      whether or not its spawn ever returned (see :func:`_kill_owned_groups`).
     * A spawn under way on another thread may not have forked yet, or may fork and
       register while the stop first looks. The stop waits for those, up to *wait_s*,
       and always looks once more at the end. One on this thread cannot fork any more:
@@ -633,8 +633,8 @@ def _kill_owned_groups(stop: _GroupStop) -> None:
 
     A candidate is a child the registry holds, which leads its own group by how it was
     started, unless its ``returncode`` says it was reaped; or a child that leads its own
-    group and runs a program a group spawn ran, which leaves alone a child that is not
-    ours to end, such as a browser the standard library starts in a session of its own.
+    group and runs a file a group spawn ran, which leaves alone a child that is not ours
+    to end, such as a browser the standard library starts in a session of its own.
 
     The listing is only numbers, and another thread may reap a listed child at any time,
     after which its ID is free. So each candidate is confirmed to be this process's
@@ -657,9 +657,7 @@ def _kill_owned_groups(stop: _GroupStop) -> None:
                 continue
         else:
             path = executable(pid)
-            if path is None or Path(path).name not in programs:
-                continue
-            if not _leads_its_own_group(pid):
+            if path is None or path not in programs or not _leads_its_own_group(pid):
                 continue
         if not _unreaped_child(pid):
             continue
@@ -671,24 +669,30 @@ async def start_process_group(
     start: Callable[[], Awaitable[asyncio.subprocess.Process]],
     *,
     program: str,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> asyncio.subprocess.Process:
     """Spawn, with *start*, a process that leads its own group, and track that group.
 
     Every such spawn goes through here, Git's and another tool's run the same way, such
-    as ``gh``, so a stop can account for it. *program* is the path *start* runs; a stop
-    knows the group by it from the fork on (see :func:`stop_process_groups`). The group
-    is also registered for :func:`kill_live_process_groups` once the spawn returns, and
-    its owner calls :func:`forget_process_group` once it is reaped. Raises
+    as ``gh``, so a stop can account for it. *program*, *cwd*, and *env* are what *start*
+    launches with; the file that resolves to is how a stop knows the group from the
+    fork on (see :func:`stop_process_groups`). The group is also registered for
+    :func:`kill_live_process_groups` once the spawn returns, and its owner calls
+    :func:`forget_process_group` once it is reaped. Raises
     :class:`ProcessGroupsStoppedError`, and starts nothing, once a stop has begun.
     """
 
     prepare_child_listing()
+    # Here, on the spawning thread, never in a stop, which may be a signal handler.
+    launched = _launched_file(program, cwd=cwd, env=env)
     stop = _GROUP_STOP
     me = threading.get_ident()
     with stop.lock:
         if stop.requested:
             raise ProcessGroupsStoppedError
-        stop.programs.add(Path(program).name)
+        if launched is not None:
+            stop.programs.add(launched)
         stop.in_flight[me] = stop.in_flight.get(me, 0) + 1
     try:
         proc = await start()
@@ -699,6 +703,28 @@ async def start_process_group(
         raise
     _end_group_spawn(stop, me, proc)
     return proc
+
+
+def _launched_file(program: str, *, cwd: Path | None, env: Mapping[str, str] | None) -> str | None:
+    """The file a spawn of *program* executes, every link resolved, as the kernel names it.
+
+    Resolved as ``subprocess`` resolves it: a path with a directory part against *cwd*,
+    which the child enters before it executes; a bare name against each directory of
+    ``PATH`` in *env* (or this process's) in turn, each of which may itself be relative
+    to *cwd*. The first executable file wins. ``None`` when none is found, and the spawn
+    is then known only to the registry.
+    """
+
+    base = os.fspath(cwd) if cwd is not None else os.getcwd()
+    if os.path.dirname(program):
+        candidates = [program]
+    else:
+        candidates = [os.path.join(directory, program) for directory in os.get_exec_path(env)]
+    for candidate in candidates:
+        path = os.path.join(base, candidate)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return os.path.realpath(path)
+    return None
 
 
 def _end_group_spawn(stop: _GroupStop, me: int, proc: asyncio.subprocess.Process | None) -> None:
@@ -1030,7 +1056,7 @@ async def spawn_git_process(
     # A group is registered as soon as it exists, so a stop that cannot unwind kills it
     # too, and a stop that begins while it is starting waits for it.
     spawning = asyncio.ensure_future(
-        start_process_group(spawn, program=exe) if own_group else spawn()
+        start_process_group(spawn, program=exe, cwd=work_cwd, env=env) if own_group else spawn()
     )
     try:
         return await asyncio.shield(spawning)
