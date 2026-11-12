@@ -1,16 +1,17 @@
 ---
 type: is
 id: is-01m774rv75dzyrdjgrxs9erjth
-title: Phase 1 docs, parity rows, and browser QA
+title: "Layer 4: browser QA, contrast, and paint-exempt row"
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
-labels: []
+labels:
+  - layer-4
 dependencies: []
 parent_id: is-01m76jgfxbadse383jypkzwpm9
 created_at: 2026-11-12T05:47:57.521Z
-updated_at: 2026-11-12T05:47:57.521Z
+updated_at: 2026-11-12T07:31:12.396Z
 ---
-Design > File and Function Map > Docs. design-system keyboard sections (Main Tab Shortcuts, Canonical Key Names, pull stack and Pulls keys, Navigational Row Collections, Shortcut and Help Copy), arch map rows and kinds table, development.md tier row, plugins.md view key, README, e2e-testing, reviewing-pull-requests, QA runbook reveal check in Chrome, Safari, Firefox.
+Spec Rollout layer 4 docs. QA runbook reveal check in Chrome, Safari, Firefox (both themes, 200% zoom, minimum nav width, narrow viewport); measured contrast ratios recorded beside tokens; parity row shell.key-badge-paint; CHANGELOG entry.
