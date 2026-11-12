@@ -8,7 +8,7 @@ private let endpoint = ServerEndpoint(
     origin: URL(string: "http://127.0.0.1:8412")!, entryURL: URL(string: "http://127.0.0.1:8412/view/")!)
 private let spec = LaunchSpec(executable: "/usr/bin/false")
 
-private func fastPolicy(startup: Duration = .seconds(2)) -> SupervisorPolicy {
+private func fastPolicy(startup: Duration = startupCeiling) -> SupervisorPolicy {
     var policy = SupervisorPolicy()
     policy.startupTimeout = startup
     policy.shutdownGrace = .milliseconds(100)

@@ -111,11 +111,14 @@ LaunchServices registration, and a URL scheme claimed twice has no defined targe
 To run the tests against a real server too:
 
 ```shell
-METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test  # at the repository root
 ```
 
 The live tests check that `metab` against the version the app requires, so it must be
-0.12.1 or later.
+0.12.1 or later. `make test` (in `apps/macos`, which `make macos-test` runs) runs the
+suites in three processes: the WebKit suites and the exit stress suite each stall the
+main actor, which every suite shares, so they run apart from the rest.
+A bare `swift test` runs them all in one process.
 
 Where to look while it runs:
 
