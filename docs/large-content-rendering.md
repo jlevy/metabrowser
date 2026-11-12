@@ -659,6 +659,11 @@ AppKit delivers for a drag from Finder.
   `Files` and handled neither, so WebKit’s default was to load the file: it asked to
   navigate to its `file://` URL, the policy cancelled that, and the page stayed put.
 
+The list records what the run found.
+Both failures are fixed since, in jlevy/metabrowser#359: a user script hands the main
+frame’s `window.print()` to the same print path as File > Print (`mb-j3eu`), and a
+dragged file opens at its page through the app’s open path (`mb-3h2m`).
+
 The same check by hand on the built app is
 [Checking Print and Drops by Hand](../apps/macos/README.md#checking-print-and-drops-by-hand)
 in the app’s README.

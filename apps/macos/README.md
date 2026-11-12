@@ -297,15 +297,18 @@ accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the 
 From `apps/macos`, `node webkit-gate/run.mjs --checks` scripts these in the app’s web
 view class
 ([Measured in WebKit](../../docs/large-content-rendering.md#windowprint-and-drag-and-drop)
-has the results); this is the same check on the built development app,
-`build/dev/Metabrowser.app`, with a folder holding a Markdown file open:
+has its results, from before the two fixes below); this is the same check on the built
+development app, `build/dev/Metabrowser.app`, with a folder holding a Markdown file
+open:
 
-1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`.
-   Nothing happens today.
+1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`,
+   which opens the same print panel as File > Print (`mb-j3eu`; the gate found that it
+   did nothing before that fix).
 2. **File > Print.** The print panel shows the document alone, without the shell.
 3. **A folder dragged from Finder onto the page** opens in a window of its own.
-4. **A file dragged onto the page** does nothing: WebKit asks to load its `file://` URL,
-   and the navigation policy cancels it.
+4. **A file dragged onto the page** opens at its page, in the open folder that holds it
+   or else in its own folder (`mb-3h2m`; before that fix WebKit asked to load its
+   `file://` URL, the navigation policy cancelled it, and nothing happened).
 
 ### Continuous Integration
 
@@ -1061,7 +1064,7 @@ Each gap points to the part of the brief that closes it.
 | **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized. | Recommendation 6 |
 | **Updates** | None: `brew upgrade --cask`, no in-app update notice, and no Sparkle. A copy run from its disk image or translocated gets a launch notice, and moving it is left to the user in Finder. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
-| **WebKit measurement gate** | Run on 2026-11-11 (`make macos-webkit-gate`), and **failed**: WebKit lays out the source view 1.6 to 5.8 times slower than Chrome, the binary view 1.4 to 2.7 times, and highlighting and the diff layout switch up to 1.5 times; it uses much less memory. The brief’s fallback is the owner’s decision. `window.print()` does nothing in the app, File > Print works, a dropped folder opens, and a dropped file does nothing. See [Measured in WebKit](../../docs/large-content-rendering.md#measured-in-webkit). | Recommendation 4 (`mb-gvtw`; owner acceptance stays `mb-etqi`) |
+| **WebKit measurement gate** | Run on 2026-11-11 (`make macos-webkit-gate`), and **failed**: WebKit lays out the source view 1.6 to 5.8 times slower than Chrome, the binary view 1.4 to 2.7 times, and highlighting and the diff layout switch up to 1.5 times; it uses much less memory. The source view’s largest cost has a core fix under way (`mb-551q`), the gate reruns after it (`mb-76nv`), and the brief’s fallback is the owner’s decision. Its checks found that `window.print()` and a dropped file did nothing; both are fixed since (`mb-j3eu`, `mb-3h2m`). See [Measured in WebKit](../../docs/large-content-rendering.md#measured-in-webkit). | Recommendation 4 (`mb-gvtw`; owner acceptance stays `mb-etqi`) |
 | **Multi-root and attach** | One server per root; no attaching to an agent’s server, no state files, no `metabrowser://` hand-off from the CLI. | Use Cases Under Exploration; Sharing an Installation |
 | **Release CI** | `macos-app.yml` builds, tests, and rehearses the release with an ad hoc signature. No job signs and notarizes from secrets or drafts a release on a `macos-v*` tag, so a release is built by hand (`mb-e9fm`). | Next Steps |
 

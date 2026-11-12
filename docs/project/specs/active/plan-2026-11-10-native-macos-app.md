@@ -294,10 +294,10 @@ The steps run in this order, which the beads record as dependencies:
    Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
    measured cause and a core fix (`mb-551q`, its own pull request to `main`), and the
    gate reruns under normal conditions after that fix (`mb-76nv`). The binary view’s
-   forced layout (`mb-pzy2`), the page’s Print button (`mb-j3eu`), and a dropped file
-   (`mb-3h2m`) are tracked separately.
-   Steps 6 and 7 went ahead meanwhile; whether the failures that remain after the rerun
-   call for the fallback is the owner’s decision.
+   forced layout is tracked separately (`mb-pzy2`). The gate’s checks also found that
+   the page’s Print button and a dropped file did nothing; jlevy/metabrowser#359 fixed
+   both (`mb-j3eu`, `mb-3h2m`). Steps 6 and 7 went ahead meanwhile; whether the failures
+   that remain after the rerun call for the fallback is the owner’s decision.
 
 6. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
    and the disk-image notice (`mb-3n79`), as Phase 5 describes, and both flows in the
