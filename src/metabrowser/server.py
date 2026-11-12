@@ -4190,7 +4190,7 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
     return prefixes() if settled else await asyncio.to_thread(prefixes)
 
 
-def _build_plugin_asset_config_block(prefixes: Mapping[str, str] | None = None) -> str:
+def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
     """Configure manifest-owned assets by the kinds that consume them.
 
     No plugin asset is an eager shell dependency. The private plugin host
@@ -4199,11 +4199,9 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str] | None = None) 
     styles load in parallel and settle before the plugin renderer mounts.
 
     Every URL is under the plugin's stamped prefix (*prefixes*, from
-    :func:`_plugin_asset_prefixes` when not given), so its relative imports,
-    worker, and stylesheet references inherit the stamp.
+    :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
+    relative imports, worker, and stylesheet references inherit the stamp.
     """
-    if prefixes is None:
-        prefixes = _plugin_asset_prefixes()
     assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
         prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")

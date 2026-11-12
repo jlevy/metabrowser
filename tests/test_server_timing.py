@@ -8,15 +8,19 @@ route could not say whether it read, rendered, waited on git, or compressed (res
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import inspect
 import logging
 import re
 import subprocess
+import textwrap
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
@@ -121,6 +125,27 @@ def test_a_streamed_body_reports_later_work_in_the_log_and_not_the_header() -> N
     assert logged is not None, line
     # Eight chunks were compressed; the header saw the first.
     assert float(logged.group(2)) > header["encode"]
+
+
+def test_a_streamed_body_past_any_entry_count_is_counted_in_full() -> None:
+    """Review B of #372, B2: a list capped at 256 entries cut the total of a body gzipped
+    in more chunks than that; per-name sums count every one."""
+    record, token = server_timing.begin()
+    try:
+        for _ in range(1000):
+            record.add("encode", 0.5)
+    finally:
+        server_timing.end(record, token)
+    assert record.totals() == [("encode", 500.0)]
+
+
+def test_the_timed_gzip_dispatch_is_still_starlettes() -> None:
+    """Review A of #372, A3: TimedGZipMiddleware repeats GZipMiddleware.__call__ from
+    Starlette 1.3.1. If that method changes, re-read the copy, then update this digest."""
+    source = textwrap.dedent(inspect.getsource(GZipMiddleware.__call__))
+    assert hashlib.sha256(source.encode()).hexdigest() == (
+        "dd918c3ca1c924822a8badba2d98c7ba328eedb1af95ca5151d94a64bd321283"
+    )
 
 
 def test_phases_nest_without_counting_twice_and_count_in_threads() -> None:

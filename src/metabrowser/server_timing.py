@@ -32,6 +32,7 @@ start of the response, and every phase's total.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -44,35 +45,37 @@ from starlette.middleware.gzip import GZipMiddleware, GZipResponder, IdentityRes
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
 
-# A request makes a handful of entries. A task it starts that outlives it inherits its
-# context, record included, so a record stops taking entries when its request ends, and
-# never holds more than this many.
-_MAX_ENTRIES = 256
-
 
 class Record:
-    """The phases one request has finished, in the order they finished."""
+    """Each phase's running total for one request, in the order the phases first finished.
 
-    __slots__ = ("_entries", "_open")
+    A sum per name rather than a list of entries, so a streamed body's thousands of gzip
+    chunks are all counted and the record stays as small as the handful of phase names
+    (review B of #372, B2). A task the request starts that outlives it inherits its
+    context, record included, so a record stops taking additions when its request ends.
+    """
+
+    __slots__ = ("_lock", "_open", "_totals")
 
     def __init__(self) -> None:
-        self._entries: list[tuple[str, float]] = []
+        # Threads the request awaits add to it too.
+        self._lock = threading.Lock()
+        self._totals: dict[str, float] = {}
         self._open = True
 
     def add(self, name: str, ms: float) -> None:
-        if self._open and len(self._entries) < _MAX_ENTRIES:
-            self._entries.append((name, ms))
+        with self._lock:
+            if self._open:
+                self._totals[name] = self._totals.get(name, 0.0) + ms
 
     def close(self) -> None:
-        self._open = False
+        with self._lock:
+            self._open = False
 
     def totals(self) -> list[tuple[str, float]]:
         """Each phase's total, in the order the phases first finished."""
-        summed: dict[str, float] = {}
-        # A copy: a thread the request no longer awaits could still be adding.
-        for name, ms in list(self._entries):
-            summed[name] = summed.get(name, 0.0) + ms
-        return list(summed.items())
+        with self._lock:
+            return list(self._totals.items())
 
 
 _RECORD: ContextVar[Record | None] = ContextVar("metabrowser_server_timing", default=None)
@@ -134,7 +137,9 @@ class TimedGZipMiddleware(GZipMiddleware):
 
     The research of 2026-11-11 measured level 6 at about 33 MB/s on the event loop, about
     93 ms for a cold landing's 3.1 MB, and ``Server-Timing`` showed none of it. The choice
-    of responder is Starlette's own, repeated so the gzip one can be the timed one.
+    of responder is Starlette's own, copied from ``GZipMiddleware.__call__`` in Starlette
+    1.3.1 so the gzip one can be the timed one; ``tests/test_server_timing.py`` fails when
+    that method changes, so an upgrade re-reads this copy.
     """
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

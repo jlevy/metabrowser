@@ -137,14 +137,14 @@ def test_asset_config_deduplicates_the_default_stylesheet(tmp_path: Path) -> Non
     )
 
     with patch.object(server, "_LOADED_PLUGINS", [fake]):
-        config = server._build_plugin_asset_config_block()
+        config = server._build_plugin_asset_config_block(server._plugin_asset_prefixes())
 
     assert config.count("/plugin-static/fixture/styles.css") == 1
     assert config.count("/plugin-static/fixture/theme.css") == 1
 
 
 def test_image_asset_config_includes_its_on_demand_stylesheet() -> None:
-    config = server._build_plugin_asset_config_block()
+    config = server._build_plugin_asset_config_block(server._plugin_asset_prefixes())
     prefix = "<script>window.MetabrowserPluginHost.configureAssets("
     assets = json.loads(config.removeprefix(prefix).removesuffix(");</script>"))
 
