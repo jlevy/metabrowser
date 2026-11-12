@@ -69,6 +69,12 @@ export const DESCRIPTION_HOLD_MS = 200;
 // rendered to 5.9 to 20 KB, so the bound holds about a hundred of the largest of them.
 export const RENDERED_TEXTS = 256;
 export const RENDERED_TEXT_CHARS = 2_000_000;
+// How long Changes keeps a comparison with rendered Markdown out of sight while its first
+// screen's Markdown files wait for Rendered, so they first show at the height they keep and
+// the files below them never move by themselves. The first screen is at most four Markdown
+// files, asked one at a time; a projection took 12 ms of server time at the median and 31
+// to 33 ms at p90 (diff-markdown.js), and the Conversation asked for these ahead.
+export const CHANGES_FIRST_SCREEN_MS = 200;
 // How much of a review comment's diff hunk it shows; the rest is behind a disclosure.
 // GitHub's `diff_hunk` runs from the hunk's `@@` line to the commented line, which is
 // last, however long the hunk: on pallets/click#3030 (read 2026-11-01), 37 hunks of up to
@@ -4584,10 +4590,30 @@ export function mountPullPage(container, ctx, mb) {
                   : { rendered_route: comparison.rendered_route }),
               },
               ...(prefetched === undefined ? {} : { raw: prefetched }),
+              ...(comparison.rendered_route === undefined
+                ? {}
+                : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
             }),
           { number },
         )
       );
+      // Out of sight while the first screen's Markdown waits, at most its bound: it then
+      // shows at the heights it keeps. Progress stays below meanwhile.
+      const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (handle)
+        ?.firstScreen;
+      if (comparison.rendered_route !== undefined && typeof firstScreen === "function" && owns()) {
+        host.classList.add("github-pull-diff-holding");
+        /** @type {ReturnType<typeof window.setTimeout> | undefined} */
+        let bound;
+        await Promise.race([
+          firstScreen(),
+          new Promise((resolve) => {
+            bound = window.setTimeout(resolve, CHANGES_FIRST_SCREEN_MS);
+          }),
+        ]);
+        window.clearTimeout(bound);
+        host.classList.remove("github-pull-diff-holding");
+      }
       loading.remove();
       if (!owns()) {
         handle?.dispose?.();

@@ -572,6 +572,58 @@ async function main() {
   assert.equal(attempts, 3, "the failed load was not kept");
   assert.equal(rendered2.hidden, false);
   view2.dispose();
+
+  // The first screen settles once none of its files waits: here when both are Rendered,
+  // well inside a page's longer wait; and at the wait's end for one that never answers.
+  for (const answered of [true, false]) {
+    const loads = [];
+    const root3 = make("div");
+    const view3 = createMarkdownViews({
+      controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+      load: (id) => new Promise((resolve) => loads.push({ id, resolve })),
+      ensureInert: async () => inert,
+      async loadStyles() {},
+      mutate: (change) => change(),
+      now: time.now,
+      later: time.later,
+      cancel: time.cancel,
+      holdMs: 200,
+    });
+    const sections = ["f", "g"].map((id) => {
+      const section = make("section");
+      root3.append(section);
+      const bar = make("div");
+      const source = make("div");
+      source.id = id;
+      section.append(bar, source);
+      const toggle = make("button");
+      bar.append(toggle);
+      view3.add({ section, bar, toggle, source, id });
+      return section;
+    });
+    let settled = false;
+    void view3.firstScreen.then(() => {
+      settled = true;
+    });
+    view3.observe(root3, null);
+    observer.notify(sections.map((target) => ({ target, isIntersecting: true })));
+    time.advance(50);
+    await new Promise(setImmediate);
+    assert.equal(settled, false, "the page's longer wait outlasts the app's loading delay");
+    if (answered) {
+      loads[0].resolve(ready);
+      await new Promise(setImmediate);
+      assert.equal(settled, false, "one file still waits");
+      loads[1].resolve(ready);
+      await new Promise(setImmediate);
+      assert.equal(settled, true, "both drawn Rendered: the first screen is final");
+    } else {
+      time.advance(150);
+      await new Promise(setImmediate);
+      assert.equal(settled, true, "the wait's end settles it, Source shown");
+    }
+    view3.dispose();
+  }
   console.log("diff Markdown view OK");
 }
 

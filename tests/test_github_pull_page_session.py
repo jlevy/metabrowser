@@ -607,7 +607,8 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
     revisit and a refreshed record with the same text paint the render kept for that text,
     keeping the description's node. Past the bound the text paints plain and its Markdown
     follows. The kept renders are bounded by count and by characters. The state badge's
-    first paint is the fresher of the cached record and the repository's list.
+    first paint is the fresher of the cached record and the repository's list. Changes with
+    rendered Markdown shows its first screen only once that screen's Markdown is drawn.
     """
 
     assert run_session("github-pull-first-paint-behavior.js") == {
@@ -617,6 +618,18 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "pastTheBound": "plain, then Markdown",
         # A stale record paints the list's state when the list saw a later update.
         "listedState": {"newerList": "Merged", "olderList": "Open"},
+        # Changes with rendered Markdown is out of sight, and not ready, until its first
+        # screen's Markdown settles or CHANGES_FIRST_SCREEN_MS passes.
+        "changes": {
+            ending: {
+                "asked": 200,
+                "held": True,
+                "readyWhileHeld": False,
+                "shown": True,
+                "ready": True,
+            }
+            for ending in ("settled", "bound")
+        },
         "bounded": True,
     }
 

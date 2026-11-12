@@ -306,6 +306,11 @@ function stylesOnly(assets) {
  * One queue for a mounted comparison, one request at a time to match the server's one
  * projection slot. An answer that arrives after its file switched to Source or left
  * the lookahead is kept for when the reader comes back to it.
+ *
+ * *holdMs* is how long the first screen's files wait for Rendered with Source hidden,
+ * `LOADING_DELAY_MS` unless a page says otherwise. `firstScreen` settles once none of
+ * them waits: each is drawn, Rendered or Source, or the wait is over. A page that keeps the
+ * comparison out of sight until then shows its first screen at the heights it keeps.
  * @param {{
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
@@ -315,7 +320,8 @@ function stylesOnly(assets) {
  *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
- *   cancel?: (handle: unknown) => void
+ *   cancel?: (handle: unknown) => void,
+ *   holdMs?: number
  * }} deps
  */
 export function createMarkdownViews(deps) {
@@ -348,6 +354,30 @@ export function createMarkdownViews(deps) {
   let retryTimer;
   /** @type {(() => void) | undefined} */
   let unbind;
+  /** @type {() => void} */
+  let settleFirstScreen = () => {};
+  /** @type {Promise<void>} */
+  const firstScreen = new Promise((resolve) => {
+    settleFirstScreen = () => resolve(undefined);
+  });
+
+  // The first screen has been reported and none of its files waits for Rendered any more.
+  function checkFirstScreen() {
+    if (
+      disposed ||
+      (reported &&
+        !Array.from(files.values()).some(
+          (file) =>
+            file.holding &&
+            file.expanded &&
+            file.mode === "rendered" &&
+            file.state === "idle" &&
+            nearby.has(file),
+        ))
+    ) {
+      settleFirstScreen();
+    }
+  }
 
   /** @param {FileView} file */
   function draw(file) {
@@ -426,6 +456,7 @@ export function createMarkdownViews(deps) {
         }
       });
     }
+    checkFirstScreen();
   }
 
   function pump() {
@@ -530,6 +561,7 @@ export function createMarkdownViews(deps) {
         file.retries = 0;
         draw(file);
       });
+      checkFirstScreen();
     } catch (error) {
       if (!signal.aborted && !disposed) {
         if (/** @type {{status?: unknown}} */ (error)?.status === 429) {
@@ -560,6 +592,7 @@ export function createMarkdownViews(deps) {
       drawControl(file);
       draw(file);
     });
+    checkFirstScreen();
   }
 
   /** @param {FileView} file @param {Mode} mode */
@@ -656,9 +689,10 @@ export function createMarkdownViews(deps) {
     observe(container, root) {
       observed = true;
       if (files.size === 0) {
+        settleFirstScreen();
         return;
       }
-      holdTimer = later(release, LOADING_DELAY_MS);
+      holdTimer = later(release, deps.holdMs ?? LOADING_DELAY_MS);
       unbind = deps.controls.bind(container, {
         onChange(key, value, selectType) {
           const file = controls.get(key);
@@ -711,6 +745,7 @@ export function createMarkdownViews(deps) {
             });
           }
           pump();
+          checkFirstScreen();
         },
         { root, rootMargin: `0px 0px ${LOOKAHEAD} 0px` },
       );
@@ -718,8 +753,10 @@ export function createMarkdownViews(deps) {
         observer.observe(section);
       }
     },
+    firstScreen,
     dispose() {
       disposed = true;
+      settleFirstScreen();
       observer?.disconnect();
       active?.controller.abort();
       if (active !== null) {

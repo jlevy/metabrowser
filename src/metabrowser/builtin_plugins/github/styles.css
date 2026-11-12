@@ -131,6 +131,11 @@
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
+/* Changes while its first screen's Markdown waits (CHANGES_FIRST_SCREEN_MS): laid out, so
+   the diff measures its first screen, and not yet seen. */
+.github-pull-diff-holding {
+  visibility: hidden;
+}
 .github-pull-body {
   display: flex;
   flex-direction: column;

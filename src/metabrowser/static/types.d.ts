@@ -16,6 +16,9 @@ type MetabrowserRenderContext = {
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
+  /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
+   *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
+  markdownHoldMs?: number;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -31,7 +34,10 @@ type MetabrowserRenderContext = {
 
 type MetabrowserPullReader = {
   fetchAfterMs: number;
-  initial: { etag: string | null; body: unknown } | null;
+  /** The tab's answer, its catalog verdict header, and when it landed by `Date.now()`. */
+  initial: { etag: string | null; body: unknown; verified?: string | null; at?: number } | null;
+  /** The tab's read still on its way when the page opened, which the page joins. */
+  pending?: Promise<{ etag: string | null; body: unknown; verified?: string | null } | null> | null;
   /** Whether the key that opened the page is still held, so the page waits to ask. */
   walking?: () => boolean;
 };

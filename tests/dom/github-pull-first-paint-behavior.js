@@ -241,6 +241,72 @@ async function run() {
     olderList: await badge("2026-09-16T00:00:00Z"),
   };
 
+  // Changes with rendered Markdown stays out of sight until its first screen settles, or
+  // its bound passes, and is ready only then.
+  const changes = async (settles) => {
+    const files = envelope("e".repeat(64), "first text");
+    files.record.comparison = { base: "1".repeat(40), head: "2".repeat(40) };
+    files.rendered_route = "/api/plugin/github/pull-rendered-diff?number=7";
+    session.current = files;
+    window.location.pathname = "/pull/7/files";
+    /** @type {() => void} */
+    let settle_ = () => {};
+    const firstScreen = new Promise((resolve) => {
+      settle_ = resolve;
+    });
+    let asked = null;
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab: "files",
+        reader: { initial: { etag: null, body: files }, fetchAfterMs: 0 },
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        ensureKindAssets: async () => {},
+        getRegisteredView: () => ({
+          render(_host, ctx) {
+            asked = ctx.markdownHoldMs;
+            return { currentFile: () => null, firstScreen: () => firstScreen, dispose() {} };
+          },
+        }),
+        loadKpressAssets: async () => {},
+        ...refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    let ready = false;
+    void handle.whenFilesReady().then(() => {
+      ready = true;
+    });
+    await settle();
+    const host = [...container.descendants()].find((node) => node.classes.has("github-pull-diff"));
+    const held = host.classes.has("github-pull-diff-holding");
+    if (settles) {
+      settle_();
+    } else {
+      const [bound] = [...session.timers].filter(
+        ([, timer]) => timer.delay === page.CHANGES_FIRST_SCREEN_MS,
+      );
+      session.timers.delete(bound[0]);
+      bound[1].callback();
+    }
+    const readyWhileHeld = ready;
+    await settle();
+    const shown = !host.classes.has("github-pull-diff-holding");
+    handle.dispose();
+    window.location.pathname = "/pull/7";
+    return { asked, held, readyWhileHeld, shown, ready };
+  };
+  facts.changes = { settled: await changes(true), bound: await changes(false) };
+
   // The kept renders are bounded by count and by characters, the oldest dropped first.
   const bounds = await import(`${pathToFileURL(pagePath).href}?bounds`);
   for (let index = 0; index < bounds.RENDERED_TEXTS + 10; index += 1) {
