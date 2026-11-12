@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- `metab ROOT --exit-on-eof` stops serving when its stdin closes, so a program that
+  starts the server and holds its stdin, such as the macOS app, leaves no server running
+  when it exits, even by crashing.
+  See
+  [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
