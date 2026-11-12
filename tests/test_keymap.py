@@ -177,3 +177,47 @@ def test_the_plugin_facade_refuses_exactly_the_reserved_letters() -> None:
     )
     letters = set(string.ascii_lowercase)
     assert set(_plugin_session_list("refused")) == set(RESERVED_SHELL_KEYS) & letters
+
+
+_BUILTIN_PLUGINS = Path(server.__file__).parent / "builtin_plugins"
+
+
+def _builtin_plugin_letters() -> dict[str, str]:
+    """Each letter a built-in plugin gives a control through ``shortcuts.attach()``.
+
+    The pull request page attaches its tabs' letters from ``PULL_TABS`` in
+    ``github/pull-page.js``, and the diff view its layout key in ``renderDiffToolbar`` in
+    ``diff/diff-view.js``. Each letter maps to where it is declared.
+    """
+    pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
+    tabs = re.search(r"\nconst PULL_TABS = Object\.freeze\(\[(.*?)\n\]\);", pull_page, re.S)
+    assert tabs, "github/pull-page.js declares PULL_TABS"
+    letters = dict.fromkeys(re.findall(r'key: "([^"]*)"', tabs[1]), "github/pull-page.js PULL_TABS")
+    diff_view = (_BUILTIN_PLUGINS / "diff" / "diff-view.js").read_text(encoding="utf-8")
+    toolbar = diff_view[diff_view.index("\nfunction renderDiffToolbar(") :]
+    layout = re.search(r'\n      id: "diff\.layout",\n      key: "([^"]*)",', toolbar)
+    assert layout, "diff/diff-view.js renderDiffToolbar attaches diff.layout"
+    letters[layout[1]] = "diff/diff-view.js renderDiffToolbar"
+    return letters
+
+
+def test_the_built_in_plugins_keys_are_not_reserved() -> None:
+    """The letters the built-in plugins attach are clear of the shell's reserved table.
+
+    The plugin shortcut facade refuses every key in the table it is served, so reserving
+    one of these letters later would leave the pull request page's tab key or the diff's
+    layout toggle with no key and a console warning, while the browserless sessions,
+    which serve a copy of the table, would keep passing. Every ``shortcuts.attach()``
+    call in a built-in plugin is one of the two read here, so a new one must join them.
+    """
+    calls = sorted(
+        str(path.relative_to(_BUILTIN_PLUGINS))
+        for path in _BUILTIN_PLUGINS.rglob("*.js")
+        for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
+    )
+    assert calls == ["diff/diff-view.js", "github/pull-page.js"]
+    letters = _builtin_plugin_letters()
+    assert set(letters) == {"c", "g", "h", "l"}
+    served = serialize_reserved_shell_keys()
+    assert {key: source for key, source in letters.items() if key in served} == {}
+    assert not set(letters) & reserved_keys_for(PULL_REQUEST_KIND)
