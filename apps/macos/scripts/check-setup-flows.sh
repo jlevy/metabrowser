@@ -76,6 +76,9 @@ cleanup() {
   [[ -z "$launched" ]] || "$lsregister" -u "$launched" || note "could not unregister $launched"
   [[ ! -d "$volume" ]] || detach_image "$volume"
   defaults delete "$check_id" 2>/dev/null || true  # absent when the app saved nothing
+  # The saved session and the recents macOS keeps, both named by the copy's identifier.
+  rm -rf "$HOME/Library/Application Support/$check_id"
+  rm -f "$HOME/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/$check_id".sfl*
   rm -rf "$work"
 }
 trap cleanup EXIT
