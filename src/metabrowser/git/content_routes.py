@@ -91,6 +91,7 @@ from metabrowser.file_extensions import (
 )
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
@@ -832,6 +833,7 @@ async def git_revision_rollup(
                 "node": None,
                 "ext_tallies": [],
                 "file_type_breakdown": None,
+                "file_type_legend": None,
                 "index_status": "truncated",
                 "indexed_files": 0,
                 "max_files": INVENTORY_MAX_FILES,
@@ -889,6 +891,7 @@ def _git_rollup_payload(
         "node": node,
         "ext_tallies": built["ext_tallies"],
         "file_type_breakdown": built["file_type_breakdown"],
+        "file_type_legend": build_file_type_legend(built["file_type_breakdown"]),
         "index_status": "done",
         "indexed_files": node["total_files"],
         "max_files": INVENTORY_MAX_FILES,
