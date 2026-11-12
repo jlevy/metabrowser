@@ -165,8 +165,7 @@
     if (!Array.isArray(entries) || entries.length === 0) {
       return Promise.reject(new Error(`Unknown asset bundle: ${name}`));
     }
-    // Preloaded together, appended in turn below, so a gate still sees the
-    // global its predecessor installed.
+    // Fetched together, still appended in turn for the `requires` gate.
     const preloads = entries
       .filter((entry) => !loadedScripts.has(entry.src) && !loadingScripts.has(entry.src))
       .map((entry) => {

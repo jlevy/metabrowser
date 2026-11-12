@@ -170,6 +170,10 @@ async function main() {
     { duration: 700, startTime: 7_000 },
   ]);
   let responsiveness = sandbox.metabrowser.perf.responsiveness();
+  check(
+    "frame gaps stand in only where Long Tasks are missing",
+    responsiveness.raf_frame_gaps === null,
+  );
   check("long-task count is exact", responsiveness.long_tasks === 2);
   check("long-task total is exact", responsiveness.long_task_ms_total === 950);
   check("long-task max is exact", responsiveness.long_task_max_ms === 700);

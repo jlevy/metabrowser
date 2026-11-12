@@ -4040,17 +4040,8 @@ export function mountPullPage(container, ctx, mb) {
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
     },
-    schedule: (callback) =>
-      typeof window.requestIdleCallback === "function"
-        ? { idle: window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }) }
-        : { timer: window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS) },
-    cancel(handle) {
-      const { idle, timer } = /** @type {{idle?: number, timer?: number}} */ (handle);
-      if (idle !== undefined) {
-        window.cancelIdleCallback(idle);
-      }
-      window.clearTimeout(timer);
-    },
+    schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+    cancel: (cancel) => /** @type {() => void} */ (cancel)(),
     isVisible: () => document.visibilityState === "visible",
   });
 
@@ -4574,21 +4565,15 @@ export function mountPullPage(container, ctx, mb) {
         mb.sourceKind() === "filesystem" &&
         onPageRoute(window.location.pathname, number, ""),
       scheduleComparison(callback) {
-        /** @type {number | undefined} */
-        let idle;
+        /** @type {(() => void) | undefined} */
+        let cancelIdle;
         // Wait until the reader stops on this page, as with a stale metadata refresh.
         const timer = window.setTimeout(() => {
-          if (typeof window.requestIdleCallback === "function") {
-            idle = window.requestIdleCallback(callback);
-          } else {
-            callback();
-          }
+          cancelIdle = mb.whenIdle(callback);
         }, REFRESH_ASK_MS);
         return () => {
           window.clearTimeout(timer);
-          if (idle !== undefined) {
-            window.cancelIdleCallback(idle);
-          }
+          cancelIdle?.();
         };
       },
       render(model, identity) {

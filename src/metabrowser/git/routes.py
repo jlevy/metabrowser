@@ -30,6 +30,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from metabrowser import server_timing
 from metabrowser.git.detail import read_commit_detail
 from metabrowser.git.history import (
     HISTORY_SESSIONS,
@@ -188,12 +189,15 @@ async def api_git_log(request: Request) -> JSONResponse:
     raw_scope = request.query_params.get("scope")
     wants_all = raw_scope == "all" if raw_scope is not None else None
     try:
-        page = await HISTORY_SESSIONS.read_page(
-            location,
-            wants_all=wants_all,
-            limit=limit,
-            cursor=cursor,
-        )
+        # Mostly waiting on the session's long-lived `git log`, which run_git's phase
+        # does not see; the one-shot commands under it are not counted twice.
+        with server_timing.phase("git"):
+            page = await HISTORY_SESSIONS.read_page(
+                location,
+                wants_all=wants_all,
+                limit=limit,
+                cursor=cursor,
+            )
     except InvalidHistoryCursorError:
         return JSONResponse(
             {"error": "invalid cursor", "code": "history_cursor_invalid"},

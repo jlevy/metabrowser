@@ -650,17 +650,8 @@
         }),
       // The page host the shell made, which pull-route.js keeps for what sits beside the pane.
       pageFor: (number) => routes.attachedHost()?.pageFor(number) ?? null,
-      schedulePrefetch: (callback) =>
-        typeof window.requestIdleCallback === "function"
-          ? window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS })
-          : window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS),
-      cancelPrefetch: (handle) => {
-        if (typeof window.cancelIdleCallback === "function") {
-          window.cancelIdleCallback(/** @type {number} */ (handle));
-        } else {
-          window.clearTimeout(/** @type {number} */ (handle));
-        }
-      },
+      schedulePrefetch: (callback) => sdk.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+      cancelPrefetch: (cancel) => /** @type {() => void} */ (cancel)(),
       showFailure(container) {
         const said = document.createElement("p");
         said.className = "github-pulls-empty";

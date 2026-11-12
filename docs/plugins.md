@@ -502,6 +502,10 @@ Useful helpers include:
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
+- `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
+  than `timeout` milliseconds, and returns a function that cancels it; in an engine
+  without `requestIdleCallback`, as the app’s WebKit is, free means the first view has
+  settled and input has paused (see [Idle Work](development.md#idle-work));
 - `sourceKind()` for the served source (`filesystem` or `git_revision`);
 - `perf.measure` and `perf.measureAsync`.
 

@@ -44,6 +44,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
+from metabrowser import server_timing
 from metabrowser.content_errors import ContentReadError
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
 
@@ -674,7 +675,36 @@ async def run_git(
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
+
+    The time it takes is the request's ``git`` phase in ``Server-Timing``
+    (:mod:`metabrowser.server_timing`).
     """
+    with server_timing.phase("git"):
+        return await _run_git(
+            args,
+            cwd=cwd,
+            target=target,
+            policy=policy,
+            timeout_s=timeout_s,
+            max_bytes=max_bytes,
+            pass_fds=pass_fds,
+            stdin_bytes=stdin_bytes,
+            on_progress=on_progress,
+        )
+
+
+async def _run_git(
+    args: Sequence[str],
+    *,
+    cwd: Path | None,
+    target: GitCommandTarget | None,
+    policy: GitProcessPolicy | None,
+    timeout_s: float | None,
+    max_bytes: int | None,
+    pass_fds: Sequence[int],
+    stdin_bytes: bytes | None,
+    on_progress: Callable[[GitProgress], None] | None,
+) -> bytes:
     chosen = policy if policy is not None else _default_policy(target)
     proc = await spawn_git_process(
         args,

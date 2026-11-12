@@ -200,6 +200,40 @@ that today reads “if the global is missing, skip” becomes “await the loade
 Late arrival must also re-enhance what is already on screen, which is what the
 `metabrowser:optional-asset-loaded` event exists for.
 
+### Idle Work
+
+`metabrowser.whenIdle(callback, {timeout})` in `static/plugin-sdk.js` is the one way the
+shell and the built-in plugins schedule work for when the page is free, the prefetched
+tier’s chain among it, and it returns a function that cancels the work.
+`tests/test_idle_work_js.py` fails on any other `requestIdleCallback` call, so the
+fallback below is everyone’s.
+
+Where the engine has `requestIdleCallback`, the helper is that.
+The app’s WebKit does not: `WKWebView` on macOS 26.5.2 had none when measured on
+2026-11-11, and WebKit enabled it in February 2025 and backed it out (WebKit bug
+285049). The five call sites used to fall back to fixed timers, which start prefetch on
+a clock rather than when the page is free.
+There, the helper waits for `metabrowser:first-view-settled`, which `app.js` dispatches
+once the startup navigation has settled, whether it showed its view or failed, and then
+until 250 ms have passed with no `pointerdown`, `keydown`, or `wheel`, the same pause
+the tree’s hover prefetch waits for (`FILE_PREFETCH_HOVER_DELAY_MS`). A `timeout` bounds
+the whole wait, as it bounds `requestIdleCallback`’s; untimed work waits for the first
+view as long as it takes.
+
+The same engine has no `longtask`, `long-animation-frame`, or `layout-shift` observer.
+Where `longtask` is missing, `metabrowser.perf.responsiveness()` reports
+`raf_frame_gaps`: the count of `requestAnimationFrame` intervals over 50 ms while the
+page is visible, the longest, the count over 200 ms, and the time sampled.
+A gap is a frame the page did not draw, whatever the cause, not a task’s measured
+length, so it is never written into the Long Task fields, which keep `longtask` in
+`unsupported`. A frame loop costs power, so it runs for 10 s after load, after
+`reset()`, and after each trusted click or key, and a gap that ends after that window is
+not counted. Where Long Tasks exist, `raf_frame_gaps` is null and no loop runs.
+Where `layout-shift` is missing, `cls` stays null; the transition harness measures
+region movement instead.
+These two files are startup scripts, so the code is kept to what the startup budget
+leaves room for, and this section holds what their comments would otherwise say.
+
 ### Justifying a Tier
 
 State the measurement, not the intuition.

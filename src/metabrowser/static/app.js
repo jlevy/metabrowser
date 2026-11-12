@@ -2371,11 +2371,7 @@ function scheduleSubtreePrefetch(options) {
     setTimeout(run, SUBTREE_PREFETCH_AFTER_EXPAND_MS);
     return;
   }
-  if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
-  } else {
-    setTimeout(run, 200);
-  }
+  window.metabrowser.whenIdle(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
 }
 
 // Scrolling is what makes a folder next, so it is what re-arms the sweep. The
@@ -8375,10 +8371,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   // The selected preview and its on-demand plugin assets share the local
   // HTTP/1.1 connection pool with the tree. Start them after the first tree
   // request so a folder renderer cannot delay the navigation's usable rows.
-  navigationController.start().catch((error) => {
+  const started = navigationController.start().catch((error) => {
     console.error("Could not initialize browser navigation", error);
     settleUnclaimedPreview();
   });
+  // What metabrowser.whenIdle waits for where the engine has no idle callback.
+  started.finally(() => window.dispatchEvent(new Event("metabrowser:first-view-settled")));
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree
   // request settles, so eleven unrelated scripts cannot delay the inline row,

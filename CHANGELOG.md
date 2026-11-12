@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The plugin SDK adds `metabrowser.whenIdle(callback, {timeout})`, the one way the shell
+  and the built-in plugins schedule idle work.
+  In an engine without `requestIdleCallback`, as the app’s WebKit is, it waits for the
+  first view to settle and for input to pause instead of a fixed timer.
+  Where Long Tasks are not observable, `metabrowser.perf.responsiveness()` reports
+  `raf_frame_gaps`, animation-frame intervals over 50 ms, and leaves the Long Task
+  fields as they were.
+  `Server-Timing` names the phases a response spent before its headers (`read`,
+  `render`, `git`, `encode`) beside `srv`, and the request log gives each request’s time
+  to its first byte and its phases.
+
 - A reload no longer asks the server again for scripts, stylesheets, and fonts it
   already holds. The shell’s `/static/<file>?v=<stamp>` addresses, and the plugin and
   KPress assets now addressed under a stamp of their contents

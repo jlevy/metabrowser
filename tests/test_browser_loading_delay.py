@@ -153,7 +153,7 @@ def test_expandable_folders_are_prefetched_so_expansion_needs_no_load() -> None:
     assert "SUBTREE_PREFETCH_MAX_CONCURRENT" in app
     assert "SUBTREE_PREFETCH_MAX_PER_SWEEP" in app
     schedule = app[app.index("function scheduleSubtreePrefetch(options)") :][:900]
-    assert "requestIdleCallback" in schedule
+    assert "window.metabrowser.whenIdle(run" in schedule
 
 
 def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:

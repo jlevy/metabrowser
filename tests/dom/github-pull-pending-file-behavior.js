@@ -54,6 +54,7 @@ async function run() {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: () => assets,
         getRegisteredView: () => ({
           async render() {
@@ -173,6 +174,7 @@ async function run() {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: () => oldAssets.promise,
       getRegisteredView: () => ({
         render: async () => ({
@@ -267,6 +269,7 @@ async function run() {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         getRegisteredView: () => {
           throw new Error("no comparison exists before acquisition");

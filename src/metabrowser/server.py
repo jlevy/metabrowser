@@ -58,7 +58,6 @@ from urllib.parse import quote
 from starlette.applications import Starlette
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
-from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import (
     FileResponse,
     HTMLResponse,
@@ -73,7 +72,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, kpress_adapter
+from metabrowser import __version__, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, split_stamp
@@ -1067,26 +1066,30 @@ class _SlowRequestLogMiddleware:
         arrived = time.time()
         status: int | None = None
         body_bytes = 0
+        start_ms: float | None = None
+        record, token = server_timing.begin()
 
         async def send_wrapper(message: dict[str, Any]) -> None:
-            nonlocal body_bytes, status
+            nonlocal body_bytes, start_ms, status
             if message.get("type") == "http.response.start":
                 status = message.get("status")
                 # Inject Server-Timing so the browser's Network tab +
                 # perf.js can read the server-self-reported duration
-                # without an out-of-band channel. Format per RFC 8941
-                # / W3C Server-Timing: ``<name>;dur=<ms>``. The single
-                # ``srv`` metric reports the wall-clock from middleware
-                # entry to response-start; client subtracts to get the
-                # transit + queue portion. Done at response.start so
-                # the duration captures everything before the body
-                # streams (which is when downstream gzip / transport
-                # latency dominates). Re-encode the headers list to
-                # preserve any pre-existing Server-Timing value (no
-                # plugin sets one today, but be safe).
-                so_far_ms = (time.perf_counter() - started) * 1000
+                # without an out-of-band channel. Format per W3C
+                # Server-Timing: ``<name>;dur=<ms>``. ``srv`` is the
+                # wall-clock from middleware entry to response-start;
+                # client subtracts to get the transit + queue portion.
+                # Beside it go the named phases finished by then
+                # (metabrowser.server_timing): for a JSON answer that is
+                # its serialization and compression too, which happen
+                # before the headers; a streamed body's later reads and
+                # compression reach only the request log below. Re-encode
+                # the headers list to preserve any pre-existing
+                # Server-Timing value (no plugin sets one today).
+                start_ms = (time.perf_counter() - started) * 1000
+                timing = server_timing.header_value(record, start_ms)
                 hdrs = list(message.get("headers") or [])
-                hdrs.append((b"server-timing", f"srv;dur={so_far_ms:.1f}".encode("latin-1")))
+                hdrs.append((b"server-timing", timing.encode("latin-1")))
                 message = {**message, "headers": hdrs}
             elif message.get("type") == "http.response.body":
                 body = message.get("body") or b""
@@ -1096,7 +1099,11 @@ class _SlowRequestLogMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            server_timing.end(record, token)
+            # The time to the end of the body, which no header can carry.
             duration_ms = (time.perf_counter() - started) * 1000
+            first_byte = "-" if start_ms is None else f"{start_ms:.0f}"
+            phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
             if self.verbose:
@@ -1104,7 +1111,8 @@ class _SlowRequestLogMiddleware:
                 # epochs so correlation against browser-side perf.js
                 # records is mechanical (subtract for transit time).
                 LOG.info(
-                    "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s bytes=%s",
+                    "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
+                    "bytes=%s start_ms=%s phases=%s",
                     arrived,
                     arrived + duration_ms / 1000,
                     duration_ms,
@@ -1112,19 +1120,24 @@ class _SlowRequestLogMiddleware:
                     full_path,
                     status,
                     body_bytes,
+                    first_byte,
+                    phases,
                 )
             elif self.threshold_ms and duration_ms >= self.threshold_ms:
                 # Include the arrival epoch even in non-verbose mode so
                 # the line cross-references against perf.js slow_fetch
                 # records (which carry started_at as a UTC epoch ms).
                 LOG.warning(
-                    "metabrowser slow server request t=%.3f %.0f ms method=%s path=%s status=%s bytes=%s",
+                    "metabrowser slow server request t=%.3f %.0f ms method=%s path=%s status=%s "
+                    "bytes=%s start_ms=%s phases=%s",
                     arrived,
                     duration_ms,
                     scope.get("method", ""),
                     full_path,
                     status,
                     body_bytes,
+                    first_byte,
+                    phases,
                 )
 
 
@@ -1333,16 +1346,17 @@ def page_preference_scripts() -> tuple[str, ...]:
     return (_PAGE_SETTINGS_SCRIPT, _DOCUMENT_WIDTH_SCRIPT, _THEME_BOOTSTRAP_SCRIPT)
 
 
-# Prefetched-tier scheduling. The chain waits for the first idle callback so it
+# Prefetched-tier scheduling. The chain waits for the page to be idle so it
 # does not compete with the tree render, and the timeout is the floor: on a
 # large tree the main thread is busy for seconds, and a source view that never
 # highlights is worse than one that highlights late. Two seconds is the same
 # bound the tree's own idle prefetch already uses
-# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js).
+# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js). "Idle" is
+# `metabrowser.whenIdle` in static/plugin-sdk.js: requestIdleCallback where the
+# engine has it, and where it does not -- the app's WebKit (WKWebView on macOS 26,
+# measured 2026-11-11; WebKit enabled it in February 2025 and backed it out, bug
+# 285049) -- the first view settled and input quiet, rather than a fixed timer.
 PREFETCH_IDLE_TIMEOUT_MS = 2000
-# requestIdleCallback is unavailable in Safari before 18.2, so the fallback is
-# a plain timer past first paint rather than no deferral at all.
-PREFETCH_FALLBACK_DELAY_MS = 200
 
 
 # Startup scripts only some shells carry, by static file name. A pin's page needs the
@@ -1759,11 +1773,7 @@ async def index(
       );
     }}
     function schedule() {{
-      if (typeof window.requestIdleCallback === "function") {{
-        window.requestIdleCallback(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
-      }} else {{
-        setTimeout(start, {PREFETCH_FALLBACK_DELAY_MS});
-      }}
+      window.metabrowser.whenIdle(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
     }}
     if (document.readyState === "loading") {{
       document.addEventListener("DOMContentLoaded", schedule, {{ once: true }});
@@ -2611,14 +2621,16 @@ class JSONResponse(_StarletteJSONResponse):
     """
 
     def render(self, content: Any) -> bytes:
-        return _json.dumps(
-            content,
-            ensure_ascii=False,
-            allow_nan=False,
-            indent=None,
-            separators=(",", ":"),
-            default=_json_default_safe,
-        ).encode("utf-8")
+        # Serialization is the first half of the `encode` phase (metabrowser.server_timing).
+        with server_timing.phase("encode"):
+            return _json.dumps(
+                content,
+                ensure_ascii=False,
+                allow_nan=False,
+                indent=None,
+                separators=(",", ":"),
+                default=_json_default_safe,
+            ).encode("utf-8")
 
 
 # Every route in this module uses the safe variant. Plugin code that imports
@@ -2871,7 +2883,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
 
     try:
         # Validated compression scans must not run on the event loop.
-        logical_size = await asyncio.to_thread(lambda: artifact.logical_size)
+        with server_timing.phase("read"):
+            logical_size = await asyncio.to_thread(lambda: artifact.logical_size)
     except ArtifactCompressionError as exc:
         if artifact.is_gzip:
             # Caller-specific readers below can still return a bounded preview
@@ -2965,9 +2978,10 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 parse_jsonl_file_cached,
             )
 
-            parsed = await asyncio.to_thread(parse_jsonl_file_cached, target)
-            adapter = parsed.get("summary", {}).get("adapter")
-            kind = await asyncio.to_thread(_classify_with_plugins, target, ext, adapter)
+            with server_timing.phase("read"):
+                parsed = await asyncio.to_thread(parse_jsonl_file_cached, target)
+                adapter = parsed.get("summary", {}).get("adapter")
+                kind = await asyncio.to_thread(_classify_with_plugins, target, ext, adapter)
             views = _views_for_kind(kind)
             return JSONResponse(
                 {
@@ -3007,7 +3021,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
+    with server_timing.phase("read"):
+        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+    if text_body:
         try:
             content_has_more = False
             if (
@@ -3015,14 +3031,14 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 or text_offset > 0
                 or (logical_size is not None and logical_size > text_limit)
             ):
-                content, content_bytes, bytes_read, content_has_more = await asyncio.to_thread(
-                    _read_artifact_text_chunk,
-                    artifact,
-                    text_offset,
-                    text_limit,
-                )
+                with server_timing.phase("read"):
+                    chunk = await asyncio.to_thread(
+                        _read_artifact_text_chunk, artifact, text_offset, text_limit
+                    )
+                content, content_bytes, bytes_read, content_has_more = chunk
             else:
-                content = await asyncio.to_thread(target.read_text, errors="replace")
+                with server_timing.phase("read"):
+                    content = await asyncio.to_thread(target.read_text, errors="replace")
                 content_bytes = disk_size
                 bytes_read = disk_size
         except ArtifactCompressionError as exc:
@@ -3090,7 +3106,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             classified = _classify_with_plugins(target, ext, file_ctx=ctx)
             return classified, _views_for_kind(classified, target=target)
 
-        kind, views = await asyncio.to_thread(_classify_text_views)
+        with server_timing.phase("read"):
+            kind, views = await asyncio.to_thread(_classify_text_views)
 
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
@@ -3183,7 +3200,8 @@ async def api_kpress_render(request: Request) -> Response:
     source_override: str | None = None
     if getattr(request, "method", "GET") == "POST":
         try:
-            body = await _read_bounded_json_request(request, _KPRESS_RENDER_REQUEST_MAX_BYTES)
+            with server_timing.phase("read"):
+                body = await _read_bounded_json_request(request, _KPRESS_RENDER_REQUEST_MAX_BYTES)
         except _JsonRequestLimitError:
             return JSONResponse(
                 {
@@ -3290,11 +3308,12 @@ async def api_kpress_render(request: Request) -> Response:
 
     try:
         if artifact.is_compressed and source_override is None:
-            content, logical_size = await asyncio.to_thread(
-                _read_artifact_text,
-                artifact,
-                _TEXT_PREVIEW_MAX_CHUNK_BYTES,
-            )
+            with server_timing.phase("read"):
+                content, logical_size = await asyncio.to_thread(
+                    _read_artifact_text,
+                    artifact,
+                    _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                )
         else:
             logical_size = artifact.logical_size
     except _ArtifactTextLimitError:
@@ -3359,12 +3378,14 @@ async def api_kpress_render(request: Request) -> Response:
 
     try:
         if content is None:
-            content = await asyncio.to_thread(target.read_text, errors="replace")
+            with server_timing.phase("read"):
+                content = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
-    kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
+    with server_timing.phase("read"):
+        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
     frontmatter: dict[str, Any] | None = None
     frontmatter_error: str | None = None
     if ext == ".md":
@@ -3373,20 +3394,21 @@ async def api_kpress_render(request: Request) -> Response:
     mtime_hash = file_mtime_hash(target)
 
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            source_path=subpath,
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=mtime_hash,
-            size=logical_size,
-            frontmatter=frontmatter,
-            frontmatter_error=frontmatter_error,
-            profile=profile,
-            include_toc=include_toc,
-        )
+        with server_timing.phase("render"):
+            rendered = await asyncio.to_thread(
+                kpress_adapter.render_kpress_view,
+                source_text=content,
+                source_path=subpath,
+                kind=kind,
+                view=view,
+                ext=ext,
+                mtime_hash=mtime_hash,
+                size=logical_size,
+                frontmatter=frontmatter,
+                frontmatter_error=frontmatter_error,
+                profile=profile,
+                include_toc=include_toc,
+            )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
             {
@@ -3409,7 +3431,8 @@ async def api_kpress_render(request: Request) -> Response:
         )
     if not get_capabilities().active_content:
         # A document the reader does not trust renders inert (kpress_adapter.inert_render).
-        rendered = kpress_adapter.inert_render(rendered)
+        with server_timing.phase("render"):
+            rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
@@ -4359,7 +4382,8 @@ middleware = [
     # from is refused with a typed pin_changed rather than answered from the new pin.
     Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
-    Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
+    # Starlette's, with the compression counted as the `encode` phase of Server-Timing.
+    Middleware(server_timing.TimedGZipMiddleware, minimum_size=1024, compresslevel=6),
 ]
 
 # Lazy import: events_route.py pulls in the inventory + events

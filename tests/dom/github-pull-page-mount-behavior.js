@@ -226,6 +226,7 @@ async function releasedFilesMounts(page, initial, diffView, errors) {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {
           if (phase === "assets") {
             await held;
@@ -509,6 +510,7 @@ async function mountOn(page, body, tab, ageLabel) {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: (seconds) => ({ label: ageLabel(seconds), className: "age" }),
@@ -815,6 +817,7 @@ async function run() {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {
           if (fail && failure === "assets") {
             throw Error("asset failed");
@@ -987,6 +990,7 @@ async function run() {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
           render: async (host, options) => {
@@ -1097,6 +1101,7 @@ async function run() {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => {
         throw new Error("no comparison exists before acquisition");
@@ -1190,6 +1195,7 @@ async function run() {
         {
           perf,
           ensureAsset: async () => {},
+          whenIdle: require("./sdk-idle-fixture.js").whenIdle,
           ensureKindAssets: async () => {},
           getRegisteredView: () => diffView,
           ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -1238,6 +1244,7 @@ async function run() {
   const hiddenApi = {
     perf,
     ensureAsset: async () => {},
+    whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({
       render: async () => ({
