@@ -798,6 +798,11 @@ metab ./notes --api /api/kpress/render --data request.json
 metab ./notes --api /api/kpress/render --data - < request.json
 ```
 
+`--data` reads at most the largest body a route accepts, KPress render’s, which is six
+times `METABROWSER_TEXT_PREVIEW_MAX_BYTES` plus 64 KiB: 96 MiB and 64 KiB by default.
+A longer body, from a file or from standard input, is refused before anything is sent,
+and no more of it than that is read.
+
 Output is the route, the HTTP status, and the normalized envelope:
 
 ```console

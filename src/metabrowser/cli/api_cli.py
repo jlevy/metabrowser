@@ -18,7 +18,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, BinaryIO, Final
 
 import typer
 import yaml
@@ -156,21 +156,53 @@ def _follow_route(route: str, response: ApiResponse) -> str | None:
 # pasted whole, ``echo '{}' | metab … --data -``, without a file beside it. pathlib
 # spells ``./-`` as ``-`` too, so a file of that name is given by another path to it.
 _STDIN: Final = Path("-")
+# A body is read in pieces no larger than this, so a refusal holds at most the limit.
+_READ_CHUNK_BYTES: Final = 64 * 1024
+
+
+def read_bounded(stream: BinaryIO, *, limit: int, source: str) -> bytes:
+    """All of *stream*, at most *limit* bytes; past that, a :class:`CLIError` naming it.
+
+    At most *limit* + 1 bytes are read, so a stream that never ends is refused without
+    being drained.
+    """
+
+    chunks: list[bytes] = []
+    size = 0
+    while size <= limit:
+        chunk = stream.read(min(_READ_CHUNK_BYTES, limit + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    if size > limit:
+        raise CLIError(
+            f"request body from {source} is over {limit:,} bytes, the most --data sends, "
+            "which is the largest body a route reads"
+        )
+    return b"".join(chunks)
 
 
 def _request_body(data: Path | None) -> bytes:
+    """The ``--data`` body, from a file or standard input, at most the largest a route reads."""
+
     if data is None:
         return b""
+    from metabrowser.server import MAX_REQUEST_BODY_BYTES
+
+    source = "standard input" if data == _STDIN else str(data)
     try:
-        body = (
-            sys.stdin.buffer.read() if data == _STDIN else data.expanduser().resolve().read_bytes()
-        )
+        if data == _STDIN:
+            body = read_bounded(sys.stdin.buffer, limit=MAX_REQUEST_BODY_BYTES, source=source)
+        else:
+            with data.expanduser().resolve().open("rb") as stream:
+                body = read_bounded(stream, limit=MAX_REQUEST_BODY_BYTES, source=source)
     except OSError as exc:
-        raise CLIError(f"cannot read request body from {data}: {exc}") from exc
+        raise CLIError(f"cannot read request body from {source}: {exc}") from exc
     if not body:
         # An empty body would fall through to the GET path, so --data would
         # look accepted while changing nothing about the request.
-        raise CLIError(f"request body from {data} is empty; --data needs content")
+        raise CLIError(f"request body from {source} is empty; --data needs content")
     return body
 
 

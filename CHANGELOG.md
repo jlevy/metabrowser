@@ -18,7 +18,8 @@ All notable changes to Metabrowser are documented here.
   That command is the new `POST /api/plugin/github/cache-clear`:
   `echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -`,
   or `metab .` in a checkout.
-  `--data -` reads a request body from standard input.
+  `--data -` reads a request body from standard input, and `--data` reads at most the
+  largest body a route accepts, 96 MiB and 64 KiB by default, refusing a longer one.
   An unexpected error in a refresh of the list is reported as one, which the server log
   names, instead of as `cache_unwritable`.
 
