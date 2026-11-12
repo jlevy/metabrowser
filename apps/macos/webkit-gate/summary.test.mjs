@@ -80,6 +80,40 @@ test("a pair missing from a resumed or summarized run leaves the metric incomple
   assert.match(markdown(summary, meta()), /### source \(3 of 5 pairs\)/);
 });
 
+test("a pair missing from the middle of a run leaves the metric incomplete", () => {
+  const summary = summarize(measured([0, 2]), { pairs: 3 });
+  assert.equal(row(summary).verdict, "incomplete");
+  assert.deepEqual(row(summary).missing_pairs, [2]);
+  assert.equal(summary[0].complete, false);
+});
+
+test("without a pair count, completeness is unknown and nothing passes", () => {
+  // Pairs 1 and 3 of a run whose meta.json has no count: pair 2, and any after 3, may
+  // be missing, and nothing here can tell.
+  const summary = summarize(measured([0, 2]));
+  assert.equal(row(summary).verdict, "pair count unknown");
+  assert.equal(row(summary).complete, null);
+  assert.equal(summary[0].complete, null);
+  assert.equal(summary[0].expected_pairs, null);
+  assert.match(
+    markdown(summary, meta()),
+    /### source \(2 pairs of an unknown number\)\n\n- Completeness unknown: /,
+  );
+});
+
+test("an invalid pair count is treated as unknown", () => {
+  for (const pairs of [0, -1, 2.5, "2", Number.NaN, null]) {
+    const summary = summarize(measured([0, 1]), { pairs });
+    assert.equal(row(summary).verdict, "pair count unknown", `pairs: ${pairs}`);
+    assert.equal(summary[0].complete, null, `pairs: ${pairs}`);
+  }
+});
+
+test("a diagnostic case without a pair count says so", () => {
+  const summary = summarize(measured([0]), { diagnostic: () => true });
+  assert.equal(row(summary).verdict, "diagnostic, pair count unknown");
+});
+
 test("a metric both engines omit in one pair is incomplete", () => {
   const other = { "other (ms)": 50 };
   const samples = [

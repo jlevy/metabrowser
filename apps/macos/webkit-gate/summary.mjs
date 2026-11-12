@@ -28,6 +28,11 @@ const isValue = (value) => typeof value === "number" && Number.isFinite(value);
 const metricValues = (sample) =>
   new Map((sample?.metrics ?? []).map((metric) => [metric.name, metric.value]));
 
+/** A pair count a run can be judged against: a whole number, at least one. */
+const isPairCount = (value) => Number.isSafeInteger(value) && value >= 1;
+
+const UNKNOWN = "pair count unknown";
+
 /**
  * Each case's rows. `pairs` is the number of pairs the run asked for (meta.json), and
  * `cases` the cases it asked for; `diagnostic(caseName)` says whether a case is a
@@ -36,11 +41,14 @@ const metricValues = (sample) =>
  * A gated metric is judged only when both engines measured it in every pair the run
  * asked for. A failed sample, a pair that never ran, or a metric one or both engines
  * left out of a pair makes it incomplete, whatever the other pairs say.
+ *
+ * Without a valid `pairs`, a pair missing from the middle or the end of the run cannot be
+ * told from one that was never asked for, so completeness is unknown (null) and no gated
+ * metric is judged: its verdict is "pair count unknown".
  */
-export function summarize(
-  samples,
-  { pairs: requested = 0, cases = [], diagnostic = () => false } = {},
-) {
+export function summarize(samples, { pairs, cases = [], diagnostic = () => false } = {}) {
+  const known = isPairCount(pairs);
+  const requested = known ? pairs : 0;
   const summary = [];
   for (const caseName of new Set([...cases, ...samples.map((sample) => sample.case)])) {
     const byPair = new Map();
@@ -82,7 +90,7 @@ export function summarize(
       }));
       const both = cells.filter((cell) => isValue(cell.chrome) && isValue(cell.webkit));
       const missing = cells.filter((cell) => !both.includes(cell)).map((cell) => cell.id + 1);
-      const complete = pairIds.length > 0 && missing.length === 0;
+      const complete = known ? pairIds.length > 0 && missing.length === 0 : null;
       const ratios = both.map((cell) =>
         cell.chrome > 0 ? cell.webkit / cell.chrome : cell.webkit > 0 ? Infinity : 1,
       );
@@ -105,13 +113,15 @@ export function summarize(
         max_ratio: ratios.length ? Math.max(...ratios) : null,
         verdict: !isGated
           ? "reported"
-          : !complete
-            ? "incomplete"
-            : judged.length === 0
-              ? `under ${TIMER_FLOOR_MS} ms`
-              : judged.every((ratio) => ratio < PASS_RATIO)
-                ? "pass"
-                : "FAIL",
+          : !known
+            ? UNKNOWN
+            : !complete
+              ? "incomplete"
+              : judged.length === 0
+                ? `under ${TIMER_FLOOR_MS} ms`
+                : judged.every((ratio) => ratio < PASS_RATIO)
+                  ? "pass"
+                  : "FAIL",
         judged_pairs: judged.length,
         complete,
         missing_pairs: missing,
@@ -121,8 +131,8 @@ export function summarize(
     for (const row of rows) {
       if (isDiagnostic && row.verdict !== "reported") {
         row.verdict =
-          row.verdict === "incomplete"
-            ? "diagnostic, incomplete"
+          row.verdict === "incomplete" || row.verdict === UNKNOWN
+            ? `diagnostic, ${row.verdict}`
             : `diagnostic, ${row.verdict === "FAIL" ? "over" : "under"} ${PASS_RATIO}x`;
       }
     }
@@ -139,9 +149,10 @@ export function summarize(
       case: caseName,
       diagnostic: isDiagnostic,
       pairs: byPair.size,
-      expected_pairs: pairIds.length,
-      complete:
-        pairIds.length > 0 && everySample && rows.every((row) => !row.gated || row.complete),
+      expected_pairs: known ? pairIds.length : null,
+      complete: known
+        ? pairIds.length > 0 && everySample && rows.every((row) => !row.gated || row.complete)
+        : null,
       rows,
       failures,
     });
@@ -158,8 +169,20 @@ export function markdown(summary, meta) {
     "",
   ];
   for (const { case: caseName, pairs, expected_pairs: expected, rows, failures } of summary) {
-    const counted = pairs === expected ? `${pairs} pairs` : `${pairs} of ${expected} pairs`;
+    const counted =
+      expected === null
+        ? `${pairs} pairs of an unknown number`
+        : pairs === expected
+          ? `${pairs} pairs`
+          : `${pairs} of ${expected} pairs`;
     lines.push(`### ${caseName} (${counted})`, "");
+    if (expected === null) {
+      lines.push(
+        "- Completeness unknown: the run records no valid pair count, so a missing pair " +
+          "cannot be told from one never asked for, and nothing is judged.",
+        "",
+      );
+    }
     if (pairs === 0) {
       lines.push("- Not measured: the run recorded no sample of this case.", "");
       continue;
