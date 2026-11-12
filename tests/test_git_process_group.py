@@ -621,3 +621,81 @@ def test_a_stop_kills_a_group_whose_spawn_never_registers(
     assert returncode == status, process.stderr.read() if process.stderr else ""
     assert gone, "the helper of a group whose spawn never registered outlived the stop"
     assert lock_free, "the fetch lock outlived the stop"
+
+
+# ── What a stop may signal ────────────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_a_spawn_that_registers_during_the_first_look_is_still_killed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A spawn on another thread forks and registers between the stop's first look and
+    its check for spawns under way, so the check finds none and nothing waits.
+
+    The stop must still look once more before its caller exits. Before, it looked again
+    only when it had waited, and the Git, its helper and its fetch lock outlived it.
+    """
+
+    pid_file = tmp_path / "helper.pid"
+    lock_path = tmp_path / "fetch.lock"
+    lock_fd = _held_lock(lock_path)
+    fork = threading.Event()
+    ended = threading.Event()
+    real_spawn = asyncio.create_subprocess_exec
+
+    async def admitted_then_forked(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+        # Counted as under way from here, and forked only once the stop has looked.
+        await asyncio.to_thread(fork.wait, 30)
+        return await real_spawn(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", admitted_then_forked)
+    real_end = process_module._end_group_spawn
+
+    def ending(*args: Any) -> None:
+        real_end(*args)
+        ended.set()
+
+    monkeypatch.setattr(process_module, "_end_group_spawn", ending)
+    real_look = process_module._kill_owned_groups
+    looks: list[int] = []
+
+    def look(stop: process_module._GroupStop) -> None:
+        real_look(stop)
+        looks.append(1)
+        if len(looks) == 1:
+            fork.set()
+            assert ended.wait(30), "the spawn never registered"
+
+    monkeypatch.setattr(process_module, "_kill_owned_groups", look)
+
+    def serve() -> None:
+        async def fetch() -> None:
+            with contextlib.suppress(GitError):
+                await run_git(
+                    _alias_args(pid_file),
+                    cwd=tmp_path,
+                    policy=ACQUISITION_POLICY,
+                    pass_fds=(lock_fd,),
+                )
+
+        with contextlib.suppress(TimeoutError):
+            asyncio.run(asyncio.wait_for(fetch(), 40))
+
+    loop = threading.Thread(target=serve, daemon=True)
+    loop.start()
+    deadline = time.monotonic() + 30
+    while not process_module._GROUP_STOP.in_flight:
+        assert time.monotonic() < deadline, "the spawn was never admitted"
+        time.sleep(0.01)
+    try:
+        process_module.stop_process_groups()
+        os.close(lock_fd)  # Forked by now: from here only Git and its helper hold it.
+        lock_free = _lock_free_within(lock_path)
+    finally:
+        process_module.kill_live_process_groups()
+        loop.join(30)
+    helper = int(pid_file.read_text()) if pid_file.exists() and pid_file.read_text() else None
+    if helper is not None:
+        assert _gone_within(helper), "the helper outlived the stop"
+    assert lock_free, "the fetch lock outlived the stop"

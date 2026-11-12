@@ -569,9 +569,10 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
     * Every group this process leads is killed: each child the kernel lists that leads
       its own group and runs a program a group spawn ran, or that the registry holds,
       whether or not its spawn ever returned.
-    * A spawn under way on another thread may not have forked yet. The stop waits for
-      it, up to *wait_s*, and looks again. One on this thread cannot fork any more: this
-      thread is here, and the caller exits next.
+    * A spawn under way on another thread may not have forked yet, or may fork and
+      register while the stop first looks. The stop waits for those, up to *wait_s*,
+      and always looks once more at the end. One on this thread cannot fork any more:
+      this thread is here, and the caller exits next.
 
     Where the kernel cannot list children (:func:`metabrowser.git.children.child_pids`),
     the registry is all there is. Safe in a signal handler: it takes only a re-entrant
@@ -584,12 +585,11 @@ def stop_process_groups(*, wait_s: float = SPAWN_WAIT_S) -> None:
         stop.requested = True
     _kill_owned_groups(stop)
     deadline = time.monotonic() + wait_s
-    waited = False
     while _spawns_elsewhere(stop, me) and time.monotonic() < deadline:
-        waited = True
         time.sleep(_SPAWN_POLL_S)
-    if waited:
-        _kill_owned_groups(stop)
+    # Always: a spawn elsewhere may have forked and registered during the first look,
+    # so that this check found nothing under way and nothing was waited for.
+    _kill_owned_groups(stop)
 
 
 def _spawns_elsewhere(stop: _GroupStop, me: int) -> bool:
