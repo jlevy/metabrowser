@@ -81,7 +81,9 @@ Both are named Metabrowser:
 | Bundle identifier | `io.github.jlevy.metabrowser.dev` | `io.github.jlevy.metabrowser` |
 | Icon | `Resources/AppIcon-Dev.icns`, the canary icon with a gold rim | `Resources/AppIcon.icns`, the published icon |
 | About box | “Development build · 0.1.0 (2476) · 3c7b937” | “Release · 0.1.0 (2476) · 3c7b937” |
-| Server logs | `~/Library/Logs/Metabrowser Dev/` | `~/Library/Logs/Metabrowser/` |
+| Server logs | `~/Library/Logs/Metabrowser/` | the same folder |
+| App data (the saved session) | `~/Library/Application Support/Metabrowser/` | the same folder |
+| Settings and recent folders | user defaults `io.github.jlevy.metabrowser.dev`, and macOS’s recent documents for that identifier | the same, for `io.github.jlevy.metabrowser` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<version>-arm64.dmg` | `build/Metabrowser-<version>-arm64.dmg` |
 
@@ -118,8 +120,16 @@ LaunchServices registration, and a URL scheme claimed twice has no defined targe
 One name has a cost: both bundles are `Metabrowser.app`, so they cannot both sit in
 `/Applications` under that name.
 A development build normally runs from `build/dev/`, and the canary icon in the Dock and
-the About box’s first line tell it from an installed release; their logs and state go to
-separate folders, keyed by the variant.
+the About box’s first line tell it from an installed release.
+Both keep their files in folders named for the app, Metabrowser, so they write one logs
+folder and restore the same windows, while their settings and recent folders stay apart
+by bundle identifier (decided 2026-11-12). Two copies can run at once, a development
+build beside a release or two development builds from different checkouts: each claims a
+folder’s log before its server writes there, so a second copy serving that folder writes
+a log of its own (`ServerLogLease`); each save of the session replaces the whole file,
+so the last copy to save wins and no file mixes two (`SessionStore`); and nothing on
+disk names a server to stop, so no copy can stop another’s
+([After a Crash](#after-a-crash)).
 
 `scripts/build-icon.sh` regenerates both icons from the masters in `AppIcon/`; see
 [AppIcon/README.md](AppIcon/README.md).
@@ -141,18 +151,18 @@ last it runs the gate’s Node tests (`webkit-gate/*.test.mjs`), which need no b
 
 Where to look while it runs:
 
-- **Server log:** `~/Library/Logs/Metabrowser Dev/<folder>-<hash>.log` for a development
-  build, and `~/Library/Logs/Metabrowser/` for a release, mode 0600. It holds the
-  server’s output, with the app’s lifecycle events interleaved: start command, pid,
-  announced URL, readiness time, stop, and exit status.
-  File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens the folder.
-  A second running copy of the same variant (a development build from another checkout)
-  that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead, so neither
-  window shows the other server’s output (`ServerLogLease`). A folder opened again while
-  the server of its closed windows is still stopping takes the first of those names that
-  is free, then `<folder>-<hash>.app-<pid>-2.log` and on, so two servers never write one
-  log. Each launch claims its log before it spawns (`FolderLog`): a claim that fails
-  fails the launch, the window says why, and Retry claims again.
+- **Server log:** `~/Library/Logs/Metabrowser/<folder>-<hash>.log`, for a development
+  build and a release alike, mode 0600. It holds the server’s output, with the app’s
+  lifecycle events interleaved: start command, pid, announced URL, readiness time, stop,
+  and exit status. File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens
+  the folder. A second running copy (a release, or a development build from another
+  checkout) that serves the same folder writes `<folder>-<hash>.app-<pid>.log` instead,
+  so neither window shows the other server’s output (`ServerLogLease`). A folder opened
+  again while the server of its closed windows is still stopping takes the first of
+  those names that is free, then `<folder>-<hash>.app-<pid>-2.log` and on, so two
+  servers never write one log.
+  Each launch claims its log before it spawns (`FolderLog`): a claim that fails fails
+  the launch, the window says why, and Retry claims again.
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.
@@ -161,18 +171,20 @@ Where to look while it runs:
 - **Start over:** `defaults delete io.github.jlevy.metabrowser.dev` forgets the saved
   runtime and the window preferences, so the next launch runs discovery again.
   Each variant has its own defaults domain, named by its bundle identifier.
-  Deleting `~/Library/Application Support/io.github.jlevy.metabrowser.dev/session.json`
-  forgets the last session, and File > Open Recent > Clear Menu the recent folders,
-  which macOS keeps.
+  Deleting `~/Library/Application Support/Metabrowser/session.json` forgets the last
+  session, a release’s too, since both variants share it, and File > Open Recent > Clear
+  Menu the recent folders, which macOS keeps for each bundle identifier.
 
 ### Checking by Hand
 
 What the unit tests cannot reach, against a built development app.
-Quit any other copy of the development build first: both have one bundle identifier.
+Quit any other copy of Metabrowser first, a release included: another development build
+has the same bundle identifier, and every copy writes the same logs folder and saved
+session.
 
 ```shell
 app="$PWD/apps/macos/build/dev/Metabrowser.app"
-logs="$HOME/Library/Logs/Metabrowser Dev"
+logs="$HOME/Library/Logs/Metabrowser"
 folder="$(mktemp -d)"
 ```
 
@@ -214,7 +226,7 @@ Set `APP` to the development build and make some folders:
 
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
-LOGS="$HOME/Library/Logs/Metabrowser Dev"
+LOGS="$HOME/Library/Logs/Metabrowser"
 mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
@@ -288,14 +300,16 @@ scripts/check-setup-flows.sh disk-image
 ```
 
 Each run copies the app under its own bundle identifier,
-`io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
-saved runtime, recents, saved session, or LaunchServices entry, and opens it with a
-scratch `HOME`. A scratch `HOME` hides only what is under it: discovery and the
-first-run screen still look in `/opt/homebrew/bin`, `/usr/local/bin`, and on the login
-shell’s `PATH`, which with the scratch `HOME` is the system’s own (`/etc/paths` and
-`/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
-found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
-`no-metab` cannot run, and `old-metab` covers the screen with uv.
+`io.github.jlevy.metabrowser.setupcheck`, and its own name, Metabrowser Setup Check, so
+it never touches the development app’s saved runtime, recents, or LaunchServices entry,
+nor the saved session the development app and a release share: the app names its folders
+for itself, under the account’s home whatever `HOME` says.
+It opens the copy with a scratch `HOME`. A scratch `HOME` hides only what is under it:
+discovery and the first-run screen still look in `/opt/homebrew/bin`, `/usr/local/bin`,
+and on the login shell’s `PATH`, which with the scratch `HOME` is the system’s own
+(`/etc/paths` and `/etc/paths.d`). So the script refuses to run where a `metab` in any
+of those would be found, and `no-metab` also where a uv in one would; on a Mac with
+Homebrew’s uv, `no-metab` cannot run, and `old-metab` covers the screen with uv.
 It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
 this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
 copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
@@ -975,12 +989,14 @@ Terminal launch.
 
 - **The last session comes back.** The app saves its folder windows, front window first,
   with each window’s tabs, shown tab, and frame and each tab’s folder and page, to
-  `~/Library/Application Support/<bundle identifier>/session.json`, mode 0600 in a 0700
-  folder, half a second after a window opens or closes, a tab is shown, or a page loads,
-  and once more at quit, before the servers stop.
-  A save writes a private temporary file beside the session and renames it over the old
-  one (`SessionStore`), so a launch after a crash finds the previous session or the new
-  one, never part of one.
+  `~/Library/Application Support/Metabrowser/session.json`, mode 0600 in a 0700 folder,
+  half a second after a window opens or closes, a tab is shown, or a page loads, and
+  once more at quit, before the servers stop.
+  A development build and a release share the file, so either restores the windows the
+  other saved last. A save writes a private temporary file beside the session and renames
+  it over the old one (`SessionStore`), so a launch after a crash finds the previous
+  session or the new one, never part of one, and two copies saving at once leave one
+  copy’s whole session, the last saved.
   The next launch reads the file once, through one descriptor: a regular file, not a
   link or a pipe, of at most 1 MB however it changes meanwhile.
   It rebuilds at most the front 20 windows and 50 tabs, each window keeping the tab it

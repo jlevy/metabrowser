@@ -3,10 +3,12 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// Two copies of the app with one bundle identifier (development builds from two
-/// checkouts) can serve the same folder at once. Each claims the folder's log for as long
-/// as it serves the folder, and a copy that finds it claimed writes a log of its own, so
-/// neither error view shows the other server's output.
+/// Two copies of the app running at once (a development build and a release, which share
+/// `~/Library/Logs/Metabrowser/`, or development builds from two checkouts) can serve the
+/// same folder at once. Each claims the folder's log for as long as it serves the folder,
+/// and a copy that finds it claimed writes a log of its own, so neither error view shows
+/// the other server's output. The claim is a `flock` on a file in that folder, so it
+/// holds between copies whatever their bundles.
 @Suite struct LogLeaseTests {
     private let root = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
 

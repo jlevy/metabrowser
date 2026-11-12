@@ -285,14 +285,16 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 }
 
-/// The saved session: one JSON file, owner-only, in the app's own Application Support
-/// folder, which the bundle identifier names, so each variant keeps its own.
+/// The saved session: one JSON file, owner-only, in the app's Application Support folder
+/// (`AppIdentity.supportDirectory`), which both variants share.
 ///
-/// A save publishes atomically: it writes a private temporary file beside the session
-/// and renames it over the old one, so a reader, the next launch after a crash
-/// included, finds the previous session or the new one and never part of one. It
-/// promises atomic visibility, not durability: a power loss may lose the last save,
-/// which costs only the windows of that moment.
+/// A save publishes atomically: it writes a private temporary file beside the session,
+/// named uniquely, and renames it over the old one, so a reader, the next launch after a
+/// crash included, finds the previous session or the new one and never part of one.
+/// Two copies of the app running at once, a development build and a release or two
+/// development builds, therefore never mix their saves: the last one wins. It promises
+/// atomic visibility, not durability: a power loss may lose the last save, which costs
+/// only the windows of that moment.
 public nonisolated struct SessionStore: Sendable {
     public static let fileName = "session.json"
     /// A session of a hundred tabs is about 20 KB; a file past this is not one.

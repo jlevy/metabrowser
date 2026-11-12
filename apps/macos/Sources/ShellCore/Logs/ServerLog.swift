@@ -22,8 +22,8 @@ public nonisolated struct ServerLogError: Error, Equatable, CustomStringConverti
     public var description: String { "could not \(operation) the server log \(path): \(reason)" }
 }
 
-/// One log per served folder, mode 0600, in the variant's logs folder
-/// (`AppIdentity.logsDirectory`): `~/Library/Logs/Metabrowser/` for a release.
+/// One log per served folder, mode 0600, in the app's logs folder
+/// (`AppIdentity.logsDirectory`): `~/Library/Logs/Metabrowser/` for either variant.
 ///
 /// The child writes its stderr here itself, the app appends its stdout as it reads it
 /// (see `SpawnedProcess`), and the supervisor's lifecycle events go between them, so one

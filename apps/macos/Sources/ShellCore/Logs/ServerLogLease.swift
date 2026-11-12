@@ -4,8 +4,9 @@ import Foundation
 /// One folder session's claim on a folder's server log, held for as long as it serves the
 /// folder, which outlasts its windows while its server stops.
 ///
-/// Two copies of the app with one bundle identifier, such as development builds run from
-/// two checkouts, share a logs folder and can serve the same folder at once. Both writing
+/// Two copies of the app running at once, a development build and a release or
+/// development builds run from two checkouts, share the logs folder
+/// (`AppIdentity.logsDirectory`) and can serve the same folder at once. Both writing
 /// one log would mix their servers' output, and each error view, which reads its server's
 /// part of the log, would show the other's lines. So the first copy claims the folder's
 /// log, `<folder>-<hash>.log`, and a copy that finds it claimed writes

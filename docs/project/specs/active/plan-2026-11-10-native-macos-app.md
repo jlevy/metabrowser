@@ -1,6 +1,6 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-11)
+**Date:** 2026-11-10 (last updated 2026-11-12)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -179,6 +179,14 @@ One command produces a downloadable release, adapted from the sister app’s pip
   Amended 2026-11-11 at the user’s request: both are named Metabrowser, and the canary
   icon and the About box’s first line (“Development build” or “Release”, then the
   version, build, and commit) tell them apart.
+  Amended 2026-11-12 at the user’s request (`mb-d71s`): both keep their files in folders
+  named Metabrowser, server logs in `~/Library/Logs/Metabrowser/`, Apple’s place for
+  them, which Console.app lists, and the saved session in
+  `~/Library/Application Support/Metabrowser/` instead of a folder named by the bundle
+  identifier, so a development build and a release restore the same windows.
+  Their settings and recent folders stay apart by bundle identifier.
+  Files saved by earlier, unreleased builds in `Metabrowser Dev/` or the bundle
+  identifier’s folder are not moved.
   One name has a cost: the two bundles cannot both sit in `/Applications` under it, so a
   development build normally runs from `build/dev/`. The app’s README
   ([Variants](../../../../apps/macos/README.md#variants)) has the details.
