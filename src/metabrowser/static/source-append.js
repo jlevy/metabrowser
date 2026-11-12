@@ -13,8 +13,110 @@
 //    slow to use: at 128 KiB a 4 MiB source file took 31 clicks. Doubling per
 //    click reaches a large file in a handful of clicks while keeping the first
 //    one small enough to open promptly.
+//
+// 3. Appending in text nodes of at most 64 KiB. One node per chunk was fine in
+//    Chrome and five times slower in WebKit, which lays out a text node of
+//    millions of characters slowly; the same text in nodes of the size WebKit's
+//    HTML parser makes lays out there in about the time Chrome takes.
 
 ((global) => {
+  /**
+   * Longest text node an append creates, in UTF-16 code units, the unit a DOM
+   * text node's length counts: 65,536, the size WebKit's HTML parser splits text
+   * into (Chrome's does not split). Loading a 16 MiB source file in this view,
+   * 2026-11-12, M1 Pro, medians of five back-to-back rounds: the 8 MiB click took
+   * 8,063 ms in WebKit and 1,633 ms in Chrome as one node, and 1,794 ms against
+   * 1,584 ms in nodes of this size. docs/large-content-rendering.md, "WebKit lays
+   * out a long text node slowly", has the method and the other clicks.
+   */
+  const TEXT_NODE_MAX_LENGTH = 65_536;
+
+  // How far either side of a cut inside a long line the grapheme search looks.
+  // A cluster longer than this, which no real text has, is cut at a code point.
+  const GRAPHEME_WINDOW = 32;
+
+  /** @type {Intl.Segmenter | null | undefined} */
+  let graphemes;
+
+  /** @param {number} code */
+  const isHighSurrogate = (code) => code >= 0xd800 && code <= 0xdbff;
+  /** @param {number} code */
+  const isLowSurrogate = (code) => code >= 0xdc00 && code <= 0xdfff;
+
+  /**
+   * Where to cut a line longer than the bound, at or before `end`: the last
+   * grapheme boundary when the engine can find one, so an accent, an emoji
+   * sequence, or a flag is never drawn in two pieces, and otherwise the last
+   * code point boundary that does not separate CR from LF.
+   *
+   * @param {string} text
+   * @param {number} start Where the piece starts; the cut is after it.
+   * @param {number} end The furthest cut the bound allows.
+   */
+  function cutInsideLine(text, start, end) {
+    if (graphemes === undefined) {
+      graphemes =
+        typeof Intl === "object" && typeof Intl.Segmenter === "function"
+          ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+          : null;
+    }
+    if (graphemes) {
+      const from = Math.max(start, end - GRAPHEME_WINDOW);
+      const nearby = text.slice(from, Math.min(text.length, end + GRAPHEME_WINDOW));
+      let best = 0;
+      for (const { index } of graphemes.segment(nearby)) {
+        if (index > end - from) {
+          break;
+        }
+        best = index;
+      }
+      // The window's own start is no evidence of a boundary, so it does not count.
+      if (best > 0) {
+        return from + best;
+      }
+    }
+    let cut = end;
+    if (
+      cut - 1 > start &&
+      isLowSurrogate(text.charCodeAt(cut)) &&
+      isHighSurrogate(text.charCodeAt(cut - 1))
+    ) {
+      cut -= 1;
+    }
+    if (cut - 1 > start && text.charCodeAt(cut - 1) === 0x0d && text.charCodeAt(cut) === 0x0a) {
+      cut -= 1;
+    }
+    return cut;
+  }
+
+  /**
+   * Split text into pieces of at most `limit` code units that join back to it.
+   * A piece ends at its last newline when it holds one, so ordinary source
+   * code is split only between lines; a longer line is cut by cutInsideLine.
+   *
+   * @param {string} text
+   * @param {number} [limit]
+   * @returns {string[]}
+   */
+  function textPieces(text, limit = TEXT_NODE_MAX_LENGTH) {
+    /** @type {string[]} */
+    const pieces = [];
+    let start = 0;
+    while (text.length - start > limit) {
+      const end = start + limit;
+      // Searched within the window only: lastIndexOf on the whole text would scan a
+      // long line back to its start on every piece.
+      const newline = text.slice(start, end).lastIndexOf("\n");
+      const cut = newline >= 0 ? start + newline + 1 : cutInsideLine(text, start, end);
+      pieces.push(text.slice(start, cut));
+      start = cut;
+    }
+    if (start < text.length) {
+      pieces.push(start === 0 ? text : text.slice(start));
+    }
+    return pieces;
+  }
+
   /**
    * Bytes the next Load more should request.
    *
@@ -123,9 +225,14 @@
     if (code.classList?.contains("hljs")) {
       return false;
     }
-    // A text node, never innerHTML: the chunk is file content, and appending
-    // it as markup would both corrupt the view and execute nothing good.
-    code.appendChild(document.createTextNode(text));
+    // Text nodes, never innerHTML: the chunk is file content, and appending
+    // it as markup would both corrupt the view and execute nothing good. They
+    // go in as one fragment, so the tree changes once.
+    const fragment = document.createDocumentFragment();
+    for (const piece of textPieces(text)) {
+      fragment.appendChild(document.createTextNode(piece));
+    }
+    code.appendChild(fragment);
     return true;
   }
 
@@ -199,6 +306,7 @@
   }
 
   /** @type {Record<string, unknown>} */ (global).MetabrowserSourceAppend = Object.freeze({
+    TEXT_NODE_MAX_LENGTH,
     appendSourceText,
     commitChunkCache,
     nextCacheValue,
@@ -206,5 +314,6 @@
     requestOwnsPreview,
     syncLoadMoreFooter,
     syncTruncationWarning,
+    textPieces,
   });
 })(typeof window !== "undefined" ? window : globalThis);

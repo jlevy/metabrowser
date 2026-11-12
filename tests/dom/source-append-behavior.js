@@ -28,16 +28,22 @@ function makeNode(tag, className) {
     tag,
     children: [],
     text: "",
+    // Each call is one insertion into the live tree, which is what the browser styles
+    // and lays out; a fragment's nodes arrive in one.
+    insertions: 0,
     classList: {
       contains: (name) => classes.has(name),
       add: (name) => classes.add(name),
     },
     appendChild(node) {
-      this.children.push(node);
-      if (typeof node === "string") {
-        this.text += node;
-      } else if (node && typeof node.data === "string") {
-        this.text += node.data;
+      this.insertions += 1;
+      for (const child of node?.fragment ? node.children.splice(0) : [node]) {
+        this.children.push(child);
+        if (typeof child === "string") {
+          this.text += child;
+        } else if (child && typeof child.data === "string") {
+          this.text += child.data;
+        }
       }
       return node;
     },
@@ -77,6 +83,14 @@ const sandbox = {
   console,
   document: {
     createTextNode: (data) => ({ data }),
+    createDocumentFragment: () => ({
+      fragment: true,
+      children: [],
+      appendChild(node) {
+        this.children.push(node);
+        return node;
+      },
+    }),
   },
   Math,
   Number,
@@ -153,6 +167,186 @@ check(
 }
 
 check("a missing root refuses", api.appendSourceText(null, "x") === false);
+
+// ── Text nodes of at most 64 KiB ──────────────────────────────────
+//
+// WebKit lays out one text node of millions of characters several times slower than
+// Chrome, and text nodes of the HTML parser's size faster. An append therefore goes in
+// as nodes of at most TEXT_NODE_MAX_LENGTH UTF-16 code units, which is what a DOM text
+// node's length counts, not bytes.
+const LIMIT = api.TEXT_NODE_MAX_LENGTH;
+check("the bound is the HTML parser's text node size", LIMIT === 65_536, String(LIMIT));
+
+const lengths = (pieces) => JSON.stringify(Array.from(pieces, (piece) => piece.length));
+const isHigh = (code) => code >= 0xd800 && code <= 0xdbff;
+const isLow = (code) => code >= 0xdc00 && code <= 0xdfff;
+
+/** Every invariant a split owes the view, whatever the text. */
+function wellSplit(name, text, pieces, limit = LIMIT) {
+  check(`${name}: the pieces join to the text`, pieces.join("") === text);
+  check(
+    `${name}: every piece is non-empty and within the bound`,
+    pieces.every((piece) => piece.length > 0 && piece.length <= limit),
+    lengths(pieces),
+  );
+  for (let index = 1; index < pieces.length; index += 1) {
+    const before = pieces[index - 1];
+    const after = pieces[index];
+    check(
+      `${name}: piece ${index} does not split a surrogate pair`,
+      !(isHigh(before.charCodeAt(before.length - 1)) && isLow(after.charCodeAt(0))),
+    );
+    check(
+      `${name}: piece ${index} does not split a CRLF`,
+      !(before.endsWith("\r") && after.startsWith("\n")),
+    );
+  }
+}
+
+check("empty text has no pieces", api.textPieces("").length === 0);
+{
+  const text = "x".repeat(LIMIT);
+  const pieces = api.textPieces(text);
+  check("exactly 64 KiB is one node", lengths(pieces) === `[${LIMIT}]`, lengths(pieces));
+}
+{
+  const text = "x".repeat(LIMIT + 1);
+  const pieces = api.textPieces(text);
+  wellSplit("one code unit past 64 KiB", text, pieces);
+  check("one code unit past 64 KiB is two nodes", lengths(pieces) === `[${LIMIT},1]`);
+}
+{
+  // Source code: every node ends a line, so no line is laid out across two nodes and
+  // nothing a line holds is shaped across a node boundary.
+  const text = `${"x".repeat(99)}\n`.repeat(2_000);
+  const pieces = api.textPieces(text);
+  wellSplit("lines", text, pieces);
+  check(
+    "lines: every node ends at a newline",
+    pieces.every((piece) => piece.endsWith("\n")),
+    lengths(pieces),
+  );
+  check("lines: nodes are as full as whole lines allow", pieces[0].length === 65_500);
+}
+{
+  const text = `${"x".repeat(LIMIT - 1)}\n${"y".repeat(10)}`;
+  const pieces = api.textPieces(text);
+  check(
+    "a newline that is the 65,536th unit ends a full node",
+    lengths(pieces) === `[${LIMIT},10]`,
+    lengths(pieces),
+  );
+}
+{
+  // Multi-byte characters: 65,537 CJK characters are 196,611 UTF-8 bytes and 65,537
+  // code units, and the bound counts code units.
+  const text = "漢".repeat(LIMIT + 1);
+  const pieces = api.textPieces(text);
+  wellSplit("CJK", text, pieces);
+  check("CJK splits by code units, not bytes", lengths(pieces) === `[${LIMIT},1]`);
+}
+{
+  const text = `${"a".repeat(LIMIT - 1)}😀b`;
+  const pieces = api.textPieces(text);
+  wellSplit("a surrogate pair across the bound", text, pieces);
+  check(
+    "a surrogate pair across the bound moves whole to the next node",
+    lengths(pieces) === `[${LIMIT - 1},3]` && pieces[1].startsWith("😀"),
+    lengths(pieces),
+  );
+}
+{
+  const text = "😀".repeat(LIMIT);
+  const pieces = api.textPieces(text);
+  wellSplit("surrogate pairs only", text, pieces);
+  check(
+    "surrogate pairs fill a node exactly when they fit",
+    lengths(pieces) === `[${LIMIT},${LIMIT}]`,
+  );
+}
+{
+  const text = `${"a".repeat(LIMIT - 1)}\r\nb`;
+  const pieces = api.textPieces(text);
+  wellSplit("a CRLF across the bound", text, pieces);
+  check(
+    "a CRLF across the bound moves whole to the next node",
+    lengths(pieces) === `[${LIMIT - 1},3]`,
+    lengths(pieces),
+  );
+}
+{
+  const text = `${"a".repeat(LIMIT - 10)}\r\n${"b".repeat(100)}`;
+  const pieces = api.textPieces(text);
+  check(
+    "a CRLF inside the bound ends its node",
+    lengths(pieces) === `[${LIMIT - 8},100]` && pieces[0].endsWith("\r\n"),
+    lengths(pieces),
+  );
+}
+{
+  // A line longer than the bound is cut inside it, at a grapheme boundary, as WebKit's
+  // parser cuts: a combining mark, an emoji sequence, or a flag stays whole.
+  const graphemes = [
+    ["a combining accent", "é"],
+    ["a ZWJ family", "👩‍👩‍👧‍👦"],
+    ["a flag", "🇺🇸"],
+    ["a skin-tone emoji", "👍🏽"],
+  ];
+  for (const [label, cluster] of graphemes) {
+    for (let shift = 1; shift < cluster.length; shift += 1) {
+      const text = `${"a".repeat(LIMIT - shift)}${cluster}z`;
+      const pieces = api.textPieces(text);
+      wellSplit(`${label} ${shift} units before the bound`, text, pieces);
+      check(
+        `${label} ${shift} units before the bound moves whole to the next node`,
+        pieces[0].length === LIMIT - shift && pieces[1].startsWith(cluster),
+        lengths(pieces),
+      );
+    }
+  }
+}
+{
+  // Random text against small bounds, so every kind of boundary falls on every
+  // position: lines, CRLF, lone CR, surrogate pairs, and clusters longer than the
+  // bound, which must still split rather than stall.
+  let state = 0x9e3779b9;
+  const random = () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state;
+  };
+  const alphabet = ["a", "b", " ", "\n", "\r\n", "\r", "😀", "é", "漢", "👩‍👧", "🇺🇸"];
+  for (let trial = 0; trial < 400; trial += 1) {
+    const parts = [];
+    const count = 1 + (random() % 60);
+    for (let index = 0; index < count; index += 1) {
+      parts.push(alphabet[random() % alphabet.length]);
+    }
+    const text = parts.join("");
+    const limit = 2 + (random() % 12);
+    wellSplit(
+      `random text ${trial} at a bound of ${limit}`,
+      text,
+      api.textPieces(text, limit),
+      limit,
+    );
+  }
+}
+{
+  const { doc, code } = makeDocument();
+  const text = `${"x".repeat(99)}\n`.repeat(2_000);
+  check("a long append reports success", api.appendSourceText(doc, text) === true);
+  check("a long append keeps every character", code.text === text);
+  check(
+    "a long append lands as nodes within the bound",
+    code.children.length === 4 && code.children.every((child) => child.data.length <= LIMIT),
+    lengths(code.children.map((child) => child.data)),
+  );
+  check("a long append is one insertion", code.insertions === 1, String(code.insertions));
+}
 
 // ── Truncation banner ─────────────────────────────────────────────
 //

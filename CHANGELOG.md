@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A source file’s **Load more** is faster in Safari and other WebKit browsers.
+  The text it loads goes into the page in pieces of at most 64 KiB, the size WebKit’s
+  own HTML parser makes, and on a 16 MiB file each click takes WebKit a quarter to two
+  fifths of the time it did.
+  In those browsers the line numbers after **Load more** are also right again: numbers
+  left over from the opening window no longer repeat after the new ones, and a line
+  anchor’s highlight stays on its line.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
