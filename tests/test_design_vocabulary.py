@@ -1070,6 +1070,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "agent_log/index.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
     "github/pulls-panel.js": "marks a chip of its groupHtml in place",
+    "shell-keymap.js": "reads a filter menu's checked row to focus it, and renders none",
 }
 _TOGGLE_ARIA = re.compile(
     r"""aria-pressed|aria-checked|radiogroup|menuitemradio|menuitemcheckbox"""
