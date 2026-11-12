@@ -693,8 +693,9 @@ async def start_process_group(
     """
 
     prepare_child_listing()
-    # Here, on the spawning thread, never in a stop, which may be a signal handler.
-    launched = _launched_files(program, cwd=cwd, env=env)
+    # Before admission and off the event loop: it reads the file system and may run
+    # ``xcrun``, which a stop, possibly in a signal handler, never does.
+    launched = await asyncio.to_thread(_launched_files, program, cwd=cwd, env=env)
     stop = _GROUP_STOP
     me = threading.get_ident()
     with stop.lock:
@@ -722,21 +723,28 @@ def _launched_files(
     which the child enters before it executes; a bare name against each directory of
     ``PATH`` in *env* (or this process's) in turn, each of which may itself be relative
     to *cwd*. The first executable file wins. Empty when none is found, and the spawn is
-    then known only to the registry.
+    then known only to the registry. The current directory is asked for only when a
+    relative candidate needs it and no *cwd* is given: it may have been removed, which
+    stops neither an absolute launch nor this.
 
     On macOS a launch from ``/usr/bin`` may be an Apple developer-tool shim, as
     ``/usr/bin/git`` is: within milliseconds it executes the tool of the selected
     developer directory in the same process, which the kernel then names instead. That
-    tool is added as ``xcrun`` finds it.
+    tool is added as ``xcrun`` finds it (:func:`_apple_shim_tool`).
     """
 
-    base = os.fspath(cwd) if cwd is not None else os.getcwd()
+    base = os.fspath(cwd) if cwd is not None else None
     if os.path.dirname(program):
         candidates = [program]
     else:
         candidates = [os.path.join(directory, program) for directory in os.get_exec_path(env)]
     for candidate in candidates:
-        path = os.path.join(base, candidate)
+        if not os.path.isabs(candidate) and base is None:
+            try:
+                base = os.getcwd()
+            except OSError:
+                continue
+        path = candidate if base is None else os.path.join(base, candidate)
         if os.path.isfile(path) and os.access(path, os.X_OK):
             launched = os.path.realpath(path)
             if sys.platform != "darwin" or os.path.dirname(launched) != _APPLE_SHIM_DIR:
@@ -748,18 +756,34 @@ def _launched_files(
 
 
 # Where Apple's developer-tool shims are, and how long ``xcrun`` gets to name the tool one
-# runs. It answered in about 10 ms (2026-11-12); the bound covers only one that hangs.
+# runs. It answered in about 10 ms (2026-11-12), on a worker thread, once per spawn of a
+# shim with no ``DEVELOPER_DIR``; the bound covers only one that hangs.
 _APPLE_SHIM_DIR: Final[str] = "/usr/bin"
 _XCRUN_TIMEOUT_S: Final[float] = 2.0
 
 
-@cache
+# Answers ``xcrun`` gave for an explicit developer directory, which do not change.
+_SHIM_TOOLS: dict[tuple[str, str], str] = {}
+
+
 def _apple_shim_tool(name: str, developer_dir: str | None) -> str | None:
     """The tool Apple's ``/usr/bin/<name>`` shim runs, as ``xcrun`` finds it, or ``None``.
 
-    Cached for the process, per developer directory, as :func:`git_executable` is.
+    With no ``DEVELOPER_DIR`` the shim runs the system's selection, which
+    ``xcode-select -s`` can change while the server runs, so that is asked each time.
+    An explicit directory's answer is kept once found. A failure is never kept, so a
+    later spawn can still learn the tool.
     """
 
+    if developer_dir is not None and (name, developer_dir) in _SHIM_TOOLS:
+        return _SHIM_TOOLS[name, developer_dir]
+    tool = _xcrun_find(name, developer_dir)
+    if tool is not None and developer_dir is not None:
+        _SHIM_TOOLS[name, developer_dir] = tool
+    return tool
+
+
+def _xcrun_find(name: str, developer_dir: str | None) -> str | None:
     env = {key: value for key, value in os.environ.items() if key != "DEVELOPER_DIR"}
     if developer_dir is not None:
         env["DEVELOPER_DIR"] = developer_dir

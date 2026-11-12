@@ -42,7 +42,7 @@ from metabrowser.git.process import (
     spawn_git_process,
 )
 from tests.child_io import read_line
-from tests.required_tools import needs_git
+from tests.required_tools import needs_git, require_git
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX-only"),
@@ -731,9 +731,9 @@ def test_a_child_reaped_after_the_listing_is_never_signalled(
     holds the child (``returncode`` not yet set, or set) or only the kernel listed it.
     """
 
-    program = shutil.which("sleep")
-    assert program is not None
-    child = subprocess.Popen([program, "60"], start_new_session=True)
+    # A child that sleeps, as this interpreter; no tool to look up.
+    program = sys.executable
+    child = subprocess.Popen([program, "-c", "import time; time.sleep(60)"], start_new_session=True)
     pid = child.pid
     stop = process_module._GROUP_STOP
     # The program, as a stop knew it before and as it knows it now.
@@ -788,7 +788,7 @@ def _git_on_path(
 
 
 def _copy_of_git(tmp_path: Path, name: str) -> Path:
-    real = os.path.realpath(shutil.which("git") or "git")
+    real = os.path.realpath(require_git())
     copy = tmp_path / "real" / name
     copy.parent.mkdir(exist_ok=True)
     shutil.copyfile(real, copy)
@@ -848,7 +848,7 @@ def test_a_stop_knows_git_launched_by_a_relative_path(
 ) -> None:
     """A relative ``PATH`` entry gives a relative launch path, resolved in Git's cwd."""
 
-    real = Path(os.path.realpath(shutil.which("git") or "git"))
+    real = Path(os.path.realpath(require_git()))
     monkeypatch.chdir(tmp_path)
     _git_on_path(tmp_path, monkeypatch, "bin", real)
     assert process_module.git_executable() == os.path.join("bin", "git")
@@ -881,10 +881,8 @@ def test_a_stop_leaves_an_unrelated_program_of_the_same_name(
 
 
 @pytest.mark.usefixtures("fresh_stop")
-def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """gh's spawn records the file its launch path resolves to, as Git's does."""
-
-    from metabrowser.builtin_plugins.github import gh as gh_module
+def _gh_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Put first on ``PATH`` a ``gh`` that links to a script of another name; return it."""
 
     target = tmp_path / "real" / "gh2.50"
     target.parent.mkdir()
@@ -894,7 +892,43 @@ def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.Mon
     bin_dir.mkdir()
     (bin_dir / "gh").symlink_to(target)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return target
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_gh_is_known_by_the_file_it_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """gh's spawn records the file its launch path resolves to, as Git's does."""
+
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    target = _gh_link(tmp_path, monkeypatch)
     asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
+    assert os.path.realpath(target) in process_module._GROUP_STOP.programs
+
+
+@pytest.mark.usefixtures("fresh_stop")
+def test_an_absolute_launch_needs_no_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The server's current directory may be removed under it.
+
+    A launch by an absolute path still runs, inheriting that directory, as
+    ``subprocess`` allows; so its identity must not need the directory either. gh's
+    ordinary spawn passes no cwd. Before, the lookup asked for the current directory
+    first and the spawn failed with it.
+    """
+
+    from metabrowser.builtin_plugins.github import gh as gh_module
+
+    target = _gh_link(tmp_path, monkeypatch)
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    monkeypatch.chdir(gone)
+    gone.rmdir()
+    with pytest.raises(FileNotFoundError):
+        os.getcwd()
+    completed = asyncio.run(gh_module._run(["--version"], timeout_s=20, max_bytes=1 << 16))
+    assert completed.returncode == 0
     assert os.path.realpath(target) in process_module._GROUP_STOP.programs
 
 
@@ -909,7 +943,11 @@ def _apple_git() -> str | None:
     return found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else None
 
 
-@pytest.mark.skipif(_apple_git() is None, reason="Apple's git shim is macOS-only")
+@pytest.mark.macos_tier
+@pytest.mark.skipif(
+    _apple_git() is None,
+    reason="Apple's git shim is macOS's, and needs Xcode or its Command Line Tools",
+)
 @pytest.mark.usefixtures("fresh_stop", "fresh_git_lookup")
 def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -946,3 +984,68 @@ def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
         return killed
 
     assert asyncio.run(asyncio.wait_for(scenario(), timeout=50))
+
+
+class _FakeXcrun:
+    """``subprocess.run`` with ``/usr/bin/xcrun`` answering from a script, in turn.
+
+    An answer is the path ``xcrun --find`` prints, or ``None`` for a lookup that times
+    out. Any other command runs for real.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, answers: list[Path | None]) -> None:
+        self.answers = answers
+        self.calls = 0
+        real_run = subprocess.run
+
+        def run(args: Any, *rest: Any, **kwargs: Any) -> Any:
+            if not (isinstance(args, list) and args[:1] == ["/usr/bin/xcrun"]):
+                return real_run(args, *rest, **kwargs)
+            self.calls += 1
+            answer = self.answers.pop(0)
+            if answer is None:
+                raise subprocess.TimeoutExpired(args, 2.0)
+            return subprocess.CompletedProcess(args, 0, stdout=f"{answer}\n", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", run)
+        # Whatever an earlier lookup kept, this test starts without it.
+        cache_clear = getattr(process_module._apple_shim_tool, "cache_clear", None)
+        if callable(cache_clear):
+            cache_clear()
+        monkeypatch.setattr(process_module, "_SHIM_TOOLS", {}, raising=False)
+
+
+def _developer_git(tmp_path: Path, name: str) -> Path:
+    git = tmp_path / name / "usr" / "bin" / "git"
+    git.parent.mkdir(parents=True)
+    git.write_text("", encoding="utf-8")
+    return git
+
+
+def test_the_shim_tool_follows_a_changed_default_developer_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no ``DEVELOPER_DIR``, the shim runs the system's selection, which
+    ``xcode-select -s`` may change while the server runs; each lookup asks again.
+    Before, the first answer was kept for the process."""
+
+    first, second = _developer_git(tmp_path, "A"), _developer_git(tmp_path, "B")
+    _FakeXcrun(monkeypatch, [first, second])
+    assert process_module._apple_shim_tool("git", None) == os.path.realpath(first)
+    assert process_module._apple_shim_tool("git", None) == os.path.realpath(second)
+
+
+def test_a_failed_shim_lookup_is_tried_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lookup that times out is not kept, so a later spawn can still know the tool.
+    An explicit developer directory's answer, once found, is kept. Before, the failure
+    was kept for the process."""
+
+    tool = _developer_git(tmp_path, "Explicit")
+    xcrun = _FakeXcrun(monkeypatch, [None, tool])
+    developer_dir = str(tmp_path / "Explicit")
+    assert process_module._apple_shim_tool("git", developer_dir) is None
+    assert process_module._apple_shim_tool("git", developer_dir) == os.path.realpath(tool)
+    assert process_module._apple_shim_tool("git", developer_dir) == os.path.realpath(tool)
+    assert xcrun.calls == 2
