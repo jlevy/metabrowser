@@ -15,6 +15,13 @@ note() {
   echo "note: $*" >&2
 }
 
+# Runs "$@" with its output held back, and stops with that output if it fails, so a
+# chatty tool stays quiet without hiding why it failed.
+quietly() {
+  local output
+  output="$("$@" 2>&1)" || die "$1 failed: $output"
+}
+
 # The variant decides the bundle's identity. Two copies with one bundle identifier share
 # user defaults, privacy (TCC) grants, and LaunchServices registration, and a URL scheme
 # claimed twice has no defined target, so a development build never takes the release

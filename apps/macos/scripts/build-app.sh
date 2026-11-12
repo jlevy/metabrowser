@@ -39,7 +39,9 @@ done
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 lipo -create "${slices[@]}" -output "$app/Contents/MacOS/$executable"
-strip -x "$app/Contents/MacOS/$executable" 2>/dev/null  # local symbols: about 0.5 MB; re-signed below
+# Local symbols: about 0.5 MB. strip warns that it invalidates the linker's ad hoc
+# signature, which is replaced below.
+quietly strip -x "$app/Contents/MacOS/$executable"
 
 plist="$app/Contents/Info.plist"
 cp Resources/Info.plist "$plist"

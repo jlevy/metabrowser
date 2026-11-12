@@ -81,7 +81,7 @@ icns AppIcon/metabrowser-icon-dev.svg Resources/AppIcon-Dev.icns
 
 [[ "$review" == 1 ]] || exit 0
 
-# ── Review images ──────────────────────────────────────────────
+# Review images.
 out=AppIcon/review
 mkdir -p "$out" "$out/icns"
 swiftc -O AppIcon/review-sheet.swift -o "$work/review-sheet"

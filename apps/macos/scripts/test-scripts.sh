@@ -27,20 +27,36 @@ stops() {
   ("$@") >"$work/out" 2>&1
 }
 
-# ── require_no_entitlements ────────────────────────────────────
+# quietly: silent when the command succeeds, and its output when it fails.
+if ! stops quietly sh -c 'echo chatter'; then
+  fail "quietly stopped on a command that succeeded: $(cat "$work/out")"
+elif [[ -s "$work/out" ]]; then
+  fail "quietly printed a successful command's output: $(cat "$work/out")"
+else
+  pass "quietly holds back a successful command's output"
+fi
+if stops quietly sh -c 'echo the reason; exit 3'; then
+  fail "quietly passed a command that failed"
+elif grep -q "sh failed: the reason" "$work/out"; then
+  pass "quietly stops with a failed command's output"
+else
+  fail "quietly stopped without the command's output: $(cat "$work/out")"
+fi
+
+# require_no_entitlements:
 # A failed read, a clean signature, and a signature with entitlements, on copies of a
 # system binary.
 cp /usr/bin/true "$work/unsigned"
 codesign --remove-signature "$work/unsigned"
 cp /usr/bin/true "$work/clean"
-codesign --force --sign - "$work/clean" 2>/dev/null
+quietly codesign --force --sign - "$work/clean"
 cp /usr/bin/true "$work/entitled"
 cat >"$work/entitlements.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>
 EOF
-codesign --force --sign - --entitlements "$work/entitlements.plist" "$work/entitled" 2>/dev/null
+quietly codesign --force --sign - --entitlements "$work/entitlements.plist" "$work/entitled"
 
 if stops require_no_entitlements "$work/unsigned"; then
   fail "an unreadable signature passed the entitlement check"
@@ -67,7 +83,7 @@ else
   fail "a signature with entitlements stopped the check for another reason: $(cat "$work/out")"
 fi
 
-# ── write_cask ─────────────────────────────────────────────────
+# write_cask:
 # Each architecture label a build can produce: the cask must download the image whose
 # checksum it carries, and declare the architecture the image runs on.
 check_cask() {
