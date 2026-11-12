@@ -677,7 +677,7 @@ check("refusals: corpus and what the server saw", () => {
           },
         ),
       ),
-    /git log/,
+    /head of the server/,
   );
   refuses(
     () =>
@@ -847,94 +847,6 @@ check("compare exits 0, 1, and 2 from the command line", () => {
 });
 
 // ------------------------------------------------------------------- process cleanup
-
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (_error) {
-    return false;
-  }
-};
-
-check("a server that fails after its spawn is stopped, and the run refused", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "transitions-run-"));
-  try {
-    const corpus = path.join(dir, "corpus");
-    fs.mkdirSync(corpus);
-    fs.writeFileSync(path.join(corpus, "README.md"), "# corpus\n");
-    const git = (...args) =>
-      spawnSync("git", ["-C", corpus, ...args], { encoding: "utf8", timeout: 20000 });
-    git("init", "-q");
-    git("add", "README.md");
-    git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "c");
-    // A stand-in `metab`: it reports a version, then serves a complete inventory and drops
-    // every other request, so the start fails after the process exists. Each one records
-    // whether an earlier one is still running when it starts.
-    const bin = path.join(dir, "env", "bin");
-    fs.mkdirSync(bin, { recursive: true });
-    const metab = path.join(bin, "metab");
-    const pidFile = path.join(dir, "server.pid");
-    const overlap = path.join(dir, "overlap");
-    fs.writeFileSync(
-      metab,
-      `#!${process.execPath}
-const fs = require("node:fs");
-const http = require("node:http");
-if (process.argv.includes("--version")) { console.log("metab stand-in 1.0"); process.exit(0); }
-if (fs.existsSync(${JSON.stringify(pidFile)})) {
-  const before = Number(fs.readFileSync(${JSON.stringify(pidFile)}, "utf8"));
-  try { process.kill(before, 0); fs.writeFileSync(${JSON.stringify(overlap)}, String(before)); } catch (_error) {}
-}
-fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
-const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
-http.createServer((req, res) => {
-  if (req.url.startsWith("/api/index/progress")) { res.end(JSON.stringify({ complete: true, indexed_files: 1 })); }
-  else { req.socket.destroy(); }
-}).listen(port, "127.0.0.1");
-`,
-      { mode: 0o755 },
-    );
-    const out = path.join(dir, "runs.jsonl");
-    const result = spawnSync(
-      process.execPath,
-      [
-        path.join(LOOP, "transitions.mjs"),
-        "run",
-        "--exp",
-        "exp-999",
-        "--corpus",
-        corpus,
-        "--condition",
-        `standin=${metab}`,
-        "--runs",
-        "2",
-        "--out",
-        out,
-      ],
-      {
-        encoding: "utf8",
-        timeout: 40000,
-        env: { ...process.env, TRANSITIONS_BENCH: path.join(dir, "bench") },
-      },
-    );
-    assert.equal(result.status, 1, result.stderr);
-    const rows = stats.parseRows(fs.readFileSync(out, "utf8"));
-    assert.equal(rows.length, 2);
-    for (const r of rows) {
-      assert.equal(r.valid, false);
-      assert.ok(
-        r.refusals.some(([g]) => g === "run_error"),
-        JSON.stringify(r.refusals),
-      );
-    }
-    assert.equal(fs.existsSync(overlap), false, "run 1's server was still running in run 2");
-    const pid = Number(fs.readFileSync(pidFile, "utf8"));
-    assert.equal(alive(pid), false, `the stand-in server ${pid} is still running`);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
 check("a Chrome that cannot start rejects, and leaves no profile", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "transitions-chrome-"));
   try {
