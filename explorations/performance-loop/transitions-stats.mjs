@@ -468,7 +468,11 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
         control: sa,
         candidate: sb,
         ratio: sa.median > 0 ? sb.median / sa.median : null,
-        chance: chanceApart(va.length, vb.length),
+        // Two sides that hold one and the same value in every run cannot come apart.
+        chance:
+          sa.min === sa.max && sb.min === sb.max && sa.min === sb.min
+            ? 0
+            : chanceApart(va.length, vb.length),
         ...j,
       });
     }
@@ -579,7 +583,7 @@ export function formatComparison(result) {
       })
       .join(
         ", ",
-      )}; lower for counts, which tie). Over these ${entries.length} comparisons about ${result.chanceExpected.toFixed(0)} would come apart by chance alone, ${listed.filter((e) => !e.overlap).length} did.`,
+      )}; lower for counts, which tie). Of these ${entries.length} comparisons, ${entries.filter((e) => e.chance > 0).length} vary at all, and about ${result.chanceExpected.toFixed(0)} of those would come apart by chance alone; ${listed.filter((e) => !e.overlap).length} did.`,
     "",
   );
   if (gaps.length) {
