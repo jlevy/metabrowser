@@ -749,7 +749,19 @@ text box that no clipping ancestor or the viewport cuts away) outside a placehol
 prompt, or screen-reader-only label; or an `<img>` once it has loaded and its `decode()`
 has resolved, a `<video>` with a current frame, or a canvas, iframe, or large SVG laid
 out at a useful size.
+The search skips, without counting them, the subtrees of elements with no box and of
+elements wholly outside the viewport, so a view that hides or scrolls away its first
+lines is still found; it tests at most 400 text nodes.
 Canvas and iframe pixels are not read.
+
+**Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
+mix revisions but judges two sets of rows of one older revision against each other,
+noting what that revision records differently (`REVISION_NOTES` in
+`transitions-stats.mjs`). Revision 3 redefined the clocks and the frame accounting.
+Revision 4 reads a 304 for a request a worker made as `revalidated` (revision 3 read it
+as `network`, so its cache disposition counts are wrong for worker requests), takes a
+region’s first rendered match rather than its first match, and skips hidden and
+off-screen subtrees when it looks for useful content.
 
 **What each transition records.** The clock starts at the input event’s own `timeStamp`
 (the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
@@ -775,14 +787,18 @@ start for a landing).
   window from the input to its end (the ready frame’s next frame plus the transition’s
   settle time), split before and after the ready frame, and in milliseconds; a frame
   that shows the destination’s own prompt, which a main tab with nothing selected lands
-  on by design, is not blank where the journey declares it (`emptyState`);
+  on by design, is not blank where the journey declares it (`emptyState`). A frame that
+  still shows the prompt that was on screen at the input is blank, unlike old content
+  that lingers; those frames are also reported apart (`blankFramesOriginPrompt`), so a
+  round that removes them can say what they showed;
 - the movement of each named region (`REGIONS` in `transitions-recorder.mjs`) over the
   window, per tracked component of its post-layout box: the largest single step, the net
   displacement, and the path length (every step summed), for the page and for each group
-  (`tree`, `palette`). A region is its selector, not an element: one the product
-  re-creates, or that is absent for some frames, is still the same region, and its next
-  box is measured from where it last was, so a pull request page replaced by one with a
-  taller header moves the tab bar below it.
+  (`tree`, `palette`). A region is its selector’s first rendered match, not an element:
+  one the product re-creates, or that is absent for some frames, is still the same
+  region, a hidden surface kept mounted ahead of it is passed over, and its next box is
+  measured from where it last was, so a pull request page replaced by one with a taller
+  header moves the tab bar below it.
   A tree row is identified by its `data-path`, so a different row is a replacement, not
   a movement;
 - Layout Instability entries with value, `hadRecentInput`, and their sources;
@@ -801,9 +817,11 @@ start for a landing).
 - cache disposition per request by route family (`static`, `plugin_static`,
   `kpress_static`, `data`, `document`): `revalidated` for a 304 on the wire, read from
   `Network.responseReceivedExtraInfo`, which is the only event that shows a 304 the
-  browser answered to its own cache (`responseReceived` reports the cached 200); `cache`
-  when the memory or disk cache answered with no exchange; `network` for any other
-  response; and `pending` when no response event arrived;
+  browser answered to its own cache (`responseReceived` reports the cached 200). For a
+  request a worker makes, Chrome sends that event on the page’s session, so it is
+  matched to its request by ID across sessions; `cache` when the memory or disk cache
+  answered with no exchange; `network` for any other response; and `pending` when no
+  response event arrived;
 - milestones, each timed like painted ready and waited for after the window closes, so
   no other field’s window moves: on a landing, `shellToolsReady` and `styledMarkdown`;
   on every pull request transition, `prHeader`, and on a Conversation,
@@ -843,25 +861,35 @@ runs each, then `compare`, naming the hypothesis’s metric with
 `--expect TRANSITION:METRIC:lower` (or `higher`). `compare` refuses, and exits 2, when a
 condition has fewer than three valid runs, a label is missing (only `--aa` names one), a
 condition pools two builds or a dirty build has no content identity, the corpus commit,
-cleanliness, trunk, server git log head, or indexed file count differ, the scenario
-revisions differ, or the regime or the journeys requested differ.
+cleanliness, trunk, refs, server git log head, or indexed file count differ, the
+scenario revisions differ, or the regime or the journeys requested differ.
 It notes a mixed harness or Chrome version, a non-standard regime, a dirty build with
 its content identity, the catalog totals per condition, runs without a back-to-back
 partner, and an A/A comparison.
 
 For each transition and metric it needs three values on both sides, and it lists every
 gap: a transition measured on one side only, a metric with fewer values, and a value
-missing in some runs, such as a milestone that never arrived.
+missing in some runs, such as a milestone that never arrived, including one that no run
+on either side reached.
 Times and frame counts are judged on back-to-back pairs, as the runbook’s tolerance rule
 says
 ([Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)):
 each candidate run divided by the control run of its pair, against `--tolerance` (1.3 by
 default, the rough cut on this loaded machine; it must be below 2). Ranges apart with
-two or more pairs beyond the tolerance is a result; one pair beyond is a rerun of that
-pair; ranges apart with every pair within is not a result; and two pairs beyond under
-overlapping ranges must be explained.
-A zero control median against a non-zero candidate is judged on the ranges alone, so a
-transition that gains its first long task is a result.
+two or more pairs beyond the tolerance is a result; one pair beyond under separated
+ranges is a rerun of that pair; ranges apart with every pair within is not a result; and
+two pairs beyond under overlapping ranges must be explained.
+One pair beyond under overlapping ranges is listed with the pair to rerun but is not a
+wrong-way result: at three runs a side it is common under load (88 of the 4,199
+comparisons of the exp-058 A/A split), and the runbook’s rerun of that pair is for a
+release. When the medians are equal, the pairs beyond the tolerance give the direction.
+A zero control median against a non-zero candidate with separated ranges is a result on
+the ranges alone, so a transition that gains its first long task in every run is a
+result; under overlapping ranges it goes through the pair rule, where a pair whose
+control is 0 and whose candidate is not is beyond any tolerance.
+A settle time the control reached after the candidate’s window closed (the window ends a
+settle time after the ready frame, so a build that is ready sooner is watched for less
+time) is marked, since a lower candidate value may only be a shorter window.
 Counts (requests, replacements, movement, shifts) are judged on their ranges.
 Every line shows the pooled medians and ranges beside the pair ratios, and the report
 ends with the chance that two identical builds separate on one comparison at the n in
@@ -871,8 +899,9 @@ It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
 wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
 the wrong direction), a gap, or an expectation not met.
 Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
-`next_frame_ms`, `nav_settled_ms`, `uncredited_frames`, `tree_rows_replaced`,
-`subject_settlement_reads`, and the `revalidated` counts.
+`next_frame_ms`, `window_ms`, `nav_settled_ms`, `uncredited_frames`,
+`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`, and the
+`revalidated` counts.
 Write the verdict with the accept rule below, and say what did not move.
 
 `compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
