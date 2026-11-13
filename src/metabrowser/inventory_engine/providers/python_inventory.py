@@ -824,7 +824,7 @@ class _PythonInventoryStore:
         self._watcher_task = asyncio.create_task(
             run_watcher(
                 root=root,
-                refresh=self.refresh,
+                refresh=self._refresh_observed,
                 on_status=self._observe_watcher_status,
                 mode=mode,
                 hidden_allowlist=self._config.hidden_allowlist,
@@ -974,6 +974,19 @@ class _PythonInventoryStore:
         """Verify bounded path hints and feed observations through the delta path."""
 
         self._ensure_open()
+        return await self._refresh_observed(request)
+
+    async def _refresh_observed(self, request: RefreshRequest) -> RefreshReceipt:
+        """Apply path hints without the caller-facing closed check.
+
+        The provider-owned watcher submits through here. ``close`` marks the handle
+        closed to callers at once but joins the watcher before it tears anything down,
+        and a backend may still deliver the batch it had collected when the stop
+        arrived. Refusing that batch failed the watcher and logged a traceback at
+        shutdown; applying it is safe because nothing is released until the watcher
+        has returned.
+        """
+
         accepted: list[str] = []
         rejected: list[str] = []
         valid: list[RefreshObservation] = []
