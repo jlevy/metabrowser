@@ -2,9 +2,11 @@ import Foundation
 
 /// What a folder's server serves.
 public nonisolated enum FolderKind: String, Codable, Equatable, Sendable {
-    /// A folder on this Mac: its window has a proxy icon and a path menu.
+    /// A folder on this Mac: its window's title opens the folder's path menu, on a
+    /// Command-click, a right-click, or VoiceOver's Show Menu.
     case folder
-    /// A cached Git mirror: its cache path means nothing to the user, so it has neither.
+    /// A cached Git mirror: its cache path means nothing to the user, so its title has no
+    /// path menu.
     case mirror
 }
 
