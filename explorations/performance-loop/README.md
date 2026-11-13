@@ -1332,8 +1332,29 @@ does not see raster or compositing.
 The ready test is a subset of the transition scenario’s and does not look for useful
 visible content. The probe is a bare executable, not the app: it has none of the app’s
 sandbox, process settings, or delegates beyond navigation.
-Not yet checked on an unlocked screen: whether WebKit counts the 2% window as visible,
-and whether a relaunch reads cache writes the first process had not flushed.
+
+**Validated on an unlocked screen (2026-11-13).** On macOS with Low Power Mode on, at a
+one-minute load of 14 to 28, against a frozen corpus, the control build at 09903292, and
+the H87 candidate at 10d659ae, every check of the guards held:
+- **Visibility and frames:** WebKit counts the 2% window as visible, and every run of a
+  standard series was valid.
+  In `hidden-then-show` the frame chain skipped the 2 frames run while hidden and
+  counted 3 visible ones after the show, the first 24 to 54 ms after it.
+- **Origin:** no navigation was refused, and the content rule list compiled.
+- **Freshness:** a `fresh` control served its 41 stamped `/static/` assets from cache at
+  the relaunch; under `--stale-assets` it revalidated all 41. The candidate’s
+  `immutable` assets came from cache in both.
+- **Cache writes:** relaunch counts were the same with `--exit-delay-ms 2000` as without
+  it, so a relaunch does not depend on writes the first process had not flushed.
+- **Lock and sentinel:** a second `run` and a `clean` refused while a series held the
+  lock. A lock left by a killed run was reported with its dead owner and not removed.
+  A `clean` under another lock during a run made that run `store_wiped` and refused.
+- **Processes:** with a build that has `--exit-on-eof`, its server and the probe exited
+  within 8 s of SIGKILL to node.
+  On SIGINT, a control run stopped its server, its probe, and itself, released the lock,
+  and left no probe data in `~/Library`. A build without the flag keeps its server after
+  a SIGKILL to node; the probe reports which applies.
+- **App Nap:** the probe held its “wkprobe measurement” assertion while it ran.
 
 ### Attributing Stateful-Navigation Delay
 
