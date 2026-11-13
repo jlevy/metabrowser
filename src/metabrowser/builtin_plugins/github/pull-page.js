@@ -173,7 +173,7 @@ export const TABS = Object.freeze(["", "files", "checks"]);
 /**
  * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
  * default, keeps it, and the others take a distinctive letter of their label: chan-*g*es, and
- * the next letter of Checks (docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md,
+ * the next letter of Checks (docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md,
  * "Key Allocation Rules"). `C` is also the Charts tab's, which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([

@@ -195,8 +195,9 @@ export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) 
 }
 
 /**
- * One rendered block's row: its change gutter, its screen-reader label, and, when
- * its source says more than any render shows, a note that names Source.
+ * One rendered block's row: its change gutter and its screen-reader label. A block whose
+ * source says more than its render shows draws nothing to say so: the Rendered | Source
+ * chooser is how a reader reaches what Rendered does not show.
  * @param {Block} block
  * @param {(html: string) => Node} build
  */
@@ -208,13 +209,6 @@ function blockRow(block, build) {
     label.className = "sr-only";
     label.textContent = block.kind === "added" ? "Added: " : "Removed: ";
     row.append(label);
-  }
-  if (block.source_only) {
-    row.classList.add("diff-markdown-source-only");
-    const note = document.createElement("p");
-    note.className = "diff-markdown-note";
-    note.textContent = "Source shows changes not shown here.";
-    row.append(note);
   }
   row.append(build(block.html));
   return row;
@@ -554,12 +548,6 @@ export function createMarkdownViews(deps) {
       const folds = appendBlocks(content, projection.blocks, (html) =>
         sanitizeBlock(html, inert, template, scratch, isSnapshotTarget),
       );
-      if (projection.source_only) {
-        const note = document.createElement("p");
-        note.className = "diff-availability";
-        note.textContent = "Source shows additional changes.";
-        content.prepend(note);
-      }
       settled = true;
       deps.mutate(() => {
         file.rendered.replaceChildren(content);
