@@ -1,10 +1,14 @@
 # Feature: Shift Key Reveal and a Systematic Keymap
 
-**Date:** 2026-11-11 (last updated 2026-11-11)
+**Date:** 2026-11-11 (last updated 2026-11-13)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented.
+Stack #376 (#365, #374, #375, #379, #382, and #383) merged into `main` at 8f84ed6 on
+2026-11-13. #387 reset the startup budget the stack relies on to 220 KB from measured
+cost, and #392 made that budget a strict improvement.
+The single-key on/off switch (WCAG 2.1.4) remains a separate follow-up.
 
 ## Overview
 
@@ -904,8 +908,9 @@ does not change `PLUGIN_SDK_VERSION`.
   field are unaffected.
   Speech input outside a text field is not: it sends key presses to whatever has focus,
   and now that Shift no longer matters, a dictated capital such as “The” opens Quick
-  Search through `T`. That is the WCAG 2.1.4 risk the open questions record, deferred to
-  the decision bead `mb-14sj`.
+  Search through `T`. That is the WCAG 2.1.4 risk the open questions record.
+  It was decided on 2026-11-12 to ship without an on/off switch for now (`mb-14sj`), and
+  the switch is the follow-up `mb-7nc0`.
 - The main-pane view tab bar gains the tablist semantics the navigation and pull request
   tab bars already have.
 - A reader who cannot hold a key still has Help, `aria-keyshortcuts`, and every
@@ -1126,6 +1131,9 @@ transparent node through `stagePreviewNode()` before it commits them to the main
 plugin detaches from its render handle’s `dispose()`. Disconnection does not end an
 attachment. The pull request page’s `paintHeader` removes the tab column while the page
 has no record and re-inserts it after the header, and the keys must come back with it.
+After #370, `paintHeader` removes the column only when the record is unavailable, so the
+tab links, and with them `C`, `G`, and `H`, are live while the record loads, and the
+return path runs only after a failed first read.
 As a safety net, the view-composition disposer (`view-composition.js` `mount`) also
 releases attachments inside the container it disposes.
 That net does not reach the diff view, which three hosts mount by calling its renderer
@@ -1335,53 +1343,53 @@ Badge geometry stays under phase 1’s paint-exempt row.
 
 ### Phase 1: Shift Rule, Keymap, and Reveal in the Core Shell
 
-- [ ] Registry: key classes with Shift ignored, rejection of any stated modifier policy,
+- [x] Registry: key classes with Shift ignored, rejection of any stated modifier policy,
   digit precedence, `describeKey()` and `appendKey()`, `view-tabs`, `controls`, and
   `filters` groups and the new `main-tabs` context sentence, the permanent `view-tabs`
   scope, `observeKeys()`, `batch()`, the `target` event, live snapshots, `reveal`
   surface, and `attachTarget()` with dispatch-time visibility, `context.target`, and
   immediate badges during a reveal
-- [ ] Remove Cmd: drop the `meta: "require"` binding from `tabBindings()` in
+- [x] Remove Cmd: drop the `meta: "require"` binding from `tabBindings()` in
   `static/main-tabs.js`, so Files, Commits, and Pulls answer to `1`, `2`, and `3` alone,
   and remove `⌘` from Help, the design system’s Main Tab Shortcuts section and Canonical
   Key Names, and new changelog wording
-- [ ] Main tabs: the key runs `openMainTab()`, then focuses the panel’s roving row,
+- [x] Main tabs: the key runs `openMainTab()`, then focuses the panel’s roving row,
   falling back to the tab button; a missing tab keeps its number reserved
-- [ ] Stack keys: move `pulls.stack.base` and `pulls.stack.top` from Shift+`J` and
+- [x] Stack keys: move `pulls.stack.base` and `pulls.stack.top` from Shift+`J` and
   Shift+`K` to `P` and `N` in `static/pulls-nav.js` `registerKeys`
-- [ ] Migrate Quick Search, the tree’s `J`, `K`, and arrows, the Git rows’ `J`, `K`, and
+- [x] Migrate Quick Search, the tree’s `J`, `K`, and arrows, the Git rows’ `J`, `K`, and
   arrows, and the Pulls `pull-rows` and `pull-files` keys to the Shift rule; drop the
   tree’s Shift+↑ and Shift+↓
-- [ ] Declared view keys: `key` on every built-in manifest view of a multi-view kind,
+- [x] Declared view keys: `key` on every built-in manifest view of a multi-view kind,
   envelope `views[].key`, keys on the `--show` views line, loader validation,
   merged-list uniqueness with first-wins and a `--doctor` report, the reserved shell key
   table with the contexts of `N` and `P` in `keymap.py`, and the keymap check;
   regenerate the `cli-show`, `cli-api`, `cli-api-hidden-folder`, `cli-git-pin-show`, and
   `cli-git-pin-files` goldens
-- [ ] `static/key-reveal.js` state machine with injected time and focus, and
+- [x] `static/key-reveal.js` state machine with injected time and focus, and
   `static/shell-keymap.js` for the shell’s commands and targets, both in the
   `shell-tools` bundle and created and disposed with the keyboard infrastructure
-- [ ] Activation paths: `selectPreviewTab()` extracted from `initTabs`, with the view
+- [x] Activation paths: `selectPreviewTab()` extracted from `initTabs`, with the view
   tab bar’s `tablist` semantics, `openFilterMenu()` extracted from the filter bar with
   focus into the menu, the kept source selector handle with focus into its filter, and
   `MetabrowserPluginHost.copyFromControl()`
-- [ ] Targets: Files, Commits, and Pulls tabs with fixed digits and focus hand-off, view
+- [x] Targets: Files, Commits, and Pulls tabs with fixed digits and focus hand-off, view
   tab letters committed through `commitViewTabs()` inside view composition’s `commit()`,
   Up (not at the root), Copy (path or revision), Branch, File type, and Modified within,
   all read again when the shell keymap is created
-- [ ] Presentation: badge tokens and `.kbd-badge`, `inline-end` and `beside` placement
+- [x] Presentation: badge tokens and `.kbd-badge`, `inline-end` and `beside` placement
   with the file header as anchor, reveal-on-hover override, the strip’s reveal layer
   over a fixed-height host, `--text` and measured contrast on the yellow, reduced
   motion, and print exclusion; `REVEAL_HOLD_MS`, `REVEAL_POINTER_SLOP_PX`, and the strip
   item cap are measured with the reveal module in layer 3
-- [ ] Help: View tabs, Controls, and Filters groups, bare-capital keys, no `⌘` and no
+- [x] Help: View tabs, Controls, and Filters groups, bare-capital keys, no `⌘` and no
   `⇧` on any character key, and the closing Shift note
-- [ ] Existing sessions and goldens: `tests/dom/preview-pane-state-session.js` and
+- [x] Existing sessions and goldens: `tests/dom/preview-pane-state-session.js` and
   `cli-ui-file-lifecycle.tryscript.md` for the main tab digits, which pin
   `navigation.main-tab-destinations`, and `tests/dom/pulls-nav-session.js` and
   `cli-ui-pulls-nav.tryscript.md` for `N`, `P`, and Shift-insensitive `J` and `K`, which
   pin `github.pulls-tab-host`
-- [ ] Docs: every item under “Docs updated in the same change” above, each in the layer
+- [x] Docs: every item under “Docs updated in the same change” above, each in the layer
   the Rollout Plan names: the design system keyboard, main tab, pull stack, and Pulls
   keys sections, the architecture map’s rows and kinds table, `development.md`,
   `plugins.md`, `README.md`, `e2e-testing.md`, `reviewing-pull-requests.md`, the QA
@@ -1389,7 +1397,7 @@ Badge geometry stays under phase 1’s paint-exempt row.
 
 ### Phase 2: Plugin Shortcut Surface
 
-- [ ] `mb.shortcuts.attach()` and its queue in `plugin-sdk.js`, with measured eager
+- [x] `mb.shortcuts.attach()` and its queue in `plugin-sdk.js`, with measured eager
   bytes, and `static/plugin-shortcuts.js` in `shell-tools` for validation,
   reserved-letter refusal, `plugin`-scope registration, arbitration, replay, and detach
   by handle or abort signal plus the view-composition safety net.
@@ -1397,21 +1405,22 @@ Badge geometry stays under phase 1’s paint-exempt row.
   `check_startup_scripts` (compressed at gzip level 6): layer 3 moved what cannot act
   before the registry into `shell-tools` and kept its type annotations and comments, and
   the eager scripts are 180,057 bytes, 346 over the 175 KB gate (`app.js` 90,431 to
-  91,728 and `plugin-sdk.js` 16,872 to 17,040). The gate is being re-measured from what
-  startup JavaScript costs in a separate session, which decides the budget the queue
-  must fit; until then the queue, like layer 3, moves into the on-demand path whatever
-  cannot act before the registry
-- [ ] Pull request page: Conversation `C`, Changes `G`, and Checks `H` through an
+  91,728 and `plugin-sdk.js` 16,872 to 17,040). A separate session re-measured the gate
+  from what startup JavaScript costs: #387 set it to 220 KB, and #392 tightened what it
+  guards. Like layer 3, the queue moves into the on-demand path whatever cannot act
+  before the registry, and the merged stack’s eager scripts are 180,179 bytes, 45,612
+  under the new gate
+- [x] Pull request page: Conversation `C`, Changes `G`, and Checks `H` through an
   exported `attachTabKeys()` that calls the page handle’s `setTab()`
-- [ ] Diff view: layout toggle `L` through an exported `toggleLayout()`, badged on the
+- [x] Diff view: layout toggle `L` through an exported `toggleLayout()`, badged on the
   option it would switch to, in diff files, the Git commit view, and the Changes tab
-- [ ] Docs: the `docs/plugins.md` Keyboard Shortcuts subsection, SDK list, and Testing
+- [x] Docs: the `docs/plugins.md` Keyboard Shortcuts subsection, SDK list, and Testing
   Checklist item; the `plugin-sdk.js` header comment; `MetabrowserSdk` in `types.d.ts`;
   the planned plugin registration surfaces row; and `CHANGELOG.md` under Unreleased
-- [ ] The permanent `plugin` scope and the reserved keys in `METABROWSER_SETTINGS`;
+- [x] The permanent `plugin` scope and the reserved keys in `METABROWSER_SETTINGS`;
   `plugin-shortcuts.js` in `devtools/check_distribution.py` `KEYBOARD_STATIC_ASSETS` and
   in the `shell-tools` asset-order tests
-- [ ] Sessions, goldens, and the three parity rows
+- [x] Sessions, goldens, and the three parity rows
 
 ## Testing Strategy
 
@@ -1647,14 +1656,14 @@ phase 2 lands.
 ## Open Questions
 
 - **Turning character keys off.
-  Decide before phase 1.** WCAG 2.1.4 asks that single-character shortcuts can be turned
+  Resolved 2026-11-12.** WCAG 2.1.4 asks that single-character shortcuts can be turned
   off or remapped. Phase 1 adds about a dozen, and removing `⌘1` through `⌘3` makes the
   main tabs single-character only.
   Should the Metabrowser menu gain a persisted “Single-key shortcuts” switch?
   It would add persisted state and its own parity row, so the answer changes phase 1’s
   scope. Speech input outside a text field is the sharpest case: a dictated capital fires
-  its letter. The decision is tracked as `mb-14sj`, and the spec stays Draft until it is
-  recorded.
+  its letter. Decided (`mb-14sj`): ship without the switch for now; the switch is the
+  follow-up `mb-7nc0`.
 - **A latched reveal.** Should a double tap of Shift latch the reveal until `Esc` or the
   next command, for readers who cannot hold a key and for Sticky Keys users?
   It would also make the reveal usable on a touch keyboard with a hardware Shift.
