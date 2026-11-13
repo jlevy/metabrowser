@@ -630,6 +630,7 @@ async function tabKeys(page) {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
       formatAge: () => ({ label: "now", className: "age" }),
