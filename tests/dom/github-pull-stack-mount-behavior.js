@@ -220,12 +220,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   });
   await settle();
   assert(warm.textContent.includes("2/3"));
-  const trigger = warm.querySelector(".github-pull-stack-trigger");
+  const trigger = warm
+    .querySelector(".github-pull-stacks")
+    .querySelector(".github-pull-stack-trigger");
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-meta").contains(trigger),
-    "stack control shares the state row",
+    warm.querySelector(".github-pull-labels").contains(trigger),
+    "stack control ends the labels row",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");

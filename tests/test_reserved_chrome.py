@@ -202,7 +202,9 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
     assert "min-height: 2lh;" in _rule(_css(), ".git-commit-subject.page-heading")
 
 
-def test_the_state_row_is_one_line_with_the_stacks_slot_at_its_end() -> None:
+def test_the_state_row_is_one_line_held_by_a_strut() -> None:
+    """The sentence, the author, and the merge share one line, at a chip's height."""
+
     css = _github_css()
     meta = _rule(css, ".github-pull-meta")
     assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
@@ -215,13 +217,23 @@ def test_the_state_row_is_one_line_with_the_stacks_slot_at_its_end() -> None:
     # The sentence gives way before the branches do.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
-    stacks = _rule(css, ".github-pull-stacks")
-    assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
-    assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
+    # The author gives way next, down to its avatar and a little of the name, and only
+    # then the merge, down to the merge group's floor (review E2 on #370).
+    author = _rule(css, ".github-pull-meta-details > .github-pull-identity")
+    assert "flex: 0 100 auto;" in author and "min-width: 1.75em;" in author
+    assert "overflow: hidden;" in author
+    assert "min-width: calc(18px + 4px + 1.75em);" in _rule(
+        css, ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)"
+    )
+    name = _rule(css, ".github-pull-meta-details .github-pull-author")
+    assert "min-width: 0;" in name and "text-overflow: ellipsis;" in name
     strut = _rule(css, ".github-pull-stack-strut")
     assert "width: 0;" in strut and "visibility: hidden;" in strut
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
+    # The state row ends in a strut, not in the stack's slot: a late chip there took its
+    # width from the sentence and the merge (review E3 on #370).
+    assert "[stateBadge, stateDetails, strut()]" in page
 
 
 def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
@@ -248,11 +260,22 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
 
 
 def test_labels_have_a_row_that_always_exists() -> None:
-    rule = _rule(_github_css(), ".github-pull-labels")
+    """It ends in the stack's slot, so a late chip takes room only from cut-short labels."""
+
+    css = _github_css()
+    rule = _rule(css, ".github-pull-labels")
     assert "min-height: calc(1lh + 2px);" in rule
     assert "flex-wrap: nowrap;" in rule
+    # It positions the stack's menu, so it clips nothing; its list of labels does.
+    assert "position: relative;" in rule and "overflow" not in rule
+    labels = _rule(css, ".github-pull-label-list")
+    assert "min-width: 0;" in labels and "overflow: hidden;" in labels
+    stacks = _rule(css, ".github-pull-stacks")
+    assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
+    assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "if (pull.labels.length > 0)" not in page
+    assert 'h("div", { class: "github-pull-labels" }, [labelList, stackColumn])' in page
 
 
 def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
@@ -297,7 +320,9 @@ def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
 
 def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None:
     css = _github_css()
-    assert "grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;" in _rule(css, ".github-pulls-row")
+    assert "grid-template-columns: 16px 16px minmax(0, 1fr) auto 5ch;" in _rule(
+        css, ".github-pulls-row"
+    )
     count = _rule(css, ".github-pulls-filters .count")
     assert "min-width: 3ch;" in count
     assert "font-variant-numeric: var(--tabular-numerals);" in count
@@ -305,12 +330,20 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
 
 
-def test_a_pulls_rows_stack_position_ends_its_line() -> None:
-    """It arrives from its own answer; anywhere but the end it moves what follows."""
+def test_a_pulls_rows_stack_position_has_a_column_on_the_title_line() -> None:
+    """It arrives from its own answer. On the muted line, which wraps, it moved the merge
+    or added a line to its row (review E1 on #370); in a column of its own before the age,
+    it cuts the title shorter and moves nothing. github-pull-header-chrome.mjs measures it,
+    and github-pulls-panel-session.js pins the built row's order."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     meta = panel[panel.index("function rowMeta(") :]
     meta = meta[: meta.index("\n  }\n")]
-    # The line's last item, after the author and the merge (github-pulls-panel-session.js
-    # pins the built line).
-    assert meta.index("stack,") > meta.index('"github-pulls-merge"')
+    assert "stack" not in meta
+    assert "[toggle, icon, title, stack, updated, meta]," in panel
+    css = _github_css()
+    stack = _rule(css, ".github-pulls-row > .github-pulls-stack")
+    assert "grid-row: 1;" in stack and "grid-column: 4;" in stack
+    # On the title's baseline its taller box grew the row 3 px.
+    assert "align-self: center;" in stack
+    assert "grid-column: 5;" in _rule(css, ".github-pulls-row > .github-pulls-age")

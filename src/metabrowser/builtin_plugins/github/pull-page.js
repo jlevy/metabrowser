@@ -3071,18 +3071,24 @@ export function mountPullPage(container, ctx, mb) {
   // The header's box is decided at first paint: every row is there in every state, at one
   // line each, so nothing that arrives later, a stack, a label, a Refresh, moves the tab
   // bar or the rows below it. docs/design-system.md, "The Pull Request Page".
+  // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
+  const strut = () =>
+    h(
+      "span",
+      { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
+      [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
+    );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
-  // state row; with no stack the slot holds a hidden chip of no width, which gives the row
-  // a chip's height.
-  const stackStrut = h(
-    "span",
-    { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
-    [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
-  );
+  // labels row, which has room to spare: arriving, it takes room only from labels the row
+  // already cuts short. At the end of the state row it took its width from the sentence and
+  // the merge, which slid up to 35 px. With no stack the slot holds a strut.
+  const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
+  const labelList = h("div", { class: "github-pull-label-list" });
+  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
   const stateBadge = h("span");
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, stackColumn]);
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -3544,7 +3550,7 @@ export function mountPullPage(container, ctx, mb) {
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
 
-  /** Optional membership retains its status-row disclosure while other header details repaint.
+  /** Optional membership retains its labels-row disclosure while other header details repaint.
    * @param {PullModel} model
    */
   function paintStacks(model) {
@@ -3751,13 +3757,10 @@ export function mountPullPage(container, ctx, mb) {
         ]),
       );
       // A row that is always there, so a pull request with labels is as tall as one without.
-      children.push(
-        h(
-          "div",
-          { class: "github-pull-labels" },
-          pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
-        ),
+      labelList.replaceChildren(
+        ...pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
       );
+      children.push(labelsRow);
     } else {
       children.push(
         h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
@@ -3767,11 +3770,8 @@ export function mountPullPage(container, ctx, mb) {
       if (model.status !== "unavailable") {
         stateBadge.replaceChildren();
         stateDetails.replaceChildren();
-        children.push(
-          stateRow,
-          h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
-          h("div", { class: "github-pull-labels" }),
-        );
+        labelList.replaceChildren();
+        children.push(stateRow, h("div", { class: "github-pull-quiet" }, ["\u00a0"]), labelsRow);
       }
     }
     status.dataset.status = model.status;

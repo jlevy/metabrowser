@@ -890,6 +890,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
+      "span .github-pulls-stack role=\"img\" hidden=\"\"",
       "span .github-pulls-age.age-hour",
       "span .github-pulls-meta"
     ],

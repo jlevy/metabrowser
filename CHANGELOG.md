@@ -12,11 +12,13 @@ All notable changes to Metabrowser are documented here.
   address, every file has a view tab bar, and the tree and the preview keep a scrollbar
   gutter. A pull request’s header is one size for every pull request and tab: the title
   holds two lines and is cut short there with the whole of it in a tooltip, the state
-  row is one line with the stack chip at its end, labels have a row of their own, and
-  Refresh has its slot on every tab.
+  row is one line, labels have a row of their own that ends in the stack chip, and
+  Refresh has its slot on every tab, so a stack chip that arrives late moves nothing.
   A cold pull request page shows that header and its tab bar over a loading body until
-  the record arrives; a narrow pane cuts the state row’s sentence before its branch
-  names, and a failure in the status row wraps to show its remedy.
+  the record arrives; a narrow pane cuts the state row’s sentence, then its author,
+  before its branch names, and a failure in the status row wraps to show its remedy.
+  In the Pulls list a pull request’s stack position is on its title line, before its
+  age, so its late arrival cuts the title shorter and moves nothing.
   A toolbar wider than a narrowed sidebar scrolls along its row instead of being cut.
   The Pulls tab’s status lines are always there, and its ages have a column of one
   width. A folder’s Overview paints once its first file-type rollup has answered,

@@ -1029,8 +1029,10 @@ async function headerAges(page) {
 // The header's box is decided at first paint: the same rows, in the same order, whatever
 // the pull request carries and whichever tab shows, and while its record is on its way.
 // Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the state row's end, held by a strut until
-// one arrives, and Refresh has its slot at the status row's end on every tab.
+// row is there. A stack's chip has its slot at the labels row's end, held by a strut until
+// one arrives; the state row holds a strut of its own; and Refresh has its slot at the
+// status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
+// late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
     container
@@ -1064,12 +1066,21 @@ async function headerShape(page) {
       const { container, handle } = await mountOn(page, body, tab, age);
       const header = container.querySelector(".github-pull-header");
       const meta = container.querySelector(".github-pull-meta");
+      const labels = container.querySelector(".github-pull-labels");
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
       const end = status.children.at(-1);
       const refresh = end.children.at(-1);
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
-      assert.equal(meta.children.at(-1), stacks, `${name} ${tab}: the stack slot ends the row`);
+      assert.equal(
+        labels.children.at(-1),
+        stacks,
+        `${name} ${tab}: the stack slot ends the labels`,
+      );
+      assert.ok(
+        meta.children.at(-1).classes.has("github-pull-stack-strut"),
+        `${name} ${tab}: a strut holds the state row at a chip's height`,
+      );
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
@@ -1241,12 +1252,17 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The stack has its slot at the row's end, so its late chip moves nothing before it.
-    const [stateBadgeSlot, details, stackSlot] = meta.children;
+    // The state row is the badge, the details, and a strut; the stack's slot is not on it,
+    // so a late chip takes no room from the sentence or the merge.
+    const [stateBadgeSlot, details, stateStrut] = meta.children;
     const stateBadge = stateBadgeSlot.children[0];
     assert.ok(details.classes.has("github-pull-meta-details"));
-    assert.equal(stackSlot, container.querySelector(".github-pull-stacks"));
+    assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
     assert.equal(meta.children.length, 3);
+    assert.equal(
+      container.querySelector(".github-pull-labels").children.at(-1),
+      container.querySelector(".github-pull-stacks"),
+    );
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
     // Merge Direction: the header names the branches head → base, through the shared group,

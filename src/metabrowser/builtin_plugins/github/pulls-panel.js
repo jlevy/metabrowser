@@ -2870,7 +2870,6 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     element.setAttribute("aria-label", hint);
     element.replaceChildren(
-      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
       ...(stackSvg === null
         ? []
         : [
@@ -2883,13 +2882,14 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The stack's position ends the line: it arrives from its own answer, and inserted after
-   * the number it moved the author and branches right (layout shift 0.0009 to 0.0028). The
-   * line wraps, so in a pane too narrow to hold it the position takes a line of its own.
+   * The muted line: the number, the author, and the merge. The stack's position is not on
+   * it: it arrives from its own answer, and on this line, which wraps, it moved what was
+   * before it or took a line of its own and moved every row below. It is on the title
+   * line instead (`buildRow`).
    *
-   * @param {PullRow} row @param {HTMLElement} stack
+   * @param {PullRow} row
    */
-  function rowMeta(row, stack) {
+  function rowMeta(row) {
     // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
     // branches each carry the separator before them, so either moves to the next line
     // whole, and a separator that starts a line is clipped.
@@ -2909,7 +2909,6 @@ export function mountPullsPanel(container, ctx, mb) {
             { kind: "remote", copy: "sibling" },
           ),
         ]),
-        stack,
       ]),
     ]);
   }
@@ -2945,7 +2944,7 @@ export function mountPullsPanel(container, ctx, mb) {
       row.headRef !== before.headRef
     ) {
       entry.releaseCopies();
-      const meta = rowMeta(row, entry.stack);
+      const meta = rowMeta(row);
       entry.row.insertBefore(meta, entry.meta);
       entry.meta.remove();
       entry.meta = meta;
@@ -2974,9 +2973,11 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       [when.label],
     );
+    // The stack's position has a column of its own on the title line, between the title
+    // and the age: arriving, it cuts the title shorter and moves nothing.
     const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
     paintStackBadge(stack, row.number);
-    const meta = rowMeta(row, stack);
+    const meta = rowMeta(row);
     const icon = pullStateIcon(row.state);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
@@ -2993,7 +2994,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-expanded": "false",
           tabindex: "-1",
         },
-        [toggle, icon, title, updated, meta],
+        [toggle, icon, title, stack, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);

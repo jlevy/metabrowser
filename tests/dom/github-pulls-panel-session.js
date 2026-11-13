@@ -1222,10 +1222,27 @@ async function paintStory(panel, selection = false) {
     const numberLabel = child(line, "github-pulls-number");
     const by = child(line, "github-pulls-by");
     const merge = child(line, "github-pulls-merge");
-    // The stack's position ends the line, so its late arrival moves nothing before it.
+    // The stack's position is on the title line, between the title and the age, and not on
+    // the muted line, which wraps: there its late arrival moved the merge or added a line.
+    // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    const order = row(hostile)
+      .childNodes.filter((node) => typeof node.className === "string")
+      .map((node) => node.className.split(" ").find((name) => name.startsWith("github-pull")));
     assert(
-      line.childNodes.at(-1).classList.contains("github-pulls-stack"),
-      "the stack's position ends the line",
+      JSON.stringify(order) ===
+        JSON.stringify([
+          "github-pulls-toggle",
+          "github-pull-state-icon",
+          "github-pulls-title",
+          "github-pulls-stack",
+          "github-pulls-age",
+          "github-pulls-meta",
+        ]),
+      `the row is the toggle, the state icon, the title, the stack position, the age, and the muted line: ${order}`,
+    );
+    assert(
+      !line.childNodes.some((node) => node.classList?.contains("github-pulls-stack")),
+      "the muted line holds no stack position",
     );
     assert(
       metadata.textContent ===
@@ -1345,7 +1362,9 @@ async function paintStory(panel, selection = false) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () => row(shown).childNodes[3].textContent;
+    const age = () =>
+      row(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
+        .textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;

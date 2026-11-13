@@ -1067,20 +1067,21 @@ A rename in a diff reads the same way, `old → new`.
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the chips’ `--ui-small-font-size`. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow; a place too narrow for that gives the merge a line of its own |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own, as a Pulls row does; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there |
 
 On the Pulls tab the muted line wraps rather than clips, so both chips and the arrow are
 always whole inside the row, down to the narrowest navigation pane (180px) with a
-five-digit number, a long login, an avatar, and a stack badge.
+five-digit number, a long login, and an avatar.
 The author and the branches each start with their separator.
-The stack position ends the line, so its late arrival moves nothing before it, and on a
-line too short for it, it takes a line of its own.
-A part moves to the next line when the line cannot hold its floor: the author’s is its
-separator, its avatar if it has one, and a little of the name, so neither the separator
-nor the avatar stands without a visible name, even when the avatar fails to load and
-keeps its slot, and the branches’ is their separator and the merge’s floor.
-A part that stays grows by equal amounts toward its full width, so the line shortens
-names before it wraps.
+The stack position is not on this line: it arrives late, and here it took its width from
+the names, moving the arrow up to 54 px, or a line of its own, moving every row below.
+It has a column on the title line, before the age, where it cuts the title shorter and
+moves nothing. A part moves to the next line when the line cannot hold its floor: the
+author’s is its separator, its avatar if it has one, and a little of the name, so
+neither the separator nor the avatar stands without a visible name, even when the avatar
+fails to load and keeps its slot, and the branches’ is their separator and the merge’s
+floor. A part that stays grows by equal amounts toward its full width, so the line
+shortens names before it wraps.
 The line starts one separator to the left of the row, so the separator of a part that
 starts a line is clipped.
 It is a wrapping flex line rather than a line of text with `text-overflow: ellipsis`,
@@ -1251,11 +1252,13 @@ carries the whole of it in its tooltip.
 The colored badge below the title gives the state in text and the title icon is
 decorative. The header’s box is decided at first paint, in every state and on every tab,
 so the tab bar under it never moves between pull requests or tabs: the state row is one
-line, its branch chips cut short rather than wrapping it, and the badge as wide as the
-widest state; the labels row is always there, a line of labels or none; the status row
-is one line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh,
-its text and then its offers’ sentences cut short, never their controls, and a rate
-limit’s hold on the line too; and a cold page keeps every row, empty, at its height.
+line, its sentence, then its author, then its branch names cut short rather than
+wrapping it, and the badge as wide as the widest state; the labels row is always there,
+a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
+takes room only from labels already cut short and moves nothing; the status row is one
+line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh, its text
+and then its offers’ sentences cut short, never their controls, and a rate limit’s hold
+on the line too; and a cold page keeps every row, empty, at its height.
 Only a failure, which says what to do, wraps the status row.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
@@ -1439,7 +1442,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
-| Stack position | Layers icon and bold position/total at the end of the muted line, where its late arrival moves nothing before it | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
+| Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
 | Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Compact contextual chips below the title’s primary size; they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |

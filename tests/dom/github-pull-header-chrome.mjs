@@ -120,6 +120,14 @@ const MEASURE = `async (name, change, tab, width) => {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
   }
+  // A long login and long branch names, the head in a fork: the author gives way to the
+  // merge, which stays whole.
+  if (change.longNames) {
+    const pull = body.record.pull;
+    pull.author = "a-thirty-nine-character-github-login-x";
+    pull.head = { ...pull.head, ref: "feature/a-rather-long-branch-name-for-the-header-row", repository: "someorganization/demo" };
+    pull.base = { ...pull.base, ref: "release/2026-11-long-base-branch", repository: "octo/demo" };
+  }
   window.fetch = async () => new Response(null, { status: 304 });
   history.replaceState(null, "", "/pull/" + body.number + (tab ? "/" + tab : ""));
   const pane = document.getElementById("preview-pane");
@@ -148,9 +156,57 @@ const MEASURE = `async (name, change, tab, width) => {
     },
   );
   await document.fonts.ready;
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
   const header = container.querySelector(".github-pull-header");
   const box = (node) => node?.getBoundingClientRect();
+  // How much of an element's width shows: what every box with an overflow between it and
+  // the header leaves of it, so a part a clipping box cuts away counts as not shown.
+  const shown = (node) => {
+    const own = box(node);
+    let left = own.left;
+    let right = own.right;
+    for (let up = node.parentElement; up && up !== header.parentElement; up = up.parentElement) {
+      if (getComputedStyle(up).overflowX !== "visible") {
+        left = Math.max(left, box(up).left);
+        right = Math.min(right, box(up).right);
+      }
+    }
+    return own.width > 0 ? Math.max(0, right - left) / own.width : 0;
+  };
+  const group = header.querySelector(".github-pull-meta .merge-refs");
+  const mergeShown = group
+    ? Math.min(
+        ...[".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target"].map((part) =>
+          shown(group.querySelector(part)),
+        ),
+      )
+    : null;
+  // Where the state row's parts and the labels are, and every row's height.
+  const places = () => ({
+    parts: [".github-pull-badge", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
+      [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
+    ),
+    rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
+    tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
+  });
+  // A stack's chip arrives late, from its own answer, through the page's own builder.
+  let chipMoves = null;
+  if (change.stackChip && group) {
+    const before = places();
+    const menu = page.createStackMenu(
+      { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
+      body.number,
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+    );
+    header.querySelector(".github-pull-stacks").replaceChildren(menu.element);
+    await frames();
+    const after = places();
+    chipMoves = {
+      moved: JSON.stringify(before) === JSON.stringify(after) ? null : { before, after },
+      chipShown: shown(menu.element),
+    };
+  }
   const rows = [...header.children].map((row) => ({
     row: row.tagName === "H1" ? "title" : [...row.classList].find((c) => c.startsWith("github-pull-")).slice(12),
     height: Math.round(box(row).height * 100) / 100,
@@ -167,6 +223,8 @@ const MEASURE = `async (name, change, tab, width) => {
     strut: strut ? Math.round(box(strut).height * 100) / 100 : null,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(meta))) * 100) / 100 : null,
     offers: header.querySelectorAll(".github-pull-offer").length,
+    mergeShown,
+    chipMoves,
     // How far any of the header's content ends past its content box, where it is not
     // clipped by a box that cuts it short, and which element it is; and the pane's own
     // sideways scroll.
@@ -215,7 +273,128 @@ const RECORDS = [
   ["current", { pinBehind: true }],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
+  ["current", { longNames: true }],
 ];
+// Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
+// github-pulls-panel-session.js pins: the toggle, the state icon, the title, the stack
+// position, the age, and the muted line. Every row's parts are read before and after each
+// row's stack position arrives, and only the title's width may change, where it is cut.
+const PULLS_ROWS = `async (rows, width) => {
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const state = window.__state ??= await import("/github/pull-state.js");
+  const mb = window.metabrowser;
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const nav = document.createElement("div");
+  nav.style.width = width + "px";
+  const list = h("ul", { class: "github-pulls-list", role: "tree" });
+  nav.append(list);
+  document.getElementById("preview-pane").replaceChildren(nav);
+  const built = rows.map((row) => {
+    const identity = page.authorLabel(row.author, null, "github-pulls-author");
+    if (row.avatar) {
+      // The slot authorLabel draws for an avatar, without a request.
+      identity.prepend(h("img", { class: "github-pull-avatar", alt: "", width: "18", height: "18" }));
+    }
+    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
+    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
+    const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    const anchor = h("a", { class: "github-pulls-row collapsed", href: "#", role: "treeitem" }, [
+      h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }),
+      state.pullStateIcon("open"),
+      title,
+      stack,
+      h("span", { class: "github-pulls-age" }, ["12mo"]),
+      h("span", { class: "github-pulls-meta" }, [
+        h("span", { class: "github-pulls-line" }, [
+          h("span", { class: "github-pulls-number" }, ["#" + row.number]),
+          h("span", { class: "github-pulls-by" }, [separator(), identity]),
+          h("span", { class: "github-pulls-merge" }, [
+            separator(),
+            mb.mergeRefs({ name: row.head, label: row.headLabel }, { name: row.base }, { kind: "remote", copy: "sibling" }),
+          ]),
+        ]),
+      ]),
+    ]);
+    list.append(h("li", { class: "github-pulls-item", role: "none" }, [anchor]));
+    return { anchor, stack, title, row };
+  });
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
+  // Each row's own boxes and all it holds but the position itself, read as they were drawn.
+  const watched = built.map(({ anchor, stack }) =>
+    [anchor, ...anchor.querySelectorAll("*")].filter((node) => node !== stack),
+  );
+  const read = () =>
+    built.map(({ title }, at) =>
+      watched[at].map((node) => {
+        const r = node.getBoundingClientRect();
+        // The title's width is where it is cut, which the position's arrival may change.
+        return [r.left, r.top, node === title ? 0 : r.width, r.height].map((value) => Math.round(value * 100) / 100);
+      }),
+    );
+  const before = read();
+  for (const { stack, row } of built) {
+    stack.hidden = false;
+    stack.append(
+      h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }),
+      h("span", { class: "github-pull-stack-position" }, [row.stack]),
+    );
+  }
+  await frames();
+  const after = read();
+  return built.map(({ anchor, stack, title, row }, at) => {
+    const moved = watched[at].flatMap((node, index) =>
+      JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
+        ? []
+        : [[node.className || node.tagName, before[at][index], after[at][index]]],
+    );
+    const s = stack.getBoundingClientRect();
+    return {
+      number: row.number,
+      moved,
+      between: s.width > 0 && s.left >= title.getBoundingClientRect().right - 0.5 && s.right <= anchor.querySelector(".github-pulls-age").getBoundingClientRect().left + 0.5,
+    };
+  });
+}`;
+const PULLS = [
+  {
+    number: 370,
+    title: "perf: decide every region's box at first paint",
+    author: "jlevy",
+    avatar: true,
+    head: "claude/perf-layout",
+    headLabel: "claude/perf-layout",
+    base: "main",
+    stack: "2/3",
+  },
+  {
+    number: 12345,
+    title: "A five-digit pull request",
+    author: "a-thirty-nine-character-github-login-x",
+    avatar: true,
+    head: "feature/some-long-branch",
+    headLabel: "fork:feature/some-long-branch",
+    base: "release/2026-11",
+    stack: "3/3 · 1/2",
+  },
+  {
+    number: 7,
+    title: "Short",
+    author: "octo",
+    avatar: false,
+    head: "wip",
+    headLabel: "wip",
+    base: "topic",
+    stack: "1/2",
+  },
+];
+const PULLS_WIDTHS = [420, 360, 300, 240, 180];
 const TABS = ["", "files", "checks"];
 const WIDTHS = [980, 760, 560, 420, 360];
 
@@ -242,10 +421,31 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
+            // The state row is the same on every tab, so its stack chip arrives on one.
+            const measured = tab === "" ? { ...change, stackChip: true } : change;
             const shape = await browser.evaluate(
-              `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(change)}, ${JSON.stringify(tab)}, ${width})`,
+              `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
             );
             const where = `${width} px, ${label} ${tab || "conversation"}`;
+            if (shape.mergeShown !== null) {
+              check(
+                `${where}: the merge's chips and arrow show whole in the state row`,
+                shape.mergeShown >= 0.99,
+                String(shape.mergeShown),
+              );
+            }
+            if (shape.chipMoves !== null) {
+              check(
+                `${where}: a late stack chip moves nothing in the header`,
+                shape.chipMoves.moved === null,
+                JSON.stringify(shape.chipMoves.moved),
+              );
+              check(
+                `${where}: a late stack chip shows whole`,
+                shape.chipMoves.chipShown >= 0.99,
+                String(shape.chipMoves.chipShown),
+              );
+            }
             seen[`${label} ${tab || "conversation"}`] = shape;
             if (shape.offers > 0) {
               offersDrawn.add(label);
@@ -281,6 +481,22 @@ async function main() {
               shape.tabBar === reference.tabBar &&
               JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
             JSON.stringify({ empty: reference, [key]: shape }),
+          );
+        }
+      }
+      for (const width of PULLS_WIDTHS) {
+        const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
+        for (const row of rows) {
+          const where = `${width} px, Pulls row #${row.number}`;
+          check(
+            `${where}: a late stack position moves nothing, here or below`,
+            row.moved.length === 0,
+            JSON.stringify(row.moved),
+          );
+          check(
+            `${where}: the stack position sits between the title and the age`,
+            row.between,
+            JSON.stringify(row),
           );
         }
       }

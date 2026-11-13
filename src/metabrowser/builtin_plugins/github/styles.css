@@ -180,15 +180,26 @@
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
-/* Always present, one line of labels whether there are none or many: a label is a line
-   of its type and its border. */
+/* Always present, one line of labels whether there are none or many, ending in the stack
+   slot (`.github-pull-stacks`), so the row is a chip's height. The labels are cut short at
+   the slot, never moved. The row positions the stack's menu, so it clips nothing itself. */
 .github-pull-labels {
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
-  gap: var(--chip-cluster-gap);
+  align-items: center;
+  gap: 8px;
   min-height: calc(1lh + 2px);
-  overflow: hidden;
+  white-space: nowrap;
   font-size: var(--ui-small-font-size);
+}
+.github-pull-label-list {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: var(--chip-cluster-gap);
+  min-width: 0;
+  overflow: hidden;
 }
 /* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
 .github-pull-label {
@@ -630,18 +641,21 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target: the chevron, the state icon, the title, and the age on the first,
-   and the muted line under the title. A row is a container, so its chevron leads in the 16px
+/* Two lines and one target: the chevron, the state icon, the title, the stack position, and
+   the age on the first, and the muted line under the title. A row is a container, so its chevron leads in the 16px
    box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's
    baseline (docs/design-system.md, "Row Text Shares a Baseline"); the muted line is alone on
    its own, with no baseline to share. */
-/* The age has a column of one width, so every row's title is cut at one place and an age
-   that grows a digit does not move it. The longest compact age is four characters
-   ("12mo", 345 to 364 days), and its m is wider than a digit; 5ch of the row's type holds it in the age's
-   smaller type in any engine. */
+/* The age has a column of one width, so an age that grows a digit does not move the title's
+   cut. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
+   wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
+   engine. Before it, the stack position's column is as wide as its position and empty
+   without a stack: a position that arrives cuts the title shorter and moves nothing, and
+   the row keeps its height. On the muted line, which wraps, it moved the merge's arrow 34
+   to 54 px, or took a line of its own and moved every row below 18 px. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;
+  grid-template-columns: 16px 16px minmax(0, 1fr) auto 5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   padding: 2px 12px 2px 10px;
@@ -672,6 +686,8 @@
   align-self: baseline;
 }
 .github-pulls-row > .github-pulls-age {
+  grid-row: 1;
+  grid-column: 5;
   justify-self: end;
   white-space: nowrap;
 }
@@ -699,7 +715,7 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line: the number, the author, the branches, and the stack badge
+/* The muted line: the number, the author, and the branches
    (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
    always whole inside the row: the author and the branches each start with their separator
    and may move to the next line, and the line is laid out as wide as the row plus one
@@ -749,12 +765,24 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-inline-start: 4px;
-  vertical-align: middle;
+  white-space: nowrap;
+  color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
 .github-pulls-stack[hidden] {
   display: none;
+}
+/* The title line's places: the title, the stack position's column, and the age (above). */
+.github-pulls-row > .github-pulls-title {
+  grid-row: 1;
+  grid-column: 3;
+}
+.github-pulls-row > .github-pulls-stack {
+  grid-row: 1;
+  grid-column: 4;
+  /* Centred, not on the title's baseline: its 18 px box hung from that baseline grew the
+     row 3 px and moved the title and the muted line down. */
+  align-self: center;
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
    on the row turn it, as they turn a folder's. */
@@ -890,8 +918,10 @@
   outline-offset: 1px;
 }
 
-/* Optional membership has its slot at the end of the retained state row, so its chip,
-   which arrives from its own /stacks answer, moves nothing before it.
+/* Optional membership has its slot at the end of the retained labels row, which has room
+   to spare: its chip, which arrives from its own /stacks answer, takes room only from the
+   labels, which are cut short and do not move. At the end of the state row it took its
+   width from the sentence and the merge, and the merge slid up to 35 px.
    The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
 .github-pull-stacks {
   display: flex;
@@ -994,6 +1024,25 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+/* In the pull request's state row the author gives way after the action and before the
+   merge (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of
+   the name, which then ends in an ellipsis, as a Pulls row's author does
+   (`.github-pulls-by`). Without a floor of its own a long login kept its whole width and
+   pushed the merge out of the row. The avatar's share is its 18px and the identity's
+   4px gap. */
+.github-pull-meta-details > .github-pull-identity {
+  flex: 0 100 auto;
+  min-width: 1.75em;
+  overflow: hidden;
+}
+.github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar) {
+  min-width: calc(18px + 4px + 1.75em);
+}
+.github-pull-meta-details .github-pull-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The author never gets narrower than its separator, its avatar if it has one, and a little
