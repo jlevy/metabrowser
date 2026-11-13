@@ -11,9 +11,11 @@ as ``docs/e2e-testing.md`` lists, and CI runs it.
 
 The run is a sequence of phases, each with its own budget: the server prints its
 banner, then serves HTTP, then the measurement launches Chrome, loads the Overview,
-waits for each panel, and measures each width. The measurement reports each of its
-phases on stderr as it ends, so a run stopped at a budget names the phase it was in and
-how long every earlier one took.
+waits for each panel, and measures each width. This module sets every budget and hands
+the measurement its own; the measurement enforces them, reports each phase on stderr as
+it ends, and fails naming the phase that ran out. A measurement that stops reporting
+altogether is stopped at the sum of its budgets, named by the phase after the last one
+it reported. Either way the failure lists how long every earlier phase took.
 
 The test owns everything it starts. The server stops when its stdin closes. The
 measuring Node process leads a process group of its own, which Chrome and its helpers
@@ -25,6 +27,7 @@ removes once those processes are gone.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -64,21 +67,59 @@ _MEASUREMENT_PHASES = (
 )
 _PHASE_LINE = re.compile(r"^phase (.+) (\d+)$", re.MULTILINE)
 
-# Each phase's budget, from what it took. A run on a 10-core Mac takes about 1.5 s to
-# print the banner, 0.1 s more to serve, and 1.5 s to measure; with twelve busy loops
-# beside a load average of 17, 3.1 s, 0.3 s, and 2.5 s. In CI the whole test took from
-# 5.5 to 40 s (ubuntu-latest).
+# Each phase's budget in seconds, from what it took, with room for a loaded machine.
+#
+# The first Chrome launch of a CI test session is the slow one, because it reads Chrome
+# from a cold disk. On ubuntu-latest runners, about four minutes into the suite, reading
+# the 474 MB under /opt/google/chrome took 9.5 to 10.8 s, after which launching Chrome
+# took 0.2 to 0.8 s and the whole measurement 1.4 s. Without that read, the launch took
+# 13.8 s in one run and 0.2 s in each launch after it, every other phase took under
+# 0.5 s, and a run whose budget was 40 s for the whole test ran out of it. On a 10-core
+# Mac a run takes about 1.5 s to print the banner, 0.1 s more to serve, and 1.5 s to
+# measure; with ten busy loops beside a load average of 14 to 97, the whole test took at
+# most 9.5 s in twenty runs.
 _BANNER_BUDGET_S = 30.0
 _SERVING_BUDGET_S = 15.0
-_MEASUREMENT_BUDGET_S = 90.0
+# The measurement enforces these itself and names the phase that runs out; "width" is
+# each width's budget. Chrome's is also how long it may take to publish its endpoint,
+# and is over six times the slowest launch measured and twice the 40 s the failed run
+# had for everything. The others are at least five times the longest their phase took,
+# here or in CI.
+_PHASE_BUDGETS_S: dict[str, float] = {
+    "chrome": 90.0,
+    "navigated": 10.0,
+    "panels": 20.0,
+    "readme": 15.0,
+    "rollup": 15.0,
+    "width": 5.0,
+    "closed": 15.0,
+}
+# Node's own start and exit, outside every phase: under 0.1 s on a 10-core Mac.
+_NODE_START_EXIT_S = 10.0
+# The measurement's own budget: every phase's, and Node's start and exit. It only fires
+# when the measurement stops reporting, as when a DevTools call never answers.
+_MEASUREMENT_BUDGET_S = (
+    sum(_PHASE_BUDGETS_S.values())
+    + _PHASE_BUDGETS_S["width"] * (len(_WIDTHS) - 1)
+    + _NODE_START_EXIT_S
+)
 # Stopping what the run started: the measurement's process group gets SIGTERM, then
 # SIGKILL, and the server its closed stdin, then SIGKILL.
 _TERM_GRACE_S = 3.0
 _KILL_GRACE_S = 2.0
 _SERVER_STOP_S = 5.0
-# The budgets and every stop, with a third again to spare, raise this module's own limit
-# over the suite's 60 s default (see tests/test_suite_gates.py).
-pytestmark = pytest.mark.timeout(200)
+# The longest a run can take: every budget, then every stop. This module's own limit,
+# over the suite's 60 s default (tests/test_suite_gates.py), adds the fixture's setup and
+# teardown, which list processes once and remove one directory.
+_LONGEST_RUN_S = (
+    _BANNER_BUDGET_S
+    + _SERVING_BUDGET_S
+    + _MEASUREMENT_BUDGET_S
+    + _TERM_GRACE_S
+    + 2 * _KILL_GRACE_S
+    + 2 * _SERVER_STOP_S
+)
+pytestmark = pytest.mark.timeout(_LONGEST_RUN_S + 30)
 
 README = """# Sample Project
 
@@ -206,6 +247,12 @@ def _run_in_own_group(argv: list[str], *, timeout_s: float, env: Mapping[str, st
     return _Run(process.returncode, stdout, stderr, timed_out)
 
 
+def _last_lines(stderr: str) -> str:
+    """What the measurement wrote besides its phase lines: its failure, when it failed."""
+
+    return "\n".join(line for line in stderr.splitlines() if not _PHASE_LINE.match(line))
+
+
 def _log_tail(log: Path) -> str:
     return log.read_text(encoding="utf-8", errors="replace")[-2000:]
 
@@ -308,47 +355,6 @@ def chrome_profile() -> Iterator[Path]:
         assert not survivors, f"processes outlived their group: {survivors}"
 
 
-# DIAGNOSTIC, not for merge: what the machine looks like before the first Chrome launch,
-# reported as warnings so that every matrix job finishes and shows them.
-def _cache_state() -> str:
-    parts = []
-    for directory in (Path.home() / ".cache" / "fontconfig", Path("/var/cache/fontconfig")):
-        files = [p for p in directory.glob("*") if p.is_file()] if directory.is_dir() else []
-        parts.append(
-            f"{directory}: {len(files)} files {sum(p.stat().st_size for p in files)} bytes"
-        )
-    return "; ".join(parts)
-
-
-def test_aa_diagnostic_machine_state() -> None:
-    import warnings
-
-    chrome = require_chrome()
-    real = Path(os.path.realpath(chrome))
-    load = Path("/proc/loadavg").read_text() if Path("/proc/loadavg").exists() else "n/a"
-    top = subprocess.run(
-        ["ps", "-eo", "pcpu,etime,args", "--sort=-pcpu"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.splitlines()[:8]
-    before = _cache_state()
-    started = time.monotonic()
-    total = 0
-    for path in real.parent.rglob("*"):
-        if path.is_file() and not path.is_symlink():
-            with path.open("rb") as handle:
-                while chunk := handle.read(1 << 20):
-                    total += len(chunk)
-    read_s = time.monotonic() - started
-    warnings.warn(
-        f"DIAGNOSTIC machine: chrome {chrome} -> {real}; loadavg {load.strip()}; "
-        f"read {total} bytes of {real.parent} in {read_s:.1f} s; caches before: {before}; "
-        f"top: {' | '.join(line.strip()[:120] for line in top)}",
-        stacklevel=1,
-    )
-
-
 def test_overview_labels_start_on_the_tab_label_at_every_width(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
@@ -385,6 +391,7 @@ def test_overview_labels_start_on_the_tab_label_at_every_width(
                 str(DOM / "folder-overview-alignment-chrome.mjs"),
                 f"http://127.0.0.1:{port}",
                 str(chrome_profile),
+                json.dumps({"widths": _WIDTHS, "budgets": _PHASE_BUDGETS_S}),
             ],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome},
@@ -394,38 +401,12 @@ def test_overview_labels_start_on_the_tab_label_at_every_width(
         _stop_server(server)
     if run.timed_out:
         pytest.fail(
-            f"phase {phases.next_measurement_phase()} ran out of the measurement's "
+            f"the measurement stopped reporting during phase "
+            f"{phases.next_measurement_phase()} and ran out of its "
             f"{_MEASUREMENT_BUDGET_S:g} s budget; phases that ended: {phases.report()}"
         )
-    assert run.returncode == 0, f"{run.stderr or run.stdout}\nphases that ended: {phases.report()}"
+    # A phase that runs out of its own budget fails the measurement, which names it.
+    assert run.returncode == 0, (
+        f"{_last_lines(run.stderr) or run.stdout}\nphases that ended: {phases.report()}"
+    )
     assert run.stdout == "folder overview alignment: 30 checks passed\n"
-    import warnings
-
-    warnings.warn("DIAGNOSTIC first run phases: " + phases.report(), stacklevel=1)
-
-
-def test_zz_diagnostic_warm_runs(tmp_path: Path) -> None:
-    import warnings
-
-    reports = [f"caches after the first run: {_cache_state()}"]
-    made: list[_Phases] = []
-    real_phases = globals()["_Phases"]
-
-    for attempt in (1, 2):
-        profile = Path(tempfile.mkdtemp(prefix="overview-alignment-chrome-"))
-        started = time.monotonic()
-        try:
-            globals()["_Phases"] = lambda: made.append(real_phases()) or made[-1]
-            test_overview_labels_start_on_the_tab_label_at_every_width(
-                tmp_path / f"run{attempt}", profile
-            )
-            reports.append(
-                f"warm run {attempt} ok in {time.monotonic() - started:.1f} s: {made[-1].report()}"
-            )
-        except BaseException as error:  # noqa: BLE001
-            reports.append(f"warm run {attempt} failed: {error}")
-        finally:
-            globals()["_Phases"] = real_phases
-            _kill_processes_naming(profile)
-            shutil.rmtree(profile, ignore_errors=True)
-    warnings.warn("DIAGNOSTIC " + " || ".join(reports), stacklevel=1)
