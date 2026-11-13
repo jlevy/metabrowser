@@ -907,20 +907,26 @@ Terminal launch.
 
 ### The Window
 
-- **Title:** the folder’s short name in bold, then a bullet and “Metabrowser” in a
-  secondary style (`fdu • Metabrowser`), so each window says at a glance which folder it
-  shows. The names come from `GET /api/identity`, asked once the server is ready.
+- **Title:** the folder’s short name alone, in bold (`fdu`), so each window says at a
+  glance which folder it shows; the mark at the title bar’s other end carries the app’s
+  name. The names come from `GET /api/identity`, asked once the server is ready.
   Until then, and if the route fails, the window names the folder from its path as
-  `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain text,
-  which the Window menu, Mission Control, the Dock, and accessibility read.
-  A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
-  and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
-  The page’s `<title>` is not used.
-- **Logo:** the title starts with the app icon’s mark alone, the colored M and B without
-  the icon’s dark squircle, in the row of window buttons, in every folder window,
-  whether it shows a page or the status view.
-  In a local folder’s window it stands in for the proxy icon: drag it to use the folder
-  elsewhere, and Command-click or right-click it for the path menu.
+  `metab` would (`FolderIdentity.localFolder`). `window.title` is the short name too,
+  which the Window menu, Mission Control, the window switcher, and accessibility read;
+  while two open folders share a short name, each of their windows takes its full name
+  instead, so they can be told apart (`WindowTitle.windowTitles`). A tab shows the short
+  name, with the full name as its tooltip, and the title’s tooltip and `window.subtitle`
+  give the full name and kind (`~/wrk/github/fdu · Local folder`). The page’s `<title>`,
+  `fdu • Metabrowser`, names the page in a browser’s tab, where nothing else says
+  Metabrowser; the app does not use it.
+  Command-click, right-click, or VoiceOver’s Show Menu on a local folder’s title opens
+  its path menu.
+- **Mark:** the app icon’s mark alone, the colored M and B without the icon’s dark
+  squircle, stands at the title bar’s trailing end in every folder window, whether it
+  shows a page or the status view.
+  It links to the project: a click opens its repository on GitHub in the default
+  browser, the pointer becomes the pointing hand over it, and a faint capsule lights
+  behind it.
   [Why the Title Is a Title-Bar Accessory](#why-the-title-is-a-title-bar-accessory) has
   its measurements.
 - **Size:** a new window opens 80% as tall as its screen’s usable area (the visible
@@ -1117,36 +1123,36 @@ edited or corrupted file.
 
 AppKit draws a system title in one font and one color, so the window hides it
 (`titleVisibility = .hidden`) and draws its own in a leading title-bar accessory,
-`TitleAccessoryController`. Measured on macOS 26.5:
+`TitleAccessoryController`, and the mark in a trailing one, `TitleBarMarkController`.
+Measured on macOS 26.5:
 
-- **It sits where the system title sits.** macOS 26 puts a plain window’s title at the
-  leading edge, after the window buttons: the proxy icon at x 82 and the text at x 100,
-  in the 13-point title-bar font.
-  A leading accessory starts at x 78, so the drawn title starts where the system’s does,
-  in the same font, and the title bar stays 32 points tall; its text starts 4 points
-  later than the system’s, after the logo (below).
+- **The title sits where the system title sits.** macOS 26 puts a plain window’s title
+  at the leading edge, after the window buttons: with a proxy icon, the icon at x 82 and
+  the text at x 100, and without one, the text at x 82, its first ink at x 84, in the
+  13-point title-bar font.
+  A leading accessory starts at x 78, so the drawn title, which has no icon, lands on
+  the system’s x 82 in the same font (its first ink measured at x 84.2), and the title
+  bar stays 32 points tall.
   AppKit places accessories for tabs, full screen, and right-to-left layouts.
 - **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
   76 points tall, centers the title where macOS 26 no longer puts it, and, with the
   title hidden, AppKit shows no proxy icon there either.
-- **The logo sits in the window buttons’ row, with equal space on each side.** The
-  buttons are 14-point circles 9 points apart, from x 9 to 69 and 9 to 23 points below
-  the top. The logo is 13 points tall, a little under a button, as the user asked, and
-  centered as they are, from 9.5 to 22.5 points down.
-  It runs from x 78, the buttons’ 9-point gap after the zoom button, to x 96.81, and the
-  title follows it by about the same gap, ink to ink: its label starts at x 104, 4
-  points further right than the system title’s x 100, and its first ink at about x
-  106.2. Measured in 2x renders, for a title starting with a bold “f”, the gaps are 9.00
-  points before the mark and 9.39 after it in light mode, and 9.53 and 9.23 in dark
-  mode, where the offscreen window button’s darker rim measured half a point inside its
-  frame; a title starting with “m” measured 0.6 points more after it.
-- **The logo is the icon’s own mark.** It draws the partial M and the B from the
-  outlines and fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift`
-  copies into `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh`
-  regenerates the icons; a test checks the copy against both masters.
+- **The mark stands at the trailing end.** AppKit keeps a trailing accessory flush with
+  the window’s trailing edge and as tall as the title bar, with a tab bar below it too.
+  The window buttons are 14-point circles 9 points apart, from x 9 to 69 and 9 to 23
+  points below the top.
+  The mark is 13 points tall, centered on their row from 9.5 to 22.5 points down, and
+  its ink ends 9.2 points before the window’s trailing edge, as the close button starts
+  9 points after the leading edge (`TitleBarMarkLayout`; the fifth of a point is the
+  accessory’s and the mark’s rounding to whole points, which keeps the M’s stem crisp).
+  In a narrow window the title truncates 12 points before the mark’s accessory.
+- **The mark is the icon’s own.** It draws the partial M and the B from the outlines and
+  fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift` copies into
+  `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh` regenerates the
+  icons; a test checks the copy against both masters.
   They are paths, not a bitmap, so the mark is crisp at any scale.
   Both variants’ icons draw the same mark, which the script checks, so a development
-  build shows the same logo as a release.
+  build shows the same mark as a release.
   The icon’s pressed-in letter shadow belongs to its panel, so the mark alone has none,
   and it needs no drop shadow or edge on either title bar.
 - **Its colors read on both title bars.** On the dark title bar the icon’s own fills
@@ -1158,26 +1164,39 @@ AppKit draws a system title in one font and one color, so the window hides it
   them a little darker than the first, 3:1 tints.
   That is #967B2C for the M, oklch(59.4% 0.1019 90.40), at 4.06:1, and #AD4AFF for the
   B, oklch(62.5% 0.2547 304.96), at 4.04:1 (`AppIconMark.titleBarFills`).
-- **The logo stands in for the proxy icon.** AppKit drops the proxy icon when a leading
-  accessory is present, so in a local folder’s window the logo takes its part, from
-  `representedURL`. Dragging it copies or aliases the folder, never moves it, since a
-  move would pull the folder out from under its server, and the drag shows the folder’s
-  own icon. Command-click or right-click on the logo or the title opens the path menu.
-  A cached mirror’s window shows the logo with neither, and clicks on it move the
-  window.
-- **The logo says what it is.** To assistive apps a folder’s logo is an image labeled
-  with the folder’s short name, as “Folder: fdu”, whose help gives the path, the drag,
-  and the path menu, and VoiceOver’s Show Menu opens the path menu.
-  A logo that stands for nothing is left out as decoration, since the title beside it
-  says Metabrowser. The view sets these itself, rather than leave them to the image cell,
-  which names itself after its image.
-- **It behaves like a system title.** It dims when its window is not the main window of
-  the active app (the tertiary label color, which an inactive system title measured
-  close to), and AppKit dims the logo with it.
+- **The mark is a link.** A click opens https://github.com/jlevy/metabrowser in the
+  default browser (`ProjectLinks.repository`, which the Help menu’s README and the setup
+  steps’ installation guide also derive from).
+  A press that moves 3 points drags the window instead, as the rest of the title bar
+  does, so a click never moves the window and a drag never opens the page; a first click
+  in a window that is not key opens it, as the window buttons act on a first click.
+  The pointer becomes the pointing hand over it, and a capsule reaching 4 points past
+  its ink across and 3 up and down lights behind it in the system’s secondary fill, 7.8%
+  black on the light title bar and 7.8% white on the dark one, and the system fill,
+  9.8%, while pressed.
+  The fills are resolved in the plain light and dark appearances, since the title bar’s
+  vibrant one resolves them to opaque grays meant for vibrancy, darker than the dark
+  title bar. The hover shows only in the key window, and goes out when the window resigns
+  key or the app resigns active.
+  To assistive apps the mark is a button labeled “Metabrowser on GitHub”, whose help
+  names the page and whose press opens it; its image is not an element.
+  What each pointer event means, a click, a drag, a release outside, a deactivation, is
+  `TitleBarMarkInteraction` in `ShellCore`, tested event by event; the button feeds it
+  AppKit’s events and carries out the effects it returns.
+- **No proxy icon.** AppKit drops the proxy icon when a leading accessory is present, so
+  a folder’s window has none, and the folder can no longer be dragged from the title
+  bar: the mark, which stood in for the proxy icon until it moved to the trailing end,
+  now links to the project instead.
+  Command-click or right-click on the title opens the folder’s path menu, from
+  `representedURL`, and so does VoiceOver’s Show Menu: the title view is the title’s
+  accessibility element, static text reading the short name with the full name as help,
+  and offers Show Menu only for a local folder.
+  A cached mirror’s title has no path menu.
+- **It behaves like a system title.** The title dims when its window is not the main
+  window of the active app (the tertiary label color, which an inactive system title
+  measured close to), and AppKit dims the mark with it.
   It follows light and dark mode through label colors, and passes plain clicks to the
   title bar, which drags and double-clicks the window.
-  In a narrow window, “• Metabrowser” goes first and whole, then the short name
-  truncates (`WindowTitle.segments(fitting:)`).
 
 ### Pitfalls Found in the Live Run
 
