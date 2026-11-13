@@ -161,6 +161,206 @@ function host() {
   };
 }
 
+/**
+ * The tabs' C, G, and H under a held first paint (review E2): a landing whose description's
+ * Markdown is on its way holds the conversation over the loading page, header included, so
+ * the tab column is out of the page and no tab key is live; at release the header paints and
+ * all three keys are. The registry and facade are the production ones, loaded as the page
+ * mount session's tabKeys loads them, and the hold really holds: the Markdown is answered when
+ * the session says, with the allowlist in place.
+ *
+ * @param {Record<string, any>} page
+ */
+async function heldTabKeys(page) {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  class LiveElement extends Element {
+    get isConnected() {
+      let node = this;
+      while (node.parentNode) {
+        node = node.parentNode;
+      }
+      return node.connected === true;
+    }
+    get parentElement() {
+      return this.parentNode;
+    }
+    get inert() {
+      return this.attributes.has("inert");
+    }
+    hasAttribute(name) {
+      return this.attributes.has(name);
+    }
+    checkVisibility() {
+      for (let node = this; node; node = node.parentNode) {
+        if (node.attributes.has("hidden")) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  const listeners = [];
+  const body = new LiveElement("body");
+  body.connected = true;
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener: (type, listener) => listeners.push({ type, listener }),
+    removeEventListener(type, listener) {
+      const at = listeners.findIndex((entry) => entry.type === type && entry.listener === listener);
+      if (at >= 0) {
+        listeners.splice(at, 1);
+      }
+    },
+    createElement: (tag) => new LiveElement(tag),
+    importNode: () => new LiveElement("svg"),
+    body,
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout: () => Symbol(),
+    clearTimeout() {},
+    MetabrowserInertHtml: {
+      sanitizeHtml: (html) => html,
+      kpressProse(html) {
+        const node = document.createElement("p");
+        node.textContent = html;
+        return node;
+      },
+    },
+  };
+  const current = structuredClone(recorded.current.body);
+  current.record_revision = "9".repeat(64);
+  current.record.pull.body = "held keys text";
+  current.record.issue_comments = [];
+  current.record.reviews = [];
+  current.record.review_comments = [];
+  current.record.comparison = null;
+  current.record.unavailable.comparison = "no_store";
+  /** Markdown answers the session releases. */
+  const markdown = [];
+  const response = (answer) => ({
+    status: 200,
+    headers: { get: () => null },
+    json: async () => answer,
+  });
+  globalThis.fetch = async (route) => {
+    if (route.startsWith("/api/plugin/github/pull-markdown?")) {
+      return new Promise((resolve) =>
+        markdown.push(() =>
+          resolve(
+            response({
+              record_revision: current.record_revision,
+              fetched_at: current.fetched_at,
+              html: "rendered held keys text",
+              assets: {},
+            }),
+          ),
+        ),
+      );
+    }
+    if (route.startsWith("/api/plugin/github/pull?")) {
+      return response(current);
+    }
+    return { status: 304, headers: { get: () => null } };
+  };
+  const shell = {
+    console,
+    document: globalThis.document,
+    HTMLElement: LiveElement,
+    METABROWSER_SETTINGS: {
+      RESERVED_SHELL_KEYS: {
+        ...Object.fromEntries([..."tjkuwxya0123456789"].map((key) => [key, null])),
+        n: ["pull-request"],
+        p: ["pull-request"],
+      },
+    },
+  };
+  shell.window = shell;
+  vm.createContext(shell);
+  for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+    const file = path.join(root, "src/metabrowser/static", name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), shell, { filename: file });
+  }
+  const facade = shell.MetabrowserPluginShortcuts;
+  const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
+  const detachRegistry = facade.attachShortcutRegistry(registry);
+  const opened = [];
+  const container = new LiveElement("main");
+  body.append(container);
+  const handle = page.mountPullPage(
+    container,
+    { number: 7, tab: "", open: (route) => opened.push(route.tab), reader: null },
+    {
+      perf,
+      ensureAsset: async () => {},
+      ensureKindAssets: async () => {},
+      loadKpressAssets: async () => {},
+      ...refHelpers(globalThis.document),
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: () => "now",
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "git_revision",
+      icons: { toggle: "" },
+      shortcuts: { attach: facade.attachShortcut },
+    },
+  );
+  const press = (key) => {
+    opened.length = 0;
+    let handled = false;
+    const event = {
+      type: "keydown",
+      key,
+      code: "",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      repeat: false,
+      isComposing: false,
+      target: body,
+      defaultPrevented: false,
+      preventDefault() {
+        handled = true;
+        this.defaultPrevented = true;
+      },
+    };
+    for (const entry of listeners.filter((candidate) => candidate.type === "keydown")) {
+      entry.listener(event);
+    }
+    return handled ? `opened the ${opened[0] || "conversation"} route` : "not handled";
+  };
+  const live = () =>
+    ["conversation", "files", "checks"].filter((id) =>
+      registry.isLive(`plugin.github.pull.tab.${id}`),
+    );
+  const bodyNode = () => container.querySelector(".github-pull-body");
+  await settle();
+  const whileHeld = {
+    holding: bodyNode()?.classes.has("github-pull-body-holding") ?? false,
+    tabColumn: container.querySelector(".tab-bar") !== null,
+    live: live(),
+    g: press("g"),
+  };
+  assert.equal(whileHeld.holding, true, "the landing's first paint is held");
+  assert.deepEqual(whileHeld.live, [], "no tab key is live while the header waits");
+  while (markdown.length > 0) {
+    markdown.shift()();
+    await settle();
+  }
+  const released = {
+    holding: bodyNode()?.classes.has("github-pull-body-holding") ?? false,
+    tabColumn: container.querySelector(".tab-bar") !== null,
+    live: live(),
+    g: press("g"),
+  };
+  assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");
+  handle.dispose();
+  detachRegistry();
+  registry.dispose();
+  return { whileHeld, released };
+}
+
 async function run() {
   const page = await import(pathToFileURL(pagePath).href);
   const facts = {};
@@ -628,7 +828,12 @@ async function run() {
 
   // Changes with rendered Markdown stays out of sight until its first screen settles, or
   // its bound passes, and is ready only then.
-  const changes = async (settles) => {
+  // *ending* is how the wait ends: its first screen settles, its bound passes, or the page goes
+  // while it waits, which settles the first screen as the diff's disposal does (review E1).
+  const changes = async (ending) => {
+    const settles = ending === "settled";
+    /** @type {{label: string, meta: Record<string, any>}[]} */
+    const spans = [];
     const files = envelope("e".repeat(64), "first text");
     files.record.comparison = { base: "1".repeat(40), head: "2".repeat(40) };
     files.rendered_route = "/api/plugin/github/pull-rendered-diff?number=7";
@@ -650,7 +855,13 @@ async function run() {
         reader: { initial: { etag: null, body: files }, fetchAfterMs: 0 },
       },
       {
-        perf,
+        perf: {
+          measure(label, work, meta) {
+            spans.push({ label, meta });
+            return work();
+          },
+          measureAsync: async (_label, work) => work(),
+        },
         ensureAsset: async () => {},
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
@@ -687,6 +898,18 @@ async function run() {
     await settle();
     const host = [...container.descendants()].find((node) => node.classes.has("github-pull-diff"));
     const held = host.classes.has("github-pull-diff-holding");
+    if (ending === "cancelled") {
+      // The page that replaces it takes the pane: the going page's diff stays out of sight.
+      handle.cancelPending();
+      settle_();
+      await settle();
+      const outcome = spans.find((span) => span.label === "githubPull:changesHold")?.meta.outcome;
+      const keptOutOfSight = host.classes.has("github-pull-diff-holding");
+      assert.equal(keptOutOfSight, true, "a cancelled page keeps its held diff out of sight");
+      handle.dispose();
+      window.location.pathname = "/pull/7";
+      return { held, keptOutOfSight, outcome };
+    }
     if (settles) {
       settle_();
     } else {
@@ -703,7 +926,11 @@ async function run() {
     window.location.pathname = "/pull/7";
     return { asked, held, readyWhileHeld, shown, ready, holdingAtJump };
   };
-  facts.changes = { settled: await changes(true), bound: await changes(false) };
+  facts.changes = {
+    settled: await changes("settled"),
+    bound: await changes("bound"),
+    cancelled: await changes("cancelled"),
+  };
 
   // The kept renders are bounded by count and by characters, the oldest dropped first, and
   // descriptions apart from the other parts, so a long conversation keeps them.
@@ -736,6 +963,7 @@ async function run() {
   assert.ok(bounds.renderedText("s", 7, "body", "big 5"), "the newest stayed");
   assert.equal(held.texts, 3, "three of a quarter each fit beside their texts");
   facts.bounded = true;
+  facts.tabKeysWhileHeld = await heldTabKeys(page);
   return facts;
 }
 

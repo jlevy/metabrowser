@@ -4839,24 +4839,27 @@ export function mountPullPage(container, ctx, mb) {
         mb.perf.measure("githubPull:changesHold", () => {}, {
           number,
           heldMs: Date.now() - since,
-          outcome,
+          // A page that went during the wait settles its diff's first screen by disposing it.
+          outcome: owns() ? outcome : "cancelled",
         });
       }
-      host.classList.remove("github-pull-diff-holding");
       loading.remove();
       if (!owns()) {
+        // A page that went while its diff was held keeps it out of sight, as its conversation
+        // does: the page replacing it shows it as it was until that one is ready.
         return;
       }
+      host.classList.remove("github-pull-diff-holding");
       // Failed diff loads resolve to a disposable notice without the public file API.
       // Do not report that surface, or a replaced mount, as useful Files readiness.
       if (owns() && typeof handle?.currentFile === "function") {
         mb.perf.measure("githubPull:filesReady", () => {}, { number });
       }
     } catch {
-      host.classList.remove("github-pull-diff-holding");
       if (!owns()) {
         return;
       }
+      host.classList.remove("github-pull-diff-holding");
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
         if (owns()) {

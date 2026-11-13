@@ -713,8 +713,22 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "holdingAtJump": True,
             }
             for ending in ("settled", "bound")
-        },
+        }
+        # A page that goes while its diff waits keeps it out of sight and records the wait as
+        # cancelled (review E1); before, the diff was shown and the wait recorded as met.
+        | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
         "bounded": True,
+        # No tab key is live while the header waits with the held body; all three at release
+        # (review E2).
+        "tabKeysWhileHeld": {
+            "whileHeld": {"holding": True, "tabColumn": False, "live": [], "g": "not handled"},
+            "released": {
+                "holding": False,
+                "tabColumn": True,
+                "live": ["conversation", "files", "checks"],
+                "g": "opened the files route",
+            },
+        },
     }
 
 

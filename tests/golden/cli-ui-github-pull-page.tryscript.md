@@ -1641,9 +1641,9 @@ Opening Changes beside a checkout starts an acquisition and offers Retry changes
 refusal. The tabs answer to `C`, `G`, and `H` through the production shortcut registry
 and plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
 does not show opens through the route, as a click on its link does.
-The keys wait while the tab column is out of the page before the record arrives, return
-when the header puts it back, wait while the page is staged inert, and end with the
-page.
+The keys wait while the tab column is out of the page before the record arrives, and
+while a held first paint keeps the loading heading over the loading page, return when
+the header puts it back, wait while the page is staged inert, and end with the page.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
@@ -1733,8 +1733,11 @@ render kept for that text at once, keeping its node (`revisit`, `refreshedSameTe
 Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
 badge’s first paint is the fresher of the cached record and the repository’s list
 (`listedState`). Changes with rendered Markdown stays out of sight until its first
-screen settles or `CHANGES_FIRST_SCREEN_MS` passes (`changes`). The kept renders are
-bounded by count and by characters, descriptions apart from other parts (`bounded`).
+screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while it waits
+keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
+are bounded by count and by characters, descriptions apart from other parts (`bounded`).
+Under a held first paint over the loading page no tab key is live, since the header
+waits with the body; at release all three are (`tabKeysWhileHeld`).
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1830,9 +1833,32 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "shown": true,
       "ready": true,
       "holdingAtJump": true
+    },
+    "cancelled": {
+      "held": true,
+      "keptOutOfSight": true,
+      "outcome": "cancelled"
     }
   },
-  "bounded": true
+  "bounded": true,
+  "tabKeysWhileHeld": {
+    "whileHeld": {
+      "holding": true,
+      "tabColumn": false,
+      "live": [],
+      "g": "not handled"
+    },
+    "released": {
+      "holding": false,
+      "tabColumn": true,
+      "live": [
+        "conversation",
+        "files",
+        "checks"
+      ],
+      "g": "opened the files route"
+    }
+  }
 }
 ? 0
 ```
