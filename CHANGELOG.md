@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A selected commit’s summary, and the tooltip over a history row, show the commit’s
+  branches and tags, with the same kinds, trunk, and HEAD marks as its row.
+  They showed none, because the commit’s detail named its refs in a short form the
+  parser dropped. `/api/git/commit/<revision>` now carries the commit’s `refs`, and
+  `/api/git/refs` marks trunk with `is_trunk` as the history does.
+
 - A merge between two branches reads source → target, left to right, everywhere it
   appears. The Pulls list shows `claude/x → main` instead of `main ← claude/x`, and a
   pull request’s header reads “octo wants to merge 1 commit: wip → topic” instead of
