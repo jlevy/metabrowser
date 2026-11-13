@@ -38,6 +38,15 @@ All notable changes to Metabrowser are documented here.
   In Quick Search, pull requests follow the file results as their own group, so their
   later arrival never moves a file row or the selection.
 
+- A folder’s Overview keeps its section labels at one left edge at every window width.
+  **File Overview**, **README**, and File Overview’s controls and **Details** toggle
+  start under the Overview tab’s label.
+  On a desktop-width window they used to sit 4 rem or 2.5 rem in from the section rule,
+  depending on the width, and 0.75 rem on a narrow one.
+  The README’s text keeps its own margins inside its card.
+  See
+  [Folder Overview Is a Panel Stack](docs/design-system.md#folder-overview-is-a-panel-stack).
+
 - TypeScript is a saturated yellow, departing from GitHub’s colors on purpose.
   GitHub makes TypeScript and Python both blue, and wherever file types are colored —
   the tree’s file icons, the File Overview’s bars and legend, and the Treemap — the two

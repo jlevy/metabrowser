@@ -443,8 +443,9 @@ In a single column it can use available space to the right of the text.
 Below 75 rem, KPress’s icon opens the existing overlay from the trailing gutter to keep
 the beginning of each line clear.
 The Folder Overview README shares the same prose edge and maximum measure.
-Its panel headings and bodies follow the document card’s outer edge, with text at the
-README’s responsive inner inset.
+Its panel headings and bodies follow the document card’s outer edge.
+Their text starts on the active tab’s label rather than at the README’s responsive inner
+inset; see [Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack).
 It uses the surrounding folder navigation for context.
 
 ### Embedded Document Themes
@@ -2690,6 +2691,17 @@ The shared column is bounded by `--doc-measure` plus its document insets.
 The same `kpress-doc` container selects the card breakpoint for the README and a
 standalone file. The Markdown mount supplies KPress’s rendering and the pane gutter for
 both. See [Reading Width](#reading-width).
+
+Text the Overview draws itself starts on one left edge at every width: each panel
+heading’s label, and a surface body’s controls, rows, and toggles such as **Details**,
+start `--file-tab-padding-x` in from the card edge, under the active tab’s label.
+The README’s prose keeps KPress’s responsive inset inside its card, as a standalone file
+does, so it is not that edge.
+The inset is declared once, outside any container query.
+When it followed the README’s inset, the labels moved from 0.75 to 4 to 2.5 rem in from
+the card edge as the window widened.
+`tests/test_folder_overview_alignment.py` measures the edge in Chrome at widths in all
+three document bands.
 
 Panel availability is independent.
 A missing README removes only that region, and one failed optional panel gets a local
