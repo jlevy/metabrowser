@@ -213,6 +213,17 @@ def test_registry_rejects_each_structural_validation_class() -> None:
             base.replace("hue = 246.50", 'hue = 246.50\ndeviation = "   "'),
             "invalid-field",
         ),
+        (
+            base.replace("hue = 246.50", "hue = 246.50\nchroma_ratio = 1.0"),
+            "undeclared-deviation",
+        ),
+        (
+            base.replace(
+                "hue = 246.50",
+                'hue = 246.50\nchroma_ratio = 1.5\ndeviation = "Wants more chroma."',
+            ),
+            "invalid-field",
+        ),
         (base.replace('extensions = ["py"]', "extensions = []"), "missing-evidence"),
     )
     assert [_error_code(text) for text, _expected in cases] == [
@@ -257,10 +268,46 @@ def test_a_declared_deviation_overrides_the_rank_upstream_would_give() -> None:
     assert projected["lightness_rank"] == -0.5
 
 
+def test_a_declared_chroma_ratio_overrides_only_the_chroma_upstream_would_give() -> None:
+    """The chroma axis has the same override, for a family whose hue left its
+    upstream colour's and so has no saturation of its own left to take. It
+    replaces the ratio and nothing else, and it never leaves the band."""
+
+    text = _minimal_registry().replace(
+        "hue = 246.50",
+        'hue = 92.0\nchroma_ratio = 1.0\ndeviation = "Left its upstream colour."',
+    )
+    registry = load_file_type_registry_from_text(text)
+    family = registry.family("python")
+    assert family is not None
+    assert family.chroma_ratio == 1.0
+    assert family.lightness_rank is None
+
+    derived = band_positions([family.linguist_color])[0]
+    position = registry.tone_position("python")
+    assert position.chroma_ratio == 1.0
+    assert position.lightness_rank == derived.lightness_rank
+
+    families = registry.projection()["families"]
+    assert isinstance(families, tuple)
+    projected = next(
+        entry for entry in families if isinstance(entry, dict) and entry.get("id") == "python"
+    )
+    assert projected["chroma_ratio"] == 1.0
+    # A painted colour depends on it, so the registry's identity does too.
+    assert (
+        registry.fingerprint
+        != load_file_type_registry_from_text(
+            text.replace("chroma_ratio = 1.0", "chroma_ratio = 0.5")
+        ).fingerprint
+    )
+
+
 def test_a_family_that_does_not_deviate_carries_no_reason() -> None:
     registry = load_file_type_registry_from_text(_minimal_registry())
     family = registry.family("python")
     assert family is not None
     assert family.deviation is None
     assert family.lightness_rank is None
+    assert family.chroma_ratio is None
     assert 0.0 <= registry.tone_position("python").lightness_rank <= 1.0

@@ -1,6 +1,7 @@
 {
   "families": [
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".py",
@@ -17,6 +18,7 @@
       "order": 100
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".js",
@@ -35,7 +37,8 @@
       "order": 110
     },
     {
-      "deviation": null,
+      "chroma_ratio": 1.0,
+      "deviation": "Leaves GitHub's colour at the user's request (2026-11-13), the one family that does: GitHub makes TypeScript and Python both blue, 253.30 and 246.50, and they painted at dE 0.0316 light and 0.0240 dark -- two languages often side by side in one repository, told apart by a shade. Python keeps GitHub's blue; TypeScript becomes a saturated yellow. Hue 92.0 is ten degrees warmer than JavaScript's 102.08, so the two yellows differ in hue as well as tone. The rank puts it above the band, because a yellow inside it is mustard -- JavaScript, the band's lightest family, paints #aa9a00 in the light theme -- and 1.5 lands the dark theme at 0.870, on hue 92's gamut cusp (0.872), where sRGB holds the most chroma a yellow there can have. The chroma ratio is the band's top, because the ratio #3178c6 earned is a blue's and gave this yellow less chroma than JavaScript's in the dark theme. It paints #cda600 light and #fecf00 dark, each at the most chroma sRGB holds there, and clears Python by 0.330 and JavaScript, its nearest family, by 0.0659 light and 0.0726 dark.",
       "extensions": [
         ".ts",
         ".mts",
@@ -43,16 +46,17 @@
         ".tsx"
       ],
       "group_id": "code",
-      "hue": 253.3,
+      "hue": 92.0,
       "icon": null,
       "id": "typescript",
       "label": "TypeScript",
-      "lightness_rank": null,
+      "lightness_rank": 1.5,
       "linguist": "TypeScript",
       "linguist_color": "#3178c6",
       "order": 120
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".css",
@@ -70,6 +74,7 @@
       "order": 130
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".html",
@@ -86,6 +91,7 @@
       "order": 140
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".rs"
@@ -101,6 +107,7 @@
       "order": 150
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".go"
@@ -116,6 +123,7 @@
       "order": 160
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".java"
@@ -131,6 +139,7 @@
       "order": 170
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".kt",
@@ -147,6 +156,7 @@
       "order": 180
     },
     {
+      "chroma_ratio": null,
       "deviation": "Four upstream brands independently chose nearly the same orange-red, and GitHub hands us all four: swift 31.62, svelte 34.20, html 34.85, clojure 24.35. Taking each at its upstream hue is faithful and leaves swift and svelte at dE 0.0073 in the dark theme -- #ff4733 against #ff4a31, which is one colour to the eye. A palette whose job is telling families apart does not get to call that acceptable just because the rule that produced it is consistent.\n\nSwift moves rather than the others because it is the hub, not a member: it appears in five of the sub-0.02 pairs, more than any other family, so moving this one resolves three collisions (svelte, html, clojure) where moving any of the others resolves one. At 52.3 it clears every family by 0.0252 in both themes against 0.0073 before.\n\nIt stays orange -- #ab2300 light, #ff4c13 dark -- so what a reader recognises about Swift survives even though the exact hue no longer matches. The widest gap on the whole circle is near 265.8 and clears 0.0380, half again as much room, and is refused: a blue Swift is no longer recognisably Swift, and the entire reason for taking GitHub's colours is that readers already know them.",
       "extensions": [
         ".swift"
@@ -162,6 +172,7 @@
       "order": 190
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".c",
@@ -181,6 +192,7 @@
       "order": 200
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".cs"
@@ -196,6 +208,7 @@
       "order": 210
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".rb"
@@ -211,6 +224,7 @@
       "order": 220
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".php"
@@ -226,6 +240,7 @@
       "order": 230
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".scala"
@@ -241,6 +256,7 @@
       "order": 240
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".clj"
@@ -256,6 +272,7 @@
       "order": 250
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".ex",
@@ -272,6 +289,7 @@
       "order": 260
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".erl"
@@ -287,6 +305,7 @@
       "order": 270
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".hs"
@@ -302,6 +321,7 @@
       "order": 280
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".lua"
@@ -317,6 +337,7 @@
       "order": 290
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".jl"
@@ -332,6 +353,7 @@
       "order": 300
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".dart"
@@ -347,6 +369,7 @@
       "order": 310
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".vue"
@@ -362,6 +385,7 @@
       "order": 320
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".svelte"
@@ -377,6 +401,7 @@
       "order": 330
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".sh",
@@ -395,6 +420,7 @@
       "order": 340
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".ps1"
@@ -410,6 +436,7 @@
       "order": 350
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".sql"
@@ -425,6 +452,7 @@
       "order": 360
     },
     {
+      "chroma_ratio": null,
       "deviation": "GitHub puts Markdown at 261.42, inside a seven-family run -- python 246.50, xml 251.44, typescript 253.30, powershell 258.14, markdown, lua 264.05, php 272.03 -- and it read as Python's blue. Markdown is the most-viewed family in the app and Python's colour is the better known of the two, so Markdown is the one that moves. 276.0 clears every other family by 0.0355 rather than 0.0149 and is still plainly a blue rather than a violet. The rank puts it below the band, which is the deliberate part: at its upstream rank it painted 0.571 against Python's 0.599, and no hue move makes a lighter blue read as a darker one. #083fa1 is a dark navy, so this paints closer to the colour GitHub chose than the band alone allowed.",
       "extensions": [
         ".md"
@@ -440,6 +468,7 @@
       "order": 100
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".txt"
@@ -455,6 +484,7 @@
       "order": 110
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".rst"
@@ -470,6 +500,7 @@
       "order": 120
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".adoc"
@@ -485,6 +516,7 @@
       "order": 130
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".org"
@@ -500,6 +532,7 @@
       "order": 140
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".pdf"
@@ -515,6 +548,7 @@
       "order": 150
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".doc",
@@ -531,6 +565,7 @@
       "order": 160
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".rtf"
@@ -546,6 +581,7 @@
       "order": 170
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".odt"
@@ -561,6 +597,7 @@
       "order": 180
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".epub"
@@ -576,6 +613,7 @@
       "order": 190
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".json"
@@ -591,6 +629,7 @@
       "order": 100
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".yaml",
@@ -607,6 +646,7 @@
       "order": 110
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".toml"
@@ -622,6 +662,7 @@
       "order": 120
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".ini"
@@ -637,6 +678,7 @@
       "order": 130
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".csv",
@@ -654,6 +696,7 @@
       "order": 140
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".xml"
@@ -669,6 +712,7 @@
       "order": 150
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".parquet"
@@ -684,6 +728,7 @@
       "order": 160
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".arrow",
@@ -700,6 +745,7 @@
       "order": 170
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".avro"
@@ -715,6 +761,7 @@
       "order": 180
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".orc"
@@ -730,6 +777,7 @@
       "order": 190
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".proto"
@@ -745,6 +793,7 @@
       "order": 200
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".graphql"
@@ -760,6 +809,7 @@
       "order": 210
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".sqlite"
@@ -775,6 +825,7 @@
       "order": 220
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".zip",
@@ -802,6 +853,7 @@
       "order": 100
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".jpg",
@@ -828,6 +880,7 @@
       "order": 100
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".mp4",
@@ -848,6 +901,7 @@
       "order": 110
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".mp3",
@@ -869,6 +923,7 @@
       "order": 120
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".ttf",
@@ -887,6 +942,7 @@
       "order": 130
     },
     {
+      "chroma_ratio": null,
       "deviation": null,
       "extensions": [
         ".log",
@@ -904,7 +960,7 @@
       "order": 100
     }
   ],
-  "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c",
+  "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7",
   "groups": [
     {
       "icon": "alignLeft",

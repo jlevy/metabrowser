@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
+import pytest
+
 from metabrowser import server
 from metabrowser.file_type_filters import (
     FILE_TYPE_FAMILIES,
@@ -149,3 +151,62 @@ def test_distribution_colors_cover_every_family_on_both_themes() -> None:
             f"{key}: {sorted(outside - deviated)} paint outside the band without "
             f"declaring a deviation"
         )
+
+
+# TypeScript left GitHub's blue at the user's request: it painted within an
+# Oklab delta-E of 0.024 of Python's blue in the dark theme and 0.032 in the
+# light one. These pin what it moved to, so a later edit that drifts it back
+# toward a blue, toward mustard, or onto JavaScript's yellow fails here.
+#
+# Yellow is the hue arc from amber to sRGB's own yellow; a stated pair of
+# colors rather than a pair of numbers, so the bound is checkable in dev tools.
+YELLOW_ARC = ("#ffbf00", "#ffff00")  # amber 84.08 to yellow 109.77
+TYPESCRIPT_PYTHON_FLOOR = 0.25
+"""Measured 0.330 light and 0.331 dark: a yellow against a blue, not a near miss."""
+TYPESCRIPT_NEIGHBOUR_FLOOR = 0.06
+"""Measured 0.0659 light and 0.0726 dark, both to JavaScript, its nearest family
+in each theme. Four times the 0.015 floor a chosen colour must clear."""
+
+
+def test_typescript_takes_a_yellow_hue_rather_than_githubs_blue() -> None:
+    from metabrowser.color_oklch import hex_to_oklch
+    from metabrowser.file_type_registry import load_file_type_registry
+
+    family = load_file_type_registry().family("typescript")
+    assert family is not None
+    low, high = (hex_to_oklch(value).hue for value in YELLOW_ARC)
+    assert low <= family.hue <= high, f"TypeScript hue {family.hue:.2f} is not a yellow"
+    # Provenance survives: the hue left GitHub's, the record of where it came from did not.
+    assert family.linguist_color == "#3178c6"
+    assert family.deviation is not None
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_typescript_paints_a_saturated_yellow_clear_of_its_neighbours(theme: str) -> None:
+    from metabrowser.color_oklch import DARK_THEME, LIGHT_THEME, delta_e, max_chroma
+    from metabrowser.file_type_registry import load_file_type_registry
+
+    band = LIGHT_THEME if theme == "light" else DARK_THEME
+    registry = load_file_type_registry()
+    painted = {
+        family.id: band.at(family.hue, registry.tone_position(family.id))
+        for family in registry.families
+    }
+    typescript = painted["typescript"]
+
+    # Saturated: as much chroma as sRGB holds at this lightness and hue.
+    assert typescript.chroma == pytest.approx(
+        max_chroma(typescript.lightness, typescript.hue), abs=1e-6
+    )
+    # A yellow and not a mustard: lighter than JavaScript, the lightest family
+    # the band holds, because a yellow dims to olive long before a blue dims.
+    assert typescript.lightness > painted["javascript"].lightness
+
+    assert delta_e(typescript, painted["python"]) >= TYPESCRIPT_PYTHON_FLOOR
+    assert delta_e(typescript, painted["javascript"]) >= TYPESCRIPT_NEIGHBOUR_FLOOR
+    gap, nearest = min(
+        (delta_e(typescript, color), family_id)
+        for family_id, color in painted.items()
+        if family_id != "typescript"
+    )
+    assert gap >= TYPESCRIPT_NEIGHBOUR_FLOOR, f"{theme}: {gap:.4f} from {nearest}"

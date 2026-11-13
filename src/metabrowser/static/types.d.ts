@@ -3346,6 +3346,7 @@ declare global {
           linguist_color: string | null;
           deviation: string | null;
           lightness_rank: number | null;
+          chroma_ratio: number | null;
         }>;
         kinds: Array<{
           id: string;

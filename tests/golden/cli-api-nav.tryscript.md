@@ -105,7 +105,7 @@ status: 200
     "registry": {
       "schema_version": 4,
       "revision": 3,
-      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+      "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7"
     },
     "metrics": {
       "all": {
@@ -319,7 +319,7 @@ status: 200
     "registry": {
       "schema_version": 4,
       "revision": 3,
-      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+      "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7"
     },
     "metrics": {
       "all": {

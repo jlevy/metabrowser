@@ -2,8 +2,17 @@
   "$defs": {
     "family": {
       "properties": {
+        "chroma_ratio": {
+          "description": "Where the family sits in the consumer's chroma band, overriding the ratio its upstream color would give it, or null to take that ratio. Always in [0, 1], and requires a deviation.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "deviation": {
-          "description": "Why this family does not paint where its upstream color would put it, or null where it does. Present exactly when the family departs deliberately -- a hue that is not linguist_color's, a lightness_rank of its own, or both.",
+          "description": "Why this family does not paint where its upstream color would put it, or null where it does. Present exactly when the family departs deliberately -- a hue that is not linguist_color's, a lightness_rank or chroma_ratio of its own, or any of them together.",
           "minLength": 1,
           "type": [
             "string",
@@ -104,7 +113,8 @@
         "linguist",
         "linguist_color",
         "deviation",
-        "lightness_rank"
+        "lightness_rank",
+        "chroma_ratio"
       ],
       "type": "object"
     },

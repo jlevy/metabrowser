@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- TypeScript is a saturated yellow, departing from GitHub’s colors on purpose.
+  GitHub makes TypeScript and Python both blue, and wherever file types are colored —
+  the tree’s file icons, the File Overview’s bars and legend, and the Treemap — the two
+  were a shade apart, an Oklab delta-E of 0.032 on the light theme and 0.024 on the
+  dark. TypeScript now paints `#CDA600` and `#FECF00`, lighter than JavaScript’s yellow
+  and ten degrees warmer, at the most chroma sRGB holds there.
+  Python keeps GitHub’s blue, and no other family’s color changes.
+  The type registry gains `chroma_ratio`, the chroma counterpart of `lightness_rank`,
+  which likewise requires a `deviation`, and the registry projection carries it.
+  See
+  [Declared deviations](docs/project/architecture/file-rollup-format/file-rollup-format.md#declared-deviations).
+
 - Branch and tag chips are slightly smaller than the text around them, wherever they
   appear, instead of one size everywhere.
   A chip is 0.9 of its text: 11.7px in a Git history row, 12.6px in a commit’s summary

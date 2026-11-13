@@ -14,8 +14,10 @@
 # Where `linguist` names a language, `linguist_color` is that language's colour in
 # GitHub's linguist and the hue is that colour converted to oklch — unchanged,
 # including where two of GitHub's own colours are close together. Families without a
-# `linguist` name take a hue that clears every other declared hue. Nothing else moves
-# a hue.
+# `linguist` name take a hue that clears every other declared hue. Only a family that
+# declares a `deviation` saying why moves a hue: Swift and Markdown, each nudged out of a
+# collision while keeping its colour, and TypeScript, which alone leaves GitHub's colour
+# for another one, at the user's request.
 #
 # `linguist_color` is not provenance alone: a theme also reads a family's lightness
 # and chroma *rank* among the other upstream colours off it, and paints the family at
@@ -88,7 +90,22 @@ group = "code"
 order = 120
 linguist = "TypeScript"
 linguist_color = "#3178c6"
-hue = 253.30
+hue = 92.0
+lightness_rank = 1.5
+chroma_ratio = 1.0
+deviation = """Leaves GitHub's colour at the user's request (2026-11-13), the one family that \
+does: GitHub makes TypeScript and Python both blue, 253.30 and 246.50, and they painted at \
+dE 0.0316 light and 0.0240 dark -- two languages often side by side in one repository, \
+told apart by a shade. Python keeps GitHub's blue; TypeScript becomes a saturated \
+yellow. Hue 92.0 is ten degrees warmer than JavaScript's 102.08, so the two yellows \
+differ in hue as well as tone. The rank puts it above the band, because a yellow \
+inside it is mustard -- JavaScript, the band's lightest family, paints #aa9a00 in the light \
+theme -- and 1.5 lands the dark theme at 0.870, on hue 92's gamut cusp (0.872), where sRGB \
+holds the most chroma a yellow there can have. The chroma ratio is the band's top, because \
+the ratio #3178c6 earned is a blue's and gave this yellow less chroma than JavaScript's in \
+the dark theme. It paints #cda600 light and #fecf00 dark, each at the most chroma sRGB holds \
+there, and clears Python by 0.330 and JavaScript, its nearest family, by 0.0659 light and \
+0.0726 dark."""
 
 [[family]]
 id = "css"

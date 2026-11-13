@@ -233,6 +233,11 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
             base.replace("hue = 246.50", "hue = 246.50\nlightness_rank = -0.5"),
             "undeclared-deviation",
         ),
+        (
+            "undeclared-chroma-deviation",
+            base.replace("hue = 246.50", "hue = 246.50\nchroma_ratio = 1.0"),
+            "undeclared-deviation",
+        ),
         ("invalid-id", base.replace('id = "code"', 'id = "code_name"', 1), "invalid-id"),
         (
             "missing-fallback",

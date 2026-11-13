@@ -205,6 +205,7 @@ decision.
 | `linguist_color` | hex string or absent | That language’s upstream color; present exactly when `linguist` is. Provenance for the hue, and the source of the family’s tone rank |
 | `deviation` | string or absent | Why this family does not paint where its upstream color puts it. Present exactly when it departs deliberately |
 | `lightness_rank` | number or absent | Where the family sits in the consumer’s lightness band, overriding its upstream rank. Outside `[0, 1]` places it outside the band and requires a `deviation` |
+| `chroma_ratio` | number or absent | Where the family sits in the consumer’s chroma band, overriding its upstream ratio. Always in `[0, 1]`, and requires a `deviation` |
 
 Several kinds can map to one display family.
 A nonempty family remains independently addressable even if only one extension
@@ -226,6 +227,7 @@ Two rules govern the hue, and `devtools/check_file_type_colors.py` holds both:
 - A family that names a `linguist` language takes that language’s color converted to
   oklch, hue unchanged, including where two of GitHub’s own colors are close together.
   Moving a familiar hue to win a distance metric costs more than the collision does.
+  The one way past this rule is a [declared deviation](#declared-deviations).
 - A family GitHub names no color for takes a hue whose painted color is clear of every
   other family’s by a stated perceptual distance.
   `--suggest` prints the widest gap for a new one.
@@ -267,9 +269,22 @@ departure is a declaration rather than a silent edit.
 A deviating family keeps `linguist` and `linguist_color`, so its provenance stays
 auditable, and adds `deviation`: prose saying why it left.
 It may also set `lightness_rank`, which replaces the rank its upstream colour would earn
-and may fall outside `[0, 1]` to leave the band altogether.
-`lightness_rank` without `deviation` is refused, because leaving the band is exactly the
-change that should never read as a typo.
+and may fall outside `[0, 1]` to leave the band altogether, and `chroma_ratio`, which
+replaces the chroma ratio its upstream colour would earn and stays inside `[0, 1]`.
+Either one without `deviation` is refused, because moving a family’s place in the band
+is exactly the change that should never read as a typo.
+
+Most deviations nudge a hue out of a collision and keep the colour a reader knows: Swift
+stays orange and Markdown stays blue.
+TypeScript is the exception, and leaves GitHub’s colour for another one: GitHub makes
+TypeScript and Python both blue, a shade apart, so at the user’s request TypeScript is a
+saturated yellow and Python keeps GitHub’s blue.
+It declares a rank above the band, because a yellow at the band’s lightness is mustard,
+and the chroma band’s top, because the ratio its upstream blue earned gave the yellow
+less chroma than JavaScript’s on the dark theme.
+`devtools/check_file_type_colors.py` names TypeScript as the one family whose deviation
+may leave its colour rather than nudge it, and fails a deviation that moves a hue that
+far without being named.
 
 The rule a deviating family trades into is the one a house hue already has: its painted
 colour must clear every other family by the consumer’s perceptual floor, in every theme.

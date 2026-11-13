@@ -7,6 +7,13 @@ is better served by red than by a hue moved to win a distance metric. A family
 GitHub names no color for takes a hue that leaves it :data:`MINIMUM_HOUSE_DELTA_E`
 clear of every other family, as painted, in both themes.
 
+The one way past the first rule is a ``deviation``: prose in the registry,
+beside the family, saying why. A deviated family is held to the second rule
+instead, like a color we chose, and the report lists every one. Swift and
+Markdown use it to step out of a collision and keep their color; TypeScript
+uses it to leave GitHub's blue for a yellow, at the user's request, because
+it and Python were both blue and told apart by a shade.
+
 **Every family is painted inside a band the theme owns.** Lightness and chroma
 come from the theme, and where a family sits inside them comes from its rank
 among the upstream colors — never from the upstream values themselves, whose
@@ -78,6 +85,24 @@ NOTICEABLE = 0.02
 """Roughly where an Oklab difference stops being visible side by side. Used for
 reporting only: it is the bar the palette is measured against, not a rule."""
 
+RECOGNIZABLE_HUE_SHIFT = 45.0
+"""Degrees a deviation may move a hue and still be GitHub's color, nudged.
+
+An eighth of the circle, roughly the arc of one of the eight names a reader
+sorts a color into: red, orange, yellow, green, cyan, blue, violet, magenta.
+Swift moved 20.68 and stayed orange, and Markdown moved 14.58 and stayed blue;
+TypeScript moved 161.30 and is a yellow. Past this the family is a different
+color, which is a decision :data:`LEAVES_GITHUBS_COLOR` names rather than a
+nudge a deviation's prose alone can carry."""
+
+LEAVES_GITHUBS_COLOR = frozenset({"typescript"})
+"""Families whose deviation takes them to a different color, not a nearby hue.
+
+TypeScript, at the user's request on 2026-11-13: GitHub makes it and Python
+both blue, and they painted a shade apart. The reason is the family's
+``deviation`` in the registry; this set is the check that no other family
+quietly does the same, and that this one still does."""
+
 
 @dataclass(frozen=True, slots=True)
 class Problem:
@@ -99,6 +124,14 @@ def _themes() -> tuple[tuple[str, ToneBand], ...]:
 
 
 def _upstream_problems(family: FileTypeFamily) -> list[Problem]:
+    if family.id in LEAVES_GITHUBS_COLOR and family.deviation is None:
+        return [
+            Problem(
+                family.id,
+                "is in LEAVES_GITHUBS_COLOR but declares no deviation from GitHub's color; "
+                "drop it from LEAVES_GITHUBS_COLOR",
+            )
+        ]
     if family.linguist is None or family.linguist_color is None:
         return []
     upstream = hex_to_oklch(family.linguist_color)
@@ -107,13 +140,29 @@ def _upstream_problems(family: FileTypeFamily) -> list[Problem]:
         # is held to the separation floor instead, like a colour we chose.
         # What it may not do is claim a deviation it does not make, which is
         # how a reason goes stale without anyone noticing.
-        moved_hue = hue_distance(family.hue, upstream.hue) > HUE_TOLERANCE
-        if not moved_hue and family.lightness_rank is None:
+        shift = hue_distance(family.hue, upstream.hue)
+        if shift <= HUE_TOLERANCE and family.lightness_rank is None and family.chroma_ratio is None:
             return [
                 Problem(
                     family.id,
                     f"declares a deviation but paints where {family.linguist} "
                     f"{family.linguist_color} puts it; drop the deviation or make it",
+                )
+            ]
+        leaves = shift > RECOGNIZABLE_HUE_SHIFT
+        if leaves != (family.id in LEAVES_GITHUBS_COLOR):
+            return [
+                Problem(
+                    family.id,
+                    f"hue {family.hue:.2f} is {shift:.2f} degrees from {family.linguist} "
+                    f"{family.linguist_color} ({upstream.hue:.2f}), "
+                    + (
+                        f"past the {RECOGNIZABLE_HUE_SHIFT:.0f} that is still GitHub's "
+                        f"color; leaving it is a decision LEAVES_GITHUBS_COLOR names"
+                        if leaves
+                        else f"within {RECOGNIZABLE_HUE_SHIFT:.0f}, so it no longer leaves "
+                        f"GitHub's color; drop it from LEAVES_GITHUBS_COLOR"
+                    ),
                 )
             ]
         return []
@@ -258,7 +307,8 @@ def _report(registry: FileTypeRegistry) -> None:
         reason = " ".join((family.deviation or "").split())
         head, _, _ = reason.partition(". ")
         outside = "" if family.lightness_rank is None else ", outside the band"
-        print(f"  {family.id}: hue {family.hue:.2f}{outside} — {head or reason}.")
+        chroma = "" if family.chroma_ratio is None else f", chroma ratio {family.chroma_ratio}"
+        print(f"  {family.id}: hue {family.hue:.2f}{outside}{chroma} — {head or reason}.")
 
     from_github = {family.id for family in upstream}
     tightest: dict[tuple[str, str], float] = {}
@@ -342,6 +392,11 @@ def main() -> int:
         return 0
 
     problems: list[Problem] = []
+    known = {family.id for family in registry.families}
+    problems.extend(
+        Problem(family_id, "is in LEAVES_GITHUBS_COLOR but is not a registry family")
+        for family_id in sorted(LEAVES_GITHUBS_COLOR - known)
+    )
     for family in registry.families:
         problems.extend(_upstream_problems(family))
     problems.extend(_position_problems(registry))
