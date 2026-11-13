@@ -284,7 +284,9 @@ Strict mode is off on a developer machine, which can add these:
   above;
 - `Chrome is not installed`, for the transition recorder’s checks in
   `tests/test_transitions_instrument.py`, which measure paint and the frame clock in a
-  real headless Chrome; the CI runners have Chrome, so CI runs them.
+  real headless Chrome, and for the layout checks in
+  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`; the
+  CI runners have Chrome, so CI runs them.
 
 ### Timeouts
 

@@ -6,7 +6,7 @@ badge hung below its line. This mounts the production page module on
 recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
 compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs).
 
-Without Chrome this skips (``tests/chrome_lookup.py``).
+Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
 
 from __future__ import annotations
@@ -17,10 +17,12 @@ import subprocess
 from pathlib import Path
 
 from metabrowser import kpress_adapter
-from tests.chrome_lookup import find_chrome
-from tests.required_tools import require_node
+from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
+# The session took 9 to 12 s on a Mac at a load average of 10 to 27 (the whole test 11.8 s
+# at 9 to 13), so 45 s leaves it room on a loaded runner and fires before the suite's 60.
+SESSION_TIMEOUT_S = 45
 
 
 def _kpress_faces(into: Path) -> Path:
@@ -35,12 +37,12 @@ def _kpress_faces(into: Path) -> Path:
 
 
 def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path) -> None:
-    chrome = find_chrome()
+    chrome = require_chrome()
     result = subprocess.run(
         [require_node(), str(SESSION)],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=SESSION_TIMEOUT_S,
         check=False,
         env={
             **os.environ,

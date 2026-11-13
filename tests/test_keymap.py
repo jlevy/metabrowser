@@ -83,7 +83,7 @@ def test_a_key_dropped_for_itself_names_no_holder() -> None:
 
 
 def test_a_lone_view_is_served_without_a_key() -> None:
-    """One view draws no tab, so its key would name a shortcut with nothing to select."""
+    """A lone view's tab has no other view to switch to, so its key would do nothing."""
     pair = [{"id": "overview", "key": "o"}, {"id": "treemap", "key": "m"}]
 
     assert live_view_keys(pair) == pair

@@ -527,11 +527,13 @@ async function mountOn(page, body, tab, ageLabel) {
 // static/plugin-shortcuts.js) load whole into a realm of their own, as `shell-tools` loads
 // them, and the page's `mb.shortcuts.attach` is the facade's, as the SDK's is once it has
 // loaded. Each key runs the page handle's setTab: a tab the address does not show goes
-// through the route, as a click on its link does. The header keeps its tab column while the
-// record is on its way (headerShape), so the keys are live from first paint, as the links
-// are. They wait while the column is out of the page, as it is after a first read that
-// failed, and return when paintHeader puts it back; the inert stage of a retained navigation
-// holds them; and disposal ends them.
+// through the route, as a click on its link does. The header keeps its tab column unless
+// its first read fails (headerShape): while the record is on its way, and for an absent
+// record nothing is fetching, such as a server with no GitHub repository. So the keys are
+// live from first paint, as the links are. They wait while the column is out of the page,
+// after a first read that failed, and return when paintHeader puts it back, badged at once
+// while Shift is held; the inert stage of a retained navigation holds them; and disposal
+// ends them.
 async function tabKeys(page) {
   const vm = require("node:vm");
   // What the registry reads of a target: connected, enabled, not inert, and visible.
@@ -692,6 +694,13 @@ async function tabKeys(page) {
     container
       .querySelectorAll(".tab-btn")
       .map((tab) => `${tab.textContent} ${tab.getAttribute("aria-keyshortcuts") ?? "none"}`);
+  /** Each tab that carries a Shift badge now, as its label and its badge's key. */
+  const badged = () =>
+    container.querySelectorAll(".tab-btn").flatMap((tab) => {
+      const badge = tab.children.find((node) => String(node.className).includes("kbd-badge"));
+      const label = tab.children.filter((node) => node !== badge).join("");
+      return badge ? [`${label} ${badge.textContent}`] : [];
+    });
   const attached = () =>
     registry
       .snapshot("help", { includeInactive: true })
@@ -728,6 +737,16 @@ async function tabKeys(page) {
   );
   steps.push(result("c"));
   steps.push(result("g"));
+  // A click on Changes asks for the same route G does. The host shows the page there once
+  // it is ready (static/pull-route.js), for the click and the key alike.
+  opened.length = 0;
+  globalThis.MouseEvent = class MouseEvent {};
+  container
+    .querySelectorAll(".tab-btn")
+    .find((tab) => tab.textContent === "Changes")
+    .events.get("click")({ preventDefault() {} });
+  delete globalThis.MouseEvent;
+  assert.deepEqual(opened, ["files"], "a click on Changes asks for the route G asks for");
   answer = recorded.current.body;
   await elapse();
   assert.ok(container.querySelector(".tab-bar"), "the record kept the tab column in");
@@ -761,9 +780,15 @@ async function tabKeys(page) {
   assert.equal(container.querySelector(".tab-bar"), null, "a failed read, no tab column");
   steps.push(`a failed first read takes the column out: live ${live().join(" ") || "none"}`);
   steps.push(result("g"));
+  // Shift held while the column is out: nothing to badge. paintHeader retargets the links
+  // as it puts them back, which is what badges them at once.
+  registry.setRevealed(true);
+  steps.push(`Shift held while it is out: badges ${badged().join(", ") || "none"}`);
   failing = false;
   await elapse();
   assert.ok(container.querySelector(".tab-bar"), "the record put the tab column back");
+  steps.push(`the next read answers, and the returning tabs are badged: ${badged().join(", ")}`);
+  registry.setRevealed(false);
   steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
   steps.push(result("g"));

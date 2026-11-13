@@ -6,7 +6,7 @@ requests wait 40 ms each, with the HTTP cache off, so every face lands after the
 could have been shown (tests/dom/staged-fonts-chrome.mjs). Which faces the wait asks for
 is checked browserless in tests/dom/staged-fonts-behavior.js.
 
-Without Chrome this skips (``tests/chrome_lookup.py``).
+Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
 
 from __future__ import annotations
@@ -20,10 +20,14 @@ import threading
 import time
 from pathlib import Path
 
-from tests.chrome_lookup import find_chrome
-from tests.required_tools import require_node
+from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "staged-fonts-chrome.mjs"
+# The whole test, the server's start and the session together, took 11.2 s on a Mac at a
+# load average of 9 to 13. Each bound fires before the suite's 60 s, and the two together
+# do too.
+SERVER_START_TIMEOUT_S = 20
+SESSION_TIMEOUT_S = 35
 _METAB = Path(sys.executable).with_name("metab")
 _TEXT = (
     "A reserved box keeps its place when the content that fills it arrives, and a face "
@@ -46,7 +50,7 @@ def _free_port() -> int:
 
 
 def test_no_document_moves_when_its_faces_land(tmp_path: Path) -> None:
-    chrome = find_chrome()
+    chrome = require_chrome()
     served = tmp_path / "served"
     served.mkdir()
     _documents(served)
@@ -79,7 +83,7 @@ def test_no_document_moves_when_its_faces_land(tmp_path: Path) -> None:
             daemon=True,
         )
         reader.start()
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + SERVER_START_TIMEOUT_S
         while not found and time.monotonic() < deadline and server.poll() is None:
             time.sleep(0.05)
         assert found, "the server did not say where it serves"
@@ -87,7 +91,7 @@ def test_no_document_moves_when_its_faces_land(tmp_path: Path) -> None:
             [require_node(), str(SESSION), found[0]],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=SESSION_TIMEOUT_S,
             check=False,
             env={**os.environ, "CHROME_BIN": chrome},
         )
