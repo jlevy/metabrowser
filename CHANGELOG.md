@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A rendered Markdown diff no longer says “Source shows additional changes.”
+  above a file, or “Source shows changes not shown here.”
+  on a block. The **Rendered** | **Source** chooser is how to see a change that does not
+  show in the rendered document, such as a link’s destination, an HTML comment, or a
+  whitespace-only edit; Rendered does not mark one.
+  A block that changed only in such a way still never folds away with the unchanged
+  blocks around it. See
+  [Rendered Markdown in Changes](docs/reviewing-pull-requests.md#rendered-markdown-in-changes).
+
 - A pull request’s **Conversation** shows its description, and the comments and reviews
   on its first screen, as Markdown from the first paint: the page waits up to 200 ms for
   them, out of sight, keeping the page it replaces on screen meanwhile, and shows plain

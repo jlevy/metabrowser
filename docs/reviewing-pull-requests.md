@@ -229,17 +229,15 @@ changed words marked.
 A changed list item or quoted paragraph is shown alone, and long runs of unchanged
 blocks fold. A file’s **Rendered** | **Source** chooser switches between the two.
 
-Rendered never presents a change as complete when the source says more.
-**Source shows additional changes** appears above a file whose source changed in a way
-its render does not show: a link or image destination or title, a link whose label now
+Rendered shows what a change does to the document as it reads.
+A change that does not show in the rendered document appears only in **Source**, and
+Rendered does not mark it: a link or image destination or title, a link whose label now
 points somewhere else, an image’s alt text, an HTML comment, attribute syntax such as
 `{#name}`, a code fence’s language, or only whitespace and line wrapping.
-A changed or added block that hides such a change also says **Source shows changes not
-shown here**, and so does a block moved past others whose link now points elsewhere.
-An added code block says so unless its fence names exactly one language, such as
-`python` or `mermaid`: an alias of a Pygments lexer, a language KPress draws as a
-diagram, or a common single word such as `txt`, `yml` or `gitignore`. Any other text on
-the fence’s opening line, an unknown single word included, is shown nowhere.
+A block that changed only in those ways reads as unchanged, but is never folded away
+with the unchanged blocks around it.
+An added code block’s fence text other than exactly one language name, such as `python`
+or `mermaid`, likewise appears only in Source.
 
 These files open in **Source**:
 

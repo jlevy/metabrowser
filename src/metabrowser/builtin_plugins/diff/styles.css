@@ -467,12 +467,6 @@
   margin-block: 0;
 }
 
-.metabrowser-diff-host .diff-markdown-note {
-  margin: 0 0 2px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-}
-
 .metabrowser-diff-host .diff-markdown-block img {
   max-inline-size: 100%;
   block-size: auto;
