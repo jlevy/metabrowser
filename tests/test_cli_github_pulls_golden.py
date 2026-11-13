@@ -33,6 +33,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import gh, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
+from metabrowser.builtin_plugins.github.pull_record import MAX_REFRESH_MESSAGE_CHARS
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -609,3 +610,36 @@ def test_golden_pull_list_failures(
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pulls-failures.txt", rendered)
+
+
+def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """A stamp keeps 1,000 characters of a message, and what to do is always among them.
+
+    The checkpoint's projection is 1,200 characters of text: the refusal names its kind,
+    not the value, so the command that clears the cache survives what the route persists.
+    No transcript: the routes' answers are what is checked, and the value would bury it.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    catalog = session.home / "sources" / origin_identity(CANONICAL).slug / "pulls/catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(catalog)) as db, db:
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        invalid = json.loads(value) | {"projection_version": "x" * 1200}
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(invalid),))
+    kept = catalog.read_bytes()
+    session.advance(61)
+    refused = session.post({"retry": True})
+    assert refused.exit_code == 1
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip() == ""
+    assert catalog.read_bytes() == kept
+    command = f"`echo '{{}}' | metab {CANONICAL} --api {CLEAR} --data -`"
+    for answer in (_after(refused), session.get("?limit=0").payload()):
+        last = answer["last_refresh"]
+        assert last["outcome"] == "unknown_cache"
+        assert command in last["message"], last["message"]
+        assert "gives its row projection as text" in last["message"]
+        assert "x" * 20 not in last["message"]
+        assert len(last["message"]) <= MAX_REFRESH_MESSAGE_CHARS

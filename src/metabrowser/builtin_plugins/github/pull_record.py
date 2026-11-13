@@ -668,6 +668,10 @@ def read_pull_record(
 MAX_PULL_REFRESH_BYTES: Final = 4096
 
 
+# The most a refresh outcome's message keeps; every message a stamp records fits it.
+MAX_REFRESH_MESSAGE_CHARS: Final = 1000
+
+
 class PullRefreshStamp(_Model):
     """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
 
@@ -678,7 +682,7 @@ class PullRefreshStamp(_Model):
     """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
-    message: Annotated[str, StringConstraints(max_length=1000)] | None = None
+    message: Annotated[str, StringConstraints(max_length=MAX_REFRESH_MESSAGE_CHARS)] | None = None
     reset_at: Timestamp | None = None
     at: Timestamp
     reader: Reader | None = None
@@ -779,6 +783,7 @@ __all__ = [
     "MAX_STATUSES",
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
+    "MAX_REFRESH_MESSAGE_CHARS",
     "PULL_RECORD_SCHEMA",
     "PullObservationSuperseded",
     "PullRefreshStamp",

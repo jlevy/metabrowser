@@ -63,7 +63,10 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     refresh_wanted,
     search_query,
 )
-from metabrowser.builtin_plugins.github.pull_record import clear_pulls
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_REFRESH_MESSAGE_CHARS,
+    clear_pulls,
+)
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PullListName
 from metabrowser.home import (
@@ -905,6 +908,94 @@ def test_a_catalog_the_cache_refuses_is_not_replaced_and_names_the_command(
 
     assert clear_pulls(repository.home, repository.slug) > 0
     assert asyncio.run(refresh_pull_list(repository, "all", retry=True)).cached["all"] == 2
+
+
+@pytest.mark.parametrize(
+    "what",
+    [
+        "the pull-request list",
+        f"the record of pull request #{MAX_PULL_REQUEST_NUMBER}",
+        f"the changed files of pull request #{MAX_PULL_REQUEST_NUMBER}",
+        "the pull-request previews",
+        "optional stack metadata",
+    ],
+)
+@pytest.mark.parametrize("checkout", [False, True])
+@pytest.mark.parametrize("kind", ["cache_unwritable", "newer_cache", "unknown_cache"])
+def test_a_long_diagnostic_never_crowds_out_what_to_do(
+    what: str, checkout: bool, kind: str
+) -> None:
+    """Only the diagnostic is cut, so a stamp's 1,000 characters keep the whole command.
+
+    The repository's name is as long as GitHub's grammar admits, the diagnostic is text
+    a cache can hold (a SQLite error can quote a name from the file), and each message of
+    the family is built as its caller builds it.
+    """
+
+    source = f"https://github.com/{'o' * 39}/{'r' * 100}"
+    long = "x" * 5000
+    if kind == "cache_unwritable":
+        error = gh_lists.cache_unwritable(
+            what, sqlite3.OperationalError(long), source=source, checkout=checkout
+        )
+    elif kind == "newer_cache":
+        error = gh_lists.newer_cache(what, long, source=source, checkout=checkout)
+    else:
+        error = gh_lists.unknown_cache(what, long, source=source, checkout=checkout)
+    message = str(error)
+    assert error.state == kind
+    assert len(message) <= MAX_REFRESH_MESSAGE_CHARS
+    command = gh_lists.cache_clear_command(source, checkout=checkout)
+    assert f"`{command}`" in message[:MAX_REFRESH_MESSAGE_CHARS]
+    assert message.startswith(what) and "x…" in message and "x" * 401 not in message
+
+
+def test_a_home_refusal_is_never_cut_from_a_cache_failure() -> None:
+    """The home's own sentences say what to do and name no path, so they stand whole.
+
+    Every violation, location, kind, purpose, and detail the home can describe fits the
+    diagnostic's room beside the longest repository name GitHub admits.
+    """
+
+    import itertools
+
+    from metabrowser import home
+
+    details = [None] + [
+        value
+        for name, value in vars(home).items()
+        if name.startswith("_") and name[1:].isupper() and isinstance(value, str)
+    ]
+    source = f"https://github.com/{'o' * 39}/{'r' * 100}"
+    for violation, location, acl, kind, purpose, detail, checkout in itertools.product(
+        home.PrivateStorageViolation,
+        home.PrivateStorageLocation,
+        (False, True),
+        ("file", "directory", None),
+        ("read", "write"),
+        details,
+        (False, True),
+    ):
+        refusal = home.PrivateStorageError(
+            violation,
+            location,
+            Path("/private/slug"),
+            mode=0o755,
+            detail=detail,
+            through_acl=acl,
+            kind=kind,
+            purpose=purpose,
+        )
+        message = str(
+            gh_lists.cache_unwritable(
+                f"the changed files of pull request #{MAX_PULL_REQUEST_NUMBER}",
+                refusal,
+                source=source,
+                checkout=checkout,
+            )
+        )
+        assert str(refusal).rstrip(".") in message
+        assert len(message) <= MAX_REFRESH_MESSAGE_CHARS
 
 
 def test_beside_a_checkout_the_command_serves_the_checkout() -> None:

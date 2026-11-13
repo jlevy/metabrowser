@@ -162,7 +162,23 @@ def failure_line(exc: BaseException) -> str:
 
 def _refuse_newer(what: str, found: object, supported: int) -> None:
     if type(found) is int and found > supported:
-        raise NewerCatalogError(f"{what} {found}, where this release reads up to {supported}")
+        # A version is a small number; one past a billion is told as that, not spelled out.
+        shown = found if found < 10**9 else "past a billion"
+        raise NewerCatalogError(f"{what} {shown}, where this release reads up to {supported}")
+
+
+def _json_kind(value: object) -> str:
+    """What a version given as something other than a whole number is: its JSON kind."""
+
+    if isinstance(value, bool):
+        return "true or false"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, float):
+        return "a fraction"
+    if isinstance(value, list):
+        return "a list"
+    return "an object" if isinstance(value, dict) else "null"
 
 
 class CatalogState(BaseModel):
@@ -427,7 +443,10 @@ def _refuse_newer_checkpoint(value: object) -> None:
     ):
         found = fields.get(key)
         if key in fields and type(found) is not int:
-            raise UnknownCatalogError(f"the catalog's checkpoint gives its {what} as {found!r}")
+            # Named by its kind alone: the value is the file's, and may be long.
+            raise UnknownCatalogError(
+                f"the catalog's checkpoint gives its {what} as {_json_kind(found)}"
+            )
         _refuse_newer(what, found, supported)
 
 

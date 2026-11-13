@@ -28,7 +28,10 @@ from metabrowser.builtin_plugins.github.gh import (
     gh_account,
     gh_api,
 )
-from metabrowser.builtin_plugins.github.pull_record import API_PAGE_SIZE
+from metabrowser.builtin_plugins.github.pull_record import (
+    API_PAGE_SIZE,
+    MAX_REFRESH_MESSAGE_CHARS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +121,28 @@ def cache_failure_reason(exc: BaseException) -> str:
     return str(exc).rstrip(".") or type(exc).__name__
 
 
+# The longest a diagnostic stands in a message, before what to do; a stamp keeps a message
+# to MAX_REFRESH_MESSAGE_CHARS, and an error can quote text the cache holds. The longest
+# path-free refusal the home gives is 352 characters (2026-11-12, every violation,
+# location, and detail of metabrowser.home), which a cache_unwritable message keeps whole
+# with room to spare beside even the longest repository name GitHub admits.
+_DIAGNOSTIC_CHARS: Final = 400
+
+
+def _with_instructions(head: str, diagnostic: str, tail: str) -> str:
+    """*head*, then *diagnostic* cut to fit, then *tail*, within a stamp's message bound.
+
+    Only the diagnostic is ever cut, so *tail*, which says what to do and names the
+    command, is whole in every message a stamp keeps.
+    """
+
+    room = min(_DIAGNOSTIC_CHARS, MAX_REFRESH_MESSAGE_CHARS - len(head) - len(tail))
+    told = " ".join(diagnostic.split())
+    if len(told) > room:
+        told = told[: max(room - 1, 0)] + "…"
+    return head + told + tail
+
+
 def cache_unwritable(
     what: str, exc: BaseException, *, source: str, checkout: bool
 ) -> PullDataError:
@@ -125,9 +150,12 @@ def cache_unwritable(
 
     return PullDataError(
         "cache_unwritable",
-        f"{what} could not be written to the cache: {cache_failure_reason(exc)}. "
-        f"To clear the GitHub cache of {_name(source)}, "
-        f"{_run_clear(source, checkout=checkout)}, then retry",
+        _with_instructions(
+            f"{what} could not be written to the cache: ",
+            cache_failure_reason(exc),
+            f". To clear the GitHub cache of {_name(source)}, "
+            f"{_run_clear(source, checkout=checkout)}, then retry",
+        ),
     )
 
 
@@ -139,10 +167,13 @@ def newer_cache(what: str, declared: str, *, source: str, checkout: bool) -> Pul
 
     return PullDataError(
         "newer_cache",
-        f"{what} in the cache was written by a newer Metabrowser ({declared}), and this "
-        "one leaves it as it is. Upgrade metab to read it, or "
-        f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
-        f"{_name(source)} and fetch it again with this one",
+        _with_instructions(
+            f"{what} in the cache was written by a newer Metabrowser (",
+            declared,
+            "), and this one leaves it as it is. Upgrade metab to read it, or "
+            f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+            f"{_name(source)} and fetch it again with this one",
+        ),
     )
 
 
@@ -151,10 +182,13 @@ def unknown_cache(what: str, why: str, *, source: str, checkout: bool) -> PullDa
 
     return PullDataError(
         "unknown_cache",
-        f"{what} in the cache cannot be checked for the Metabrowser that wrote it ({why}), "
-        "so this one leaves it as it is. Upgrade metab if a newer one wrote it, or "
-        f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
-        f"{_name(source)} and fetch it again with this one",
+        _with_instructions(
+            f"{what} in the cache cannot be checked for the Metabrowser that wrote it (",
+            why,
+            "), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or "
+            f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+            f"{_name(source)} and fetch it again with this one",
+        ),
     )
 
 
