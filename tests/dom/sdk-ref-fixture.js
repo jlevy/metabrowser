@@ -8,6 +8,7 @@ function refHelpers(document) {
     decorateExternalLink: sandbox.metabrowser.decorateExternalLink,
     refChip: sandbox.metabrowser.refChip,
     refChipHtml: sandbox.metabrowser.refChipHtml,
+    mergeRefs: sandbox.metabrowser.mergeRefs,
     mountRefCopies: sandbox.metabrowser.mountRefCopies,
   };
 }
