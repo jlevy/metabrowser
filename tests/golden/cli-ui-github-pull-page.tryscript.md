@@ -1641,9 +1641,9 @@ Opening Changes beside a checkout starts an acquisition and offers Retry changes
 refusal. The tabs answer to `C`, `G`, and `H` through the production shortcut registry
 and plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
 does not show opens through the route, as a click on its link does.
-The keys wait while the tab column is out of the page before the record arrives, return
-when the header puts it back, wait while the page is staged inert, and end with the
-page.
+The keys wait while the tab column is out of the page before the record arrives, and
+while a held first paint keeps the loading heading over the loading page, return when
+the header puts it back, wait while the page is staged inert, and end with the page.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
@@ -1667,11 +1667,17 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
 
-Conversation paints before its commit timeline request.
-A later partial timeline interleaves commit summaries with existing cards in provider
-order, keeps unmatched and pending discussion, and retains the rendered Markdown and
-focus. The pending request breathes the header’s age line and marks it busy; nothing
-spins. A stale page can show a held timeline before its metadata refresh.
+Conversation paints before its commit timeline request, which waits for nothing.
+The timeline that answers once it has painted goes after everything painted, in its
+order, moving no painted node and keeping the rendered Markdown and focus (`appended`).
+A later first paint with that projection held, here the Conversation shown again after
+another tab, places its commit summaries among the cards in provider order, keeping
+unmatched and pending discussion (`interleaved`). The provider request breathes the
+header’s age line and marks it busy; nothing spins.
+A refreshed record keeps the rows it shows until its own timeline answers, and retires
+them when that timeline answers with nothing (`supersededRowsRetired`). A kept commit
+row tells its age as of each paint (`keptCommitRowsRetellAges`). A stale page can show a
+held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
@@ -1690,14 +1696,169 @@ $ node tests/dom/github-pull-timeline-session.js
     "review/15",
     "Some commits may be missing."
   ],
+  "appended": [
+    "<img> First commit",
+    "Last commit",
+    "Some commits may be missing."
+  ],
   "destination": "https://github.com/octo/demo/pull/7/commits/0123456789012345678901234567890123456789",
   "heldMarkdownAndFocus": true,
+  "lateCommitsMoveNothing": true,
   "staleCacheHitBeforeMetadata": true,
   "staleCacheMissWaited": true,
   "supersededReadAborted": true,
   "departedReadAborted": true,
   "unavailableKeepsDiscussion": true,
-  "transientRetryIsBoundedAndKeepsPartial": true
+  "transientRetryIsBoundedAndKeepsPartial": true,
+  "supersededRowsRetired": true,
+  "keptCommitRowsRetellAges": true
+}
+? 0
+```
+
+## Conversation and Changes First Paints
+
+The conversation’s first paint of a full record is laid out out of sight until the
+Markdown of every text its first screen shows can be inserted, within
+`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`).
+The first screen is the page’s own, measured from its top, not the view of a scrolled
+page it replaces, and a text that comes into it as those above render is waited for too,
+the next few past it asked for at once (`firstScreen`); a text it never waited for that
+fails leaves the hold met.
+Over the loading page the header waits with the body, so the loading heading and any
+blocks that had shown stay where they were until both change once (`landing`,
+`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
+(`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
+render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
+Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
+badge’s first paint is the fresher of the cached record and the repository’s list
+(`listedState`). Changes with rendered Markdown stays out of sight until its first
+screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while it waits
+keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
+are bounded by count and by characters, descriptions apart from other parts (`bounded`).
+Under a held first paint over the loading page no tab key is live, since the header
+waits with the body; at release all three are (`tabKeysWhileHeld`).
+
+```console
+$ node tests/dom/github-pull-first-paint-behavior.js
+{
+  "firstVisit": "held, then final",
+  "refreshedSameText": "kept",
+  "revisit": "final at first paint",
+  "pastTheBound": "plain, then Markdown",
+  "comments": {
+    "texts": 5,
+    "asked": 5,
+    "plainAtReady": 0
+  },
+  "holdSpans": [
+    "hidden met 1",
+    "hidden bound 1"
+  ],
+  "landing": {
+    "blocksBefore": true,
+    "whileHeld": {
+      "holding": true,
+      "blocks": false,
+      "heading": "Pull request #7"
+    },
+    "final": true,
+    "heading": "Count to two in the app #7"
+  },
+  "landingAfterBlocksShowed": {
+    "whileHeld": {
+      "holding": true,
+      "sameBlocks": true,
+      "cover": true,
+      "heading": "Pull request #7"
+    },
+    "shown": {
+      "blocks": false,
+      "holding": false,
+      "final": true,
+      "heading": "Count to two in the app #7"
+    }
+  },
+  "cancelledWhileHeld": {
+    "holding": true
+  },
+  "firstScreen": {
+    "0": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
+    },
+    "5000": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
+    },
+    "failsPastTheScreen": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 2,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 4
+    },
+    "cascade": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 6,
+      "outcome": "met",
+      "rounds": 4
+    }
+  },
+  "ages": [
+    "186 min",
+    "185 min",
+    "4 min"
+  ],
+  "listedState": {
+    "newerList": "Merged",
+    "olderList": "Open"
+  },
+  "changes": {
+    "settled": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    },
+    "bound": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    },
+    "cancelled": {
+      "held": true,
+      "keptOutOfSight": true,
+      "outcome": "cancelled"
+    }
+  },
+  "bounded": true,
+  "tabKeysWhileHeld": {
+    "whileHeld": {
+      "holding": true,
+      "tabColumn": false,
+      "live": [],
+      "g": "not handled"
+    },
+    "released": {
+      "holding": false,
+      "tabColumn": true,
+      "live": [
+        "conversation",
+        "files",
+        "checks"
+      ],
+      "g": "opened the files route"
+    }
+  }
 }
 ? 0
 ```
