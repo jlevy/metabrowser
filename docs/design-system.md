@@ -2194,13 +2194,16 @@ A file-type family’s hue is declared in the type registry (see
 Where GitHub’s linguist names a color for the language, the hue is that color’s,
 unchanged; families GitHub names no color for take a hue clear of every other.
 That is what makes the palette recognizable — Ruby is red because Ruby is red
-everywhere.
+everywhere. A family departs from GitHub only by a deviation declared beside it in the
+registry. TypeScript is the one that leaves GitHub’s color for another: GitHub makes it
+and Python both blue, so TypeScript is a saturated yellow and Python keeps GitHub’s
+blue.
 
 Each theme defines a `ToneBand` in `color_oklch.py`, with a lightness band and a chroma
 target band. The registry derives each family’s lightness rank and chroma ratio from the
 set of upstream colors; a family without an upstream color sits at the band’s center.
-An explicit registry lightness-rank override changes that axis while retaining the
-family’s derived chroma ratio.
+An explicit registry lightness-rank or chroma-ratio override changes that axis while
+retaining the other one as derived.
 Families therefore differ in lightness and chroma as well as hue, within the theme’s
 band unless a documented lightness override places one outside it.
 

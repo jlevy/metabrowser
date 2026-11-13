@@ -4,8 +4,8 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const fallbackRegistry = {
-  schema: "file-type-registry-v4",
-  schema_version: 4,
+  schema: "file-type-registry-v5",
+  schema_version: 5,
   revision: 1,
   fingerprint: "fixture-registry",
   max_extension_components: 2,
