@@ -1684,8 +1684,8 @@ async def index(
         # runs either until a view renders. loadViewComposition fetches this beside
         # the compositor and waits for both, and plugin-sdk.js fetches it before it
         # evaluates a plugin where no compositor ran, so a renderer always finds all
-        # of it. One file, because nothing uses one half without the other and each
-        # script of a bundle is a request of its own.
+        # of it. One file, because nothing uses one half without the other and a
+        # bundle's scripts are fetched one after another.
         # Measured 2026-09-30 and 2026-10-01 in Chrome 152: as startup scripts the
         # gutter was 7,992 of 191,862 bytes transferred before DOMContentLoaded and
         # one of 21 requests, on a folder shell that draws no gutter, and the helpers

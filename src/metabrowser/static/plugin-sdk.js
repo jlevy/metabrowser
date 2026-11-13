@@ -1127,38 +1127,33 @@
     }
   }
 
-  // Every fetch starts at once. Stylesheets apply in manifest order; scripts run in
-  // manifest order once they have settled, read from their preloads.
-  /** @type {Set<string>} */
-  const _preloadedKpressScripts = new Set();
   async function loadKpressAssets(manifest) {
     _validateKpressAssetManifest(manifest);
     const entryPoints = manifest.assets.filter((asset) => asset?.entry_point === true);
-    _installKpressImportMap(manifest.import_map);
-    const styles = Promise.all(
-      entryPoints
-        .filter((asset) => asset.loading === "stylesheet")
-        .map((asset) => _loadStylesheet(_kpressAssetUrl(asset))),
-    );
-    const parent = typeof global.document?.createElement === "function" && _headOrBody();
-    const scripts = entryPoints.filter((a) => a.loading === "module" || a.loading === "classic");
-    for (const asset of scripts) {
-      const url = _kpressAssetUrl(asset);
-      if (parent && !_loadedKpressAssets.has(url) && !_preloadedKpressScripts.has(url)) {
-        _preloadedKpressScripts.add(url);
-        const link = global.document.createElement("link");
-        link.rel = asset.loading === "module" ? "modulepreload" : "preload";
-        link.as = "script";
-        link.href = url;
-        parent.appendChild(link);
+    for (const asset of entryPoints) {
+      if (asset.loading !== "stylesheet") {
+        continue;
       }
-    }
-    await styles;
-    for (const asset of scripts) {
       const url = _kpressAssetUrl(asset);
-      await (_isTocScript(asset, url)
-        ? _loadKpressTocModule(url)
-        : _loadScript(url, asset.loading));
+      if (!url) {
+        throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
+      }
+      await _loadStylesheet(url);
+    }
+    _installKpressImportMap(manifest.import_map);
+    for (const asset of entryPoints) {
+      if (asset.loading !== "module" && asset.loading !== "classic") {
+        continue;
+      }
+      const url = _kpressAssetUrl(asset);
+      if (!url) {
+        throw new Error(`KPress entry point ${asset.id || "<unknown>"} has no URL`);
+      }
+      if (_isTocScript(asset, url)) {
+        await _loadKpressTocModule(url);
+        continue;
+      }
+      await _loadScript(url, asset.loading);
     }
   }
 

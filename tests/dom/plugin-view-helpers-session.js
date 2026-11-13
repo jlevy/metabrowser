@@ -106,7 +106,7 @@ function createPage() {
     const name = describe(element);
     requested.push(name);
     // A preload is only a fetch: nothing on the page waits for its answer.
-    if (!["modulepreload", "preload"].includes(element.getAttribute("rel"))) {
+    if (element.getAttribute("rel") !== "modulepreload") {
       waiting.push({ element, name });
     }
   }
@@ -336,9 +336,7 @@ async function whenTemplatesCannotBeFetched() {
   const whileHeld = {
     loading: loading.settled,
     helpers: page.helpers(),
-    templateRequests: page.requested.filter(
-      (name) => name === "script /static/vendor/mustache.min.js",
-    ).length,
+    templateRequests: page.requested.filter((name) => name.includes("mustache.min.js")).length,
     pluginCode: [...page.fixtureLog],
   };
   page.answer(["mustache.min.js"]);

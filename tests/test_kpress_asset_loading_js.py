@@ -48,21 +48,3 @@ def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
     ]
     assert [script["type"] for script in scripts] == ["module", "module", "text/javascript"]
     assert all(script["async"] is False for script in scripts)
-
-    # Every fetch starts at once: both stylesheets in manifest (cascade) order, and a
-    # preload for each script. The scripts run only after every stylesheet settled, one
-    # after another in manifest order, as before.
-    fetched_at_start = [
-        "stylesheet:/k/a.css",
-        "stylesheet:/k/b.css",
-        "modulepreload:/k/m1.js",
-        "preload:/k/k.js",
-        "modulepreload:/k/m2.js",
-    ]
-    assert payload["held"] == {
-        "atStart": fetched_at_start,
-        "afterSecondStylesheet": fetched_at_start,
-        "afterBothStylesheets": [*fetched_at_start, "script:/k/m1.js"],
-        "afterFirstScript": [*fetched_at_start, "script:/k/m1.js", "script:/k/k.js"],
-        "atEnd": [*fetched_at_start, "script:/k/m1.js", "script:/k/k.js", "script:/k/m2.js"],
-    }

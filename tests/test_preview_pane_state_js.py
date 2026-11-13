@@ -373,11 +373,7 @@ def test_a_history_landing_on_a_pull_address_asks_for_the_routes() -> None:
     on_pull = check_startup_scripts.run_startup_session(folder_html, "/view/", landing="/pull/8")
     assert on_pull["errors"] == []
     assert on_pull["requested"] == []
-    # The asset loader preloads the bundle's script, then appends it.
-    assert on_pull["afterLanding"] == [
-        {"how": "link rel=preload", "url": "/static/pull-route.js"},
-        {"how": "script", "url": "/static/pull-route.js"},
-    ]
+    assert on_pull["afterLanding"] == [{"how": "script", "url": "/static/pull-route.js"}]
     on_file = check_startup_scripts.run_startup_session(
         folder_html, "/view/", landing="/view/notes.md"
     )

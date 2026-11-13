@@ -103,17 +103,3 @@ def test_on_demand_assets_load_once_when_asked_and_never_before() -> None:
     )
     assert payload["concurrentStrongRetryAppends"] == ["shared.js", "shared.js"]
     assert payload["concurrentStrongRetryLoaded"] is True
-
-    # Every script of a bundle is fetched at once (shell-tools was fourteen round trips
-    # one after another), and still runs in order: the next is appended only after the
-    # one before it ran, so a `requires` gate still reads its predecessor's global.
-    assert payload["parallelPreloadedBeforeFirstRuns"] == [
-        "preload:script:a.js",
-        "preload:script:b.js",
-        "preload:script:c.js",
-    ]
-    assert payload["parallelAppendedBeforeFirstRuns"] == ["a.js"]
-    assert payload["parallelAppendedAfterFirstRuns"] == ["a.js", "b.js"]
-    assert payload["parallelOrder"] == ["a.js", "b.js", "c.js"]
-    assert payload["parallelPreloadsRemoved"] == ["a.js", "b.js", "c.js"]
-    assert payload["parallelPreloadedForSharedScript"] == ["preload:script:d.js"]

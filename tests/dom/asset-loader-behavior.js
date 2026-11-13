@@ -15,27 +15,10 @@ const source = fs.readFileSync(sourcePath, "utf8");
 
 /** Every src appended, in order, across the whole run. */
 const appended = [];
-/** Every preload href appended, and every one removed, in order. */
-const preloaded = [];
-const unpreloaded = [];
 /** Every `metabrowser:optional-asset-loaded` src, in order. */
 const notified = [];
 /** srcs whose onload is withheld until released, to observe in-flight sharing. */
 const held = new Map();
-
-class FakeLink {
-  constructor() {
-    this.rel = "";
-    this.as = "";
-    this.href = "";
-  }
-  setAttribute(name, value) {
-    this[name] = String(value);
-  }
-  remove() {
-    unpreloaded.push(this.href);
-  }
-}
 
 class FakeScript {
   constructor() {
@@ -79,13 +62,9 @@ function makeSandbox(
       listeners.push(fn);
     },
     document: {
-      createElement: (tag) => (tag === "link" ? new FakeLink() : new FakeScript()),
+      createElement: () => new FakeScript(),
       head: {
         appendChild(script) {
-          if (script instanceof FakeLink) {
-            preloaded.push(`${script.rel}:${script.as}:${script.href}`);
-            return script;
-          }
           appended.push(script.src);
           const appendCount = Number(appendCounts.get(script.src) || 0) + 1;
           appendCounts.set(script.src, appendCount);
@@ -327,40 +306,6 @@ async function main() {
     held.get("shared.js")();
     await retry;
     results.concurrentStrongRetryLoaded = sandbox.MetabrowserAssets.assetLoaded("strong");
-  }
-
-  // 11. A bundle's scripts are all fetched at once, through preloads, while they
-  //     still run one after another: the second is not appended until the first
-  //     has run. The preloads leave the document once the bundle settles, and a
-  //     script already loaded is not fetched again.
-  {
-    appended.length = 0;
-    preloaded.length = 0;
-    unpreloaded.length = 0;
-    held.clear();
-    const sandbox = makeSandbox(
-      {
-        tools: [{ src: "a.js" }, { src: "b.js" }, { src: "c.js" }],
-        more: [{ src: "a.js" }, { src: "d.js" }],
-      },
-      { hold: ["a.js", "b.js", "c.js"] },
-    );
-    const done = sandbox.MetabrowserAssets.ensureAsset("tools");
-    await flush();
-    results.parallelPreloadedBeforeFirstRuns = preloaded.slice();
-    results.parallelAppendedBeforeFirstRuns = appended.slice();
-    held.get("a.js")();
-    await flush();
-    results.parallelAppendedAfterFirstRuns = appended.slice();
-    held.get("b.js")();
-    await flush();
-    held.get("c.js")();
-    await done;
-    results.parallelOrder = appended.slice();
-    results.parallelPreloadsRemoved = unpreloaded.slice();
-    preloaded.length = 0;
-    await sandbox.MetabrowserAssets.ensureAsset("more");
-    results.parallelPreloadedForSharedScript = preloaded.slice();
   }
 
   process.stdout.write(`${JSON.stringify(results)}\n`);
