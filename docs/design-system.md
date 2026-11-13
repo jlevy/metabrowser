@@ -1566,8 +1566,13 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 - **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`,
   `U`, and `W` keep their meaning even where they do nothing, so a letter never means
   one thing on one screen and another elsewhere.
-  The manifest loader and `metab --doctor` drop a view key that takes one, and the
-  plugin shortcut surface refuses one.
+  A manifest whose view takes one is refused: the loader rejects it, the plugin does not
+  load, and `metab --doctor` reports why.
+  The plugin shortcut surface refuses one too, with a console warning, and the control
+  works without a key.
+  A different case is two views of one kind declaring the same free letter, in one
+  manifest or across two: both load, the first in tab order keeps the letter, the later
+  view is served without it, and `metab --doctor` reports the lost key.
   `src/metabrowser/keymap.py` holds the table, and also reserves `1` to `9`, which only
   the numbering hands out.
 - **Tab letters are scoped to their tab bar.** A tab with a reusable meaning takes its
@@ -1643,7 +1648,10 @@ Plugins follow the same rules, through two declarations:
   known meaning, or `numbered: true` for a situational link or action, which then takes
   its number from its place on screen with the shell’s numbered controls.
 
-A reserved letter is refused.
+A manifest view key that takes a reserved letter keeps the whole plugin from loading,
+while a letter already held by an earlier view of the kind only costs the later view its
+key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed to
+`metabrowser.shortcuts.attach()` is refused with a warning.
 [Keyboard Shortcuts in docs/plugins.md](plugins.md#keyboard-shortcuts) has the API.
 
 ## Keyboard Commands and Help
