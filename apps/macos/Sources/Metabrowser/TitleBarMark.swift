@@ -77,8 +77,8 @@ final class TitleBarMarkButton: NSView {
 
     // MARK: - Hover
 
-    /// A faint capsule behind the mark, in the system's fill for a control under the
-    /// pointer, and a little deeper while pressed. The fills are resolved in the plain
+    /// A faint square-cornered box behind the mark (`TitleBarMarkLayout`), in the
+    /// system's fill for a control under the pointer, and a little deeper while pressed. The fills are resolved in the plain
     /// light or dark appearance: the title bar's own is the vibrant one, whose fills are
     /// opaque grays meant for a visual effect view to blend (its dark secondary fill
     /// measured gray 0.08, darker than the title bar it would lighten).
@@ -93,7 +93,8 @@ final class TitleBarMarkButton: NSView {
         }
         fill.setFill()
         let highlight = placement.highlight
-        NSBezierPath(roundedRect: highlight, xRadius: highlight.height / 2, yRadius: highlight.height / 2).fill()
+        let radius = TitleBarMarkLayout.highlightCornerRadius
+        NSBezierPath(roundedRect: highlight, xRadius: radius, yRadius: radius).fill()
     }
 
     override func updateTrackingAreas() {
