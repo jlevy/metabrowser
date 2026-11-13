@@ -13,6 +13,13 @@ All notable changes to Metabrowser are documented here.
   sentence it sits in.
   See [Branch Chips](docs/design-system.md#branch-chips).
 
+- The author’s avatar in a pull request’s header no longer flickers in the macOS app.
+  Switching tabs, or a refresh while the page was open, blanked it for a moment, because
+  each repaint built it again as a lazy image, which WebKit fetched again before drawing
+  it. The header’s avatar, and a Pulls row’s, now load at once from the copy already
+  loaded; a conversation’s avatars still load as you scroll to them.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
 - A rendered Markdown diff no longer says “Source shows additional changes.”
   above a file, or “Source shows changes not shown here.”
   on a block. The **Rendered** | **Source** chooser is how to see a change that does not
