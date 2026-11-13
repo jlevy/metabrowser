@@ -148,6 +148,30 @@ def test_keyboard_keys_render_caps_bold_and_bordered() -> None:
     assert "--kbd-font-weight: var(--weight-bold);" in css
 
 
+def test_badge_keycap_modifies_the_base_rule_after_it() -> None:
+    """A Shift reveal badge is a `.kbd` modifier: declared after the base rule, paint only.
+
+    The badge inherits the keycap's type, caps, and radius from the token rule above it and
+    changes only its fill, border, text color, and shadow (the `── Keyboard keys ──` blocks).
+    """
+    rules = _rules(_read_styles())
+    selectors = [selector for selector, _body in rules]
+    assert selectors.index(".kbd") < selectors.index(".kbd-badge")
+    assert next(selector for selector in selectors if ".kbd" in selector) == ".kbd"
+    badge = rules[selectors.index(".kbd-badge")][1]
+    for owned in (
+        "font-family",
+        "font-size",
+        "font-weight",
+        "letter-spacing",
+        "text-transform",
+        "border-radius",
+        "padding",
+        "min-width",
+    ):
+        assert not re.search(rf"(?:^|;)\s*{owned}\s*:", badge), f".kbd-badge restyles {owned}"
+
+
 def test_palette_filename_and_parent_path_share_one_size() -> None:
     """A result row reads as one line of navigation, not a heading over fine print."""
     rules = dict(_rules(_read_styles()))
@@ -170,6 +194,22 @@ def test_palette_hint_renders_keys_through_the_kbd_component() -> None:
     assert "↑↓ choose · Enter open · Esc close" not in palette_source
 
 
+def test_single_keys_share_the_registry_keycap() -> None:
+    """A key that is not a binding, such as a standalone Shift, renders as a binding's does.
+
+    Bindings and single keys go through one keycap constructor in the registry,
+    so the two entry points cannot drift into different markup.
+    """
+    shortcut_source = KEYBOARD_SHORTCUTS_JS.read_text()
+    assert shortcut_source.count('createElement("kbd")') == 1
+    keycap = shortcut_source[shortcut_source.index("function createKeycap(") :]
+    keycap = keycap[: keycap.index("\n  }\n")]
+    assert 'keycap.className = "kbd";' in keycap
+    for entry_point in ("function appendBinding(", "function appendKey("):
+        body = shortcut_source[shortcut_source.index(entry_point) :]
+        assert "createKeycap(hostDocument" in body[: body.index("\n  }\n")], entry_point
+
+
 def test_both_open_keys_stay_bound_though_the_hint_names_one() -> None:
     """The alias is unadvertised, not unbound.
 
@@ -183,5 +223,6 @@ def test_both_open_keys_stay_bound_though_the_hint_names_one() -> None:
     command = source[source.rfind("options.shortcuts.register", 0, command_start) : command_start]
     assert 'bindings: [{ key: "t" }, { key: "/" }]' in command
     assert (
-        'surfaces: { help: "always", nav: "always" }' in source[command_start : command_start + 300]
+        'surfaces: { help: "always", nav: "always", reveal: "always" }'
+        in source[command_start : command_start + 300]
     )
