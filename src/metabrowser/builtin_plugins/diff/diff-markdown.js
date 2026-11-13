@@ -29,7 +29,7 @@ const LOADING_DELAY_MS = 50;
 /** @typedef {{
  *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement,
  *   source: HTMLElement, rendered: HTMLElement,
- *   progress: HTMLElement, progressLabel: HTMLElement, fallback: HTMLElement,
+ *   progress: HTMLElement, progressLabel: HTMLElement,
  *   control: HTMLElement,
  *   id: string, mode: Mode, pending: boolean, expanded: boolean, holding: boolean,
  *   retryAt: number, retries: number,
@@ -254,6 +254,7 @@ export function appendBlocks(fragment, blocks, build) {
     const details = document.createElement("details");
     details.className = "diff-markdown-context";
     const summary = document.createElement("summary");
+    summary.className = "disclosure-toggle";
     summary.textContent = `${hidden.length} unchanged blocks`;
     details.append(summary);
     let mounted = false;
@@ -355,7 +356,6 @@ export function createMarkdownViews(deps) {
     const rich = file.mode === "rendered" && file.state === "ready";
     file.source.hidden = rich || (file.holding && file.mode === "rendered" && file.expanded);
     file.rendered.hidden = !file.expanded || !rich;
-    file.fallback.hidden = !file.expanded || !file.fallback.textContent;
     drawProgress(file);
   }
 
@@ -499,7 +499,7 @@ export function createMarkdownViews(deps) {
         inert = undefined;
       }
       if (inert === undefined) {
-        // Not kept: the retry the message offers loads it again.
+        // Not kept: choosing Rendered again loads it again.
         inertReady = undefined;
         throw new Error("The untrusted Markdown sanitizer is unavailable.");
       }
@@ -536,6 +536,7 @@ export function createMarkdownViews(deps) {
         if (/** @type {{status?: unknown}} */ (error)?.status === 429) {
           retryLater(file);
         } else {
+          console.warn("metabrowser diff: rendered Markdown failed; showing Source", error);
           fallBack(file, false);
         }
       }
@@ -549,15 +550,15 @@ export function createMarkdownViews(deps) {
     }
   }
 
+  // Source is what a file shows when it is not rendered, and nothing says so: a file
+  // that can only show Source loses its chooser, and one whose render failed keeps it, so
+  // choosing Rendered asks again.
   /** @param {FileView} file @param {boolean} unsupported */
   function fallBack(file, unsupported) {
     deps.mutate(() => {
       file.state = unsupported ? "unavailable" : "idle";
       file.mode = "source";
       file.holding = false;
-      file.fallback.textContent = unsupported
-        ? "Rendered diff unavailable. Showing source."
-        : "Could not render Markdown. Select Rendered to retry.";
       drawControl(file);
       draw(file);
     });
@@ -572,7 +573,6 @@ export function createMarkdownViews(deps) {
       file.mode = mode;
       file.holding = false;
       if (mode === "rendered") {
-        file.fallback.textContent = "";
         file.retryAt = 0;
       }
       drawControl(file);
@@ -604,9 +604,6 @@ export function createMarkdownViews(deps) {
       const progressLabel = document.createElement("span");
       progressLabel.className = "sr-only";
       progress.append(spinner, progressLabel);
-      const fallback = document.createElement("p");
-      fallback.className = "diff-availability diff-markdown-fallback";
-      fallback.setAttribute("role", "status");
       /** @type {FileView} */
       const file = {
         section,
@@ -616,7 +613,6 @@ export function createMarkdownViews(deps) {
         rendered,
         progress,
         progressLabel,
-        fallback,
         id,
         control,
         mode: "rendered",
@@ -639,7 +635,7 @@ export function createMarkdownViews(deps) {
         }
       });
       toggle.after(control, progress);
-      source.before(fallback, rendered);
+      source.before(rendered);
       files.set(section, file);
       controls.set(source.id, file);
       drawControl(file);

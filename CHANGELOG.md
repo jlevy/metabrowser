@@ -33,6 +33,26 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
+- A pull request’s Changes no longer says “Rendered diff unavailable.
+  Showing source.” above a Markdown file it cannot render, or “Could not render Markdown.
+  Select Rendered to retry.”
+  when rendering one fails.
+  Such a file shows Source and says nothing: one that can only show Source has no
+  **Rendered** | **Source** chooser, as before, and one whose rendering failed keeps the
+  chooser, so choosing **Rendered** tries again.
+  A failed rendering is logged to the browser console.
+
+- Clicking a toggle no longer selects text, even on a double or triple click.
+  A folder in the Files tree, a rendered Markdown diff’s “5 unchanged blocks”, a
+  section’s chevron, a diff file’s bar, a log event, and every other control that shows
+  or hides content leave their own label and the text beside them unselected, in Chrome
+  and in the macOS app, and what they reveal stays selectable.
+  In the macOS app, a diff’s or a Source view’s line numbers, tabs, chips, and tree rows
+  are now kept out of a selection too, as they were in Chrome: WebKit had ignored every
+  rule that did so. A plugin marks such a control with the host’s `disclosure-toggle`
+  class; see
+  [Disclosure Toggles Never Select Text](docs/design-system.md#disclosure-toggles-never-select-text).
+
 - A merge between two branches reads source → target, left to right, everywhere it
   appears. The Pulls list shows `claude/x → main` instead of `main ← claude/x`, and a
   pull request’s header reads “octo wants to merge 1 commit: wip → topic” instead of

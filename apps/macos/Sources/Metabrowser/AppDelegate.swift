@@ -269,13 +269,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session.onAllWindowsClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)
+            self?.retitleWindows()
         }
+        session.onTitleChange = { [weak self] _ in self?.retitleWindows() }
         session.onWindowShown = { [weak self] folder, controller in
             self?.folderWindows.windowShown(controller, of: folder)
         }
         session.onLayoutChange = { [weak self] in self?.folderWindows.scheduleSave() }
         sessions.insert(session, for: key)
+        retitleWindows()
         return session
+    }
+
+    /// Gives every open folder's windows their `window.title`: the short name, or the full
+    /// name while another open folder shares the short name (`WindowTitle.windowTitles`).
+    private func retitleWindows() {
+        let open = folderSessions
+        for (session, title) in zip(open, WindowTitle.windowTitles(open.map(\.title))) {
+            session.windowTitle = title
+        }
     }
 
     private func restoreLastSession() {
@@ -620,6 +632,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openDocumentation(_ sender: Any?) {
-        NSWorkspace.shared.open(URL(string: "https://github.com/jlevy/metabrowser#readme")!)
+        NSWorkspace.shared.open(ProjectLinks.readme)
     }
 }

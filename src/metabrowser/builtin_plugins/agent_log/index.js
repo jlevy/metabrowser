@@ -146,7 +146,7 @@
       '"' +
       (visible ? "" : ' style="display: none;"') +
       ">" +
-      '<div class="log-event-header" role="button" tabindex="0" aria-expanded="false">' +
+      '<div class="log-event-header disclosure-toggle" role="button" tabindex="0" aria-expanded="false">' +
       mb.icons.chevron +
       kindHtml +
       '<span class="log-event-summary" data-tip-text="' +
@@ -388,8 +388,9 @@
         }
         return false;
       };
-      // A header is a div so that its text stays selectable, so the keys a button
-      // answers to are this listener's. preventDefault keeps Space from scrolling.
+      // A header is a div, not a button, so the keys a button answers to are this
+      // listener's. preventDefault keeps Space from scrolling. Like every disclosure
+      // toggle it selects no text; the event's own text is in the body it opens.
       const toggleFromKey = (event) => {
         const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
         if ((event.key === "Enter" || event.key === " ") && plain && !event.repeat) {
