@@ -211,9 +211,10 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     details = _rule(css, ".github-pull-meta-details")
     assert "min-width: 0;" in details and "overflow: hidden;" in details
     # A chip is a grid item of the merge group, whose floor keeps the names legible; a
-    # width of the chip's own would overflow the group's track rather than hold it.
-    chip = _rule(css, ".github-pull-meta .git-ref")
-    assert "min-width" not in chip and "flex-shrink" not in chip
+    # width of the chip's own would overflow the group's track rather than hold it. The
+    # header sets nothing on its chips at all: `.git-ref` alone sizes a chip
+    # (test_branch_chips_have_one_size in test_design_vocabulary.py).
+    assert ".github-pull-meta .git-ref" not in css
     # The sentence gives way before the branches do.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action

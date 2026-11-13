@@ -5980,6 +5980,11 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: 0;
   flex: 0 1 auto;
   overflow: hidden;
+  /* Room inside the clip for a HEAD chip's ring, 1px off and 1px wide,
+     which the clip otherwise cut away: the row showed HEAD with no ring.
+     The negative margin gives the room back, so nothing moves. */
+  padding: 2px;
+  margin: -2px;
 }
 
 .git-graph-subject {
@@ -6057,16 +6062,26 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* Branch chips are their own vocabulary, not filter chips: at this
    size the name carries the meaning, so it is always bold, and the
-   square corner separates "a ref" from "a filter" at a glance. */
+   square corner separates "a ref" from "a filter" at a glance.
+
+   This rule is the chip's one size, wherever it appears: a Git history
+   row, a commit's summary and tooltip, a pull request's header, a Pulls
+   row, the ref selector (docs/design-system.md, "Branch Chips"). No
+   context overrides its type or box; the history row once drew it at
+   10px beside the 12px everywhere else, so one branch read at two sizes.
+   16px tall, so a HEAD ring (1px out, 1px off) fits a 22px history row. */
 .git-ref {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  /* Wide enough for the branch names this project actually uses:
-     measured against this repository's refs, 140px clipped 18 of 41
-     chips, including ordinary names like `codex/help-keyboard-shortcuts`.
-     Still bounded, since one very long ref must not own the row. */
-  max-width: 220px;
+  /* Wide enough for the branch names this project actually uses, and in
+     em so the bound keeps its meaning at the chip's size. Measured in
+     Chrome against this repository's 497 branches, remote branches, and
+     tags, as copyable chips: at 10px, 220px clipped 63; at 12px, 220px
+     clipped 150 and 22em (264px) clips 54, names like
+     `codex/pr-comparison-body-admission-01a1a051`. Still bounded, since
+     one very long ref must not own the row. */
+  max-width: 22em;
   padding: 0 5px;
   border-radius: var(--radius-tag);
   line-height: 16px;
@@ -6078,7 +6093,7 @@ pre.code-block.metabrowser-source-lines > code {
      and ground without the circularity currentcolor would create. */
   --git-ref-ink: var(--git-ref-local);
   color: var(--git-ref-ink);
-  font-size: var(--micro-font-size);
+  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
 }
 
@@ -6112,9 +6127,11 @@ pre.code-block.metabrowser-source-lines > code {
 /* HEAD is orthogonal to kind — it can sit on trunk, an ordinary
    branch, or nothing — so it is marked with a ring rather than by
    changing the chip's form. Every chip is bold, so weight cannot carry
-   this. */
+   this. The ring is the kind's color, --git-ref-ink, not currentcolor:
+   on trunk the text is the ground color, and a ring in it all but
+   vanished against the page, so HEAD on main showed no ring. */
 .git-ref-head {
-  outline: 1px solid currentcolor;
+  outline: 1px solid var(--git-ref-ink);
   outline-offset: 1px;
 }
 
@@ -6130,9 +6147,11 @@ pre.code-block.metabrowser-source-lines > code {
    zero and freezes each at its full width.
    The group never gets narrower than both chips' padding and copy slot
    (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
-   in each, and the arrow with its spaces (about 1.3em): the equal growth
-   gives each name at least its chip's frame and an ellipsis, and what is
-   left is the arrow's. A line too short for that floor moves the merge
+   in each, and the arrow with its spaces (about 1.3em). The em is the
+   group's `--ui-small-font-size`, which is also every chip's one size
+   (`.git-ref`), so the ellipses are counted at the chips' own size.
+   The equal growth gives each name at least its chip's frame and an
+   ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
    to a line of its own (the Pulls tab's `.github-pulls-line`). */
 .merge-refs {
   display: inline-grid;
@@ -6141,9 +6160,7 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: calc(2 * (5px + 19px) + 3em);
   max-width: 100%;
   vertical-align: middle;
-  font-size: var(--ui-small-font-size);
-}
-.merge-refs > .git-ref {
+  /* The arrow's size; each chip carries its own, the one `.git-ref` sets. */
   font-size: var(--ui-small-font-size);
 }
 /* The spaces around the glyph are text, kept so a copied selection reads
@@ -6240,11 +6257,6 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .git-commit-file-status-deleted {
   color: var(--status-error-strong);
-}
-
-.git-commit-summary .git-ref {
-  font-size: var(--ui-small-font-size);
-  line-height: 20px;
 }
 
 .git-commit-summary .git-commit-age {
@@ -6505,10 +6517,6 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-ref-copy[hidden] {
   display: none;
-}
-
-.source-ref-selector .git-ref {
-  font-size: var(--ui-small-font-size);
 }
 
 /* The icon primitive gives hover/focus a neutral plate; use readable text ink on it. */

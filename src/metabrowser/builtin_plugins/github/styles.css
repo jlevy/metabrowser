@@ -54,7 +54,8 @@
 /* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
    wrapping the row, which made it 21 to 67 px tall. A narrow row gives way in its sentence
    first: the action is cut to nothing before the merge's names shrink, and they never
-   shrink past the merge group's floor (static/styles.css, `.merge-refs`). */
+   shrink past the merge group's floor (static/styles.css, `.merge-refs`). A chip keeps its one
+   size, smaller than the actor and action beside it: docs/design-system.md, "Branch Chips". */
 .github-pull-meta {
   position: relative;
   display: flex;
@@ -76,13 +77,6 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* A branch takes the remote ref chip, smaller than the actor and action beside it: the
-   merge group (`mb.mergeRefs`) sets that size. The details may be narrower than the merge,
-   so its chips ellipsize in a narrow pane instead of running past the column. A chip is a
-   grid item of the group, so the group's floor, not a width of its own, keeps it legible. */
-.github-pull-meta .git-ref {
-  line-height: 20px;
 }
 .github-pull-quiet {
   color: var(--muted);

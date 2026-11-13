@@ -834,11 +834,167 @@ def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     assert "background: var(--git-ref-ink)" in trunk, "trunk takes the solid form"
     head = _rule(styles, ".git-ref-head")
     assert "outline:" in head, "HEAD is a ring, orthogonal to the chip's kind"
+    # The ring is the kind's color: in currentcolor it took a trunk chip's ground-colored
+    # text and all but vanished. A history row clips its chips, so it keeps the ring's
+    # 2px inside the clip and gives the room back.
+    assert "outline: 1px solid var(--git-ref-ink);" in head
+    refs = _rule(styles, ".git-graph-refs")
+    assert "overflow: hidden;" in refs
+    assert "padding: 2px;" in refs and "margin: -2px;" in refs, "the row clips the HEAD ring"
     # The kind classes must reach the markup from the wire, not be guessed
     # in the browser.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
     assert "ref.is_trunk" in panel and "git-ref-trunk" in views
+
+
+# The classes the SDK writes on a chip and its label (`refChip`, `refChipHtml`, and
+# `mergeRefs`'s two roles). A rule whose subject carries one of them styles a chip.
+_CHIP_CLASSES = frozenset(
+    {
+        "git-ref",
+        "git-ref-local",
+        "git-ref-remote",
+        "git-ref-tag",
+        "git-ref-trunk",
+        "git-ref-head",
+        "git-ref-copyable",
+        "git-ref-label",
+        "merge-refs-source",
+        "merge-refs-target",
+    }
+)
+# What makes a chip one size and one box: its type, its line, its padding, its corner,
+# and its width bound.
+_CHIP_TYPE_AND_BOX = frozenset(
+    {
+        "font",
+        "font-size",
+        "font-weight",
+        "font-family",
+        "font-stretch",
+        "line-height",
+        "letter-spacing",
+        "padding",
+        "padding-left",
+        "padding-right",
+        "padding-top",
+        "padding-bottom",
+        "padding-inline",
+        "padding-inline-start",
+        "padding-inline-end",
+        "padding-block",
+        "border-radius",
+        "max-width",
+        "height",
+        "min-height",
+        "block-size",
+        "zoom",
+    }
+)
+# A form's own room, on the chip itself and never from a context: the tag's notch and
+# the copyable chip's reserved control.
+_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
+
+
+def test_branch_chips_have_one_size() -> None:
+    """A ref chip is one size wherever it appears ("Branch Chips", "One Size").
+
+    The history row drew its chips at 10px and a pull request's header at 12px, through
+    a rule per context. Now `.git-ref` alone sets a chip's type and box, and no rule in
+    any shipped stylesheet restyles a chip from where it sits.
+    """
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    section = doc.split("#### One Size", 1)[1].split("\n#### ", 1)[0]
+    assert "test_branch_chips_have_one_size" in section
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    chip = shell[".git-ref"]
+    assert chip["font-size"] == "var(--ui-small-font-size)"
+    assert chip["font-weight"] == "var(--weight-bold)"
+    assert chip["line-height"] == "16px", "a HEAD ring must fit the 22px history row"
+    assert chip["padding"] == "0 5px"
+    assert chip["border-radius"] == "var(--radius-tag)"
+    assert chip["max-width"] == "22em", "the width bound scales with the one size"
+    sheets = [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/styles.css"))]
+    restyled = []
+    for sheet in sheets:
+        for selector, declarations in _rules_of(sheet):
+            subject = _compounds(selector)[-1]
+            if selector == ".git-ref" or not set(re.findall(r"\.([\w-]+)", subject)) & (
+                _CHIP_CLASSES
+            ):
+                continue
+            touched = _CHIP_TYPE_AND_BOX & set(declarations)
+            touched -= _CHIP_FORM_ROOM.get(selector, set())
+            if touched:
+                restyled.append(f"{sheet.parent.name}/{sheet.name}: {selector} {sorted(touched)}")
+    assert not restyled, f"a context restyles a ref chip: {restyled}"
+
+
+def test_each_context_assigns_its_chip_kind() -> None:
+    """Each context's chips take the kind, trunk, and HEAD its row of the table names.
+
+    "Which Kind Each Context Gets" in the design system: a history row, a commit's summary,
+    and its tooltip draw the wire's kind with the server's trunk and HEAD; a merge's two
+    branches are remote and never trunk or HEAD; the ref selector draws a branch as remote
+    and a tag as a tag, and never trunk, since the mirror's default is not the history's
+    trunk. `tests/test_git_api.py` holds that the detail and the refs listing carry the
+    refs and trunk the history row does.
+    """
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    section = doc.split("#### Which Kind Each Context Gets", 1)[1].split("\n#### ", 1)[0]
+    assert "test_each_context_assigns_its_chip_kind" in section
+    for context in (
+        "A checkout’s history row",
+        "A mirror’s history row",
+        "A commit’s summary",
+        "A commit’s tooltip",
+        "A pull request’s header",
+        "A Pulls row",
+        "The ref selector’s button and list",
+    ):
+        assert f"| {context} |" in section, f"the table lost {context!r}"
+    # One mapping from a Git kind to a chip's: a tag, a remote branch, else a local branch.
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    mapping = 'options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local"'
+    assert views.count(mapping) == 2, "refChip and refChipHtml map kinds one way"
+    # A history row, a commit's summary, and its tooltip draw the wire's refs, all three
+    # marks included, through one function.
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    badges = re.search(
+        r"function renderRefBadges\(refs, copy = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
+    )
+    assert badges is not None
+    for option in ("kind: ref.kind,", "trunk: ref.is_trunk,", "head: ref.is_head,"):
+        assert option in badges[1], f"history chips lost {option!r}"
+    assert panel.count("refChipHtml(") == 1, "git history draws chips only in renderRefBadges"
+    assert "renderRefBadges(commit.refs || [])" in panel
+    assert 'renderRefBadges(commit.refs, compact ? false : "inline")' in panel
+    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD.
+    for name in ("pull-page.js", "pulls-panel.js"):
+        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
+        calls = re.findall(r"mb\.mergeRefs\((.*?)\n\s*\),?\n", source, re.S)
+        assert len(calls) == 1, f"{name} draws one merge"
+        options = calls[0].rsplit("{", 1)[1]
+        assert 'kind: "remote"' in options, f"{name}'s branches are remote"
+        assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
+    # The ref selector: a branch is remote and a tag a tag, on the button and in the list,
+    # and neither is trunk or HEAD; the list says "default" in words.
+    selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
+    chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
+    assert len(chips) == 2, "the selector draws a chip on its button and on each row"
+    for chip in chips:
+        assert re.search(
+            r'kind: (?:model\.selectedRef\.kind|model\.kind === "tag" \? "tag" : "remote"),', chip
+        )
+        assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
+    assert 'kind: label.kind === "Tag" ? "tag" : "remote",' in selector
+    assert 'badge.textContent = "default";' in selector
+    # Trunk has one definition, on the server, and every answer that names a ref uses it.
+    log = (REPO_ROOT / "src/metabrowser/git/log.py").read_text(encoding="utf-8")
+    assert log.count('is_trunk_ref(ref["name"], ref["kind"])') == 2, "decoration and refs"
+    detail = (REPO_ROOT / "src/metabrowser/git/detail.py").read_text(encoding="utf-8")
+    assert '"--decorate=full",' in detail, "a detail's refs parse as the history's do"
 
 
 def test_git_history_vocabulary_is_documented() -> None:
@@ -890,7 +1046,6 @@ def test_git_commit_summary_is_one_component() -> None:
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
     summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
     summary_body = _rule(styles, ".git-commit-body")
-    summary_refs = _rule(styles, ".git-commit-summary .git-ref")
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
@@ -910,7 +1065,8 @@ def test_git_commit_summary_is_one_component() -> None:
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
-    assert "font-size: var(--ui-small-font-size)" in summary_refs
+    # Its ref chips keep their one size: test_branch_chips_have_one_size.
+    assert ".git-commit-summary .git-ref" not in styles
     # The revision is the documented exception: monospace at body size
     # renders optically larger than the sans beside it, so the sha sits
     # one step down the ramp. See "Git Commit Summary" in the design
@@ -1875,7 +2031,7 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         "19px",
     ), "the floor counts each chip's padding and copy slot"
     assert group["font-size"] == "var(--ui-small-font-size)"
-    assert shell[".merge-refs > .git-ref"]["font-size"] == "var(--ui-small-font-size)"
+    assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
     # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
     # loses the arrow in Chrome when it overflows. The author and the branches each carry
