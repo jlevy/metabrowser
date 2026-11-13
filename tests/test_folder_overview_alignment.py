@@ -310,9 +310,6 @@ def _wait_until_serving(
 def _stop_server(server: subprocess.Popen[str]) -> None:
     assert server.stdin is not None
     server.stdin.close()
-    # Closed here, so ``wait`` must not flush it: Python 3.12 and 3.13 raise
-    # ``ValueError`` for a flush of a closed stdin, which 3.14 ignores.
-    server.stdin = None
     try:
         server.wait(timeout=_SERVER_STOP_S)
     except subprocess.TimeoutExpired:

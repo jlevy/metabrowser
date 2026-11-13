@@ -131,6 +131,8 @@ function reach(name, expression) {
     assert.ok(await d.waitFor(expression, budgets[name] * 1000), message);
   });
 }
+// The measurement's own failure, kept so the close below cannot replace it.
+let failure = null;
 try {
   await within("navigated", budgets.navigated, () =>
     browser.page.send("Page.navigate", { url: `${base}/view/` }),
@@ -183,13 +185,23 @@ try {
     );
     checks += 1;
   }
-} finally {
-  // Stops every Chrome process of the profile, then removes the profile. A close that
-  // runs out of its budget is reported rather than thrown, so it cannot replace the
-  // run's own failure; the caller stops the process group either way.
-  await within("closed", budgets.closed, () => browser.close()).catch((error) => {
-    process.stderr.write(`${error.message}\n`);
-  });
+} catch (error) {
+  failure = error;
+}
+// Stops every Chrome process of the profile, then removes the profile. A close that fails
+// or runs out of its budget fails the run like any other phase. When the measurement
+// failed first, its failure is the one the run reports, and the close's is written before
+// it; the caller stops the process group either way.
+try {
+  await within("closed", budgets.closed, () => browser.close());
+} catch (error) {
+  if (failure === null) {
+    throw error;
+  }
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+}
+if (failure !== null) {
+  throw failure;
 }
 // Exit once the line is written: the shared launcher's close races Browser.close against a
 // 3 s timer it never clears, which would otherwise hold this process open for that long.
