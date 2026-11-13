@@ -1059,8 +1059,9 @@ always whole inside the row, down to the narrowest navigation pane (180px) with 
 five-digit number, a long login, an avatar, and a stack badge.
 The author and the branches each start with their separator.
 A part moves to the next line when the line cannot hold its floor: the author’s is its
-separator and a little of the name or its avatar, so a separator never stands alone, and
-the branches’ is their separator and the merge’s floor.
+separator, its avatar if it has one, and a little of the name, so neither the separator
+nor the avatar stands without a visible name, even when the avatar fails to load and
+keeps its slot, and the branches’ is their separator and the merge’s floor.
 A part that stays grows by equal amounts toward its full width, so the line shortens
 names before it wraps.
 The line starts one separator to the left of the row, so the separator of a part that
