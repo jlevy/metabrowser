@@ -323,7 +323,7 @@ function ensureDistributionBody(handle) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className =
-    "file-type-summary-disclosure section-disclosure-trigger file-type-summary-details-toggle";
+    "file-type-summary-disclosure section-disclosure-trigger file-type-summary-details-toggle disclosure-toggle";
   toggle.textContent = "Details";
   table.id = `${handle.idPrefix}-details`;
   table.setAttribute("aria-labelledby", captionId);
@@ -440,7 +440,8 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
         const label = document.createElement("span");
         const disclosure = document.createElement("button");
         disclosure.type = "button";
-        disclosure.className = "file-type-summary-disclosure section-disclosure-trigger";
+        disclosure.className =
+          "file-type-summary-disclosure section-disclosure-trigger disclosure-toggle";
         const disclosureLabel = document.createElement("span");
         disclosure.append(disclosureLabel);
         disclosure.addEventListener("click", () => {
