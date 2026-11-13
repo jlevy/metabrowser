@@ -41,10 +41,12 @@ state. The status gives the repository’s total and name, with the number in bo
 
 Metabrowser caches a lightweight catalog of titles, authors, states, branches, and dates
 in the background, publishing each page as it arrives and resuming unfinished work.
-It initially displays up to 500 matching pull requests.
-When more exist, **Showing last 500** appears below the total.
-Scrolling toward the end loads the next window for the current filter.
-**Fetch more** advances the list explicitly.
+The list has no limit: scrolling toward the end loads the next page for the current
+filter, through its oldest pull request.
+While pages are still being read or fetched from GitHub, a spinner below the last row
+says how many matching pull requests have been fetched so far, as the file scan does.
+The catalog fetches pages in the background while GitHub’s API budget allows; when it
+runs low, the pull requests you scroll to are still fetched, and the rest wait.
 After initial Files work is idle, Metabrowser prepares lightweight PR headers and
 descriptions in both managed repositories and existing checkouts.
 The current filter warms first, visible rows take priority as you scroll, and

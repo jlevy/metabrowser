@@ -232,7 +232,7 @@ def _record(
             recorded["not_due"] = ask(state="all", target=500)
             assert ask(state="all", target=1000)["body"]["refresh"] == "not_due"
             assert read() == recorded["current"]
-            provider_calls["cached windows, filters, Fetch more and reopen"] = logged_gh_calls(
+            provider_calls["cached windows, filters, scrolling and reopen"] = logged_gh_calls(
                 tmp_path
             )
             recorded["pin_changed"] = _answer(
@@ -563,9 +563,12 @@ def test_catalog_windows_and_late_request_ownership() -> None:
     assert run_session("github-pulls-catalog-behavior.js") == {
         "defaultFilter": "open",
         "initialRows": 500,
-        "explicitRows": 1000,
+        "rateHeldScrollRows": 1000,
         "scrollRows": 600,
         "terminalRows": 645,
+        "uncappedScrollRows": 2500,
+        "parkedTailRows": 2000,
+        "countNotices": 0,
         "repeatedScrollSharesRequest": True,
         "keepsSelection": True,
         "cachedGrowthKeepsEveryRow": True,
@@ -575,7 +578,7 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "progressOnlyReads": 1,
         "generationPages": 10,
         "detailReads": 0,
-        "priorityTarget": 1000,
+        "priorityTarget": 600,
         "lateWindowRejected": True,
         "ownerTransferred": True,
         "mixedGenerationRejected": True,

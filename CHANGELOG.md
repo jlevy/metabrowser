@@ -30,6 +30,17 @@ All notable changes to Metabrowser are documented here.
   seconds. A repository someone else owns, opened through `safe.directory`, is still
   checked every five seconds.
 
+- The Pulls tab’s lists have no limit.
+  Open, Closed, and All keep loading as you scroll, a page at a time, through the oldest
+  pull request, as Commits does.
+  “Showing last N”, “Catalog paused · N cached”, and **Fetch more** are gone.
+  While pages are still being read or fetched from GitHub, the file scan’s spinner shows
+  below the last row with “~N pull requests fetched”.
+  The background fetch of older pull requests now waits while GitHub’s GraphQL budget is
+  below the quarter Metabrowser leaves to you, as other background work already did; the
+  pages you scroll to are still fetched.
+  See [Reviewing Pull Requests](docs/reviewing-pull-requests.md).
+
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
   Commits tally of commits, or the Pulls filters, at one height, so what is under it
@@ -293,6 +304,13 @@ All notable changes to Metabrowser are documented here.
   Help lists the numbers once, as `1`–`9` under “On this screen”, and says they are not
   fixed. Holding Shift shows what each number reaches, and the keycaps now ease in on the
   design system’s reveal motion, `--motion-reveal`.
+
+- The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
+  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
+  does nothing while it waits, as a click does.
+  The navigation pane’s numbers come first, so beside the Pulls tab a pull request
+  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
+  each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
   request’s Changes, exactly as its layout control does: where Split does not fit, `L`
