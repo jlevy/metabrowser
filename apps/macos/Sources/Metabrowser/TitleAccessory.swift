@@ -40,23 +40,29 @@ final class TitleBarTitleView: NSView {
     /// 14-point circles, 9 points apart, from 9 to 23 points below its top, and the
     /// accessory's leading edge at x 78, a button gap after the zoom button.
     ///
-    /// The logo, the icon's mark (`TitleBarLogoView`), is as tall as a window button, as
-    /// the user asked: 14 points. Centered in the title bar's height, as the buttons are,
-    /// it spans 9 to 23 points below the top, its top and bottom level with theirs. From
-    /// the accessory's leading edge, a button gap after the zoom button, it is 20.26
-    /// points wide, to x 98.26.
-    private static let markHeight: CGFloat = 14
+    /// The logo, the icon's mark (`TitleBarLogoView`), is 13 points tall, a little under a
+    /// window button, as the user asked. Centered in the title bar's height, as the
+    /// buttons are, it spans 9.5 to 22.5 points below the top. From the accessory's
+    /// leading edge it is 18.81 points wide, to x 96.81.
+    private static let markHeight: CGFloat = 13
     private static let markWidth = markHeight * TitleBarLogoView.aspectRatio
-    /// From the mark to the title's first glyph: 9.5 points, about a button gap, as beside
-    /// the first, 10-point mark.
-    private static let markGap: CGFloat = 9.5
-    /// How far inside its frame the label draws its first glyph: a frame at x 100 drew it
-    /// at x 102 (measured on macOS 26.5).
-    private static let labelGlyphInset: CGFloat = 2
-    /// Where the title text starts, in whole points after the mark and its gap: 28 from
-    /// the accessory's leading edge, so the label starts at x 106 and its first glyph, at
-    /// x 108, falls 9.74 points after the mark.
-    private static let textInset = (markWidth + markGap - labelGlyphInset).rounded(.up)
+    /// The visible space on each side of the mark, ink to ink, as the user asked: the 9
+    /// points AppKit leaves between the zoom button and the accessory, the window buttons'
+    /// own gap, and about the same from the mark to the title's first glyph.
+    ///
+    /// Measured in 2x renders on macOS 26.5, to a fraction of a pixel from antialiasing,
+    /// for a title starting with a bold "f": 9.00 points left and 9.39 right in light
+    /// mode, and 9.53 and 9.23 in dark mode, where the offscreen window button's darker
+    /// rim measured half a point inside its frame. A title starting with "m" measured 0.6
+    /// points more on the right, for the letter's own side bearing.
+    private static let markGap: CGFloat = 9
+    /// How far right of its frame the label draws the title's first ink: 2.19 points for
+    /// a bold "f" in light mode, and 2.04 in dark (measured on macOS 26.5).
+    private static let labelGlyphInset: CGFloat = 2.2
+    /// Where the title text starts, to the nearest whole point after the mark, its gap,
+    /// and the label's own inset, so the text is never set off a pixel: 26 from the
+    /// accessory's leading edge, so the label starts at x 104 and its first ink at x 106.2.
+    private static let textInset = (markWidth + markGap - labelGlyphInset).rounded()
     /// Space kept between the end of the title and the window's trailing edge.
     private static let windowMargin: CGFloat = 12
     /// The path menu's folder icons, as the system title's path menu draws them.
@@ -108,8 +114,10 @@ final class TitleBarTitleView: NSView {
         var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
         if isRightToLeft { text.origin.x = bounds.width - text.maxX }
         label.frame = text
-        var mark = NSRect(
-            x: 0, y: ((bounds.height - Self.markHeight) / 2).rounded(), width: Self.markWidth, height: Self.markHeight)
+        // Centered to the nearest half point, a Retina pixel, since 13 points leave an odd
+        // 19 of the title bar's 32.
+        let markY = (bounds.height - Self.markHeight).rounded() / 2
+        var mark = NSRect(x: 0, y: markY, width: Self.markWidth, height: Self.markHeight)
         if isRightToLeft { mark.origin.x = bounds.width - mark.maxX }
         logo.frame = mark
         render()

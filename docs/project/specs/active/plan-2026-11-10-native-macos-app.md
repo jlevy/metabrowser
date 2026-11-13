@@ -123,6 +123,8 @@ through `metab --api`:
   app icon’s mark alone, the colored M and B without the icon’s squircle, drawn from the
   icon masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper
   tints of the mark’s two hues, so each reads at 4:1 or more.
+  The mark is 13 points tall, with the window buttons’ 9-point gap on each side, ink to
+  ink (`mb-6bfu`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
   window’s represented URL, so the logo, in the proxy icon’s place, drags the folder and
   Command-click opens the path menu.

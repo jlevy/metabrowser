@@ -1123,20 +1123,23 @@ AppKit draws a system title in one font and one color, so the window hides it
   leading edge, after the window buttons: the proxy icon at x 82 and the text at x 100,
   in the 13-point title-bar font.
   A leading accessory starts at x 78, so the drawn title starts where the system’s does,
-  in the same font, and the title bar stays 32 points tall; its text starts 6 points
+  in the same font, and the title bar stays 32 points tall; its text starts 4 points
   later than the system’s, after the logo (below).
   AppKit places accessories for tabs, full screen, and right-to-left layouts.
 - **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
   76 points tall, centers the title where macOS 26 no longer puts it, and, with the
   title hidden, AppKit shows no proxy icon there either.
-- **The logo is as tall as the window buttons, in their row.** The buttons are 14-point
-  circles 9 points apart, from x 9 to 69 and 9 to 23 points below the top.
-  The logo is 14 points tall, as the user asked, and centered as they are, so its top
-  and bottom are level with theirs.
-  It runs from x 78, a button gap after the zoom button, to x 98.26. The title follows
-  it by about the gap the first, 10-point mark had, 9.5 points: its label starts at x
-  106, 6 points further right than the system title’s x 100, so its first glyph, at x
-  108, falls 9.74 points after the mark.
+- **The logo sits in the window buttons’ row, with equal space on each side.** The
+  buttons are 14-point circles 9 points apart, from x 9 to 69 and 9 to 23 points below
+  the top. The logo is 13 points tall, a little under a button, as the user asked, and
+  centered as they are, from 9.5 to 22.5 points down.
+  It runs from x 78, the buttons’ 9-point gap after the zoom button, to x 96.81, and the
+  title follows it by about the same gap, ink to ink: its label starts at x 104, 4
+  points further right than the system title’s x 100, and its first ink at about x
+  106.2. Measured in 2x renders, for a title starting with a bold “f”, the gaps are 9.00
+  points before the mark and 9.39 after it in light mode, and 9.53 and 9.23 in dark
+  mode, where the offscreen window button’s darker rim measured half a point inside its
+  frame; a title starting with “m” measured 0.6 points more after it.
 - **The logo is the icon’s own mark.** It draws the partial M and the B from the
   outlines and fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift`
   copies into `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh`
