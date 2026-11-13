@@ -99,13 +99,22 @@
   color: var(--muted);
 }
 
-/* Every panel shares the README card edge inside the outer pane gutter.
-   Its cap follows KPress's native responsive inset; the narrow prose has
-   its own smaller text gutter, just as it does in the document component. */
+/* Every panel shares the README card's edges inside the outer pane gutter.
+   The card's width cap follows KPress's native responsive inset, so the
+   section rules and surface bodies end where the card ends at every band.
+
+   The text the host draws — each panel heading's label, and a surface
+   body's controls, rows, and toggles — starts one tab inset in from that
+   edge, under the active tab's label, at every width. It does not follow
+   the README's prose: KPress's inset steps from 0.75 to 4 to 2.5 rem as the
+   pane widens, and the labels stepped with it, so a heading's indent changed
+   with the window's width. The inset is declared once, here,
+   outside any container query; KPress keeps its own responsive padding
+   inside the README card, as it does in a standalone document. */
 @media screen {
   .folder-overview-host {
     --folder-overview-column-inset: 1.5rem;
-    --folder-overview-text-inset: 0.75rem;
+    --folder-overview-text-inset: var(--file-tab-padding-x);
     --folder-overview-card-width: min(
       100%,
       calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
@@ -129,14 +138,12 @@
   @container kpress-doc (min-width: 48rem) {
     .folder-overview-host {
       --folder-overview-column-inset: 4rem;
-      --folder-overview-text-inset: 4rem;
     }
   }
 
   @container kpress-doc (min-width: 75rem) {
     .folder-overview-host {
       --folder-overview-column-inset: 2.5rem;
-      --folder-overview-text-inset: 2.5rem;
     }
   }
 }

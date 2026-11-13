@@ -1239,7 +1239,7 @@ def _git_readme_child(
 def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str, Any]]:
     """Overview when a README or complete tally exists; treemap needs sizes.
 
-    Overview alone has no tab, so it is served without its key.
+    Overview alone has no other tab to switch to, so it is served without its key.
     """
 
     complete = tally is not None and tally.total_size is not None

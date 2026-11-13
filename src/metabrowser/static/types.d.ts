@@ -70,6 +70,8 @@ type MetabrowserPullsNavHost = Readonly<{
   refreshAhead: boolean;
   /** A checkout served as a folder: its list is of its `origin`, read only once shown. */
   checkout: boolean;
+  /** The tab's toolbar in the navigation's slot, which the list's filters fill; or null. */
+  toolbar?: HTMLElement | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
@@ -151,6 +153,9 @@ type MetabrowserViewLifecycleStage = Readonly<{
 }>;
 
 type MetabrowserViewCompositionRuntime = Readonly<{
+  FACE_WAIT_MS: number;
+  /** Wait, at most FACE_WAIT_MS, for the faces a staged view's text is set in; `null` when they are there. */
+  settleFaces(root: Element | null | undefined): Promise<void> | null;
   createLifecycle(options?: { onDisposeError?: (error: unknown) => void }): Readonly<{
     begin(): MetabrowserViewLifecycleStage;
     disposeActive(): void;
@@ -1357,7 +1362,12 @@ type MetabrowserTreeExpansion = {
     maxVisibleRows: number,
     pageSize: number,
   ): Set<string>;
-  setFolderExpanded(row: HTMLElement, children: HTMLElement, expanded: boolean): void;
+  setFolderExpanded(
+    row: HTMLElement,
+    children: HTMLElement,
+    expanded: boolean,
+    instant?: boolean,
+  ): void;
   toggleFolderExpanded(row: HTMLElement, children: HTMLElement): boolean;
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
@@ -2055,6 +2065,8 @@ type MetabrowserSearchController = Readonly<{
 }>;
 
 type MetabrowserSearchRuntime = Readonly<{
+  /** Rows pull requests have after the files' cap. */
+  PULL_RESULT_LIMIT: number;
   createController(options?: { maxResults?: number }): MetabrowserSearchController;
   createLocalFileProvider(options: {
     catalog: MetabrowserKnownFileCatalogApi;
@@ -2486,9 +2498,18 @@ type MetabrowserTreeKeyboardApi = Readonly<{
   setSelectedPath(path: string | null | undefined): void;
   synchronize(snapshot?: MetabrowserTreeMutationSnapshot | null): Array<HTMLElement>;
   visibleRows(): Array<HTMLElement>;
+  walking(path: string): Promise<void> | null;
+}>;
+
+/** A held arrow key's walk through a tree: see tree-keyboard-navigation.js#createWalk. */
+type MetabrowserTreeWalk = Readonly<{
+  end(): void;
+  step(path: string | null, repeat: boolean): void;
+  walking(path: string): Promise<void> | null;
 }>;
 
 type MetabrowserTreeKeyboardRuntime = Readonly<{
+  WALK_SETTLE_MS: number;
   create(options: {
     activate(
       row: HTMLElement,
@@ -2499,6 +2520,7 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
     setFolderExpanded(row: HTMLElement, expanded: boolean): void | Promise<void>;
     shortcuts: MetabrowserShortcutRegistry;
   }): MetabrowserTreeKeyboardApi;
+  createWalk(): MetabrowserTreeWalk;
   firstChildRow(row: HTMLElement): HTMLElement | null;
   parentRow(row: HTMLElement): HTMLElement | null;
   readVisibleRows(container: HTMLElement): Array<HTMLElement>;
@@ -3199,7 +3221,8 @@ declare global {
      * once and then replaced by the fetch; absent when the index was not warm
      * enough to answer at render time.
      */
-    METABROWSER_INITIAL_TREE?: { tree: TreeNode[] };
+    /** The root rows, and a landing path whose folders are inlined expanded. */
+    METABROWSER_INITIAL_TREE?: { tree: TreeNode[]; path?: string };
     MetabrowserAssets?: {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;

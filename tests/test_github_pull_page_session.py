@@ -566,17 +566,23 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
+        "headerShape": True,
         # C, G, and E run the page's setTab through the shortcut facade, with or without
-        # Shift; they wait while the tab column or the page is out of reach. H is the
-        # Commits tab's, so Checks is E. The header's links and actions are numbered by
-        # their place, through the same facade, and a number runs what its place's control
-        # does in the paint on screen: View on GitHub opens the pull request on GitHub,
-        # Browse code asks to serve the head and, once a refresh serves it, opens the code;
-        # Refresh asks for a refresh, and moves up to 2 when Browse code goes.
+        # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
+        # unless its first read fails, so they are live from first paint, as the links
+        # are; they wait while the column is out after a failed first read, and while the
+        # page is staged inert. The links come back badged at once while Shift is held,
+        # which paintHeader's retarget does. The header's links and actions are numbered
+        # by their place, through the same facade, and a number runs what its place's
+        # control does in the paint on screen: View on GitHub opens the pull request on
+        # GitHub, Browse code asks to serve the head and, once a refresh serves it, opens
+        # the code; Refresh asks for a refresh, and moves up to 2 when Browse code goes.
         "tabKeys": [
-            "before the record, the tab column out of the page: keys C G E, live none",
-            "C: not handled",
-            "the record arrives and paintHeader puts the column in: "
+            "before the record, the tab column in the page: "
+            "Conversation C, Changes G, Checks E; live conversation files checks",
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the record arrives and paintHeader keeps the column: "
             "Conversation C, Changes G, Checks E",
             "live: conversation files checks",
             "numbered: 1 View on GitHub, 2 Browse code",
@@ -600,6 +606,16 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "staged inert: G: not handled",
             "committed: G: opened the files route",
             "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+            "a failed first read takes the column out: live none",
+            "G: not handled",
+            "on Changes, Shift held while it is out: badges none",
+            "the next read answers, and the returning tabs are badged: "
+            "Conversation C, Changes G, Checks E",
+            "the next read answers and paintHeader puts the column back: "
+            "Conversation C, Changes G, Checks E",
+            "live: conversation files checks",
+            "G: showed Changes",
+            "disposed: keys none",
         ],
     }
 
@@ -748,11 +764,19 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # No tab key is live while the header waits with the held body; all three at release
         # (review E2).
         "tabKeysWhileHeld": {
-            "whileHeld": {"holding": True, "tabColumn": False, "live": [], "g": "not handled"},
+            "whileHeld": {
+                "holding": True,
+                "tabColumn": "inert",
+                "live": [],
+                "badges": "none",
+                "g": "not handled",
+            },
             "released": {
                 "holding": False,
-                "tabColumn": True,
+                "tabColumn": "live",
                 "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks E",
+                "focus": "Changes, preventScroll true",
                 "g": "opened the files route",
             },
         },

@@ -237,7 +237,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       ),
     );
   }
-  const filterBar = element(document, "div", { id: "nav-filter-bar" });
+  // The Files tab's toolbar in the navigation's toolbar slot, which main-tabs.js hides
+  // while another tab is in front, as the server's shell marks it.
+  const filterBar = element(document, "div", { id: "nav-filter-bar", "data-nav-toolbar": "files" });
   const filesPanel = element(document, "div", { id: "tab-files", "data-tab-content": "files" });
   const rows = ["README.md", "data.json", "docs"].map((name, index) =>
     element(
@@ -392,27 +394,27 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       inert: true,
     });
     staging.append(header(data));
-    if (views.length > 1) {
-      const bar = element(document, "div", { class: "tab-bar", role: "tablist" });
-      for (const view of views) {
-        bar.append(
-          element(
-            document,
-            "button",
-            {
-              "aria-selected": view === initial ? "true" : "false",
-              class: view === initial ? "tab-btn active" : "tab-btn",
-              "data-tab": view.id,
-              "data-view-key": view.key ?? false,
-              role: "tab",
-              type: "button",
-            },
-            view.label,
-          ),
-        );
-      }
-      staging.append(bar);
+    // Every file has the bar, a lone view's too, and only a bar of two or more views
+    // carries the views' keys.
+    const bar = element(document, "div", { class: "tab-bar", role: "tablist" });
+    for (const view of views) {
+      bar.append(
+        element(
+          document,
+          "button",
+          {
+            "aria-selected": view === initial ? "true" : "false",
+            class: view === initial ? "tab-btn active" : "tab-btn",
+            "data-tab": view.id,
+            "data-view-key": (views.length > 1 && view.key) || false,
+            role: "tab",
+            type: "button",
+          },
+          view.label,
+        ),
+      );
     }
+    staging.append(bar);
     preview.append(staging);
     return {
       commit() {

@@ -164,6 +164,17 @@ class FakeNode extends FakeEventTarget {
     return node;
   }
 
+  // main-tabs.js puts a late panel's toolbar into the slot before the tree's scroller.
+  before(...nodes) {
+    const parent = this.parentNode;
+    for (const node of nodes) {
+      parent?.insertBefore(
+        typeof node === "string" ? this.ownerDocument.createTextNode(node) : node,
+        this,
+      );
+    }
+  }
+
   remove() {
     if (this.parentNode) {
       const siblings = this.parentNode.childNodes;
