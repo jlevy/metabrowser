@@ -373,7 +373,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8aeaaafb77d8ec54",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/style-tokens.css",
+        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -385,7 +385,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/syntax.css",
+        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -397,7 +397,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "49d55a2dbac06488",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/document.css",
+        "public_url": "/kpress-static/v0.3.5/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -409,7 +409,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "3899b614d6672436",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/components.css",
+        "public_url": "/kpress-static/v0.3.5/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -421,7 +421,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "86c6396bc77060cd",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/print.css",
+        "public_url": "/kpress-static/v0.3.5/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
