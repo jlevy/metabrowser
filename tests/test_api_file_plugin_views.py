@@ -60,6 +60,27 @@ def test_plain_markdown_resolves_via_markdown_plugin(tmp_path: Path) -> None:
     assert views["source"]["print_profile"] == "source"
 
 
+def test_markdown_envelope_carries_each_views_declared_key(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "plain.md").write_text("# heading\n")
+    result = _api_file("plain.md")
+    assert [(v["id"], v.get("key")) for v in result["views"]] == [
+        ("rendered", "d"),
+        ("source", "s"),
+    ]
+
+
+def test_a_duplicate_view_key_across_manifests_keeps_the_first(monkeypatch) -> None:
+    """At run time a later view's duplicate key is dropped, never the plugin."""
+    first = {"id": "main", "label": "Main", "default": True, "key": "m"}
+    second = {"id": "alt", "label": "Alt", "key": "m"}
+    monkeypatch.setitem(server._PLUGIN_VIEWS_BY_KIND, "myk", [first, second])
+
+    views = server._views_for_kind("myk")
+
+    assert [(v["id"], v.get("key")) for v in views] == [("main", "m"), ("alt", None)]
+
+
 def test_plain_text_source_view_is_printable(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     txt = tmp_path / "notes.txt"

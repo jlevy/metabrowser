@@ -193,11 +193,13 @@ inside a sentence.
 
 Write the key in its natural case in markup — the caps treatment is presentational, so
 the accessible name stays what the markup says.
-For a chord or alternative, emit one `.kbd` per physical key so each keeps its own
-border.
+For alternative keys, emit one `.kbd` per key, joined by the word “or,” so each keeps
+its own border.
 
 The component, its tokens, and its markup contract are documented in the
-`── Keyboard keys ──` blocks of `static/styles.css`.
+`── Keyboard keys ──` blocks of `static/styles.css`. The Shift reveal’s badges are
+keycaps too: the `.kbd-badge` modifier changes only their paint, as
+[Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) describes.
 
 #### Canonical Key Names
 
@@ -212,7 +214,6 @@ glyph itself.
 | `/` | `/` | Slash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
 | Digit key | The digit | The digit | The digit |
-| Command modifier | `⌘` | Command | `Meta` |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
 | `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
 | `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
@@ -224,6 +225,11 @@ glyph itself.
 | `End` | `End` | End | `End` |
 | `Delete` | `Delete` | Delete | `Delete` |
 | `F2` | `F2` | F2 | `F2` |
+| `Shift`, a single key only | `Shift` | Shift | `Shift` |
+
+`Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
+`appendKey()`, which renders a key that is not a binding, such as one named in a
+sentence. No binding may use it.
 
 The `.kbd` text transform produces the visible caps treatment; source markup keeps the
 mixed-case label in this table.
@@ -235,31 +241,42 @@ instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a charact
 punctuation binding when the physical chord varies by keyboard layout.
 Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
 producing that character.
-When modifier bindings are introduced, the formatter owns both platform labels and ARIA
-serialization; no call site chooses between names such as Control, Command, or Meta.
 Adding a key that is not in this vocabulary requires adding its display, spoken, and
 ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
 The sidebar orders Files, Commits, and Pulls in that order.
-Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Commits, and `⌘3` for Pulls.
+Help shows the fixed shortcuts: `1` for Files, `2` for Commits, and `3` for Pulls.
 A missing tab keeps its number reserved.
-Use the number alone outside text fields and dialogs when the browser uses the Command
-chord for its own tab bar.
+The digits work outside text fields and dialogs, with or without Shift.
+A digit opens its tab, or keeps the tab already shown, and moves focus to the panel’s
+roving row, so `1` then `↓` walks the file tree; while the panel has no rows yet, the
+tab button takes focus.
+A missing tab has no target, so its digit does nothing.
+Command and Ctrl with a digit stay the browser’s, which switches its own tabs with them.
 
 #### Binding Grammar and Accessibility
 
+- Every shortcut is a single key.
+  No binding uses Ctrl, Alt, or Meta, and the registry rejects a binding that states any
+  modifier policy, Shift included.
+- Shift never changes what a key means: a letter matches in either case, a named key
+  such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
+  matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
+  `1`. A character that is another binding’s key keeps it: German Shift+`7` types `/`
+  and is Quick Search.
+- Punctuation matches the character typed, so `?` and `/` stay distinct even where they
+  share a key, and `/` works on layouts that type it with Shift.
 - Alternative bindings use the word “or”: `T` or `/`.
-- Simultaneous keys use a plus sign: `Ctrl` + `F`.
 - Ordered key sequences are not supported and must not be implied by adjacent keycaps.
 - Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
 
 The visual and spoken forms are both generated.
 An isolated key may use its natural-case `<kbd>` text as its accessible name.
-A group of alternatives or a chord exposes one visually hidden phrase such as “T or
-slash” or “Control plus F” and hides its visual punctuation and keycaps from assistive
-technology, avoiding duplicate or ambiguous announcements.
+A group of alternatives exposes one visually hidden phrase such as “T or slash” or “Down
+arrow or J” and hides its visual punctuation and keycaps from assistive technology,
+avoiding duplicate or ambiguous announcements.
 An actionable control keeps its action as the accessible name and receives the
 formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
 physical shortcut accurately.
@@ -1136,8 +1153,9 @@ The menu shows titles, ordinals, and PR numbers, ordered from stack top to base,
 the current member marked.
 Its links are created only when opened.
 Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
-On a selected PR, ⇧J moves toward the stack base and ⇧K toward the top; Help uses the
-shared Shift key glyph.
+On a selected PR, `N` opens the next member toward the stack top and `P` the previous
+one toward its base, with or without Shift; Help lists them in its Pull request stack
+group. A focused Pulls row keeps `J` and `K` for its own rows.
 Editors, dialogs, unknown membership, and inactive pages keep their normal keyboard
 behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
@@ -1310,8 +1328,10 @@ History follows the rule all three collections share: a key’s open replaces th
 as the file tree’s arrow keys and Git’s K and J do.
 Clicking a different row or pressing Enter on it pushes a history entry.
 Space toggles the focused pull request’s changed files in place.
-Help reads the `pull-requests` group of the shortcut registry, and no surface here names
-a key.
+`J` and `K` move the rows with or without Shift; walking a pull request’s stack is `N`
+and `P` ([The Pull Request Page](#the-pull-request-page)). Help reads the
+`pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
+names a key.
 
 ## Keyboard Commands and Help
 
@@ -1325,16 +1345,102 @@ Widget behavior that belongs to a focused control, such as arrow navigation with
 menu or radiogroup, stays on that component’s root.
 If that behavior is advertised in Help or another hint surface, its presentation still
 comes from a registered descriptor.
-Document-level commands ignore editable controls, composition, previously handled
-events, and modifiers they did not declare.
+Document-level commands ignore editable controls, composition, and previously handled
+events. They never match while Ctrl, Alt, or Meta is held, and inside a text field Shift
+with an arrow, `Home`, or `End` belongs to the field, where it extends the selection.
 They prevent browser behavior only after an enabled handler reports that it acted.
 
 A command may opt back into an editable target only for a key that field does not
 already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
 them edit text. It may not claim `Home` or `End`: those move the caret, and taking them
 leaves the user unable to reach the start or end of what they typed.
-When a list needs first-item and last-item reach behind an editable control, its
+For the same reason, Shift with a selection key stays the field’s even for a command
+that opted in: Shift+`↑` and Shift+`↓` extend the selection in Quick Search’s query,
+while plain `↑` and `↓` move through results and `Enter` and `Esc` act with or without
+Shift. When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
+
+### Badge Targets and the Shift Reveal
+
+A command whose key acts on a control on screen attaches that control as its target with
+the registry’s `attachTarget()`, which returns `retarget()` for a rebuilt control and an
+idempotent `detach()`. While attached, the control carries the command’s
+`aria-keyshortcuts`, so the key is announced at rest.
+A command marked `targeted` is live only while one of its targets is: connected, not
+`disabled`, outside any `inert` subtree, and visible by `checkVisibility()` or, without
+it, by computed style.
+The registry reads that at dispatch, so a key whose control is hidden, staged, or behind
+a modal leaves the event to the browser.
+The first live target in document order runs the command, as `context.target`, and
+carries its badge. A component that rebuilds its markup calls `retarget()` after each
+rebuild.
+
+Every key runs a named activation path, the one its control’s click runs, plus the focus
+a keyboard user needs next; no command synthesizes a click.
+A main tab’s digit opens the tab and then focuses the panel’s roving row; a view tab’s
+letter selects the tab and leaves focus where it was; a filter’s letter opens its menu
+and focuses the checked row; `W` opens the branch list and focuses its filter; `U` opens
+the parent folder; and `Y` copies the main-pane header’s path or revision.
+View tab letters are commands in a permanent `view-tabs` scope below `global`, one per
+letter, held for the bar the main pane commits and never for one still staged, so the
+stack’s `P` outranks a Preview tab’s `P` only while a pull request in a stack is open.
+
+Holding Shift alone outside a text field for the hold threshold reveals the keys: the
+root gains `data-key-reveal`, each live command’s first live target carries one
+`.kbd.kbd-badge` keycap, hidden from assistive technology, and the shortcut strip shows
+a second layer listing the `reveal` surface’s live commands, with every binding of an
+item that combines several, such as `N` or `P`. A key the registry handles keeps the
+reveal and moves the badges to what is live after it; any other key, a modifier, a
+pointer press, a wheel, the window losing focus, a hidden page, focus entering a text
+field, or a lost `keyup` ends it.
+Another key within the threshold, or pointer travel past the slop, keeps the reveal from
+starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without a
+flash. The reveal never calls `preventDefault()` and never announces itself; badges and
+the revealed strip exist only while it shows.
+`static/key-reveal.js` is the state machine, and `static/shell-keymap.js` holds the
+shell’s targeted commands.
+
+The reveal is drawn in the live-row yellow, `--row-flash-bg`, which `--key-reveal-bg`
+names for it:
+
+- **A badge is a keycap.** It is a `.kbd` with the `.kbd-badge` modifier, which keeps
+  the keycap’s type, caps, padding, and radius and changes only its paint: the yellow at
+  60% opacity (`--kbd-badge-bg`), a deeper border of the same hue
+  (`--kbd-badge-border`), the body text (`--kbd-badge-color`), and the small elevation.
+  It is absolutely positioned and ignores the pointer, so it moves no box and a click
+  reaches the target beneath it.
+  No call site styles a badge.
+- **Placement.** An `inline-end` badge sits inside its target over the inline-end
+  padding, centered top to bottom: the default, for tabs, chips, and text buttons.
+  A keycap is wider than a tab’s padding, so it covers the label’s last letter, which
+  reads through the translucent fill.
+  A `beside` badge also sits over its target’s own inline end, but is positioned within
+  the nearest `[data-kbd-badge-anchor]`: the file header, the folder header, or the
+  commit view’s heading.
+  It serves icon buttons and targets in a row that clips, such as the Copy path button
+  and the breadcrumbs, where a badge inside the target would be cut off.
+  It covers the icon or the crumb’s last letter, never the file name, note, size, path,
+  or author that follows.
+  A crumb narrower than a keycap, such as the root’s `/`, lets the keycap reach back
+  over the text before it: at the root, the end of the dimmed root name, the folder Up
+  opens. The target and the anchor become containing blocks through zero-specificity
+  rules, so one that already declares a position keeps it.
+- **Hover-revealed targets show.** A target that otherwise appears only on hover or
+  focus, such as either copy button, appears for the reveal, with its pointer events, as
+  [Reveal on Hover Keeps Keyboard Reach](#reveal-on-hover-keeps-keyboard-reach) requires
+  of every reveal trigger.
+- **The revealed strip** is the same yellow, with `--text` and keycaps in a badge’s
+  paint. Its layer sits against the strip’s bottom edge and grows upward over the panel,
+  which neither reflows nor scrolls; the panel’s pinned headers and open menus stay
+  above it.
+- **Contrast.** Everything the reveal paints keeps 4.5:1 in both themes: a badge as
+  composited over each surface a target sits on, and the strip’s labels and keycaps on
+  the yellow, where `--muted` would not.
+  The ratios are recorded beside the tokens in `static/styles.css`, and
+  `tests/test_design_vocabulary.py` recomputes them.
+- **Motion and print.** Badges and the strip fade in over `--transition-fast`, appear at
+  once under `prefers-reduced-motion: reduce`, and go at once when the reveal ends.
+  Neither prints.
 
 ### Navigational Row Collections
 
@@ -1344,9 +1450,11 @@ exists, otherwise the first row.
 All other rows remain programmatically focusable with `tabindex="-1"`, so Tab enters and
 leaves the collection once instead of stopping on every item.
 
-While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
-row and open it. K and J are aliases for Arrow Up and Arrow Down with the same guards;
-they never act from a text field and get no first-row or last-row meaning.
+While a row has focus, Arrow Up and Arrow Down without Ctrl, Alt, or Meta move to the
+adjacent mounted row and open it; Shift changes nothing, so Shift+Arrow moves one row.
+K and J are aliases for Arrow Up and Arrow Down with the same guards, in either case and
+with or without Shift; they never act from a text field and get no first-row or last-row
+meaning. In the file tree, the first-row and last-row keys are Home and End alone.
 Key repeat remains enabled for fast traversal.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
@@ -1396,7 +1504,8 @@ its Tab order and vertical navigation cannot silently fork this contract.
 Every presented command declares:
 
 - a stable identifier and scope;
-- semantic bindings, including explicit modifier and repeat policy;
+- semantic bindings, each one key with no modifier policy, and an explicit repeat
+  policy;
 - a group identifier whose heading, context sentence, and order come from one group
   registry;
 - one sentence-case action label with no terminal punctuation;
@@ -1455,6 +1564,10 @@ instead of duplicating it.
 The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
+The shortcut groups end with one note, “Press `Shift` to see relevant shortcut
+reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. The View
+tabs, Controls, and Filters groups say “Available while the tabs are shown.”, “Available
+while the control is shown.”, and “Available while the Files tab is shown.”
 
 ### Quick Search Results
 
@@ -1565,6 +1678,8 @@ which fades opacity and drops `pointer-events` rather than setting `visibility: 
 A hidden button leaves the tab order, so the control becomes mouse-only.
 Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
 focus is itself a reveal trigger.
+So is the Shift reveal for a button that is a shortcut target, so its keycap never marks
+an invisible control.
 
 ## Filter Controls
 
