@@ -49,11 +49,8 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     /// A local folder's identity, from its path alone, named as `metab` names it: the
     /// folder's own name, `~` for the home folder, and `/` for the root.
     ///
-    /// A window shows it while its server starts, before there is a route to ask. It
-    /// also stands in when the server has no `/api/identity`: the route is newer than
-    /// metab 0.12.0, and a CLI install (`uv tool install metabrowser`) updates
-    /// independently of the app, so the app can be running a `metab` without it. Drop
-    /// that fallback once the app requires a `metab` with the route (README, Gaps).
+    /// A window shows it while its server starts, before there is a route to ask, and
+    /// keeps it if asking fails.
     ///
     /// `root` is canonical, as the app opens it, and `home` is compared with symbolic
     /// links resolved, as `metab` compares it.
@@ -82,9 +79,7 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
 /// What a folder's server said when asked who it is.
 public nonisolated enum IdentityAnswer: Equatable, Sendable {
     case identity(FolderIdentity)
-    /// 404: a `metab` older than the route.
-    case missingRoute
-    /// Anything else: no answer, another status, or a body that is not an identity.
+    /// No answer, a status other than 200, or a body that is not an identity.
     case failed(String)
 
     /// The identity a window shows: the server's, else `fallback`.
@@ -124,7 +119,6 @@ public nonisolated enum IdentityClient {
     }
 
     public static func answer(status: Int, body: Data) -> IdentityAnswer {
-        if status == 404 { return .missingRoute }
         guard status == 200 else { return .failed("status \(status)") }
         guard body.count <= byteLimit else { return .failed("a body of \(body.count) bytes") }
         let identity: FolderIdentity

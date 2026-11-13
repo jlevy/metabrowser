@@ -24,6 +24,8 @@ final class FolderWindows {
     private var shownCount: UInt64 = 0
     private var restoreQueue: RestoreQueue?
     private var isStartingRestoredServers = false
+    /// Whether the restore paused because a root found no runtime to start from.
+    private var isWaitingForRuntime = false
     private var pendingSave: Task<Void, Never>?
     /// Saving starts once the last session has been restored or passed over, so a quit
     /// before then cannot replace it with an empty one, and stops at the quit's save, so
@@ -264,22 +266,50 @@ final class FolderWindows {
     }
 
     /// Starts the restored folders' servers one at a time, each after the one before it is
-    /// ready or has failed, while the restore queue has any.
+    /// ready or has failed, while the restore queue has any. A root that finds no runtime
+    /// goes back to the front of the queue and the restore pauses until `runtimeAccepted()`,
+    /// so each root is still admitted again in its turn, in order, with selected tabs first.
     private func startRestoredServers() {
         guard !isStartingRestoredServers else { return }
         isStartingRestoredServers = true
         Task {
-            while let path = nextRestoredRoot() {
+            while !isWaitingForRuntime, let path = nextRestoredRoot() {
                 guard let session = sessionForPath(path) else { continue }
-                if await !session.startServer() {
+                switch await session.startRestored() {
+                case .launched:
+                    restoreQueue?.finish(path)
+                case .refusedByRoot:
                     restoreQueue?.hold(path)
                     AppLog.app.info(
                         "\(path, privacy: .public) changed while it waited to start; it starts when its tab is selected")
                     session.windows.forEach { $0.showWaitingForSelection() }
+                case .waitingForRuntime:
+                    restoreQueue?.putBack(path)
+                    // A runtime accepted since the refusal starts it at once.
+                    guard !session.isRuntimeAccepted else { continue }
+                    isWaitingForRuntime = true
+                    AppLog.app.info("the restore waits for a metab Metabrowser can run")
+                    for waiting in restoreQueue?.pending ?? [] {
+                        sessionForPath(waiting)?.windows.forEach { $0.showWaitingForRuntime() }
+                    }
                 }
             }
             isStartingRestoredServers = false
         }
+    }
+
+    /// A restored background folder's restart, such as one after an upgrade, was refused
+    /// by its root check: its server stays stopped until one of its tabs is selected,
+    /// which starts it through the restore queue as the user's choice.
+    func rootRefused(_ session: FolderSession) {
+        restoreQueue?.hold(session.path)
+    }
+
+    /// A runtime was accepted: a restore that paused for want of one carries on.
+    func runtimeAccepted() {
+        guard isWaitingForRuntime else { return }
+        isWaitingForRuntime = false
+        startRestoredServers()
     }
 
     /// The next root to start. A background root is admitted again now, since it can

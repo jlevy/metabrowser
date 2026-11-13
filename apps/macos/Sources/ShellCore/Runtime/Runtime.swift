@@ -26,11 +26,23 @@ public nonisolated struct Runtime: Codable, Equatable, Sendable {
     public var executable: String
     public var version: String
     public var source: RuntimeSource
+    /// The executable as it was just before `--version` ran, so `version` describes this
+    /// file and no later one. Nil when it could not be taken, which no check trusts.
+    public var fingerprint: FileFingerprint?
 
-    public init(executable: String, version: String, source: RuntimeSource) {
+    public init(executable: String, version: String, source: RuntimeSource, fingerprint: FileFingerprint? = nil) {
         self.executable = executable
         self.version = version
         self.source = source
+        self.fingerprint = fingerprint
+    }
+
+    /// Whether a server can start from this runtime without running `--version` again:
+    /// its executable is the file that was validated, and its version is one this app
+    /// accepts, which a runtime saved by a build with a lower minimum may not be.
+    public func isCurrent(fingerprint now: FileFingerprint?) -> Bool {
+        guard let fingerprint, now == fingerprint, let parsed = MetabVersion(version) else { return false }
+        return MetabRequirement.accepts(parsed)
     }
 }
 

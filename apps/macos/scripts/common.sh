@@ -208,3 +208,58 @@ detach_image() {
     sleep 1
   done
 }
+
+# ── Manual checks ────────────────────────────────────────────
+# A check script records each failed check with check_fail and keeps going, so its
+# cleanup still runs, then exits with check_status, which is nonzero if any check failed.
+check_failures=0
+
+check_fail() {
+  echo "FAIL: $*" >&2
+  check_failures=$((check_failures + 1))
+}
+
+# The status to exit with, given the one the script was exiting with: that one if it is
+# not zero, else 1 if a check failed, else 0.
+check_status() {
+  if (($1 != 0)); then
+    echo "$1"
+  elif ((check_failures > 0)); then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+# Stops the processes that the command "$1" lists, one pid per line: SIGTERM, then up to
+# "$3" half-second waits (default 30), then SIGKILL. Needing SIGKILL, and anything it
+# leaves, is a failed check; "$2" names the processes in the message.
+stop_listed() {
+  local list="$1" what="$2" tries="${3:-30}" waits pid
+  [[ -n "$($list)" ]] || return 0
+  waits="$tries"
+  for pid in $($list); do kill -TERM "$pid" 2>/dev/null || true; done
+  while [[ -n "$($list)" ]] && ((tries > 0)); do
+    sleep 0.5
+    tries=$((tries - 1))
+  done
+  [[ -n "$($list)" ]] || return 0
+  check_fail "$what did not stop within $((waits / 2)) s of SIGTERM, killing: $($list | tr '\n' ' ')"
+  for pid in $($list); do kill -KILL "$pid" 2>/dev/null || true; done
+  sleep 0.5
+  [[ -z "$($list)" ]] || check_fail "$what still running after SIGKILL: $($list | tr '\n' ' ')"
+}
+
+# Stops a setup check where the app would find a metab, or, for "$1" no-metab, a uv, in
+# one of the directories "$2" lists, one per line. Each line is one directory, however
+# it is spelled: spaces and glob characters are part of its name.
+refuse_ambient() {
+  local scenario="$1" dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    [[ ! -e "$dir/metab" ]] || die "$dir/metab would be found before the scratch HOME's; these checks need a Mac without it"
+    if [[ "$scenario" == no-metab && -e "$dir/uv" ]]; then
+      die "$dir/uv would be found, so no-metab could not start without uv; run it on a Mac without uv outside ~/.local/bin, or run old-metab"
+    fi
+  done <<<"$2"
+}
