@@ -490,13 +490,13 @@ type MetabrowserFileTypeFamilyMatch = Readonly<{
 }>;
 
 type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
-  schema: "file-type-registry-v4";
-  schemaVersion: 4;
+  schema: "file-type-registry-v5";
+  schemaVersion: 5;
   revision: number;
   fingerprint: string;
   maxExtensionComponents: 2;
   registryIdentity: Readonly<{
-    schemaVersion: 4;
+    schemaVersion: 5;
     revision: number;
     fingerprint: string;
   }>;
@@ -3352,8 +3352,8 @@ declare global {
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {
-        schema: "file-type-registry-v4";
-        schema_version: 4;
+        schema: "file-type-registry-v5";
+        schema_version: 5;
         revision: number;
         fingerprint: string;
         max_extension_components: 2;
@@ -3369,6 +3369,7 @@ declare global {
           linguist_color: string | null;
           deviation: string | null;
           lightness_rank: number | null;
+          chroma_ratio: number | null;
         }>;
         kinds: Array<{
           id: string;
