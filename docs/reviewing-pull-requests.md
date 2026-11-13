@@ -41,10 +41,12 @@ state. The status gives the repository’s total and name, with the number in bo
 
 Metabrowser caches a lightweight catalog of titles, authors, states, branches, and dates
 in the background, publishing each page as it arrives and resuming unfinished work.
-It initially displays up to 500 matching pull requests.
-When more exist, **Showing last 500** appears below the total.
-Scrolling toward the end loads the next window for the current filter.
-**Fetch more** advances the list explicitly.
+The list has no limit: scrolling toward the end loads the next page for the current
+filter, through its oldest pull request.
+While pages are still being read or fetched from GitHub, a spinner below the last row
+says how many matching pull requests have been fetched so far, as the file scan does.
+The catalog fetches pages in the background while GitHub’s API budget allows; when it
+runs low, the pull requests you scroll to are still fetched, and the rest wait.
 After initial Files work is idle, Metabrowser prepares lightweight PR headers and
 descriptions in both managed repositories and existing checkouts.
 The current filter warms first, visible rows take priority as you scroll, and
@@ -72,10 +74,12 @@ as usual. A failed refresh retains the displayed record.
 Click a PR row to open the PR and toggle its changed files.
 Right expands the tree, and Left collapses it.
 The tree shows cached files immediately when available and automatically lists them when
-needed. A list that GitHub takes a while to return is offered on the tree’s line as
-**Show N files** rather than drawn by itself, and so are its later pages (**Show N more
-files**) and a refresh that changes a list already shown, which floats over the tree’s
-top, so the rows below never move while you are not interacting with the list.
+needed: it says “Listing changed files…” until they arrive, however long GitHub takes,
+and then shows them.
+Once files are shown, a change to them that arrives while you are not interacting with
+the list waits for you: its later pages, and a refresh that changes it, are offered as
+**Show N more files** or **Show the updated list of N files**, on the tree’s line or
+floating over its top, so the rows you are reading never move under you.
 Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows without changing which trees are
 expanded. Enter opens the focused PR. Space expands or collapses its changed files in

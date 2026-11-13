@@ -581,8 +581,9 @@ metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&l
 
 The first command starts or joins a resumable metadata job and waits for its outcome; it
 exits 1 if the job fails.
-The job prioritizes the newest 500 matching pull requests, then continues through all
-repository metadata.
+The job prioritizes the newest `target` matching pull requests, then continues through
+all repository metadata while GitHub’s GraphQL budget admits background work; below that
+floor the job ends after the prefix, and a later refresh resumes it.
 The second command reads a cached window, offline too, with no `gh` and no Git.
 `state` is `open` by default, `closed` (including merged), or `all`. `limit` is 0 to
 1,000, and `after` is the last PR number from the preceding window.
@@ -593,7 +594,7 @@ for all pull requests, and `filter_totals` holds all three filter counts when th
 catalog knows them. `count_at` says when those counts were read.
 `fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
 `complete` becomes true when the background catalog reaches the end.
-Displaying another 500 rows does not cap or restart that catalog.
+Reading further windows does not cap or restart that catalog.
 A refresh reads metadata changed since its last checkpoint;
 `{"state": "open", "retry": true}` requests that check even while the cache is fresh,
 subject to a reported rate-limit reset.
@@ -916,7 +917,8 @@ model: text envelope; size=13386 content_bytes=13386 content_truncated=False
 Those four lines are the four layers a selection travels — the address it resolves to,
 what it is classified as, the tabs a reader would see, and a summary of the data behind
 them. Each view’s key is printed uppercase, as the keyboard shows it.
-A kind with one view, or a selection left with one, has no tab and prints no key.
+A kind with one view, or a selection left with one, prints no key: its one tab has no
+other view to switch to.
 
 It accepts browser addresses as well as paths, which is the quickest way to check that a
 URL resolves the way you expect:

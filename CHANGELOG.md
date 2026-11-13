@@ -20,6 +20,51 @@ All notable changes to Metabrowser are documented here.
   anything may have changed.
   See [the plugin guide](docs/plugins.md).
 
+- The Pulls tab’s lists have no limit.
+  Open, Closed, and All keep loading as you scroll, a page at a time, through the oldest
+  pull request, as Commits does.
+  “Showing last N”, “Catalog paused · N cached”, and **Fetch more** are gone.
+  While pages are still being read or fetched from GitHub, the file scan’s spinner shows
+  below the last row with “~N pull requests fetched”.
+  The background fetch of older pull requests now waits while GitHub’s GraphQL budget is
+  below the quarter Metabrowser leaves to you, as other background work already did; the
+  pages you scroll to are still fetched.
+  See [Reviewing Pull Requests](docs/reviewing-pull-requests.md).
+
+- Chrome keeps its place.
+  The top of the navigation is one toolbar row on every tab: the Files filters, the
+  Commits tally of commits, or the Pulls filters, at one height, so what is under it
+  starts at the same place on every tab.
+  The Commits tab is drawn at first paint in a repository, in front at a commit’s
+  address, every file has a view tab bar, and the tree and the preview keep a scrollbar
+  gutter. A pull request’s header is one size for every pull request and tab: the title
+  holds two lines and is cut short there with the whole of it in a tooltip, the state
+  row is one line, labels have a row of their own that ends in the stack chip, and
+  Refresh has its slot on every tab, so a stack chip that arrives late moves nothing.
+  A cold pull request page shows that header and its tab bar over a loading body until
+  the record arrives; a narrow pane cuts the state row’s sentence, then its author,
+  before its branch names, and a failure in the status row wraps to show its remedy.
+  In the Pulls list a pull request’s stack position is on its title line, before its
+  age, so its late arrival cuts the title shorter and moves nothing.
+  A toolbar wider than a narrowed sidebar scrolls along its row instead of being cut.
+  The Pulls tab’s status lines are always there, and its ages have a column of one
+  width. A folder’s Overview paints once its first file-type rollup has answered,
+  briefly.
+
+- Less moves on its own.
+  A document appears in its reading fonts instead of swapping them in after it is shown,
+  the first after a cold start and the first to use a bold or italic face alike.
+  A page that lands on a file deep in the tree paints with its folders already open and
+  its row in view, when the path’s folders are small enough to send with the page (200
+  entries each, 300 in all, 8 folders deep); a landing past that opens them after the
+  first paint, as before.
+  Navigation that opens folders to reveal a file opens them in place and shows the
+  file’s row at once, while a folder you toggle still slides open.
+  A held arrow key in the file tree moves the selection and the address on every repeat
+  and opens only the file it stops on.
+  In Quick Search, pull requests follow the file results as their own group, so their
+  later arrival never moves a file row or the selection.
+
 - A folder’s Overview keeps its section labels at one left edge at every window width.
   **File Overview**, **README**, and File Overview’s controls and **Details** toggle
   start under the Overview tab’s label.
@@ -123,10 +168,13 @@ All notable changes to Metabrowser are documented here.
 
 - In the Pulls tab, a pull request’s changed files open in one step at their full height
   when Metabrowser holds the list.
-  A list GitHub takes a while to return is offered on the tree’s line as **Show N
-  files** instead of being drawn by itself, and so are its later pages (**Show N more
-  files**) and a refresh that changes a list already shown, which floats over the tree’s
-  top: the rows below never move while you are not interacting with the list.
+  Expanding a pull request whose list GitHub takes a while to return shows “Listing
+  changed files…” until the files arrive, and then shows them; it no longer offers
+  **Show N files** in their place.
+  Once files are shown, a change to them that arrives while you are not interacting with
+  the list waits for you: its later pages, and a refresh that changes it, are offered as
+  **Show N more files** or **Show the updated list of N files**, on the tree’s line or
+  floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
 
@@ -247,6 +295,13 @@ All notable changes to Metabrowser are documented here.
   fixed. Holding Shift shows what each number reaches, and the keycaps now ease in on the
   design system’s reveal motion, `--motion-reveal`.
 
+- The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
+  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
+  does nothing while it waits, as a click does.
+  The navigation pane’s numbers come first, so beside the Pulls tab a pull request
+  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
+  each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
+
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
   request’s Changes, exactly as its layout control does: where Split does not fit, `L`
   chooses it with its sideways scroll, and the choice is remembered.
@@ -316,8 +371,8 @@ All notable changes to Metabrowser are documented here.
   `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. When two views of one kind share
   a key, the first keeps it; the later view is served without a key, and
   `metab --doctor` reports it, naming the plugin that holds a shared key.
-  A view left alone, as HTML’s Source is without active content, has no tab and is
-  served without its key.
+  A view left alone, as HTML’s Source is without active content, has no other tab to
+  switch to and is served without its key.
   `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.

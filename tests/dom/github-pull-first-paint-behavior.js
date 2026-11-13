@@ -163,11 +163,12 @@ function host() {
 
 /**
  * The tabs' C, G, and E under a held first paint (review E2): a landing whose description's
- * Markdown is on its way holds the conversation over the loading page, header included, so
- * the tab column is out of the page and no tab key is live; at release the header paints and
- * all three keys are. The registry and facade are the production ones, loaded as the page
- * mount session's tabKeys loads them, and the hold really holds: the Markdown is answered when
- * the session says, with the allowlist in place.
+ * Markdown is on its way holds the conversation over the loading page, header included. The
+ * header keeps its tab column from first paint, so the column shows, inert, and no tab key is
+ * live; at release the header paints, the column wakes, and all three keys are. The registry
+ * and facade are the production ones, loaded as the page mount session's tabKeys loads them,
+ * and the hold really holds: the Markdown is answered when the session says, with the
+ * allowlist in place.
  *
  * @param {Record<string, any>} page
  */
@@ -330,12 +331,45 @@ async function heldTabKeys(page) {
     ["conversation", "files", "checks"].filter((id) =>
       registry.isLive(`plugin.github.pull.tab.${id}`),
     );
+  // Where the tab column is: out of the page, in it but inert, or in it and live.
+  const tabColumn = () => {
+    const bar = container.querySelector(".tab-bar");
+    if (bar === null) {
+      return "out";
+    }
+    return bar.parentNode.getAttribute("inert") === null ? "live" : "inert";
+  };
   const bodyNode = () => container.querySelector(".github-pull-body");
+  // A reader on the Changes link as the hold begins: the column goes inert, and the link
+  // has focus again when it wakes (review F4).
+  const changes = container
+    .querySelectorAll(".tab-btn")
+    .find((link) => link.textContent === "Changes");
+  assert.ok(changes, "the loading header draws the tab column at first paint");
+  const focused = [];
+  globalThis.document.activeElement = changes;
+  changes.focus = (options) => {
+    focused.push(`Changes, preventScroll ${options?.preventScroll === true}`);
+    globalThis.document.activeElement = changes;
+  };
   await settle();
+  // Inert, the column lets go of focus, as Chrome moves it to the body.
+  globalThis.document.activeElement = body;
+  // Shift held under the hold: the inert links carry no badge, and waking them badges them.
+  registry.setRevealed(true);
+  /** Each tab that carries a Shift badge now, as its label and its badge's key. */
+  const badged = () =>
+    container.querySelectorAll(".tab-btn").flatMap((tab) => {
+      const badge = tab.children.find((node) => String(node.className).includes("kbd-badge"));
+      const label = tab.children.filter((node) => node !== badge).join("");
+      return badge ? [`${label} ${badge.textContent}`] : [];
+    });
+  const heldBadges = badged();
   const whileHeld = {
     holding: bodyNode()?.classes.has("github-pull-body-holding") ?? false,
-    tabColumn: container.querySelector(".tab-bar") !== null,
+    tabColumn: tabColumn(),
     live: live(),
+    badges: heldBadges.join(", ") || "none",
     g: press("g"),
   };
   assert.equal(whileHeld.holding, true, "the landing's first paint is held");
@@ -344,10 +378,14 @@ async function heldTabKeys(page) {
     markdown.shift()();
     await settle();
   }
+  const wokenBadges = badged().join(", ") || "none";
+  registry.setRevealed(false);
   const released = {
     holding: bodyNode()?.classes.has("github-pull-body-holding") ?? false,
-    tabColumn: container.querySelector(".tab-bar") !== null,
+    tabColumn: tabColumn(),
     live: live(),
+    badges: wokenBadges,
+    focus: focused.join("; ") || "none",
     g: press("g"),
   };
   assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");

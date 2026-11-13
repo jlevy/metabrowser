@@ -2,7 +2,7 @@
 //
 // The module scenarios call the pane lifecycle and failure classifiers in
 // navigation.js directly. The `shell` scenarios run the app.js functions that
-// compose them (selectFile, applyNavigationTarget, navigateToPath,
+// compose them (selectFile, applyNavigationTarget, navigateToPath, openTreeRow,
 // activateNavPanel, the inventory stream's onopen, and the startup settle),
 // extracted verbatim and executed with the real navigation module and
 // controller, so that wiring cannot regress behind a source-string assertion.
@@ -375,6 +375,7 @@ const SHELL_FUNCTIONS = [
   "addressedView",
   "applyNavigationTarget",
   "navigateToPath",
+  "openTreeRow",
 ];
 
 const shellSource = [
@@ -491,20 +492,64 @@ function createShell(pathname, network, options = {}) {
   if (options.pulls) {
     panelIds.push("pulls");
   }
-  if (!options.withoutGit) {
+  // `gitDrawn` is the Commits tab the server draws at a repository's root, which
+  // discovery has not registered.
+  if (!options.withoutGit || options.gitDrawn) {
     panelIds.push("git");
   }
   // A tab button is its letter's target, which the registry reads as live: connected,
   // outside any inert subtree, and visible.
   const tabButtons = panelIds.map((tab) =>
-    fakeElement({ dataset: { tab }, focus() {}, ...LIVE_TARGET }),
+    fakeElement({
+      dataset: { tab },
+      focus() {},
+      remove() {
+        tabButtons.splice(tabButtons.indexOf(this), 1);
+      },
+      ...LIVE_TARGET,
+    }),
   );
-  const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
-  scroller.querySelector = () => ({});
+  // The tab the server draws in front: Pulls at its addresses, Commits at a commit's.
+  const initialPanel =
+    options.pulls && pathname.startsWith("/pull")
+      ? "pulls"
+      : pathname.startsWith("/commit/") && panelIds.includes("git")
+        ? "git"
+        : "files";
+  const tabPanels = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { tabContent: tab },
+      style: { display: tab === initialPanel ? "" : "none" },
+    }),
+  );
+  // The navigation's toolbar slot: one toolbar per tab the server draws, the one in front shown.
+  const toolbars = panelIds.map((tab) =>
+    fakeElement({ dataset: { navToolbar: tab }, hidden: tab !== initialPanel }),
+  );
+  /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
+  const slotToolbar = (toolbar) => {
+    toolbar.querySelector ??= () => null;
+    const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
+    if (toolbar.dataset.navToolbar !== "files") {
+      elements.set(id, toolbar);
+    }
+    toolbar.remove = () => {
+      toolbars.splice(toolbars.indexOf(toolbar), 1);
+      elements.delete(id);
+    };
+  };
+  for (const toolbar of toolbars) {
+    slotToolbar(toolbar);
+  }
+  scroller.querySelector = () => ({ remove() {} });
+  // A toolbar main-tabs.js adds for a tab the server did not draw goes into the slot.
+  scroller.before = (toolbar) => {
+    toolbars.push(toolbar);
+    slotToolbar(toolbar);
+  };
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
-  const initialPanel = options.pulls && pathname.startsWith("/pull") ? "pulls" : "files";
   for (const button of tabButtons) {
     button.setAttribute("data-tab", button.dataset.tab);
     button.classList.toggle("active", button.dataset.tab === initialPanel);
@@ -625,8 +670,14 @@ function createShell(pathname, network, options = {}) {
         fakeElement({ focus() {}, remove() {}, ...(tag === "button" ? LIVE_TARGET : {}) }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
-      querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
-      querySelectorAll: () => [...tabPanels, previewTab],
+      querySelector: (selector) =>
+        selector === ".nav-tab-bar"
+          ? navBar
+          : (toolbars.find(
+              (toolbar) => selector === `[data-nav-toolbar="${toolbar.dataset.navToolbar}"]`,
+            ) ?? null),
+      querySelectorAll: (selector) =>
+        selector === "[data-nav-toolbar]" ? toolbars : [...tabPanels, previewTab],
       head: { append() {}, appendChild: requestScript },
     },
     DOMException,
@@ -655,7 +706,6 @@ function createShell(pathname, network, options = {}) {
     mainTabIntent: 0,
     // The shell keymap is created with the registry; these scenarios have neither.
     shellKeymap: null,
-    treeKeyboard: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
@@ -745,6 +795,9 @@ function createShell(pathname, network, options = {}) {
     catalogFeedCanStart: false,
     inventoryEventSource: null,
     pageConnections: { suspended: () => false },
+    // The Files tree's keyboard layer, which only the held-key and main-tab digit
+    // scenarios install.
+    treeKeyboard: null,
     lastInventorySnapshot: null,
     quickFileCatalogFeed: {
       release() {},
@@ -871,6 +924,13 @@ function createShell(pathname, network, options = {}) {
     sandbox,
     sources,
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
+    /** The toolbars in the navigation's slot, shown or not. */
+    toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
+    /** @param {string} name One toolbar in the slot. */
+    toolbar: (name) => toolbars.find((toolbar) => toolbar.dataset.navToolbar === name),
+    /** The toolbars shown in the navigation's slot: exactly the active tab's. */
+    toolbarsShown: () =>
+      toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
   };
 }
 
@@ -1385,6 +1445,113 @@ async function independentMainTabs() {
   assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
   assert.doesNotMatch(pendingGit.pane().shows, /Select a commit to preview/);
 
+  // The server draws Commits at a repository's root, before Git discovery registers it,
+  // so Pulls beside it never moves. A press before registration waits for it and opens
+  // Commits once it is registered; discovery that registers it keeps it, and discovery
+  // that does not removes it, with its toolbar, and forgets the press.
+  const drawnGit = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnGit.sandbox.navigationController.start();
+  drawnGit.clickTab("git");
+  await settle();
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "an unregistered Commits tab waits");
+  assert.equal(drawnGit.sandbox.location.pathname, "/view/");
+  await drawnGit.sandbox.mainTabs.finishGitDiscovery();
+  assert.deepEqual(
+    drawnGit.tabButtons.map((button) => button.dataset.tab),
+    ["files"],
+    "discovery that finds no repository removes the drawn tab",
+  );
+  assert.deepEqual(
+    drawnGit.toolbarsPresent(),
+    ["files"],
+    "a removed tab takes its toolbar with it, so the slot keeps no stale tally",
+  );
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "a forgotten press opens nothing");
+  const drawnLate = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnLate.sandbox.navigationController.start();
+  drawnLate.clickTab("git");
+  await settle();
+  assert.equal(drawnLate.sandbox.mainTabs.active(), "files", "Commits waits for registration");
+  drawnLate.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnLate.sandbox.mainTabs.active(),
+    "git",
+    "a press before registration opens Commits once it is registered",
+  );
+  const drawnReplaced = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnReplaced.sandbox.navigationController.start();
+  drawnReplaced.clickTab("git");
+  drawnReplaced.clickTab("files");
+  await settle();
+  drawnReplaced.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnReplaced.sandbox.mainTabs.active(),
+    "files",
+    "a press on another tab replaces a pending Commits press",
+  );
+  assert.deepEqual(
+    reloaded.tabButtons.map((button) => button.dataset.tab),
+    ["files", "git"],
+    "discovery that registers Commits keeps the drawn tab",
+  );
+
+  // The navigation's toolbar slot shows exactly the tab in front's toolbar, so the slot
+  // is never empty and what is under it starts at one y on every tab.
+  const slotted = createShell("/view/", read, { pulls: true });
+  await slotted.sandbox.navigationController.start();
+  const slots = { landing: slotted.toolbarsShown() };
+  for (const panel of ["git", "pulls", "files"]) {
+    slotted.sandbox.mainTabs.activate(panel);
+    slots[panel] = slotted.toolbarsShown();
+  }
+  assert.deepEqual(
+    slots,
+    { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
+    "each tab shows its own toolbar, and only it",
+  );
+  // A toolbar a narrow pane scrolled comes back at its start.
+  slotted.toolbar("pulls").scrollLeft = 97;
+  slotted.sandbox.mainTabs.activate("pulls");
+  assert.equal(
+    slotted.toolbar("pulls").scrollLeft,
+    0,
+    "a scrolled toolbar comes back at its start",
+  );
+  const pullsLanding = createShell("/pulls", read, { pulls: true });
+  assert.deepEqual(
+    pullsLanding.toolbarsShown(),
+    ["pulls"],
+    "the server draws the landing's toolbar",
+  );
+  assert.deepEqual(
+    pendingGit.toolbarsShown(),
+    ["git"],
+    "a toolbar added for a late panel shows with it",
+  );
+
+  // A commit's address is drawn with Commits in front, and the page keeps it in front from
+  // its first script on: the Files toolbar and tree are never shown and then swapped.
+  const commitLanding = createShell(`/commit/${"c".repeat(40)}`, read);
+  const landed = {
+    active: commitLanding.sandbox.mainTabs.active(),
+    toolbars: commitLanding.toolbarsShown(),
+    panels: commitLanding.tabs(),
+  };
+  await commitLanding.sandbox.navigationController.start();
+  await settle();
+  assert.deepEqual(
+    landed,
+    { active: "git", toolbars: ["git"], panels: ["files:none", "git:"] },
+    "a commit landing starts on Commits",
+  );
+  assert.deepEqual(
+    [commitLanding.sandbox.mainTabs.active(), commitLanding.toolbarsShown()],
+    ["git", ["git"]],
+    "and stays there once the address is applied",
+  );
+
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
   assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");
   early.clickTab("pulls");
@@ -1862,6 +2029,64 @@ async function onDemandCodeRefused() {
   };
 }
 
+async function heldKeyWalk() {
+  // A held arrow key moves the selection and replaces the address on every
+  // repeat, and the file the walk stops on is the only one read and rendered:
+  // when the repeats stop, or at once when the key is let go. A single press
+  // opens at once. The walk is tree-keyboard-navigation.js's, and each key does
+  // what its focusAndOpen does: step the walk, then open the row.
+  const shell = createShell("/view/", (requested) =>
+    Promise.resolve(jsonResponse({ kind: "text", path: requested })),
+  );
+  await shell.sandbox.navigationController.start();
+  await settle();
+  const scriptPath = path.join(staticDir, "tree-keyboard-navigation.js");
+  vm.runInContext(fs.readFileSync(scriptPath, "utf8"), shell.sandbox, { filename: scriptPath });
+  const walk = shell.sandbox.MetabrowserTreeKeyboardNavigation.createWalk();
+  shell.sandbox.treeKeyboard = { walking: walk.walking };
+
+  async function key(pathName, repeat) {
+    walk.step(pathName, repeat);
+    shell.sandbox.openTreeRow({ dataset: { path: pathName } });
+    await settle();
+    return `${repeat ? "repeat" : "press"} ${pathName}: address ${shell.sandbox.location.pathname}`;
+  }
+  const renderedBefore = shell.renderedViews.length;
+  const keys = [await key("a.md", false)];
+  const afterPress = shell.renderedViews.slice(renderedBefore);
+  for (const name of ["b.md", "c.md", "d.md", "e.md", "f.md"]) {
+    keys.push(await key(name, true));
+  }
+  const whileHeld = shell.renderedViews.slice(renderedBefore);
+  // The quiet period after the last repeat elapses.
+  shell.elapseLoadingDelay();
+  await settle();
+  const afterSettle = shell.renderedViews.slice(renderedBefore);
+  // The key is let go and held again: a hold that outlasted the quiet period with the key
+  // still down is a slow repeat, whose rows open as single presses do.
+  walk.end();
+  const releaseKeys = [await key("g.md", true), await key("h.md", true)];
+  const beforeRelease = shell.renderedViews.slice(renderedBefore);
+  // Letting the key go is what the tree's keyup does.
+  walk.end();
+  await settle();
+  return {
+    afterPress,
+    afterRelease: shell.renderedViews.slice(renderedBefore),
+    afterSettle,
+    beforeRelease,
+    fetches: Object.fromEntries(
+      ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md"].map((name) => [
+        name,
+        shell.fetches(name),
+      ]),
+    ),
+    keys,
+    releaseKeys,
+    whileHeld,
+  };
+}
+
 async function shell() {
   const pulls = createShell("/pulls", refusedFetch);
   const preview = pulls.sandbox.document.getElementById("preview-pane");
@@ -1898,6 +2123,7 @@ async function shell() {
     coldAnchoredAddress: await coldAnchoredAddress(),
     pullRouteLoadsOnDemand: await pullRouteLoadsOnDemand(),
     onDemandCodeRefused: await onDemandCodeRefused(),
+    heldKeyWalk: await heldKeyWalk(),
   };
 }
 

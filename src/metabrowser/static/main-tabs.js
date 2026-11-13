@@ -112,6 +112,11 @@
       }
     }
 
+    // Commits, asked for before Git discovery registered it: the server draws the tab at
+    // first paint, about 50 to 100 ms before discovery, and a click or its shortcut there
+    // did nothing. It opens on registration, unless discovery removes it.
+    let gitOpenPending = false;
+
     /** @param {MetabrowserNavPanel} panel */
     function registerNavPanel(panel) {
       if (navPanels.some((existing) => existing.id === panel.id)) {
@@ -119,6 +124,11 @@
       }
       navPanels.push(panel);
       ensureNavPanelElements(panel);
+      if (panel.id === "git" && gitOpenPending) {
+        gitOpenPending = false;
+        // After the panel's own registration has finished wiring it.
+        void Promise.resolve().then(() => openMainTab("git"));
+      }
     }
 
     // Create the button and container for a panel that was not in the
@@ -147,6 +157,15 @@
         const later = at < 0 ? [] : MAIN_TABS.slice(at + 1);
         navBar.insertBefore(btn, later.map(({ id }) => tabButton(id)).find(Boolean) ?? null);
       }
+      // A panel the server did not draw gets its toolbar too, empty until it fills it.
+      if (!document.querySelector(`[data-nav-toolbar="${panel.id}"]`)) {
+        const toolbar = document.createElement("div");
+        toolbar.className = "nav-toolbar";
+        toolbar.id = `nav-toolbar-${panel.id}`;
+        toolbar.dataset.navToolbar = panel.id;
+        toolbar.hidden = true;
+        content.before(toolbar);
+      }
       if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
         const container = document.createElement("div");
         container.id = `tab-${panel.id}`;
@@ -163,6 +182,9 @@
     function removeNavPanel(panelId) {
       navPanels = navPanels.filter((panel) => panel.id !== panelId);
       navPanelsShown.delete(panelId);
+      if (panelId === "git") {
+        gitOpenPending = false;
+      }
       const button = tabButton(panelId);
       const container = document
         .getElementById("tree-content")
@@ -172,6 +194,8 @@
       tabTargets.delete(panelId);
       button?.remove();
       container?.remove();
+      // Its toolbar goes with it, or the hidden slot keeps the last tally.
+      document.getElementById(`nav-toolbar-${panelId}`)?.remove();
       // Never leave the nav with no active tab: if the panel being removed
       // was the visible one, fall back to Files.
       if (wasActive) {
@@ -248,7 +272,16 @@
 
     /** @param {string} panelId A click on one of the main navigation tabs. */
     function openMainTab(panelId) {
+      // A press on another tab replaces a pending Commits press.
+      if (panelId !== "git") {
+        gitOpenPending = false;
+      }
       if (panelId === activeNavPanelId) {
+        return;
+      }
+      // The server draws Commits for a repository before Git discovery registers it.
+      if (panelId === "git" && !hasGitPanel()) {
+        gitOpenPending = true;
         return;
       }
       deps.flushPull();
@@ -313,10 +346,22 @@
       // wholesale, and the bar has to survive that and stay put while the
       // tree scrolls. Being outside means the loop above does not reach it,
       // so a panel that is not Files would otherwise keep a bar of file
-      // filters on screen above content they cannot filter.
-      const filterBar = document.getElementById("nav-filter-bar");
-      if (filterBar) {
-        filterBar.style.display = panelId === "files" ? "" : "none";
+      // filters on screen above content they cannot filter. The bar is the
+      // Files tab's toolbar in one slot every tab fills with its own, at one
+      // height, so the panel below starts at one y on every tab.
+      for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
+        const slot = /** @type {HTMLElement} */ (toolbar);
+        const returning = slot.hidden && slot.dataset.navToolbar === panelId;
+        slot.hidden = slot.dataset.navToolbar !== panelId;
+        // A toolbar a narrow pane scrolled comes back at its start, with its chosen
+        // filter, the roving tab stop of its chips, in view: it came back scrolled, with
+        // the filter off the edge.
+        if (returning && slot.scrollLeft > 0) {
+          slot.scrollLeft = 0;
+          slot
+            .querySelector('[tabindex="0"]')
+            ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+        }
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
@@ -383,6 +428,10 @@
       bindShortcuts,
       finishGitDiscovery() {
         gitDiscoveryFinished = true;
+        // A Commits tab the server drew that discovery did not confirm goes.
+        if (!hasGitPanel() && tabButton("git")) {
+          removeNavPanel("git");
+        }
         return restoreNeutralGitPanel();
       },
       home: goHome,

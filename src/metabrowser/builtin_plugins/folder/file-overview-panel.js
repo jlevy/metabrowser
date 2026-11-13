@@ -24,6 +24,14 @@ import { notIndexedStatement } from "./folder-totals.js";
 
 /** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
 
+// The breakdown's first rollup answers a frame or two after it is asked for, and it grew
+// this section 143 to 437 px one frame after the Overview painted, on 5 of 7 opens
+// (Chrome 152). The section holds the Overview's first paint for that answer, so it paints
+// at the height it keeps; past this wait it paints its pending state and the answer lands
+// as before. It is the Pulls tab's OPEN_WAIT_MS, for the same reason: the folder shown
+// before stays until this one can paint.
+export const FIRST_ROLLUP_WAIT_MS = 100;
+
 /**
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} context
@@ -85,18 +93,30 @@ export function mountFileOverviewPanel(
     },
   );
 
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let waiting;
+  const ready = Promise.race([
+    breakdown.ready,
+    new Promise((resolve) => {
+      waiting = setTimeout(resolve, FIRST_ROLLUP_WAIT_MS);
+    }),
+  ]).then(() => {
+    clearTimeout(waiting);
+  });
+
   let disposed = false;
   function dispose() {
     if (disposed) {
       return;
     }
     disposed = true;
+    clearTimeout(waiting);
     // Bodies first, then the controls they subscribe to.
     breakdown.dispose();
     totals.dispose();
     unmountControls();
   }
-  return Object.freeze({ dispose });
+  return Object.freeze({ dispose, ready });
 }
 
 /**
