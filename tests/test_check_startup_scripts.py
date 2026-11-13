@@ -159,16 +159,20 @@ def test_a_module_script_stops_the_check() -> None:
 @pytest.mark.parametrize(
     ("block", "requested"),
     [
-        # A script that asks the asset loader for a bundle as it runs.
+        # A script that asks the asset loader for a bundle as it runs. The loader
+        # preloads a bundle's scripts and then appends the first.
         (
             '<script>window.MetabrowserAssets.ensureAsset("pull-route");</script>',
-            [("script", "/static/pull-route.js")],
+            [("link rel=preload", "/static/pull-route.js"), ("script", "/static/pull-route.js")],
         ),
         # One that waits for DOMContentLoaded and asks then: still before it ends.
         (
             '<script>document.addEventListener("DOMContentLoaded", () => {'
             ' window.MetabrowserAssets.ensureAsset("sdk-views"); });</script>',
-            [("script", "/static/plugin-sdk-views.js")],
+            [
+                ("link rel=preload", "/static/plugin-sdk-views.js"),
+                ("script", "/static/plugin-sdk-views.js"),
+            ],
         ),
         # One that appends the element itself, and one that only preloads.
         (

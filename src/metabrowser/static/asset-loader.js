@@ -165,9 +165,8 @@
     if (!Array.isArray(entries) || entries.length === 0) {
       return Promise.reject(new Error(`Unknown asset bundle: ${name}`));
     }
-    // All but the first, appended at once.
+    // Fetched together, still appended in turn for the `requires` gate.
     const preloads = entries
-      .slice(1)
       .filter((entry) => !loadedScripts.has(entry.src) && !loadingScripts.has(entry.src))
       .map((entry) => {
         const link = global.document.createElement("link");

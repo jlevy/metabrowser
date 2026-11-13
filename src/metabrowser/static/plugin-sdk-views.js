@@ -1945,8 +1945,9 @@
 
   // Every fetch starts at once. Stylesheets apply in manifest order, their links appended
   // together; scripts run in manifest order once the stylesheets have settled, each read
-  // from the preload started beside them (the asset loader's pattern, H89). The preloads
-  // leave the document when the call settles, as the asset loader's do.
+  // from the preload started beside them (the asset loader's pattern, H89).
+  /** @type {Set<string>} */
+  const _preloadedKpressScripts = new Set();
   /** @param {KpressAssetManifest} manifest @returns {Promise<void>} */
   async function loadKpressAssets(manifest) {
     _validateKpressAssetManifest(manifest);
@@ -1959,31 +1960,23 @@
     );
     const parent = typeof global.document?.createElement === "function" && _headOrBody();
     const scripts = entryPoints.filter((a) => a.loading === "module" || a.loading === "classic");
-    /** @type {HTMLLinkElement[]} */
-    const preloads = [];
     for (const asset of scripts) {
       const url = _kpressAssetUrl(asset);
-      if (parent && !_loadedKpressAssets.has(url) && !_loadingKpressAssets.has(url)) {
+      if (parent && !_loadedKpressAssets.has(url) && !_preloadedKpressScripts.has(url)) {
+        _preloadedKpressScripts.add(url);
         const link = global.document.createElement("link");
         link.rel = asset.loading === "module" ? "modulepreload" : "preload";
         link.as = "script";
         link.href = url;
         parent.appendChild(link);
-        preloads.push(link);
       }
     }
-    try {
-      await styles;
-      for (const asset of scripts) {
-        const url = _kpressAssetUrl(asset);
-        await (_isTocScript(asset, url)
-          ? _loadKpressTocModule(url)
-          : _loadScript(url, /** @type {"module" | "classic"} */ (asset.loading)));
-      }
-    } finally {
-      for (const link of preloads) {
-        link.remove?.();
-      }
+    await styles;
+    for (const asset of scripts) {
+      const url = _kpressAssetUrl(asset);
+      await (_isTocScript(asset, url)
+        ? _loadKpressTocModule(url)
+        : _loadScript(url, /** @type {"module" | "classic"} */ (asset.loading)));
     }
   }
 

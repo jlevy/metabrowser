@@ -30,7 +30,6 @@ if (args.length !== 1) {
 
 const repoRoot = path.resolve(args[0]);
 const appended = [];
-const removed = [];
 const requestedUrls = [];
 
 function makeElement(tagName) {
@@ -51,9 +50,6 @@ function makeElement(tagName) {
     },
     getAttribute(name) {
       return Object.hasOwn(attrs, name) ? attrs[name] : null;
-    },
-    remove() {
-      removed.push(`${this.rel || "script"}:${this.href || this.src}`);
     },
   };
 }
@@ -322,7 +318,6 @@ sandbox.metabrowser
 async function heldLoad() {
   const tick = () => new Promise((resolve) => setImmediate(resolve));
   const since = appended.length;
-  const removedSince = removed.length;
   const fresh = () =>
     appended
       .slice(since)
@@ -356,8 +351,6 @@ async function heldLoad() {
   held.get("/k/m2.js")();
   await done;
   steps.atEnd = fresh();
-  // The preloads leave the document once the call settles (review B of #372, B4).
-  steps.removedAtEnd = removed.slice(removedSince);
   holding = false;
   return steps;
 }

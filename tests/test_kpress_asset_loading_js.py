@@ -65,9 +65,4 @@ def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
         "afterBothStylesheets": [*fetched_at_start, "script:/k/m1.js"],
         "afterFirstScript": [*fetched_at_start, "script:/k/m1.js", "script:/k/k.js"],
         "atEnd": [*fetched_at_start, "script:/k/m1.js", "script:/k/k.js", "script:/k/m2.js"],
-        "removedAtEnd": [
-            "modulepreload:/k/m1.js",
-            "preload:/k/k.js",
-            "modulepreload:/k/m2.js",
-        ],
     }
