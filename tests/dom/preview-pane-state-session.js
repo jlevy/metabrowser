@@ -393,6 +393,13 @@ const shellSource = [
   ),
 ].join("\n\n");
 
+// What makes a stand-in element a live shortcut target to the registry.
+const LIVE_TARGET = Object.freeze({
+  checkVisibility: () => true,
+  isConnected: true,
+  parentElement: null,
+});
+
 function fakeElement(fields = {}) {
   const attributes = new Map();
   const classes = new Set();
@@ -465,15 +472,12 @@ function createShell(pathname, network, options = {}) {
   const refused = options.refused ?? new Set();
   /** @type {string[]} */
   const renderedViews = [];
-  // The shown file's Source tab; a click selects it, as initTabs does.
+  // The shown file's Source tab, in its bar; selecting it is the tab's own path,
+  // selectPreviewTab, which a click and a key share.
   /** @type {string[]} */
   const tabClicks = [];
-  const sourceTab = fakeElement({
-    click() {
-      tabClicks.push(`${preview.dataset.renderedPath}: source`);
-      sourceTab.classList.add("active");
-    },
-  });
+  const tabBar = fakeElement();
+  const sourceTab = fakeElement({ parentElement: tabBar });
   const preview = fakeElement();
   const elements = new Map([
     ["preview-pane", preview],
@@ -489,6 +493,8 @@ function createShell(pathname, network, options = {}) {
   if (options.pulls) {
     panelIds.push("pulls");
   }
+  // A tab button is its digit's target, which the registry reads as live: connected,
+  // outside any inert subtree, and visible.
   const tabButtons = panelIds.map((tab) =>
     fakeElement({
       dataset: { tab },
@@ -496,6 +502,7 @@ function createShell(pathname, network, options = {}) {
       remove() {
         tabButtons.splice(tabButtons.indexOf(this), 1);
       },
+      ...LIVE_TARGET,
     }),
   );
   // The tab the server draws in front: Pulls at its addresses, Commits at a commit's.
@@ -646,7 +653,8 @@ function createShell(pathname, network, options = {}) {
       },
       body: { append() {} },
       cookie: "",
-      createElement: () => fakeElement({ focus() {}, remove() {} }),
+      createElement: (tag) =>
+        fakeElement({ focus() {}, remove() {}, ...(tag === "button" ? LIVE_TARGET : {}) }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
       querySelector: (selector) =>
@@ -683,6 +691,8 @@ function createShell(pathname, network, options = {}) {
     },
     mainTabs: null,
     mainTabIntent: 0,
+    // The shell keymap is created with the registry; these scenarios have neither.
+    shellKeymap: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
@@ -744,6 +754,13 @@ function createShell(pathname, network, options = {}) {
     },
     resetTextChunkGrowth() {},
     responsePerfMeta: () => ({}),
+    selectPreviewTab(bar, tabId) {
+      if (bar === tabBar) {
+        tabClicks.push(`${preview.dataset.renderedPath}: ${tabId}`);
+        sourceTab.classList.add("active");
+      }
+      return bar === tabBar;
+    },
     revealInTree: options.revealInTree ?? (async () => false),
     setSelectedPath() {},
     settleHoverPrefetchForSelection: async () => {},
@@ -763,7 +780,8 @@ function createShell(pathname, network, options = {}) {
     catalogFeedCanStart: false,
     inventoryEventSource: null,
     pageConnections: { suspended: () => false },
-    // The Files tree's keyboard layer, which only a held-key scenario installs.
+    // The Files tree's keyboard layer, which only the held-key and main-tab digit
+    // scenarios install.
     treeKeyboard: null,
     lastInventorySnapshot: null,
     quickFileCatalogFeed: {
@@ -944,9 +962,12 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  assert.equal(press("2", { metaKey: true }), false, "absent Git leaves Command-2 alone");
-  assert.equal(press("3", { metaKey: true }), true, "Pulls keeps Command-3 while Git is absent");
+  assert.equal(press("2", {}), false, "absent Git leaves 2 alone");
+  assert.equal(press("3", { code: "Digit3", metaKey: true }), false, "Command-3 is the browser's");
+  assert.equal(press("3", { code: "Digit3", ctrlKey: true }), false, "Ctrl-3 is the browser's");
+  assert.equal(press("3", { code: "Digit3" }), true, "Pulls keeps 3 while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
+  assert.equal(press("3", { code: "Digit3", shiftKey: true }), true, "Shift does not change 3");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
@@ -954,24 +975,32 @@ async function mainTabShortcuts() {
     tabButtons.map((button) => button.dataset.tab),
     ["files", "git", "pulls"],
   );
-  assert.equal(press("2", { metaKey: true, target: { tagName: "INPUT" } }), false);
-  assert.equal(press("2", { metaKey: true, shiftKey: true }), false);
+  assert.equal(press("2", { code: "Digit2", target: { tagName: "INPUT" } }), false);
+  assert.equal(press("2", { code: "Digit2", metaKey: true }), false, "Command-2 is the browser's");
   const closeModal = shortcuts.activateScope("help", { exclusive: true });
-  assert.equal(press("2", { metaKey: true }), false, "modal scopes own their keys");
+  assert.equal(press("2", { code: "Digit2" }), false, "modal scopes own their keys");
   closeModal();
-  assert.equal(press("2", { metaKey: true }), true);
+  // US Shift+2 types @ and Shift+1 types !: the digit row still names the tab.
+  assert.equal(press("@", { code: "Digit2", shiftKey: true }), true, "Shift+2 opens Commits");
   assert.equal(sandbox.mainTabs.active(), "git");
   await settle();
-  assert.equal(press("1", {}), true, "a plain number is the browser fallback");
+  // The digit hands focus to the panel's roving row, the tree's for Files.
+  const focusedRows = [];
+  sandbox.treeKeyboard = {
+    focusCurrent() {
+      focusedRows.push("files");
+      return true;
+    },
+  };
+  assert.equal(press("!", { code: "Digit1", shiftKey: true }), true, "Shift+1 opens Files");
   assert.equal(sandbox.mainTabs.active(), "files");
+  assert.deepEqual(focusedRows, ["files"], "the Files digit focuses the tree's roving row");
+  sandbox.treeKeyboard = null;
   await settle();
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), [
-    "Command plus 1 or 1",
-    "Command plus 2 or 2",
-    "Command plus 3 or 3",
-  ]);
+  assert.equal(help.context, "Available outside text fields.");
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["1", "2", "3"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),

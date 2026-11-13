@@ -129,6 +129,17 @@ const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
+/**
+ * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
+ * default, keeps it, and the others take a distinctive letter of their label: chan-*g*es, and
+ * the next letter of Checks (docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md,
+ * "Key Allocation Rules"). `C` is also the Charts tab's, which is never shown beside a page.
+ */
+const PULL_TABS = Object.freeze([
+  Object.freeze({ id: "", label: "Conversation", key: "c" }),
+  Object.freeze({ id: "files", label: "Changes", key: "g" }),
+  Object.freeze({ id: "checks", label: "Checks", key: "h" }),
+]);
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -3003,6 +3014,46 @@ export function createStackMenu(initial, number, deps) {
 }
 
 /**
+ * Give the page's tab links their keys, `C`, `G`, and `H`, through the SDK's shortcut
+ * surface. A key runs `setTab`, the page handle's own path, which moves the address as a
+ * click on the link does. The links are kept across paints, so each key lasts until
+ * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
+ * order, or none on a host without the surface.
+ *
+ * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
+ * @param {ReadonlyArray<{id: string, link: HTMLElement}>} tabLinks
+ * @param {(tab: string) => void} setTab
+ * @param {AbortSignal} signal
+ * @returns {MetabrowserPublicPluginShortcutHandle[]}
+ */
+export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
+  if (typeof shortcuts?.attach !== "function") {
+    return [];
+  }
+  return tabLinks.flatMap(({ id, link }, index) => {
+    const tab = PULL_TABS.find((candidate) => candidate.id === id);
+    if (!tab) {
+      return [];
+    }
+    return [
+      shortcuts.attach(link, {
+        activate: () => setTab(id),
+        copy: {
+          action: tab.label,
+          description: `Show the pull request’s ${tab.label} tab.`,
+          hint: tab.label,
+        },
+        group: "view-tabs",
+        id: `github.pull.tab.${id || "conversation"}`,
+        key: tab.key,
+        order: 10 + index,
+        signal,
+      }),
+    ];
+  });
+}
+
+/**
  * Mount the page into *container*. Browser only.
  *
  * @param {HTMLElement} container
@@ -3482,16 +3533,14 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
-  const tabLinks = [
-    { id: "", label: "Conversation" },
-    { id: "files", label: "Changes" },
-    { id: "checks", label: "Checks" },
-  ].map(({ id, label }) => {
+  const tabLinks = PULL_TABS.map(({ id, label }) => {
     const link = pageLink({ number, tab: id }, "tab-btn", [label]);
     link.setAttribute("role", "tab");
     tabBar.append(link);
     return { id, link };
   });
+  /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
+  let tabKeys = [];
 
   /** Optional membership retains its status-row disclosure while other header details repaint.
    * @param {PullModel} model
@@ -3810,7 +3859,15 @@ export function mountPullPage(container, ctx, mb) {
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
+      const returning = tabColumn.parentNode === null;
       header.after(tabColumn);
+      if (returning) {
+        // The same links come back, keys and all; retargeting them badges them at once
+        // if the reader is holding Shift.
+        tabKeys.forEach((handle, at) => {
+          handle.retarget(tabLinks[at].link);
+        });
+      }
     }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
@@ -4616,6 +4673,9 @@ export function mountPullPage(container, ctx, mb) {
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
   // answer they were waiting for, and its listeners go with them.
   const listening = new AbortController();
+  // The tab keys end with it too: cancelPending() aborts the signal. A page the shell
+  // stages for a retained navigation is inert, so its keys wait until it is shown.
+  tabKeys = attachTabKeys(mb.shortcuts, tabLinks, (tab) => page.setTab(tab), listening.signal);
   const controller = createPullController(
     {
       async request(method, route, options) {
@@ -4783,7 +4843,7 @@ export function mountPullPage(container, ctx, mb) {
     diffHandle?.cancelPending?.();
     currentFileListeners.clear();
   }
-  return Object.freeze({
+  const page = Object.freeze({
     ready,
     activate,
     cancelPending,
@@ -4907,6 +4967,7 @@ export function mountPullPage(container, ctx, mb) {
       disposeDiff();
     },
   });
+  return page;
 }
 
 /**

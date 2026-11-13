@@ -212,6 +212,7 @@ Each `[[view]]` binds a tab to a kind:
 kind = "hello-document"
 id = "source"
 label = "Source"
+key = "s"
 container_class = "content-body metabrowser-source-host"
 printable = true
 print_profile = "source"
@@ -221,6 +222,26 @@ render_runtime = "client"
 View order in the manifest is tab order.
 At most one view per kind may set `default = true`. A plugin may register a view for a
 kind declared by another plugin, which is useful for composing generic renderers.
+
+`key` declares a one-letter keyboard key for the view’s tab.
+It is optional; a kind with more than one view should give each view one, taken from the
+label: its first letter, or its most distinctive free letter when the first is taken, as
+the built-in Tree tab takes `R`. Write it in either case: it is stored and served
+lowercase, as `views[].key` in the `/api/file` envelope, and compared without case.
+The manifest loader refuses a key that is not one ASCII letter, or that the shell
+reserves in every context: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. `N` and `P` are
+reserved only for the `pull-request` kind.
+A key belongs to one view of a kind.
+When two views of one kind declare the same key, as two plugins that add views to one
+kind can, the first view in tab order keeps it, the later view is served without a key,
+and `metab --doctor` reports both plugins: the one whose view lost the key, and the one
+whose view holds it.
+A view that overrides another by id takes its place in tab order, and the report names
+the overriding plugin for it.
+A key is served only when the kind’s list has two or more views, since a single view has
+no other tab to switch to: HTML served without active content keeps Source alone, and
+serves it without `S`. `metab --show PATH` prints each view’s key, and
+`src/metabrowser/keymap.py` holds the reserved keys and the rule.
 
 `render_runtime` documents whether the view is rendered by the client or by KPress.
 Printable views should also declare a `print_profile` appropriate to documents or source
@@ -491,6 +512,9 @@ Useful helpers include:
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values, a filter or not;
+- `shortcuts.attach(element, spec)` for a letter key on one of a view’s controls, listed
+  in Help and badged while the reader holds Shift; see
+  [Keyboard Shortcuts](#keyboard-shortcuts);
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
@@ -629,6 +653,62 @@ Folder aggregate views can use these bounded inventory helpers:
   ordered nonempty group and family rows, complete canonical-extension children, and
   bounded No extension and `remaining_types` children with exact Others remainders; the
   latter is presented as **Other types** in the built-in UI.
+
+### Keyboard Shortcuts
+
+`shortcuts.attach(element, spec)` gives one of a view’s controls a letter key (SDK 0.7).
+The key does what the control does, Help lists it, and while the reader holds Shift a
+keycap badge sits on the control.
+Feature-detect it with `mb.shortcuts?.attach`:
+
+```javascript
+const handle = mb.shortcuts?.attach(toggle, {
+  id: "example.layout", // dotted; one id is one command, however many controls carry it
+  key: "l", // one ASCII letter, in either case
+  group: "controls", // "controls" or "view-tabs", the Help group it is listed in
+  order: 10,
+  copy: { action: "Toggle layout", description: "Switch the layout.", hint: "Layout" },
+  activate: () => toggleLayout(view), // the control's own path, never a synthesized click
+  signal, // optional AbortSignal; aborting it detaches
+});
+handle?.retarget(nextToggle); // the control was rebuilt as another element
+handle?.detach(); // idempotent; call it from dispose()
+```
+
+- A view may attach at any time, even before the shell’s keyboard support has loaded:
+  the key takes effect once it has, and keeps working when the shell rebuilds it.
+- The key is live only while its element is connected, visible, enabled, and outside an
+  `inert` subtree, which the shell reads when the key is pressed.
+  A view staged by a retained navigation is inert, so its keys wait for the view to be
+  shown. Taking the element out of the page does not end the attachment: put back, it has
+  its key again. When a rebuild replaces the element, call `retarget()` with the new one;
+  called with the same element after putting it back, it moves the badge at once while
+  Shift is held.
+- The SDK decides everything else about the key: Shift does not change it, Ctrl, Alt,
+  and Meta are never part of it, and it does not fire in a text field or on key repeat.
+  Every shell key outranks it, and Help and Quick Search silence it while open.
+  Help lists it while it is attached; the shortcut strip does not.
+- Malformed input throws an error whose message starts with `shortcuts.attach:`: an
+  element that is not an `HTMLElement`, a key that is not one letter, an unknown group,
+  a missing `activate`, an option the SDK decides, such as `bindings`, or an id attached
+  already with another key, group, or copy.
+  An attachment made before the shell’s keyboard support loads is checked when it loads,
+  and a malformed one is then logged with `console.error`, under the same prefix,
+  instead of thrown.
+- A letter the shell reserves is refused without an error, so a view keeps working if
+  the shell reserves another letter later.
+  The reserved letters are `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`, the letters
+  manifest view keys may not take (see [Views](#views)), and also `N` and `P`, which a
+  pull request page uses: a plugin view may appear anywhere.
+  The control has no key, and the browser console shows one warning for its id.
+- A letter that two shown controls hold is settled when it is pressed: a shell key wins
+  over a plugin key, and between plugins the one attached earlier wins.
+  Only the winner runs and has a badge, and the console warns once for the id that lost.
+  Two mounts of one id are one command, and the first shown in document order runs.
+- Detach every attachment from `dispose()`, or pass the view’s `AbortSignal`. As a
+  safety net, the shell also releases the keys inside a view container it disposes, but
+  a view that a host mounts by calling its renderer directly, as three hosts mount the
+  diff view, has only its own `dispose()`.
 
 ### Folder Overview Contributions
 
@@ -867,9 +947,11 @@ Before publishing a plugin:
 2. Confirm every manifest view has a matching `registerView` call.
 3. Exercise default and lazy-mounted tabs, including any post-mount syntax enhancement.
 4. Verify `dispose` stops listeners, streams, timers, and chart instances.
-5. Test path validation and malformed data-hook inputs.
-6. Build the wheel and confirm all static assets are present.
-7. Browse data with the plugin absent to verify core fallbacks remain usable.
+5. Verify every `shortcuts.attach()` attachment detaches in `dispose`, and that using
+   the view prints no `shortcuts.attach:` warning or error in the browser console.
+6. Test path validation and malformed data-hook inputs.
+7. Build the wheel and confirm all static assets are present.
+8. Browse data with the plugin absent to verify core fallbacks remain usable.
 
 See [end-to-end testing](e2e-testing.md) for the repository’s browser-side contract
 tests.

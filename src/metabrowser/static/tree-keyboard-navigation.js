@@ -455,6 +455,18 @@
       );
     }
 
+    /**
+     * Give the roving anchor row focus, the row the reader left or else the
+     * first visible one, as the Files tab's digit does after switching to the
+     * tab. Reports whether a row took focus, so the caller can fall back to the
+     * tab button while the tree has no rows yet.
+     */
+    function focusCurrent() {
+      const anchor = focusedRow();
+      const row = anchor?.isConnected ? anchor : (ensureVisibleRows()[0] ?? null);
+      return row !== null && setAnchor(row, true) !== null;
+    }
+
     function ensureVisibleRows() {
       const current = readVisibleRows(container);
       if (
@@ -592,9 +604,9 @@
       return [
         options.shortcuts.register({
           // K and J are the home-row Up and Down. The arrow leads, so a
-          // surface with room for one key names the one everyone knows. A
-          // letter binding forbids modifiers, and the registry leaves text
-          // fields alone, so K and J still type.
+          // surface with room for one key names the one everyone knows. Shift
+          // changes neither; Ctrl, Alt, and Meta disqualify both, and the
+          // registry leaves text fields alone, so K and J still type.
           bindings: [{ key: "ArrowUp" }, { key: "k" }],
           copy: {
             action: "Previous item",
@@ -655,12 +667,10 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          // Shift+Arrow leads because a Mac laptop has no Home key: reaching
-          // it means fn+Left, which is not a shortcut a reader will find.
-          // Home stays bound for the keyboards that have it, and because the
-          // ARIA tree pattern specifies it. Plain ArrowUp forbids modifiers by
-          // default, so the two never collide.
-          bindings: [{ key: "ArrowUp", modifiers: { shift: "require" } }, { key: "Home" }],
+          // Home and End, as the ARIA tree pattern specifies. Shift never
+          // changes a key, so Shift+Arrow moves one row, as the arrow does; on
+          // a Mac laptop these are fn+Left and fn+Right.
+          bindings: [{ key: "Home" }],
           copy: {
             action: "First item",
             description: "Open the first visible item in the file tree.",
@@ -675,7 +685,7 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          bindings: [{ key: "ArrowDown", modifiers: { shift: "require" } }, { key: "End" }],
+          bindings: [{ key: "End" }],
           copy: {
             action: "Last item",
             description: "Open the last visible item in the file tree.",
@@ -763,6 +773,7 @@
 
     return Object.freeze({
       dispose,
+      focusCurrent,
       focusedRow,
       prepareForMutation,
       setAnchor,

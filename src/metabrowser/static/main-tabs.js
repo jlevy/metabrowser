@@ -6,15 +6,20 @@
     { id: "pulls", label: "Pulls", key: "3" },
   ];
 
+  // The bare digit alone: a browser switches its own tabs on Command or Ctrl
+  // with a digit before the page sees the key, and Shift changes nothing.
   /** @param {string} key @returns {Parameters<Window["MetabrowserKeyboardShortcuts"]["describeBindings"]>[0]} */
   function tabBindings(key) {
-    return [{ key, modifiers: { meta: "require" } }, { key }];
+    return [{ key }];
   }
   /** @param {MetabrowserMainTabsDeps} deps */
   function create(deps) {
     const navBar = document.querySelector(".nav-tab-bar");
     /** @type {MetabrowserNavPanel[]} */
-    let navPanels = [{ id: "files", label: "Files", onFirstShow: null }];
+    let navPanels = [
+      // Files is the server-rendered panel, so its focus hook is the shell's tree.
+      { id: "files", label: "Files", focusRow: () => deps.focusFilesRow(), onFirstShow: null },
+    ];
     /** @type {Set<string>} */
     const navPanelsShown = new Set(["files"]);
     /** The panel in front, and where each panel was scrolled to: they share one scroller. */
@@ -34,8 +39,48 @@
       );
     }
 
-    /** @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>} shortcuts */
+    /** The registry the digits are bound to, and each present tab button's target in it.
+     * None between a real `pagehide`, which disposes the registry, and the `pageshow`
+     * that builds the next one, so a panel registered then gets its tab and no target.
+     * @type {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} */
+    let boundShortcuts = null;
+    /** @type {Map<string, ReturnType<ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>["attachTarget"]>>} */
+    const tabTargets = new Map();
+
+    /**
+     * Make a tab button its digit's target, which gives it the digit's
+     * `aria-keyshortcuts` and, while Shift is held, its badge. A tab that is absent has
+     * no target, so its digit stays reserved and does nothing.
+     *
+     * @param {string} panelId
+     */
+    function attachTabTarget(panelId) {
+      const button = tabButton(panelId);
+      if (!boundShortcuts || !button || !MAIN_TABS.some(({ id }) => id === panelId)) {
+        return;
+      }
+      const attached = tabTargets.get(panelId);
+      if (attached) {
+        attached.retarget(button);
+      } else {
+        tabTargets.set(panelId, boundShortcuts.attachTarget(`main-tabs.${panelId}`, button));
+      }
+    }
+
+    /**
+     * Bind the digits to `shortcuts`, or to none: the shell passes `null` as it disposes
+     * the registry, so nothing attaches to a disposed one.
+     *
+     * @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} shortcuts
+     */
     function bindShortcuts(shortcuts) {
+      // A rebuilt registry starts with no targets; the old handles belonged to the one
+      // a real pagehide disposed.
+      boundShortcuts = shortcuts;
+      tabTargets.clear();
+      if (!shortcuts) {
+        return;
+      }
       for (const { id, label, key } of MAIN_TABS) {
         const action = `Open ${label}`;
         const bindings = tabBindings(key);
@@ -46,21 +91,21 @@
           order: Number(key),
           bindings,
           copy: { action, description: `Switch to the ${label} tab when available.`, hint: label },
-          surfaces: { help: "always" },
+          surfaces: { help: "always", reveal: "always" },
+          targeted: true,
           handler() {
-            const button = tabButton(id);
-            if (!button) {
-              return false;
-            }
-            button.focus();
+            // The tab's own path, then its panel's row, so `1` then `↓` walks the tree;
+            // the tab button keeps focus while the panel has no rows yet. A digit for
+            // the tab already shown only moves focus.
             openMainTab(id);
+            const panel = navPanels.find((candidate) => candidate.id === id);
+            if (!panel?.focusRow?.()) {
+              tabButton(id)?.focus();
+            }
             return true;
           },
         });
-        tabButton(id)?.setAttribute(
-          "aria-keyshortcuts",
-          shortcuts.describeBindings(bindings).ariaKeyshortcuts,
-        );
+        attachTabTarget(id);
       }
     }
 
@@ -84,15 +129,17 @@
     }
 
     // Create the button and container for a panel that was not in the
-    // server-rendered markup. Idempotent, so a re-registration after a root
-    // change does not duplicate the tab.
+    // server-rendered markup, then make the button its digit's target. Idempotent, so
+    // a re-registration after a root change does not duplicate the tab. Both elements
+    // exist before the registry is reached, so the tab works whether or not one is bound.
     /** @param {MetabrowserNavPanel} panel */
     function ensureNavPanelElements(panel) {
       const content = document.getElementById("tree-content");
       if (!navBar || !content) {
         return;
       }
-      if (!tabButton(panel.id)) {
+      const created = !tabButton(panel.id);
+      if (created) {
         const btn = document.createElement("button");
         btn.className = "tab-btn";
         btn.type = "button";
@@ -100,13 +147,6 @@
         btn.setAttribute("aria-selected", "false");
         btn.dataset.tab = panel.id;
         btn.textContent = panel.label;
-        const shortcut = MAIN_TABS.find(({ id }) => id === panel.id);
-        if (shortcut && window.MetabrowserKeyboardShortcuts) {
-          const binding = window.MetabrowserKeyboardShortcuts.describeBindings(
-            tabBindings(shortcut.key),
-          );
-          btn.setAttribute("aria-keyshortcuts", binding.ariaKeyshortcuts);
-        }
         // Pulls can be present in the server shell before Git discovery finishes.
         navBar.insertBefore(btn, panel.id === "git" ? tabButton("pulls") : null);
       }
@@ -126,6 +166,9 @@
         container.style.display = "none";
         content.appendChild(container);
       }
+      if (created) {
+        attachTabTarget(panel.id);
+      }
     }
 
     /** @param {string} panelId */
@@ -140,6 +183,8 @@
         .getElementById("tree-content")
         ?.querySelector(`[data-tab-content="${panelId}"]`);
       const wasActive = button?.classList.contains("active");
+      tabTargets.get(panelId)?.detach();
+      tabTargets.delete(panelId);
       button?.remove();
       container?.remove();
       // Its toolbar goes with it, or the hidden slot keeps the last tally.

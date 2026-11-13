@@ -423,21 +423,26 @@ check(
     navigationCalls.filter((id) => id === "folder:src").length === 1,
 );
 
-// A Mac laptop has no Home or End key, so without these the tree has no
-// jump-to-edge reachable on the keyboard most readers actually have.
-event = keyboardEvent("ArrowDown", folder, { shiftKey: true });
+event = keyboardEvent("End", folder);
 document.dispatch(event);
 check(
-  "Shift+Down jumps to the last visible row",
+  "End jumps to the last visible row",
   event.defaultPrevented && document.activeElement === page,
 );
-event = keyboardEvent("ArrowUp", page, { shiftKey: true });
+event = keyboardEvent("Home", page);
 document.dispatch(event);
 check(
-  "Shift+Up jumps to the first visible row",
+  "Home jumps to the first visible row",
   event.defaultPrevented && document.activeElement === folder,
 );
-// Plain arrows forbid modifiers, so the jump bindings cannot shadow movement.
+// Shift never changes a key: outside a text field, Shift+Arrow moves one row,
+// as the arrow does, and Home and End alone jump.
+event = keyboardEvent("ArrowDown", folder, { shiftKey: true });
+document.dispatch(event);
+check("Shift+Down steps by one", event.defaultPrevented && document.activeElement === empty);
+event = keyboardEvent("ArrowUp", empty, { shiftKey: true });
+document.dispatch(event);
+check("Shift+Up steps by one", event.defaultPrevented && document.activeElement === folder);
 event = keyboardEvent("ArrowDown", folder);
 document.dispatch(event);
 check("unmodified Down still steps by one", document.activeElement === empty);
@@ -460,10 +465,18 @@ check(
   "j opens the row it lands on",
   navigationCalls.length === beforeJ + 1 && navigationCalls.at(-1) === "folder:empty",
 );
+// Shift with J or K is the same command: it steps and opens, as J and K do.
+event = keyboardEvent("K", empty, { shiftKey: true });
+document.dispatch(event);
+check("Shift+K steps up like K", event.defaultPrevented && document.activeElement === folder);
+check("Shift+K opens the row it lands on", navigationCalls.at(-1) === "folder:src");
+event = keyboardEvent("J", folder, { shiftKey: true });
+document.dispatch(event);
+check("Shift+J steps down like J", event.defaultPrevented && document.activeElement === empty);
+check("Shift+J opens the row it lands on", navigationCalls.at(-1) === "folder:empty");
 const beforeLetterGuards = navigationCalls.length;
-for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
-  for (const letter of ["j", "k"]) {
-    const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+  for (const key of ["j", "k", "ArrowDown", "ArrowUp"]) {
     event = keyboardEvent(key, empty, { [modifier]: true });
     document.dispatch(event);
     check(`${modifier} with ${key} does not move`, !event.defaultPrevented);
@@ -493,29 +506,31 @@ check("k opens the row it lands on", navigationCalls.at(-1) === "folder:src");
 equal(
   "Next item presents Down or J",
   [
-    shortcuts.present("tree.next").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.next").bindings.visible,
     shortcuts.present("tree.next").bindings.spoken,
     shortcuts.present("tree.next").bindings.ariaKeyshortcuts,
   ],
-  [[["↓"], ["J"]], "Down arrow or J", "ArrowDown J"],
+  [["↓", "J"], "Down arrow or J", "ArrowDown J"],
 );
 equal(
   "Previous item presents Up or K",
   [
-    shortcuts.present("tree.previous").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.previous").bindings.visible,
     shortcuts.present("tree.previous").bindings.spoken,
     shortcuts.present("tree.previous").bindings.ariaKeyshortcuts,
   ],
-  [[["↑"], ["K"]], "Up arrow or K", "ArrowUp K"],
+  [["↑", "K"], "Up arrow or K", "ArrowUp K"],
 );
-// J and K step; they are not also first and last.
+// J and K step; they are not also first and last, and no Shift+Arrow is.
 equal(
-  "first and last keep only their jump bindings",
+  "first and last are Home and End alone",
   [
     shortcuts.present("tree.first").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.first").bindings.spoken,
     shortcuts.present("tree.last").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.last").bindings.spoken,
   ],
-  ["Shift+ArrowUp Home", "Shift+ArrowDown End"],
+  ["Home", "Home", "End", "End"],
 );
 
 const beforeExpand = navigationCalls.length;
@@ -628,6 +643,14 @@ check(
 event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
+
+// The Files tab's digit hands focus to the row the reader left, the roving anchor.
+check("focusCurrent focuses the roving anchor", navigator.focusCurrent() === true);
+check(
+  "focusCurrent lands on the anchor row, not the first one",
+  document.activeElement === outside,
+  document.activeElement?.dataset?.treeId || document.activeElement?.tagName,
+);
 
 navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);

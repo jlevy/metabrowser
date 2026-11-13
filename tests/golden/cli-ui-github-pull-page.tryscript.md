@@ -1642,10 +1642,17 @@ Opening Changes beside a checkout starts an acquisition and offers Retry changes
 refusal. The header has the same rows in the same order for every pull request and tab,
 and while its record is on its way: a stack has its slot at the end of the state row,
 and Refresh at the end of the status row.
+The tabs answer to `C`, `G`, and `H` through the production shortcut registry and plugin
+shortcut facade, with or without Shift and never with Ctrl: a tab the address does not
+show opens through the route, as a click on its link does.
+The header keeps the tab column while the record is on its way, so the keys are live
+from first paint, as the links are.
+They wait while the column is out of the page after a failed first read, return when the
+header puts it back, wait while the page is staged inert, and end with the page.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks H; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks H","live: conversation files checks","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks H","live: conversation files checks","G: opened the files route","disposed: keys none"]}
 ? 0
 ```
 

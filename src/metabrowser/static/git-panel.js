@@ -107,6 +107,9 @@
   let state = emptyState();
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
+  /** Gives the commit view's Copy revision back to the shell; null while none is lent.
+   * @type {(() => void) | null} */
+  let releaseHeaderCopy = null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -287,7 +290,10 @@
     const subjectTag = compact ? "div" : "h1";
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
-    html += '<div class="git-commit-header">';
+    // The commit view's heading anchors the badge beside its Copy revision.
+    html += compact
+      ? '<div class="git-commit-header">'
+      : '<div class="git-commit-header" data-kbd-badge-anchor>';
     html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
@@ -1141,6 +1147,23 @@
     }
   }
 
+  /**
+   * Give the history's roving row focus, as the Commits tab's digit does after it
+   * switches to the tab, so `↓` walks the history next. Reports whether a row took
+   * focus; before the first page there is none, and the tab button keeps it.
+   */
+  function focusCommitRow() {
+    const list = panelElement()?.querySelector(".git-graph-list");
+    const row =
+      list?.querySelector(".git-graph-row[data-roving-anchor]") ??
+      list?.querySelector(".git-graph-row");
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
+    row.focus();
+    return true;
+  }
+
   /** @param {Event} event */
   function handleCommitListFocus(event) {
     const row = event.target;
@@ -1346,13 +1369,14 @@
    * @param {string} revision
    */
   function handleCommitRowKeydown(event, row, revision) {
+    // Shift never changes a row key, as in the shortcut registry; Ctrl, Alt,
+    // and Meta leave the chord to the browser.
     if (
       !event.defaultPrevented &&
       !event.isComposing &&
       !event.altKey &&
       !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
+      !event.metaKey
     ) {
       switch (commitRowKey(event)) {
         case "ArrowUp":
@@ -1737,14 +1761,26 @@
     }
   }
 
-  /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
+  /**
+   * Stop work relinquished to another preview owner, retaining the useful DOM and history.
+   *
+   * The commit diff stays on screen until that owner's content replaces it, so it is
+   * handed to the shell, which disposes it then as it does a retired pull-request page.
+   * Its own keys end with it: a diff left mounted would keep `L` in Help on every later
+   * page.
+   *
+   * @returns {(() => void) | null} Disposes the relinquished diff; null when none is mounted.
+   */
   function cancelPending() {
     landingGeneration += 1;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
     preparationSlot = null;
-    commitDiffHandle?.cancelPending?.();
+    const relinquished = commitDiffHandle;
+    commitDiffHandle = null;
+    relinquished?.cancelPending?.();
+    return relinquished ? () => relinquished.dispose?.() : null;
   }
 
   /** @returns {Promise<void>} */
@@ -2180,6 +2216,15 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      // The committed view lends its Copy revision to the header's Copy key, through the
+      // shell keymap's module in this same bundle, and the view that replaces it gives
+      // the previous one back.
+      releaseHeaderCopy?.();
+      const revisionCopy = stage.querySelector(".git-commit-revision-copy");
+      releaseHeaderCopy =
+        revisionCopy instanceof HTMLElement
+          ? (window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy) ?? null)
+          : null;
     } finally {
       unstage();
     }
@@ -2535,6 +2580,8 @@
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeCommitDiff();
+    releaseHeaderCopy?.();
+    releaseHeaderCopy = null;
     // The focus-suspension path writes ``tabindex`` onto the shared
     // ``#tree-content`` node, which the shell owns and other panels keep
     // using after this panel is gone; renderer state written onto a
@@ -2647,6 +2694,7 @@
     bridge.registerNavPanel({
       id: "git",
       label: "Commits",
+      focusRow: focusCommitRow,
       onFirstShow: null,
       onShow: () => {
         void ensureHistory();
@@ -2672,6 +2720,7 @@
       teardown,
       ensurePageLoaded,
       emptyState,
+      focusCommitRow,
       ageClass,
       relativeAge,
       renderCommitSummary,

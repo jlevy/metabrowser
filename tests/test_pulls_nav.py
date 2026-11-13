@@ -378,7 +378,13 @@ def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None
     """Public page capability owns stack direction; shared scopes retain native input."""
 
     result = run_session("pulls-nav-session.js")["stack keys"]
+    # P toward the base and N toward the top, and Shift changes neither.
     assert result["directions"] == [-1, 1]
+    assert result["shiftedDirections"] == [-1, 1]
+    assert [entry["keys"] for entry in result["help"]] == ["N", "P"]
     assert result["endpointConsumed"] is True
     assert result["plainJRemainsRowNavigation"] is True
+    # A focused row keeps J and K with Shift held; they never reach the stack.
+    assert result["shiftedRowKeysMoveTheRow"]["handled"] == [True, True]
+    assert result["shiftedFileKeysMoveTheFile"]["handled"] == [True, True]
     assert result["cleanup"] is True

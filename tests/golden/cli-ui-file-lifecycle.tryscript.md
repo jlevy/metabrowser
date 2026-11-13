@@ -536,9 +536,9 @@ $ node tests/dom/preview-pane-state-session.js
         "pulls"
       ],
       "ariaKeys": [
-        "Meta+1 1",
-        "Meta+2 2",
-        "Meta+3 3"
+        "1",
+        "2",
+        "3"
       ],
       "keyboardRoutes": [
         "/pulls",

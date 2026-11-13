@@ -557,6 +557,35 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "checkRows": True,
         "headerAges": True,
         "headerShape": True,
+        # C, G, and H run the page's setTab through the shortcut facade, with or without
+        # Shift. The header keeps the tab column while the record is on its way, so they
+        # are live from first paint, as the links are; they wait while the column is out
+        # after a failed first read, and while the page is staged inert.
+        "tabKeys": [
+            "before the record, the tab column in the page: "
+            "Conversation C, Changes G, Checks H; live conversation files checks",
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the record arrives and paintHeader keeps the column: "
+            "Conversation C, Changes G, Checks H",
+            "live: conversation files checks",
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the route arrives: Changes",
+            "Shift+H: opened the checks route",
+            "Shift+C: opened the conversation route",
+            "Ctrl+G: not handled",
+            "staged inert: G: not handled",
+            "committed: G: opened the files route",
+            "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+            "a failed first read takes the column out: live none",
+            "G: not handled",
+            "the next read answers and paintHeader puts the column back: "
+            "Conversation C, Changes G, Checks H",
+            "live: conversation files checks",
+            "G: opened the files route",
+            "disposed: keys none",
+        ],
     }
 
 

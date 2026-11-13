@@ -522,6 +522,263 @@ async function mountOn(page, body, tab, ageLabel) {
   return { container, handle };
 }
 
+// The page's tabs answer to C, G, and H through the SDK's shortcut surface. The production
+// shortcut registry and plugin shortcut facade (static/keyboard-shortcuts.js and
+// static/plugin-shortcuts.js) load whole into a realm of their own, as `shell-tools` loads
+// them, and the page's `mb.shortcuts.attach` is the facade's, as the SDK's is once it has
+// loaded. Each key runs the page handle's setTab: a tab the address does not show goes
+// through the route, as a click on its link does. The header keeps its tab column while the
+// record is on its way (headerShape), so the keys are live from first paint, as the links
+// are. They wait while the column is out of the page, as it is after a first read that
+// failed, and return when paintHeader puts it back; the inert stage of a retained navigation
+// holds them; and disposal ends them.
+async function tabKeys(page) {
+  const vm = require("node:vm");
+  // What the registry reads of a target: connected, enabled, not inert, and visible.
+  class LiveElement extends Element {
+    get isConnected() {
+      let node = this;
+      while (node.parentNode) {
+        node = node.parentNode;
+      }
+      return node.connected === true;
+    }
+    get parentElement() {
+      return this.parentNode;
+    }
+    get inert() {
+      return this.attributes.has("inert");
+    }
+    hasAttribute(name) {
+      return this.attributes.has(name);
+    }
+    checkVisibility() {
+      for (let node = this; node; node = node.parentNode) {
+        if (node.attributes.has("hidden")) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  const listeners = [];
+  const body = new LiveElement("body");
+  body.connected = true;
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener: (type, listener) => listeners.push({ type, listener }),
+    removeEventListener(type, listener) {
+      const at = listeners.findIndex((entry) => entry.type === type && entry.listener === listener);
+      if (at >= 0) {
+        listeners.splice(at, 1);
+      }
+    },
+    createElement: (tag) => new LiveElement(tag),
+    importNode: () => new LiveElement("svg"),
+    body,
+  };
+  const timers = new Map();
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback) {
+      const id = Symbol();
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  let answer = recorded.pending.body;
+  // A read of the record fails while this is set, as a server that cannot answer does.
+  let failing = false;
+  globalThis.fetch = async (route) =>
+    !route.startsWith("/api/plugin/github/pull?")
+      ? { status: 304, headers: { get: () => null } }
+      : failing
+        ? { status: 503, headers: { get: () => null } }
+        : { status: 200, headers: { get: () => null }, json: async () => answer };
+  const shell = {
+    console,
+    document: globalThis.document,
+    HTMLElement: LiveElement,
+    // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py, as the shell serves it.
+    METABROWSER_SETTINGS: {
+      RESERVED_SHELL_KEYS: {
+        ...Object.fromEntries([..."tjkuwxya0123456789"].map((key) => [key, null])),
+        n: ["pull-request"],
+        p: ["pull-request"],
+      },
+    },
+  };
+  shell.window = shell;
+  vm.createContext(shell);
+  for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+    const file = path.join(root, "src/metabrowser/static", name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), shell, { filename: file });
+  }
+  const facade = shell.MetabrowserPluginShortcuts;
+  const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
+  const detachRegistry = facade.attachShortcutRegistry(registry);
+  const opened = [];
+  /** Mount #7 into a new container in the page; `reader` is the Pulls tab's, if any. */
+  const mountPage = (reader) => {
+    const target = new LiveElement("main");
+    body.append(target);
+    const mounted = page.mountPullPage(
+      target,
+      {
+        number: 7,
+        tab: "",
+        open(route) {
+          opened.push(route.tab);
+        },
+        reader,
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        ensureKindAssets: async () => {},
+        ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+        shortcuts: { attach: facade.attachShortcut },
+      },
+    );
+    return { container: target, handle: mounted };
+  };
+  /** Let every timer the page set run, as the time they wait for passing does. */
+  const elapse = async () => {
+    for (const callback of [...timers.values()]) {
+      callback();
+    }
+    timers.clear();
+    await settle();
+  };
+  let { container, handle } = mountPage({
+    initial: { etag: null, body: answer },
+    fetchAfterMs: 0,
+  });
+  await settle();
+  const press = (key, init = {}) => {
+    const event = {
+      type: "keydown",
+      key,
+      code: "",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      repeat: false,
+      isComposing: false,
+      target: body,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
+    for (const entry of listeners.filter((candidate) => candidate.type === "keydown")) {
+      entry.listener(event);
+    }
+    return event.defaultPrevented;
+  };
+  const shown = () =>
+    container
+      .querySelectorAll(".tab-btn")
+      .find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent ?? "none";
+  const keyed = () =>
+    container
+      .querySelectorAll(".tab-btn")
+      .map((tab) => `${tab.textContent} ${tab.getAttribute("aria-keyshortcuts") ?? "none"}`);
+  const attached = () =>
+    registry
+      .snapshot("help", { includeInactive: true })
+      .flatMap((group) => group.commands)
+      .map((command) => command.bindings.visible.join(""))
+      .join(" ");
+  const live = () =>
+    ["conversation", "files", "checks"].filter((id) =>
+      registry.isLive(`plugin.github.pull.tab.${id}`),
+    );
+  /** Press `key`, and say what the page did: the route it opened, or the tab now shown. */
+  const result = (key, init = {}) => {
+    opened.length = 0;
+    const handled = press(key, init);
+    const name = `${init.ctrlKey ? "Ctrl+" : ""}${init.shiftKey ? "Shift+" : ""}${key.toUpperCase()}`;
+    if (!handled) {
+      return `${name}: not handled`;
+    }
+    return opened.length > 0
+      ? `${name}: opened the ${opened[0] || "conversation"} route`
+      : `${name}: showed ${shown()}`;
+  };
+  /** The route answers an opened tab as pull-route.js does: the address moves, and setTab. */
+  const arrive = (tab) => {
+    window.location.pathname = tab ? `/pull/7/${tab}` : "/pull/7";
+    handle.setTab(tab);
+  };
+
+  const steps = [];
+  assert.ok(container.querySelector(".tab-bar"), "the tab column is in from first paint");
+  steps.push(
+    `before the record, the tab column in the page: ${keyed().join(", ")}; ` +
+      `live ${live().join(" ") || "none"}`,
+  );
+  steps.push(result("c"));
+  steps.push(result("g"));
+  answer = recorded.current.body;
+  await elapse();
+  assert.ok(container.querySelector(".tab-bar"), "the record kept the tab column in");
+  steps.push(`the record arrives and paintHeader keeps the column: ${keyed().join(", ")}`);
+  steps.push(`live: ${live().join(" ")}`);
+  steps.push(result("c"));
+  steps.push(result("g"));
+  arrive("files");
+  steps.push(`the route arrives: ${shown()}`);
+  steps.push(result("h", { shiftKey: true }));
+  arrive("checks");
+  steps.push(result("C", { shiftKey: true }));
+  arrive("");
+  steps.push(result("g", { ctrlKey: true }));
+  const stage = new LiveElement("div");
+  stage.setAttribute("inert", "");
+  body.append(stage);
+  stage.append(container);
+  steps.push(`staged inert: ${result("g")}`);
+  body.append(container);
+  stage.remove();
+  steps.push(`committed: ${result("g")}`);
+  handle.dispose();
+  steps.push(`disposed: ${keyed().join(", ")}; keys ${attached() || "none"}; ${result("g")}`);
+  container.remove();
+  // A page whose first read fails has nothing to show, and takes the column out; the read
+  // that answers puts the same links back, keys and all.
+  failing = true;
+  ({ container, handle } = mountPage(undefined));
+  await settle();
+  assert.equal(container.querySelector(".tab-bar"), null, "a failed read, no tab column");
+  steps.push(`a failed first read takes the column out: live ${live().join(" ") || "none"}`);
+  steps.push(result("g"));
+  failing = false;
+  await elapse();
+  assert.ok(container.querySelector(".tab-bar"), "the record put the tab column back");
+  steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
+  steps.push(`live: ${live().join(" ")}`);
+  steps.push(result("g"));
+  handle.dispose();
+  steps.push(`disposed: keys ${attached() || "none"}`);
+  assert.equal(
+    registry.snapshot("help", { includeInactive: true }).flatMap((group) => group.commands).length,
+    0,
+    "disposal leaves no plugin key in Help",
+  );
+  detachRegistry();
+  registry.dispose();
+  return steps;
+}
+
 // A check row is its badge, its plain name, its action, and its description: the action
 // says where it opens, is the quiet GitHub action with a leading mark only for a GitHub
 // destination, names its check for a list of links, and is absent for an address a page
@@ -1383,6 +1640,7 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
+  const tabKeySteps = await tabKeys(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -1405,6 +1663,7 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
+    tabKeys: tabKeySteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

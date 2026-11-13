@@ -81,6 +81,7 @@ status: 200
 
 Preview is the surface that executes a browsed document, so the conservative profile
 withdraws it and leaves Source as the only view, and therefore the default.
+A single view has no other tab to switch to, so Source is served without its key `S`.
 
 ```console
 $ metab trustroot --untrusted --show page.html

@@ -3,6 +3,10 @@
 (() => {
   /** Default DOM cap for the transient result list. */
   const DEFAULT_MAX_ROWS = 100;
+  // The registry events that change what the hint row shows, the rule the
+  // navigation strip in keyboard-help.js follows: a registration adds or drops
+  // a command, and a scope change shows or hides the active ones.
+  const HINT_EVENT_KINDS = new Set(["registration", "scope"]);
   let paletteSerial = 0;
 
   /** @typedef {ReturnType<ReturnType<Window["MetabrowserSearch"]["createController"]>["state"]>["results"][number]} PaletteResult */
@@ -766,7 +770,7 @@
           id: "quick-file.open",
           order: 20,
           scope: "global",
-          surfaces: { help: "always", nav: "always" },
+          surfaces: { help: "always", nav: "always", reveal: "always" },
         }),
         options.shortcuts.register({
           allowInEditable: true,
@@ -839,7 +843,12 @@
     const unsubscribe = options.controller.subscribe(consumeState);
     const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
     const unregisterCommands = registerCommands();
-    const unsubscribeHints = options.shortcuts.subscribe(renderShortcutHints);
+    const unsubscribeHints = options.shortcuts.subscribe((event) => {
+      const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
+      if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {
+        renderShortcutHints();
+      }
+    });
     renderShortcutHints();
     // Tab belongs to the shared modal focus trap, which cycles the query box
     // and the dialog's Close control in both directions. A palette-local Tab

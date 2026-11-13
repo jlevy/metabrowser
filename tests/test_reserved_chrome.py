@@ -97,8 +97,9 @@ def test_every_file_has_a_view_tab_bar() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     render = app[app.index("async function renderFile(") :]
     render = render[: render.index('"renderFile:mount"')]
-    assert "views.length > 1" not in render, "single-view kinds lost the tab bar"
-    assert "html += '<div class=\"tab-bar\">';" in render
+    # Only the view keys wait for a second view; the bar itself does not.
+    assert "if (views.length > 1)" not in render, "single-view kinds lost the tab bar"
+    assert 'html += \'<div class="tab-bar" role="tablist">\';' in render
     assert '<span class="tab-btn tab-slot">&nbsp;</span>' in render
     slot = _rule(_css(), ".tab-slot")
     # It takes a tab's padding and type from .tab-btn, and a button's line-height.
