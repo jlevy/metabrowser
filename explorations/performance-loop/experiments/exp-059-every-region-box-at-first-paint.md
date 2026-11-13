@@ -256,6 +256,18 @@ experiment:
     commit: 28e12fa2
 ---
 **Status:** Accepted: (a) the shell’s chrome and (b) the pull request header both meet
+
+## Note, 2026-11-13
+
+After this round the branch changed the layout of paths this record measured, and none
+of it is measured here: the verdict stands as recorded, for the candidate `28e12fa2`.
+Review E’s fix (`6037a0a4`: no late stack chip or long login moves or hides the merge),
+review F’s fixes (`29808715`: the Pulls stack column capped, the state badge sized to
+its widest label, tab focus kept across the hold, and the retarget tests; `49d77cc2`: a
+Pulls row’s title keeps 4ch beside its stack position), the run status badge sized to
+its widest label from first paint (`ac190158`), and the merges of `main` through
+`d36936c8` and after it.
+
 the accept rule.
 
 One interleaved series, four back-to-back pairs on scenario revision 4, measured this

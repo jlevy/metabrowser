@@ -78,6 +78,14 @@ experiment:
     commit: 28e12fa2
 ---
 **Status:** Unresolved as a whole: (a) fonts, (b) the deep landing, and (d) the
+
+## Note, 2026-11-13
+
+H91 (c), unresolved here on its guard, was settled by a confirmation round on the same
+two builds: [exp-085](exp-085-held-key-guard-confirmed.md) accepts it, with Low Power
+Mode on, after six judged pairs of the skim and evidence for the guard declared before
+measuring. This record’s own verdict and figures are unchanged.
+
 palette’s order are accepted; (c) the held key is unresolved on a guard.
 
 One interleaved series, four back-to-back pairs on scenario revision 4, measured this
