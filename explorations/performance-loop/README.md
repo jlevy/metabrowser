@@ -1063,8 +1063,9 @@ builds; the summary says whether every build took every position equally often.
 of exp-084 do, and `--control NAME` compares them with another build, as a slope between
 two candidates needs.
 `--out` appends, and each record names its run, so a file can hold several runs; the
-summary compares pairs within a run and pools them, and it refuses a file of older
-records that repeats a pair.
+summary compares pairs within a run and pools runs taken under the same conditions.
+It refuses a file whose runs differ in path, link, CPU, or warm-up, which `--run ID`
+then reads one at a time, and a file of older records that repeats a pair.
 
 `eager-comments.mjs` counts how much of the startup scripts is comments, and writes
 variants of them with every comment removed or with more comment added, checking that

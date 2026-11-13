@@ -27,7 +27,8 @@
 // A file that keeps several series names each record's `series`, and `--series NAME`
 // reads one of them, as the committed samples of experiments/exp-084 are read. `--out`
 // appends, so a file can also hold several runs; each record names its `run`, and the
-// summary compares pairs within a run and pools them.
+// summary compares pairs within a run and pools runs taken under the same conditions;
+// `--run ID` reads one.
 //
 // Three options change the conditions of every load:
 //
@@ -109,6 +110,7 @@ function parseArgs(argv) {
     summarize: "",
     control: "",
     series: "",
+    run: "",
   };
   for (let index = 0; index < argv.length; index += 2) {
     const [flag, value] = [argv[index], argv[index + 1]];
@@ -146,6 +148,8 @@ function parseArgs(argv) {
       options.control = value;
     } else if (flag === "--series") {
       options.series = value;
+    } else if (flag === "--run") {
+      options.run = value;
     } else {
       throw new Error(`unknown option ${flag}`);
     }
@@ -153,15 +157,15 @@ function parseArgs(argv) {
   if (options.summarize) {
     return options;
   }
-  if (options.control || options.series) {
+  if (options.control || options.series || options.run) {
     throw new Error(
-      "--control and --series are for --summarize; a run's control is its first --build",
+      "--control, --series, and --run are for --summarize; a run's control is its first --build",
     );
   }
   if (!options.out || options.builds.length === 0) {
     throw new Error(
       "usage: tier-probe.mjs --out FILE --build NAME=ORIGIN [--build ...]\n" +
-        "       tier-probe.mjs --summarize FILE [--series NAME] [--control NAME]",
+        "       tier-probe.mjs --summarize FILE [--series NAME] [--run ID] [--control NAME]",
     );
   }
   return options;
@@ -839,7 +843,7 @@ function summarize(records, builds, options) {
 // Records already written, and their builds in the order the first pair loaded them,
 // which puts a run's control first; --control puts another build there. A file that
 // keeps several series, each record naming its own, is read one --series at a time.
-function recorded(file, control, series) {
+function recorded(file, control, series, run) {
   const all = readFileSync(file, "utf8")
     .split("\n")
     .filter((line) => line.trim())
@@ -851,21 +855,44 @@ function recorded(file, control, series) {
   if (!series && named.length > 1) {
     throw new Error(`${file} holds several series; name one with --series: ${named.join(", ")}`);
   }
-  const records = series ? all.filter((record) => record.series === series) : all;
+  const inSeries = series ? all.filter((record) => record.series === series) : all;
+  const records = run ? inSeries.filter((record) => record.run === run) : inSeries;
+  if (run && records.length === 0) {
+    throw new Error(`--run ${run} is not a run in ${file}`);
+  }
   const seen = new Set();
   for (const record of records) {
     const key = `${pairKey(record)} ${record.build}`;
     if (seen.has(key)) {
       throw new Error(
         `${file} has pair ${record.pair} of ${record.build} twice: it holds more than one run ` +
-          `whose records do not name it, so split it into one file a run`,
+          `whose records do not name it, so split it into one file per run`,
       );
     }
     seen.add(key);
   }
   const runs = new Set(records.map((record) => record.run ?? ""));
   if (runs.size > 1) {
-    console.log(`${runs.size} runs, their pairs compared within each run and pooled`);
+    // Pooling is only honest across runs taken under the same conditions: a loopback run
+    // and a link run pooled give a ratio that belongs to neither.
+    const conditions = new Map();
+    for (const record of records) {
+      const id = record.run ?? "";
+      if (!conditions.has(id)) {
+        const { path: page, network, cpu, warm } = record;
+        conditions.set(id, JSON.stringify({ page, network, cpu, warm }));
+      }
+    }
+    if (new Set(conditions.values()).size > 1) {
+      throw new Error(
+        `${file} holds runs under different conditions; read one with --run ID:\n` +
+          [...conditions.entries()].map(([id, how]) => `  ${id} ${how}`).join("\n"),
+      );
+    }
+    console.log(
+      `${runs.size} runs, their pairs compared within each run and pooled; ` +
+        `--run ID reads one: ${[...runs].join(", ")}`,
+    );
   }
   const names = [...new Set(records.map((record) => record.build))];
   if (control && !names.includes(control)) {
@@ -924,7 +951,12 @@ async function run(options) {
 
 const options = parseArgs(process.argv.slice(2));
 if (options.summarize) {
-  const { records, builds } = recorded(options.summarize, options.control, options.series);
+  const { records, builds } = recorded(
+    options.summarize,
+    options.control,
+    options.series,
+    options.run,
+  );
   summarize(records, builds, options);
 } else {
   summarize(await run(options), options.builds, options);

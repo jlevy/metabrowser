@@ -225,8 +225,7 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # rule in explorations/performance-loop/README.md ("Comparing a candidate with the
 # previous release") judges a release, 3 of 30 loopback pairs exceeded 1.3x and none
 # fell below 1/1.3, and the rule's rerun was not applied. The samples, and the probe
-# command that prints these
-# intervals from them, are experiments/exp-084; the reasoning is
+# command that prints these intervals from them, are experiments/exp-084; the reasoning is
 # docs/project/research/research-2026-11-12-eager-startup-script-cost.md. Per-KB slopes
 # there chose 220 as the size to measure; they are not its evidence.
 # On loopback the cost is the server gzipping each script as it sends it: the same
