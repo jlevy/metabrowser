@@ -6,20 +6,27 @@
 // the Git panel, which only restored a commit when the page loaded (mb-y1p5). A short
 // commit ID in an address, separately, said only that the commit could not be loaded.
 //
+// Switching to Commits names no commit, and lands on the newest one (mb-7jeb): the tab's
+// neutral history entry waits for the first page of history, keeps the pane it found until
+// the commit is ready, and is replaced by the newest commit's address. An address that
+// names a commit wins, a return after an older commit lands on the newest again, and an
+// empty history selects nothing.
+//
 // navigation.js, git-panel.js, and the modules it reads are production and load whole, and
 // the preview pane's ownership is navigation.js's own lifecycle. The shell's
-// applyNavigationTarget is lifted verbatim from app.js, which cannot load without a
-// document. What it calls to open a file claims the pane and names the file, which is all
-// this session asks of a file. `history` and `location` are this file's, and the routes
-// answer what the transcripts in cli-api-git.tryscript.md pin.
+// applyNavigationTarget and isGitHistoryLanding are lifted verbatim from app.js, which
+// cannot load without a document. What it calls to open a file claims the pane and names
+// the file, which is all this session asks of a file. `history` and `location` are this
+// file's, and the routes answer what the transcripts in cli-api-git.tryscript.md pin.
 //
 // Each step prints the address, what the pane shows and who owns it, which nav panel is
 // active, and the commit requests it made. Exits 1 on a failed invariant.
 //
 // `options` is what the server does next, and a step may change it: `behind` the entries
 // behind the first address, `gateHeldDuringInit` a repository gate that answers only at
-// `catchUp`, `notARepository` and `gateFailures` what it answers, and `commitRequestsFail`
-// a commit route the network cannot reach.
+// `catchUp`, `notARepository` and `gateFailures` what it answers, `commitRequestsFail`
+// a commit route the network cannot reach, `emptyHistory` and `logFails` what the history
+// route answers, and `scroller` the navigation's scroll owner.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -85,7 +92,15 @@ class StandIn {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+  removeAttribute(name) {
+    delete this.attributes[name];
+  }
   addEventListener() {}
+  removeEventListener() {}
+  /** Nothing in these landings may move focus: counted, so a read can say so. */
+  focus() {
+    StandIn.focusMoves += 1;
+  }
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
@@ -109,11 +124,13 @@ class StandIn {
     return [];
   }
 }
+StandIn.focusMoves = 0;
 
 /** One page: its history, its pane, and a server that answers the Git routes. */
 async function createPage(start, options = {}) {
   const log = [];
   let repositoryReads = 0;
+  let historyReads = 0;
   const shown = { pane: "nothing", navPanel: "files" };
   const preview = new StandIn();
   preview.connectedRoot = true;
@@ -121,6 +138,10 @@ async function createPage(start, options = {}) {
   const held = new Map();
   const listeners = new Map();
   const entries = [...(options.behind ?? []), start];
+  // Each entry's state, as the browser keeps it: the neutral Commits entry is told apart
+  // from the Files root, which has the same address, by its state alone.
+  const states = entries.map(() => null);
+  states[states.length - 1] = options.startState ?? null;
   let index = entries.length - 1;
   const location = {};
   const moveTo = (url) => {
@@ -132,14 +153,20 @@ async function createPage(start, options = {}) {
   moveTo(start);
 
   const history = {
-    pushState(_state, _title, url) {
+    get state() {
+      return states[index];
+    },
+    pushState(state, _title, url) {
       entries.length = index + 1;
+      states.length = index + 1;
       entries.push(String(url));
+      states.push(state ?? null);
       index += 1;
       moveTo(url);
     },
-    replaceState(_state, _title, url) {
+    replaceState(state, _title, url) {
       entries[index] = String(url);
+      states[index] = state ?? null;
       moveTo(url);
     },
   };
@@ -202,10 +229,17 @@ async function createPage(start, options = {}) {
         : answer(commitDetail(id));
     }
     if (route.startsWith("/api/git/log")) {
+      historyReads += 1;
+      await held.get("/api/git/log");
+      if (options.logFails) {
+        return answer({ error: "git command failed" }, 500);
+      }
       return answer({
         is_repo: true,
         page: 0,
-        commits: [commitDetail(COMMIT_B).commit, commitDetail(COMMIT_A).commit],
+        commits: options.emptyHistory
+          ? []
+          : [commitDetail(COMMIT_B).commit, commitDetail(COMMIT_A).commit],
         cursor: null,
         has_more: false,
         page_cursor: "history:0",
@@ -237,7 +271,7 @@ async function createPage(start, options = {}) {
       addEventListener() {},
       createElement: (tag) => new StandIn(tag),
       createElementNS: (_ns, tag) => new StandIn(tag),
-      getElementById: () => null,
+      getElementById: (id) => (id === "tree-content" ? (options.scroller ?? null) : null),
       querySelector: () => null,
       querySelectorAll: () => [],
     },
@@ -299,6 +333,8 @@ async function createPage(start, options = {}) {
   const previewPane = routes.createPreviewPaneLifecycle();
   let panel = null;
 
+  /** The claim whose retained content the pane shows as busy, or null. */
+  let busyClaim = null;
   const paint = (claim, text, node = new StandIn()) => {
     if (!previewPane.isCurrent(claim)) {
       return null;
@@ -317,15 +353,31 @@ async function createPage(start, options = {}) {
         panel?.onShow?.();
       }
     },
-    beginPreviewNavigation: () => false,
+    // The shell's busy state, as app.js keeps it: a claim marks content it retains as busy,
+    // a later claim clears that, and only the claim that began it ends it. An empty pane,
+    // or one that shows a `preview-empty` message, has nothing to retain.
+    beginPreviewNavigation(claim) {
+      const child = preview.children[0];
+      if (!previewPane.isCurrent(claim) || !child || child.className === "preview-empty") {
+        return false;
+      }
+      busyClaim = claim;
+      return true;
+    },
     claimPreview(owner, selection) {
       pendingStageCleanup?.();
+      busyClaim = null;
       if (owner !== "git") {
         sandbox.MetabrowserGitPanel.cancelPending();
       }
       return previewPane.claim(owner, selection);
     },
-    endPreviewNavigation() {},
+    endPreviewNavigation(claim) {
+      if (busyClaim === claim) {
+        busyClaim = null;
+      }
+    },
+    isGitHistoryLanding: () => sandbox.isGitHistoryLanding(),
     isPreviewClaimCurrent: (claim) => previewPane.isCurrent(claim),
     registerNavPanel(next) {
       panel = next;
@@ -336,7 +388,11 @@ async function createPage(start, options = {}) {
       }
       panel = null;
     },
-    renderPreviewHtml: (html, claim) => paint(claim, html.replace(/<[^>]*>/g, "")),
+    renderPreviewHtml(html, claim) {
+      const node = new StandIn();
+      node.className = /^<div class="preview-empty"/.test(html) ? "preview-empty" : "";
+      return paint(claim, html.replace(/<[^>]*>/g, ""), node);
+    },
     stagePreviewNode(node, claim) {
       if (!previewPane.isCurrent(claim)) {
         return null;
@@ -391,6 +447,8 @@ async function createPage(start, options = {}) {
     /\nasync function applyNavigationTarget\(target, context\) \{[\s\S]*?\n\}/,
   );
   assert(applyTarget, "applyNavigationTarget was not found in app.js");
+  const landingTest = appSource.match(/\nfunction isGitHistoryLanding\(\) \{[\s\S]*?\n\}/);
+  assert(landingTest, "isGitHistoryLanding was not found in app.js");
   vm.runInContext(
     `
     var PULL_ROUTE_PREFIX = "/pull/";
@@ -410,7 +468,7 @@ async function createPage(start, options = {}) {
         }
       },
     };
-    function isGitHistoryLanding() { return false; }
+    ${landingTest[0]}
     function beginViewCompositionLoad() { return null; }
     function addressedView() { return null; }
     function showPreviewTab() {}
@@ -499,6 +557,34 @@ async function createPage(start, options = {}) {
     async open(filePath) {
       await routes.navigation.open({ path: filePath });
       await settle();
+    },
+    /**
+     * The reader switching to Commits by a click or a shortcut. main-tabs.js, which
+     * preview-pane-state-session.js runs, gives up the pane, pushes the neutral entry,
+     * shows the panel, applies the address, and asks the panel to land; this is that.
+     */
+    async switchToCommits() {
+      sandbox.MetabrowserShell.claimPreview("none");
+      history.pushState({ gitLanding: true }, "", "/view/");
+      sandbox.MetabrowserShell.activateNavPanel("git");
+      void controller.restore();
+      void sandbox.MetabrowserGitPanel.restoreCommitLanding();
+      await settle();
+    },
+    /** The reader asking the panel to load history again after it failed. */
+    async retryHistory() {
+      await sandbox.MetabrowserGitPanel._internals.retryFailedPage();
+      await settle();
+    },
+    /** How many entries the page has, what it asked of history, and whether focus moved. */
+    facts() {
+      return {
+        entries: entries.length,
+        historyReads,
+        focusMoves: StandIn.focusMoves,
+        busy: busyClaim !== null && previewPane.isCurrent(busyClaim),
+        ...(options.scroller ? { scrollTop: options.scroller.scrollTop } : {}),
+      };
     },
     /** The reader selecting a commit in the Git tab. */
     async selectRow(revision) {
@@ -747,6 +833,131 @@ async function createPage(start, options = {}) {
     assert(shown.navPanel === "files", "a plain folder's Back moved the nav panel");
     assert(page.listeners.get("popstate")?.size === 1, "a plain folder holds a second listener");
     transcript["a folder that is not a repository"] = shown;
+  }
+
+  // Switching to Commits names no commit and lands on the newest one, the top row. The pane
+  // keeps what it showed while the first page of history is on its way, and the newest
+  // commit's address replaces the tab's neutral entry. A return after an older commit lands
+  // on the newest again, and an entry that names a commit still shows that commit.
+  {
+    const scroller = new StandIn();
+    scroller.scrollTop = 0;
+    scroller.clientHeight = 440;
+    const page = await createPage("/view/README.md", { scroller });
+    const steps = {};
+    steps["the page opens on a file"] = page.read();
+    let release = () => {};
+    page.held.set("/api/git/log", new Promise((resolve) => (release = resolve)));
+    await page.switchToCommits();
+    const waiting = { ...page.read(), ...page.facts() };
+    steps["Commits, while the first page of history loads"] = waiting;
+    assert(waiting.url === "/view/", `the switch's entry: ${waiting.url}`);
+    assert(waiting.pane === "file README.md", `the switch painted over the pane: ${waiting.pane}`);
+    assert(waiting.owner === "git", "the landing did not take the pane");
+    assert(waiting.requests.length === 0, "a commit was asked for before history named one");
+    // The first refresh replaces the walk, and the landing's busy state outlives it.
+    assert(waiting.busy, "the retained pane is not busy while history loads");
+    page.held.delete("/api/git/log");
+    release();
+    await page.settle();
+    const landed = { ...page.read(), ...page.facts() };
+    steps["the newest commit, once history arrives"] = landed;
+    assert(landed.url === `/commit/${COMMIT_B}`, `the first visit landed on ${landed.url}`);
+    assert(landed.pane === `commit ${COMMIT_B.slice(0, 7)}`, `the first visit: ${landed.pane}`);
+    assert(
+      landed.entries === 2,
+      "the newest commit pushed an entry instead of replacing the tab's",
+    );
+    assert(page.history.state === null, "the newest commit's entry is still the neutral one");
+    assert(landed.historyReads === 1, "the landing asked for history more than once");
+    assert(!landed.busy, "the pane is still busy after the newest commit is shown");
+
+    await page.selectRow(COMMIT_A);
+    steps["an older commit"] = page.read();
+    await page.open("src/a.py");
+    steps["a file"] = page.read();
+    scroller.scrollTop = 900;
+    await page.switchToCommits();
+    const again = { ...page.read(), ...page.facts() };
+    steps["Commits again"] = again;
+    assert(again.url === `/commit/${COMMIT_B}`, `a return landed on ${again.url}`);
+    assert(again.requests.length === 0, "the newest commit's detail was asked for again");
+    assert(again.historyReads === 1, "a return asked for history again");
+    assert(again.scrollTop === 0, "the newest row was left out of view");
+    assert(again.focusMoves === 0, "a landing moved focus");
+
+    await page.back();
+    steps.Back = page.read();
+    assert(steps.Back.url === "/view/src/a.py", `Back from Commits: ${steps.Back.url}`);
+    await page.back();
+    steps["Back onto the older commit's entry"] = page.read();
+    assert(
+      steps["Back onto the older commit's entry"].pane === `commit ${COMMIT_A.slice(0, 7)}`,
+      "an entry that names a commit lost to the newest",
+    );
+    transcript["switching to Commits"] = steps;
+  }
+
+  // The reader left the tab's entry before history arrived: the late page takes nothing, and
+  // Back onto the entry lands on the newest commit then.
+  {
+    const page = await createPage("/view/README.md");
+    let release = () => {};
+    page.held.set("/api/git/log", new Promise((resolve) => (release = resolve)));
+    await page.switchToCommits();
+    assert(page.facts().busy, "the retained pane is not busy while history loads");
+    await page.open("src/a.py");
+    // The file's claim cancels the landing, and with it the busy state.
+    assert(!page.facts().busy, "the pane stayed busy after the reader moved on");
+    page.held.delete("/api/git/log");
+    release();
+    await page.settle();
+    const movedOn = page.read();
+    assert(movedOn.pane === "file src/a.py", `a late first page took the pane: ${movedOn.pane}`);
+    assert(!page.facts().busy, "a late first page made the file busy");
+    assert(movedOn.requests.length === 0, "a late first page asked for a commit");
+    await page.back();
+    const back = { ...page.read(), ...page.facts() };
+    assert(back.url === `/commit/${COMMIT_B}`, `Back onto the tab's entry: ${back.url}`);
+    assert(back.entries === 3, "Back onto the tab's entry pushed another");
+    transcript["an entry left before history arrived"] = { movedOn, back };
+  }
+
+  // A reload onto the tab's entry lands on the newest commit once the panel is ready.
+  {
+    const page = await createPage("/view/", { startState: { gitLanding: true } });
+    const reloaded = page.read();
+    assert(reloaded.url === `/commit/${COMMIT_B}`, `a reload onto the entry: ${reloaded.url}`);
+    transcript["a reload onto the tab's entry"] = reloaded;
+  }
+
+  // An empty history selects nothing and says so; history that failed says so, and the retry
+  // that loads it lands on the newest commit.
+  {
+    const empty = await createPage("/view/README.md", { emptyHistory: true });
+    await empty.switchToCommits();
+    const emptyRead = empty.read();
+    assert(emptyRead.url === "/view/", "an empty history replaced the tab's entry");
+    assert(emptyRead.pane === "No commits yet.", `an empty history: ${emptyRead.pane}`);
+    assert(emptyRead.requests.length === 0, "an empty history asked for a commit");
+
+    const failing = await createPage("/view/README.md", { logFails: true });
+    let releaseFailure = () => {};
+    failing.held.set("/api/git/log", new Promise((resolve) => (releaseFailure = resolve)));
+    await failing.switchToCommits();
+    const failingBusy = failing.facts().busy;
+    assert(failingBusy, "the retained pane is not busy while the failing history loads");
+    failing.held.delete("/api/git/log");
+    releaseFailure();
+    await failing.settle();
+    const failed = { ...failing.read(), busy: failing.facts().busy };
+    assert(failed.pane === "Could not load the commit history.", `failed: ${failed.pane}`);
+    assert(!failed.busy, "the pane stayed busy after the failure was shown");
+    failing.options.logFails = false;
+    await failing.retryHistory();
+    const retried = failing.read();
+    assert(retried.url === `/commit/${COMMIT_B}`, `the retry landed on ${retried.url}`);
+    transcript["an empty or failed history"] = { empty: emptyRead, failed, retried };
   }
 
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

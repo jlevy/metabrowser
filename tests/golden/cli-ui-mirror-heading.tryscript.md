@@ -82,8 +82,8 @@ $ node tests/dom/mirror-heading-session.js
     },
     "tooltips": {
       "navigationHeading": {
-        "served": "~/wrk/squares Jump to root",
-        "afterTreeLoad": "~/wrk/squares 3 files 140 bytes Jump to root"
+        "served": "~/wrk/squares Go home: the root folder in the Files tab",
+        "afterTreeLoad": "~/wrk/squares 3 files 140 bytes Go home: the root folder in the Files tab"
       },
       "rootName": null,
       "note": null
@@ -132,8 +132,8 @@ $ node tests/dom/mirror-heading-session.js
     },
     "tooltips": {
       "navigationHeading": {
-        "served": "squares Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files. Jump to root",
-        "afterTreeLoad": "squares 3 files 140 bytes Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files. Jump to root"
+        "served": "squares Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files. Go home: the root folder in the Files tab",
+        "afterTreeLoad": "squares 3 files 140 bytes Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files. Go home: the root folder in the Files tab"
       },
       "rootName": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
       "note": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
@@ -182,8 +182,8 @@ $ node tests/dom/mirror-heading-session.js
     },
     "tooltips": {
       "navigationHeading": {
-        "served": "a<b>&�x Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files. Jump to root",
-        "afterTreeLoad": "a<b>&�x 3 files 140 bytes Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files. Jump to root"
+        "served": "a<b>&�x Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files. Go home: the root folder in the Files tab",
+        "afterTreeLoad": "a<b>&�x 3 files 140 bytes Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files. Go home: the root folder in the Files tab"
       },
       "rootName": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
       "note": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."

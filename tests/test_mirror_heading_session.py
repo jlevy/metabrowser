@@ -261,8 +261,8 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert mirror["mainHeading"]["root"] == f"\u2191 squares / mirror in {location}"
     assert mirror["tooltips"] == {
         "navigationHeading": {
-            "served": f"squares {sentence} Jump to root",
-            "afterTreeLoad": f"squares 3 files 140 bytes {sentence} Jump to root",
+            "served": f"squares {sentence} Go home: the root folder in the Files tab",
+            "afterTreeLoad": f"squares 3 files 140 bytes {sentence} Go home: the root folder in the Files tab",
         },
         "rootName": sentence,
         "note": sentence,

@@ -158,14 +158,26 @@ A Files to Git to Files tab switch keeps the loading claim, and the folder still
 The panels share one scroller, and each keeps its own place in it: a switch saves the
 offset of the panel it leaves, puts back the offset of the one it shows, or the top for
 a panel never shown, and tells the panel that leaves.
+Files and Pulls return to what they last showed.
+A switch to Commits, the first or a later one, pushes the neutral entry and asks the Git
+panel to land, which selects the newest commit and replaces the entry with its address;
+Commits starts from its top, and the shell paints no prompt over the pane while it
+waits. The heading at the top of the nav goes home from any tab, in the page: a plain
+click, or Enter on the link, opens the served root in Files at the top of its panel and
+pushes one entry, none when Files already shows the root, and Back returns to the tab
+the reader left. A modified or middle click is left to the browser.
+Before the tab controller has loaded, Files in front opens the root with the tree at its
+top, on the root already shown too; a pull request’s page fetches the controller first,
+and a later open wins.
 Opening a path again after it failed, or after a Git commit replaced it, loads it again,
 while re-opening a path the pane already shows only delivers its fragment.
 The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
 because `selectFile` claims before its first `await`, a duplicate open does not retry
-twice. The startup settle shows the prompt only for a `/commit/` route no Git view
-claimed. An address with a line anchor or `plain=1` opens its file in the Source view,
-and any other fragment or query in the file’s default view; a line anchor added to the
-file already shown selects its Source tab without loading the file again.
+twice. The startup settle shows the prompt only for a `/commit/` route or the neutral
+Commits entry that no Git view claimed.
+An address with a line anchor or `plain=1` opens its file in the Source view, and any
+other fragment or query in the file’s default view; a line anchor added to the file
+already shown selects its Source tab without loading the file again.
 A view that plugin navigation names outright wins over the address’s.
 
 The asset loader and the plugin SDK in these scenarios are the production scripts, and
@@ -491,9 +503,9 @@ $ node tests/dom/preview-pane-state-session.js
           "scroll": 0
         },
         {
-          "address": "/view/",
+          "address": "/commit/cccccccccccccccccccccccccccccccccccccccc",
           "panel": "git",
-          "owner": "none",
+          "owner": "git",
           "scroll": 0
         },
         {
@@ -515,15 +527,19 @@ $ node tests/dom/preview-pane-state-session.js
           "scroll": 80
         },
         {
-          "address": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/src/a.py#diff-2",
+          "address": "/commit/cccccccccccccccccccccccccccccccccccccccc",
           "panel": "git",
           "owner": "git",
-          "scroll": 120
+          "scroll": 0
         }
       ],
       "historyPushes": 6,
       "activeAfterHistory": "pulls",
-      "neutralGitDetailOpens": 0
+      "commitLandings": [
+        "newest",
+        "newest",
+        "newest"
+      ]
     },
     "mainTabShortcuts": {
       "tabOrder": [
@@ -541,6 +557,112 @@ $ node tests/dom/preview-pane-state-session.js
         "/view/",
         "/view/"
       ]
+    },
+    "goingHome": {
+      "the page opens on a file, its tree scrolled": {
+        "address": "/view/notes.md",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"notes.md\"",
+        "scroll": 240,
+        "pushes": 0
+      },
+      "Commits, before a commit is selected": {
+        "address": "/view/",
+        "state": {
+          "gitLanding": true
+        },
+        "tab": "git",
+        "pane": "none",
+        "scroll": 0,
+        "pushes": 1
+      },
+      "home from Commits": {
+        "kept": true,
+        "address": "/view/",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"\"",
+        "scroll": 0,
+        "pushes": 2
+      },
+      "Back from home": {
+        "address": "/view/",
+        "state": {
+          "gitLanding": true
+        },
+        "tab": "git",
+        "pane": "none",
+        "scroll": 0,
+        "pushes": 2
+      },
+      "a commit's entry": {
+        "address": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "state": null,
+        "tab": "git",
+        "pane": "git",
+        "scroll": 0,
+        "pushes": 2
+      },
+      "home from a commit": {
+        "kept": true,
+        "address": "/view/",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"\"",
+        "scroll": 0,
+        "pushes": 3
+      },
+      "Pulls": {
+        "address": "/pulls",
+        "state": null,
+        "tab": "pulls",
+        "pane": "pull-request",
+        "scroll": 0,
+        "pushes": 4
+      },
+      "home from Pulls": {
+        "kept": true,
+        "address": "/view/",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"\"",
+        "scroll": 0,
+        "pushes": 5
+      },
+      "home on the root it shows": {
+        "kept": true,
+        "address": "/view/",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"\"",
+        "scroll": 0,
+        "pushes": 5
+      },
+      "a click the browser keeps": {
+        "Command": "left to the browser",
+        "Control": "left to the browser",
+        "Shift": "left to the browser",
+        "Option": "left to the browser",
+        "middle button": "left to the browser",
+        "already handled": "left to the browser"
+      },
+      "before the tab controller loads": {
+        "Files in front": {
+          "address": "/view/",
+          "scrollAfterHome": {
+            "from 300": 0,
+            "on the root, from 180": 0
+          },
+          "tabScript": 0
+        },
+        "a pull request in front": {
+          "address": "/view/",
+          "tab": "files",
+          "tabScript": 1
+        },
+        "a later open while it loads": "/view/notes.md"
+      }
     },
     "quickSearchPullRoute": {
       "opened": [
