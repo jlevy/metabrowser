@@ -1320,3 +1320,129 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+## Clearing the repository's GitHub cache removes every file the plugin keeps for it, and nothing of the source or its store; the list is then not cached until a refresh fetches it again.
+# metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
+exit: 0
+--- stdout ---
+api: /api/plugin/github/cache-clear
+status: 200
+{
+  "cleared": 4,
+  "source": "https://github.com/octo/demo"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "filter_totals": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "filter_totals": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:02:02Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:02:02Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
+  "count_at": "2026-09-17T12:02:02Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_3>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=open cursor=open-100
+gh api graphql catalog state=open cursor=open-200
+gh api graphql catalog state=open cursor=open-300
+gh api graphql catalog state=open cursor=open-400
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+gh api graphql catalog state=all cursor=all-200
+gh api graphql catalog state=all cursor=all-300
+gh api graphql catalog state=all cursor=all-400
+gh api graphql catalog state=all cursor=all-500
