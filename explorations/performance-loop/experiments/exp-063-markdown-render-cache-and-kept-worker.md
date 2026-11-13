@@ -327,6 +327,15 @@ A bound on the number kept, or a sweep run only when the byte total is over its 
 would cap it. It is outside this round: the journeys keep a few renders, and a docs
 folder walk keeps a few hundred.
 
+**Correction, 2026-11-13.** The paragraph above describes the round’s candidate
+(`4b0e1233`), not the branch’s head.
+After the round, `2bb598b1` replaced the per-store walk with a `FinalizationRegistry`,
+so a store no longer checks any kept render.
+The same benchmark then measured 1.5 to 7.6 µs per lookup miss and store from 2 to 4,000
+kept renders, at a load average of 14 to 83. The confirmation round,
+[exp-082](exp-082-markdown-render-cache-and-kept-worker-confirmation.md), measures that
+head.
+
 ## Verdict
 
 **H90: unresolved.** Decided by the transition scenario under the accept rule:

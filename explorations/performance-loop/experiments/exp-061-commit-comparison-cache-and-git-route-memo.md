@@ -396,6 +396,15 @@ That the catalog page’s server work slows the comparison is inferred, not show
 requests carry no timings, and the one probe run with the harness’s catalog state did
 not place a page inside the hover window.
 
+**Correction, 2026-11-13.** The confirmation round
+[exp-081](exp-081-commit-comparison-cache-and-git-route-memo-confirmation.md) tested
+this account, and it was not shown.
+A catalog page started 10 ms after the comparison did not slow it on either build:
+medians of 93.6 against 93.8 ms on the control and 90.2 against 88.3 ms on the
+candidate. The phase pattern above recurred in all 24 of exp-081’s runs, but it marks
+where each build is in the journey and is not the cause of the extra frame, which is
+still unexplained.
+
 ### The Refs Overlap Is the Repository-Identity Period, on Both Builds
 
 Numbering the 45 pairs in the order they ran (log 1 to 15, summary 16 to 30, refs 31 to
