@@ -297,6 +297,10 @@ async def read_refs(
         if ref is not None:
             if full_name == head_ref:
                 ref["is_head"] = True
+            # The same definition the history's badges carry, so a ref is trunk in
+            # every answer that names it or in none.
+            if is_trunk_ref(ref["name"], ref["kind"]):
+                ref["is_trunk"] = True
             refs.append(ref)
 
     refs.sort(key=_ref_sort_key)
