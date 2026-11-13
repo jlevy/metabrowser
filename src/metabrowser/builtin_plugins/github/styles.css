@@ -36,12 +36,9 @@
   align-items: center;
   gap: 4px 8px;
 }
-/* A branch takes the remote ref chip, smaller than the actor and action beside it: the
-   merge group (`mb.mergeRefs`) sets that size. The details may be narrower than the merge,
-   so its chips ellipsize in a narrow pane instead of running past the column. */
-.github-pull-meta .git-ref {
-  line-height: 20px;
-}
+/* The details may be narrower than the merge (`mb.mergeRefs`), so its chips ellipsize in a
+   narrow pane instead of running past the column. A chip keeps its one size, smaller than
+   the actor and action beside it: docs/design-system.md, "Branch Chips". */
 .github-pull-state-details {
   min-width: 0;
 }

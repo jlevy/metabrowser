@@ -494,6 +494,15 @@ def test_refs_lists_branches_and_tags_with_commit_targets(repo: Path) -> None:
     assert [(ref["kind"], ref["name"]) for ref in head_refs] == [("branch", "main")]
 
 
+def test_refs_mark_trunk_as_the_history_badges_do(repo: Path) -> None:
+    """`main` is trunk in the refs listing as it is on its history row, and nothing else is."""
+    refs = asyncio.run(read_refs(repo))
+    assert {r["name"] for r in refs if r.get("is_trunk")} == {"main"}
+    page = _first_history_page(repo, limit=50)
+    row = next(r for c in page["commits"] for r in c.get("refs", []) if r["name"] == "main")
+    assert row.get("is_trunk") is True
+
+
 def test_route_refs_marks_the_checked_out_branch(repo: Path) -> None:
     response = asyncio.run(api_git_refs(_FakeRequest()))  # pyright: ignore[reportArgumentType]
     assert response.status_code == 200
@@ -542,6 +551,19 @@ def _detail_for(repo: Path, subject: str) -> dict[str, Any]:
     payload: dict[str, Any] = dict(detail)
     validate_git_commit_detail(payload)
     return payload
+
+
+@pytest.mark.parametrize("subject", ["merge feature into main", "rename and binary"])
+def test_commit_detail_carries_the_refs_its_history_row_shows(repo: Path, subject: str) -> None:
+    """A commit's summary badges the refs its history row badges: same kinds, trunk, HEAD.
+
+    The detail once asked Git for short decorations, which the shared parser drops, so a
+    summary and its tooltip showed no ref at all beside a row that showed them.
+    """
+    row = _by_subject(_first_history_page(repo, limit=50)["commits"], subject)
+    detail = _detail_for(repo, subject)
+    assert row.get("refs"), f"the fixture's {subject!r} lost its refs"
+    assert detail["commit"].get("refs") == row["refs"]
 
 
 def test_commit_detail_lists_every_changed_file(repo: Path) -> None:
