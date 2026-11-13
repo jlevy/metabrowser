@@ -32,16 +32,28 @@ inline: about 55 ms at the server on a commit's comparison and its detail togeth
 first after five quiet seconds paid it, so a page that asked the server less often,
 as the kept comparisons and the route memo make it, moved that cost onto a hover or
 a first commit instead of removing it. So each entry keeps the refs' state
-(:func:`~metabrowser.git.ref_state.ref_state`) read just before its discovery. The
-identity reads the served root's ``.git`` entry, ``HEAD``, the ref it names, and
-``core.worktree`` from the configuration, all of which that state covers. Past the
-TTL, an unchanged state keeps the entry for another TTL without running Git; a
-changed one, or one that cannot be named, is rediscovered inline as before. What the
-state does not cover, the reader's global Git configuration (``safe.directory``) and
-Git going missing, is checked by rediscovering in the background once an entry is
-:data:`~metabrowser.settings.GIT_REPO_INFO_MAX_AGE_S` old, off the request that
-found it. A pinned revision, a negative answer, and a repository past the state's
-entry bound keep the plain TTL.
+(:func:`~metabrowser.git.ref_state.owned_ref_state`) read just before its discovery.
+
+Discovery reads the served root's ``.git`` entry, the Git directory it names,
+``HEAD`` and the ref it names, and ``core.worktree`` from the repository's own
+configuration; Git's ownership check reads the owners of the served root, the
+``.git`` entry, and the Git directory. The state covers all of these. When an owner
+is not the reader, Git also consults the reader's ``safe.directory``, which the state
+does not cover, so the state is kept only for a repository whose three owners are the
+reader. Past the TTL, an unchanged state keeps the entry for another TTL without
+running Git; a changed one, or one that cannot be named, is rediscovered inline as
+before, by the first request past the TTL.
+
+The state does not cover the Git installation (Git removed or replaced) or the
+reader's global and system configuration. For a repository the reader owns, Git's
+ownership check does not consult ``safe.directory`` in that configuration, so these
+are checked by rediscovering in the background once an entry is
+:data:`~metabrowser.settings.GIT_REPO_INFO_MAX_AGE_S` old, off the request that found
+it. Requests keep the old identity until that discovery ends, so such a change shows
+within about the maximum age plus one TTL plus one discovery, about 65 s. A repository
+someone else owns, which Git opens only through ``safe.directory``, a pinned
+revision, a negative answer, and a repository past the state's entry bound keep the
+plain TTL, as every identity did before.
 """
 
 from __future__ import annotations
@@ -62,7 +74,7 @@ from metabrowser.git.process import (
     git_executable,
     run_git_at,
 )
-from metabrowser.git.ref_state import ref_state
+from metabrowser.git.ref_state import owned_ref_state
 from metabrowser.git.wire import GitHead, GitRepoInfo, is_full_revision
 from metabrowser.paths_safe import register_root_callback
 from metabrowser.settings import GIT_REPO_INFO_MAX_AGE_S, GIT_REPO_INFO_TTL_S
@@ -294,7 +306,7 @@ async def repo_info(root: Path | GitLocation) -> tuple[RepoContext | None, GitRe
         if entry.expires_at > now:
             return entry.context, entry.info
         # Past the TTL: an unchanged refs' state keeps the identity without running Git.
-        if entry.state is not None and await ref_state(location) == entry.state:
+        if entry.state is not None and await owned_ref_state(location) == entry.state:
             entry.expires_at = now + GIT_REPO_INFO_TTL_S
             if now - entry.discovered_at >= GIT_REPO_INFO_MAX_AGE_S:
                 _rediscover_in_background(location)
@@ -310,12 +322,13 @@ async def _discover_and_keep(
     The state is read before the discovery, so a change made during it moves the state
     away from the one kept, and the next check discovers again. It is not read for a
     pinned revision, whose identity is its object id, or for a root the last discovery
-    found was not a repository, which would spend a Git process on every poll.
+    found was not a repository, which would spend a Git process on every poll. It is
+    None, so the entry keeps the plain TTL, for a repository the reader does not own.
     """
     started = time.monotonic()
     state: str | None = None
     if location.pinned_revision is None and (previous is None or previous.context is not None):
-        state = await ref_state(location)
+        state = await owned_ref_state(location)
     if location.pinned_revision is not None:
         context, info = await _discover_revision(location)
     else:

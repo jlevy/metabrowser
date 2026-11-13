@@ -225,8 +225,8 @@ bounded by entries and bytes and the kept scopes by entries and ref targets.
 The kept scopes hold only the latest state’s; the memo keeps an earlier state’s answers,
 which no request names again, until its bounds push them out.
 A repository with more ref entries than `MAX_REF_ENTRIES` gets no state, is answered as
-before, and is not walked again for the repository-identity period.
-The constants record the walk’s measured cost beside them.
+before, and is not walked again for `GIT_REPO_INFO_MAX_AGE_S`. The constants record the
+walk’s measured cost beside them.
 The state does not cover Git configuration outside the repository or an object lost from
 under a ref, neither of which changes which commits the refs name.
 `tests/test_git_route_memo.py` moves every covered input once, served from a main and
@@ -237,13 +237,20 @@ answers.
 
 The repository identity (`git/repo.py`: whether the served root is a repository’s top
 level, and its `HEAD`) is checked against the same state once its five-second TTL has
-passed:
+passed. The state also names the `.git` entry and the owners of the served root, `.git`,
+and the Git directory, which Git’s ownership check reads.
+It is kept only for a repository whose three owners are the reader:
 
 - an unchanged state keeps the identity for another TTL without running Git;
 - a changed state, or one that cannot be named, discovers it again inline;
 - an identity `GIT_REPO_INFO_MAX_AGE_S` old is discovered again in the background, for
-  what the state does not cover: the reader’s global Git configuration and Git going
-  missing.
+  what the state does not cover: the Git installation and the reader’s global and system
+  configuration. Requests keep the old identity until that discovery ends, so such a
+  change shows within about the maximum age plus one TTL plus one discovery, about 65 s.
+
+A repository someone else owns, which Git opens only through the reader’s
+`safe.directory`, keeps the plain five-second TTL, as do a pin, a negative answer, and a
+repository past `MAX_REF_ENTRIES`.
 
 Before, the first Git request after five quiet seconds paid three Git processes, about
 55 ms at the server.

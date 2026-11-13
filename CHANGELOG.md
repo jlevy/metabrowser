@@ -24,6 +24,11 @@ All notable changes to Metabrowser are documented here.
   The repository’s identity, which used to be discovered again by the first Git request
   after five quiet seconds, is now kept while the same refs, `HEAD`, configuration, and
   `.git` entry are unchanged, so a hover or a first commit no longer waits for it.
+  This applies only to a repository you own.
+  In one, uninstalling or replacing Git, or editing your global or system Git
+  configuration, can take about a minute to show in the Git tab, where it took five
+  seconds. A repository someone else owns, opened through `safe.directory`, is still
+  checked every five seconds.
 
 - Branch and tag chips are slightly smaller than the text around them, wherever they
   appear, instead of one size everywhere.

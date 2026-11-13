@@ -45,14 +45,22 @@ files) and an object that disappears from under a ref that still names it. Neith
 changes which commits the refs name.
 
 The Git directories are asked of Git once per location and remembered with the served
-root's ``.git`` entry: its inode and type, and its text when it is a file. A ``.git``
-replaced in place, as a folder deleted and cloned again is, is asked about again.
+root's ``.git`` entry: its inode, type and owner, its text when it is a file, and the
+served root's owner. A ``.git`` replaced in place, as a folder deleted and cloned again
+is, or a change of either owner, is asked about again. The state also names that entry
+and the owner of the location's own Git directory, so the three owners Git's ownership
+check reads (``safe.directory``) are all in it.
+
+:func:`owned_ref_state` is the state for a reader who owns all three. It is None for any
+other repository, which Git opens only through the reader's ``safe.directory``
+configuration, a file the state does not cover; the repository identity
+(:mod:`metabrowser.git.repo`) keeps its plain TTL for those.
 
 Reading is bounded. A repository with more than :data:`MAX_REF_ENTRIES` entries under its
 ref directories gets no state, and its routes answer uncached as they did before; that
-verdict is remembered for :data:`~metabrowser.settings.GIT_REPO_INFO_TTL_S`, so such a
-repository is walked once in that time rather than on every request. The walk runs off
-the event loop either way.
+verdict is remembered for :data:`~metabrowser.settings.GIT_REPO_INFO_MAX_AGE_S`, so such
+a repository is walked once in that time rather than on every request or every identity
+rediscovery (review F of #368). The walk runs off the event loop either way.
 """
 
 from __future__ import annotations
@@ -75,7 +83,7 @@ from metabrowser.git.process import (
     run_git_at,
 )
 from metabrowser.paths_safe import register_root_callback
-from metabrowser.settings import GIT_REPO_INFO_TTL_S
+from metabrowser.settings import GIT_REPO_INFO_MAX_AGE_S
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +99,7 @@ log = logging.getLogger(__name__)
 # About 4.7 microseconds an entry. At every size the walk costs a tenth or less of the
 # one Git process the cheapest of these routes runs, so the bound is not where it stops
 # paying; it caps how long a request holds the interpreter in its worker thread, at about
-# 75 ms. A repository past it is walked once per identity-cache period, not per request.
+# 75 ms. A repository past it is walked once per GIT_REPO_INFO_MAX_AGE_S, not per request.
 MAX_REF_ENTRIES = 16_384
 
 # Locations whose Git directories are remembered. A server serves one folder, or one pin
@@ -114,6 +122,9 @@ class _Known:
     common: Path
     # The served root's `.git` entry when the directories were asked for; None for a store.
     marker: bytes | None
+    # The owners of the served root and of its `.git` entry that the marker names, None
+    # where a stat failed; empty for a store.
+    owners: tuple[int | None, ...] = ()
     # Until when (monotonic) the ref trees are known to hold more than one state may walk.
     unbounded_until: float = 0.0
 
@@ -131,33 +142,54 @@ class _TooManyRefs(Exception):
     """The ref directories hold more entries than one state may stat."""
 
 
-def _git_marker(root: Path) -> bytes:
-    """What identifies the served root's ``.git`` entry: its inode and type, and its text.
+class _NotOwned(Exception):
+    """The location's own Git directory belongs to someone other than the reader."""
 
-    A directory's times are left out, since Git writes inside it on most commands; its
-    inode changes only when it is replaced. A file is a linked worktree's pointer, and its
-    text says which Git directory it names.
+
+def _git_marker(root: Path) -> tuple[bytes, tuple[int | None, int | None]]:
+    """What identifies the served root's ``.git`` entry, and the two owners it names.
+
+    The entry's inode, type and owner, its text, and the served root's owner. A
+    directory's times are left out, since Git writes inside it on most commands; its inode
+    changes only when it is replaced. A file is a linked worktree's pointer, and its text
+    says which Git directory it names. The owners are two of the three Git's ownership
+    check reads; the third, the Git directory's, is in :func:`_read_state`.
     """
 
+    try:
+        root_owner: int | None = os.stat(root).st_uid
+    except OSError:
+        root_owner = None
     path = root / ".git"
     try:
         found = os.stat(path, follow_symlinks=False)
     except OSError:
-        return b"-"
-    marker = f"{found.st_dev}:{found.st_ino}:{stat.S_IFMT(found.st_mode)}".encode()
+        return f"-:{root_owner}".encode(), (root_owner, None)
+    marker = (
+        f"{found.st_dev}:{found.st_ino}:{stat.S_IFMT(found.st_mode)}:{found.st_uid}:{root_owner}"
+    ).encode()
     if stat.S_ISREG(found.st_mode):
         try:
             with path.open("rb") as handle:
                 marker += b"\0" + handle.read(4096)
         except OSError:
             marker += b"\0unreadable"
-    return marker
+    return marker, (root_owner, found.st_uid)
 
 
-async def _known(location: GitLocation) -> _Known | None:
-    """The location's Git directories, asked of Git once and then remembered."""
+async def _known(location: GitLocation, owner: int | None = None) -> _Known | None:
+    """The location's Git directories, asked of Git once and then remembered.
 
-    marker = None if location.cwd is None else await asyncio.to_thread(_git_marker, location.cwd)
+    With *owner*, None without asking Git when the served root or its ``.git`` entry
+    belongs to anyone else.
+    """
+
+    marker: bytes | None = None
+    owners: tuple[int | None, ...] = ()
+    if location.cwd is not None:
+        marker, owners = await asyncio.to_thread(_git_marker, location.cwd)
+        if owner is not None and any(found != owner for found in owners):
+            return None
     known = _KNOWN.get(location.identity)
     if known is not None and known.marker == marker:
         _KNOWN.move_to_end(location.identity)
@@ -180,7 +212,12 @@ async def _known(location: GitLocation) -> _Known | None:
             return None
         # ``--git-common-dir`` is relative to the working directory unless it is absolute;
         # joining keeps an absolute answer as it is.
-        found = _Known(own=Path(lines[0]), common=(cwd / lines[1]).resolve(), marker=marker)
+        found = _Known(
+            own=Path(lines[0]),
+            common=(cwd / lines[1]).resolve(),
+            marker=marker,
+            owners=owners,
+        )
     _KNOWN[location.identity] = found
     _KNOWN.move_to_end(location.identity)
     while len(_KNOWN) > _MAX_KNOWN_LOCATIONS:
@@ -241,11 +278,13 @@ def _walk(root: str, digest: hashlib.blake2b, budget: list[int]) -> None:
                 stack.append(entry.path)
 
 
-def _read_state(known: _Known) -> str | None:
+def _read_state(known: _Known, owner: int | None = None) -> str | None:
     """The digest of every file and ref entry the history answers read.
 
     None when the remembered Git directory has no ``HEAD``; :class:`_TooManyRefs` when the
-    ref directories hold more than one state may stat.
+    ref directories hold more than one state may stat; with *owner*,
+    :class:`_NotOwned`, before any ref is walked, when the own Git directory belongs to
+    anyone else.
     """
 
     digest = hashlib.blake2b(digest_size=16)
@@ -259,6 +298,16 @@ def _read_state(known: _Known) -> str | None:
     except OSError:
         # The remembered directory is gone: the repository was moved or made again.
         return None
+    try:
+        own_owner: int | None = os.stat(own).st_uid
+    except OSError:
+        own_owner = None
+    if owner is not None and own_owner != owner:
+        raise _NotOwned
+    # The `.git` entry and the three owners Git's ownership check reads.
+    digest.update(b"\0marker\0")
+    digest.update(known.marker or b"")
+    digest.update(f"\0owner\0{own_owner}".encode())
     budget = [MAX_REF_ENTRIES]
     directory_sets: list[tuple[str, tuple[str, ...]]] = [(common, _COMMON_FILES)]
     if own != common:
@@ -293,17 +342,39 @@ async def ref_state(location: GitLocation) -> str | None:
     location has no readable Git directory, or more ref entries than one state may stat.
     """
 
-    known = await _known(location)
+    return await _state(location, None)
+
+
+async def owned_ref_state(location: GitLocation) -> str | None:
+    """:func:`ref_state` for a repository the reader owns, and None for any other.
+
+    Owned means the served root, its ``.git`` entry, and the own Git directory all belong
+    to the effective user, the three owners Git's ownership check reads. Any other
+    repository is open only through the reader's ``safe.directory``, which the state does
+    not cover, so it gets no state; so does a pinned store, and a platform without
+    ``os.geteuid``.
+    """
+
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is None or location.cwd is None:
+        return None
+    return await _state(location, geteuid())
+
+
+async def _state(location: GitLocation, owner: int | None) -> str | None:
+    known = await _known(location, owner)
     if known is None:
         return None
     if known.unbounded_until > time.monotonic():
         return None
     try:
-        state = await asyncio.to_thread(_read_state, known)
+        state = await asyncio.to_thread(_read_state, known, owner)
     except _TooManyRefs:
         _KNOWN[location.identity] = replace(
-            known, unbounded_until=time.monotonic() + GIT_REPO_INFO_TTL_S
+            known, unbounded_until=time.monotonic() + GIT_REPO_INFO_MAX_AGE_S
         )
+        return None
+    except _NotOwned:
         return None
     if state is None:
         # Ask Git again next time, in case the repository was made again elsewhere.
@@ -317,5 +388,6 @@ register_root_callback(clear_ref_state_cache)
 __all__ = [
     "MAX_REF_ENTRIES",
     "clear_ref_state_cache",
+    "owned_ref_state",
     "ref_state",
 ]

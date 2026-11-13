@@ -340,13 +340,17 @@ GIT_COMMIT_MAX_FILES = 1_000
 GIT_REPO_INFO_TTL_S = 5.0
 
 # Past the TTL an identity is kept while the refs' state (``git/ref_state.py``) is
-# unchanged, which covers HEAD, the refs, the configuration files and the ``.git``
-# entry. It does not cover the reader's global Git configuration (``safe.directory``)
-# or Git going missing, so an identity this old is rediscovered in the background, off
-# the request that found it, to bound how long those can go unnoticed. A correctness
-# bound rather than a cost bound: the rediscovery is three Git processes, which cost a
-# request about 55 ms at the server when it paid them inline (exp-081 and the
-# contention sweep after it).
+# unchanged, which covers HEAD, the refs, the repository's configuration files, the
+# ``.git`` entry, and the owners of the served root, ``.git`` and the Git directory. It
+# is kept this way only for a repository the reader owns; any other keeps the TTL. The
+# state does not cover the Git installation or the reader's global and system
+# configuration, so an identity this old is rediscovered in the background, off the
+# request that found it. Requests keep the old identity until that discovery ends, so
+# such a change shows within this age plus one TTL plus one discovery, about 65 s. A
+# correctness bound rather than a cost bound: the rediscovery is three Git processes,
+# which cost a request about 55 ms at the server when it paid them inline (exp-081 and
+# the contention sweep after it). It is also how long a repository past the state's
+# entry bound is not walked again (``MAX_REF_ENTRIES``).
 GIT_REPO_INFO_MAX_AGE_S = 60.0
 
 # Client-side pacing for the hover card. The card is backed by the same

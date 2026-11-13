@@ -383,7 +383,7 @@ def test_the_state_gives_up_past_its_bound_and_remembers_it(repo: Path) -> None:
         assert _state(repo) is None
         assert _state(repo) is None
         assert walks.call_count == 1, "a repository past the bound was walked again at once"
-        with mock.patch.object(ref_state_module, "GIT_REPO_INFO_TTL_S", 0.0):
+        with mock.patch.object(ref_state_module, "GIT_REPO_INFO_MAX_AGE_S", 0.0):
             clear_ref_state_cache()
             assert _state(repo) is None
             assert _state(repo) is None
