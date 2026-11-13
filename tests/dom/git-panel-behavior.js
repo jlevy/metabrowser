@@ -3069,7 +3069,8 @@ async function run() {
   // left: focused without scrolling the list and made its Tab stop, so `↓` opens the next
   // commit. A newest row the list has not mounted takes focus when the landing reveals it,
   // unless the reader has moved focus by then, and a refresh that replaces the focused row
-  // gives focus back to the new one.
+  // gives focus back to the new one. A click on the tab leaves focus on the tab, and a
+  // landing that lost the pane or the address steers nothing.
   {
     const container = document.getElementById("tab-git");
     const tab = document.register("commits-tab", document.createElement("button"));
@@ -3091,10 +3092,12 @@ async function run() {
       files: [],
       files_truncated: false,
     });
-    // What the digit does: the switch puts the list at its top, pushes the neutral entry,
-    // and starts the landing; then the panel's row takes focus, or the tab while it has none.
+    // What the digit does from another tab (main-tabs.js bindShortcuts and openMainTab): it
+    // gives up the pane, pushes the neutral entry, and asks the panel to land; the landing
+    // shows the panel (activateNavPanel, below). Then it asks the panel for its row, or
+    // focuses the tab while the panel has none.
     const pressCommitsDigit = () => {
-      container.scrollTop = 0;
+      sandbox.MetabrowserShell.claimPreview("none");
       neutralLanding = true;
       const landing = panel.restoreCommitLanding();
       const took = registeredPanel.focusRow();
@@ -3103,6 +3106,51 @@ async function run() {
       }
       return { landing, took };
     };
+    // A click on the tab: the button takes focus, and the switch is the digit's, without the
+    // request for a row.
+    const clickCommitsTab = () => {
+      tab.focus();
+      sandbox.MetabrowserShell.claimPreview("none");
+      neutralLanding = true;
+      return panel.restoreCommitLanding();
+    };
+    // The digit with Commits in front: openMainTab only shows the panel again, with no
+    // landing of its own, and then asks for the row.
+    const pressDigitWithCommitsShown = () => {
+      registeredPanel.onShow();
+      const took = registeredPanel.focusRow();
+      if (!took) {
+        tab.focus();
+      }
+      return took;
+    };
+    // Showing the panel from another tab puts its list at the top, and its onShow checks
+    // history, which renders the rows at that top unless a page is on its way.
+    const shellActivate = sandbox.MetabrowserShell.activateNavPanel;
+    sandbox.MetabrowserShell.activateNavPanel = (id) => {
+      if (id === "git") {
+        container.scrollTop = 0;
+        registeredPanel.onShow();
+      }
+    };
+    // A held answer for the repository read that each landing and onShow make first.
+    const holdRepo = (answer) => {
+      let release = () => {};
+      const held = new Promise((resolve) => (release = resolve));
+      responses.set("/api/git/repo", async () => {
+        await held;
+        return answer;
+      });
+      return () => {
+        release();
+        responses.set("/api/git/repo", answer);
+      };
+    };
+    const repoAt = (revision, ref = "refs/heads/main") => ({
+      is_repo: true,
+      root: "",
+      head: { ref, revision, detached: false, unborn: false },
+    });
 
     // Mounted: the reader left the older commit at ordinal 1 for Files.
     {
@@ -3130,6 +3178,16 @@ async function run() {
       assertEqual("digit: ↓ opens the next commit", internals.stateForTests().selectedId, SHA_B);
       assertTrue("digit: ↓ focuses its row", document.activeElement === rowAt(1));
       await settle();
+    }
+
+    // A click on the tab lands on the newest commit too, and leaves focus on the tab.
+    {
+      filesRow.focus();
+      await clickCommitsTab();
+      await settle();
+      assertEqual("click: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+      assertEqual("click: the newest row is the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+      assertTrue("click: focus stays on the tab", document.activeElement === tab);
     }
 
     // HEAD moved while Commits was hidden. The landing's refresh replaces the rows, the
@@ -3183,6 +3241,39 @@ async function run() {
       assertEqual("digit, refresh: without scrolling", rowAt(0)?.focusCalls.at(-1), {
         preventScroll: true,
       });
+    }
+
+    // The reader clicks text in the preview while the landing reads HEAD, which moved back:
+    // focus goes nowhere before the refresh replaces the rows, and the landing leaves it
+    // there. Only a row the refresh removed hands focus back.
+    {
+      filesRow.focus();
+      responses.set(
+        "/api/git/log",
+        historyPage(
+          0,
+          [commit(SHA_C, [SHA_B], "checked out again"), commit(SHA_B, [], "older")],
+          2,
+          SHA_C,
+        ),
+      );
+      const releaseRepo = holdRepo(repoAt(SHA_C));
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "digit, text click: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      // A click on text no one can focus: the browser reports the body.
+      document.activeElement = null;
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "digit, text click: the newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_C,
+      );
+      assertTrue("digit, text click: focus stays nowhere", document.activeElement === null);
     }
 
     // Not mounted: the reader left a commit far down a history deep enough to evict its first
@@ -3306,10 +3397,261 @@ async function run() {
         "digit, moved: focus stays where the reader put it",
         document.activeElement === filter,
       );
+
+      // The reader clicks text while the tab holds focus: focus goes nowhere, and the landing
+      // leaves it there; nowhere is not the tab.
+      await leaveFromFarDown();
+      const nowhere = pressCommitsDigit();
+      assertTrue(
+        "digit, text click on the tab: the tab holds focus",
+        !nowhere.took && document.activeElement === tab,
+      );
+      document.activeElement = null;
+      await nowhere.landing;
+      await settle();
+      assertEqual(
+        "digit, text click on the tab: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "digit, text click on the tab: focus stays nowhere",
+        document.activeElement === null,
+      );
+
+      // A click after focus last parked on the scroller: the reader focused a row, scrolled it
+      // away, and left for Files. The landing's reveal mounts that row again, and it does not
+      // take focus back from the tab.
+      container.scrollTop = 0;
+      internals.renderPanel();
+      await settle();
+      rowAt(1)?.focus();
+      container.scrollTop = 132;
+      internals.renderPanel();
+      await settle();
+      assertTrue(
+        "click, parked: focus parks on the scroller",
+        document.activeElement === container && internals.stateForTests().focusSuspended,
+      );
+      filesRow.focus();
+      await clickCommitsTab();
+      await settle();
+      assertEqual(
+        "click, parked: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue("click, parked: the row left is mounted again", rowAt(1) !== null);
+      assertTrue("click, parked: focus stays on the tab", document.activeElement === tab);
+
+      // The digit with Commits in front while a click's landing waits on HEAD. The reader
+      // focused a row since and scrolled it away, so focus parked on the scroller; the
+      // digit's row is still the newest, and a render that mounts the row left at the top
+      // gives it neither focus nor the Tab stop. Page reads wait too, so nothing settles
+      // until both answers come.
+      filesRow.focus();
+      let releaseRepo = holdRepo(repoAt(revisions[0]));
+      const pageLog = responses.get("/api/git/log");
+      let releasePages = () => {};
+      const pagesHeld = new Promise((resolve) => (releasePages = resolve));
+      responses.set("/api/git/log", async (url) => {
+        await pagesHeld;
+        return pageLog(url);
+      });
+      const waiting = clickCommitsTab();
+      rowAt(1)?.focus();
+      container.scrollTop = 132;
+      internals.renderPanel();
+      assertTrue("in front: focus parks on the scroller", document.activeElement === container);
+      assertTrue("in front: the newest row is not mounted", rowAt(0) === null);
+      const rowTaken = pressDigitWithCommitsShown();
+      assertTrue("in front: the tab holds focus", !rowTaken && document.activeElement === tab);
+      container.scrollTop = 0;
+      internals.renderPanel();
+      assertTrue("in front: the row left is mounted again", rowAt(1) !== null);
+      assertTrue("in front: it does not take focus", document.activeElement === tab);
+      assertEqual(
+        "in front: the newest row is the Tab stop",
+        rowAt(0)?.getAttribute("tabindex"),
+        "0",
+      );
+      responses.set("/api/git/log", pageLog);
+      releasePages();
+      releaseRepo();
+      await waiting;
+      await settle();
+      assertEqual(
+        "in front: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue("in front: the newest row takes focus", document.activeElement === rowAt(0));
+
+      // A landing that lost the pane steers nothing: a file takes it while the click's landing
+      // waits, and the digit with Commits in front hands focus to the row the reader left,
+      // as with no landing; the landing then selects nothing.
+      await internals.selectCommit(revisions[1]);
+      await settle();
+      filesRow.focus();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const lost = clickCommitsTab();
+      panel.cancelPending();
+      sandbox.MetabrowserShell.claimPreview("file");
+      neutralLanding = false;
+      assertTrue("lost: a row takes focus", pressDigitWithCommitsShown());
+      assertTrue("lost: it is the row the reader left", document.activeElement === rowAt(1));
+      releaseRepo();
+      await lost;
+      await settle();
+      assertEqual(
+        "lost: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[1],
+      );
+      assertTrue("lost: focus stays on the row left", document.activeElement === rowAt(1));
+
+      // Back during the digit's wait: the address is no longer the neutral entry, and the
+      // landing neither selects nor moves focus when HEAD answers.
+      await leaveFromFarDown();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const back = pressCommitsDigit();
+      assertTrue("back: the tab holds focus", !back.took && document.activeElement === tab);
+      neutralLanding = false;
+      await panel.restoreCommitLanding();
+      releaseRepo();
+      await back.landing;
+      await settle();
+      assertEqual(
+        "back: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[6],
+      );
+      assertTrue("back: focus stays on the tab", document.activeElement === tab);
+
+      // A file takes the pane during the digit's wait, and the reader moves to it: the
+      // landing ends without selecting or moving focus.
+      await leaveFromFarDown();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const file = pressCommitsDigit();
+      panel.cancelPending();
+      sandbox.MetabrowserShell.claimPreview("file");
+      neutralLanding = false;
+      filesRow.focus();
+      releaseRepo();
+      await file.landing;
+      await settle();
+      assertEqual(
+        "file: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[6],
+      );
+      assertTrue("file: focus stays with the file", document.activeElement === filesRow);
       delete container.clientHeight;
       container.scrollTop = 0;
     }
 
+    // A page on its way when the digit switches: onShow's history check waits for it and
+    // renders nothing, so the window mounted further down is the last one drawn, though the
+    // switch put the list at its top. The landing's reveal redraws it from the newest row,
+    // which then takes focus.
+    {
+      const total = 4;
+      const revisions = Array.from({ length: total }, (_value, index) =>
+        (index + 9000).toString(16).padStart(40, "0"),
+      );
+      const walk = revisions.map((revision, index) =>
+        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `in flight ${index}`),
+      );
+      responses.set("/api/git/repo", repoAt(revisions[0]));
+      for (const revision of revisions) {
+        responses.set(`/api/git/commit/${revision}`, detail(revision));
+      }
+      const small = internals.emptyState();
+      small.headRevision = revisions[0];
+      small.headRef = "refs/heads/main";
+      internals.setStateForTests(small);
+      for (let page = 0; page < 2; page += 1) {
+        const pageCommits = walk.slice(page * 2, page * 2 + 2);
+        const wire = historyPage(page, pageCommits, total, revisions[0]);
+        internals.appendPage(pageCommits, wire.cursor, wire);
+      }
+      container.clientHeight = 44;
+      let windowFound = false;
+      for (const top of [44, 55, 66, 77, 88]) {
+        container.scrollTop = top;
+        internals.renderPanel();
+        await settle();
+        if (rowAt(0) === null && rowAt(2) !== null) {
+          windowFound = true;
+          break;
+        }
+      }
+      assertTrue("in flight: a window without the newest row", windowFound);
+      assertEqual(
+        "in flight: the window is in the first segment",
+        internals.stateForTests().mountedRange?.segmentStart,
+        0,
+      );
+      filesRow.focus();
+      const live = { ...internals.stateForTests() };
+      delete live.rows;
+      delete live.commits;
+      live.loading = true;
+      internals.setStateForTests(live);
+      const inFlight = pressCommitsDigit();
+      assertTrue(
+        "in flight: the tab holds focus",
+        !inFlight.took && document.activeElement === tab,
+      );
+      await inFlight.landing;
+      await settle();
+      assertEqual(
+        "in flight: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "in flight: the newest row takes focus",
+        rowAt(0) !== null && document.activeElement === rowAt(0),
+      );
+      live.loading = false;
+      internals.renderPanel();
+      await settle();
+      assertTrue("in flight: it keeps focus", document.activeElement === rowAt(0));
+
+      // A render while a selected commit loads replaces its row. The selection's own anchor
+      // write, when the commit is ready, must not land on the replaced row: the live row
+      // stays the list's Tab stop.
+      filesRow.focus();
+      let releaseDetail = () => {};
+      const detailHeld = new Promise((resolve) => (releaseDetail = resolve));
+      responses.set(`/api/git/commit/${revisions[1]}`, async () => {
+        await detailHeld;
+        return detail(revisions[1]);
+      });
+      const selecting = internals.selectCommit(revisions[1]);
+      await settle();
+      const replacedRow = rowAt(1);
+      assertTrue(
+        "replaced: the row shows the selection",
+        replacedRow?.classList.contains("selected") === true,
+      );
+      internals.renderPanel();
+      assertTrue("replaced: the render replaced the row", rowAt(1) !== replacedRow);
+      releaseDetail();
+      await selecting;
+      await settle();
+      assertEqual(
+        "replaced: the live row is the Tab stop",
+        rowAt(1)?.getAttribute("tabindex"),
+        "0",
+      );
+      assertEqual("replaced: the replaced row is not", replacedRow?.getAttribute("tabindex"), "-1");
+      delete container.clientHeight;
+      container.scrollTop = 0;
+    }
+
+    sandbox.MetabrowserShell.activateNavPanel = shellActivate;
     neutralLanding = false;
     document.activeElement = null;
     for (const [id, element] of [

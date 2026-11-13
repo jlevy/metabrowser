@@ -146,8 +146,13 @@
   let lastSelection = null;
   // The neutral Commits entry waiting for history to name its newest commit: the landing
   // it belongs to and the claim it holds on the pane (landOnNewestCommit). `digitFocus` is
-  // where the Commits tab's digit put focus while it waited, if it did (focusCommitRow).
-  /** @type {{landing: number, claim: number, digitFocus: "row" | "tab" | null} | null} */
+  // where the Commits tab's digit put focus while it waited, if it did (focusCommitRow), and
+  // `rowReplaced` says a refresh removed a history row that held focus (refreshHistory).
+  /**
+   * @typedef {{landing: number, claim: number, digitFocus: "row" | "tab" | null,
+   *   rowReplaced: boolean}} NewestLanding
+   */
+  /** @type {NewestLanding | null} */
   let newestLanding = null;
   // How many commit selections have begun, so work that outlives one can tell that a
   // later selection placed the list (recoverHistorySession).
@@ -1343,8 +1348,9 @@
     const waiting = newestLanding;
     const bridge = shell();
     if (waiting && bridge && newestLandingHolds(waiting, bridge)) {
-      // The roving row would be the one the reader left, and a stale suspension would hand
-      // that row focus again when a render mounts it.
+      // The landing began from the newest row (landOnNewestCommit), but the reader may have
+      // focused another since, with Commits in front; that row, or a suspension that would
+      // hand it focus again when a render mounts it, is not the digit's.
       state.focusedOrdinal = 0;
       state.focusSuspended = false;
       waiting.digitFocus = focusNewestRow() ? "row" : "tab";
@@ -1362,9 +1368,9 @@
   }
 
   /**
-   * Focus the newest row, ordinal zero, and make it the list's Tab stop. A landing has put
-   * the list at its top, so focus moves without scrolling it. False when the row is not
-   * mounted.
+   * Focus the newest row, ordinal zero, and make it the list's Tab stop. Focus never scrolls
+   * the list: the switch to Commits puts it at its top, and the landing's reveal scrolls it
+   * there when it is not. False when the row is not mounted.
    */
   function focusNewestRow() {
     const list = panelElement()?.querySelector(".git-graph-list");
@@ -1381,23 +1387,22 @@
 
   /**
    * Whether focus is still where the Commits digit left it while its landing waited, so the
-   * landing may move it to the newest row: on the tab, on the newest row, or on the list or
-   * the scroller, where the panel parks focus as rows unmount. Nowhere counts only after
-   * the digit focused the newest row, which a refresh replaces with the rest of the list.
+   * landing may move it to the newest row: on the tab, or on the newest row. Focus parked
+   * on the scroller needs no rule: the render that mounts the newest row hands a parked
+   * row focus back (renderVirtualRows). Nowhere counts only when a refresh removed the row
+   * that held focus (refreshHistory); focus a reader sent nowhere, by clicking text, stays.
    * Anywhere else, the reader moved it, and it stays.
    *
-   * @param {{digitFocus: "row" | "tab" | null}} waiting
+   * @param {NewestLanding} waiting
    */
   function focusAwaitsNewest(waiting) {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement) || active === document.body || !active.isConnected) {
-      return waiting.digitFocus === "row";
+      return waiting.rowReplaced;
     }
     const list = panelElement()?.querySelector(".git-graph-list");
     return (
       (active.classList.contains("tab-btn") && active.dataset.tab === "git") ||
-      active === list ||
-      active === historyScroller() ||
       (list instanceof HTMLElement &&
         active === list.querySelector('.git-graph-row[data-ordinal="0"]'))
     );
@@ -2765,6 +2770,17 @@
     }
     abortPreparation(preparationSlot);
     preparationSlot = null;
+    // The render below replaces every row, and a row that held focus takes it out of the
+    // document; a waiting landing gives it to the newest row (focusAwaitsNewest).
+    const active = document.activeElement;
+    if (
+      newestLanding !== null &&
+      active instanceof HTMLElement &&
+      active.isConnected &&
+      active.classList.contains("git-graph-row")
+    ) {
+      newestLanding.rowReplaced = true;
+    }
     disposeHistoryState(state);
     state = emptyState();
     state.selectedId = options.selectedId ?? null;
@@ -2975,9 +2991,10 @@
    *
    * The pane is claimed now and keeps what it shows, marked busy, until the commit is
    * ready, so the switch paints neither a prompt nor a blank frame. The newest row becomes
-   * the list's Tab stop. A click or a history step leaves focus where it was, on the tab
-   * for a click; the tab's digit moves it to the newest row (focusCommitRow). An empty
-   * history selects nothing and the pane says so.
+   * the list's Tab stop, and the row the reader left gives up its claim on focus, so a
+   * render that mounts it again does not hand it focus. A click or a history step leaves
+   * focus where it was, on the tab for a click; the tab's digit moves it to the newest row
+   * (focusCommitRow). An empty history selects nothing and the pane says so.
    *
    * @param {number} landing
    * @param {MetabrowserShellRuntime} bridge
@@ -2989,7 +3006,9 @@
     if (bridge.beginPreviewNavigation(claim)) {
       pendingPreviewClaim = claim;
     }
-    newestLanding = { landing, claim, digitFocus: null };
+    newestLanding = { landing, claim, digitFocus: null, rowReplaced: false };
+    state.focusedOrdinal = 0;
+    state.focusSuspended = false;
     try {
       bridge.activateNavPanel("git");
       if (viewHelpersReady || (await ensureViewHelpers())) {
@@ -3081,8 +3100,14 @@
     if (!scroller) {
       return;
     }
+    // A window mounted from the first row, with the list at its top. A window from further
+    // down is redrawn even at the top: a switch resets the scroll before any render reads it.
     const range = state.mountedRange;
-    if (range?.segmentStart === 0 && (scroller.scrollTop || 0) <= historyOrigin()) {
+    if (
+      range?.segmentStart === 0 &&
+      range.start === 0 &&
+      (scroller.scrollTop || 0) <= historyOrigin()
+    ) {
       return;
     }
     state.virtualWindow.rebaseToOrdinal(0, viewportHeight(scroller), "start");
