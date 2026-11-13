@@ -137,6 +137,7 @@ const MEASURE = `async (name, change, tab, width) => {
       decorateExternalLink: mb.decorateExternalLink,
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),

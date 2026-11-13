@@ -158,8 +158,10 @@ def test_the_state_row_is_one_line_with_the_stacks_slot_at_its_end() -> None:
     assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
     details = _rule(css, ".github-pull-meta-details")
     assert "min-width: 0;" in details and "overflow: hidden;" in details
+    # A chip is a grid item of the merge group, whose floor keeps the names legible; a
+    # width of the chip's own would overflow the group's track rather than hold it.
     chip = _rule(css, ".github-pull-meta .git-ref")
-    assert "flex-shrink: 1;" in chip and "min-width: 7ch;" in chip
+    assert "min-width" not in chip and "flex-shrink" not in chip
     # The sentence gives way before the branches do.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
@@ -259,4 +261,6 @@ def test_a_pulls_rows_stack_position_ends_its_line() -> None:
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     meta = panel[panel.index("function rowMeta(") :]
     meta = meta[: meta.index("\n  }\n")]
-    assert meta.index("      stack,\n") > meta.index('"github-pulls-refs"')
+    # The line's last item, after the author and the merge (github-pulls-panel-session.js
+    # pins the built line).
+    assert meta.index("stack,") > meta.index('"github-pulls-merge"')

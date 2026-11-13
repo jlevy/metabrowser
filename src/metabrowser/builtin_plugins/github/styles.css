@@ -53,8 +53,8 @@
 }
 /* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
    wrapping the row, which made it 21 to 67 px tall. A narrow row gives way in its sentence
-   first: the action is cut to nothing before either branch chip shrinks, and a chip keeps a
-   few characters. */
+   first: the action is cut to nothing before the merge's names shrink, and they never
+   shrink past the merge group's floor (static/styles.css, `.merge-refs`). */
 .github-pull-meta {
   position: relative;
   display: flex;
@@ -77,14 +77,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.github-pull-meta-details > .github-pull-joiner {
-  flex: none;
-}
-/* A branch takes the remote ref chip, smaller than the actor and action beside it. */
+/* A branch takes the remote ref chip, smaller than the actor and action beside it: the
+   merge group (`mb.mergeRefs`) sets that size. The details may be narrower than the merge,
+   so its chips ellipsize in a narrow pane instead of running past the column. A chip is a
+   grid item of the group, so the group's floor, not a width of its own, keeps it legible. */
 .github-pull-meta .git-ref {
-  flex-shrink: 1;
-  min-width: 7ch;
-  font-size: var(--ui-small-font-size);
   line-height: 20px;
 }
 .github-pull-quiet {
@@ -689,8 +686,7 @@
 .github-pulls-filters .count.tally-pending {
   width: 3ch;
 }
-.github-pulls-title,
-.github-pulls-meta {
+.github-pulls-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -702,20 +698,51 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
+/* The muted line: the number, the author, the branches, and the stack badge
+   (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
+   always whole inside the row: the author and the branches each start with their separator
+   and may move to the next line, and the line is laid out as wide as the row plus one
+   separator, starting one separator to the left, so that the separator of a part that
+   starts a line falls outside the row and is clipped. The number makes up that offset.
+   Line breaks are decided by each part's floor, and a part that stays grows by equal
+   amounts toward its full width, so a line shortens names before it wraps. A line of text
+   with `text-overflow: ellipsis` would not do: when it overflows, Chrome hides the
+   merge's arrow and clips the last chip at the edge. */
 .github-pulls-meta {
   grid-column: 3 / -1;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+.github-pulls-line {
+  --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-inline-start: calc(-1 * var(--github-pulls-sep));
+  white-space: pre;
+}
+.github-pulls-sep {
+  flex: none;
+  width: var(--github-pulls-sep);
+  text-align: center;
+}
+/* The branches never get narrower than their separator and the merge's floor, so a line
+   that cannot hold that moves them to a line of their own. */
+.github-pulls-merge {
+  display: flex;
+  flex: 1 1 0;
+  align-items: baseline;
+  max-width: max-content;
+}
+.github-pulls-merge > .merge-refs {
+  flex: 1 1 auto;
 }
 .github-pulls-number {
   color: var(--text);
   font-size: var(--nav-font-size);
-}
-.github-pulls-refs {
-  color: var(--git-ref-remote);
-}
-.github-pulls-refs {
-  font-size: var(--ui-small-font-size);
+  margin-inline-start: var(--github-pulls-sep);
 }
 .github-pulls-stack {
   display: inline-flex;
@@ -966,14 +993,30 @@
   height: 18px;
   border-radius: 50%;
 }
-.github-pulls-refs {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  vertical-align: middle;
+
+/* The author never gets narrower than its separator, its avatar if it has one, and a little
+   of the name, so neither the separator nor the avatar stands without a visible name: past
+   that, the author and its separator move to the next line together. Above it the name
+   ends in an ellipsis. The avatar's share is its 18px and the identity's 4px gap
+   (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
+   hidden, so the name's share is still there. */
+.github-pulls-by {
+  display: flex;
+  flex: 1 1 0;
+  align-items: baseline;
+  min-width: calc(var(--github-pulls-sep) + 1.75em);
+  max-width: max-content;
+  overflow: hidden;
 }
-.github-pulls-refs .git-ref {
-  flex-shrink: 1;
-  font-size: var(--ui-small-font-size);
+.github-pulls-by:has(.github-pull-avatar) {
+  min-width: calc(var(--github-pulls-sep) + 18px + 4px + 1.75em);
+}
+.github-pulls-by > .github-pull-identity {
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pulls-by .github-pulls-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

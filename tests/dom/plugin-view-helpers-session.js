@@ -37,6 +37,7 @@ const HELPERS = [
   "decorateExternalLink",
   "refChipHtml",
   "refChip",
+  "mergeRefs",
   "mountRefCopies",
   "ageBucket",
   "ageLabelHtml",

@@ -1501,6 +1501,84 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert "font-weight" not in github[number], number
 
 
+def test_merges_read_source_to_target_in_one_notation() -> None:
+    """Every merge reads source → target, through `mergeRefs` ("Merge Direction")."""
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Merge Direction" in doc
+    assert "test_merges_read_source_to_target_in_one_notation" in doc
+    # One writer: the arrow, its accessible name, and the left-to-right island are the SDK's.
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    assert 'const MERGE_ARROW_NAME = "merges into";' in views
+    assert 'arrow.setAttribute("role", "img");' in views
+    assert 'arrow.setAttribute("aria-label", MERGE_ARROW_NAME);' in views
+    assert 'arrow.textContent = " → ";' in views
+    assert 'group.setAttribute("dir", "ltr");' in views
+    assert re.search(
+        r"group\.append\(\s*chip\(source, \"merge-refs-source\"\),\s*arrow,\s*"
+        r"chip\(target, \"merge-refs-target\"\),?\s*\)",
+        views,
+    ), "the group is the source, the arrow, then the target"
+    # Both pages draw their merge with it, head first. Neither draws a ref chip of its own,
+    # so neither can compose two around a connector, nor writes the left arrow; the sessions
+    # of both pages hold the rendered order, the arrow, and the literal refs.
+    for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
+        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
+        assert re.search(
+            rf"mb\.mergeRefs\(\s*\{{\s*name:\s*{side}\.headRef\b[^}}]*\}},\s*"
+            rf"\{{\s*name:\s*{side}\.baseRef\b",
+            source,
+        ), f"{name} does not draw its merge head → base through mergeRefs"
+        assert not re.search(r"\brefChip(?:Html)?\(", source), f"{name} draws a ref chip itself"
+        assert "←" not in source, f"{name} writes a merge target ← source"
+    # The arrow is a connector, in muted ink at the chips' size; the names give way first,
+    # and never past both chips' frames, an ellipsis in each, and the arrow.
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    group = shell[".merge-refs"]
+    assert group["display"] == "inline-grid"
+    assert group["grid-template-columns"] == (
+        "minmax(0, max-content) max-content minmax(0, max-content)"
+    ), "each name may shrink and the arrow never shrinks"
+    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the merge's floor"
+    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
+        "0 5px",
+        "19px",
+    ), "the floor counts each chip's padding and copy slot"
+    assert group["font-size"] == "var(--ui-small-font-size)"
+    assert shell[".merge-refs > .git-ref"]["font-size"] == "var(--ui-small-font-size)"
+    assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
+    # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
+    # loses the arrow in Chrome when it overflows. The author and the branches each carry
+    # their separator, breaks fall at their floors, and a separator that starts a line lies
+    # in the one-separator offset the row clips.
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    meta = github[".github-pulls-meta"]
+    assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
+    assert "text-overflow" not in meta
+    line = github[".github-pulls-line"]
+    assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
+    assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
+    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
+    for part in (".github-pulls-by", ".github-pulls-merge"):
+        rule = github[part]
+        assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
+    by = github[".github-pulls-by"]
+    assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
+    avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
+    assert avatar == "calc(var(--github-pulls-sep) + 18px + 4px + 1.75em)", "a name beside it"
+    assert (github[".github-pull-avatar"]["width"], github[".github-pull-identity"]["gap"]) == (
+        "18px",
+        "4px",
+    ), "the floor counts the avatar and its gap"
+    assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
+    author = github[".github-pulls-by .github-pulls-author"]
+    assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
+    assert ".github-pulls-who" not in github
+    # The header's details may be narrower than its merge, whose chips then ellipsize.
+    assert github[".github-pull-meta-details"]["min-width"] == "0"
+
+
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     """What "The Pull Request Page" says it reuses is what its markup says."""
 
@@ -1510,7 +1588,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "test_the_pull_request_page_carries_the_shells_primitives" in doc
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
-    assert "mb.refChip(" in page and 'kind: "remote"' in page
+    assert "mb.mergeRefs(" in page and 'kind: "remote"' in page
     # One age, not a timestamp at each call site.
     assert "mb.formatAge(" in page
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"

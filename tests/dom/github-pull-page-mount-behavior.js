@@ -1224,6 +1224,19 @@ async function run() {
     assert.equal(meta.children.length, 3);
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
+    // Merge Direction: the header names the branches head → base, through the shared group,
+    // after the action the row cuts short first.
+    assert.ok(details.children.at(-2).classes.has("github-pull-action"));
+    assert.equal(
+      details.textContent,
+      "forker wants to merge 2 commits: forker:count-to-two → octo:topic",
+    );
+    const merge = details.children.find((node) => node.className === "merge-refs");
+    assert.equal(merge.getAttribute("dir"), "ltr");
+    const [source, arrow, target] = merge.children;
+    assert.equal(source.dataset.tipText, "forker:count-to-two");
+    assert.equal(target.dataset.tipText, "octo:topic");
+    assert.equal(arrow.getAttribute("aria-label"), "merges into");
     const githubAction = [...container.descendants()].find(
       (node) => node.tag === "a" && node.textContent === "View on GitHub",
     );
