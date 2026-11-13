@@ -1200,16 +1200,23 @@ async function paintStory(panel, selection = false) {
     const metadata = row(hostile).childNodes.find((node) =>
       node.classList?.contains("github-pulls-meta"),
     );
-    const numberLabel = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-number"),
+    /** @param {any} parent @param {string} name */
+    const child = (parent, name) =>
+      parent.childNodes.find((node) => node.classList?.contains(name));
+    const numberLabel = child(metadata, "github-pulls-number");
+    // The author and the branches share what the number and the stack leave; the author
+    // gives way with the separator before it.
+    const who = child(metadata, "github-pulls-who");
+    const by = child(who, "github-pulls-by");
+    assert(
+      metadata.textContent ===
+        `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
+      "the line reads number, author, then head → base",
     );
-    const identity = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pull-identity"),
-    );
-    const authorLabel = identity.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-author"),
-    );
-    const branches = metadata.childNodes.find((node) => node.classList?.contains("merge-refs"));
+    assert(by.textContent.startsWith(" · "), "the author's separator gives way with it");
+    const identity = child(by, "github-pull-identity");
+    const authorLabel = child(identity, "github-pulls-author");
+    const branches = child(who, "merge-refs");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",

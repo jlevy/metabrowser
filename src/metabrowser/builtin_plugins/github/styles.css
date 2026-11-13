@@ -528,8 +528,8 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line is a flex line so the branches take the room left after the number, the
-   stack, and the author, and their chips ellipsize inside it with the arrow kept
+/* The muted line is a flex line so the author and the branches take the room left after the
+   number and the stack, and the chips ellipsize inside it with the arrow kept
    (docs/design-system.md, "Merge Direction"). A line of text with `text-overflow: ellipsis`
    would not do: when it overflows, Chrome hides the merge's arrow and clips the last chip
    at the edge. `pre` keeps the spaces around each `·`, which a flex line trims from its
@@ -789,4 +789,43 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+
+/* When the line is short, its parts give way in this order, so the merge's arrow always
+   shows, down to the narrowest navigation pane (180px), with a long login, an avatar, and a
+   stack badge. The number keeps its width.
+   1. The author and the branch names share the room the number and the stack leave, as a
+      grid: grid's "maximize tracks" step grows both from their floors by equal amounts, so a
+      short author keeps its whole name and a long one cannot crowd out the branches. Each
+      ends in an ellipsis: the author, with its separator and avatar, down to nothing, and
+      the branches down to the merge's floor (static/styles.css, `.merge-refs`).
+   2. Then the stack badge. Flex has no priorities, only factors, so the pair's is a
+      million to the badge's 1: while the pair can give, the badge's share is a millionth of
+      the shortfall, under a sixty-fourth of a pixel, and once the pair is at its floor the
+      badge takes the rest. A factor below 1 would not do, since flex applies only that
+      fraction of the shortfall when it is all that is left. */
+.github-pulls-who {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content minmax(auto, max-content);
+  align-items: baseline;
+  flex-shrink: 1000000;
+}
+.github-pulls-by {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pulls-by > .github-pull-identity {
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pulls-by .github-pulls-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pulls-meta > .github-pulls-stack {
+  min-width: 0;
+  overflow: hidden;
 }

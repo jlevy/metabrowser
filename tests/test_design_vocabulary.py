@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import re
+from itertools import pairwise
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1484,16 +1485,79 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
 
 # A string literal on one line of code: double-quoted, single-quoted, or a template.
 _JS_LITERAL = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\\n]|\\.)*`""")
-# A literal that is, or ends or begins with, a bare "into" or "from": the joint of
-# "into <base> from <head>" around a chip.
-_MERGE_JOINT = re.compile(r"(?:^|\s|})(?:into|from)\s*$|^\s*(?:into|from)(?:\s|\$|$)")
+# A call that draws one ref chip, not the definition of the helper.
+_REF_CHIP_CALL = re.compile(r"(?<!function )\brefChip(?:Html)?\(")
+# What joins two refs into a merge when it is written by hand: github.com's "into … from …"
+# or an arrow of either direction.
+_MERGE_WORDING = re.compile(r"\b(?:into|from)\b|[←→]")
+# Two chips drawn this many lines apart or closer are drawn together.
+_CHIP_PAIR_LINES = 6
 
 
-def _code_literals(source: str) -> list[str]:
-    """The string literals of *source*'s code lines, with comment lines left out."""
+def _hand_drawn_merges(source: str) -> list[str]:
+    """Two ref chips drawn together and joined by merge wording, as `mergeRefs` should draw.
 
-    code = (line for line in source.splitlines() if not line.lstrip().startswith(("//", "*", "/*")))
-    return [literal[1:-1] for line in code for literal in _JS_LITERAL.findall(line)]
+    Only text between two chips counts, so "from" and "into" anywhere else in a plugin
+    are not this check's business; the order and arrow of a merge `mergeRefs` draws are
+    the DOM sessions' and goldens'.
+    """
+
+    lines = source.splitlines()
+    # Comment lines are blanked, not removed, so a finding names its line in the file.
+    code = ["" if line.lstrip().startswith(("//", "*", "/*")) else line for line in lines]
+    calls = [
+        (index, match.end())
+        for index, line in enumerate(code)
+        for match in _REF_CHIP_CALL.finditer(line)
+    ]
+    found = []
+    for (first, start), (second, end) in pairwise(calls):
+        if second - first > _CHIP_PAIR_LINES:
+            continue
+        between = (
+            code[first][start:end]
+            if first == second
+            else "\n".join([code[first][start:], *code[first + 1 : second], code[second][:end]])
+        )
+        joints = [
+            literal
+            for literal in _JS_LITERAL.findall(between)
+            if _MERGE_WORDING.search(literal[1:-1])
+        ]
+        if joints:
+            found.append(f"line {first + 1}: {', '.join(joints)}")
+    return found
+
+
+def test_a_hand_drawn_merge_is_found_and_other_wording_is_not() -> None:
+    """`_hand_drawn_merges` finds the two notations it replaced and nothing unrelated."""
+
+    page = """
+      mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
+      " from ",
+      mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
+    """
+    panel = """
+        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
+        " ← ",
+        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
+    """
+    one_line = 'html += refChipHtml(head) + " → " + refChipHtml(base);'
+    assert _hand_drawn_merges(page) == ['line 2: " from "']
+    assert _hand_drawn_merges(panel) == ['line 2: " ← "']
+    assert _hand_drawn_merges(one_line) == ['line 1: " → "']
+    unrelated = """
+      const status = "Loaded from cache";
+      button.textContent = "Import from";
+      // Draw the base into the header, from the record.
+      chips.append(mb.refChip(tag, { kind: "tag" }), ", ", mb.refChip(other, { kind: "tag" }));
+      header.append(mb.mergeRefs({ name: head }, { name: base }, { kind: "remote" }));
+      function refChip(name, options = {}) {
+      const chip = mb.refChip(name);
+    """
+    assert _hand_drawn_merges(unrelated) == []
+    far = "mb.refChip(a),\n" + "x();\n" * _CHIP_PAIR_LINES + '" from ",\nmb.refChip(b)'
+    assert _hand_drawn_merges(far) == []
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -1524,38 +1588,58 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         ), f"{name} does not draw its merge head → base through mergeRefs"
         assert "mb.refChip(" not in source, f"{name} places a branch chip outside its merge"
         assert "←" not in source, f"{name} writes a merge target ← source"
-    # Nothing a page says joins chips with "into … from …", nor writes the left arrow.
+    # No browser code draws two ref chips by hand joined by "into", "from", or an arrow.
     scripts = [
         path
         for root in (STATIC, REPO_ROOT / BUILTIN_PLUGINS)
         for path in root.rglob("*.js")
         if "vendor" not in path.parts
     ]
-    joints = [
-        f"{path.name}: {literal!r}"
+    hand_drawn = [
+        f"{path.relative_to(REPO_ROOT)} {where}"
         for path in scripts
-        for literal in _code_literals(path.read_text(encoding="utf-8"))
-        # The arrow's own accessible name ends in "into" and joins nothing.
-        if literal != "merges into"
-        and (_MERGE_JOINT.search(literal) or re.search(r"\binto\b.*\bfrom\b", literal))
+        for where in _hand_drawn_merges(path.read_text(encoding="utf-8"))
     ]
-    assert not joints, joints
-    # The arrow is a connector, in muted ink at the chips' size; the names give way first.
+    assert not hand_drawn, hand_drawn
+    # The arrow is a connector, in muted ink at the chips' size; the names give way first,
+    # and never past both chips' frames, an ellipsis in each, and the arrow.
     shell = dict(_rules_of(STATIC / "styles.css"))
     group = shell[".merge-refs"]
     assert group["display"] == "inline-grid"
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
-    ), "each name may shrink to nothing and the arrow never shrinks"
+    ), "each name may shrink and the arrow never shrinks"
+    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the arrow's floor"
+    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
+        "0 5px",
+        "19px",
+    ), "the floor counts each chip's padding and copy slot"
     assert group["font-size"] == "var(--ui-small-font-size)"
     assert shell[".merge-refs > .git-ref"]["font-size"] == "var(--ui-small-font-size)"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
     # The Pulls tab's muted line gives the merge the room it has left, as a flex line; a line
-    # of text with an ellipsis loses the arrow in Chrome when it overflows.
+    # of text with an ellipsis loses the arrow in Chrome when it overflows. The author and
+    # the branches share that room as a grid, ahead of the stack badge; the author ellipsizes
+    # away, with its separator, and the stack badge gives way last.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
     assert (meta["display"], meta["white-space"]) == ("flex", "pre")
     assert "text-overflow" not in meta
+    who = github[".github-pulls-who"]
+    assert who["display"] == "grid"
+    assert who["grid-template-columns"] == (
+        "minmax(0, max-content) max-content minmax(auto, max-content)"
+    ), "the author may give way entirely and the merge down to its floor"
+    assert who["flex-shrink"] == "1000000"
+    assert (github[".github-pulls-by"]["min-width"], github[".github-pulls-by"]["overflow"]) == (
+        "0",
+        "hidden",
+    )
+    author = github[".github-pulls-by .github-pulls-author"]
+    assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
+    stack = github[".github-pulls-meta > .github-pulls-stack"]
+    assert (stack["min-width"], stack["overflow"]) == ("0", "hidden")
+    assert "flex-shrink" not in stack, "a factor below 1 applies only part of the shortfall"
     assert github[".github-pull-state-details"]["min-width"] == "0"
 
 

@@ -2879,14 +2879,22 @@ export function mountPullsPanel(container, ctx, mb) {
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
       stack,
-      " · ",
-      authorLabel(row.author, row.avatar, "github-pulls-author"),
-      " · ",
-      mb.mergeRefs(
-        { name: row.headRef, label: row.headLabel },
-        { name: row.baseRef },
-        { kind: "remote", copy: "sibling" },
-      ),
+      // The author and the branches share what the number and the stack leave
+      // (github/styles.css, `.github-pulls-who`). The author and the separator before it
+      // give way together, so a short line loses both rather than leaving two separators
+      // side by side.
+      h("span", { class: "github-pulls-who" }, [
+        h("span", { class: "github-pulls-by" }, [
+          " · ",
+          authorLabel(row.author, row.avatar, "github-pulls-author"),
+        ]),
+        " · ",
+        mb.mergeRefs(
+          { name: row.headRef, label: row.headLabel },
+          { name: row.baseRef },
+          { kind: "remote", copy: "sibling" },
+        ),
+      ]),
     ]);
   }
 
