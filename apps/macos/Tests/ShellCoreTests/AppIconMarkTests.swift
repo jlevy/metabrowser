@@ -43,6 +43,53 @@ import Testing
         #expect(AppIconMark.path("M0 0L10") == nil)  // a coordinate short
         #expect(AppIconMark.path("M0 0A5 5 0 0 1 10 0") == nil)  // an arc
         #expect(AppIconMark.path("M0 zero") == nil)
+        // Numbers that Double reads but no coordinate can be: refused at the start and
+        // after a valid prefix alike.
+        for bad in ["nan", "-nan", "inf", "-inf", "infinity", "1e999", "-1e999"] {
+            #expect(AppIconMark.path("M\(bad) 0L1 0Z") == nil, "\(bad) first")
+            #expect(AppIconMark.path("M0 0L1 0L\(bad) 1Z") == nil, "\(bad) after a valid prefix")
+            #expect(AppIconMark.path("M0 0Q1 \(bad) 2 2Z") == nil, "\(bad) as a control point")
+        }
+    }
+
+    /// Each command decodes to its own element, with its points in order, exactly.
+    @Test func pathDataDecodesToTheElementsItNames() throws {
+        let path = try #require(AppIconMark.path(
+            "M1.5 -2.25L10 0Q12.5 3 10 6.75C8 9 -1 9.5 -2.5 4ZM20 -0.5L21.25 -0.5Z"))
+        #expect(elements(of: path) == [
+            .move(CGPoint(x: 1.5, y: -2.25)),
+            .line(CGPoint(x: 10, y: 0)),
+            .quad(control: CGPoint(x: 12.5, y: 3), to: CGPoint(x: 10, y: 6.75)),
+            .curve(control1: CGPoint(x: 8, y: 9), control2: CGPoint(x: -1, y: 9.5), to: CGPoint(x: -2.5, y: 4)),
+            .close,
+            .move(CGPoint(x: 20, y: -0.5)),
+            .line(CGPoint(x: 21.25, y: -0.5)),
+            .close,
+        ])
+    }
+
+    private enum Element: Equatable {
+        case move(CGPoint)
+        case line(CGPoint)
+        case quad(control: CGPoint, to: CGPoint)
+        case curve(control1: CGPoint, control2: CGPoint, to: CGPoint)
+        case close
+    }
+
+    private func elements(of path: CGPath) -> [Element] {
+        var result: [Element] = []
+        path.applyWithBlock { pointer in
+            let element = pointer.pointee, p = element.points
+            switch element.type {
+            case .moveToPoint: result.append(.move(p[0]))
+            case .addLineToPoint: result.append(.line(p[0]))
+            case .addQuadCurveToPoint: result.append(.quad(control: p[0], to: p[1]))
+            case .addCurveToPoint: result.append(.curve(control1: p[0], control2: p[1], to: p[2]))
+            case .closeSubpath: result.append(.close)
+            @unknown default: break
+            }
+        }
+        return result
     }
 
     @Test func everyFillReadsOnItsTitleBar() {

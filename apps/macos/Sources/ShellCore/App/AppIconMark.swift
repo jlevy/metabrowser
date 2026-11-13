@@ -51,7 +51,8 @@ public nonisolated enum AppIconMark {
             let end = rest.firstIndex { commands.contains($0) } ?? rest.endIndex
             var numbers: [CGFloat] = []
             for field in rest[..<end].split(separator: " ") {
-                guard let number = Double(field) else { return nil }
+                // Double reads nan, inf, and an overflow such as 1e999, which no coordinate is.
+                guard let number = Double(field), number.isFinite else { return nil }
                 numbers.append(CGFloat(number))
             }
             rest = rest[end...]
