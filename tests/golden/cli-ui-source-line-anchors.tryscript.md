@@ -21,6 +21,10 @@ The fake layout rounds each line’s height away from the computed `1lh`, as a b
 does, so the line pitch the highlight is placed by must be the one measured from the
 gutter, and a zoom change measures it again.
 Text with CR and CRLF line endings numbers the lines the browser shows.
+Load more appends the numbers it adds after the gutter’s own, in text nodes of at most
+65,536 code units as its text is; on a view WebKit’s HTML parser split into nodes of
+that size, the gutter then numbers every line once and its height still gives one line’s
+pitch.
 
 It also pins the keyboard and the rest of the reader’s path.
 The gutter is a vertical slider that Tab reaches: arrow keys, Page Up, Page Down, Home,
@@ -223,7 +227,8 @@ $ node tests/dom/source-line-anchors-session.js
           "inline": "nearest"
         }
       ],
-      "appended": true
+      "appended": true,
+      "gutterTextNodes": 2
     },
     {
       "step": "click line 3",
@@ -793,6 +798,33 @@ $ node tests/dom/source-line-anchors-session.js
   "crlfLines": {
     "gutter": "1\n2\n3",
     "code": "one\ntwo\nthree\n"
+  },
+  "webkitParsedGutter": {
+    "opened": {
+      "gutterTextNodes": 2,
+      "codeTextNodes": 3,
+      "value": "1 of 15000: No line anchored"
+    },
+    "afterLoadMore": {
+      "appended": true,
+      "gutterNumbersEachLineOnce": true,
+      "gutterTextNodes": 8,
+      "longestGutterTextNode": 65536,
+      "codeIsTheText": true,
+      "codeTextNodes": 14,
+      "longestCodeTextNode": 65536,
+      "value": "70000 of 80000: Line 70,000",
+      "highlighted": "70000–70000",
+      "renderedLinePx": "21.484375px",
+      "linePitch": "21.484375px",
+      "scrolls": [
+        {
+          "line": 70000,
+          "block": "center",
+          "inline": "nearest"
+        }
+      ]
+    }
   },
   "historyWrites": [
     "replace /view/src/app.py#L3",

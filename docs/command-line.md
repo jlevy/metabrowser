@@ -114,6 +114,61 @@ Metabrowser warns when it ignores one of its own.
 See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
+### Stopping when the parent exits
+
+```shell
+# Serve until stdin closes: in a terminal, until Ctrl-D.
+metab ./notes --no-open --exit-on-eof
+```
+
+`--exit-on-eof` stops the server when its stdin closes.
+It is for a program that starts `metab` and holds its stdin open, as the macOS app does:
+however that program ends, by quitting or by crashing, the kernel closes the pipe, and
+the server stops by itself.
+Whatever arrives on stdin before it closes is read and dropped.
+Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
+it, a stdin that is not open at all is refused before serving.
+
+The watch begins as soon as the command line is read, before the server reads ROOT,
+dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
+startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
+A stdin that is closed from the start therefore stops the server, possibly before it
+prints its address: the watch and startup run side by side, so either can come first.
+Python’s start, the import of `metab` itself, and the reading of its command line come
+before the watch: a stdin that closes during them is seen as soon as they end, and a
+hang there, such as a disk that stops answering while `metab` loads, is not covered.
+A stdin that closes while startup is failing ends the process either way, with the
+failure’s status or with 0.
+
+The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
+the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
+them) and any `gh` are killed, and the process exits at once, with status 0. Those run
+in process groups of their own, which would outlive the server, and a fetch holds its
+store’s lock, so each group is killed with every helper in it, and no new one is
+started. The stop finds them in the system’s list of the server’s child processes, so it
+kills one whose start has not finished too, and it does not wait on the server’s event
+loop, even when that loop is stuck.
+It waits only for a start under way on another thread, at most `SPAWN_WAIT_S` (in
+`metabrowser/git/process.py`), and then looks at the server’s children once more.
+Each look takes a few system calls per child; on a Linux kernel without per-thread child
+lists, it reads every process’s `/proc` entry.
+Three things escape it: a child that has not yet begun running Git when that wait ends;
+with Ctrl-C or a hangup, a child the interrupted thread had forked and that had not yet
+begun running Git, since that thread gets no wait at all; and the helpers of a Git whose
+start failed, which Python’s asyncio kills alone.
+On systems other than macOS and Linux, which cannot list a process’s children this way,
+a start under way is not covered.
+Each child is confirmed to be the server’s own, not yet reaped, just before it is
+signalled; in the microsecond or so between the two, another thread could reap it, and
+the signal would reach someone else only if the system had meanwhile given its ID to a
+new process that already leads a group of its own, which takes far longer to happen.
+`_unreaped_child` in `metabrowser/git/process.py` records the measurements.
+Other Git, which only reads, runs in the server’s own process group and is not
+signalled; it holds no lock, and it ends when it next writes to, or reads from, the
+server that is gone.
+A stderr too full to take the notice at once, because nothing is reading it, gets no
+notice, and the stop goes on without it; so does one Ctrl-C’s.
+
 ### Serving a Git source
 
 ```shell
