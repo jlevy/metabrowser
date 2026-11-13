@@ -560,9 +560,11 @@ async function createPage(start, options = {}) {
       await settle();
     },
     /**
-     * The reader switching to Commits by a click or a shortcut. main-tabs.js, which
-     * preview-pane-state-session.js runs, gives up the pane, pushes the neutral entry,
-     * shows the panel, applies the address, and asks the panel to land; this is that.
+     * The reader clicking the Commits tab. main-tabs.js, which preview-pane-state-session.js
+     * runs, gives up the pane, pushes the neutral entry, shows the panel, applies the
+     * address, and asks the panel to land; this is that. The tab's digit does the same and
+     * then asks the panel for its row, which this session, with no rows mounted, cannot
+     * show; git-panel-behavior.js runs the digit against the panel's rows.
      */
     async switchToCommits() {
       sandbox.MetabrowserShell.claimPreview("none");
@@ -885,7 +887,7 @@ async function createPage(start, options = {}) {
     assert(again.requests.length === 0, "the newest commit's detail was asked for again");
     assert(again.historyReads === 1, "a return asked for history again");
     assert(again.scrollTop === 0, "the newest row was left out of view");
-    assert(again.focusMoves === 0, "a landing moved focus");
+    assert(again.focusMoves === 0, "a click's landing moved focus");
 
     await page.back();
     steps.Back = page.read();
