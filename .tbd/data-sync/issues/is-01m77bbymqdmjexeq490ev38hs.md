@@ -3,9 +3,9 @@ type: is
 id: is-01m77bbymqdmjexeq490ev38hs
 title: Commit a WKWebView measurement probe under explorations/performance-loop
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -20,8 +20,12 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T07:43:15.094Z
-updated_at: 2026-11-12T15:05:04.946Z
+updated_at: 2026-11-13T19:01:02.153Z
 started_at: 2026-11-12T08:48:32.561Z
+closed_at: 2026-11-13T19:01:02.152Z
+close_reason: "Landed in #378 (merge a1347646). The WKWebView probe (wkprobe.mjs, wkprobe.swift, wkprobe-stats/steps/lock modules, shared provenance.mjs) passed reviews A (senior, 3 High), B (round 2, 2 Medium), and C (coordinator verification), and a visible validation on 2026-11-13 against the control and the H87 candidate: every guard held, no probe change needed. Early unjudged WebKit reading for H87: reload 56 -> 16 requests, relaunch 58 -> 16."
+resolution: null
+duplicate_of: null
 ---
 A measurement instrument, not app code: a small Swift WKWebView harness committed under explorations/performance-loop (beside the transition scenario, mb-4z4u) that records relaunch and reload request counts through a logging proxy, hidden first-view completion, and show-to-ready in a visible window on an unlocked screen. The research's harness (wkprobe) was ad hoc and is not committed; the WebKit gate harness on the native stack (#363, mb-gvtw) is app code and stays unmerged. Blocks H97 (mb-touu) and the WKWebView secondary metric of H87 (mb-3m3l, which also needs mb-qzny's sticky port), and the WKWebView request counts in the campaign summary (mb-ep8a). From review A on jlevy/metabrowser#364, finding A10.
 
