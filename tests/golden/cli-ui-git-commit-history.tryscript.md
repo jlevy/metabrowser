@@ -21,8 +21,8 @@ Switching to Commits names no commit, so it lands on the newest one, the top row
 While the first page of history is on its way the pane keeps what it showed, busy
 through the refresh that replaces the walk, and no commit is asked for; then the newest
 commit’s address replaces the tab’s entry, and history is asked for once.
-A return after an older commit lands on the newest again, from the cached page and
-detail, with the list scrolled back to its top and focus where it was.
+A click back to Commits after an older commit lands on the newest again, from the cached
+page and detail, with the list scrolled back to its top and focus where it was.
 Back steps over each switch to where the reader was, and an entry that names a commit
 still shows that commit.
 An entry the reader left before history arrived takes nothing when it does, and lands on
@@ -36,9 +36,13 @@ The panel’s loading session holds paint callbacks and diff assets independentl
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
 ready commit. An older selection’s paint callback preserves the newer selection’s busy
 state. A missing commit’s delayed freshness lookup preserves it too.
-On the neutral Commits entry the newest row is selected and is the list’s Tab stop,
-focus stays on the tab, a scrolled list comes back to its top, and an address that is
-not the neutral entry selects nothing.
+On the neutral Commits entry the newest row is selected and is the list’s Tab stop, a
+scrolled list comes back to its top, and an address that is not the neutral entry
+selects nothing. A click leaves focus on the tab.
+The tab’s digit focuses the newest row instead of the older row the reader left, without
+scrolling, so `↓` opens the next commit: at once when the row is mounted, or when the
+landing reveals it, unless the reader has moved focus by then.
+A refresh that replaces the focused newest row gives focus to the new one.
 
 ```console
 $ node tests/dom/git-commit-history-session.js

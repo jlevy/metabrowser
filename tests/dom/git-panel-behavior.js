@@ -115,6 +115,9 @@ class FakeElement {
     this._html = "";
     this._hovered = false;
     this.scrollCalls = [];
+    // The options of each focus() call, so a test can tell focus that scrolls from focus
+    // that does not.
+    this.focusCalls = [];
     // Layout the panel actually reads. The Git panel converts between the
     // scroller's coordinate space and the virtualized list's by summing
     // the heights of the chrome above the list, so a fake DOM reporting
@@ -266,7 +269,8 @@ class FakeElement {
       handler(event);
     }
   }
-  focus() {
+  focus(options) {
+    this.focusCalls.push(options ?? null);
     const previous = this.ownerDocument.activeElement;
     if (previous === this) {
       return;
@@ -1762,10 +1766,15 @@ async function run() {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    // The Commits tab's digit hands focus back to the row the reader left.
+    // With Commits already in front and no landing waiting, the Commits tab's digit only
+    // moves focus, back to the row the reader left. A switch to Commits lands on the newest
+    // row instead ("The Commits digit lands on the newest row", below).
     document.activeElement = null;
     assertTrue("focusRow: the roving row takes focus", internals.focusCommitRow());
-    assertTrue("focusRow: focus lands on the row left", document.activeElement === rows[1]);
+    assertTrue(
+      "focusRow: in front, focus lands on the row left",
+      document.activeElement === rows[1],
+    );
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────
@@ -3051,6 +3060,266 @@ async function run() {
       landedBefore,
     );
     assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
+  }
+
+  // ── The Commits digit lands on the newest row ──────────────
+  //
+  // The digit switches to Commits and then asks the panel for its row (main-tabs.js), before
+  // the landing has selected anything. That row is the newest, not the older one the reader
+  // left: focused without scrolling the list and made its Tab stop, so `↓` opens the next
+  // commit. A newest row the list has not mounted takes focus when the landing reveals it,
+  // unless the reader has moved focus by then, and a refresh that replaces the focused row
+  // gives focus back to the new one.
+  {
+    const container = document.getElementById("tab-git");
+    const tab = document.register("commits-tab", document.createElement("button"));
+    tab.className = "tab-btn";
+    tab.dataset.tab = "git";
+    const filesRow = document.register("files-row", document.createElement("div"));
+    const filter = document.register("files-filter", document.createElement("input"));
+    const rowAt = (ordinal) => container.querySelector(`.git-graph-row[data-ordinal="${ordinal}"]`);
+    const settle = async () => {
+      for (let tick = 0; tick < 50; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    };
+    const detail = (revision) => ({
+      is_repo: true,
+      commit: commit(revision, [], "digit detail"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    // What the digit does: the switch puts the list at its top, pushes the neutral entry,
+    // and starts the landing; then the panel's row takes focus, or the tab while it has none.
+    const pressCommitsDigit = () => {
+      container.scrollTop = 0;
+      neutralLanding = true;
+      const landing = panel.restoreCommitLanding();
+      const took = registeredPanel.focusRow();
+      if (!took) {
+        tab.focus();
+      }
+      return { landing, took };
+    };
+
+    // Mounted: the reader left the older commit at ordinal 1 for Files.
+    {
+      filesRow.focus();
+      const { landing, took } = pressCommitsDigit();
+      const newest = rowAt(0);
+      assertTrue(
+        "digit: the newest row takes focus at once",
+        took && document.activeElement === newest,
+      );
+      assertEqual("digit: focus does not scroll the list", newest?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+      assertEqual("digit: the newest row is the Tab stop", newest?.getAttribute("tabindex"), "0");
+      assertEqual("digit: the row left is not", rowAt(1)?.getAttribute("tabindex"), "-1");
+      await landing;
+      await settle();
+      assertEqual("digit: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+      assertTrue("digit: focus stays on the newest row", document.activeElement === rowAt(0));
+      assertEqual("digit: it stays the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+      assertEqual("digit: the list stays at its top", container.scrollTop, 0);
+      const down = keyboardEvent("ArrowDown");
+      document.activeElement.dispatch("keydown", down);
+      assertTrue("digit: ↓ is handled", down.defaultPrevented);
+      assertEqual("digit: ↓ opens the next commit", internals.stateForTests().selectedId, SHA_B);
+      assertTrue("digit: ↓ focuses its row", document.activeElement === rowAt(1));
+      await settle();
+    }
+
+    // HEAD moved while Commits was hidden. The landing's refresh replaces the rows, the
+    // focused newest among them, and a browser then drops focus to the body; the landing
+    // gives it to the new newest row.
+    {
+      filesRow.focus();
+      responses.set(`/api/git/commit/${SHA_D}`, detail(SHA_D));
+      responses.set("/api/git/repo", {
+        is_repo: true,
+        root: "",
+        head: { ref: "refs/heads/other", revision: SHA_D, detached: false, unborn: false },
+      });
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      let pageAsked = false;
+      responses.set("/api/git/log", async () => {
+        pageAsked = true;
+        await pageHeld;
+        return historyPage(
+          0,
+          [commit(SHA_D, [SHA_C], "moved head"), commit(SHA_C, [], "after checkout")],
+          2,
+          SHA_D,
+        );
+      });
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "digit, refresh: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      for (let tick = 0; tick < 50 && !pageAsked; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assertTrue("digit, refresh: the refresh asks for history", pageAsked);
+      assertEqual("digit, refresh: the refresh replaced the rows", rowAt(0), null);
+      // What a browser does when the focused element leaves the document.
+      document.activeElement = null;
+      releasePage();
+      await landing;
+      await settle();
+      assertEqual(
+        "digit, refresh: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertTrue(
+        "digit, refresh: focus returns to the newest row",
+        document.activeElement === rowAt(0),
+      );
+      assertEqual("digit, refresh: without scrolling", rowAt(0)?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+    }
+
+    // Not mounted: the reader left a commit far down a history deep enough to evict its first
+    // page. The tab holds focus while the landing replays that page, and the reveal hands it
+    // to the newest row; the row left never takes it, so the list stays at its top.
+    {
+      const total = 8;
+      const revisions = Array.from({ length: total }, (_value, index) =>
+        (index + 8000).toString(16).padStart(40, "0"),
+      );
+      const walk = revisions.map((revision, index) =>
+        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `digit commit ${index}`),
+      );
+      responses.set("/api/git/repo", {
+        is_repo: true,
+        root: "",
+        head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+      });
+      let holdFirstPage = null;
+      let firstPageAsked = false;
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        const page = Number(cursor?.split(":")[1] ?? 0);
+        if (page === 0) {
+          firstPageAsked = true;
+          await holdFirstPage;
+        }
+        return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+      });
+      for (const revision of revisions) {
+        responses.set(`/api/git/commit/${revision}`, detail(revision));
+      }
+      const deep = internals.emptyState();
+      deep.headRevision = revisions[0];
+      deep.headRef = "refs/heads/main";
+      internals.setStateForTests(deep);
+      for (let page = 0; page < 4; page += 1) {
+        const pageCommits = walk.slice(page * 2, page * 2 + 2);
+        const wire = historyPage(page, pageCommits, total, revisions[0]);
+        internals.appendPage(pageCommits, wire.cursor, wire);
+      }
+      container.clientHeight = 44;
+      // The reader scrolls down to an older commit, selects it, and leaves for Files.
+      const leaveFromFarDown = async () => {
+        container.scrollTop = 132;
+        internals.renderPanel();
+        await settle();
+        await internals.selectCommit(revisions[6]);
+        filesRow.focus();
+      };
+
+      await leaveFromFarDown();
+      const left = rowAt(6);
+      assertEqual(
+        "digit, unmounted: the row left is the Tab stop",
+        left?.getAttribute("tabindex"),
+        "0",
+      );
+      assertEqual("digit, unmounted: the newest row is not mounted", rowAt(0), null);
+      const { landing, took } = pressCommitsDigit();
+      assertTrue("digit, unmounted: no row takes focus yet", !took);
+      assertTrue("digit, unmounted: the tab holds focus", document.activeElement === tab);
+      assertEqual("digit, unmounted: the row left is not focused", left?.focusCalls, []);
+      await landing;
+      await settle();
+      const newest = rowAt(0);
+      assertEqual(
+        "digit, unmounted: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "digit, unmounted: the newest row takes focus once revealed",
+        newest !== null && document.activeElement === newest,
+      );
+      assertEqual("digit, unmounted: without scrolling", newest?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+      assertEqual("digit, unmounted: the list stays at its top", container.scrollTop, 0);
+      assertEqual(
+        "digit, unmounted: the newest row is the Tab stop",
+        newest?.getAttribute("tabindex"),
+        "0",
+      );
+      const down = keyboardEvent("ArrowDown");
+      newest?.dispatch("keydown", down);
+      assertEqual(
+        "digit, unmounted: ↓ opens the next commit",
+        internals.stateForTests().selectedId,
+        revisions[1],
+      );
+      assertTrue("digit, unmounted: ↓ focuses its row", document.activeElement === rowAt(1));
+      await settle();
+
+      // The reader moves focus while the landing waits for the first page: it stays there.
+      // Scrolling the focused row away parked focus on the scroller first, and that
+      // suspension, stale once the reader left for Files, does not take focus back either.
+      await leaveFromFarDown();
+      let releaseFirstPage = () => {};
+      holdFirstPage = new Promise((resolve) => (releaseFirstPage = resolve));
+      firstPageAsked = false;
+      const moved = pressCommitsDigit();
+      assertTrue(
+        "digit, moved: the tab holds focus",
+        !moved.took && document.activeElement === tab,
+      );
+      for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assertTrue("digit, moved: the landing waits for the first page", firstPageAsked);
+      filter.focus();
+      releaseFirstPage();
+      await moved.landing;
+      await settle();
+      assertEqual(
+        "digit, moved: the newest is still selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "digit, moved: focus stays where the reader put it",
+        document.activeElement === filter,
+      );
+      delete container.clientHeight;
+      container.scrollTop = 0;
+    }
+
+    neutralLanding = false;
+    document.activeElement = null;
+    for (const [id, element] of [
+      ["commits-tab", tab],
+      ["files-row", filesRow],
+      ["files-filter", filter],
+    ]) {
+      element.remove();
+      document.byId.delete(id);
+    }
   }
 
   // ── A newest landing outlives a session recovery ───────────
