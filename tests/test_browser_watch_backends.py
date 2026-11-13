@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -271,6 +272,55 @@ def test_run_watcher_finishes_cooperative_stop_after_repeated_cancellation(
         return still_joining, backend_finalized.is_set()
 
     assert asyncio.run(run()) == (True, True)
+
+
+def test_run_watcher_reports_a_failure_while_stopping_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A consumer failing during a stop is logged by the watcher, not also by asyncio."""
+
+    import metabrowser.watch_backends as watch_backends
+
+    async def run() -> list[dict[str, object]]:
+        loop_errors: list[dict[str, object]] = []
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: loop_errors.append(context)
+        )
+        backend_started = asyncio.Event()
+
+        async def late_batch_awatch(
+            *_args: object,
+            stop_event: asyncio.Event | None = None,
+            **_kwargs: object,
+        ) -> AsyncIterator[set[tuple[Change, str]]]:
+            assert stop_event is not None
+            backend_started.set()
+            await stop_event.wait()
+            yield {(Change.added, str(tmp_path / "late.txt"))}
+
+        monkeypatch.setattr(watch_backends, "awatch", late_batch_awatch)
+
+        async def refresh(_request: RefreshRequest) -> RefreshReceipt:
+            raise RuntimeError("provider failed")
+
+        watcher = asyncio.create_task(run_watcher(root=tmp_path, refresh=refresh, mode="native"))
+        await asyncio.wait_for(backend_started.wait(), timeout=1.0)
+        watcher.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(watcher, timeout=1.0)
+        return loop_errors
+
+    with caplog.at_level(logging.DEBUG):
+        loop_errors = asyncio.run(run())
+    assert [str(context.get("message")) for context in loop_errors] == []
+    failures = [record for record in caplog.records if record.levelno >= logging.WARNING]
+    assert [record.getMessage().split(" at ")[0] for record in failures] == [
+        "watcher failed while stopping"
+    ]
+    assert failures[0].exc_info is not None
+    assert isinstance(failures[0].exc_info[1], RuntimeError)
 
 
 def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> None:
