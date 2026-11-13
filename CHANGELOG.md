@@ -21,6 +21,9 @@ All notable changes to Metabrowser are documented here.
   Each sends an ETag and answers `If-None-Match` with 304. `/api/git/summary?scope=all`
   now counts the commits the `scope=all` log walks, which leaves out the `HEAD` of
   another worktree of the repository.
+  The repository’s identity, which used to be discovered again by the first Git request
+  after five quiet seconds, is now kept while the same refs, `HEAD`, configuration, and
+  `.git` entry are unchanged, so a hover or a first commit no longer waits for it.
 
 - Branch and tag chips are slightly smaller than the text around them, wherever they
   appear, instead of one size everywhere.

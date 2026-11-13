@@ -339,6 +339,16 @@ GIT_COMMIT_MAX_FILES = 1_000
 # cache so the first commit appears immediately.
 GIT_REPO_INFO_TTL_S = 5.0
 
+# Past the TTL an identity is kept while the refs' state (``git/ref_state.py``) is
+# unchanged, which covers HEAD, the refs, the configuration files and the ``.git``
+# entry. It does not cover the reader's global Git configuration (``safe.directory``)
+# or Git going missing, so an identity this old is rediscovered in the background, off
+# the request that found it, to bound how long those can go unnoticed. A correctness
+# bound rather than a cost bound: the rediscovery is three Git processes, which cost a
+# request about 55 ms at the server when it paid them inline (exp-081 and the
+# contention sweep after it).
+GIT_REPO_INFO_MAX_AGE_S = 60.0
+
 # Client-side pacing for the hover card. The card is backed by the same
 # commit-detail request the detail view uses, so a slow drag across the
 # graph must not issue one request per row.
@@ -440,6 +450,7 @@ __all__ = [
     "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
+    "GIT_REPO_INFO_MAX_AGE_S",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

@@ -24,10 +24,29 @@ short — the same shape as the gitignore checker cache in
 :mod:`metabrowser.tree`. An unborn HEAD is the exception: it is
 rediscovered on every request so the repository's first commit becomes
 visible immediately.
+
+Past the TTL a filesystem identity is checked rather than discovered again.
+Discovery is three Git processes, and a request that came after the TTL paid them
+inline: about 55 ms at the server on a commit's comparison and its detail together
+(exp-081's server half and the contention sweep after it). Whichever request came
+first after five quiet seconds paid it, so a page that asked the server less often,
+as the kept comparisons and the route memo make it, moved that cost onto a hover or
+a first commit instead of removing it. So each entry keeps the refs' state
+(:func:`~metabrowser.git.ref_state.ref_state`) read just before its discovery. The
+identity reads the served root's ``.git`` entry, ``HEAD``, the ref it names, and
+``core.worktree`` from the configuration, all of which that state covers. Past the
+TTL, an unchanged state keeps the entry for another TTL without running Git; a
+changed one, or one that cannot be named, is rediscovered inline as before. What the
+state does not cover, the reader's global Git configuration (``safe.directory``) and
+Git going missing, is checked by rediscovering in the background once an entry is
+:data:`~metabrowser.settings.GIT_REPO_INFO_MAX_AGE_S` old, off the request that
+found it. A pinned revision, a negative answer, and a repository past the state's
+entry bound keep the plain TTL.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -43,9 +62,10 @@ from metabrowser.git.process import (
     git_executable,
     run_git_at,
 )
+from metabrowser.git.ref_state import ref_state
 from metabrowser.git.wire import GitHead, GitRepoInfo, is_full_revision
 from metabrowser.paths_safe import register_root_callback
-from metabrowser.settings import GIT_REPO_INFO_TTL_S
+from metabrowser.settings import GIT_REPO_INFO_MAX_AGE_S, GIT_REPO_INFO_TTL_S
 
 log = logging.getLogger(__name__)
 
@@ -73,11 +93,27 @@ class RepoContext:
         return GitLocation.filesystem(self.served_root)
 
 
-# Cache entries are (expires_at, context_or_none, info). ``context`` is
-# None exactly when ``info["is_repo"]`` is false, so a negative result is
-# cached for the same TTL as a positive one — a non-repository root must
-# not re-spawn git on every poll.
-_REPO_CACHE: dict[str, tuple[float, RepoContext | None, GitRepoInfo]] = {}
+@dataclass
+class _Entry:
+    """One location's identity and what decides whether it still holds.
+
+    ``context`` is None exactly when ``info["is_repo"]`` is false, so a negative result
+    is cached for the same TTL as a positive one — a non-repository root must not
+    re-spawn git on every poll. ``state`` is the refs' state read just before the
+    discovery, or None when the entry keeps the plain TTL.
+    """
+
+    expires_at: float
+    context: RepoContext | None
+    info: GitRepoInfo
+    state: str | None
+    discovered_at: float
+
+
+_REPO_CACHE: dict[str, _Entry] = {}
+# Background rediscoveries in flight, one per location, so a task is never collected
+# while it runs and two never race for one entry.
+_REFRESHING: dict[str, asyncio.Task[None]] = {}
 
 
 def clear_repo_cache() -> None:
@@ -87,6 +123,9 @@ def clear_repo_cache() -> None:
     serve another directory's repository identity.
     """
     _REPO_CACHE.clear()
+    for task in _REFRESHING.values():
+        task.cancel()
+    _REFRESHING.clear()
 
 
 def _negative(reason: str) -> GitRepoInfo:
@@ -237,30 +276,83 @@ async def _discover_filesystem(location: GitLocation) -> tuple[RepoContext | Non
 
 
 async def repo_info(root: Path | GitLocation) -> tuple[RepoContext | None, GitRepoInfo]:
-    """Resolve the repository for *root*, TTL-cached.
+    """Resolve the repository for *root*, TTL-cached and then checked against its refs.
 
     Returns ``(context, info)``. ``context`` is ``None`` exactly when
     ``info["is_repo"]`` is false; callers that need to run git branch on
-    the context, and return ``info`` unchanged when it is absent.
+    the context, and return ``info`` unchanged when it is absent. Past the TTL an
+    entry whose refs' state is unchanged is kept without running Git (the module's
+    docstring says what that state covers).
     """
     location = as_location(root)
-    key = location.identity
     now = time.monotonic()
-    cached = _REPO_CACHE.get(key)
-    if cached is not None and cached[0] > now:
-        cached_context = cached[1]
-        # The first commit is the one identity transition that can happen
-        # without a checkout. Keeping an unborn entry until the TTL would
-        # make both /repo and /log lie after that commit was created.
-        if cached_context is None or not cached_context.head["unborn"]:
-            return cached_context, cached[2]
+    entry = _REPO_CACHE.get(location.identity)
+    # The first commit is the one identity transition that can happen
+    # without a checkout. Keeping an unborn entry until the TTL would
+    # make both /repo and /log lie after that commit was created.
+    if entry is not None and (entry.context is None or not entry.context.head["unborn"]):
+        if entry.expires_at > now:
+            return entry.context, entry.info
+        # Past the TTL: an unchanged refs' state keeps the identity without running Git.
+        if entry.state is not None and await ref_state(location) == entry.state:
+            entry.expires_at = now + GIT_REPO_INFO_TTL_S
+            if now - entry.discovered_at >= GIT_REPO_INFO_MAX_AGE_S:
+                _rediscover_in_background(location)
+            return entry.context, entry.info
+    return await _discover_and_keep(location, entry)
 
+
+async def _discover_and_keep(
+    location: GitLocation, previous: _Entry | None
+) -> tuple[RepoContext | None, GitRepoInfo]:
+    """Discover *location*'s identity and keep it with the refs' state it was read under.
+
+    The state is read before the discovery, so a change made during it moves the state
+    away from the one kept, and the next check discovers again. It is not read for a
+    pinned revision, whose identity is its object id, or for a root the last discovery
+    found was not a repository, which would spend a Git process on every poll.
+    """
+    started = time.monotonic()
+    state: str | None = None
+    if location.pinned_revision is None and (previous is None or previous.context is not None):
+        state = await ref_state(location)
     if location.pinned_revision is not None:
         context, info = await _discover_revision(location)
     else:
         context, info = await _discover_filesystem(location)
-    _REPO_CACHE[key] = (now + GIT_REPO_INFO_TTL_S, context, info)
+    _REPO_CACHE[location.identity] = _Entry(
+        expires_at=started + GIT_REPO_INFO_TTL_S,
+        context=context,
+        info=info,
+        state=state if context is not None else None,
+        discovered_at=started,
+    )
     return context, info
+
+
+def _rediscover_in_background(location: GitLocation) -> None:
+    """Discover *location* again off the request path, once at a time."""
+
+    key = location.identity
+    if key in _REFRESHING:
+        return
+    entry = _REPO_CACHE.get(key)
+
+    async def run() -> None:
+        await _discover_and_keep(location, entry)
+
+    task = asyncio.get_running_loop().create_task(run())
+    _REFRESHING[key] = task
+
+    def done(finished: asyncio.Task[None]) -> None:
+        if _REFRESHING.get(key) is finished:
+            del _REFRESHING[key]
+        # Nothing awaits this task, so its failure is reported here; the entry it would
+        # have replaced stays, and the next check past the TTL tries again.
+        if not finished.cancelled() and (error := finished.exception()) is not None:
+            log.warning("background git rediscovery failed for %s: %r", key, error)
+
+    task.add_done_callback(done)
 
 
 # Serving a different root must not keep answering with the previous

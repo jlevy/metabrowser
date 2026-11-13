@@ -235,6 +235,22 @@ files from the main worktree; `packed-refs` is moved with the files backend only
 one that has it. It also holds a repeat running no Git and a pin’s store moving its
 answers.
 
+The repository identity (`git/repo.py`: whether the served root is a repository’s top
+level, and its `HEAD`) is checked against the same state once its five-second TTL has
+passed:
+
+- an unchanged state keeps the identity for another TTL without running Git;
+- a changed state, or one that cannot be named, discovers it again inline;
+- an identity `GIT_REPO_INFO_MAX_AGE_S` old is discovered again in the background, for
+  what the state does not cover: the reader’s global Git configuration and Git going
+  missing.
+
+Before, the first Git request after five quiet seconds paid three Git processes, about
+55 ms at the server.
+A page that kept its answers, and so asked less often, moved that cost onto a hover or a
+first commit (exp-081). `tests/test_git_repo_identity.py` holds the check and the
+background discovery.
+
 ### Comparisons the page keeps
 
 The Commits panel keeps each answered comparison in the page, keyed by the request’s own
