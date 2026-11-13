@@ -19,25 +19,38 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
 ]);
 
 /**
- * The addresses of the served images this page has loaded, oldest first.
+ * The served images this page has loaded and still holds, by address, least recently
+ * loaded first; each address maps to its file's inventory path.
  *
  * KPress writes `loading="lazy"` on a document's images, and entering a file again builds
  * its document again. WebKit, the macOS app's engine, does not give a new lazy image the
  * copy the page holds: once layout shows the image it asks the network again, so the
  * images at the top of a document entered again had none for the round trip. An image
  * made eager before its address is set takes the held copy, as a lazy one does in Chrome.
- * An image the page has not loaded stays lazy. docs/design-system.md, "A Repaint Keeps
- * Its Images", has the measurements.
+ * An image the page has not loaded stays lazy, and so does one whose file may have
+ * changed since it loaded (`forgetChangedImages`). docs/design-system.md, "A Repaint
+ * Keeps Its Images", has the measurements.
  *
- * At most as many as one document's enhancer admits, so a long document's first images
- * are not forgotten by the time the reader leaves it. Past that, the oldest is forgotten
- * and loads lazily again.
- *
- * @type {Set<string>}
+ * @type {Map<string, string>}
  */
-const heldImages = new Set();
-/** @type {WeakSet<Element>} The images whose address the enhancer set. */
-const servedImages = new WeakSet();
+const heldImages = new Map();
+/**
+ * How many held images the page remembers; past it, the least recently loaded is
+ * forgotten and loads lazily again. A document's first images load first, so one with
+ * more images than this loses its first ones first.
+ *
+ * Measured 2026-11-13 through this module in the app's WKWebView (WebKit 21624) and
+ * headless Chrome 152, with 60-character paths. An entry is 140 bytes of V8 heap after a
+ * GC, 143 KB at this bound, and 321 bytes of JavaScriptCore heap capacity in the system
+ * `jsc`, 329 KB. Remembering a load took 1 to 2.5 µs, and as long past the bound, where
+ * each evicts one. Entering again a document of 1,024 held images asked for none of them
+ * and showed it in 67 to 87 ms in WebKit and 50 to 66 ms in Chrome, against 58 to 62 and
+ * 38 to 40 ms on main, with no frame over 50 ms; main's WebKit asked for 224 images
+ * again. Both costs grow with the bound, and one re-entry makes at most this many eager.
+ */
+export const MAX_HELD_IMAGES = 1024;
+/** @type {WeakMap<Element, string>} The images whose address the enhancer set, by path. */
+const servedImages = new WeakMap();
 
 /**
  * Make *image* eager if the page holds the image at *href*, before its address is set.
@@ -58,18 +71,73 @@ function loadHeldImageEagerly(image, href) {
 /** @param {Event} event */
 function rememberHeldImage(event) {
   const image = /** @type {Element | null} */ (event.target);
-  const href = image && servedImages.has(image) ? image.getAttribute("src") : null;
-  if (!href) {
+  const path = image ? servedImages.get(image) : undefined;
+  const href = path === undefined ? null : image?.getAttribute("src");
+  if (path === undefined || !href) {
     return;
   }
   heldImages.delete(href);
-  heldImages.add(href);
-  if (heldImages.size > MAX_ENHANCED_TARGETS) {
-    const oldest = heldImages.values().next();
+  heldImages.set(href, path);
+  if (heldImages.size > MAX_HELD_IMAGES) {
+    const oldest = heldImages.keys().next();
     if (!oldest.done) {
       heldImages.delete(oldest.value);
     }
   }
+}
+
+/**
+ * Forget each held image whose file a filesystem change may have replaced, so the next
+ * document that shows it loads it lazily, from the server, as one never loaded does.
+ *
+ * *paths* are an inventory change as `onInventoryChange` reports it: each changed entry
+ * with every ancestor whose totals it moved, down to the depth the shell watches, so a
+ * change deeper than that is reported by its deepest watched ancestor. Only the deepest
+ * reported paths bound a change: an ancestor of another reported path was reported for
+ * that one. A held image at or beneath one of them is forgotten, and an unchanged image
+ * beside them is kept. Null, for a reconnect, a resync, or the end of the first crawl,
+ * forgets every image.
+ *
+ * @param {ReadonlyArray<string> | null} paths
+ */
+export function forgetChangedImages(paths) {
+  if (!paths) {
+    heldImages.clear();
+    return;
+  }
+  const reportedAncestors = new Set();
+  for (const path of paths) {
+    for (let ancestor = parentPath(path); ancestor !== null; ancestor = parentPath(ancestor)) {
+      reportedAncestors.add(ancestor);
+    }
+  }
+  const changed = new Set(paths.filter((path) => !reportedAncestors.has(path)));
+  for (const [href, path] of heldImages) {
+    for (
+      let scope = /** @type {string | null} */ (path);
+      scope !== null;
+      scope = parentPath(scope)
+    ) {
+      if (changed.has(scope)) {
+        heldImages.delete(href);
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * The inventory path of *path*'s folder: "" for a top-level entry, null for the root.
+ *
+ * @param {string} path
+ * @returns {string | null}
+ */
+function parentPath(path) {
+  if (path === "") {
+    return null;
+  }
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "" : path.slice(0, slash);
 }
 
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
@@ -239,7 +307,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             const href = rawResourceHref(resolved);
             if (tagName === "img") {
               loadHeldImageEagerly(resource, href);
-              servedImages.add(resource);
+              servedImages.set(resource, normalizedFilePath(resolved.path));
             }
             resource.setAttribute(descriptor.attribute, href);
           } else if (resolved.status !== "external") {

@@ -9,9 +9,16 @@ All notable changes to Metabrowser are documented here.
   images, which WebKit fetched again before drawing them, so the images at the top were
   blank for a moment. An image already loaded in the page now loads at once from that
   copy; one you have not reached yet still waits until you scroll to it.
-  An image changed on disk while the page is open shows its new content after a reload,
-  as it already did in Chrome.
+  When an image file changes, the page forgets its copy, so in the macOS app the next
+  return fetches the new image; editing the document itself keeps its images.
+  In Chrome, before this change and after it, a replaced image can show its old copy,
+  even after a reload, until Chrome no longer treats its cached copy as fresh.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
+  shell observes: the changed inventory paths with their ancestors, or `null` when
+  anything may have changed.
+  See [the plugin guide](docs/plugins.md).
 
 - A folder’s Overview keeps its section labels at one left edge at every window width.
   **File Overview**, **README**, and File Overview’s controls and **Details** toggle

@@ -1,24 +1,29 @@
 // Which of a Markdown document's images load eagerly when its file is entered again
 // (docs/design-system.md, "A Repaint Keeps Its Images").
 //
-// The production link enhancer resolves each image's address, as every mount of the
-// rendered view has it do, on images that arrive as KPress writes them: lazy, with the
-// address the author wrote. The engine's loads are events this session fires, so it
-// decides which images the page holds: entering a file again builds its document again,
-// and an image whose served address has loaded in this page is made eager before that
-// address is set, so it takes the held copy. Its authored address goes first, because an
-// eager image asks for its address at once. An image not loaded, and one the enhancer
-// did not serve, stays lazy. After as many images as one document admits have loaded
-// since, the oldest are forgotten and load lazily again.
+// The production link enhancer, imported from its file with every module it imports,
+// resolves each image's address, as every mount of the rendered view has it do, on images
+// that arrive as KPress writes them: lazy, with the address the author wrote. The engine's
+// loads are events this session fires, so it decides which images the page holds, and
+// filesystem changes are calls to `forgetChangedImages`, as the plugin's
+// `onInventoryChange` subscription makes them.
 //
-// This checks attributes, their order, and listeners, not loading or paint, which are the
-// engine's; the design-system section has the WebKit and Chrome measurements.
-const fs = require("node:fs");
+// An image whose served address has loaded in this page is made eager before that address
+// is set, its authored address removed first; any other stays lazy. The record keeps
+// `MAX_HELD_IMAGES` images and forgets the least recently loaded past that. A change
+// forgets the held images at or beneath its deepest reported paths, and a reconnect
+// forgets them all.
+//
+// This checks attributes, their order, listeners, and the record, not loading or paint,
+// which are the engine's; the design-system section has the WebKit and Chrome
+// measurements.
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const pluginDir = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
+const enhancerUrl = pathToFileURL(
+  path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/link-enhancer.js"),
+).href;
 
 class ElementShim {}
 global.Element = ElementShim;
@@ -102,32 +107,8 @@ function image(src) {
   return new FakeElement("img", { loading: "lazy", src });
 }
 
-const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const fileUrl = (name) => pathToFileURL(path.join(pluginDir, name)).href;
-
-async function loadEnhancer() {
-  const read = (name) => fs.readFileSync(path.join(pluginDir, name), "utf8");
-  const coordinator = dataUrl(
-    read("reconciliation-coordinator.js")
-      .replace('"./links.js"', JSON.stringify(fileUrl("links.js")))
-      .replace('"./project-adapters.js"', JSON.stringify(fileUrl("project-adapters.js")))
-      .replace('"./wiki-resolver.js"', JSON.stringify(fileUrl("wiki-resolver.js"))),
-  );
-  // No wiki targets here, and so no Worker.
-  const wiki = dataUrl("export function enhanceWikiLinks(){return {dispose(){}}}");
-  const worker = dataUrl("export function acquireMarkdownWorkerClient(){return {dispose(){}}}");
-  const enhancer = read("link-enhancer.js")
-    .replace('"./dom-traversal.js"', JSON.stringify(fileUrl("dom-traversal.js")))
-    .replace('"./github-localizer.js"', JSON.stringify(fileUrl("github-localizer.js")))
-    .replace('"./links.js"', JSON.stringify(fileUrl("links.js")))
-    .replace('"./markdown-worker-client.js"', JSON.stringify(worker))
-    .replace('"./reconciliation-coordinator.js"', JSON.stringify(coordinator))
-    .replace('"./wiki-enhancer.js"', JSON.stringify(wiki));
-  return import(dataUrl(enhancer));
-}
-
 async function run() {
-  const { enhanceRenderedLinks } = await loadEnhancer();
+  const { enhanceRenderedLinks, forgetChangedImages, MAX_HELD_IMAGES } = await import(enhancerUrl);
   let current = { path: "docs/readme.md" };
   const mb = {
     decorateExternalLink() {},
@@ -140,8 +121,8 @@ async function run() {
   const eventTarget = { addEventListener() {}, removeEventListener() {} };
   const options = { cancel: () => {}, eventTarget, schedule: () => 0 };
 
-  /** Enter *documentPath*, its images parsed from *sources*, as a mount does. */
-  function enter(documentPath, sources) {
+  /** Enter `docs/readme.md` with images parsed from *sources*, as a mount does. */
+  function enter(sources, documentPath = "docs/readme.md") {
     current = { path: documentPath };
     const images = sources.map(image);
     const container = new FakeContainer(images);
@@ -157,11 +138,29 @@ async function run() {
       changes: element.changes,
     }));
 
+  /** Enter a document showing *sources* and report each one's loading; load nothing. */
+  function observe(sources) {
+    const entered = enter(sources);
+    entered.handle.dispose();
+    return Object.fromEntries(
+      sources.map((source, index) => [source, entered.images[index].getAttribute("loading")]),
+    );
+  }
+
+  /** Enter a document showing *sources*, and the engine loads each, in order. */
+  function loadAll(sources) {
+    const entered = enter(sources);
+    for (const element of entered.images) {
+      entered.container.load(element);
+    }
+    entered.handle.dispose();
+  }
+
   const README = ["images/shown.png", "images/far.png", "https://example.com/remote.png"];
   const steps = [];
 
   // First entry: the page holds nothing, so every image is lazy.
-  const first = enter("docs/readme.md", README);
+  const first = enter(README);
   steps.push({
     step: "first entry",
     listens: { load: first.container.listeners.get("load")?.capture ? "capture" : null },
@@ -174,41 +173,54 @@ async function run() {
   steps.push({ step: "left", listening: [...first.container.listeners.keys()] });
 
   // Entering again builds the document again.
-  const second = enter("docs/readme.md", README);
+  const second = enter(README);
   steps.push({ step: "entered again", images: facts(second.images) });
-  // The reader scrolls to the far image.
-  second.container.load(second.images[1]);
   second.handle.dispose();
 
-  const third = enter("docs/readme.md", README);
-  steps.push({ step: "entered after reaching the far image", images: facts(third.images) });
-  third.handle.dispose();
-
-  // Held by its served address, whichever document shows it.
-  const other = enter("docs/guide/other.md", ["../images/shown.png"]);
-  steps.push({ step: "another document shows the same image", images: facts(other.images) });
-  other.handle.dispose();
-
-  // As many images as one document admits load after them.
-  const gallerySources = Array.from({ length: 4096 }, (_, index) => `gallery/${index}.png`);
-  const gallery = enter("docs/gallery.md", gallerySources);
-  for (const element of gallery.images) {
-    gallery.container.load(element);
-  }
-  gallery.handle.dispose();
-  const forgotten = enter("docs/readme.md", README);
+  // A reconnect forgets every image; then the record fills to its bound, least recently
+  // loaded first.
+  forgetChangedImages(null);
+  steps.push({ step: "after a reconnect", loading: observe(["images/shown.png"]) });
+  const gallery = Array.from({ length: MAX_HELD_IMAGES }, (_, index) => `gallery/${index}.png`);
+  loadAll(gallery);
+  const last = gallery.at(-1);
   steps.push({
-    step: "entered after 4,096 other images loaded",
-    images: facts(forgotten.images),
+    step: `${MAX_HELD_IMAGES} images loaded: the bound`,
+    loading: observe([gallery[0], last]),
   });
-  forgotten.handle.dispose();
+  loadAll(["extra/0.png"]);
+  steps.push({
+    step: "one more loads: the least recently loaded is forgotten",
+    loading: observe([gallery[0], gallery[1], "extra/0.png"]),
+  });
+  // Loading an older image again makes it the most recently loaded.
+  loadAll([gallery[1]]);
+  loadAll(["extra/1.png"]);
+  steps.push({
+    step: "gallery/1.png loads again, then one more loads",
+    loading: observe([gallery[1], gallery[2], gallery[3], "extra/1.png"]),
+  });
 
-  return { steps };
+  // Filesystem changes, as the shell reports them: each changed entry with its ancestors.
+  forgetChangedImages(null);
+  const HELD = ["images/shown.png", "images/far.png", "deep/x/y/pic.png", "deep/z.png"];
+  loadAll(HELD);
+  forgetChangedImages(["docs/readme.md", "docs", ""]);
+  steps.push({ step: "the Markdown changes", loading: observe(HELD) });
+  forgetChangedImages(["docs/images/shown.png", "docs/images", "docs", ""]);
+  steps.push({ step: "images/shown.png is replaced", loading: observe(HELD) });
+  // Too deep for the shell to watch: reported by its deepest watched ancestor.
+  forgetChangedImages(["docs/deep/x", "docs/deep", "docs", ""]);
+  steps.push({ step: "a change somewhere under deep/x", loading: observe(HELD) });
+  forgetChangedImages(null);
+  steps.push({ step: "a reconnect", loading: observe(HELD) });
+
+  return { bound: MAX_HELD_IMAGES, steps };
 }
 
 run().then(
   (result) => {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(result, null, 2));
   },
   (error) => {
     console.error(error);
