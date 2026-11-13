@@ -1102,16 +1102,22 @@ page lays out at that viewport and only a corner is drawn.
 `--wait-for-screen SECONDS` waits for an unlocked screen before the first run.
 Each probe process holds an activity assertion that keeps the display awake and the
 process out of App Nap, which would otherwise coalesce the timers that poll the page.
+It also watches a stdin pipe from `wkprobe.mjs` and exits when that closes, so a probe
+whose wrapper was killed does not run on against a store or hold the display awake.
 
-**One series at a time.** `run` and `clean` remove the probe’s WebKit data, so either
-could wipe a running series’ store between its first launch and its relaunch.
-Both hold the series lock for as long as they run, a directory made with one atomic
+**One probe series at a time.** `run` and `clean` remove the probe’s WebKit data, so
+either could wipe a running series’ store between its first launch and its relaunch.
+Both hold the probe lock for as long as they run, a directory made with one atomic
 `mkdir` with an `owner` file inside, and refuse to start while another process holds it.
-The default is `metabrowser-perf-series.lock` in the per-user temporary directory; a
-round whose harnesses share another lock passes it with `--lock DIR`. A lock whose owner
-is no longer running is reported as stale and left for a person to remove.
-Each run also writes a sentinel under the probe’s `~/Library` name, which every cleanup
-removes, and refuses itself (`store_wiped`) if a launch finds it gone.
+It keeps probe series and cleans apart and nothing else: the transition harness takes no
+lock, so a probe series can still run beside a timed transition round, and a round keeps
+the two apart itself.
+The default is `~/Library/Caches/metabrowser-wkprobe.lock`, beside the data it protects
+and keyed by the home directory as that data is; `--lock DIR` names another.
+A lock whose owner is no longer running is reported as stale and left for a person to
+remove. Each run also writes a sentinel under the probe’s `~/Library` name, which every
+cleanup removes, checks it after every launch, and refuses itself (`store_wiped`) if it
+is gone.
 
 **How it is built.** `wkprobe.swift` is one Swift file, compiled by `swiftc` the first
 time a source, Info.plist, flag, and compiler combination is seen, into
@@ -1163,41 +1169,67 @@ one fixed proxy origin:
 `hidden-then-show` loads cold into a store of its own, so what it measures does not
 depend on which other scenarios ran.
 
-Ready is a subset of the transition scenario’s file-ready test: the route, the Files
-main tab, the exact subject rendered in a laid-out active view with child content, the
-pending modifier cleared, and no placeholder laid out in the active view.
-It does not look for useful visible content.
+Ready is a subset of the transition scenario’s file-ready test with one of its
+convergence checks: the route, the Files main tab, the exact subject rendered in a
+laid-out active view with child content, and no placeholder laid out in the active view
+(`fileReady` in `transitions-journeys.mjs`), and the pending modifier cleared
+(`fileConverged`). It does not look for useful visible content.
 In the visible scenarios, ready and mounted (`ready_ms`, `mounted_ms`) are DOM states
 polled from the native side every 10 ms, so a page’s throttled timers cannot slow the
-clock.
-In `hidden-then-show`, an animation-frame chain started just before the show tests
-the predicate at the start of each frame the page runs visible, and
+clock. Each poll forces a style and layout pass on the page’s main thread, the same in
+every condition; while hidden, the poll does the same.
+In `hidden-then-show`, an animation-frame chain started just before the show tests the
+predicate at the start of each frame the page runs visible, and
 `show_to_painted_ready_ms` is the start of the frame after the first one that began
 ready: the double-animation-frame boundary of the transition scenarios, on the page’s
 clock from the show.
 A page that was ready while hidden is timed to its first painted frame, not to the first
-poll. `show_to_first_frame_ms` and the DOM read `show_to_ready_dom_ms` are shown and not
-judged. Not mounting, or not becoming ready, while hidden is an outcome
-(`mounted_while_hidden`, `ready_while_hidden`), not a refusal; `hidden_mounted_ms` and
-`hidden_ready_ms` exist only in the runs where it happened, and `compare` lists them
-apart when either side has fewer than three.
+poll. After the show the native side polls only two reads that force no layout, whether
+the page is visible and whether the chain has stamped, so the only layout the probe adds
+on that path is the predicate the chain tests once a frame.
+`show_to_first_frame_ms` and `show_to_ready_frame_ms` (the start of the first frame that
+began ready) are shown and not judged.
+Not mounting, or not becoming ready, while hidden is an outcome (`mounted_while_hidden`,
+`ready_while_hidden`), not a refusal; `hidden_mounted_ms` and `hidden_ready_ms` exist
+only in the runs where it happened, and `compare` lists them apart when either side has
+fewer than three.
 
 **A relaunch depends on the install’s age.** An asset whose `Cache-Control` has no
 freshness directive stays fresh for a tenth of the age its `Last-Modified` gave it when
 it was last validated.
 Whether a relaunch revalidates the stamped assets therefore depends on how long ago the
 condition’s files were written, compared with the seconds between the launches.
-Each row records, for every asset the first launch stored, its lifetime minus the time
-from its last validation to the relaunch (`relaunch_freshness`), and `compare` classes
-each run as `fresh` or `stale` when every asset judged by age is more than 5 s on one
-side of its lifetime, `mixed` otherwise, and `by-headers` when headers decide every
-asset. It does not judge `relaunch`, and lists it as a gap, when a run is `mixed`, when
-one condition’s runs differ, or when both conditions are judged by age and their regimes
+For every asset the first launch stored that is judged by age, each row records its URL
+and its lifetime minus the time from its last validation to the relaunch’s spawn and to
+the end of the relaunch step, between which WebKit looked it up
+(`relaunch_freshness.assets`), with counts of the assets whose headers decide.
+`compare` classes each run as `fresh` when every asset judged by age was still fresh at
+the step’s end, `stale` when every one was already stale at the spawn, each by more than
+a 2 s guard for the 1 s resolution of `Last-Modified` and `Date`, `mixed` otherwise, and
+`by-headers` when headers decide every asset.
+It does not judge `relaunch`, and lists it as a gap, when a run is `mixed`, when one
+condition’s runs differ, or when both conditions are judged by age and their regimes
 differ. A condition whose headers decide is compared with either regime, because the
-headers are then what differs, and the note names the other side’s regime.
-Two conditions whose files were written at least ten minutes before the series relaunch
-`fresh` throughout; a `stale` reading needs files younger than ten times the gap between
-launches, which a series outgrows within minutes.
+headers are then what differs.
+Every `relaunch` verdict and `--expect` result names both sides’ regimes.
+
+**What the stable regime can show.** Files written at least ten times the seconds from
+the first launch’s last validation to the end of the relaunch step before the series
+relaunch `fresh` throughout: that span is under a minute in the standard regime, so ten
+minutes is enough, and about 16 minutes with `--exit-delay-ms` at its 60 s maximum.
+A `stale` reading needs files younger than ten times that span, which a series outgrows
+within a run or two, and `compare` then blocks the condition whose runs differ.
+So over three or more runs a side, the only regime an age-judged control holds is
+`fresh`, in which WebKit serves its stamped assets from cache with no request.
+A header change such as H87’s immutable stamped assets can then show a relaunch saving
+only on the families revalidated every time (`plugin_static` and `kpress_static`, served
+`no-cache`); its `static_*` figures read 0 against 0 by construction, and the verdict
+says so. `--stale-assets` holds the stamped share stale to measure it: the proxy gives
+every asset response that no freshness directive covers `Cache-Control: no-cache`, so an
+age-judged condition revalidates its stamped assets at every relaunch, as a stale
+install does, and is classed `stale` throughout.
+It is a diagnostic regime, recorded in `regime_flags`, and it can also add revalidations
+inside a load where WebKit reuses an asset.
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when:
@@ -1251,17 +1283,23 @@ It notes mixed WebKit, macOS, or harness states, each condition’s catalog tota
 relaunch regimes, and runs without a back-to-back partner.
 It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
 wrong-way result, a gap, or an expectation not met.
+A figure every valid run of its scenario should have (`ready_ms`, `mounted_ms`, and
+`commit_ms` in the visible scenarios; the show figures, `commit_ms`, and the two hidden
+outcomes in `hidden-then-show`) is a gap even when no run on either side has it.
 Figures it shows but does not judge are marked: `show_to_first_frame_ms`,
-`show_to_ready_dom_ms`, `hidden_ready_ms`, `requests_background`, `requests_stream`,
+`show_to_ready_frame_ms`, `hidden_ready_ms`, `requests_background`, `requests_stream`,
 `requests_outgoing`, and the `revalidated` counts.
-`tests/test_wkprobe_compare.py` runs these decisions on synthetic rows.
+An `--expect` may name one of them; its result is reported the same way.
+`tests/test_wkprobe_compare.py` runs these decisions, and the run side’s step
+attribution, scenario rows, and lock, on synthetic rows and probe output.
 
 `--no-preflight` skips the screen check before each run, so the other guards can be
 exercised while the screen is locked, when every scenario is refused by its own screen
 guard; on an unlocked screen its runs are valid.
 `--exit-delay-ms MS` keeps each probe process alive after it writes its result, to test
 whether a relaunch depends on cache writes the first process had not yet flushed.
-Both are recorded in `regime_flags`, and `compare` refuses to mix them and notes either.
+These, and `--stale-assets`, are recorded in `regime_flags`, and `compare` refuses to
+mix them and notes any.
 
 **Limits.** Only a 160×100 corner of the page is drawn, so raster and compositing cost
 less than in the app’s full window.
