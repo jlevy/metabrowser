@@ -31,19 +31,25 @@ import Testing
         #expect(abs(layout.mark.width - 18.814) < 0.001)
     }
 
-    @Test func itsInkEndsAboutNinePointsFromTheWindowsTrailingEdge() {
+    @Test func itsInkEndsAboutFourteenPointsFromTheWindowsTrailingEdge() {
         let layout = TitleBarMarkLayout(markAspectRatio: aspectRatio, barHeight: barHeight)
-        // A whole-point accessory and a whole-point stem: 9.19 points from the edge.
-        #expect(layout.width == 32)
-        #expect(layout.mark.minX == 4)
+        // A whole-point accessory and a whole-point stem: 14.19 points from the edge.
+        #expect(TitleBarMarkLayout.edgeGap == 14)
+        #expect(layout.width == 36)
+        #expect(layout.mark.minX == 3)
         #expect(layout.trailingGap >= TitleBarMarkLayout.edgeGap && layout.trailingGap < TitleBarMarkLayout.edgeGap + 0.5)
-        #expect(abs(layout.trailingGap - 9.186) < 0.001)
+        #expect(abs(layout.trailingGap - 14.186) < 0.001)
     }
 
-    @Test func theHighlightSurroundsTheMarkInsideTheAccessory() {
+    @Test func theSquareHighlightSurroundsTheMarkClearOfTheEdge() {
         let layout = TitleBarMarkLayout(markAspectRatio: aspectRatio, barHeight: barHeight)
         #expect(layout.highlight.contains(layout.mark))
-        #expect(layout.highlight == layout.mark.insetBy(dx: -4, dy: -3))
+        // Three points past the ink on every side, with square corners, as the web page's
+        // hover on the folder's heading.
+        #expect(layout.highlight == layout.mark.insetBy(dx: -3, dy: -3))
+        #expect(TitleBarMarkLayout.highlightCornerRadius == 0)
+        // It never reaches the window's trailing edge: 11.19 points short of it.
+        #expect(abs(layout.highlightTrailingGap - 11.186) < 0.001)
         #expect(layout.highlight.minX >= 0 && layout.highlight.maxX <= layout.width)
         #expect(layout.highlight.minY >= 0 && layout.highlight.maxY <= barHeight)
     }
@@ -79,7 +85,7 @@ import Testing
         #expect(mark.released(inside: true) == nil)
     }
 
-    @Test func aReleaseOutsideTheCapsuleOpensNothing() {
+    @Test func aReleaseOutsideTheHighlightOpensNothing() {
         var mark = TitleBarMarkInteraction()
         mark.pressed(at: inside)
         #expect(mark.released(inside: false) == nil)
