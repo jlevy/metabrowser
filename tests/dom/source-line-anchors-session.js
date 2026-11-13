@@ -53,6 +53,29 @@ function detach(node) {
   }
 }
 
+// Inserting a fragment inserts its children, in order, and empties it.
+class FakeFragment {
+  constructor() {
+    this.nodeType = 11;
+    this.childNodes = [];
+  }
+  appendChild(node) {
+    detach(node);
+    node.parentNode = this;
+    this.childNodes.push(node);
+    return node;
+  }
+}
+
+const inserted = (node) => (node.nodeType === 11 ? [...node.childNodes] : [node]);
+
+/** The text an element's own text nodes hold, in order: what its line boxes show. */
+const ownText = (element) =>
+  element.childNodes
+    .filter((node) => node.nodeType === 3)
+    .map((node) => node.nodeValue)
+    .join("");
+
 function matchesCompound(element, compound) {
   const [tag, ...classes] = compound.split(".");
   if (tag && element.tagName !== tag.toUpperCase()) {
@@ -135,9 +158,22 @@ class FakeElement {
     this.appendChild(new FakeText(String(value)));
   }
   appendChild(node) {
+    return this.insertBefore(node, null);
+  }
+  insertBefore(node, reference) {
+    for (const child of inserted(node)) {
+      detach(child);
+      child.parentNode = this;
+      if (reference) {
+        this.childNodes.splice(this.childNodes.indexOf(reference), 0, child);
+      } else {
+        this.childNodes.push(child);
+      }
+    }
+    return node;
+  }
+  removeChild(node) {
     detach(node);
-    node.parentNode = this;
-    this.childNodes.push(node);
     return node;
   }
   prepend(node) {
@@ -218,9 +254,11 @@ class FakeElement {
     return this.isConnected ? [{}] : [];
   }
   getBoundingClientRect() {
-    // Only the gutter is measured: one text node of rendered line boxes.
-    const lines =
-      this.firstChild?.nodeType === 3 ? this.firstChild.nodeValue.split("\n").length : 0;
+    // Only the gutter is measured: its text nodes' rendered line boxes, all of them,
+    // so numbers left behind after the ones written make it taller, as they do on
+    // screen.
+    const text = ownText(this);
+    const lines = text ? text.split("\n").length : 0;
     return { top: 0, height: this.isConnected ? lines * renderedLinePx : 0 };
   }
   scrollIntoView(options) {
@@ -241,8 +279,18 @@ function unescapeHtml(text) {
 
 // A source host builds the element tree the SDK's markup describes: the notices, the
 // copy wrap with its copy payload when the text is in several code blocks, and the pre
-// with its gutter and code blocks. It reads only that markup's shape.
+// with its gutter and code blocks. It reads only that markup's shape. Its text goes in
+// as one node per element, as Chrome's HTML parser makes it, unless `parserTextLimit`
+// is set: WebKit's parser splits text into nodes of 65,536 code units (at grapheme
+// boundaries, which ASCII text here does not need).
 class FakeSourceHost extends FakeElement {
+  parserTextLimit = 0;
+  parsedText(element, text) {
+    const limit = this.parserTextLimit || text.length;
+    for (let start = 0; start < text.length; start += limit) {
+      element.appendChild(new FakeText(text.slice(start, start + limit)));
+    }
+  }
   set innerHTML(markup) {
     for (const node of [...this.childNodes]) {
       detach(node);
@@ -271,13 +319,13 @@ class FakeSourceHost extends FakeElement {
       gutter.setAttribute(name, value);
     }
     if (source[4]) {
-      gutter.appendChild(new FakeText(source[4]));
+      this.parsedText(gutter, source[4]);
     }
     for (const [, className, text] of source[5].matchAll(
       /<code class="([^"]+)">([^<]*)<\/code>/g,
     )) {
       const code = pre.appendChild(new FakeElement("code", className));
-      code.appendChild(new FakeText(unescapeHtml(text)));
+      this.parsedText(code, unescapeHtml(text));
     }
     if (markup.includes("metabrowser-source-more-footer")) {
       this.appendChild(
@@ -300,6 +348,7 @@ const fakeDocument = {
   body: { append() {} },
   contains: (node) => pane.contains(node),
   cookie: "",
+  createDocumentFragment: () => new FakeFragment(),
   createElement: (tag) => new FakeElement(tag),
   createTextNode: (value) => new FakeText(value),
   defaultView: null,
@@ -573,7 +622,7 @@ const settle = () => new Promise((resolve) => setTimeout(() => setImmediate(reso
 function snapshot(step) {
   const pre = host.querySelector("pre.metabrowser-source-lines");
   const gutter = pre.querySelector(".source-line-numbers");
-  const numbers = gutter.firstChild?.nodeType === 3 ? gutter.firstChild.nodeValue : "";
+  const numbers = ownText(gutter);
   const notice = host.querySelector("div.metabrowser-source-anchor-notice");
   const status = host.querySelector("span.metabrowser-source-anchor-status");
   return {
@@ -639,7 +688,14 @@ async function main() {
     content_truncated: false,
   });
   anchors.refresh(fakeDocument, nextCached);
-  steps.push({ ...snapshot("Load more reaches line 60"), appended });
+  steps.push({
+    ...snapshot("Load more reaches line 60"),
+    appended,
+    // The numbers Load more added follow the ones the view opened with.
+    gutterTextNodes: host
+      .querySelector(".source-line-numbers")
+      .childNodes.filter((node) => node.nodeType === 3).length,
+  });
 
   clickLine(3, false);
   await settle();
@@ -837,8 +893,64 @@ async function main() {
     code: crlfPre.querySelector("code").textContent,
   };
 
+  // WebKit's HTML parser splits a long gutter and long code into text nodes of 65,536
+  // code units. Load more past an anchor on such a view: the gutter must number every
+  // line once, its height must give one line's pitch, and what Load more wrote must be
+  // in nodes within the same bound.
+  host.remove();
+  crlf.remove();
+  scrollLog.splice(0);
+  const webkit = new FakeSourceHost("div", "content-body");
+  webkit.parserTextLimit = 65_536;
+  pane.appendChild(webkit);
+  const webkitHead = numbered(1, 15_000);
+  const webkitTail = numbered(15_001, 80_000);
+  sandbox.metabrowser.renderSourceView(webkit, {
+    path: "src/webkit.py",
+    ext: ".py",
+    content: webkitHead,
+    content_truncated: true,
+  });
+  sandbox.dispatchEvent(
+    new FakeCustomEvent("metabrowser:navigation-fragment", {
+      detail: { target: { path: "src/webkit.py", fragment: "L70000" } },
+    }),
+  );
+  const webkitPre = webkit.querySelector("pre.metabrowser-source-lines");
+  const webkitGutter = webkitPre.querySelector(".source-line-numbers");
+  const webkitCode = webkitPre.querySelector("code");
+  const textNodes = (element) => element.childNodes.filter((node) => node.nodeType === 3);
+  const longest = (element) => Math.max(...textNodes(element).map((node) => node.nodeValue.length));
+  const opened = {
+    gutterTextNodes: textNodes(webkitGutter).length,
+    codeTextNodes: textNodes(webkitCode).length,
+    value: `${webkitGutter.getAttribute("aria-valuenow")} of ${webkitGutter.getAttribute("aria-valuemax")}: ${webkitGutter.getAttribute("aria-valuetext")}`,
+  };
+  const webkitAppended = sandbox.MetabrowserSourceAppend.appendSourceText(fakeDocument, webkitTail);
+  anchors.refresh(fakeDocument, { content_truncated: false });
+  const allNumbers = Array.from({ length: 80_000 }, (_, index) => index + 1).join("\n");
+  const webkitParsedGutter = {
+    opened,
+    afterLoadMore: {
+      appended: webkitAppended,
+      gutterNumbersEachLineOnce: ownText(webkitGutter) === allNumbers,
+      gutterTextNodes: textNodes(webkitGutter).length,
+      longestGutterTextNode: longest(webkitGutter),
+      codeIsTheText: ownText(webkitCode) === webkitHead + webkitTail,
+      codeTextNodes: textNodes(webkitCode).length,
+      longestCodeTextNode: longest(webkitCode),
+      value: `${webkitGutter.getAttribute("aria-valuenow")} of ${webkitGutter.getAttribute("aria-valuemax")}: ${webkitGutter.getAttribute("aria-valuetext")}`,
+      highlighted: webkitPre.classList.contains("has-line-anchor")
+        ? `${webkitPre.styleValues.get("--mb-line-first")}–${webkitPre.styleValues.get("--mb-line-last")}`
+        : null,
+      renderedLinePx: `${renderedLinePx}px`,
+      linePitch: webkitPre.styleValues.get("--mb-line-pitch") ?? null,
+      scrolls: scrollLog.splice(0),
+    },
+  };
+
   process.stdout.write(
-    `${JSON.stringify({ grammar, lineCounts, describe, clicks, keys, spoken, preferredView, lineAt, steps, crlfLines, historyWrites }, null, 2)}\n`,
+    `${JSON.stringify({ grammar, lineCounts, describe, clicks, keys, spoken, preferredView, lineAt, steps, crlfLines, webkitParsedGutter, historyWrites }, null, 2)}\n`,
   );
 }
 
