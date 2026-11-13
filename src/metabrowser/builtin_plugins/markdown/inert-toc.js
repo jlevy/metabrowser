@@ -64,7 +64,7 @@ export function buildInertToc(doc, entries) {
     return null;
   }
   const toggle = doc.createElement("button");
-  toggle.className = "kpress-toc-toggle";
+  toggle.className = "kpress-toc-toggle disclosure-toggle";
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-label", "Table of contents");
