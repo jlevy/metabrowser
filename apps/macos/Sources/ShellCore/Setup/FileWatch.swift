@@ -98,7 +98,7 @@ public final class FileWatch {
 /// looks, and for `uv`, which changes the steps the first-run screen shows.
 public final class SetupWatch {
     public enum Action: Equatable, Sendable {
-        /// Run `metab --version` on the runtime again.
+        /// Validate the runtime again (`RuntimeDiscovery.validate`).
         case recheck
         /// Search for `metab` again: one appeared, changed, or went away.
         case discover

@@ -50,10 +50,12 @@ import Testing
         #expect(CLIServeLaunch.unservableReason(URL(filePath: "/tmp/My Notes at home")) == nil)
     }
 
-    @Test func argumentsServeTheRootWithoutOpeningABrowser() {
+    /// `--exit-on-eof` ties the server to the stdin pipe this app holds, so a crashed or
+    /// force-quit app leaves no server running.
+    @Test func argumentsServeTheRootWithoutOpeningABrowserAndEndWithTheApp() {
         let root = URL(filePath: "/tmp/My Notes", directoryHint: .isDirectory)
         #expect(CLIServeLaunch().arguments(serving: root)
-            == ["/tmp/My Notes/", "--no-open", "--host", "127.0.0.1", "--port", "8411"])
+            == ["/tmp/My Notes/", "--no-open", "--exit-on-eof", "--host", "127.0.0.1", "--port", "8411"])
         #expect(CLIServeLaunch().stdinLine == nil)
     }
 

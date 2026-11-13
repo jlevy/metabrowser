@@ -121,8 +121,9 @@ The app keeps watching for `metab`, and when it appears, opens the folders you a
 by itself. It runs a uv it finds by itself only to ask where uv installs tools, and only
 one that no other account can change; the screen names any it would not run, and why.
 
-If the `metab` it finds is older than 0.12.1, the app starts no server and shows the
-version it found and, once 0.12.1 is published, the command to upgrade:
+If the `metab` it finds is older than 0.12.1, or a development build of 0.12.1 from
+before `--exit-on-eof`, the app starts no server and shows the version it found and,
+once 0.12.1 is published, the command to upgrade:
 
 ```shell
 uv tool install --upgrade 'metabrowser>=0.12.1'

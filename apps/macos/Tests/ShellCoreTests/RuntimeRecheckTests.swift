@@ -160,7 +160,7 @@ import Testing
             fingerprint: { path in
                 order.append("fingerprint")
                 return path == "/Volumes/Home/.local/bin/metab" ? FileFingerprint(device: 1, inode: 7, size: 1, modified: 1, mode: 0o100755) : nil
-            })
+            }, refusal: { _ in nil })
         let report = await RuntimeDiscovery.discover(env)
         #expect(report.setup?.runtime.fingerprint?.inode == 7)
         #expect(order.all.prefix(2) == ["fingerprint", "run"])

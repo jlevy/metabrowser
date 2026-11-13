@@ -2,8 +2,13 @@ import AppKit
 import ShellCore
 import os
 
-enum AppLog {
-    static let subsystem = Bundle.main.bundleIdentifier ?? "io.github.jlevy.metabrowser"
+/// This build: its name, its variant, its bundle identifier, which keeps its settings
+/// and recents apart from the other variant's, and the log and session folders, named
+/// for the app, that both variants share.
+nonisolated let appIdentity = AppIdentity.current
+
+nonisolated enum AppLog {
+    static let subsystem = appIdentity.bundleIdentifier
     static let app = Logger(subsystem: subsystem, category: "app")
     static let server = Logger(subsystem: subsystem, category: "server")
 }
@@ -16,11 +21,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
+    /// The searches, rechecks, and choices that change `selection`, and what follows each.
+    private lazy var operations: RuntimeOperations = {
+        let settings = self.settings
+        let operations = RuntimeOperations(
+            selection: selection,
+            work: RuntimeOperations.Work(
+                discover: { await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime)) },
+                validate: { path, source in
+                    let fingerprint = FileFingerprint.of(path)
+                    return (fingerprint, await RuntimeDiscovery.validate(path, .live(saved: nil), source: source))
+                },
+                tools: { RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile) }))
+        operations.onChange = { [weak self] in self?.presentRuntime() }
+        operations.onStart = { start in
+            if case .recheck(let path) = start {
+                AppLog.app.info("\(path, privacy: .public) changed; checking its version again")
+            }
+        }
+        operations.onFinish = { [weak self] in await self?.finished($0) }
+        operations.onRefusal = { path, reason in
+            AppLog.app.error(
+                "not starting a server from \(path, privacy: .public): \(reason, privacy: .public); checking it again")
+        }
+        return operations
+    }()
     /// Open folders by canonical path (one session, and so one server, per root), plus
     /// the sessions of closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
     private lazy var folderWindows = FolderWindows(
-        store: SessionStore(directory: Self.supportDirectory),
+        store: SessionStore(directory: appIdentity.supportDirectory()),
         openSessions: { [weak self] in self?.sessions.openServers.compactMap { $0 as? FolderSession } ?? [] },
         session: { [weak self] path in
             self?.sessions[URL(filePath: path, directoryHint: .isDirectory).path(percentEncoded: false)] as? FolderSession
@@ -43,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.build(recentFolders: recentFolders)
+        NSApp.mainMenu = MainMenu.build(appName: appIdentity.name, recentFolders: recentFolders)
         installTerminationSignals()
         presentRuntime()
         // AppKit delivers launch folders (`open -a`, Open With) after this method and
@@ -62,11 +92,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             restoreLastSession()
         }
-    }
-
-    /// `~/Library/Application Support/<bundle identifier>`, so each variant has its own.
-    private static var supportDirectory: URL {
-        URL.applicationSupportDirectory.appending(path: AppLog.subsystem, directoryHint: .isDirectory)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -123,11 +148,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A last resort for any server child still unreaped here, which the normal quit
     /// path never leaves.
     func applicationWillTerminate(_ notification: Notification) {
-        for pid in sessions.childPIDs {
-            AppLog.app.error("server \(pid) still running at exit; stopping its group")
-            kill(-pid, SIGTERM)
-            for _ in 0..<20 where kill(pid, 0) == 0 { usleep(50_000) }
-            kill(-pid, SIGKILL)
+        let remaining = sessions.childPIDs
+        guard !remaining.isEmpty else { return }
+        AppLog.app.error("servers \(remaining, privacy: .public) still running at exit; stopping their groups")
+        let survivors = ExitSweep.end(remaining)
+        if !survivors.isEmpty {
+            AppLog.app.error("servers \(survivors, privacy: .public) outlasted SIGTERM; their groups got SIGKILL")
         }
     }
 
@@ -233,7 +259,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let open = sessions[key] as? FolderSession { return open }
         guard let setup = selection.setup, CLIServeLaunch.unservableReason(root) == nil else { return nil }
         let session = FolderSession(
-            root: root, setup: setup, gate: launchGate, accepted: { [weak self] in self?.selection.launchableSetup })
+            root: root, setup: setup, gate: launchGate,
+            accepted: { [weak self] in self?.operations.launchableSetup() })
         session.onWaitingForRuntime = { [weak self] in
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
             if self?.selection.isBusy == false { self?.showSettings(nil) }
@@ -281,42 +308,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Runtime
 
-    /// Marks a search as running before returning, so a folder requested in the same
-    /// run-loop turn waits for it, then runs the search.
+    /// A search the launch, Find Again, or the watch starts (`RuntimeOperations`). It
+    /// counts as running before this returns, so a folder requested in the same run-loop
+    /// turn waits for it.
     private func beginDiscovery() {
         guard !selection.isSearching else { return }
-        let ticket = selection.startSearch()
         runtimeModel.notice = nil
-        presentRuntime()
-        Task { await discoverRuntime(ticket) }
+        operations.beginDiscovery()
     }
 
-    /// Searches the documented locations for `metab`; on success, saves the result and
-    /// opens any folder that was waiting for it. Started only by `beginDiscovery`. A
-    /// search that a later Choose metab… overtook changes nothing when it finishes.
-    private func discoverRuntime(_ ticket: RuntimeSelection.Ticket) async {
-        let report = await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime))
-        let outcome = selection.finishSearch(ticket, with: report)
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-            if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
-                openFolder(nil)
+    /// Shows how a search, recheck, or choice ended, and opens the folders that waited
+    /// for a runtime when one was adopted. A search, recheck, or choice that a newer one
+    /// overtook changes nothing when it finishes.
+    private func finished(_ finish: RuntimeOperations.Finish) async {
+        if case .search(let report) = finish.operation {
+            for outcome in report.tried {
+                guard case .untrusted(let reason) = outcome.result else { continue }
+                AppLog.app.error("not running \(outcome.path, privacy: .public): \(reason, privacy: .public)")
             }
-            showPanelAfterDiscovery = false
-        case .notFound:
+        }
+        switch (finish.operation, finish.outcome) {
+        case (_, .adopted(let found)):
+            adopted(found, opening: finish.released)
+            switch finish.operation {
+            case .search:
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
+                    openFolder(nil)
+                }
+                showPanelAfterDiscovery = false
+            case .choice(let path):
+                var notice =
+                    "Folders already open keep their server until you restart it with File > Restart Server or Retry."
+                // A chosen file runs as chosen; the check discovery would make is shown, not applied.
+                if let reason = ExecutableTrust.refusal(path) {
+                    notice += " Metabrowser runs \(path) because you chose it, although \(reason)."
+                }
+                runtimeModel.notice = notice
+            case .recheck:
+                break
+            }
+        case (.search(let report), .notFound):
             // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no usable metab in \(report.tried.count) places")
             lastLoginPath = report.loginPath
             await prepareGuide()
             showSettings(nil)
-        case .rejected, .superseded:
+        case (.recheck(let path, let result), .notFound):
+            AppLog.app.error(
+                "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
+            )
+        case (.choice(let path), .rejected(.tooOld(let version))):
+            runtimeModel.notice = MetabRequirement.flagShortfall(version).map {
+                "\(path) is metab \(version), \($0), which Metabrowser needs."
+            } ?? "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
+        case (.choice(let path), .rejected(let rejected)):
+            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
+        case (.search, _):
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
+        case (.recheck, _):
+            AppLog.app.info("a recheck finished after a newer search or choice; its result is dropped")
+        case (.choice, _):
+            break
         }
     }
 
-    private func adopted(_ found: RuntimeSetup) {
+    private func adopted(_ found: RuntimeSetup, opening waiting: [URL]) {
         AppLog.app.info(
             "using metab \(found.runtime.version, privacy: .public) at \(found.runtime.executable, privacy: .public) (\(found.runtime.source.label, privacy: .public))"
         )
@@ -325,7 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreAfterDiscovery = false
             restoreLastSession()
         }
-        openPendingFolders()
+        waiting.forEach(request)
         let held = folderSessions.filter(\.isWaitingForRuntime)
         offerRestart(for: found.runtime)
         // A paused restore carries on in its own order, each root admitted again in its
@@ -342,6 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentRuntime() {
         runtimeModel.setup = selection.setup
         runtimeModel.isSearching = selection.isSearching
+        runtimeModel.isChoosing = selection.isChoosing
         runtimeModel.tried = selection.tried
         rewatch()
     }
@@ -376,30 +433,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Validates the chosen file and uses it, which overtakes a search still running.
+    /// Validates the chosen file and uses it, which overtakes a search still running
+    /// (`RuntimeOperations.choose`).
     private func adoptChosen(_ path: String) async {
         runtimeModel.notice = nil
-        let ticket = selection.startChoice()
-        presentRuntime()
-        let fingerprint = FileFingerprint.of(path)
-        let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        let outcome = selection.finishChoice(ticket, path: path, result: result, fingerprint: fingerprint) {
-            RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
-        }
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-            runtimeModel.notice = "Folders already open keep their server until you restart it with File > Restart Server or Retry."
-        case .rejected(.tooOld(let version)):
-            runtimeModel.notice = "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
-        case .rejected(let rejected):
-            runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
-        case .notFound, .superseded:
-            break
-        }
-        // A rejected choice leaves a runtime whose file changed meanwhile still unchecked.
-        if selection.needsRecheck { beginRecheck() }
+        await operations.choose(path)
     }
 
     private func runDoctor() async {
@@ -410,13 +448,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 executable: setup.runtime.executable, arguments: ["--doctor"],
                 environment: ChildEnvironment.build(
                     inherited: ProcessInfo.processInfo.environment, toolDirectories: setup.tools.directories)),
-            timeout: .seconds(60))
+            timeout: RuntimeDiscovery.doctorTimeout)
         runtimeModel.isRunningDoctor = false
-        var lines = result.output
-        if let error = result.launchError { lines.append("could not run: \(error)") }
-        if result.timedOut { lines.append("(stopped after 60 seconds)") }
-        if let status = result.status { lines.append("(\(ExitStatus(waitStatus: status)))") }
-        runtimeModel.doctorOutput = lines.joined(separator: "\n")
+        runtimeModel.doctorOutput = result.transcript(timeout: RuntimeDiscovery.doctorTimeout).joined(separator: "\n")
     }
 
     // MARK: - Watching the Runtime
@@ -476,6 +510,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func prepareGuide() async {
         guideRequests += 1
         let request = guideRequests
+        runtimeModel.isPreparingGuide = true
+        defer { if request == guideRequests { runtimeModel.isPreparingGuide = false } }
         let env = DiscoveryEnvironment.live(saved: nil)
         let candidates = SetupGuide.uvCandidates(home: env.home, environment: env.environment, loginPath: lastLoginPath)
         // Only a uv no other account can change is run (ExecutableTrust).
@@ -504,35 +540,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Holds new servers off the runtime, whose file changed, and checks it again, unless
-    /// a search, recheck, or choice already running settles it first.
-    private func beginRecheck() {
-        selection.markUnverified()
-        guard selection.needsRecheck, let previous = selection.setup else { return }
-        let ticket = selection.startRecheck()
-        Task { await recheckRuntime(previous, ticket) }
-    }
-
-    /// Runs `--version` on the runtime again. A new compatible version is adopted, with
-    /// an offer to restart the servers started from the old one; anything else leaves no
+    /// a search, recheck, or choice already running settles it first
+    /// (`RuntimeOperations.beginRecheck`). A new compatible version is adopted, with an
+    /// offer to restart the servers started from the old one; anything else leaves no
     /// runtime, and a search looks for another.
-    private func recheckRuntime(_ previous: RuntimeSetup, _ ticket: RuntimeSelection.Ticket) async {
-        let path = previous.runtime.executable
-        AppLog.app.info("\(path, privacy: .public) changed; checking its version again")
-        let fingerprint = FileFingerprint.of(path)
-        let result = await RuntimeDiscovery.validate(path, .live(saved: nil))
-        let outcome = selection.finishRecheck(ticket, fingerprint: fingerprint, result: result)
-        presentRuntime()
-        switch outcome {
-        case .adopted(let found):
-            adopted(found)
-        case .notFound:
-            AppLog.app.error(
-                "\(path, privacy: .public) is no longer usable (\(RuntimeView.describe(result), privacy: .public)); searching again"
-            )
-            beginDiscovery()
-        case .rejected, .superseded:
-            AppLog.app.info("a recheck finished after a newer search or choice; its result is dropped")
-        }
+    private func beginRecheck() {
+        operations.beginRecheck()
     }
 
     /// Offers to restart the open servers that `current`'s executable started at another
@@ -565,7 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // Chosen now, not when the sheet opened: an upgrade, a restart, or a rejection
             // may have come since. With no runtime accepted now, nothing is stopped.
-            guard let latest = selection.launchableSetup?.runtime else {
+            guard let latest = operations.launchableSetup()?.runtime else {
                 AppLog.app.error("not restarting after the upgrade: no metab Metabrowser can run is selected now")
                 if !selection.isBusy { showSettings(nil) }
                 return
@@ -575,12 +588,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Help
+    // MARK: - About and Help
 
+    /// The standard About panel, which reads the version and build from the bundle,
+    /// with a line saying which build this is: both variants are named Metabrowser.
+    @objc func showAbout(_ sender: Any?) {
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let line = NSAttributedString(string: appIdentity.buildLine, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: centered,
+        ])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: line])
+    }
+
+    /// Creates the folder first, since it holds nothing until a folder has been served.
     @objc func revealLogsFolder(_ sender: Any?) {
-        let directory = ServerLog.directory()
-        try? FileManager.default.createDirectory(
-            at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let directory = appIdentity.logsDirectory()
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        } catch {
+            AppLog.app.error("could not create the logs folder: \(error, privacy: .public)")
+            return refuse(
+                "Could not open the logs folder",
+                "\(directory.path(percentEncoded: false)) could not be created: \(error.localizedDescription) "
+                    + "Check that ~/Library/Logs is a folder you can write to.")
+        }
         NSWorkspace.shared.open(directory)
     }
 

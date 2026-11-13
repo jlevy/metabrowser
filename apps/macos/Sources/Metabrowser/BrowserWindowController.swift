@@ -1,5 +1,6 @@
 import AppKit
 import ShellCore
+import ShellViews
 import SwiftUI
 import WebKit
 
@@ -21,19 +22,26 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let status = WindowStatus()
     private let textFinder = NSTextFinder()
     private let titleAccessory = TitleAccessoryController()
-    /// Reveal the page, replacing the status view, once this window's load commits.
-    private var revealOnCommit = false
+    /// The navigation `load` submitted, whose commit reveals the page in place of the
+    /// status view, until server state supersedes it (`PageReveal`).
+    private var reveal = PageReveal<WKNavigation>()
     /// The page to load next: one asked for (a file opened here, a restored tab's page),
-    /// else the one shown before the server restarted or the tab gave up its page.
-    private var next: NextPage
+    /// else the one shown before the server restarted or the tab gave up its page; and
+    /// the loads waiting to load it, of which only the newest may (`PageLoads`).
+    private var pages: PageLoads
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
     /// Whether the tab gave up its page's web view (`TabDiscardPolicy`). It loads the page
     /// again when it is shown.
     private(set) var isDiscarded = false
-    /// Reloads after the web content process dies: two within 30 s, then the status view.
-    private var contentRecoveries = RecoveryBudget(limit: 2, within: .seconds(30))
-    private static var cascadePoint = NSPoint.zero
+    /// Reloads after the web content process dies, then the status view.
+    private var contentRecoveries = RecoveryBudget.webContent
+    /// The window placed last, which the next one steps down and right from, while it
+    /// is open (`NewWindowFrame`, `LastPlacedWindow`).
+    private static var lastPlaced = LastPlacedWindow<NSWindow>()
+    /// Narrow enough to tile two windows side by side on a laptop screen, and wide
+    /// enough for the status view.
+    private static let minimumSize = NSSize(width: 480, height: 320)
 
     /// Pass `configuration` only from `createWebViewWith`, which requires the web view
     /// it returns to be built from the configuration WebKit hands it. `page` is the page to
@@ -44,7 +52,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     ) {
         self.session = session
         webView = Self.makeWebView(configuration ?? WebConfiguration.make(pagePrints: Self.pagePrints))
-        next = NextPage(requested: page)
+        pages = PageLoads(requested: page)
         isDiscarded = discarded
 
         let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
@@ -56,17 +64,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container = WebContainerView(webView: webView, statusView: statusView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            contentRect: NSRect(origin: .zero, size: Self.minimumSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.contentView = container
-        window.minSize = NSSize(width: 480, height: 320)
+        window.minSize = Self.minimumSize
         window.titleVisibility = .hidden  // TitleAccessoryController draws the title
         window.addTitlebarAccessoryViewController(titleAccessory)
         window.tabbingIdentifier = Self.tabbingIdentifier
         window.isReleasedWhenClosed = false
-        window.center()
-        Self.cascadePoint = window.cascadeTopLeft(from: Self.cascadePoint)
+        Self.place(window)
         super.init(window: window)
         window.delegate = self
 
@@ -81,8 +88,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
 
+    /// Sizes a new window for the screen it opens on, the one with the key window (or
+    /// else the menu bar), and places it a step down and right from the window placed
+    /// before it, all of it on that screen (`NewWindowFrame`). A restored window then
+    /// takes its saved frame, and a new tab the frame of the window it joins.
+    private static func place(_ window: NSWindow) {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let visible = screen.visibleFrame
+        let size = NewWindowFrame.size(visible: visible, minimum: minimumSize)
+        let frame = NewWindowFrame.next(size: size, visible: visible, after: lastPlaced.window?.frame)
+        window.setFrame(frame, display: false)
+        lastPlaced.place(window)
+    }
+
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
-    /// `defaults write io.github.jlevy.metabrowser WebInspectorEnabled -bool true`.
+    /// `defaults write <bundle identifier> WebInspectorEnabled -bool true`.
     private static var isInspectable: Bool {
         #if DEBUG
             true
@@ -91,17 +111,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         #endif
     }
 
-    private static var savedZoom: Double {
-        let zoom = UserDefaults.standard.double(forKey: zoomKey)
-        return zoom > 0 ? zoom : 1
-    }
-
     private static func makeWebView(_ configuration: WKWebViewConfiguration) -> DropAwareWebView {
         let webView = DropAwareWebView(frame: .zero, configuration: configuration)
         webView.isInspectable = isInspectable
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.pageZoom = savedZoom
+        webView.pageZoom = PageZoom.restored(UserDefaults.standard.double(forKey: zoomKey))
         return webView
     }
 
@@ -119,14 +134,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     // MARK: - Server state
 
     func showStarting() {
+        pages.cancelAll()
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .starting
         container.showsStatus = true
     }
 
     func showFailure(_ failure: ServerFailure) {
+        pages.cancelAll()
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .failed(failure)
         container.showsStatus = true
@@ -135,6 +154,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// A restored folder in a protected location, whose server starts when this tab is
     /// selected.
     func showWaitingForSelection() {
+        supersedeLoad()
         status.phase = .waitingForSelection
         container.showsStatus = true
     }
@@ -143,21 +163,32 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// found changed and is being checked again.
     func showWaitingForRuntime() {
         rememberPage()
+        supersedeLoad()
         endpoint = nil
         status.phase = .waitingForRuntime
         container.showsStatus = true
     }
 
+    /// Server state now covers the page. A load still on its way is remembered as the
+    /// page to show next and stopped, and none of its callbacks, even one WebKit has
+    /// already sent, can change the status (`PageReveal`).
+    private func supersedeLoad() {
+        guard reveal.supersede() else { return }
+        rememberPage()
+        webView.stopLoading()
+    }
+
     /// Loads the page this window is to show, on the new origin, or the server's entry
     /// page. A discarded tab only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
+        let ticket = pages.begin()  // which supersedes every load still waiting
         policy.origin = endpoint.origin
         self.endpoint = endpoint
         if isDiscarded { status.phase = .reloading }
         Task {
             await install(authorization, for: endpoint)
             guard self.endpoint == endpoint, !isDiscarded else { return }
-            loadNextPage(from: endpoint)
+            load(pages.take(for: ticket), from: endpoint)
         }
     }
 
@@ -167,25 +198,26 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         self.endpoint = endpoint
     }
 
-    /// Shows `page` now if the server is ready, or once it is.
+    /// Shows `page` now if the server is ready and still answers, or once it is ready.
     func show(_ page: PageAddress) {
-        next.request(page)
+        pages.request(page)
         isDiscarded = false
-        if let endpoint { loadNextPage(from: endpoint) }
+        if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
-        next.saved(showing: currentServerURL.flatMap(PageAddress.init))
+        pages.saved(showing: currentServerURL.flatMap(PageAddress.init))
     }
 
     /// Gives up the page's web view, which ends its WebContent process, and keeps the
     /// page to load again from the folder's server when the tab is shown.
     func discardPage() {
         guard !isDiscarded else { return }
+        pages.cancelAll()
         rememberPage()
         isDiscarded = true
-        revealOnCommit = false
+        reveal.supersede()  // the discarded view is stopped below
         let discarded = webView
         discarded.stopLoading()
         discarded.navigationDelegate = nil
@@ -198,21 +230,36 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         container.showsStatus = true
     }
 
-    /// Loads the page again after `discardPage`: now if the server is ready, or when it is.
+    /// Loads the page again after `discardPage`: now if the server is ready and still
+    /// answers, or when it is ready.
     private func revivePage() {
         guard isDiscarded else { return }
         isDiscarded = false
-        if let endpoint { loadNextPage(from: endpoint) }
+        if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
-    private func loadNextPage(from endpoint: ServerEndpoint) {
-        let target = next.take().flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL
-        load(target)
+    /// Loads from a server that was ready before this window asked, once it proves it
+    /// still answers: a live pid is not a working server. One that does not answer fails,
+    /// and every window of the folder says so. Only the newest waiting load loads
+    /// (`PageLoads`), so overlapping requests end on the newest page.
+    private func loadNextPageOnceAnswered(from endpoint: ServerEndpoint) {
+        let ticket = pages.begin()
+        Task {
+            guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
+                  !isDiscarded
+            else { return }
+            load(pages.take(for: ticket), from: endpoint)
+        }
+    }
+
+    /// Loads the page a ticket's turn gives, or nothing for a superseded ticket.
+    private func load(_ turn: PageLoads.Load, from endpoint: ServerEndpoint) {
+        guard case .page(let page) = turn else { return }
+        load(page.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL)
     }
 
     func load(_ url: URL) {
-        revealOnCommit = true
-        webView.load(URLRequest(url: url))
+        reveal.submitted(webView.load(URLRequest(url: url)))
     }
 
     private func install(_ authorization: WebAuthorization, for endpoint: ServerEndpoint) async {
@@ -233,7 +280,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     private func rememberPage() {
-        if let page = currentServerURL.flatMap(PageAddress.init) { next.remember(shown: page) }
+        if let page = currentServerURL.flatMap(PageAddress.init) { pages.remember(shown: page) }
     }
 
     /// Names the window for everything that reads its title, and draws the visible one.
@@ -257,6 +304,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func windowWillClose(_ notification: Notification) {
+        // A task waiting on this window may keep it alive past its closing.
+        if let window { Self.lastPlaced.close(window) }
+        pages.cancelAll()
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
@@ -271,11 +321,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }
     @objc func reloadPage(_ sender: Any?) { webView.reload() }
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
-    @objc func zoomIn(_ sender: Any?) { setZoom(webView.pageZoom * 1.1) }
-    @objc func zoomOut(_ sender: Any?) { setZoom(webView.pageZoom / 1.1) }
+    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
 
     private func setZoom(_ zoom: Double) {
-        webView.pageZoom = min(3, max(0.5, zoom))
+        webView.pageZoom = zoom
         UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
     }
 
@@ -361,21 +411,22 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
-        let attachment = disposition?.lowercased().hasPrefix("attachment") ?? false
-        decisionHandler(response.canShowMIMEType && !attachment ? .allow : .download)
+        switch ResponsePolicy.decide(canShowMIMEType: response.canShowMIMEType, contentDisposition: disposition) {
+        case .show: decisionHandler(.allow)
+        case .download: decisionHandler(.download)
+        }
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         session?.pageChanged()
-        guard revealOnCommit else { return }
-        revealOnCommit = false
+        guard reveal.reveals(onCommit: navigation) else { return }
         container.showsStatus = false
         window?.makeFirstResponder(webView)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        guard revealOnCommit, (error as NSError).code != NSURLErrorCancelled else { return }
-        revealOnCommit = false
+        let cancelled = (error as NSError).code == NSURLErrorCancelled
+        guard reveal.reports(failureOf: navigation, cancelled: cancelled) else { return }
         status.phase = .failed(ServerFailure(
             summary: "The page did not load: \(error.localizedDescription)", recentOutput: []))
         container.showsStatus = true
@@ -385,13 +436,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard contentRecoveries.allow() else {
             AppLog.app.error("web content process died repeatedly; showing the status view")
+            supersedeLoad()
             status.phase = .failed(ServerFailure(
                 summary: "The page stopped responding repeatedly. Retry restarts the folder's server.",
                 recentOutput: []))
             container.showsStatus = true
             return
         }
-        webView.reload()
+        reveal.reloaded(webView.reload())
     }
 
     /// `target=_blank` and `window.open`. The returned view must be built from
