@@ -1642,15 +1642,20 @@ refusal. The tabs answer to `C`, `G`, and `E` through the production shortcut re
 and plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
 does not show opens through the route, as a click on its link does.
 `H` is the Commits tab’s, so it does nothing here.
-The header’s links and actions are numbered by their place through the same facade, View
-on GitHub first. The keys wait while the tab column is out of the page before the record
+The header’s links and actions are numbered by their place through the same facade, and
+each number runs what its control does in the paint on screen, recorded as what the page
+asked for: `1` opens the pull request on GitHub, `2` asks to serve the head for Browse
+code, and on Changes `3` asks for a refresh.
+A refresh that serves the head repaints Browse code as a link, and `2` then opens the
+code instead; one with no pin drops Browse code, Refresh moves up to `2`, and `3`
+reaches nothing. The keys wait while the tab column is out of the page before the record
 arrives, and while a held first paint keeps the loading heading over the loading page,
 return when the header puts it back, wait while the page is staged inert, and end with
 the page.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"tabKeys":["before the record, the tab column out of the page: keys C G E, live none","C: not handled","the record arrives and paintHeader puts the column in: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"tabKeys":["before the record, the tab column out of the page: keys C G E, live none","C: not handled","the record arrives and paintHeader puts the column in: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","1: window.open https://github.com/octo/demo/pull/7 _blank noopener,noreferrer","2: POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh","2: navigation.open /view/","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","3: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled"]}
 ? 0
 ```
 
