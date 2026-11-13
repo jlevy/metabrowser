@@ -3113,6 +3113,87 @@ async function run() {
     neutralLanding = false;
   }
 
+  // ── A recovery the reader left places nothing ──────────────
+  //
+  // The same expired landing, but the reader switches to Files while recovery's first page
+  // is on its way. The scroller is shared, so a recovery that went on to reveal the newest
+  // row wrote over the offset Files had put back. Leaving Commits cancels the landing, and
+  // recovery now places nothing once Commits is not in front or another owner holds the pane.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 7000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `left commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    let releaseFirstPage = () => {};
+    const firstPageHeld = new Promise((resolve) => (releaseFirstPage = resolve));
+    let firstPageAsked = false;
+    responses.set("/api/git/log", async (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        firstPageAsked = true;
+        await firstPageHeld;
+      }
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    neutralLanding = true;
+    void panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertTrue("left recovery: recovery's first page is held", firstPageAsked);
+    // The reader switches to Files: the shell gives up the pane, which cancels Git's pending
+    // work, hides the Commits panel, and puts back the offset Files had in the shared scroller.
+    panel.cancelPending();
+    sandbox.MetabrowserShell.claimPreview("none");
+    neutralLanding = false;
+    container.style.display = "none";
+    container.scrollTop = 250;
+    previewHtml = '<div class="file-view">Files preview</div>';
+    const routesBefore = replacedRoutes.length;
+    releaseFirstPage();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertEqual("left recovery: Files keeps its offset", container.scrollTop, 250);
+    assertEqual(
+      "left recovery: the Files preview stays",
+      previewHtml,
+      '<div class="file-view">Files preview</div>',
+    );
+    assertEqual("left recovery: no commit takes the address", replacedRoutes.length, routesBefore);
+    delete container.style.display;
+    delete container.clientHeight;
+    container.scrollTop = 0;
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a

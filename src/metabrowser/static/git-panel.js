@@ -938,6 +938,12 @@
     return document.getElementById("tab-git");
   }
 
+  /** Whether Commits is the panel in front: main-tabs.js hides every other panel. */
+  function panelInFront() {
+    const panel = panelElement();
+    return panel instanceof HTMLElement && panel.style.display !== "none";
+  }
+
   /**
    * @param {HTMLElement} panel
    * @param {string} message
@@ -2374,9 +2380,11 @@
     try {
       const selectedId = state.selectedId;
       const selectionsBefore = selectionCount;
+      const landingsBefore = landingGeneration;
       // A neutral Commits landing waiting on this walk wants the newest row, ordinal zero,
       // not the position the expired session had (landOnNewestCommit).
-      const forLanding = newestLanding !== null;
+      const landing = newestLanding;
+      const forLanding = landing !== null;
       // The new walk replays its prefix one request per page, so the
       // restored position must be bounded: the cache retains at most
       // PAGE_CACHE_PAGES pages anyway, and at the measured 13-70 ms per
@@ -2390,16 +2398,23 @@
             PAGE_CACHE_PAGES * LOG_LIMIT - 1,
           );
       await refreshHistory({ preserveDetail: true, selectedId });
-      // A selection made while the walk is rebuilt, the landing's newest or the reader's
-      // own, places the list and its Tab stop itself; the old position no longer applies,
-      // and no page is fetched to reach it.
-      const selected = () => selectionCount !== selectionsBefore;
-      while (!selected() && state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+      // Recovery may place the list only while nothing has placed it or taken it since it
+      // began. A selection made while the walk is rebuilt, the landing's newest or the
+      // reader's own, places the list and its Tab stop itself. Leaving Commits, or anything
+      // else that takes the pane, cancels pending Git work and the landing with it, and the
+      // scroller is shared: another tab owns its offset then. Either way the old position
+      // no longer applies, and no page is fetched to reach it.
+      const mayPlace = () =>
+        selectionCount === selectionsBefore &&
+        landingGeneration === landingsBefore &&
+        panelInFront() &&
+        (landing === null || shell()?.isPreviewClaimCurrent(landing.claim) === true);
+      while (mayPlace() && state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
         if (!(await loadNextPage(false))) {
           break;
         }
       }
-      if (selected()) {
+      if (!mayPlace()) {
         return;
       }
       if (forLanding) {
