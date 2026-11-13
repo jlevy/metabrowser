@@ -278,6 +278,24 @@
   display: inline-block;
   visibility: hidden;
 }
+/* Changes while its first screen's Markdown waits (CHANGES_FIRST_SCREEN_MS), and the
+   conversation while its first screen's texts do (DESCRIPTION_HOLD_MS): laid out, so each
+   measures its first screen, and not yet seen. */
+.github-pull-diff-holding,
+.github-pull-body-holding {
+  visibility: hidden;
+}
+/* Loading blocks that had shown before the conversation's hold began stay over it until it
+   shows, so the body never blinks empty between them. Out of flow, where they were, so the
+   layout the hold measures is the conversation's own. */
+.github-pull-body-holding {
+  position: relative;
+}
+.github-pull-body-holding > .github-pull-loading-cover {
+  position: absolute;
+  inset: var(--content-padding-y) var(--content-padding-x) auto;
+  visibility: visible;
+}
 .github-pull-body {
   display: flex;
   flex-direction: column;
@@ -800,6 +818,22 @@
    is laid out at its depth's indent, one level in from the pull request's row. */
 .github-pull-files-rows {
   position: relative;
+}
+/* A changed file list offered over a drawn tree whose line is not shown: it floats at the
+   tree's top, so offering it moves no row (LATE_ROWS_MS in pull-files-tree.js). */
+.github-pull-files {
+  position: relative;
+}
+.github-pull-files-offer-floating {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 12px;
+  padding: 0 6px;
+  border-radius: var(--radius-tag);
+  background: var(--bg);
+  font-size: var(--ui-small-font-size);
+  line-height: var(--ui-row-height);
 }
 .github-pull-file-row,
 .github-pull-folder-row {

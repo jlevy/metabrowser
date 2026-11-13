@@ -84,8 +84,22 @@ class Element {
   focus() {
     document.activeElement = this;
   }
-  scrollIntoView() {}
+  scrollIntoView() {
+    scrolled.push(this);
+  }
+  // A browser blurs an element that is hidden while it has focus.
+  get hidden() {
+    return this._hidden === true;
+  }
+  set hidden(value) {
+    this._hidden = value === true || value === "";
+    if (this._hidden && document.activeElement === this) {
+      document.activeElement = document.body;
+    }
+  }
 }
+/** The elements scrolled into view, in order. @type {Element[]} */
+const scrolled = [];
 async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -270,7 +284,128 @@ async function run() {
   }
   await walkClaims(mountFileTree);
   results.push({ scenario: "refreshing", paints: await refreshingPaint(mountFileTree) });
+  results.push({ scenario: "offer pressed", ...(await offerFocus(mountFileTree, 0)) });
+  results.push({ scenario: "offer clicked", ...(await offerFocus(mountFileTree, 1)) });
   return results;
+}
+
+/**
+ * Rows that came late are offered on the tree's line; pressing the offer draws them and leaves
+ * focus on the tree's anchor, never on the document body. Only a press from the keyboard, a
+ * click whose `detail` is 0, scrolls to the anchor: a pointer pressed the offer where it is.
+ *
+ * @param {Function} mountFileTree
+ * @param {number} detail The click's count of pointer presses.
+ */
+async function offerFocus(mountFileTree, detail) {
+  const realNow = Date.now;
+  let now = 0;
+  Date.now = () => now;
+  const timers = new Map();
+  try {
+    globalThis.window = {
+      setTimeout(callback, delay) {
+        const id = Symbol();
+        timers.set(id, { callback, delay });
+        return id;
+      },
+      clearTimeout: (id) => timers.delete(id),
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame() {},
+    };
+    document.body = new Element("body");
+    document.activeElement = document.body;
+    const parent = new Element("li");
+    const owner = new Element("a");
+    owner.dataset.id = "owner";
+    document.body.append(parent);
+    parent.append(owner);
+    let answer;
+    const view = mountFileTree({
+      decorateExternalLink:
+        require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+      number: 7,
+      autoExpandFiles: 3000,
+      current: null,
+      shown: true,
+      scrollRoot: document.body,
+      chevron: () => null,
+      href: (file) => `/${file}`,
+      request: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      formatTime: (value) => value,
+      page: () => null,
+      open() {},
+      leave: () => owner.focus(),
+      focusedIn() {},
+      lastInput: () => 0,
+    });
+    view.attach(parent, owner);
+    view.controller.expand();
+    await settle();
+    // The opening's bound passes: the tree opens on its loading line, and the list comes late.
+    now = 150;
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+    now = 2000;
+    answer({
+      status: 200,
+      etag: null,
+      body: {
+        state: "current",
+        reason: null,
+        number: 7,
+        listed_from: "github",
+        source: "https://github.com/octo/demo",
+        generation: "0".repeat(32),
+        fetched_at: "2026-11-03T00:00:00Z",
+        reader: "gh:test",
+        head: null,
+        base: null,
+        fresh_for_s: 60,
+        refreshing: false,
+        last_refresh: null,
+        fetched: 2,
+        pages: 1,
+        last_page: null,
+        complete: true,
+        capped: false,
+        truncated: false,
+        offset: 0,
+        limit: 3000,
+        rows: ["a.py", "b.py"].map((file) => ({
+          path: file,
+          display: file,
+          previous_path: null,
+          previous_display: null,
+          status: "modified",
+          additions: 1,
+          deletions: 0,
+        })),
+      },
+    });
+    await settle();
+    const line = view.group.children.find(
+      (element) => element.getAttribute("class") === "github-pull-files-line",
+    );
+    const offer = line.children.find((element) => element.tagName === "BUTTON");
+    assert.equal(offer.hidden, false, "late rows are offered");
+    offer.focus();
+    scrolled.length = 0;
+    offer.listeners.get("click")({ detail });
+    await settle();
+    assert.notEqual(document.activeElement, document.body, "focus stays in the tree");
+    const focused = document.activeElement.dataset.id;
+    const scrolls = scrolled.length;
+    view.dispose();
+    return { focus: focused, scrolls };
+  } finally {
+    Date.now = realNow;
+  }
 }
 
 /**

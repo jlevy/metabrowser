@@ -2600,12 +2600,15 @@ function measureInContainer(root, container) {
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
- *   isSnapshotTarget?: (value: string, image: boolean) => boolean
+ *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
+ *   markdownHoldMs?: number
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, cancelPending: () => void, dispose: () => void}}
+ *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
+ *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
@@ -2670,6 +2673,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         ...(options.isSnapshotTarget === undefined
           ? {}
           : { isSnapshotTarget: options.isSnapshotTarget }),
+        ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -2916,6 +2920,8 @@ export function mountDiffView(container, document_, api, options = {}) {
      */
     fileForPath: (path) => lookupFile(view, path),
     currentFile,
+    /** Settles when the first screen's Markdown files no longer wait to be drawn. */
+    firstScreen: () => view.markdown?.controller.firstScreen ?? Promise.resolve(),
     /** Report immediately, then only when the file changes; unsubscribe is idempotent. */
     onCurrentFile(listener) {
       if (view.disposed) {

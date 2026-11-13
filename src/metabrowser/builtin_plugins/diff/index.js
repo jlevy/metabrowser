@@ -441,6 +441,9 @@ mb.registerView("diff", "diff", {
             markdownViews,
             renderMarkdown: (fileId, signal) => markdown.load(fileId, signal),
             isSnapshotTarget: markdownViews.snapshotTargets(ctx.comparison?.snapshot_route),
+            ...(typeof ctx.markdownHoldMs === "number"
+              ? { markdownHoldMs: ctx.markdownHoldMs }
+              : {}),
           }),
     });
   },

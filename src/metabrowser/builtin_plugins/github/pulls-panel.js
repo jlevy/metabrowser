@@ -43,12 +43,14 @@ import {
   SLOW_POLL_MS,
 } from "./pull-page.js";
 import { createStackIndex, stackCaption, watchStacks } from "./pull-stacks.js";
-import { displayState, PULL_STATES, pullStateIcon } from "./pull-state.js";
+import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
+// The pull route's catalog verdict, which the page reads from its own first read.
+const VERIFIED_HEADER = "x-metabrowser-verified";
 const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
 const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
 // The list's first rows a prefetch names beside the anchored row's neighbours: the top open
@@ -501,7 +503,9 @@ function pinChanged(response) {
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
  * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean, admitted?: boolean}} CoreDemand
- * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
+ * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullsResponse
+ * A row's record as one read answered it, and when that answer landed, by `now()`.
+ * @typedef {{etag: string | null, body: unknown, verified: string | null, at: number}} RecordAnswer
  * @typedef {{
  *   request(
  *     method: "GET" | "POST",
@@ -522,7 +526,13 @@ function pinChanged(response) {
  *     number: number,
  *     tab: string,
  *     replace: boolean,
- *     reader: {fetchAfterMs: number, initial: unknown, walking: () => boolean},
+ *     reader: {
+ *       fetchAfterMs: number,
+ *       initial: RecordAnswer | null,
+ *       pending: Promise<RecordAnswer | null> | null,
+ *       walking: () => boolean,
+ *       abandon?: () => void,
+ *     },
  *   }): unknown,
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
@@ -629,10 +639,13 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let walkingTo = null;
   let opening = 0;
-  /** @type {Map<number, {etag: string | null, body: unknown}>} */
+  /** @type {Map<number, RecordAnswer>} */
   const peeked = new Map();
-  /** @type {{number: number, controller: AbortController, done: Promise<{etag: string | null, body: unknown} | null>} | null} */
+  /** @type {{number: number, controller: AbortController, done: Promise<RecordAnswer | null>} | null} */
   let reading = null;
+  /** The read last handed to an opening page, which its page ends, or this panel's end. */
+  /** @type {{number: number, controller: AbortController, done: Promise<RecordAnswer | null>} | null} */
+  let handed = null;
   /** @type {CoreDemand | null} */
   let coreWanted = null;
   /** @type {CoreDemand | null} */
@@ -1277,6 +1290,9 @@ export function createPullsController(deps, options = {}) {
   function holdRows(list, rows, source) {
     const repository = repositoryName(source);
     const next = rows.map((row) => describeRow(row, repository));
+    if (source !== null) {
+      noteListed(source, next);
+    }
     const same =
       next.length === list.rows.length &&
       next.every((row, index) => JSON.stringify(row) === JSON.stringify(list.rows[index]));
@@ -2088,10 +2104,11 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Read a row's record, the newest asked for at a time. Local, and runs no gh.
+   * Read a row's record, the newest asked for at a time. Local, and runs no gh. A read the
+   * opening page joined is the page's: it answers it even once a newer read replaced it here.
    *
    * @param {number} number
-   * @returns {Promise<{etag: string | null, body: unknown} | null>}
+   * @returns {Promise<RecordAnswer | null>}
    */
   function readRecord(number) {
     const had = peeked.get(number);
@@ -2106,15 +2123,16 @@ export function createPullsController(deps, options = {}) {
     const done = deps
       .request("GET", `${PULL_ROUTE}?number=${number}`, { signal: controller.signal })
       .then((response) => {
-        if (
-          response.status !== 200 ||
-          disposed ||
-          controller.signal.aborted ||
-          reading?.controller !== controller
-        ) {
+        if (response.status !== 200 || disposed || controller.signal.aborted) {
           return null;
         }
-        const answer = { etag: response.etag, body: response.body };
+        /** @type {RecordAnswer} */
+        const answer = {
+          etag: response.etag,
+          body: response.body,
+          verified: response.verified ?? null,
+          at: deps.now(),
+        };
         const envelope = response.body;
         if (
           isPullEnvelope(envelope) &&
@@ -2154,34 +2172,81 @@ export function createPullsController(deps, options = {}) {
    * *replace* is a key's: a skim replaces the history entry, as the file tree's and Git's do,
    * so Back leaves the list in one step however many rows were passed; a click or Enter pushes.
    *
+   * A row that was already the current one before this selection, *current*, opens at once
+   * and reads nothing: its page holds the pane or is opening, and reads its own record. That
+   * is a second click before the first one's open, or a click on a row a held key walked to.
+   * Otherwise a read still on its way when the wait ends goes to the page as `pending`, which
+   * the page joins instead of reading the record again, with `abandon` to end it if the page
+   * goes first: the page host disposes a page that another replaces, so a read for a row the
+   * reader left ends with its page.
+   *
    * @param {number} number
    * @param {number} fetchAfterMs
    * @param {boolean} replace
+   * @param {boolean} [wasCurrent]
    */
-  async function openRow(number, fetchAfterMs, replace) {
+  async function openRow(number, fetchAfterMs, replace, wasCurrent = false) {
     clearWalk();
     const ticket = ++opening;
-    /** @type {{etag: string | null, body: unknown} | null} */
+    /** @type {RecordAnswer | null} */
     let initial = null;
-    /** @type {unknown} */
-    let waiter = null;
-    await Promise.race([
-      readRecord(number).then((answer) => {
-        initial = answer;
-      }),
-      new Promise((resolve) => {
-        waiter = deps.schedule(() => resolve(undefined), OPEN_WAIT_MS);
-      }),
-    ]);
-    deps.cancel(waiter);
-    if (disposed || ticket !== opening) {
-      return;
+    /** @type {Promise<RecordAnswer | null> | null} */
+    let pending = null;
+    /** @type {AbortController | null} */
+    let ends = null;
+    if (wasCurrent) {
+      if (reading?.number === number) {
+        pending = reading.done;
+        ends = reading.controller;
+        handed = reading;
+        reading = null;
+      }
+    } else {
+      const read = readRecord(number);
+      /** @type {unknown} */
+      let waiter = null;
+      let answered = false;
+      await Promise.race([
+        read.then((answer) => {
+          initial = answer;
+          answered = true;
+        }),
+        new Promise((resolve) => {
+          waiter = deps.schedule(() => resolve(undefined), OPEN_WAIT_MS);
+        }),
+      ]);
+      deps.cancel(waiter);
+      if (disposed || ticket !== opening) {
+        return;
+      }
+      if (!answered && reading?.number === number) {
+        // Handed to the page: a peek of another row does not abort it, the page does.
+        ends = reading.controller;
+        handed = reading;
+        reading = null;
+        pending = read;
+      }
     }
     peeked.delete(number);
     // While a key is still held the page waits to fetch, whatever its wait was: a first press
     // held past it would otherwise fetch the row the walk left long ago.
     const walking = () => !disposed && walkingTo !== null;
-    deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, walking } });
+    const handedRead = handed;
+    const abandon =
+      ends === null
+        ? undefined
+        : () => {
+            ends?.abort();
+            if (handed === handedRead) {
+              handed = null;
+            }
+          };
+    deps.open({
+      number,
+      tab: "",
+      replace,
+      reader: { fetchAfterMs, initial, pending, walking, ...(abandon ? { abandon } : {}) },
+    });
     // A row opens once the reader stops on it, a walk included, so its neighbours are next.
     prefetch(false);
   }
@@ -2203,6 +2268,8 @@ export function createPullsController(deps, options = {}) {
     windowRead = null;
     reading?.controller.abort();
     reading = null;
+    handed?.controller.abort();
+    handed = null;
     for (const controller of refreshReads) {
       controller.abort();
     }
@@ -2334,6 +2401,7 @@ export function createPullsController(deps, options = {}) {
       const previous = anchor;
       anchor = number;
       deps.markAnchor(previous, number, true);
+      const wasCurrent = current === number;
       setCurrentRow(number);
       // Keep rows arriving ahead of a walk, so a held key does not stall on the window's end.
       if (list.rows.length - target <= 2 && list.nextAfter !== null) {
@@ -2347,7 +2415,7 @@ export function createPullsController(deps, options = {}) {
           void openRow(number, REFRESH_ASK_MS, true);
         }, WALK_SETTLE_MS);
       } else {
-        void openRow(number, REFRESH_ASK_MS, true);
+        void openRow(number, REFRESH_ASK_MS, true, wasCurrent);
       }
       return true;
     },
@@ -2367,21 +2435,23 @@ export function createPullsController(deps, options = {}) {
       if (disposed) {
         return;
       }
+      const wasCurrent = current === number;
       setCurrentRow(number);
       if (anchor !== number) {
         const previous = anchor;
         anchor = number;
         deps.markAnchor(previous, number, false);
       }
-      void openRow(number, 0, false);
+      void openRow(number, 0, false, wasCurrent);
     },
     /** Open the anchor row on Enter. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
       }
+      const wasCurrent = current === anchor;
       setCurrentRow(anchor);
-      void openRow(anchor, 0, false);
+      void openRow(anchor, 0, false, wasCurrent);
       return true;
     },
     /**
@@ -2398,12 +2468,14 @@ export function createPullsController(deps, options = {}) {
     },
     /**
      * A row took the pointer or focus: read its record ahead of a click. A walk does not
-     * come here, so it reads nothing per row.
+     * come here, so it reads nothing per row, and neither does the row whose page holds the
+     * pane or is opening, which reads its own: a pointer resting on the row it just clicked
+     * would otherwise read the record the page has just read.
      *
      * @param {number} number
      */
     peek(number) {
-      if (!disposed && walkingTo === null) {
+      if (!disposed && walkingTo === null && number !== current) {
         void readRecord(number);
       }
     },
@@ -2520,7 +2592,13 @@ async function request(perf, method, route, options) {
       decoded = null;
     }
   }
-  return { status: response.status, etag: response.headers.get("etag"), body: decoded };
+  return {
+    status: response.status,
+    etag: response.headers.get("etag"),
+    body: decoded,
+    // A record read for a selection is the opening page's first read, catalog verdict and all.
+    verified: response.headers.get(VERIFIED_HEADER),
+  };
 }
 
 /**
@@ -2768,6 +2846,9 @@ export function mountPullsPanel(container, ctx, mb) {
           }
           focusedTree = number;
         },
+        lastInput: () => lastInputAt,
+        held: (hold, heldMs, outcome) =>
+          mb.perf.measure(`githubPulls:${hold}Hold`, () => {}, { number, heldMs, outcome }),
       });
       trees.set(number, tree);
       const entry = painted.get(number);
@@ -3629,6 +3710,18 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   /** @type {number | undefined} */
   let peekTimer;
+  // The reader's last press or key anywhere, which a tree's late rows wait for.
+  /** @type {number | null} */
+  let lastInputAt = null;
+  for (const type of ["pointerdown", "keydown"]) {
+    document.addEventListener(
+      type,
+      () => {
+        lastInputAt = Date.now();
+      },
+      { capture: true, signal },
+    );
+  }
   list.addEventListener(
     "pointerover",
     (event) => {

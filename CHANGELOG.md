@@ -38,6 +38,47 @@ All notable changes to Metabrowser are documented here.
   In Quick Search, pull requests follow the file results as their own group, so their
   later arrival never moves a file row or the selection.
 
+- A pull request’s **Conversation** shows its description, and the comments and reviews
+  on its first screen, as Markdown from the first paint: the page waits up to 200 ms for
+  them, out of sight, keeping the page it replaces on screen meanwhile, and shows plain
+  text only past that wait.
+  The first screen is the new page’s own top, wherever the page it replaces was
+  scrolled. A page shown first as a description preview waits for its description alone.
+  A cold link or reload keeps its loading heading, and its loading blocks if they have
+  appeared, where they are until the pull request’s header and conversation show
+  together, so nothing moves and the body is never empty in between.
+  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
+  refresh that leaves a text unchanged shows it at once without asking again.
+  When the full record replaces a description preview, the description stays where it is
+  and only the sections below it change; ages in kept cards and commit rows still read
+  as of each paint. Commits that arrive after the conversation has painted are added
+  after everything shown, so nothing you are reading moves; a conversation painted with
+  its commits already known, as when you return to it from another tab, places them
+  among the comments and reviews in GitHub’s order.
+  The state badge shows the fresher of the cached record and the repository’s list of
+  pull requests, so a stale record of a merged pull request no longer shows Open first.
+
+- A pull request’s **Changes** with rendered Markdown appears once the first screen’s
+  Markdown files are drawn, waiting up to 200 ms, so the files below them no longer
+  shift as rendered diffs arrive.
+
+- In the Pulls tab, a pull request’s changed files open in one step at their full height
+  when Metabrowser holds the list.
+  A list GitHub takes a while to return is offered on the tree’s line as **Show N
+  files** instead of being drawn by itself, and so are its later pages (**Show N more
+  files**) and a refresh that changes a list already shown, which floats over the tree’s
+  top: the rows below never move while you are not interacting with the list.
+  A refresh that leaves the same files is drawn at once, since it moves nothing, and the
+  tree’s notices and **Retry** stay while something is offered.
+
+- For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
+  the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle
+  adds `firstScreen()`, a promise that settles once none of those files is still
+  waiting. A page can keep the comparison out of sight until then.
+  Each hold of the pull request page records a span with how long it held and why it
+  ended (`githubPull:firstPaintHold`, `githubPull:changesHold`,
+  `githubPulls:openingHold`, and `githubPulls:lateRowsHold`).
+
 - A pull request’s Changes no longer says “Rendered diff unavailable.
   Showing source.” above a Markdown file it cannot render, or “Could not render Markdown.
   Select Rendered to retry.”
