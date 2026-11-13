@@ -38,6 +38,15 @@ All notable changes to Metabrowser are documented here.
   In Quick Search, pull requests follow the file results as their own group, so their
   later arrival never moves a file row or the selection.
 
+- Branch and tag chips are slightly smaller than the text around them, wherever they
+  appear, instead of one size everywhere.
+  A chip is 0.9 of its text: 11.7px in a Git history row, 12.6px in a commit’s summary
+  and a pull request’s header, and 10.8px in a Pulls row and the branch selector, where
+  it was as large as the text beside it.
+  The chip’s height follows its text, and a merge’s arrow is now the size of the
+  sentence it sits in.
+  See [Branch Chips](docs/design-system.md#branch-chips).
+
 - The author’s avatar in a pull request’s header no longer flickers in the macOS app.
   Switching tabs, or a refresh while the page was open, blanked it for a moment, because
   each repaint built it again as a lazy image, which WebKit fetched again before drawing
