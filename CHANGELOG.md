@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s Changes no longer says “Rendered diff unavailable.
+  Showing source.” above a Markdown file it cannot render, or “Could not render Markdown.
+  Select Rendered to retry.”
+  when rendering one fails.
+  Such a file shows Source and says nothing: one that can only show Source has no
+  **Rendered** | **Source** chooser, as before, and one whose rendering failed keeps the
+  chooser, so choosing **Rendered** tries again.
+  A failed rendering is logged to the browser console.
+
 - Clicking a toggle no longer selects text, even on a double or triple click.
   A folder in the Files tree, a rendered Markdown diff’s “5 unchanged blocks”, a
   section’s chevron, a diff file’s bar, a log event, and every other control that shows

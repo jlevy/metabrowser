@@ -443,13 +443,7 @@
 }
 
 .metabrowser-diff-host
-  :is(
-    .diff-markdown-control,
-    .diff-markdown-progress,
-    .diff-markdown-fallback,
-    .diff-markdown,
-    .diff-file-body
-  )[hidden] {
+  :is(.diff-markdown-control, .diff-markdown-progress, .diff-markdown, .diff-file-body)[hidden] {
   display: none;
 }
 
