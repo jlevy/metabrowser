@@ -465,12 +465,15 @@
       }
       const name = document.createElement("span");
       name.className = "source-ref-selector-name";
+      // A mirror's branch is a remote chip and its tag a tag chip, as on the button. The
+      // default branch is not drawn as trunk: trunk is the server's `is_trunk` on a Git
+      // ref, and the mirror's default need not be the branch the history draws solid.
+      // The badge below says "default" in words (docs/design-system.md, "Branch Chips").
       name.appendChild(
         window.metabrowser.refChip(row.ref, {
           label: row.name,
           kind: model.kind === "tag" ? "tag" : "remote",
           copy: false,
-          trunk: row.default,
         }),
       );
       button.append(name);

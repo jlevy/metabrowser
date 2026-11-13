@@ -868,6 +868,9 @@ the product shows — a graph of commits — but it borrows every general elemen
 ages come from [Age](#age), change counts from
 [Inline Change Stats](#inline-change-stats), and rows follow the shared
 [row height and hover](#one-chevron-one-row-contract).
+[Branch Chips](#branch-chips), defined here, is the reference for a ref chip on every
+surface: a pull request’s header, a Pulls row, and the ref selector as much as a history
+row.
 
 ### Lane Colors
 
@@ -904,7 +907,7 @@ A row is the graph, then the commit, then who and when:
 | Part | Sizing |
 | --- | --- |
 | Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
-| Ref chips | Fixed; shrink last (see below) |
+| Ref chips | Fixed at the [one chip size](#branch-chips); shrink last (see below) |
 | Subject | Takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
 | Author and age | Fixed, right-aligned; slide outward as the panel widens |
 
@@ -927,9 +930,9 @@ The selected commit begins with one `.git-commit-summary` component rendered by
 3. `.git-commit-change-stats`, with one file-status row and one line-total row; and
 4. the commit description, when present.
 
-The identity group uses the same branch, remote, tag, trunk, and HEAD badge forms as the
-Git history row. The full summary makes the revision copyable; the compact summary keeps
-the familiar copy glyph noninteractive.
+The identity group shows the commit’s refs as the Git history row does, with the same
+kinds, trunk, and HEAD marks ([Branch Chips](#branch-chips)). The full summary makes the
+revision copyable; the compact summary keeps the familiar copy glyph noninteractive.
 
 The change-stats child sits below the identity metadata.
 Its first row reports exact file-status families with Git’s letters and ends in “file”
@@ -945,9 +948,11 @@ minus sign. Missing totals remain visibly unknown.
 The full subject uses `.page-heading` at `--page-title-font-size`, the PR title’s scale.
 Its summary starts at the pane’s content edge and uses `.page-reading-column` for the
 maximum reading width.
-The compact subject, ref badges, author, age, file-status counts, units, and line counts
-use `--body-font-size`. The revision is the one deliberate exception: it is monospace,
-and mono at body size renders optically larger than the sans text beside it, so it uses
+The compact subject, author, age, file-status counts, units, and line counts use
+`--body-font-size`. The ref badges are chips, not row text, and keep the
+[one chip size](#branch-chips).
+Among the row’s text the revision is the one deliberate exception: it is monospace, and
+mono at body size renders optically larger than the sans text beside it, so it uses
 `--nav-font-size` — one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description uses the same sans prose as a PR
@@ -983,46 +988,99 @@ the renderer, root, child, styling, and documentation contract.
 
 ### Branch Chips
 
-Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
-In dense Git history they use `--micro-font-size`; full commit summaries, PR headers and
-list metadata use `--ui-small-font-size`, smaller than the actor beside them.
-All share the same chip form and semantic ref colors.
-The name carries the meaning, so it is always `--weight-bold`, and the corner is
-`--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
+Git ref chips (`.git-ref`) are their own vocabulary, not filter chips.
+Every one is drawn by `mb.refChip` or `mb.refChipHtml` in `static/plugin-sdk-views.js`,
+and a merge’s two by `mb.mergeRefs` ([Merge Direction](#merge-direction)); no surface
+builds its own. A chip answers three questions, each with its own signal: what kind of
+ref it is, whether it is trunk, and whether `HEAD` is on it.
 
-A chip answers two independent questions, and each has its own signal:
+#### One Size
 
-| Question | Signal |
-| --- | --- |
-| What kind of ref is this? | **Form.** An ordinary branch is the plain chip. **Trunk** — `main` or `master`, local or on a remote — is solid: its color becomes the ground. A **tag** carries a notched left edge, so `<tag)` and `[branch]` differ in shape, not only in hue. |
-| Is HEAD here? | **A ring.** `HEAD` can sit on trunk, an ordinary branch, or nothing, so it is marked without changing the chip’s form. |
+A chip is the same size wherever it appears.
+One rule on `.git-ref` sets its type and box, and no context overrides them: the history
+row once drew it at 10px beside the 12px of a pull request’s header, so one branch read
+at two sizes.
 
-Shape carries the kind because hue alone cannot: a reader who does not separate the
-branch and tag hues would otherwise see one vocabulary with two colors.
-Which refs count as trunk is decided server-side, by the same names that scope the
-history walk, so the answer cannot differ between the graph and the walk.
-Color still carries local, remote, and tag as a secondary signal.
-Their ground is `--git-ref-bg`, a near-neutral of its own rather than the shared chip
-surface, sitting at the value of the surfaces beside it with just enough chroma to
-separate from them. The three ref colors are one lightness and three hues, so a ref’s
-kind is legible without a second signal, and the dark theme raises their lightness so
-they stay the same three colors:
+| Property | Value | Why |
+| --- | --- | --- |
+| Size | `--ui-small-font-size` | Secondary chrome on the [type scale](#type-scale): one step below the 13px history subject and smaller than the actor beside it in a header |
+| Weight | `--weight-bold` | The name carries the meaning |
+| Line height | 16px | A 16px chip leaves room for the `HEAD` ring inside a 22px history row |
+| Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
+| Padding | `0 5px` | A tag adds 4px on the left for its notch, and a copyable chip reserves 19px on the right for its copy control. Both belong to the chip’s form, not to where it is |
+| Width | At most `22em`, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at this size; the measurement is beside it in `styles.css` |
 
-| Ref | Token | Color | Where |
+A context places a chip — a merge’s grid, a row’s flex line — and never restyles it.
+`test_branch_chips_have_one_size` in `tests/test_design_vocabulary.py` fails on a rule
+in any shipped stylesheet that sets a chip’s type or box from a context.
+
+#### Kinds and Forms
+
+| Kind or mark | Token | Form | Cue besides hue |
 | --- | --- | --- | --- |
-| Remote branch | `--git-ref-remote` | Blue | A pull request’s base and head, the Pulls list, a mirror’s branches, the ref selector, and a checkout’s `origin/…` |
-| Local branch | `--git-ref-local` | Blue-green | A checkout’s own branches in its history |
-| Tag | `--git-ref-tag` | Amber | Tags everywhere |
+| Remote branch | `--git-ref-remote`, blue | Plain | In a history the name carries its remote, `origin/topic`; a merge and the ref selector show only remote branches |
+| Local branch | `--git-ref-local`, blue-green | Plain | A name with no remote |
+| Tag | `--git-ref-tag`, amber | Notched left edge, `<v1.0)` | The notch |
+| Trunk | Its kind’s color becomes the ground | Solid | The solid form |
+| `HEAD` | Its kind’s color, `--git-ref-ink`, so a ring on solid trunk shows too | A ring, kept inside a history row’s clip | The ring |
 
+Hue is never the only cue: shape carries the kind, because a reader who does not
+separate the branch and tag hues would otherwise see one vocabulary with two colors.
+Trunk and `HEAD` are marks on top of a kind.
+`HEAD` can sit on trunk, an ordinary branch, or nothing, so it is a ring and leaves the
+chip’s form alone.
+
+#### Which Kind Each Context Gets
+
+A chip’s kind says where the ref lives, and trunk and `HEAD` come only from the server,
+so a definition cannot differ between two places.
+
+| Context | Drawn from | Kind | Trunk | `HEAD` | Copy |
+| --- | --- | --- | --- | --- | --- |
+| A checkout’s history row | The history page’s refs (`renderRefBadges` in `static/git-panel.js`) | The wire’s `kind`: `refs/heads/` local, `refs/remotes/` remote, `refs/tags/` tag | The ref’s `is_trunk` | The ref’s `is_head` | Beside the row |
+| A mirror’s history row | The same | Its branches are `refs/remotes/origin/…`, so remote; its tags, tag | The ref’s `is_trunk` | None: a pin is detached | Beside the row |
+| A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
+| A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
+| A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
+| A Pulls row | `mb.mergeRefs`, head → base | Remote | Never | Never | Beside the row |
+| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Remote for a branch, tag for a tag | Never; the list says “default” beside the default branch | Never | Button beside it; list none |
+
+The reasons:
+
+- **A pull request’s branches are remote** even when a checkout has a local branch of
+  the same name. They are the hosted repository’s refs, and the local branch is another
+  ref that can point elsewhere; in the checkout’s history it is a local chip.
+- **Trunk is a fact about a Git ref**, `main` or `master`, local or on a remote, decided
+  server-side by `is_trunk_ref` in `git/log.py` from the same names that scope the
+  history walk. The history page, a commit’s detail, and `/api/git/refs` all carry it.
+- **A merge never draws trunk.** The arrow already names the target, and a solid base on
+  nearly every Pulls row would stop trunk standing out where it is worth finding: in a
+  history of many refs.
+- **The ref selector never draws trunk.** Its default branch is the mirror’s default,
+  which need not be the branch the history draws solid, so it says “default” in words.
+- **`HEAD` belongs to a checkout.** Only refs from Git carry `is_head`, and a pin, a
+  mirror’s page, is detached.
+
+`test_each_context_assigns_its_chip_kind` in `tests/test_design_vocabulary.py` holds
+this table against the code that draws each context, and `tests/test_git_api.py` holds
+that a commit’s detail and `/api/git/refs` carry the refs and trunk its history row
+does.
+
+#### Color
+
+The chips’ ground is `--git-ref-bg`, a near-neutral of its own rather than the shared
+chip surface, sitting at the value of the surfaces beside it with just enough chroma to
+separate from them. The three ref colors are one lightness and three hues, and the dark
+theme raises their lightness so they stay the same three colors.
 The branch most chips show is remote, so remote is the blue.
 The local blue-green is clear of that blue, of a merged pull request’s purple, and of
-the tag’s amber, and a remote branch’s name carries its remote (`origin/main`), so the
-two branch kinds never rest on hue alone.
-Each color reads at 4.5:1 or better on `--git-ref-bg` in both themes, and the figures
-are beside the tokens in `styles.css`.
+the tag’s amber. Each color reads at 4.5:1 or better on `--git-ref-bg` in both themes,
+and the figures are beside the tokens in `styles.css`.
 `test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple` in
 `tests/test_design_vocabulary.py` holds the contrast, the blue, and the distance from
 the merged purple.
+
+#### Copy
 
 Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
 keyboard focus. The control copies the complete underlying branch or ref, regardless of
@@ -1031,7 +1089,7 @@ Its click does not select a different row or follow its link.
 An outside pointer interaction hides active copy controls and restores the primary row’s
 focus before a pane drag can clip its focused button.
 Place copy controls beside a primary link or button rather than nesting interactive
-controls. Keep local, remote, tag, trunk and HEAD semantics when rendering a chip.
+controls.
 
 ### Merge Direction
 
@@ -1300,7 +1358,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
-| Head and base branch | `mb.mergeRefs`, head → base after the verb: “forker wants to merge 2 commits: forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): the [ref chip](#branch-chips) at `--ui-small-font-size`, smaller than the actor and action, and the one arrow the list uses too |
+| Head and base branch | `mb.mergeRefs`, head → base after the verb: “forker wants to merge 2 commits: forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips) at the one chip size, smaller than the actor and action, and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
@@ -1353,8 +1411,8 @@ hover, focus, selected, or current state changes them.
 The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
-text ink. Branch names use the small shared remote-ref chip, head → base, as
-[Merge Direction](#merge-direction) sets them.
+text ink. Branch names use the remote [ref chip](#branch-chips) at its one size, head →
+base, as [Merge Direction](#merge-direction) sets them.
 Known native stack membership uses a small Layers icon and bold position on that line;
 the tooltip names the stack.
 Their shared repository snapshot is indexed once by PR number; rows make no stack
@@ -1411,7 +1469,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
 | Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
-| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Compact contextual chips below the title’s primary size; they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
+| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Remote [ref chips](#branch-chips) at the one chip size, below the title’s primary size; they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
 | Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
