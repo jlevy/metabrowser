@@ -1,7 +1,7 @@
 """The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
 and ``pulls-refresh``, a pull request's changed files, ``pull-files`` and
-``pull-files-refresh``, and background prefetch, ``pulls-prefetch``, all under
-``/api/plugin/github/``.
+``pull-files-refresh``, background prefetch, ``pulls-prefetch``, and ``cache-clear``,
+which discards all of a repository's, all under ``/api/plugin/github/``.
 
 :mod:`metabrowser.builtin_plugins.github.pull_route`,
 :mod:`metabrowser.builtin_plugins.github.pull_list_route`, and
@@ -750,6 +750,50 @@ async def stacks_refresh_handler(request: Request) -> Response:
         status_code=200 if started == "not_due" else 202,
         headers=_NO_STORE,
     )
+
+
+async def cache_clear_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/cache-clear`` — discard the served repository's GitHub cache.
+
+    The body is an empty JSON object. Everything this plugin keeps for the repository
+    goes, under the lock its writers take (:func:`.pull_record.clear_pulls`), and is
+    fetched again when it is next wanted: ``cleared`` counts the files removed. The
+    repository's source and Git store stay. A cache that refuses answers ``409`` with
+    ``cache_unwritable`` and why. The failures that name this route say what to paste.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_lists import cache_failure_reason
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_record import clear_pulls
+    from metabrowser.cache.locks import run_lock_section
+    from metabrowser.home import PrivateStorageError
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    if body:
+        return _invalid_request("a cache clear names no fields")
+    await _resolve(request)
+    repository = served_repository(request.app)
+    if repository is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    try:
+        cleared = await run_lock_section(partial(clear_pulls, repository.home, repository.slug))
+    except (PrivateStorageError, OSError) as exc:
+        name = repository.source.removeprefix("https://github.com/")
+        return JSONResponse(
+            {
+                "error": f"the GitHub cache of {name} could not be cleared: "
+                f"{cache_failure_reason(exc)}",
+                "code": "cache_unwritable",
+            },
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    return JSONResponse({"cleared": cleared, "source": repository.source}, headers=_NO_STORE)
 
 
 async def pull_files_handler(request: Request) -> Response:

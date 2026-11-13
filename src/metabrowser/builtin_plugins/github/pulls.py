@@ -55,6 +55,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     UnreadableItemError,
     active_account,
     as_dict,
+    cache_unwritable,
     get_response,
     login_of,
     read_list,
@@ -854,8 +855,12 @@ async def _write(
         raise PullDataError("record_too_large", str(exc)) from exc
     except (PrivateStorageError, OSError) as exc:
         log.debug("could not write pull request %s: %s", record.number, exc)
-        raise PullDataError(
-            "cache_unwritable", "its record could not be written to the cache"
+        owner, repo = _owner_and_repo(published)
+        raise cache_unwritable(
+            f"the record of pull request #{record.number}",
+            exc,
+            source=f"https://github.com/{owner}/{repo}",
+            checkout=isinstance(published, ListedRepository) and published.checkout,
         ) from exc
 
 
