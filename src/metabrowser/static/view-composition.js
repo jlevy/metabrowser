@@ -215,5 +215,116 @@
     }
   }
 
-  window.MetabrowserViewComposition = Object.freeze({ createLifecycle, mount, prepare });
+  // A staged view is shown once the faces its text is set in have landed, at most
+  // FACE_WAIT_MS later. Cold, PT Serif landed 13-30 ms after layout and, swapped in after
+  // the stage was shown, moved the body 21-23 px (Chrome 152, load average 20-28).
+  //
+  // The faces are asked for by name, not inferred from `document.fonts.status`. A face is
+  // requested only when layout reaches text set in it, and a renderer that writes its DOM
+  // without yielding leaves the stage unlaid when the wait runs: the status still read
+  // "loaded" there, and the face was requested 4-19 ms after the stage was shown.
+  // Reading a computed style recalculates style but lays nothing out, so the
+  // stage is still laid out once, after it is shown. Nor does `check()` tell: it read true
+  // for PT Serif while the face was unloaded and while it loaded, so the faces are loaded
+  // outright, and `load()` answers a face already there in under 0.1 ms with no frame
+  // between (Chrome 152).
+  const FACE_WAIT_MS = 100;
+  // One element of each kind whose face decides where a document's lines break: body
+  // text, headings, emphasis, and code, read from every staged document, since a later
+  // document can be the first to use a face: remembering the first document's faces left
+  // an all-italic document after a plain one to swap faces after it was shown (layout
+  // shift 0.150). One of each, and a face the document does not use is not fetched.
+  //
+  // Reading them recalculates the whole stage's style, which is recalculated again once
+  // it is moved into the pane: on a staged document of 2,717 elements with no frame
+  // before the read, it took 33-38 ms and made the commit to its frame 69-88 ms against
+  // 37-42 (Chrome 152). So once a stage has found a face missing, every face the page
+  // declares is loaded at idle; then all of them are there, and no later stage reads a
+  // style or waits.
+  const FACE_SAMPLES = ["p", "h1, h2, h3, h4, h5, h6", "strong, b", "em, i", "code, pre", "li"];
+  // The text a face is loaded for. Without it the engine loads for a space, which the
+  // prose stack's first family, a local face for quotation marks, does not cover either,
+  // and a face split by unicode-range is chosen by the characters it is for.
+  const FACE_SAMPLE_TEXT = "Aa";
+  let declaredFacesQueued = false;
+
+  /** @param {FontFaceSet} fonts Load, at idle, every declared face not yet asked for. */
+  function loadDeclaredFaces(fonts) {
+    if (declaredFacesQueued) {
+      return;
+    }
+    declaredFacesQueued = true;
+    const run = () => {
+      declaredFacesQueued = false;
+      for (const face of fonts) {
+        if (face.status === "unloaded") {
+          face.load().catch(() => {});
+        }
+      }
+    };
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      setTimeout(run, 1000);
+    }
+  }
+
+  /**
+   * Wait, briefly, for the faces a staged document's text is set in.
+   *
+   * @param {Element | null | undefined} root
+   * @returns {Promise<void> | null} `null` when every face the page declares is there.
+   */
+  function settleFaces(root) {
+    const fonts = typeof document === "undefined" ? undefined : document.fonts;
+    if (!root || typeof fonts?.load !== "function") {
+      return null;
+    }
+    // A face that failed to load is as settled as one that loaded.
+    if (
+      Array.from(fonts, (face) => face.status).every(
+        (status) => status === "loaded" || status === "error",
+      )
+    ) {
+      return null;
+    }
+    /** @type {Set<string>} */
+    const wanted = new Set();
+    for (const element of [root, ...FACE_SAMPLES.map((selector) => root.querySelector(selector))]) {
+      if (element) {
+        const style = getComputedStyle(element);
+        // The size in the `font` shorthand chooses no face; the family list, weight, and
+        // style do.
+        wanted.add(`${style.fontStyle} ${style.fontWeight} 16px ${style.fontFamily}`);
+      }
+    }
+    loadDeclaredFaces(fonts);
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    const capped = new Promise((resolve) => {
+      timer = setTimeout(resolve, FACE_WAIT_MS);
+    });
+    const landed = Promise.all(
+      Array.from(wanted, (font) => {
+        try {
+          // A face that fails to load, or a family this engine cannot parse back, is
+          // not one to wait for.
+          return fonts.load(font, FACE_SAMPLE_TEXT).catch(() => []);
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return Promise.race([landed, capped]).then(() => {
+      clearTimeout(timer);
+    });
+  }
+
+  window.MetabrowserViewComposition = Object.freeze({
+    FACE_WAIT_MS,
+    createLifecycle,
+    mount,
+    prepare,
+    settleFaces,
+  });
 })();

@@ -1,5 +1,5 @@
 /** @typedef {{key: string, data: unknown} | null} PanelResolution */
-/** @typedef {{dispose: () => void, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
+/** @typedef {{dispose: () => void, ready?: Promise<void>, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
 /** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", collapsible?: boolean, defaultExpanded?: boolean, printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
 /** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, disposeDisclosure: () => void, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
 /** @typedef {{listPanels: () => ReadonlyArray<PanelDescriptor>}} PanelRegistry */
@@ -196,6 +196,9 @@ export function mountOverview(container, initialContext, mb, registry) {
       const handle = await record.descriptor.mount(record.body, context, result.data, {
         signal: mountController.signal,
       });
+      // A panel can hold the Overview's first paint for data it is about to show, so the
+      // section paints at the height it keeps (file-overview-panel.js).
+      await handle?.ready;
       if (disposed || generation !== record.generation) {
         mountController.abort();
         handle?.dispose();

@@ -10,7 +10,8 @@ manifest can know: it must be one letter, and not a key the shell reserves every
 the shell reserves for that kind, or one an earlier view already holds, is dropped from
 the later view. The server serves what it returns, and ``metab --doctor`` and
 ``tests/test_keymap.py`` report what it drops. Last, :func:`live_view_keys` removes
-every key from a served list that kept fewer than two views, since one view has no tab.
+every key from a served list that kept fewer than two views, since one view has no other
+tab to switch to.
 
 The shell serves the reserved table to the browser through ``METABROWSER_SETTINGS``
 (:func:`serialize_reserved_shell_keys`), so the plugin shortcut facade refuses the same
@@ -186,20 +187,22 @@ def check_view_keys(kind: str, views: Iterable[Mapping[str, Any]]) -> ViewKeyChe
     return ViewKeyCheck(views=out, problems=problems)
 
 
-# The shell draws a view tab strip only for two or more views (``renderFile`` in
-# ``static/app.js``), so a key is live only in a list at least this long.
+# The shell draws a view tab bar for every file, but ``renderFile`` in ``static/app.js``
+# gives its tabs their keys only in a bar at least this long: a lone tab has no other
+# view to switch to.
 MIN_TABBED_VIEWS: Final = 2
 
 
 def live_view_keys(views: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return *views* with every ``key`` removed when fewer than two views remain.
 
-    A view key selects a tab, and a lone view has none, so its key would advertise a
-    shortcut with no target. Filters that run after :func:`check_view_keys`, such as
-    the html kind's capability gate and a Git folder's Overview without a treemap, can
-    leave one view of a multi-view kind; every served view list ends here, so a served
-    key is always a live one. Removing it is not a problem to report: the manifest
-    declared it correctly, and the same kind serves it wherever two views remain.
+    A view key switches to its view's tab, and a lone view's tab is the one already
+    shown, so its key would advertise a shortcut that does nothing. Filters that run
+    after :func:`check_view_keys`, such as the html kind's capability gate and a Git
+    folder's Overview without a treemap, can leave one view of a multi-view kind; every
+    served view list ends here, so a served key is always a live one. Removing it is
+    not a problem to report: the manifest declared it correctly, and the same kind
+    serves it wherever two views remain.
     """
     if len(views) >= MIN_TABBED_VIEWS:
         return views

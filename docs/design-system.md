@@ -656,7 +656,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
-| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon, stack position |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -672,6 +672,13 @@ A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px p
 the row height and the name’s line height together.
 The header’s path fills the header’s content box and centers its own crumbs, so the
 header’s text stays where centering put it at any header height.
+
+A header badge whose label changes in place sits in a slot as wide as its widest label
+from first paint, so the change moves nothing after it: a one-column grid of the badge,
+then a sizer of each label at no height, outside the badge so its trim still centers the
+capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Run ended,
+and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
+checks both in Chrome.
 
 The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
 so they are set at the path’s own size: text of one size centers onto one baseline.
@@ -721,6 +728,21 @@ the motion, and reduced-motion drops every travel to 1ms while keeping the state
 A native `details` keeps its state in `open` and takes the same recipe on
 `::details-content`, as a pull request hunk’s earlier lines do.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
+
+Only a toggle the reader asked for travels.
+When navigation reveals a path, as a link, Back, or Quick Search does, the tree opens
+the folders on the way with `.tree-children-instant`, which lands them in place.
+Animated, a deep reveal moved the rows below it 43–131 px a frame with no input.
+The reader’s next toggle of that folder travels again.
+Such a reveal is the reader’s own doing, so it then scrolls the new selection into view
+in the same frame. A landing within the inline’s bounds needs no reveal: the server
+inlines the folders of the address’s path, open, and the tree’s first paint selects and
+shows its row, so nothing is fetched, opened, or scrolled after it.
+Opening them after the first paint had moved the tree with no input.
+The bounds are each folder’s whole listing (200 entries at most), 300 rows for the
+path’s folders in all, and 8 folders, and the inventory’s discovery complete.
+A landing outside them inlines the root alone, and the page reveals its path after the
+first paint, its folders travelling, as before: that still moves the tree with no input.
 
 ### Disclosure Toggles Never Select Text
 
@@ -1126,18 +1148,21 @@ A rename in a diff reads the same way, `old → new`.
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow; a place too narrow for that gives the merge a line of its own |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own, as a Pulls row does; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
 On the Pulls tab the muted line wraps rather than clips, so both chips and the arrow are
 always whole inside the row, down to the narrowest navigation pane (180px) with a
-five-digit number, a long login, an avatar, and a stack badge.
+five-digit number, a long login, and an avatar.
 The author and the branches each start with their separator.
-A part moves to the next line when the line cannot hold its floor: the author’s is its
-separator, its avatar if it has one, and a little of the name, so neither the separator
-nor the avatar stands without a visible name, even when the avatar fails to load and
-keeps its slot, and the branches’ is their separator and the merge’s floor.
-A part that stays grows by equal amounts toward its full width, so the line shortens
-names before it wraps.
+The stack position is not on this line: it arrives late, and here it took its width from
+the names, moving the arrow up to 54 px, or a line of its own, moving every row below.
+It has a column on the title line, before the age, where it cuts the title shorter and
+moves nothing. A part moves to the next line when the line cannot hold its floor: the
+author’s is its separator, its avatar if it has one, and a little of the name, so
+neither the separator nor the avatar stands without a visible name, even when the avatar
+fails to load and keeps its slot, and the branches’ is their separator and the merge’s
+floor. A part that stays grows by equal amounts toward its full width, so the line
+shortens names before it wraps.
 The line starts one separator to the left of the row, so the separator of a part that
 starts a line is clipped.
 It is a wrapping flex line rather than a line of text with `text-overflow: ellipsis`,
@@ -1302,9 +1327,22 @@ The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
 icon at the title’s font size.
-The text wraps under its first line while the icon stays beside the first line.
+The text wraps under its first line while the icon stays beside the first line, to two
+lines at most: the title holds two lines from first paint, and one cut short there
+carries the whole of it in its tooltip.
 The colored badge below the title gives the state in text and the title icon is
-decorative. The Changes body keeps the full pane so a diff has room for Split.
+decorative. The header’s box is decided at first paint, in every state and on every tab,
+so the tab bar under it never moves between pull requests or tabs: the state row is one
+line, its sentence, then its author, then its branch names cut short rather than
+wrapping it, and the badge as wide as the widest state; the labels row is always there,
+a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
+moves nothing: it takes its width from the labels, which the row then cuts shorter at
+the slot, a label that showed whole among them; the status row is one line that ends in
+Refresh’s slot, held hidden on a tab with nothing to refresh, its text and then its
+offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
+too; and a cold page keeps every row, empty, at its height.
+Only a failure, which says what to do, wraps the status row.
+The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
@@ -1343,6 +1381,9 @@ behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
+Membership has its slot at the end of the labels row, so its chip, which arrives from
+its own answer after the page, moves nothing; it cuts the labels shorter, a label that
+showed whole among them.
 
 ### Text
 
@@ -1435,10 +1476,11 @@ The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
 text ink. Branch names use the remote [ref chip](#branch-chips), slightly smaller than
 the line, head → base, as [Merge Direction](#merge-direction) sets them.
-Known native stack membership uses a small Layers icon and bold position on that line;
-the tooltip names the stack.
-Their shared repository snapshot is indexed once by PR number; rows make no stack
-requests, and enrichment updates retain the row and any focused changed-file tree.
+Known native stack membership uses a small Layers icon and bold position in a column of
+the title line, before the age, in all the room the title and it share but 4ch of the
+title, and cut short with an ellipsis past that; the tooltip names the stack and every
+position. Their shared repository snapshot is indexed once by PR number; rows make no
+stack requests, and enrichment updates retain the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1503,19 +1545,19 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
-| Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
-| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
-| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
+| Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
+| Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
-| Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
+| Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
 | Connection | One live status row: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
-icon and the title with the age beside it, sharing a baseline, then the metadata line
-under them. It is one link, so a new tab and a copied address are the browser’s own, and
-all of its text is text: GitHub’s users write it, and none of it reaches markup or a
-style.
+icon and the title with the age beside it, sharing a baseline, and the stack position,
+if any, centred between them, then the metadata line under them.
+It is one link, so a new tab and a copied address are the browser’s own, and all of its
+text is text: GitHub’s users write it, and none of it reaches markup or a style.
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals).
 
@@ -1802,6 +1844,11 @@ K and J are aliases for Arrow Up and Arrow Down with the same guards, in either 
 with or without Shift; they never act from a text field and get no first-row or last-row
 meaning. In the file tree, the first-row and last-row keys are Home and End alone.
 Key repeat remains enabled for fast traversal.
+In the file tree, as in the Pulls tab, a held key selects each row and replaces the
+address as it reaches it, but opens only the row it stops on: when the key is let go, or
+120 ms after its last repeat.
+In the file tree a repeat slower than that opens each row as it reaches it, for the rest
+of the hold. A single press opens its row at once.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
@@ -1927,6 +1974,14 @@ The empty prefix lists recent PRs, digits match number prefixes, and words match
 Use the same arrow, Enter, and Escape behavior for every result type.
 Keep the active option selected by identity as providers return, and open the result
 through its normal navigation route.
+
+File results lead, and pull requests follow as their own group.
+Files answer from memory and pull requests from the server about 110 ms later, so the
+later group is appended below the painted rows instead of ranked in among them, and a
+late answer never moves a file row or the selection.
+Files keep the whole result cap, and pull requests have twenty rows of their own after
+them, so a full file group does not crowd out pull requests and a file search is not cut
+short for a group that matches nothing.
 
 ## Icons and Icon Buttons
 
@@ -2688,7 +2743,8 @@ atomically when the complete, truncated, or failed generation arrives.
 
 Treemap repeats the fixed **Files** context immediately above the map.
 It does not make that context collapsible and does not duplicate totals or scan state in
-a footer sentence. The print action is absent when no mounted contribution is printable.
+a footer sentence. The print action keeps its slot, hidden, when no mounted contribution
+is printable.
 
 An empty folder is still a completed Overview.
 Files remains visible with the message **No files to summarize.** It renders no empty
@@ -2999,6 +3055,29 @@ item.
 PR arrival classification uses a conservative timestamp cutoff.
 A machine clock ahead of GitHub can suppress the tint.
 The new catalog row still appears with its regular controls and selection behavior.
+
+### Regions Keep Their Boxes
+
+Every region’s box is decided by the first paint and does not depend on data that
+arrives later. Chrome that comes and goes moved more than content did: the filter bar 37
+px on every main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px,
+the Commits tab 78 px on every landing.
+So a region keeps its slot while its content is absent, and holds the height it will
+have: one toolbar slot at the top of the navigation that every main tab fills with its
+own toolbar at one height (the Files filters, the Commits tally, the Pulls filters), the
+Commits tab from the server at a repository’s root, a scrollbar gutter on the tree and
+the preview pane, the shortcut strip’s row, a view tab bar in every file, the print
+button’s and a run badge’s widths, the Pulls tab’s status and connection lines and its
+age column, and the pull request header’s rows.
+Heights are in line units, or struts of the controls a row holds, never pixels measured
+in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
+is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
+does, the view holds its first paint for that data, briefly, with the previous view
+still shown.
+The server draws the tab an address lands on in front, a commit’s address on
+Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
+cannot load says so in its slot rather than pulsing.
+`tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome
 

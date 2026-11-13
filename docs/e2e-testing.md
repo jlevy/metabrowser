@@ -284,9 +284,10 @@ Strict mode is off on a developer machine, which can add these:
   above;
 - `Chrome is not installed`, for the checks that need a real headless Chrome: the
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
-  and the frame clock, and `tests/test_folder_overview_alignment.py`, which measures
-  where the Folder Overview’s labels start at several window widths.
-  The CI runners have Chrome, so CI runs them.
+  and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
+  the Folder Overview’s labels start at several window widths; and the layout checks in
+  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`. The
+  CI runners have Chrome, so CI runs them.
 
 ### Timeouts
 

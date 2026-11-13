@@ -38,6 +38,13 @@ export function mountFileTypeSummary(
   // The last request failed with nothing to show. Its message stays until a
   // rollup answers: a control change must not bring the loading skeleton back.
   let loadFailed = false;
+  /** @type {() => void} */
+  let answered = () => {};
+  // The first answer, whatever it says, or the end of the mount.
+  /** @type {Promise<void>} */
+  const firstAnswer = new Promise((resolve) => {
+    answered = () => resolve(undefined);
+  });
   const formatters = {
     formatFileCount: mb.formatFileCount,
     formatInteger: mb.formatInteger,
@@ -98,6 +105,7 @@ export function mountFileTypeSummary(
     } else {
       options.onNoTotals?.();
     }
+    answered();
   }
 
   const watch = mb.watchRollup(
@@ -135,6 +143,7 @@ export function mountFileTypeSummary(
         });
         loadFailed = true;
         options.onNoTotals?.();
+        answered();
       },
     },
     applyEnvelope,
@@ -163,6 +172,7 @@ export function mountFileTypeSummary(
       return;
     }
     disposed = true;
+    answered();
     options.signal?.removeEventListener("abort", abort);
     watch.dispose();
     unsubscribeControls();
@@ -172,5 +182,6 @@ export function mountFileTypeSummary(
   }
   return Object.freeze({
     dispose,
+    ready: firstAnswer,
   });
 }

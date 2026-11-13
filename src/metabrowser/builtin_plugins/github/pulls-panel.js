@@ -2661,7 +2661,7 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   reloadButton.addEventListener("click", () => void controller.reload());
   filters.append(reloadButton);
-  const connection = h("div", { class: "github-pulls-connection", hidden: "" }, [
+  const connection = h("div", { class: "github-pulls-connection" }, [
     connectionText,
     connectionHelp,
   ]);
@@ -2672,7 +2672,15 @@ export function mountPullsPanel(container, ctx, mb) {
   moreButton.addEventListener("click", () => void controller.loadMore());
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
-  container.replaceChildren(filters, status, connection, list, empty, foot, live);
+  // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
+  // at the slot's height, so the list starts where the Files tree does.
+  const toolbar = nav.toolbar ?? null;
+  if (toolbar) {
+    toolbar.replaceChildren(filters);
+    container.replaceChildren(status, connection, list, empty, foot, live);
+  } else {
+    container.replaceChildren(filters, status, connection, list, empty, foot, live);
+  }
 
   /**
    * What is painted of each row held, by number: its elements, the key of what it shows, and
@@ -2943,7 +2951,6 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     element.setAttribute("aria-label", hint);
     element.replaceChildren(
-      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
       ...(stackSvg === null
         ? []
         : [
@@ -2955,8 +2962,15 @@ export function mountPullsPanel(container, ctx, mb) {
     );
   }
 
-  /** @param {PullRow} row @param {HTMLElement} stack */
-  function rowMeta(row, stack) {
+  /**
+   * The muted line: the number, the author, and the merge. The stack's position is not on
+   * it: it arrives from its own answer, and on this line, which wraps, it moved what was
+   * before it or took a line of its own and moved every row below. It is on the title
+   * line instead (`buildRow`).
+   *
+   * @param {PullRow} row
+   */
+  function rowMeta(row) {
     // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
     // branches each carry the separator before them, so either moves to the next line
     // whole, and a separator that starts a line is clipped.
@@ -2964,7 +2978,6 @@ export function mountPullsPanel(container, ctx, mb) {
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [
         h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-        stack,
         h("span", { class: "github-pulls-by" }, [
           separator(),
           // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
@@ -3016,7 +3029,7 @@ export function mountPullsPanel(container, ctx, mb) {
       row.headRef !== before.headRef
     ) {
       entry.releaseCopies();
-      const meta = rowMeta(row, entry.stack);
+      const meta = rowMeta(row);
       entry.row.insertBefore(meta, entry.meta);
       entry.meta.remove();
       entry.meta = meta;
@@ -3045,9 +3058,11 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       [when.label],
     );
+    // The stack's position has a column of its own on the title line, between the title
+    // and the age: arriving, it cuts the title shorter and moves nothing.
     const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
     paintStackBadge(stack, row.number);
-    const meta = rowMeta(row, stack);
+    const meta = rowMeta(row);
     const icon = pullStateIcon(row.state);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
@@ -3064,7 +3079,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-expanded": "false",
           tabindex: "-1",
         },
-        [toggle, icon, title, updated, meta],
+        [toggle, icon, title, stack, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -3475,15 +3490,19 @@ export function mountPullsPanel(container, ctx, mb) {
       );
     }
     if (model.window !== null) {
+      if (lines.length > 0) {
+        lines.push(" · ");
+      }
       lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
     }
-    status.replaceChildren(...lines);
-    status.hidden = lines.length === 0;
+    // The status and connection lines are always there, a line each, and the window's note
+    // shares the status line: the list under them starts at one height before the list
+    // answers and after, and across a filter change (they moved it 24 px on every load).
+    status.replaceChildren(...(lines.length > 0 ? lines : ["\u00a0"]));
     const connected = model.connection;
     const working = connected?.state === "working";
     const retrying = connected?.retrying === true;
     const refreshing = connected?.refreshing === true;
-    connection.hidden = connected === null;
     connectionText.classList.toggle("mb-delayed-loading", working);
     spinner.classList.toggle("mb-delayed-loading", retrying);
     spinner.hidden = !working && !retrying;
@@ -3935,6 +3954,7 @@ export function mountPullsPanel(container, ctx, mb) {
       painted.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();
+      filters.remove();
     },
   });
 }

@@ -142,6 +142,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     VersionUnavailableError,
+    canonical_inventory_path,
     native_inventory_path,
     parse_inventory_path,
 )
@@ -294,6 +295,27 @@ NAVIGATION_TALLY_LIMIT = 200
 # screen either way and the rest arrives with the fetch a moment later.
 # Set to 0 to disable the inline entirely.
 _INLINE_INITIAL_TREE_ROWS = 200
+
+# How many folders of a landing's path the shell also inlines, expanded, so a deep landing's
+# first tree paint already shows its row: the reveal that opened them after first paint
+# moved the tree with no input (layout shift 0.050 to 0.057 on a file three folders down,
+# Chrome 152). A deeper landing inlines the root alone and the page reveals its path, as
+# before. The depth bounds the queries one shell read makes; what a landing costs the
+# reader is the rows, which _INLINE_LANDING_ROWS bounds.
+_INLINE_LANDING_DEPTH = 8
+
+# How many rows a landing's folders may add to the shell in all, past the root's own. Each
+# folder is inlined with its whole listing, and a path whose folders do not fit inlines the
+# root alone, as before.
+#
+# Measured on landings one to eight folders down, 152 entries a folder, against the root-only
+# shell (headless Chrome 152, median of 5 loads, two rounds, load average 6 to 13): each
+# folder added 21 KB of shell (2 KB gzipped) and about 1 ms on the server, and the 1,215
+# rows of eight such folders added 84 to 90 ms to DOMContentLoaded and 73 to 75 ms to the
+# first tree row, about 11 and 9 ms a folder. Two folders, 304 rows, cost 15 to 16 ms of
+# first tree row, one frame at 60 Hz; the reveal they replace moved the tree by 0.10 to
+# 0.46 with no input. So the budget is about one frame of first tree row.
+_INLINE_LANDING_ROWS = 300
 
 # Encoded rollup bodies keyed by their ETag. The validator alone only helps a
 # client that already holds the answer; a second tab opening the same folder,
@@ -1355,7 +1377,12 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
 
 
 async def index(
-    request: Request, *, pull_page: bool = False, pull_list: bool = False
+    request: Request,
+    *,
+    pull_page: bool = False,
+    pull_list: bool = False,
+    commit_page: bool = False,
+    view_path: str | None = None,
 ) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine.
 
@@ -1497,9 +1524,54 @@ async def index(
     # that has it draws it at first paint, so the tabs never shift when it arrives.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
-    files_active = "" if pulls_in_front else " active"
-    files_selected = "false" if pulls_in_front else "true"
-    behind_pulls = ' style="display: none"' if pulls_in_front else ""
+    # Commits is drawn here when the served root is a repository's root, the one root Git
+    # discovery accepts (git/repo.py), so it does not appear when discovery registers it;
+    # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
+    # main tabs' order (static/main-tabs.js, MAIN_TABS).
+    commits_tab = git_pin or await asyncio.to_thread(
+        lambda: (session_filesystem_root().resolve() / ".git").exists()
+    )
+    # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
+    # panel's container, and the landing never shows Files and then swaps it. The neutral Git
+    # landing is /view/ with a history entry's state, which only the page can read.
+    commits_in_front = commits_tab and commit_page
+    files_in_front = not (pulls_in_front or commits_in_front)
+    files_active = " active" if files_in_front else ""
+    files_selected = "true" if files_in_front else "false"
+    files_behind = "" if files_in_front else ' style="display: none"'
+    # The navigation's toolbar slot holds the toolbar of the tab in front: the Files filters, or
+    # the Commits tally, or the Pulls filters, each at the slot's one height, so the panel
+    # below starts at one y on every tab (static/main-tabs.js#activateNavPanel). A tab whose
+    # toolbar its script fills later ships the shared pending tally, never an empty slot.
+    filter_bar_behind = "" if files_in_front else " hidden"
+    pending_tally = '<span class="count tally-pending"></span>'
+    commits_button = (
+        f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
+        f' role="tab" data-tab="git" aria-selected="{"true" if commits_in_front else "false"}">'
+        "Commits</button>"
+        if commits_tab
+        else ""
+    )
+    git_container = (
+        '\n        <div id="tab-git" data-tab-content="git">'
+        '<div class="loading mb-delayed-loading" role="status">'
+        '<div class="spinner spinner-sm" aria-hidden="true"></div>'
+        '<span class="sr-only">Loading history…</span></div></div>'
+        if commits_in_front
+        else ""
+    )
+    toolbars = (
+        '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git"'
+        f"{'' if commits_in_front else ' hidden'}>"
+        f'<div class="git-history-summary">{pending_tally}</div></div>'
+        if commits_tab
+        else ""
+    ) + (
+        '\n      <div class="nav-toolbar" id="nav-toolbar-pulls" data-nav-toolbar="pulls"'
+        f"{'' if pulls_in_front else ' hidden'}>{pending_tally}</div>"
+        if pulls_tab
+        else ""
+    )
     pulls_button = (
         f'\n        <button class="tab-btn{" active" if pulls_in_front else ""}" type="button"'
         f' role="tab" data-tab="pulls" aria-selected="{"true" if pulls_in_front else "false"}">'
@@ -1522,8 +1594,13 @@ async def index(
     if pull_list and pulls_in_front:
         preview_loading = '<div class="preview-empty">Select a pull request.</div>'
     elif pull_page:
+        # Nothing to keep on screen while the page is staged: the page's own loading state,
+        # its header rows at their heights and the tab bar over a body skeleton, replaces
+        # this at once (static/app.js#beginPreviewNavigation). Staged, it stayed hidden
+        # behind this skeleton until the record landed, 1.9 s on a cold cache.
         preview_loading = (
-            '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+            '<div class="pull-request-placeholder mb-delayed-loading" role="status"'
+            ' aria-label="Loading pull request" data-preview-empty>'
             '<div class="recent-loading" aria-hidden="true"></div></div>'
         )
     else:
@@ -1544,36 +1621,103 @@ async def index(
     # server has not been told about at this point, so inlining a filtered view
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
+    #
+    # A landing on a path inlines its folders' listings too, each grafted under its row and
+    # expanded, and names the path when its row is among them: the page then selects and
+    # shows that row at its first tree paint, and fetches and scrolls nothing for it after
+    # (static/app.js#renderInitialTreeRows). The inline stays a strict subset of what the
+    # page builds: no route reconciles a folder below the first level once it has rows, so
+    # a folder is grafted only with its whole listing. A path with a folder that cannot be
+    # (its listing has a further page, or the path's rows would pass _INLINE_LANDING_ROWS),
+    # or deeper than _INLINE_LANDING_DEPTH, inlines the root alone and the page reveals the
+    # path as before. The rows carry the canonical path, so the landing is canonicalized
+    # before it is split.
     initial_tree_block = ""
+    landed: str | None = None
     if _INLINE_INITIAL_TREE_ROWS and not git_pin:
+        landing = canonical_inventory_path(view_path) if view_path else ""
+        landing_parts = [part for part in landing.split("/") if part]
+        ancestors = (
+            ["/".join(landing_parts[: index + 1]) for index in range(len(landing_parts) - 1)]
+            if len(landing_parts) - 1 <= _INLINE_LANDING_DEPTH
+            else []
+        )
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
                 ReadRequest(
-                    queries=(
+                    queries=tuple(
                         DirectoryQuery(
-                            query_id="initial-tree",
-                            path="",
+                            query_id=f"initial-tree-{index}",
+                            path=path,
                             max_depth=1,
                             max_rows=_INLINE_INITIAL_TREE_ROWS,
-                        ),
+                        )
+                        for index, path in enumerate(["", *ancestors])
                     )
                 )
             )
-            initial_projection = initial_read.result.completed_projection("initial-tree")
-            if not isinstance(initial_projection, DirectoryProjection):
-                raise TypeError("the initial-tree read returned the wrong projection")
-            initial_tree = build_inventory_tree_from_entries(
-                entries=initial_projection.entries,
-                parent_rel="",
-                max_depth=1,
-                max_entries=_INLINE_INITIAL_TREE_ROWS,
-            )
+
+            def inline_level(
+                index: int, path: str, *, parent_ignored: bool = False
+            ) -> tuple[list[dict[str, Any]], bool]:
+                projection = initial_read.result.completed_projection(f"initial-tree-{index}")
+                if not isinstance(projection, DirectoryProjection):
+                    raise TypeError("the initial-tree read returned the wrong projection")
+                rows = build_inventory_tree_from_entries(
+                    entries=projection.entries,
+                    parent_rel=path,
+                    max_depth=1,
+                    parent_ignored=parent_ignored,
+                    max_entries=_INLINE_INITIAL_TREE_ROWS,
+                )
+                return rows, projection.next_page is None
+
+            initial_tree, _ = inline_level(0, "")
+            # Every folder of the path, or none of them: a landing that opened some of its
+            # folders at first paint and the rest after moved the tree no less than one that
+            # opened them all after (layout shift 0.19 to 0.38 against 0.11 to 0.39, two to
+            # eight folders of the fixture measured at _INLINE_LANDING_ROWS), and paid for
+            # the rows it inlined.
+            grafts: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+            level = initial_tree
+            landing_rows = 0
+            for index, ancestor in enumerate(ancestors, start=1):
+                row = next((n for n in level if n["path"] == ancestor and n["type"] == "dir"), None)
+                if row is None:
+                    break
+                try:
+                    children, whole = inline_level(
+                        index, ancestor, parent_ignored=bool(row.get("gitignored"))
+                    )
+                except Exception:
+                    LOG.debug("landing ancestry inline stopped at %s", ancestor, exc_info=True)
+                    break
+                landing_rows += len(children)
+                if not whole or landing_rows > _INLINE_LANDING_ROWS:
+                    break
+                grafts.append((row, children))
+                level = children
+            # While discovery runs, a folder the walk has not reached yet reads as an empty
+            # listing with no further page: grafted, the page drew it empty and open, with
+            # nothing to load, and never selected the landing's row. So the path's folders
+            # are grafted only from a read of complete coverage.
+            if len(grafts) == len(ancestors) and (
+                not ancestors or initial_read.result.state.coverage.complete
+            ):
+                for row, children in grafts:
+                    row["children"] = children
+                    row["expanded"] = True
+                target = "/".join(landing_parts)
+                if any(n["path"] == target for n in level):
+                    landed = target
         except Exception:
             LOG.debug("initial tree inline failed", exc_info=True)
             initial_tree = []
         if initial_tree:
-            initial_tree_json = _json.dumps({"tree": initial_tree}).replace("<", "\\u003c")
+            initial_tree_json = _json.dumps(
+                {"tree": initial_tree, **({"path": landed} if landed else {})}
+            ).replace("<", "\\u003c")
             initial_tree_block = (
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
@@ -1891,17 +2035,17 @@ async def index(
         </div>
       </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}
+        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar"{behind_pulls}></div>
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>{toolbars}
       <div class="tree-content" id="tree-content">
-        <div id="tab-files" data-tab-content="files"{behind_pulls}>
+        <div id="tab-files" data-tab-content="files"{files_behind}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
-        </div>{pulls_container}
+        </div>{git_container}{pulls_container}
       </div>
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
@@ -1992,7 +2136,7 @@ async def view_shell(request: Request) -> Response:
         decoded = decode_safe_view_path(raw_path)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
-    return await index(request)
+    return await index(request, view_path=decoded)
 
 
 async def commit_shell(request: Request) -> Response:
@@ -2006,7 +2150,7 @@ async def commit_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
         return PlainTextResponse("Invalid commit route.", status_code=400)
-    return await index(request)
+    return await index(request, commit_page=True)
 
 
 async def pull_shell(request: Request) -> Response:

@@ -270,11 +270,16 @@ def test_switching_panels_hides_the_file_filter_bar() -> None:
     reload replaces #tab-files wholesale, and the bar has to survive that
     and stay put while the tree scrolls. Being outside means the
     visibility loop does not reach it, so a panel that is not Files would
-    otherwise show file filters above content they cannot filter."""
+    otherwise show file filters above content they cannot filter.
+
+    It is the Files tab's toolbar in a slot each tab fills with its own, at
+    one height: hidden alone, it moved the panel below it 37 px on every
+    switch to or from Files, and on a commit landing with no input."""
 
     activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
-    assert 'getElementById("nav-filter-bar")' in activate_block
-    assert 'panelId === "files" ? "" : "none"' in activate_block
+    assert 'document.querySelectorAll("[data-nav-toolbar]")' in activate_block
+    assert ".dataset.navToolbar !== panelId" in activate_block
+    assert "filterBar.style.display" not in activate_block
 
 
 def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
@@ -285,9 +290,12 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
 
     js = _read_app_js()
     block = _function_source(js, "initNavScrollShadow")
-    assert "offsetParent !== null" in block
-    # The loser is cleared, so a tab switch cannot arm two shadows.
-    assert 'other?.classList.remove("scrolled")' in block
+    # The visible toolbar in the slot carries it, whichever tab's it is. The chrome is the
+    # pane's own children, so a scroll event visits those and not the whole document.
+    assert 'pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])")' in block
+    assert "queryHtmlAll(" not in block and 'queryHtml("[data-nav-toolbar]' not in block
+    # The others are cleared, so a tab switch cannot arm two shadows.
+    assert 'chrome.classList.toggle("scrolled", chrome === target' in block
     # A tab switch fires no scroll event, so activation re-runs it.
     activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
     assert "deps.scrollShadow()" in activate_block
