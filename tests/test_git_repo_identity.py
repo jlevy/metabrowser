@@ -127,7 +127,9 @@ def repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def _no_outside_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_outside_git_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The Git that ``repo_info`` runs reads no system, global or command-line settings.
 
     Ordinary local reads keep the caller's Git environment (``git_environment``), so
@@ -241,7 +243,7 @@ def test_an_old_identity_is_rediscovered_off_the_request(
     assert again is first
     assert during == [], "the request waited for the rediscovery"
     assert spawns.identity(), "nothing was rediscovered in the background"
-    entry = git_repo._REPO_CACHE[git_repo.as_location(repo).identity]
+    entry = git_repo._REPO_CACHE[git_process.as_location(repo).identity]
     assert entry.context is not first, "the background discovery did not replace the entry"
     assert entry.discovered_at >= clock.monotonic() - 1
 
