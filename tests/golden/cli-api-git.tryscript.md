@@ -75,7 +75,8 @@ status: 200
       "name": "main",
       "kind": "branch",
       "revision": "703de1c4a3360d55e60646f300ceb6c926377221",
-      "is_head": true
+      "is_head": true,
+      "is_trunk": true
     },
     {
       "id": "refs/tags/v1",
@@ -199,7 +200,23 @@ status: 200
     },
     "authored_at": 1577836800.0,
     "committed_at": 1577836800.0,
-    "subject": "second commit"
+    "subject": "second commit",
+    "refs": [
+      {
+        "id": "refs/heads/main",
+        "name": "main",
+        "kind": "branch",
+        "revision": "703de1c4a3360d55e60646f300ceb6c926377221",
+        "is_head": true,
+        "is_trunk": true
+      },
+      {
+        "id": "refs/tags/v1",
+        "name": "v1",
+        "kind": "tag",
+        "revision": "703de1c4a3360d55e60646f300ceb6c926377221"
+      }
+    ]
   },
   "body": "",
   "stats": {

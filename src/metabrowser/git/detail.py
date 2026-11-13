@@ -104,6 +104,12 @@ def _show_args(revision: str) -> list[str]:
     ``-M`` and ``-C`` enable rename and copy detection, without which
     every rename reads as an unrelated delete plus add — visually the
     single most misleading thing a commit view can get wrong.
+
+    ``--decorate=full`` is the history walk's own flag: ``%D`` then names
+    each ref in full (``refs/heads/main``), which is what
+    :func:`~metabrowser.git.log.parse_decoration` reads. Without it Git
+    writes short names, every one of which the parser drops as a namespace
+    it does not know, and the commit's summary showed no refs at all.
     """
     return [
         "show",
@@ -113,6 +119,7 @@ def _show_args(revision: str) -> list[str]:
         "-M",
         "-C",
         "--diff-merges=first-parent",
+        "--decorate=full",
         f"--format={_SHOW_FORMAT}",
         revision,
     ]

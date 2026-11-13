@@ -4,6 +4,23 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Branch and tag chips are one size everywhere.
+  A Git history row’s chips are 12px, as a pull request’s header, the Pulls list, a
+  commit’s summary, and the branch selector already were; they were 10px in the history.
+  A pull request’s header chips are 16px tall like every other chip instead of 20px.
+  Which kind and form each place gives a chip is one documented system, in
+  [Branch Chips](docs/design-system.md#branch-chips): the branch selector no longer
+  draws the mirror’s default branch solid, the form the history uses for trunk (`main`
+  or `master`), and says “default” beside it as before.
+  The ring that marks the branch `HEAD` is on now shows in a history row, which clipped
+  it, and on `main`, where it took the chip’s pale text color and all but vanished.
+
+- A selected commit’s summary, and the tooltip over a history row, show the commit’s
+  branches and tags, with the same kinds, trunk, and HEAD marks as its row.
+  They showed none, because the commit’s detail named its refs in a short form the
+  parser dropped. `/api/git/commit/<revision>` now carries the commit’s `refs`, and
+  `/api/git/refs` marks trunk with `is_trunk` as the history does.
+
 - A pull request’s **Conversation** shows its description, and the comments and reviews
   on its first screen, as Markdown from the first paint: the page waits up to 200 ms for
   them, out of sight, keeping the page it replaces on screen meanwhile, and shows plain
