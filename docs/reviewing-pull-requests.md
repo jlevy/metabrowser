@@ -234,8 +234,10 @@ A change that does not show in the rendered document appears only in **Source**,
 Rendered does not mark it: a link or image destination or title, a link whose label now
 points somewhere else, an image’s alt text, an HTML comment, attribute syntax such as
 `{#name}`, a code fence’s language, or only whitespace and line wrapping.
-A block that changed only in those ways reads as unchanged, but is never folded away
-with the unchanged blocks around it.
+A block that changed only in those ways reads as unchanged.
+One whose destination, title, alt text, comment, attribute, or fence language changed is
+never folded away with the unchanged blocks around it, but one whose only change is
+whitespace or line wrapping can stay inside a fold.
 An added code block’s fence text other than exactly one language name, such as `python`
 or `mermaid`, likewise appears only in Source.
 
