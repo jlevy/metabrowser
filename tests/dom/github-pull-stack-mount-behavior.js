@@ -113,7 +113,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     alt: "",
     width: "18",
     height: "18",
-    loading: "eager",
+    loading: "lazy",
     decoding: "async",
     fetchpriority: "low",
     crossorigin: "anonymous",

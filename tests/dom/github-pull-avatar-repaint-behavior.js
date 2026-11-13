@@ -1,4 +1,4 @@
-// A repaint never blanks an avatar whose address did not change (docs/design-system.md,
+// Each avatar's loading policy, by where the page places it (docs/design-system.md,
 // "A Repaint Keeps Its Images").
 //
 // The production pull page mounts on the recorded record of pull request 7, its author
@@ -6,12 +6,13 @@
 // conversation: each tab and back, and a poll that finds a refresh of the same record
 // running. Every image the page creates is recorded as it is created.
 //
-// The page builds its actors again when it repaints, so an avatar can be a new image. A
-// lazy image waits for layout before it asks for its bytes, and in WebKit it then asked
-// the network again, which painted the header's avatar blank for that round trip on every
-// tab switch; an eager one is the cached image at once. Paint is the engine's, so this pins
-// what decides it: every avatar the page creates is eager, decodes asynchronously, keeps
-// its 18 px slot, and hides itself rather than its slot when it fails to load.
+// The header's avatar is built again on each repaint, and in WebKit a new lazy image waits
+// for layout and asks the network again, so the header's is eager. The conversation keeps
+// its sections, avatars and all, across tabs and polls, so its avatars stay lazy, and one
+// far down a long conversation is not asked for until the reader nears it. This is a check
+// of attributes and of which nodes a repaint keeps or builds, not of paint, which is the
+// engine's: every avatar created has its placement's loading, decodes asynchronously,
+// keeps its 18 px slot, and hides itself rather than its slot when it fails to load.
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -33,7 +34,6 @@ function withAvatars(body) {
 /** What an avatar's attributes decide about when and how it paints. */
 function avatarFacts(image) {
   return {
-    loading: image.getAttribute("loading"),
     decoding: image.getAttribute("decoding"),
     fetchpriority: image.getAttribute("fetchpriority"),
     width: image.getAttribute("width"),
@@ -45,8 +45,10 @@ function avatarFacts(image) {
   };
 }
 
+/** Each placement's loading. */
+const POLICY = { header: "eager", conversation: "lazy" };
+
 const EXPECTED = {
-  loading: "eager",
   decoding: "async",
   fetchpriority: "low",
   width: "18",
@@ -137,6 +139,18 @@ async function run() {
   const headerAvatar = () =>
     container.querySelector(".github-pull-header")?.querySelector(".github-pull-avatar") ?? null;
   const steps = [];
+  /** Where an avatar sits: the header or the conversation under it. */
+  const placement = (image) => {
+    for (let node = image.parentNode; node; node = node.parentNode) {
+      if (node.classes?.has("github-pull-header")) {
+        return "header";
+      }
+      if (node.classes?.has("github-pull-body")) {
+        return "conversation";
+      }
+    }
+    return "unplaced";
+  };
   let previous = null;
   let seen = 0;
   /** @param {string} name */
@@ -144,16 +158,20 @@ async function run() {
     const header = headerAvatar();
     assert.ok(header, `${name}: the header shows the author's avatar`);
     assert.ok(header.parentNode.classes.has("github-pull-identity"), `${name}: in its identity`);
-    const created = images.slice(seen);
-    seen = images.length;
-    for (const image of created) {
-      assert.deepEqual(avatarFacts(image), EXPECTED, `${name}: every avatar created is eager`);
+    const created = { header: 0, conversation: 0 };
+    for (const image of images.slice(seen)) {
+      const where = placement(image);
+      assert.ok(where in POLICY, `${name}: every avatar created is shown in a placement`);
+      assert.equal(image.getAttribute("loading"), POLICY[where], `${name}: ${where} loading`);
+      assert.deepEqual(avatarFacts(image), EXPECTED, `${name}: ${where} avatar`);
+      created[where] += 1;
     }
+    seen = images.length;
     steps.push({
       step: name,
       header: previous === null ? "first" : header === previous ? "kept" : "new",
-      avatarsCreated: created.length,
-      avatarsShown: container.querySelectorAll(".github-pull-avatar").length,
+      created,
+      shown: container.querySelectorAll(".github-pull-avatar").length,
     });
     previous = header;
   };
@@ -186,7 +204,18 @@ async function run() {
   handle.dispose();
   return {
     steps,
-    everyAvatarEager: images.every((image) => image.getAttribute("loading") === "eager"),
+    loading: Object.fromEntries(
+      Object.keys(POLICY).map((where) => [
+        where,
+        [
+          ...new Set(
+            images
+              .filter((image) => placement(image) === where)
+              .map((image) => image.getAttribute("loading")),
+          ),
+        ],
+      ]),
+    ),
   };
 }
 
