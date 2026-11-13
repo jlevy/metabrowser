@@ -9,11 +9,15 @@
 // header and view tab bar from the server's answer, stages it in an inert layer, and
 // commits it, calling the keymap where app.js does; it renders the filter bar from the
 // filter controls' markup and opens a menu as a trigger's click does; and it stands in
-// for the other activation paths (selectPreviewTab, the selector's handle,
-// copyFromControl, the Up navigation), recording what each was asked.
-// tests/test_shell_keymap_integration.py holds app.js's own markup to the hooks the
-// keymap reads. A stand-in commit view lends its Copy revision through the bridge
-// git-panel.js uses, and a stand-in pull request page offers hasStack() and moveStack().
+// for the other activation paths (selectPreviewTab, the selector's handle, the Up
+// navigation), recording what each was asked. tests/test_shell_keymap_integration.py
+// holds app.js's own markup to the hooks the keymap reads. The file header and a
+// stand-in commit view carry their copy buttons, which are ancillary and must carry no
+// key, and a stand-in pull request page offers hasStack() and moveStack().
+//
+// The filters are situational, so they take numbers, 1 to 9 in reading order, from the
+// registry's one numbering; Help lists the numbers once, as positional, and never gives
+// a digit a fixed meaning, which the session checks as it records Help.
 //
 // The server's side is tests/fixtures/key-reveal-responses.json: the `/api/file`,
 // `/api/git/repo`, and `/api/source/status` answers of the in-process application, which
@@ -202,13 +206,6 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     // source-ref-selector.js, which keeps the selector it mounted for the branch key.
     MetabrowserSourceRefSelector: {
       mounted: () => selector,
-    },
-    // plugin-sdk.js's copy delegate, which Copy's key reaches as the control's click does.
-    MetabrowserPluginHost: {
-      copyFromControl(control) {
-        did.push(`copied ${control.getAttribute("data-mb-copy-text")}`);
-        return true;
-      },
     },
     queueMicrotask,
     removeEventListener: (type, listener, options) =>
@@ -439,8 +436,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     installed();
   }
 
-  /** The Git panel's commit view, which lends its Copy revision through the bridge. */
-  let releaseCopy = null;
+  /** The Git panel's commit view, whose Copy revision is ancillary and has no key. */
   function openCommit() {
     const copy = element(document, "button", {
       "aria-label": "Copy revision",
@@ -452,18 +448,15 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       document,
       "div",
       { class: "git-commit-view" },
-      element(document, "div", { class: "git-commit-header", "data-kbd-badge-anchor": true }, copy),
+      element(document, "div", { class: "git-commit-header" }, copy),
     );
     preview.replaceChildren(view);
     installed();
-    releaseCopy?.();
-    // git-panel.js lends it through the shell keymap's module, as here.
-    releaseCopy = context.MetabrowserShellKeymap.attachHeaderCopy(copy);
   }
 
   /**
    * renderNavFilterBar: the two dropdowns, from the production filter controls, so the
-   * triggers, panels, and checked rows the filter keys reach are that module's markup.
+   * triggers, panels, and checked rows the filter numbers reach are that module's markup.
    * A pin has no modified-within filter. The options are a stand-in for the tallies.
    */
   function renderFilters() {
@@ -694,9 +687,17 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       .flatMap((group) => group.commands)
       .flatMap((command) => command.commandIds);
     for (const id of ids) {
-      const scope = shortcuts.present(id).scope;
+      const { bindings, scope } = shortcuts.present(id);
       if (scope !== "view-tabs" && scope !== "help" && scope !== "quick-file") {
-        for (const label of shortcuts.present(id).bindings.visible) {
+        // A run, the situational numbers, is written by its ends and binds every key
+        // between them.
+        const labels = bindings.range
+          ? Array.from(
+              { length: Number(bindings.visible[1]) - Number(bindings.visible[0]) + 1 },
+              (_, index) => String(Number(bindings.visible[0]) + index),
+            )
+          : bindings.visible;
+        for (const label of labels) {
           if (/^[A-Z0-9]$/.test(label)) {
             shellKeys.add(label.toLowerCase());
           }
@@ -705,11 +706,59 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     }
     return ids
       .filter((id) => shortcuts.isLive(id))
-      .map((id) => [
-        shortcuts.present(id).bindings.visible.join(" or "),
-        id,
-        describe(shortcuts.liveTarget(id)),
-      ]);
+      .map((id) => {
+        const { bindings } = shortcuts.present(id);
+        return [
+          bindings.visible.join(bindings.range ? "–" : " or "),
+          id,
+          describe(shortcuts.liveTarget(id)),
+        ];
+      });
+  }
+
+  /** What each number reaches now, in order: the first is 1. */
+  function numbers() {
+    return shortcuts.liveNumbers().map((target) => describe(target));
+  }
+
+  /**
+   * Help's rows that bind a digit, each as its keys and whether they are a run. The
+   * numbers are positional, so the only such row is the one run 1 to 9: a row giving a
+   * digit a fixed meaning fails the session.
+   */
+  function helpDigits() {
+    const rows = shortcuts
+      .snapshot("help", { includeInactive: true })
+      .flatMap((group) => group.commands)
+      .filter((command) => command.bindings.visible.some((label) => /^[0-9]$/.test(label)))
+      .map((command) => ({
+        keys: command.bindings.visible.join(command.bindings.range ? "–" : " or "),
+        range: command.bindings.range === true,
+        action: command.copy.action,
+      }));
+    const fixed = rows.filter((row) => !row.range);
+    if (fixed.length > 0) {
+      throw new Error(`Help gives a digit a fixed meaning: ${JSON.stringify(fixed)}`);
+    }
+    return rows;
+  }
+
+  /**
+   * The copy controls on screen, each with the key it carries and whether a badge sits on
+   * or beside it. Copying is ancillary, so each has none: a keyed one fails the session.
+   */
+  function ancillary() {
+    const copies = document.body.querySelectorAll("[data-mb-copy]");
+    const keyed = copies.filter(
+      (control) =>
+        control.hasAttribute("aria-keyshortcuts") ||
+        control.querySelector(".kbd-badge") !== null ||
+        shortcuts.liveNumbers().includes(control),
+    );
+    if (keyed.length > 0) {
+      throw new Error(`An ancillary control has a key: ${keyed.map(describe).join(", ")}`);
+    }
+    return copies.map((control) => describe(control));
   }
 
   function badges() {
@@ -763,11 +812,14 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       reveal: reveal.snapshot().state,
       rootMarked: document.documentElement.hasAttribute("data-key-reveal"),
       keys: liveKeys(),
+      numbers: numbers(),
       badges: badges(),
       strip: strip(),
       help: shortcuts.snapshot("help", { includeInactive: true }).map((group) => group.id),
       ...extra,
     };
+    helpDigits();
+    ancillary();
     if (did.length > 0) {
       entry.did = did.splice(0);
     }
@@ -807,11 +859,16 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     document.body.dispatchEvent({ clientX: x, clientY: y, target: document.body, type });
   }
 
+  /** The main tabs in the order the bar draws them. */
+  const tabOrder = () => navBar.querySelectorAll(".tab-btn").map((tab) => labelOf(tab));
+
   return {
+    ancillary,
     build,
     clock,
     discoverGit,
     document,
+    helpDigits,
     get kbdCreated() {
       return kbdCreated;
     },
@@ -833,6 +890,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     shiftUp,
     stack,
     stage,
+    tabOrder,
     teardown,
     get shortcuts() {
       return shortcuts;
@@ -893,9 +951,10 @@ const PARTS = {
     steps.push(plain.record("a plain folder shows Files only"));
     // The trigger's own path opens the menu, and focus goes to its checked row, so the
     // menu's arrow keys work next; Escape closes it through the same path.
+    // The filters are situational: Any age is 1 and Any type is 2, by their place.
     steps.push(
-      plain.record("X opens the file type filter and focuses its checked row", {
-        pressed: { key: "x", handled: plain.press("x") },
+      plain.record("2 opens the file type filter and focuses its checked row", {
+        pressed: { key: "2", handled: plain.press("2") },
         focus: plain.menuFocus(),
       }),
     );
@@ -920,12 +979,14 @@ const PARTS = {
       }),
     );
 
-    plain.open(files.docs);
     steps.push(
-      plain.record("a folder below the root has no Copy", {
+      plain.record("copying is ancillary: the Copy path button has no key, and Y does nothing", {
         pressed: { key: "y", handled: plain.press("y") },
+        ancillary: plain.ancillary(),
       }),
     );
+    plain.open(files.docs);
+    steps.push(plain.record("a folder below the root has Up"));
     plain.press("u");
     steps.push(plain.record("U opens the folder above"));
 
@@ -942,23 +1003,24 @@ const PARTS = {
     steps.push(plain.record("an agent log has Log, Charts, and Raw JSON"));
 
     // The view tab letters follow the committed bar, and a stage that is cancelled before
-    // it commits registers nothing, so the bar on screen keeps its keys.
+    // it commits registers nothing, so the bar on screen keeps its keys. V is each kind's
+    // rendered view, under its own label: Tree for structured data, Log for an agent log.
     plain.open(files["data.json"]);
-    const treeR = plain.shortcuts.liveTarget("view-tabs.r");
+    const treeV = plain.shortcuts.liveTarget("view-tabs.v");
     plain.open(files["session.jsonl"]);
-    const logR = plain.shortcuts.liveTarget("view-tabs.r");
+    const logV = plain.shortcuts.liveTarget("view-tabs.v");
     plain.open(files["data.json"]);
     const cancelled = plain.stage(files["session.jsonl"]);
-    const whileStaged = plain.shortcuts.liveTarget("view-tabs.r");
+    const whileStaged = plain.shortcuts.liveTarget("view-tabs.v");
     cancelled.cancel();
     steps.push(
-      plain.record("R follows the committed bar, and a cancelled stage changes nothing", {
-        r: {
-          structured: treeR?.textContent,
-          agentLog: logR?.textContent,
-          back: plain.shortcuts.liveTarget("view-tabs.r")?.textContent,
+      plain.record("V follows the committed bar, and a cancelled stage changes nothing", {
+        v: {
+          structured: treeV?.textContent,
+          agentLog: logV?.textContent,
+          back: plain.shortcuts.liveTarget("view-tabs.v")?.textContent,
           whileStaged: whileStaged?.textContent,
-          afterCancel: plain.shortcuts.liveTarget("view-tabs.r")?.textContent,
+          afterCancel: plain.shortcuts.liveTarget("view-tabs.v")?.textContent,
         },
       }),
     );
@@ -1132,21 +1194,21 @@ const PARTS = {
     repo.discoverGit();
     steps.push(repo.record("a Git repository shows Files and Commits"));
 
-    // From a Files row, so the digit moves focus from one element to another.
+    // From a Files row, so the letter moves focus from one element to another.
     repo.rows[0].focus();
     revealOn(repo);
-    const two = repo.press("@", { code: "Digit2", shiftKey: true });
+    const history = repo.press("H", { shiftKey: true });
     steps.push(
-      repo.record("2 with Shift still held opens Commits, focuses its row, and keeps the reveal", {
-        pressed: { key: "2", handled: two },
+      repo.record("H with Shift still held opens Commits, focuses its row, and keeps the reveal", {
+        pressed: { key: "h", handled: history },
         active: repo.mainTabs.active(),
         focus: repo.document.activeElement.textContent,
       }),
     );
-    const one = repo.press("!", { code: "Digit1", shiftKey: true });
+    const toFiles = repo.press("F", { shiftKey: true });
     steps.push(
-      repo.record("1 during the reveal shows the filter bar, and X and A gain badges", {
-        pressed: { key: "1", handled: one },
+      repo.record("F during the reveal shows the filter bar, and its filters gain 1 and 2", {
+        pressed: { key: "f", handled: toFiles },
         active: repo.mainTabs.active(),
         focus: repo.document.activeElement.dataset.path ?? repo.document.activeElement.textContent,
       }),
@@ -1154,7 +1216,7 @@ const PARTS = {
     repo.shiftUp();
     steps.push(repo.record("releasing Shift ends the reveal"));
 
-    repo.press("2");
+    repo.press("h");
     repo.document.querySelector("#tab-git .git-graph-row").focus();
     revealOn(repo);
     repo.key("keydown", "j", { shiftKey: true });
@@ -1164,17 +1226,18 @@ const PARTS = {
 
     repo.openCommit();
     steps.push(
-      repo.record("a commit view's Y copies its revision", {
+      repo.record("a commit view's Copy revision is ancillary and has no key", {
         pressed: { key: "y", handled: repo.press("y") },
+        ancillary: repo.ancillary(),
       }),
     );
-    repo.press("1");
+    repo.press("f");
     await settle();
 
     // ── A panel registered while the registry is down ────────────
     // Git discovery can finish between a real pagehide, which disposes the registry, and
     // the pageshow that rebuilds it. The tab and its container appear then anyway, and the
-    // rebuild makes the tab its digit's target.
+    // rebuild makes the tab its letter's target.
     const late = createPage({ repository: recording.repository.repo.body.is_repo });
     late.renderFilters();
     late.open(files[""]);
@@ -1198,11 +1261,11 @@ const PARTS = {
       late.record("Commits registered while the registry is down gets its tab, then its key", {
         whileDown,
         key: commitsTab()?.getAttribute("aria-keyshortcuts") ?? null,
-        pressed: { key: "2", handled: late.press("2") },
+        pressed: { key: "h", handled: late.press("h") },
         active: late.mainTabs.active(),
       }),
     );
-    late.press("1");
+    late.press("f");
     await settle();
 
     // ── Pulls drawn before Git discovery, and a pull request stack ─
@@ -1214,25 +1277,33 @@ const PARTS = {
     hosted.open(files[""]);
     hosted.build();
     steps.push(
-      hosted.record("Pulls drawn before Commits keeps 3, and 2 stays reserved", {
-        pressed: { key: "2", handled: hosted.press("2") },
+      hosted.record("Pulls drawn before Commits has R, and H does nothing until Commits comes", {
+        pressed: { key: "h", handled: hosted.press("h") },
+        tabs: hosted.tabOrder(),
       }),
     );
     hosted.discoverGit();
-    steps.push(hosted.record("a repository with a hosted origin shows Files, Commits, and Pulls"));
-
-    hosted.open(files["page.html"]);
     steps.push(
-      hosted.record("the Preview tab's P sits beside the stack's P", {
-        pressed: { key: "p", handled: hosted.press("p") },
+      hosted.record("a repository with a hosted origin shows Files, Pulls, and Commits", {
+        tabs: hosted.tabOrder(),
       }),
     );
 
-    hosted.press("3");
+    // V is the rendered view everywhere, so P means only "previous", and does nothing
+    // outside a pull request stack.
+    hosted.open(files["page.html"]);
+    steps.push(
+      hosted.record("the Preview tab is V, and P outside a stack does nothing", {
+        pressed: { key: "v", handled: hosted.press("v") },
+        p: hosted.press("p"),
+      }),
+    );
+
+    hosted.press("r");
     await settle();
     steps.push(
-      hosted.record("3 again, once the list has rows, moves focus to the selected row", {
-        pressed: { key: "3", handled: hosted.press("3") },
+      hosted.record("R again, once the list has rows, moves focus to the selected row", {
+        pressed: { key: "r", handled: hosted.press("r") },
         focus: hosted.document.activeElement.textContent,
       }),
     );
@@ -1269,11 +1340,20 @@ const PARTS = {
     pinned.build();
     pinned.mountSelector();
     steps.push(
-      pinned.record("a mirror's pin has W and no A", {
+      pinned.record("a mirror's pin has W, and its one filter is 1", {
         pressed: { key: "w", handled: pinned.press("w") },
-        a: pinned.press("a"),
+        two: pinned.press("2"),
       }),
     );
+    pinned.press("Escape");
+    pinned.document.body.focus();
+    revealOn(pinned);
+    steps.push(
+      pinned.record("Help lists the numbers once, as positional", {
+        helpDigits: pinned.helpDigits(),
+      }),
+    );
+    pinned.shiftUp();
 
     return { steps, pages: [repo, late, hosted, pinned] };
   },

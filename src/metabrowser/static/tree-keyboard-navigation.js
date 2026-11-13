@@ -372,7 +372,7 @@
 
     /**
      * Give the roving anchor row focus, the row the reader left or else the
-     * first visible one, as the Files tab's digit does after switching to the
+     * first visible one, as the Files tab's letter does after switching to the
      * tab. Reports whether a row took focus, so the caller can fall back to the
      * tab button while the tree has no rows yet.
      */

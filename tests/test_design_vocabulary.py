@@ -2595,12 +2595,13 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
     assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
-    # The anchors layer 3 declares: the file header, the folder header, the commit heading.
+    # The anchors: the file header and the folder header, for Up's crumb and button. The
+    # commit heading anchored Copy revision's badge, and copying has no key any more.
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert app.count('class="file-header" data-kbd-badge-anchor') == 1
     assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
-    assert '<div class="git-commit-header" data-kbd-badge-anchor>' in git_panel
+    assert "data-kbd-badge-anchor" not in git_panel
 
 
 def test_beside_badges_end_at_their_targets_inline_end() -> None:
@@ -2641,18 +2642,18 @@ def test_beside_badges_end_at_their_targets_inline_end() -> None:
             assert not borders, f"{selector} gives a badge anchor an inline border: {borders}"
 
 
-def test_hover_revealed_targets_show_while_keys_are_revealed() -> None:
-    """A target that appears only on hover appears for the reveal, so its badge is not alone.
+def test_hover_revealed_controls_take_no_key() -> None:
+    """A control that appears only on hover is ancillary, so it is never a key's target.
 
-    Both copy buttons are `.icon-btn-reveal`, transparent until hover or focus; a badge inside
-    one would inherit that, and a badge beside one would point at nothing. A target carries
-    `aria-keyshortcuts` while attached, which no other reveal-on-hover button does, and the
-    reveal restores `pointer-events` with the opacity, as every reveal trigger must
-    ("Reveal on Hover Keeps Keyboard Reach").
+    Both copy buttons are `.icon-btn-reveal`, transparent until hover or focus, and copying
+    has no key ("Keyboard Shortcuts" in docs/design-system.md), so the reveal never has to
+    show a hidden control and the stylesheet keeps no override that would. Only the
+    registry, Help's strip buttons, and the overlay's close button write
+    `aria-keyshortcuts`, and none of them on a reveal-on-hover button.
     """
 
-    revealed = _first_rules()["[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts]"]
-    assert revealed == {"opacity": "1", "pointer-events": "auto"}
+    selectors = [selector for selector, _ in _rules_of(STATIC / "styles.css")]
+    assert not [s for s in selectors if "data-key-reveal" in s and "icon-btn-reveal" in s]
     writes = re.compile(r"""setAttribute\(\s*"aria-keyshortcuts"|aria-keyshortcuts=""")
     writers = {
         source.name for source in _browser_sources() if writes.search(source.read_text("utf-8"))
@@ -2664,25 +2665,44 @@ def test_hover_revealed_targets_show_while_keys_are_revealed() -> None:
 
 
 def test_key_reveal_fades_in_hides_at_once_and_respects_reduced_motion() -> None:
-    """The badges and the strip fade in over the short interval, appear at once under reduced
-    motion, and go at once: they leave the document when the reveal ends, so nothing animates
-    them out."""
+    """The badges and the strip ease in on the reveal motion token, appear at once under
+    reduced motion, and go at once: they leave the document when the reveal ends, so nothing
+    animates them out ("Reveals" in docs/design-system.md).
+
+    `--motion-reveal` is the one duration and curve every reveal shares, shorter than the
+    200 ms hold that starts the Shift reveal. A badge fades and grows, through the `scale`
+    property, which composes with the `translate` that centers it; the strip only fades,
+    since a pane-wide layer that grew would move. Both run on transform and opacity alone,
+    so the compositor draws them, and none needs a `-webkit-` form in the macOS app's WebKit.
+    """
 
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    token = re.search(r"--motion-reveal:\s*([^;]+);", styles)
+    assert token is not None and token[1] == "180ms cubic-bezier(0.2, 0, 0, 1)", token
+    milliseconds = re.match(r"(\d+)ms", token[1])
+    assert milliseconds is not None, token[1]
+    duration = int(milliseconds[1])
+    hold = re.search(
+        r"const REVEAL_HOLD_MS = (\d+);", (STATIC / "key-reveal.js").read_text(encoding="utf-8")
+    )
+    assert hold is not None and duration < int(hold[1]), "the fade fits inside the hold"
     rules = _first_rules()
-    for selector in (".kbd-badge", ".nav-shortcut-reveal"):
-        assert rules[selector]["animation"] == "key-reveal-in var(--transition-fast)", selector
-    keyframes = re.search(r"@keyframes key-reveal-in \{(.*?)\n\}", styles, re.DOTALL)
-    assert keyframes is not None
-    assert set(re.findall(r"([a-z-]+):", keyframes[1])) == {"opacity"}, "opacity only"
-    assert re.search(r"\bfrom \{\s*opacity: 0;\s*\}", keyframes[1]), "from transparent, to rest"
+    assert rules[".kbd-badge"]["animation"] == "key-reveal-in var(--motion-reveal)"
+    assert rules[".nav-shortcut-reveal"]["animation"] == "key-reveal-fade-in var(--motion-reveal)"
+    assert "--transition-fast" not in rules[".kbd-badge"]["animation"]
+    for name, properties in (
+        ("key-reveal-in", {"opacity", "scale"}),
+        ("key-reveal-fade-in", {"opacity"}),
+    ):
+        keyframes = re.search(rf"@keyframes {name} \{{(.*?)\n\}}", styles, re.DOTALL)
+        assert keyframes is not None, name
+        assert set(re.findall(r"([a-z-]+):", keyframes[1])) == properties, name
+        assert re.search(r"\bfrom \{\s*opacity: 0;", keyframes[1]), f"{name} starts transparent"
+        assert "to {" not in keyframes[1], f"{name} ends at the element's own style"
+    assert "-webkit-animation" not in styles and "@-webkit-keyframes" not in styles
     reduced = _at_rule_rules("@media (prefers-reduced-motion: reduce)")
     for selector in (".kbd-badge", ".nav-shortcut-reveal"):
         assert (selector, {"animation": "none"}) in reduced, f"reduced motion keeps {selector}"
-    assert (
-        "[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts]",
-        {"transition": "none"},
-    ) in reduced
     # The reveal machine removes the badges and the layer rather than hiding them.
     registry = (STATIC / "keyboard-shortcuts.js").read_text(encoding="utf-8")
     assert "record.badge.remove();" in registry

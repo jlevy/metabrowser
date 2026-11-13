@@ -1,14 +1,16 @@
 // Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
 // from the heading above them.
 (() => {
+  // In tab order, each with its letter: F for Files, R for pull Requests, H for commit
+  // History. The letters name what each tab holds and mean the same wherever they are
+  // pressed (docs/design-system.md, "Keyboard Shortcuts").
   const MAIN_TABS = [
-    { id: "files", label: "Files", key: "1" },
-    { id: "git", label: "Commits", key: "2" },
-    { id: "pulls", label: "Pulls", key: "3" },
+    { id: "files", label: "Files", key: "f" },
+    { id: "pulls", label: "Pulls", key: "r" },
+    { id: "git", label: "Commits", key: "h" },
   ];
 
-  // The bare digit alone: a browser switches its own tabs on Command or Ctrl
-  // with a digit before the page sees the key, and Shift changes nothing.
+  // The bare letter alone, as every shortcut is: Shift changes nothing.
   /** @param {string} key @returns {Parameters<Window["MetabrowserKeyboardShortcuts"]["describeBindings"]>[0]} */
   function tabBindings(key) {
     return [{ key }];
@@ -82,14 +84,14 @@
       if (!shortcuts) {
         return;
       }
-      for (const { id, label, key } of MAIN_TABS) {
+      for (const [index, { id, label, key }] of MAIN_TABS.entries()) {
         const action = `Open ${label}`;
         const bindings = tabBindings(key);
         shortcuts.register({
           id: `main-tabs.${id}`,
           group: "main-tabs",
           scope: "global",
-          order: Number(key),
+          order: index + 1,
           bindings,
           copy: { action, description: `Switch to the ${label} tab when available.`, hint: label },
           surfaces: { help: "always", reveal: "always" },
@@ -138,8 +140,12 @@
         btn.setAttribute("aria-selected", "false");
         btn.dataset.tab = panel.id;
         btn.textContent = panel.label;
-        // Pulls can be present in the server shell before Git discovery finishes.
-        navBar.insertBefore(btn, panel.id === "git" ? tabButton("pulls") : null);
+        // In MAIN_TABS order, before the first later tab already drawn: the server shell
+        // draws Pulls at first paint, and Commits arrives after it, once Git discovery
+        // finishes.
+        const at = MAIN_TABS.findIndex(({ id }) => id === panel.id);
+        const later = at < 0 ? [] : MAIN_TABS.slice(at + 1);
+        navBar.insertBefore(btn, later.map(({ id }) => tabButton(id)).find(Boolean) ?? null);
       }
       if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
         const container = document.createElement("div");

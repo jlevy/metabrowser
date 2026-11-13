@@ -107,9 +107,6 @@
   let state = emptyState();
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
-  /** Gives the commit view's Copy revision back to the shell; null while none is lent.
-   * @type {(() => void) | null} */
-  let releaseHeaderCopy = null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -314,10 +311,7 @@
     const subjectTag = compact ? "div" : "h1";
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
-    // The commit view's heading anchors the badge beside its Copy revision.
-    html += compact
-      ? '<div class="git-commit-header">'
-      : '<div class="git-commit-header" data-kbd-badge-anchor>';
+    html += '<div class="git-commit-header">';
     html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
@@ -2385,15 +2379,6 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
-      // The committed view lends its Copy revision to the header's Copy key, through the
-      // shell keymap's module in this same bundle, and the view that replaces it gives
-      // the previous one back.
-      releaseHeaderCopy?.();
-      const revisionCopy = stage.querySelector(".git-commit-revision-copy");
-      releaseHeaderCopy =
-        revisionCopy instanceof HTMLElement
-          ? (window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy) ?? null)
-          : null;
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
       const generation = refsReadIn.get(detail) ?? historyGeneration;
@@ -2821,8 +2806,6 @@
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeCommitDiff();
-    releaseHeaderCopy?.();
-    releaseHeaderCopy = null;
     // The focus-suspension path writes ``tabindex`` onto the shared
     // ``#tree-content`` node, which the shell owns and other panels keep
     // using after this panel is gone; renderer state written onto a

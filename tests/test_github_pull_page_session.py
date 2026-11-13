@@ -556,18 +556,22 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
-        # C, G, and H run the page's setTab through the shortcut facade, with or without
-        # Shift; they wait while the tab column or the page is out of reach.
+        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # Shift; they wait while the tab column or the page is out of reach. H is the
+        # Commits tab's, so Checks is E. The header's links and actions are numbered by
+        # their place, through the same facade.
         "tabKeys": [
-            "before the record, the tab column out of the page: keys C G H, live none",
+            "before the record, the tab column out of the page: keys C G E, live none",
             "C: not handled",
             "the record arrives and paintHeader puts the column in: "
-            "Conversation C, Changes G, Checks H",
+            "Conversation C, Changes G, Checks E",
             "live: conversation files checks",
+            "numbered: 1 View on GitHub, 2 Browse code",
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
-            "Shift+H: opened the checks route",
+            "Shift+H: not handled",
+            "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
             "Ctrl+G: not handled",
             "staged inert: G: not handled",

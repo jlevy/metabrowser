@@ -94,7 +94,7 @@ def test_show_reports_the_four_layers_for_a_markdown_file(root: Path, capsys: An
     assert "show: README.md" in out
     assert "route: /view/README.md" in out
     assert "kind: markdown" in out
-    assert "views: rendered (default, key D), source (key S)" in out
+    assert "views: rendered (default, key V), source (key S)" in out
     assert "model: text envelope;" in out
 
 

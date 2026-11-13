@@ -488,6 +488,18 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Reveals: chrome that appears because the reader asked to see it, such as
+     the Shift reveal's key badges and its strip, eases in on this one curve,
+     a short decelerating fade (with a slight grow for a badge), so it settles
+     rather than pops. A reveal never animates out: it ends at once, because
+     the reader has let go and is about to act on what was under it. With
+     prefers-reduced-motion: reduce it appears at once. The duration sits
+     under the 200 ms hold that starts the Shift reveal, so a held Shift reads
+     as one gesture. WebKit, the macOS app's engine, runs it unprefixed:
+     @keyframes, animation, and the individual scale property need no
+     -webkit- form there (Safari 14.1 and later), unlike user-select. See
+     "Motion" in docs/design-system.md. */
+  --motion-reveal: 180ms cubic-bezier(0.2, 0, 0, 1);
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;
@@ -2178,9 +2190,10 @@ html.theme-anim .menu {
      before it: at the root, the end of the dimmed root name, the folder Up
      opens.
 
-   The badge fades in over --transition-fast, appears at once under
-   reduced motion, and goes at once: the registry removes it when the
-   reveal ends, so nothing animates it out. */
+   The badge eases in on --motion-reveal, appears at once under reduced
+   motion, and goes at once: the registry removes it when the reveal ends,
+   so nothing animates it out. A badge that stays in place while the badges
+   move after a key keeps its node, so it does not fade in again. */
 .kbd-badge {
   position: absolute;
   pointer-events: none;
@@ -2188,7 +2201,7 @@ html.theme-anim .menu {
   border-color: var(--kbd-badge-border);
   color: var(--kbd-badge-color);
   box-shadow: var(--shadow-sm);
-  animation: key-reveal-in var(--transition-fast);
+  animation: key-reveal-in var(--motion-reveal);
 }
 .kbd-badge[data-kbd-placement="inline-end"] {
   inset-inline-end: 0;
@@ -2209,17 +2222,16 @@ html.theme-anim .menu {
 :where([data-kbd-badge-anchor]) {
   position: relative;
 }
-/* A target that shows only on hover or focus shows for the reveal, so a
-   badge inside it does not inherit its transparency and a badge beside it
-   does not point at nothing. Only a target carries aria-keyshortcuts among
-   the reveal-on-hover buttons, and the reveal restores pointer-events
-   with the opacity, as every reveal trigger does ("Reveal on Hover Keeps
-   Keyboard Reach"). It fades out on the button's own transition. */
-[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts] {
-  opacity: 1;
-  pointer-events: auto;
-}
+/* A badge grows into place from slightly smaller as it fades in. The scale
+   property composes with the translate that centers it, so it never moves
+   off its target. */
 @keyframes key-reveal-in {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+@keyframes key-reveal-fade-in {
   from {
     opacity: 0;
   }
@@ -2340,7 +2352,7 @@ html.theme-anim .menu {
   border-top: 1px solid var(--kbd-badge-border);
   background: var(--key-reveal-bg);
   color: var(--text);
-  animation: key-reveal-in var(--transition-fast);
+  animation: key-reveal-fade-in var(--motion-reveal);
 }
 .nav-shortcut-reveal[hidden] {
   display: none;
@@ -2358,9 +2370,6 @@ html.theme-anim .menu {
   .kbd-badge,
   .nav-shortcut-reveal {
     animation: none;
-  }
-  [data-key-reveal] .icon-btn-reveal[aria-keyshortcuts] {
-    transition: none;
   }
 }
 

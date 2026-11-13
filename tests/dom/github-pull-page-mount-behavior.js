@@ -616,11 +616,7 @@ async function tabKeys(page) {
     HTMLElement: LiveElement,
     // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py, as the shell serves it.
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: {
-        ...Object.fromEntries([..."tjkuwxya0123456789"].map((key) => [key, null])),
-        n: ["pull-request"],
-        p: ["pull-request"],
-      },
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;
@@ -731,11 +727,20 @@ async function tabKeys(page) {
   assert.ok(container.querySelector(".tab-bar"), "the record put the tab column in");
   steps.push(`the record arrives and paintHeader puts the column in: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
+  // The header's links and actions are situational: numbered by their place, 1 to 9.
+  steps.push(
+    `numbered: ${registry
+      .liveNumbers()
+      .map((control, at) => `${at + 1} ${control.textContent.trim()}`)
+      .join(", ")}`,
+  );
   steps.push(result("c"));
   steps.push(result("g"));
   arrive("files");
   steps.push(`the route arrives: ${shown()}`);
+  // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
+  steps.push(result("e", { shiftKey: true }));
   arrive("checks");
   steps.push(result("C", { shiftKey: true }));
   arrive("");
