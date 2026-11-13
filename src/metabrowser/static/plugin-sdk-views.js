@@ -138,13 +138,19 @@
     return text.endsWith("\n") ? lines : lines + 1;
   }
 
-  /** @param {number} lines */
-  function gutterText(lines) {
-    const numbers = new Array(lines);
-    for (let line = 0; line < lines; line++) {
-      numbers[line] = line + 1;
+  /**
+   * The gutter's numbers for lines `from + 1` through `lines`, each on its own line.
+   * After line `from`, the text starts with the newline that ends that line.
+   *
+   * @param {number} lines
+   * @param {number} [from]
+   */
+  function gutterText(lines, from = 0) {
+    const numbers = new Array(Math.max(0, lines - from));
+    for (let index = 0; index < numbers.length; index++) {
+      numbers[index] = from + index + 1;
     }
-    return numbers.join("\n");
+    return (from > 0 && numbers.length > 0 ? "\n" : "") + numbers.join("\n");
   }
 
   /** @param {number} value */
@@ -665,6 +671,30 @@
   }
 
   /**
+   * Number the lines Load more appended to a view. An append only adds lines (a view
+   * rendered again is a new view), so the numbers after the ones the gutter shows are
+   * appended as the text is, in text nodes of at most 64 KiB (source-append.js, which
+   * Load more loads before it refreshes). Writing every number into the gutter's first
+   * text node instead cost a node of millions of characters per click, which WebKit
+   * lays out slowly, and in WebKit left the rest of the nodes its HTML parser had split
+   * the gutter into on screen after the new numbers.
+   *
+   * @param {View} view
+   * @param {number} lines
+   */
+  function appendNumbers(view, lines) {
+    const { gutter } = view;
+    const owner = gutter.ownerDocument;
+    const fragment = owner.createDocumentFragment();
+    const added = gutterText(lines, view.loaded.lines);
+    for (const piece of global.MetabrowserSourceAppend.textPieces(added)) {
+      fragment.appendChild(owner.createTextNode(piece));
+    }
+    // Before the scroll target, which follows the numbers it is placed over.
+    gutter.insertBefore(fragment, view.target?.parentNode === gutter ? view.target : null);
+  }
+
+  /**
    * Bring the views under `root` in line with what Load more loaded, whether it
    * appended to the view or rendered it again: renumber the gutter and reapply the
    * anchor, scrolling to it if it has just been reached.
@@ -679,13 +709,8 @@
         continue;
       }
       const lines = layoutParts(view.pre);
-      if (lines !== view.loaded.lines) {
-        const numbers = view.gutter.firstChild;
-        if (numbers && numbers.nodeType === 3) {
-          numbers.nodeValue = gutterText(lines);
-        } else {
-          view.gutter.prepend(view.pre.ownerDocument.createTextNode(gutterText(lines)));
-        }
+      if (lines > view.loaded.lines) {
+        appendNumbers(view, lines);
       }
       view.loaded = Object.freeze({ lines, truncated: !!loaded.content_truncated });
       const reached = awaiting?.path === filePath(view.path) && awaiting.fragment === view.applied;

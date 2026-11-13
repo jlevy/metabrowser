@@ -200,6 +200,12 @@ cython_debug/
 # Read-only third-party source checkouts used for research.
 attic/
 
+# SwiftPM and bundle output of the native macOS app (apps/macos/Makefile).
+apps/macos/.build/
+apps/macos/build/
+# Review renders from apps/macos/scripts/build-icon.sh --review: large and regenerable.
+apps/macos/AppIcon/review/
+
 # Benchmark corpora, server logs, and result JSON from devtools/bench_serving.py.
 # The corpus is large and regenerable from --files, so none of it is committed.
 .bench/

@@ -95,6 +95,9 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    Verify that the resulting tag resolves to the approved commit.
    The workflow checks out that exact tag, rejects non-semantic tags, and verifies that
    the derived package version matches before publishing.
+   Its job runs only for a tag that starts with `v`, so a release of the macOS app,
+   tagged `macos-v<version>` ([apps/macos/README.md](../apps/macos/README.md)), never
+   reaches PyPI.
 
 7. Watch the `Publish to PyPI` workflow through completion.
 
