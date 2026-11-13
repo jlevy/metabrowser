@@ -880,9 +880,19 @@
       releaseMountedSummary(mounted);
       return Promise.resolve();
     }
+    dropSummaryRefs(mounted);
+    return confirmSummaryRefs(mounted.token, mounted.revision, historyGeneration);
+  }
+
+  /**
+   * Take the refs group out of a summary whose refs are not confirmed in this session.
+   *
+   * @param {MountedSummary} mounted
+   * @returns {void}
+   */
+  function dropSummaryRefs(mounted) {
     mounted.identity.querySelector(".git-commit-refs")?.remove();
     mounted.refs = "";
-    return confirmSummaryRefs(mounted.token, mounted.revision, historyGeneration);
   }
 
   /**
@@ -2547,6 +2557,12 @@
     historyAbortController.abort();
     historyAbortController = new AbortController();
     historyGeneration += 1;
+    // The summary on screen drops its refs the moment a new session begins, before any
+    // read that could fail: until that session's row or a read in it confirms them, it
+    // shows none (revalidateMountedSummary).
+    if (mountedSummary) {
+      dropSummaryRefs(mountedSummary);
+    }
     wantedRange = null;
     rangeLoadPromise = null;
   }

@@ -3588,6 +3588,71 @@ async function run() {
     await recovering;
     serveDetail(at(4));
 
+    // D1: Reload history after the refs moved, and the repository request fails, with a
+    // 500 and with a rejection. The summary shows none of the old session's refs, its
+    // diff stays, and the refresh that succeeds confirms the refs.
+    for (const failure of ["500", "rejection"]) {
+      await freshSession();
+      await internals.selectCommit(at(0));
+      assertContains(
+        `D1 ${failure}: the summary starts with the old branch`,
+        mountedRefs(),
+        "b0-old",
+      );
+      diffRenders = renderedDiffRevisions.length;
+      comparisons = comparisonFetches.length;
+      // The next page says the history changed, which offers Reload history.
+      responses.set("/api/git/log", {
+        httpStatus: 409,
+        body: { error: "git history changed; refresh required", code: "history_stale" },
+      });
+      await internals.loadNextPage(false);
+      const reload = container
+        .querySelector(".git-history-stale")
+        ?.querySelector(".git-history-reload");
+      assertTrue(`D1 ${failure}: Reload history is offered`, reload);
+      moved = true;
+      responses.set(
+        "/api/git/repo",
+        failure === "500"
+          ? { httpStatus: 500, body: {} }
+          : () => {
+              throw new Error("the network went away");
+            },
+      );
+      reload?.dispatch("click");
+      for (let attempt = 0; attempt < 20 && !internals.stateForTests().failed; attempt += 1) {
+        await tick();
+      }
+      assertTrue(`D1 ${failure}: the refresh failed`, internals.stateForTests().failed);
+      assertEqual(`D1 ${failure}: the summary shows no refs`, mountedRefs(), "");
+      assertEqual(
+        `D1 ${failure}: the diff is not drawn again`,
+        renderedDiffRevisions.length,
+        diffRenders,
+      );
+      assertEqual(
+        `D1 ${failure}: the comparison is not fetched again`,
+        comparisonFetches.length,
+        comparisons,
+      );
+      serveAll();
+      container.querySelector(".git-panel-refresh")?.dispatch("click");
+      for (let attempt = 0; attempt < 20 && !mountedRefs().includes("b0-now"); attempt += 1) {
+        await tick();
+      }
+      assertContains(
+        `D1 ${failure}: the refresh that succeeds confirms the refs`,
+        mountedRefs(),
+        "b0-now",
+      );
+      assertEqual(
+        `D1 ${failure}: the diff stays through the retry`,
+        renderedDiffRevisions.length,
+        diffRenders,
+      );
+    }
+
     // C3: the selected row's evicted detail is read on hover without a preparation, and
     // the panel is torn down before it answers. The late answer starts no further read
     // and puts nothing in the cleared cache.
