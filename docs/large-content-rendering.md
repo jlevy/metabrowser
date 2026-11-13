@@ -105,6 +105,43 @@ The source view measured 55 ms at 128 KB rising to 152 ms at 1.4 MB. That is lin
 click and quadratic across a sequence — the failure only appears after several clicks,
 which is exactly where casual testing stops.
 
+### WebKit lays out a long text node slowly
+
+WebKit lays out one text node of millions of characters several times slower than
+Chrome, and nodes of 65,536 UTF-16 code units, the size its HTML parser splits text
+into, about as fast.
+(Chrome’s parser does not split text.)
+Load more appended each chunk as one node, so in WebKit a click cost about 0.5 ms per
+KiB of everything loaded.
+It now appends nodes of at most that size, `TEXT_NODE_MAX_LENGTH` in `source-append.js`.
+
+The source view’s growth sequence on a 16 MiB source file, from response end to laid
+out, as medians of five rounds of back-to-back pairs:
+
+| Load more | Chrome before | Chrome after | WebKit before | WebKit after |
+| --- | ---: | ---: | ---: | ---: |
+| To 4 MiB, a 2 MiB click | 412 ms | 383 ms | 2,416 ms | 947 ms |
+| To 8 MiB, a 4 MiB click | 813 ms | 758 ms | 4,077 ms | 888 ms |
+| To 16 MiB, an 8 MiB click | 1,633 ms | 1,584 ms | 8,063 ms | 1,794 ms |
+
+Each round’s after over before was 0.90 to 0.98 in Chrome and 0.22 to 0.39 in WebKit;
+opening the file, which the parser builds, did not change in either.
+Measured 2026-11-12 on an Apple M1 Pro (MacBookPro18,1), macOS 26.5.2, with Chrome
+152.0.7977.83 and WebKit 21624.2.5.11.8 in the macOS app’s web view configuration, at
+the app’s 1,200 × 820 window and a load average of 6 to 14 from other work.
+Each sample was a fresh browser running the same in-page probe, and each round
+alternated which build and which engine went first.
+
+Two costs remain in WebKit.
+The first click took 2.45 to 2.51 times Chrome’s time: it takes this file past 100,000
+lines, so the gutter gains a digit, the code column narrows, and WebKit lays out all of
+the code again where Chrome does not.
+With the gutter’s width held by a diagnostic stylesheet, that click took 546 to 555 ms
+against Chrome’s 379 to 389 ms.
+The 1.4 times left matches the source view’s grid: in one bare-page run, WebKit took
+about four times as long to append the same text into a grid like the view’s as into a
+plain `pre`. The later clicks took 1.10 to 1.21 times Chrome’s time.
+
 ### Syntax highlighting spends elements and main-thread time
 
 Highlight.js lexing is only part of the cost.
@@ -202,6 +239,29 @@ When the append cannot be done safely — a syntax-highlighted block, an unexpec
 shape — fall back to a full render rather than dropping content, and keep any status the
 render would have refreshed in sync by hand.
 
+**Append text in nodes of at most 64 KiB.** A chunk goes in as text nodes of at most
+65,536 UTF-16 code units, the unit a text node’s length counts, which WebKit lays out
+several times faster than one long node (see
+[WebKit lays out a long text node slowly](#webkit-lays-out-a-long-text-node-slowly)).
+Each node ends at its last newline, so ordinary source is split only between lines.
+A line longer than the bound is cut between two ASCII characters when the bound falls
+there, which is always a grapheme boundary except inside a CRLF. Otherwise, where the
+engine has `Intl.Segmenter`, the cut is the start of the grapheme cluster the bound
+falls in, because a boundary depends on the text before it: whether a regional indicator
+starts a flag depends on how many precede it in its run.
+So the line is segmented from the last position known to be a boundary: the piece’s
+start, or, after a cut inside one cluster longer than the bound, that cluster’s end,
+found once by segmenting forward from its start.
+An accent, an emoji sequence, or a flag then stays whole.
+Without `Intl.Segmenter`, and inside one cluster longer than the bound, the cut is the
+last code point boundary that keeps a surrogate pair and a CRLF whole, so an accent can
+be cut from its letter.
+Splitting costs time linear in the line: in V8 (Node 24) and in WebKit, 8 MiB lines of
+ASCII, CJK, or accented letters took 4 to 9 ms, a line of nothing but flags 94 to 97 ms,
+and one cluster of 8 MiB 80 to 91 ms.
+Copy, find, and selection read across text nodes and see the same text, as checked in
+both engines.
+
 **Highlight a bounded prefix, not a small-file category.** For an extension backed by
 the shipped grammar registry, the initial source window is capped at the syntax bound
 and may be highlighted even when the complete file is much larger.
@@ -211,12 +271,17 @@ entire loaded window as plain text once, then returns to incremental appends.
 This applies the degradation uniformly instead of leaving an arbitrary colored boundary
 on screen.
 
-**Number lines in one text node.** The source view’s line-number gutter is a single text
-node beside the code, in the code’s font and line height, so it costs one more
-`white-space: pre` surface rather than an element per line.
-Building the numbers is 2–4 ms for 4 MiB (56,680 lines); laying the gutter out adds
-about 35 ms to a 2 MiB first window (28,340 lines), 135 ms against 100 ms without it,
-measured in Chrome on 2026-09-24 on a loaded machine.
+**Number lines in one text surface.** The source view’s line-number gutter is one
+element of text beside the code, in the code’s font and line height, so it costs one
+more `white-space: pre` surface rather than an element per line.
+Load more appends the numbers of the lines it added, in text nodes within the same 64
+KiB bound as the code’s, rather than writing every number again.
+Writing them all into the gutter’s first text node, as it did, also left in WebKit the
+other nodes its parser had split the gutter into on screen after the new numbers: after
+three clicks on the 16 MiB file the page was 10,088,452 px tall, against 9,217,635 px in
+Chrome. Building the numbers is 2–4 ms for 4 MiB (56,680 lines); laying the gutter out
+adds about 35 ms to a 2 MiB first window (28,340 lines), 135 ms against 100 ms without
+it, measured in Chrome on 2026-09-24 on a loaded machine.
 The highlight for anchored lines is placed by the height of one rendered line, the
 gutter’s height over its line count, measured again when a `ResizeObserver` sees the
 gutter change size. A multiple of `1lh` drifts, because line boxes are laid out at
@@ -396,6 +461,7 @@ window that never existed on disk.
 | `TEXT_PREVIEW_CHUNK_BYTES` | 2 MiB | Opening latency |
 | `TEXT_PREVIEW_MAX_CHUNK_BYTES` | 8 MiB | Per-click main-thread time |
 | `TEXT_PREVIEW_REQUEST_MAX_BYTES` | 16 MiB | One request, and the stream window of a compressed file or Git blob |
+| `TEXT_NODE_MAX_LENGTH` | 65,536 code units | WebKit’s layout of the text one Load more appends |
 | `SYNTAX_HIGHLIGHT_MAX_BYTES` | 512 KiB | Highlight.js main-thread work and token-span DOM |
 | `BINARY_PREVIEW_MAX_BYTES` | 32 MiB | Browser memory for loaded bytes |
 | `BINARY_PREVIEW_CHUNK_BYTES` | 1 MiB | Opening latency |

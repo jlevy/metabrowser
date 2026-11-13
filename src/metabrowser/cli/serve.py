@@ -9,9 +9,7 @@ implementation.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
-import os
 import signal
 import threading
 import webbrowser
@@ -24,14 +22,19 @@ import typer
 import uvicorn
 
 from metabrowser.build_version import build_state
-from metabrowser.cli.common import apply_log_level, validate_contained_path
+from metabrowser.cli.common import (
+    apply_log_level,
+    exit_after_notices,
+    validate_contained_path,
+    write_notice_now_or_never,
+)
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
-from metabrowser.git.process import kill_live_process_groups
+from metabrowser.git.process import stop_process_groups
 from metabrowser.server_utils import find_available_local_port, port_search_range
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
@@ -107,10 +110,10 @@ def _write_stopping_notice() -> None:
     main thread while it may be part-way through a buffered write of its
     own. ``sys.stderr.write`` would take that same non-reentrant stream
     lock and deadlock; a bare ``os.write`` takes no Python-level lock.
-    A closed or full stderr is not worth failing a shutdown over.
+    A closed or full stderr is not worth failing a shutdown over, nor
+    waiting on: see :func:`write_notice_now_or_never`.
     """
-    with contextlib.suppress(OSError):
-        os.write(2, _STOPPING_NOTICE)
+    write_notice_now_or_never(2, _STOPPING_NOTICE)
 
 
 def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
@@ -124,13 +127,15 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     close, which is what stopping the server means.
 
     A background refresh's Git runs in its own process group, which exiting
-    here would leave running, so those groups are killed first. What a killed
-    fetch leaves in its store is removed by the next refresh. A terminal hangup
-    that lands here exits with the status a shell reports for it.
+    here would leave running, so those groups are killed first, including one
+    whose spawn has not returned, by :func:`stop_process_groups`, which needs
+    nothing from the event loop this handler interrupted. What a killed fetch
+    leaves in its store is removed by the next refresh. A terminal hangup that
+    lands here exits with the status a shell reports for it.
     """
     _write_stopping_notice()
-    kill_live_process_groups()
-    os._exit(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
+    stop_process_groups()
+    exit_after_notices(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
 
 
 class _QuietForceExitServer(uvicorn.Server):

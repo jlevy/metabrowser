@@ -40,6 +40,7 @@ from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, vali
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
+from metabrowser.cli.stdin_lifeline import stop_when_stdin_closes
 from metabrowser.cli.walk_cli import (
     RECENCY_WINDOW_CHOICES,
     run_walk,
@@ -75,6 +76,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "port",
             "host",
             "no_open",
+            "exit_on_eof",
             "plugins_dir",
             "log_level",
             "untrusted",
@@ -161,6 +163,7 @@ _OPTION_LABELS: dict[str, str] = {
     "port": "--port",
     "host": "--host",
     "no_open": "--no-open",
+    "exit_on_eof": "--exit-on-eof",
     "plugins_dir": "--plugins-dir",
     "log_level": "--log-level",
     "fmt": "--format",
@@ -648,6 +651,13 @@ def _metab(
         "allowed with METABROWSER_ALLOWED_HOSTS (see SECURITY.md).",
         rich_help_panel=_PANEL_SERVE,
     ),
+    exit_on_eof: bool = typer.Option(
+        False,
+        "--exit-on-eof",
+        help="Stop serving when stdin closes, as it does when the process that "
+        "started the server and holds its stdin exits, even by crashing.",
+        rich_help_panel=_PANEL_SERVE,
+    ),
     # ── Walk options ───────────────────────────────────────────────
     fmt: str = typer.Option(
         "text",
@@ -837,6 +847,12 @@ def _metab(
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
+        if exit_on_eof and root is not None:
+            # First, before anything that can block: reading ROOT, dotenv files, the
+            # server's imports, a Git source's acquisition. A parent that dies while
+            # startup is held on a slow disk must still stop the server. A missing ROOT
+            # is a usage error found without the disk, so it is reported first.
+            stop_when_stdin_closes()
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)

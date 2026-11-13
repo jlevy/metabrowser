@@ -4,6 +4,43 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Branch chips are blue.
+  A pull request’s base and head, the branches in the Pulls list, a mirror’s branches,
+  and the branch selector no longer share the purple of a merged pull request.
+  A checkout’s own local branches, in its history, are a blue-green instead of blue, and
+  the history line of the branch you are on stays blue.
+
+- The word in a badge is centered in its box instead of sitting about a pixel high: a
+  pull request’s Draft, Open, Merged, or Closed, its review and check states, and a file
+  header’s badges such as Gzip.
+  The badges keep their size.
+
+- A source file’s **Load more** is faster in Safari and other WebKit browsers.
+  The text it loads goes into the page in pieces of at most 64 KiB, the size WebKit’s
+  own HTML parser makes, and on a 16 MiB file each click takes WebKit a quarter to two
+  fifths of the time it did.
+  In those browsers the line numbers after **Load more** are also right again: numbers
+  left over from the opening window no longer repeat after the new ones, and a line
+  anchor’s highlight stays on its line.
+
+- `metab ROOT --exit-on-eof` stops serving when its stdin closes, so a program that
+  starts the server and holds its stdin, such as the macOS app, leaves no server running
+  when it exits, even by crashing.
+  The watch begins before startup reads the disk or acquires a Git source, so a server
+  still starting stops too.
+  See
+  [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
+
+- Stopping a server, by Ctrl-C, a hangup, or `--exit-on-eof`, no longer waits on a
+  stderr that is full because nothing reads it: the stop notice is dropped and the
+  process stops.
+
+- Stopping a server by Ctrl-C, a hangup, or `--exit-on-eof` now also kills a fetch’s or
+  clone’s Git, or a `gh`, whose start was under way at that moment, which used to keep
+  running and could keep holding the store’s fetch lock; no new one starts once the stop
+  has begun. The stop finds them from the system’s list of the server’s children, so it
+  ends promptly even when the server’s event loop is stuck.
+
 - The Pulls tab no longer stays stuck on “The metadata catalog could not be written”
   after a different Metabrowser build used the same cache.
   A list of pull requests this build cannot use, because it is damaged or from another

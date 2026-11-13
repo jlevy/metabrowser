@@ -61,7 +61,10 @@ const actions = {
   rafLoop: () => { show("rafLoop"); const end = performance.now() + 600; const loop = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { requestAnimationFrame(loop); } }; requestAnimationFrame(loop); },
   taskLoop: () => { show("taskLoop"); const end = performance.now() + 600; const ch = new MessageChannel(); ch.port1.onmessage = () => { spin(2); nav.appendChild(document.createElement("i")); if (performance.now() < end) { ch.port2.postMessage(0); } }; ch.port2.postMessage(0); },
   stall: () => { show("stall"); requestAnimationFrame(() => setTimeout(() => spin(300), 0)); },
-  heavy: () => { const f = document.createDocumentFragment(); for (let i = 0; i < 40000; i++) { const d = document.createElement("div"); d.textContent = "row " + i; f.appendChild(d); } view.replaceChildren(f); view.dataset.subject = "heavy"; },
+  // A long ready frame whose own rendering runs 40 ms past the recorder's post-layout read,
+  // as paint and commit do: a ResizeObserver created after the recorder's is called after
+  // its read, in the same frame.
+  heavy: () => { const f = document.createDocumentFragment(); for (let i = 0; i < 40000; i++) { const d = document.createElement("div"); d.textContent = "row " + i; f.appendChild(d); } view.replaceChildren(f); view.dataset.subject = "heavy"; requestAnimationFrame(() => { const ro = new ResizeObserver(() => { ro.disconnect(); spin(40); }); ro.observe(document.documentElement); }); },
   flicker: () => { show("flicker"); setTimeout(() => { const l = document.createElement("div"); l.className = "loading"; view.replaceChildren(l); setTimeout(() => show("flicker", "flicker subject again"), 150); }, 100); },
   prompt: () => { const p = document.createElement("div"); p.className = "preview-empty"; p.textContent = "Select something."; view.replaceChildren(p); view.dataset.subject = "prompt"; },
   image: () => { const img = new Image(); img.width = 300; img.height = 200; img.src = "/slow.png?" + Math.random(); view.replaceChildren(img); view.dataset.subject = "image"; },
@@ -83,8 +86,12 @@ const actions = {
   },
 };
 const buttons = document.getElementById("buttons");
+// Each action runs from a click. Where its handler started is kept for the checks as a
+// position in the recorder's frame log (the array a debug measure returns as raw.frames):
+// on this one thread, every entry before it was logged before the handler, and every one
+// at or after it, after.
 for (const [name, fn] of Object.entries(actions)) {
-  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", fn); buttons.appendChild(b);
+  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
 }
 // A synthetic pointerdown dispatched by the page itself when the pointer first moves over it.
 document.getElementById("go-reset").insertAdjacentHTML("beforebegin", '<button id="go-forged">forged</button>');
@@ -167,10 +174,66 @@ async function measure(name, extra = {}) {
     converged: `() => ""`,
     settleMs: 400,
     timeoutMs: 10000,
+    debug: true,
     ...extra,
   });
   await sleep(300);
   return r;
+}
+// The press that starts the recorder's clock, on the page clock.
+const pressAt = (r) =>
+  r.raw.inputs.find(([type]) => type === "pointerdown" || type === "mousedown")[1];
+// The press and the release that makes the click are separate CDP calls, so a busy machine
+// can draw a frame between them: under 12 extra busy loops on a 10-core machine the click
+// reached the page up to 22 ms after the press, and in 2 of 15 rafLoop transitions a frame
+// fell between them. That frame shows the page before the click handler ran, and the
+// recorder counts it from the press, as it should: one more frame to ready, blank on these
+// pages.
+// Frames are ordered against the click by their position in the frame log, not by clock:
+// the log keeps a read's time rounded to 0.1 ms, which a read just before the handler can
+// share with the handler's own time. The recorder appends a frame to the log as it reads
+// it, so position orders each read against the handler exactly. A frame whose observation
+// never arrived is appended at the next frame instead, so it is left out.
+const readsAroundClick = async (r) => {
+  const mark = await d.evaluate("window.clickFrameMark");
+  const reads = r.raw.frames.map((f, i) => ({ f, i })).filter(({ f }) => f[1] !== null);
+  return { before: reads.filter(({ i }) => i < mark), after: reads.filter(({ i }) => i >= mark) };
+};
+// The frames read after the press and before the click handler started.
+async function framesBeforeClick(r) {
+  const { before } = await readsAroundClick(r);
+  return before.filter(({ f }) => f[0] >= pressAt(r)).length;
+}
+// The ready frame is the first frame read after the click handler started. This is
+// checked on the frames themselves rather than through `framesToReady`, which counts
+// frames by their begin time from the press, and reads 0 when Chrome begins the ready
+// frame before the press's own time stamp (README, "Limits").
+async function assertReadyInFirstFrameAfterClick(r) {
+  const { after } = await readsAroundClick(r);
+  const first = after[0]?.f;
+  assert.ok(
+    first && first[0] === r.raw.readyAt && first[2] === Math.round(r.raw.readyRead * 10) / 10,
+    `the first frame read after the click, ${JSON.stringify(first)}, is not the ready frame at ${r.raw.readyAt}: ${JSON.stringify(r.frameStates)}`,
+  );
+}
+// Painted ready against Chrome's presentation of the click's next paint (Event Timing),
+// which is the ready frame only where the click handler itself shows the subject, as on
+// every page that calls this; on the image page it is not. Chrome presents a frame after
+// its main-thread rendering ends, and painted ready is the first frame boundary after that
+// end, so painted ready is never more than a frame after the presentation. The 9 ms
+// covers Chrome's rounding of that time to 8 ms and the recorder's to 0.1 ms. An entry
+// Chrome leaves out was presented within its 16 ms threshold of the click.
+// The bound has one side. The presentation also includes compositor, raster, and GPU work
+// after the main thread, which painted ready leaves out (README, "Limits"), so it can come
+// later than painted ready by that much: for the long frame below, by 9 to 12 ms in five
+// CI runs and 23 to 43 ms with the renderer's CPU throttled fourfold.
+function assertPaintedByPresentation(r) {
+  const click = r.raw.inputs.find(([type]) => type === "click");
+  const presented = r.eventPresentedMs.click ?? click[1] - pressAt(r) + 16;
+  assert.ok(
+    r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
+    `painted ready ${r.paintedReadyMs}, presented by ${presented}`,
+  );
 }
 // TRANSITIONS_PROBE_ALL=1 runs every check and lists each failure, to show a recorder
 // failing them all; by default the first failure ends the run.
@@ -238,34 +301,28 @@ try {
         async () => {
           const r = await measure(name, { settleMs: 800 });
           assert.equal(r.ok, true, JSON.stringify(r.refusals));
-          assert.equal(r.framesToReady, 1);
-          assert.equal(r.blankFrames, 0);
+          // Ready in the first frame read after the click showed the subject, and painted
+          // ready is that frame's presentation, not the end of the 600 ms of DOM work after
+          // it. A busy machine can be slow to draw that frame (CI once read 198.7 ms here),
+          // so the bound is Chrome's presentation of it, not a fixed time.
+          await assertReadyInFirstFrameAfterClick(r);
+          assert.equal(r.blankFrames, await framesBeforeClick(r), JSON.stringify(r.frameStates));
           assert.equal(r.uncreditedFrames, 0);
-          assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
+          assertPaintedByPresentation(r);
           assert.ok(r.navSettledMs > 400, `nav settled ${r.navSettledMs}`);
         },
       );
     }
     // Chrome reports the frame after this stall on the frame grid, so this page cannot tell
     // painted ready from the next frame's begin time; the browserless presentedAt checks
-    // and the long-frame check below are the ones that do.
+    // are the ones that do.
     await check("a long task after the ready frame is not counted", async () => {
       const r = await measure("stall");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
       assert.ok(r.paintedReadyMs >= r.readyMs);
-      // Chrome's own presentation time for the click, to its 8 ms rounding, is no later
-      // than painted ready, which is at most one frame and the rounding after it. Event
-      // Timing leaves out an event presented within 16 ms, which bounds it the same way.
-      const presented = r.eventPresentedMs.click ?? 16;
-      assert.ok(
-        r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
-        `${r.paintedReadyMs} vs ${presented}`,
-      );
-      assert.ok(
-        r.paintedReadyMs >= Math.min(presented, r.readyMs) - 9,
-        `${r.paintedReadyMs} vs ${presented}`,
-      );
+      // The 300 ms task runs after the ready frame, so counting it would put painted ready
+      // far more than a frame past Chrome's presentation of that frame.
+      assertPaintedByPresentation(r);
     });
   } else if (group === "frames2") {
     await check("a long ready frame counts its own rendering", async () => {
@@ -273,16 +330,33 @@ try {
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
       const presented = r.eventPresentedMs.click;
       assert.ok(presented > 30, `the heavy frame was presented at ${presented}`);
-      assert.ok(r.paintedReadyMs >= presented - 9, `${r.paintedReadyMs} vs ${presented}`);
-      assert.ok(
-        r.paintedReadyMs <= presented + r.frameIntervalMs + 9,
-        `${r.paintedReadyMs} vs ${presented}`,
+      // Chrome's Long Animation Frame entry for the ready frame, the one that spans its
+      // read, ends when the frame's main-thread rendering did. The page's work after the
+      // read puts that more than a frame past the read, so a painted ready taken from the
+      // read alone, or from the frame's begin time, falls short of it.
+      const read = r.raw.readyRead;
+      const loaf = r.raw.loafs.find(
+        ([start, duration, , renderStart]) =>
+          renderStart > 0 && start <= read && start + duration >= read,
       );
+      assert.ok(loaf, `no Long Animation Frame spans the read: ${JSON.stringify(r.raw.loafs)}`);
+      const renderedMs = loaf[0] + loaf[1] - pressAt(r);
+      assert.ok(
+        renderedMs - r.readyMs > r.frameIntervalMs,
+        `read at ${r.readyMs}, rendering ended at ${renderedMs}`,
+      );
+      // Painted ready is the first frame boundary after that end, to the recorder's 0.1 ms.
+      assert.ok(
+        r.paintedReadyMs >= renderedMs - 0.1 &&
+          r.paintedReadyMs <= renderedMs + r.frameIntervalMs + 0.1,
+        `painted ready ${r.paintedReadyMs}, rendering ended at ${renderedMs}`,
+      );
+      assertPaintedByPresentation(r);
     });
     await check("blank and placeholder frames after ready are counted", async () => {
       const r = await measure("flicker");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.equal(r.blankFramesBeforeReady, 0);
+      assert.equal(r.blankFramesBeforeReady, await framesBeforeClick(r));
       assert.ok(r.placeholderVisibleFramesAfterReady >= 3, JSON.stringify(r.frameStates));
       assert.ok(r.blankFramesAfterReady >= 3, JSON.stringify(r.frameStates));
       assert.ok(r.blankMs >= 50, `blank ms ${r.blankMs}`);
@@ -291,9 +365,9 @@ try {
       const ready = `() => !!document.querySelector("#view .preview-empty")`;
       const declared = await measure("prompt", { ready, emptyState: true });
       assert.equal(declared.ok, true, JSON.stringify(declared.refusals));
-      assert.equal(declared.blankFrames, 0);
+      assert.equal(declared.blankFrames, await framesBeforeClick(declared));
       const undeclared = await measure("prompt", { ready });
-      assert.ok(undeclared.blankFrames >= 1);
+      assert.ok(undeclared.blankFrames > (await framesBeforeClick(undeclared)));
     });
   } else if (group === "content") {
     await check("an image counts once its bytes have arrived and decoded", async () => {
@@ -319,8 +393,9 @@ try {
     await check("content behind 500 hidden text nodes is found", async () => {
       const r = await measure("hiddenAhead", { timeoutMs: 5000 });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
-      assert.equal(r.blankFrames, 0);
-      assert.ok(r.paintedReadyMs < 120, `painted ready ${r.paintedReadyMs}`);
+      // Found in the first frame read after the click.
+      await assertReadyInFirstFrameAfterClick(r);
+      assert.equal(r.blankFrames, await framesBeforeClick(r), JSON.stringify(r.frameStates));
     });
     await check("a hidden retained page is not taken for the one on screen", async () => {
       await d.click("#go-reset");
