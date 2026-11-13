@@ -1045,6 +1045,30 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
+It also splits what the startup scripts cost, from the load’s trace: when their last
+byte arrived, their parse on a worker while they streamed in, their compile and
+evaluation on the main thread, and the main thread’s busy time to the first tree row.
+`--network LATENCY:DOWN:UP` puts an emulated link under every load (milliseconds per
+request, then kilobits per second each way), as `metab --remote` puts an SSH tunnel;
+`--cpu RATE` slows the page; `--warm N` measures in a profile whose HTTP and code caches
+N earlier loads filled, as a returning reader’s are.
+Read those costs as paired differences in milliseconds.
+
+`eager-comments.mjs` counts how much of the startup scripts is comments, and writes
+variants of them with every comment removed or with more comment added, checking that
+neither changes a token of code:
+
+```shell
+node explorations/performance-loop/eager-comments.mjs --origin http://127.0.0.1:8771 \
+  --strip .bench/eager/stripped --pad .bench/eager/padded --prose .bench/prose.txt
+```
+
+Copy `src/metabrowser` beside the corpus, put a variant’s scripts in its `static/`, and
+serve it with that copy first on `PYTHONPATH`; the startup-script check and the probe
+then measure the variant as they measure the checkout.
+[The eager startup-script cost](../../docs/project/research/research-2026-11-12-eager-startup-script-cost.md)
+is the round that set `startup_script_transfer_kb` this way.
+
 ### Attributing Stateful-Navigation Delay
 
 Use this sequence when an interaction feels late even though one measured application
