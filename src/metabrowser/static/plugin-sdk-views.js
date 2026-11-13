@@ -828,6 +828,50 @@
     return chip;
   }
 
+  /** What the arrow between a merge's two branches is called: a reader hears "wip merges
+   * into topic". */
+  const MERGE_ARROW_NAME = "merges into";
+
+  /**
+   * A merge, in the one notation every surface uses: the source branch, an arrow, then the
+   * target branch, left to right (docs/design-system.md, "Merge Direction"). For a pull
+   * request the source is its head and the target its base. Each side is a `refChip`, and
+   * `options` applies to both.
+   *
+   * The group is a left-to-right island (`dir="ltr"`), as a path is, so the arrow points
+   * from the source to the target in a right-to-left page too, and its order in the
+   * document, source first, is the order a screen reader reads.
+   *
+   * @param {{name: string, label?: string}} source The branch whose commits merge.
+   * @param {{name: string, label?: string}} target The branch they merge into.
+   * @param {{kind?: string, copy?: "inline"|"sibling"|false}} [options]
+   * @returns {HTMLElement}
+   */
+  function mergeRefs(source, target, options = {}) {
+    /** @param {{name: string, label?: string}} side @param {string} role */
+    const chip = (side, role) => {
+      const element = refChip(side.name, {
+        ...options,
+        ...(side.label === undefined ? {} : { label: side.label }),
+      });
+      element.classList.add(role);
+      return element;
+    };
+    const arrow = document.createElement("span");
+    arrow.className = "merge-refs-arrow";
+    arrow.setAttribute("role", "img");
+    arrow.setAttribute("aria-label", MERGE_ARROW_NAME);
+    // The whole statement, which a narrow place may have cut both names short of.
+    arrow.dataset.tipText = `${source.label ?? source.name} ${MERGE_ARROW_NAME} ${target.label ?? target.name}`;
+    // The spaces are text, so a copied selection reads "wip → topic".
+    arrow.textContent = " → ";
+    const group = document.createElement("span");
+    group.className = "merge-refs";
+    group.setAttribute("dir", "ltr");
+    group.append(chip(source, "merge-refs-source"), arrow, chip(target, "merge-refs-target"));
+    return group;
+  }
+
   /** Put secondary copy controls outside a primary row link/button. Each mounted row
    * owns its controls and disposer; active global hide listeners are released on hide/dispose.
    * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
@@ -1676,6 +1720,7 @@
     decorateExternalLink,
     refChipHtml,
     refChip,
+    mergeRefs,
     mountRefCopies,
     ageBucket,
     ageLabelHtml,
