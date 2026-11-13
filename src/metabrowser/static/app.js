@@ -957,6 +957,11 @@ var quickFileCatalogFeed = null;
 var shortcutRegistry = null;
 var keyboardHelp = null;
 var treeKeyboard = null;
+/** @type {MetabrowserPublicShellKeymapApi | null} */
+var shellKeymap = null;
+/** @type {MetabrowserPublicKeyRevealApi | null} */
+var keyReveal = null;
+var detachPluginShortcuts = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
@@ -3641,14 +3646,17 @@ function clearPreviewNavigationState(preview) {
  */
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
-  if (owner !== "git") {
-    window.MetabrowserGitPanel?.cancelPending();
-  }
-  // Whatever claims the pane next retires the pull-request page. Its DOM can
-  // stay visible until the replacement is ready (createPullPageHost).
-  const retired = pullPageHost?.release();
-  if (retired) {
+  // Whatever claims the pane next retires the pull-request page, and any owner but the
+  // Git panel retires its commit diff. Their DOM can stay visible until the replacement
+  // is ready (createPullPageHost).
+  for (const retired of [
+    owner !== "git" && window.MetabrowserGitPanel?.cancelPending(),
+    pullPageHost?.release(),
+  ]) {
     // A later pending claim must not replace the one old visible handoff surface.
+    if (!retired) {
+      continue;
+    }
     if (retainedPullPageDispose) {
       retired();
     } else {
@@ -3746,6 +3754,8 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       flushPull: () => pullPageHost?.page()?.flush?.(),
+      // Read when called: the tree controller is created after the main tabs.
+      focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
       restore: () => navigationController.restore(),
@@ -3781,11 +3791,29 @@ function initNavTabs() {
   });
 }
 
+/**
+ * What the shell keymap's commands reach their controls through: the activation paths
+ * only app.js can run, each the one its control's click runs; see shell-keymap.js. The
+ * keymap reads its targets itself, and the commit view's Copy revision and the branch
+ * selector reach it through its own module and the selector's.
+ * @returns {MetabrowserPublicShellKeymapShell}
+ */
+function shellKeymapShell() {
+  return Object.freeze({
+    openFolder: navigateToFolder,
+    selectPreviewTab,
+    toggleFilterMenu,
+  });
+}
+
 /** Finalize the retired page only after a new owner's content has been installed. */
 function finishRetainedPullPage() {
   const dispose = retainedPullPageDispose;
   retainedPullPageDispose = null;
   dispose?.();
+  // Every install of new main-pane content ends here, so the keys that act on it follow:
+  // the view tab letters of the bar now committed, or none, and the header's Up and Copy.
+  shellKeymap?.syncPane();
 }
 
 /** Stage a route-backed plugin in the existing connected, inert preview staging layer.
@@ -4675,6 +4703,8 @@ function renderNavFilterBar() {
         })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
+  // The rebuild replaced the triggers that the file type and modified-within keys badge.
+  shellKeymap?.syncFilters();
 }
 
 // Flip the drawer's open state on the existing nodes. Re-rendering
@@ -4696,6 +4726,21 @@ function applyDrawerOpenState() {
         (count > 0 ? ` (${count} active)` : ""),
     );
     toggle.dataset.tipText = filterDrawerOpen ? "Fewer filters" : "More filters";
+  }
+}
+
+/**
+ * Open or close one filter dropdown, as its trigger does. At most one is open. The
+ * trigger's click and the file type and modified-within keys share this path.
+ *
+ * @param {string} key
+ * @param {boolean} open
+ */
+function toggleFilterMenu(key, open) {
+  filterOpenMenu = open ? key : null;
+  renderNavFilterBar();
+  if (key === "recency" && open) {
+    scheduleRootSummaryRefresh();
   }
 }
 
@@ -4742,13 +4787,7 @@ function initFilterBar() {
         filterState.set({ showIgnored: pressed });
       }
     },
-    onMenuToggle: (key, open) => {
-      filterOpenMenu = open ? key : null;
-      renderNavFilterBar();
-      if (key === "recency" && open) {
-        scheduleRootSummaryRefresh();
-      }
-    },
+    onMenuToggle: toggleFilterMenu,
     onMenuPreset: (key, presetId, wasOn) => {
       if (key !== "types") {
         return;
@@ -5505,7 +5544,7 @@ function renderFolderHeader(data) {
     ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
     : "";
   return (
-    '<div class="file-header folder-header">' +
+    '<div class="file-header folder-header" data-kbd-badge-anchor>' +
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
@@ -5898,7 +5937,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         }
         if (data.kind !== "folder") {
           var badges = renderBadges(data);
-          html = '<div class="file-header">';
+          html = '<div class="file-header" data-kbd-badge-anchor>';
           html +=
             '<span class="file-header-path folder-breadcrumb">' +
             headerAddressHtml(data.path, true) +
@@ -5926,16 +5965,24 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var pluginRenders = [];
         if (views && views.length > 0) {
           if (views.length > 1) {
-            html += '<div class="tab-bar">';
+            // A tablist, as the navigation and pull request tab bars are. A view's
+            // declared letter rides its button for the shell keymap, which reads it
+            // only once the bar is committed to the pane.
+            html += '<div class="tab-bar" role="tablist">';
             for (let i = 0; i < views.length; i++) {
               const view = views[i];
-              var active = view.id === initialActiveView?.id ? " active" : "";
+              var isActive = view.id === initialActiveView?.id;
+              var viewKey =
+                typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
               html +=
                 '<button class="tab-btn' +
-                active +
-                '" type="button" data-tab="' +
+                (isActive ? " active" : "") +
+                '" type="button" role="tab" aria-selected="' +
+                (isActive ? "true" : "false") +
+                '" data-tab="' +
                 esc(view.id) +
                 '"' +
+                viewKey +
                 viewMetaAttrs(view) +
                 ">" +
                 esc(view.label) +
@@ -6064,6 +6111,11 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (
           !stagedPluginLifecycle.commit(() => {
             preview.replaceChildren(...replacementNodes);
+            // The view tab letters and the header's keys move with what the pane
+            // commits, here and never while it is staged; a cancelled stage registered
+            // nothing, so nothing of the keymap goes into stagedPluginDisposers, which
+            // cancel() also runs.
+            shellKeymap?.commitViewTabs(shellKeymap.committedBar());
             finishRetainedPullPage();
             options.onCommit?.();
           })
@@ -6170,39 +6222,58 @@ function showPreviewTab(path, tabId) {
     return;
   }
   var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
-  if (button && !button.classList.contains("active")) {
-    button.click();
+  var bar = button?.parentElement;
+  if (button && bar && !button.classList.contains("active")) {
+    selectPreviewTab(bar, tabId);
   }
+}
+
+/**
+ * Select one tab of a view tab bar: mark its button, show its content, mount a view
+ * not shown before, and tell the shell which view is active. The tab's click, its
+ * letter key, and showPreviewTab share this path, and none of them moves focus.
+ * Reports whether the bar has that tab.
+ *
+ * @param {HTMLElement} bar
+ * @param {string} tabId
+ */
+function selectPreviewTab(bar, tabId) {
+  var container = bar.parentElement;
+  /** @type {HTMLElement | null} */
+  var selected = null;
+  queryHtmlAll(".tab-btn", bar).forEach((b) => {
+    var on = b.dataset.tab === tabId;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+    if (on) {
+      selected = b;
+    }
+  });
+  if (!container || !selected) {
+    return false;
+  }
+  queryHtmlAll("[data-tab-content]", container).forEach((c) => {
+    c.style.display = c.dataset.tabContent === tabId ? "" : "none";
+  });
+  if (container.id === "preview-pane") {
+    setActivePreviewView(tabId, container);
+  }
+  var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
+  if (activeContent && typeof activeContent._metabrowserMount === "function") {
+    var mount = activeContent._metabrowserMount;
+    activeContent._metabrowserMount = null;
+    mount();
+  }
+  return true;
 }
 
 /** @param {ParentNode} [root] */
 function initTabs(root = document) {
   queryHtmlAll(".tab-btn", root).forEach((btn) => {
     btn.addEventListener("click", () => {
-      var tabId = btn.dataset.tab;
       var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
-      if (!bar) {
-        return;
-      }
-      var container = bar.parentElement;
-      if (!container) {
-        return;
-      }
-      bar.querySelectorAll(".tab-btn").forEach((b) => {
-        b.classList.remove("active");
-      });
-      btn.classList.add("active");
-      queryHtmlAll("[data-tab-content]", container).forEach((c) => {
-        c.style.display = c.dataset.tabContent === tabId ? "" : "none";
-      });
-      if (container && container.id === "preview-pane") {
-        setActivePreviewView(tabId, container);
-      }
-      var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
-      if (activeContent && typeof activeContent._metabrowserMount === "function") {
-        var mount = activeContent._metabrowserMount;
-        activeContent._metabrowserMount = null;
-        mount();
+      if (bar && btn.dataset.tab) {
+        selectPreviewTab(bar, btn.dataset.tab);
       }
     });
   });
@@ -7725,7 +7796,7 @@ function isPullAddress(pathname) {
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
-/** @type {(() => void) | null} One canceled page whose DOM remains until actual replacement. */
+/** @type {(() => void) | null} One retired page or commit diff, shown until its replacement. */
 var retainedPullPageDispose = null;
 
 /** The pull-request page's host, created once its module has arrived. */
@@ -8103,6 +8174,22 @@ function initKeyboardInfrastructure() {
     setFolderExpanded: setRowExpanded,
     shortcuts: shortcutRegistry,
   });
+  // Both read what rendered before the registry existed: the keymap the committed view
+  // tabs, header, filters, and selector; the reveal nothing, until Shift is held.
+  if (window.MetabrowserShellKeymap) {
+    shellKeymap = window.MetabrowserShellKeymap.createShellKeymap({
+      shell: shellKeymapShell(),
+      shortcuts: shortcutRegistry,
+    });
+  }
+  if (window.MetabrowserKeyReveal) {
+    keyReveal = window.MetabrowserKeyReveal.createKeyReveal({
+      document: document,
+      shortcuts: shortcutRegistry,
+    });
+  }
+  detachPluginShortcuts =
+    window.MetabrowserPluginShortcuts?.attachShortcutRegistry(shortcutRegistry);
   applicationFocusListener = (event) => {
     var target = event.target;
     var treePaneElement = document.getElementById("tree-pane");
@@ -8128,10 +8215,17 @@ function disposeKeyboardInfrastructure() {
   quickFileSearchController?.dispose();
   quickFileSearchController = null;
   knownFileCatalog = null;
+  keyReveal?.dispose();
+  keyReveal = null;
+  shellKeymap?.dispose();
+  shellKeymap = null;
+  detachPluginShortcuts?.();
+  detachPluginShortcuts = null;
   treeKeyboard?.dispose();
   treeKeyboard = null;
   keyboardHelp?.dispose();
   keyboardHelp = null;
+  mainTabs?.bindShortcuts(null);
   shortcutRegistry?.dispose();
   shortcutRegistry = null;
 }
@@ -8331,7 +8425,10 @@ async function startSourceRefSelector() {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
+  // The selector's module keeps what it mounted, which the branch or tag key runs the
+  // button's path through, and the keymap reads it from there.
   window.MetabrowserSourceRefSelector?.mount(element);
+  shellKeymap?.syncSource();
 }
 
 // app.js is the last core script in the body, so the tree container and every

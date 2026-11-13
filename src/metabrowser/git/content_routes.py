@@ -117,6 +117,7 @@ from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.invisible_chars import display_segment
+from metabrowser.keymap import live_view_keys
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
@@ -1236,7 +1237,10 @@ def _git_readme_child(
 
 
 def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str, Any]]:
-    """Overview when a README or complete tally exists; treemap needs sizes."""
+    """Overview when a README or complete tally exists; treemap needs sizes.
+
+    Overview alone has no tab, so it is served without its key.
+    """
 
     complete = tally is not None and tally.total_size is not None
     wanted: set[str] = set()
@@ -1244,7 +1248,7 @@ def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str,
         wanted.add("overview")
     if complete:
         wanted.add("treemap")
-    return [view for view in _views_for_kind("folder") if view.get("id") in wanted]
+    return live_view_keys([view for view in _views_for_kind("folder") if view.get("id") in wanted])
 
 
 def _dir_tally_payload(tally: GitTreeTally | None) -> dict[str, Any]:

@@ -581,8 +581,11 @@ def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     assert "root !== document && !root.isConnected" in js
     assert 'rawLogHost.closest(".log-event.expanded")' in js
 
+    # The whole of renderFile, bounded by the function that follows it: a fixed
+    # character window broke whenever code or comments grew above the last assertion.
     render_start = js.index("async function renderFile(data, preferredViewId, claim, options = {})")
-    render_block = js[render_start : render_start + 12_000]
+    render_end = js.index("\nfunction toggleEvent(header)", render_start)
+    render_block = js[render_start:render_end]
     assert "viewComposition.composition.mount(" in render_block
     assert "afterMount: scheduleHighlightCode" in render_block
     assert "const mount = (" in render_block
