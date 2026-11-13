@@ -1,7 +1,9 @@
 // The Folder Overview's left edge, measured in a real headless Chrome against a live
-// `metab` server (tests/test_folder_overview_alignment.py starts it).
+// `metab` server. tests/test_folder_overview_alignment.py starts the server, waits until
+// it serves, owns the profile directory, and stops this process's whole group, Chrome
+// included, however the run ends.
 //
-//   node tests/dom/folder-overview-alignment-chrome.mjs http://127.0.0.1:<port>
+//   node tests/dom/folder-overview-alignment-chrome.mjs http://127.0.0.1:<port> <profile dir>
 //
 // Every label the Overview host draws — each panel heading's toggle and File Overview's
 // Details toggle — starts on the active tab's label at every pane width, so the labels
@@ -12,8 +14,6 @@
 // Where text starts is layout, which only a browser computes: the column comes from
 // container queries on the pane's width, a token, and KPress's stylesheet together.
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 const HERE = import.meta.dirname;
@@ -21,9 +21,9 @@ const { launchBrowser, driver } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
 
-const base = process.argv[2];
-if (!base) {
-  throw new Error("usage: folder-overview-alignment-chrome.mjs <server base URL>");
+const [base, profileDir] = process.argv.slice(2);
+if (!base || !profileDir) {
+  throw new Error("usage: folder-overview-alignment-chrome.mjs <server base URL> <profile dir>");
 }
 
 // Window widths that put the preview pane in each of the three KPress document bands,
@@ -87,7 +87,6 @@ const MEASURE = `(() => {
 let checks = 0;
 const bands = new Set();
 const offsets = [];
-const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "overview-alignment-chrome-"));
 const browser = await launchBrowser({
   profileDir,
   width: WIDTHS[0],

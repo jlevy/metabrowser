@@ -54,17 +54,39 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert "box-shadow: none" not in css
 
 
+def _enclosing_blocks(css: str, index: int) -> list[str]:
+    """The preludes of the blocks that enclose *index* in *css*, outermost first."""
+
+    preludes: list[str] = []
+    start = 0
+    for position, char in enumerate(css[:index]):
+        if char == "{":
+            preludes.append(css[start:position].strip())
+            start = position + 1
+        elif char == "}":
+            preludes.pop()
+            start = position + 1
+        elif char == ";":
+            start = position + 1
+    return preludes
+
+
 def test_overview_text_has_one_inset_at_every_width() -> None:
     """Host text starts on the tab label; no container query moves it.
 
-    The card's width still follows KPress's bands, but the text inset is declared once.
-    When it followed the README's prose inset, the panel labels stepped from 0.75 to 4
-    to 2.5 rem as the pane widened. tests/test_folder_overview_alignment.py measures
-    the edge in Chrome; this holds the declaration where Chrome is not installed.
+    The card's width still follows KPress's bands, but the text inset is declared once,
+    on the host in the screen rules and inside no ``@container`` block. When it
+    followed the README's prose inset, the panel labels stepped from 0.75 to 4 to
+    2.5 rem as the pane widened. tests/test_folder_overview_alignment.py measures the
+    edge in Chrome; this holds the declaration where Chrome is not installed.
     """
 
     css = _overview_rules()
-    assert css.count("--folder-overview-text-inset:") == 1
+    declarations = [m.start() for m in re.finditer(r"--folder-overview-text-inset\s*:", css)]
+    assert len(declarations) == 1, "the text inset is declared more than once"
+    scope = _enclosing_blocks(css, declarations[0])
+    assert not [prelude for prelude in scope if prelude.startswith("@container")], scope
+    assert scope == ["@media screen", ".folder-overview-host"]
     assert "--folder-overview-text-inset: var(--file-tab-padding-x);" in css
 
 
