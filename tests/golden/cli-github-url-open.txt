@@ -163,7 +163,7 @@ exit: 0
 show: docs/v1.md
 route: /view/g1-ZG9jcw/g1-djEubWQ
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=14 content_bytes=14 content_truncated=False
 --- stderr ---
 selection: blob

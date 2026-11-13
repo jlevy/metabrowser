@@ -82,7 +82,7 @@
             {
               "id": "rendered",
               "label": "Document",
-              "key": "d",
+              "key": "v",
               "default": true,
               "container_class": "content-body metabrowser-kpress-host md-body",
               "printable": true,
@@ -111,7 +111,7 @@
             {
               "id": "tree",
               "label": "Tree",
-              "key": "r",
+              "key": "v",
               "default": true,
               "container_class": "content-body",
               "printable": false,
@@ -140,7 +140,7 @@
             {
               "id": "log",
               "label": "Log",
-              "key": "l",
+              "key": "v",
               "default": true,
               "container_class": "content-body",
               "printable": false,
@@ -160,7 +160,7 @@
             {
               "id": "raw",
               "label": "Raw JSON",
-              "key": "r",
+              "key": "s",
               "default": false,
               "container_class": "content-body",
               "printable": false,
@@ -179,7 +179,7 @@
             {
               "id": "preview",
               "label": "Preview",
-              "key": "p",
+              "key": "v",
               "default": true,
               "container_class": "content-body metabrowser-html-host",
               "printable": false,

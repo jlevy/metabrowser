@@ -163,10 +163,10 @@ def test_recording_is_what_the_application_answers(
     assert keys == {
         "": ["o", "m"],
         "docs": ["o", "m"],
-        "README.md": ["d", "s"],
-        "data.json": ["r", "s"],
-        "session.jsonl": ["l", "c", "r"],
-        "page.html": ["p", "s"],
+        "README.md": ["v", "s"],
+        "data.json": ["v", "s"],
+        "session.jsonl": ["v", "c", "s"],
+        "page.html": ["v", "s"],
     }
     assert [view["id"] for view in recorded["folder"]["inactive_html"]["body"]["views"]] == [
         "source"
@@ -185,16 +185,37 @@ def test_the_session_runs_on_the_recording() -> None:
 
     # What each part printed is what its golden pins, which tests/test_keymap.py holds to
     # the reserved shell keys.
-    assert {key for part in parts for key in part["shellKeys"]} == set("123ajknptuwxy")
+    assert {key for part in parts for key in part["shellKeys"]} == set("123456789fhjknprtuw")
 
     by_name = {step["step"]: step for part in parts for step in part["steps"]}
     root = by_name["the root folder has no Up"]
     assert "header.parent" not in [command for _key, command, _target in root["keys"]]
     assert root["pressed"] == {"key": "u", "handled": False}
-    folder = by_name["a folder below the root has no Copy"]
-    assert folder["pressed"] == {"key": "y", "handled": False}
-    both = by_name["the Preview tab's P sits beside the stack's P"]
-    assert ["P", "view-tabs.p", "Preview tab"] in both["keys"]
+    # Copying is ancillary: its controls are on screen, and none has a key.
+    for copying in (
+        "copying is ancillary: the Copy path button has no key, and Y does nothing",
+        "a commit view's Copy revision is ancillary and has no key",
+    ):
+        assert by_name[copying]["pressed"] == {"key": "y", "handled": False}, copying
+        assert by_name[copying]["ancillary"], copying
+    preview = by_name["the Preview tab is V, and P outside a stack does nothing"]
+    assert ["V", "view-tabs.v", "Preview tab"] in preview["keys"]
+    assert preview["p"] is False
+    # The main tabs in their order, each with its letter.
+    hosted = by_name["a repository with a hosted origin shows Files, Pulls, and Commits"]
+    assert hosted["tabs"] == ["Files", "Pulls", "Commits"]
+    assert [key for key, command, _target in hosted["keys"] if command.startswith("main-")] == [
+        "F",
+        "R",
+        "H",
+    ]
+    # The numbers are positional and Help never gives a digit a fixed meaning.
+    positional = by_name["Help lists the numbers once, as positional"]
+    assert positional["helpDigits"] == [
+        {"keys": "1–9", "range": True, "action": "Numbered links and actions"}
+    ]
+    assert positional["numbers"] == ["File type"]
+    assert ["1", "File type"] in positional["badges"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
     for chord in (
         "a capital typed within the threshold never reveals",
@@ -209,14 +230,16 @@ def test_the_session_runs_on_the_recording() -> None:
     for moved in (
         "↑ on a tree row moves one row and keeps the reveal",
         "a held J moves rows and does no reveal work on its repeats",
-        "2 with Shift still held opens Commits, focuses its row, and keeps the reveal",
-        "1 during the reveal shows the filter bar, and X and A gain badges",
+        "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
+        "F during the reveal shows the filter bar, and its filters gain 1 and 2",
     ):
         assert by_name[moved]["reveal"] == "revealed", moved
     assert by_name["the window losing focus ends the reveal"]["reveal"] == "idle"
-    one = by_name["1 during the reveal shows the filter bar, and X and A gain badges"]
-    assert {"X", "A"} <= {badge[0] for badge in one["badges"]}
-    opened = by_name["X opens the file type filter and focuses its checked row"]
+    files = by_name["F during the reveal shows the filter bar, and its filters gain 1 and 2"]
+    assert ["1", "Modified within"] in files["badges"]
+    assert ["2", "File type"] in files["badges"]
+    assert files["numbers"] == ["Modified within", "File type"]
+    opened = by_name["2 opens the file type filter and focuses its checked row"]
     assert opened["focus"] == {
         "menu": "filter-type-menu",
         "row": "Any type",
@@ -237,12 +260,12 @@ def test_the_session_runs_on_the_recording() -> None:
 
     late = by_name["Commits registered while the registry is down gets its tab, then its key"]
     assert late["whileDown"] == {"threw": None, "tab": True, "container": True, "key": None}
-    assert late["key"] == "2"
-    assert late["pressed"] == {"key": "2", "handled": True}
-    cancelled = by_name["R follows the committed bar, and a cancelled stage changes nothing"]
-    assert cancelled["r"] == {
+    assert late["key"] == "H"
+    assert late["pressed"] == {"key": "h", "handled": True}
+    cancelled = by_name["V follows the committed bar, and a cancelled stage changes nothing"]
+    assert cancelled["v"] == {
         "structured": "Tree",
-        "agentLog": "Raw JSON",
+        "agentLog": "Log",
         "back": "Tree",
         "whileStaged": "Tree",
         "afterCancel": "Tree",

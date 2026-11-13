@@ -65,7 +65,7 @@ def test_markdown_envelope_carries_each_views_declared_key(tmp_path: Path) -> No
     (tmp_path / "plain.md").write_text("# heading\n")
     result = _api_file("plain.md")
     assert [(v["id"], v.get("key")) for v in result["views"]] == [
-        ("rendered", "d"),
+        ("rendered", "v"),
         ("source", "s"),
     ]
 

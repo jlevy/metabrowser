@@ -246,15 +246,13 @@ ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
-The sidebar orders Files, Commits, and Pulls in that order.
-Help shows the fixed shortcuts: `1` for Files, `2` for Commits, and `3` for Pulls.
-A missing tab keeps its number reserved.
-The digits work outside text fields and dialogs, with or without Shift.
-A digit opens its tab, or keeps the tab already shown, and moves focus to the panel’s
-roving row, so `1` then `↓` walks the file tree; while the panel has no rows yet, the
+The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `R`,
+and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)). The letters work outside text
+fields and dialogs, with or without Shift.
+A letter opens its tab, or keeps the tab already shown, and moves focus to the panel’s
+roving row, so `F` then `↓` walks the file tree; while the panel has no rows yet, the
 tab button takes focus.
-A missing tab has no target, so its digit does nothing.
-Command and Ctrl with a digit stay the browser’s, which switches its own tabs with them.
+A missing tab has no target, so its letter does nothing and stays reserved.
 
 #### Binding Grammar and Accessibility
 
@@ -1523,6 +1521,139 @@ and `P` ([The Pull Request Page](#the-pull-request-page)). Help reads the
 `pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
 names a key.
 
+## Keyboard Shortcuts
+
+This section is the one reference for which key does what, and why.
+Help, the Shift reveal, the other documents, and the code’s comments link here rather
+than restate it. `tests/test_keymap.py` holds the table below to the keys the registry,
+the manifests, and the built-in plugins bind, so the two cannot drift.
+How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) and
+[Keyboard Commands and Help](#keyboard-commands-and-help).
+
+### The Rules
+
+- **Letters for known meanings.** A letter names something a reader can guess and keep:
+  `F` for Files, `R` for pull Requests, `H` for commit History, `T` for the file finder,
+  `U` for up. A letter means the same thing wherever it is live.
+- **Reusable semantics.** Some letters are verbs that apply wherever their meaning does,
+  as Vim’s motions do.
+  `J` and `K` move down and up a row in every row list.
+  `N` and `P` go to the next and previous item one level up: today the pull requests of
+  a stack, and on any later page with its own next and previous, that page’s. `V` and
+  `S` switch a file between its rendered view and its source, whatever its tabs are
+  called. A page with a natural next and previous uses `N` and `P`, a rendered view is
+  always `V`, and no other meaning takes those letters.
+- **Numbers for situational items.** Links and one-off actions that depend on what the
+  screen shows, such as the Files tab’s filters or a pull request’s Refresh, take `1`,
+  `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no `0`,
+  no letter, and no wrap-around.
+  Numbers are positional, so `1` reaches a different control on a different screen; Help
+  says so, and the Shift reveal shows what each reaches now.
+  One mechanism numbers them, the registry’s `attachNumbered()`, which the shell calls
+  directly and plugins call through the shortcut surface, so no surface picks its own
+  digits.
+- **No key on an ancillary item.** Copying a path, a revision, or a hash; a per-row or
+  per-file affordance, such as a changed file’s View file or its Rendered | Source
+  chooser, of which a page has many; and a control that shows only on hover take no key.
+  Each stays reachable by pointer and Tab.
+  A key goes on a major tab or a major button.
+- **One key and no modifier.** Every shortcut is a single key, Shift changes nothing,
+  and Ctrl, Alt, and Meta stay the browser’s
+  ([Binding Grammar and Accessibility](#binding-grammar-and-accessibility)).
+
+### Scopes and Collisions
+
+- **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`,
+  `U`, and `W` keep their meaning even where they do nothing, so a letter never means
+  one thing on one screen and another elsewhere.
+  A manifest whose view takes one is refused: the loader rejects it, the plugin does not
+  load, and `metab --doctor` reports why.
+  The plugin shortcut surface refuses one too, with a console warning, and the control
+  works without a key.
+  A different case is two views of one kind declaring the same free letter, in one
+  manifest or across two: both load, the first in tab order keeps the letter, the later
+  view is served without it, and `metab --doctor` reports the lost key.
+  `src/metabrowser/keymap.py` holds the table, and also reserves `1` to `9`, which only
+  the numbering hands out.
+- **Tab letters are scoped to their tab bar.** A tab with a reusable meaning takes its
+  letter, `V` or `S`. Any other tab takes the first letter of its label, or when that is
+  taken, the next distinctive free letter of its label, never a shell letter, and
+  declares it beside the label rather than deriving it, so a rename never moves a key.
+  Two tabs on one screen never share a letter; two bars never shown together may, as
+  Charts and Conversation share `C`.
+- **A collision is settled by the newcomer.** It takes the next free letter of its own
+  label. Checks took `E` this way: `C` is Conversation’s, `H` is History, `K` moves a row
+  up, and `S` is Source.
+- **Numbers are scoped to the screen.** The live numbered controls, the navigation
+  pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
+
+### The Keymap
+
+| Key | Meaning | Live while | Kind |
+| --- | --- | --- | --- |
+| `?` | Help | Always | Punctuation, by convention |
+| `T` or `/` | Quick Search, the file finder | Always | Letter |
+| `F` | The Files tab | Always | Letter, main tab |
+| `R` | The Pulls tab: pull Requests | The tab is drawn: a hosted origin | Letter, main tab |
+| `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
+| `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
+| `N` or `P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open | Reusable |
+| `U` | Up: the parent folder | A file, or a folder below the root, is shown | Letter |
+| `W` | The branch or tag switcher | A mirror’s pin is served | Letter, GitHub’s convention |
+| `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown | Reusable, view tab |
+| `S` | The source: Source, or Raw JSON | A file’s tab bar is shown | Reusable, view tab |
+| `C` | Charts | An agent log is shown | View tab |
+| `O` | Overview | A folder is shown | View tab |
+| `M` | Treemap, from its map | A folder is shown | View tab |
+| `C` | Conversation | A pull request page is shown | Page tab |
+| `G` | Changes, from chan-*g*es | A pull request page is shown | Page tab |
+| `E` | Checks, from ch-*e*-cks | A pull request page is shown | Page tab |
+| `L` | Diff layout: Split or Unified | A diff with a layout control is shown | Letter |
+| `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown | Number |
+
+What is numbered, in reading order, each only while it is shown:
+
+| Screen | Numbered controls |
+| --- | --- |
+| The Files tab | Modified within (Any age), then File type (Any type); a Git pin has only File type |
+| A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
+
+The keys and buttons that have no key, and why: every copy control, ancillary; a changed
+file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
+Metabrowser menu, print, retry, and reload, rare; the Pulls panel’s Open, Closed, and
+All chips and its Reload, not yet numbered.
+
+### Help and the Reveal
+
+Help lists the letters by meaning, group by group, and the numbers once, in an “On this
+screen” group: `1`–`9`, “Numbered links and actions,” with the note that the numbers are
+not fixed. It gives no digit a fixed meaning.
+The registry marks the numbers’ command `situational`, so every surface renders them as
+that one run, and no surface special cases them.
+
+Holding Shift reveals the keys in place: each live letter’s control and each numbered
+control carries its keycap, and the strip lists the common letters.
+The keycaps ease in on the [reveal motion](#reveals) and go at once when Shift is
+released. [Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) has
+the mechanism.
+
+### Plugin Keys
+
+Plugins follow the same rules, through two declarations:
+
+- A view of a multi-view kind declares its tab’s letter as `key` in its manifest
+  `[[view]]`: `v` for a rendered view, `s` for a source view, and otherwise a letter of
+  its label.
+- A plugin control takes a key through `metabrowser.shortcuts.attach()`: a letter for a
+  known meaning, or `numbered: true` for a situational link or action, which then takes
+  its number from its place on screen with the shell’s numbered controls.
+
+A manifest view key that takes a reserved letter keeps the whole plugin from loading,
+while a letter already held by an earlier view of the kind only costs the later view its
+key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed to
+`metabrowser.shortcuts.attach()` is refused with a warning.
+[Keyboard Shortcuts in docs/plugins.md](plugins.md#keyboard-shortcuts) has the API.
+
 ## Keyboard Commands and Help
 
 Application commands have one registry and one document-level dispatcher.
@@ -1567,13 +1698,22 @@ rebuild.
 
 Every key runs a named activation path, the one its control’s click runs, plus the focus
 a keyboard user needs next; no command synthesizes a click.
-A main tab’s digit opens the tab and then focuses the panel’s roving row; a view tab’s
-letter selects the tab and leaves focus where it was; a filter’s letter opens its menu
-and focuses the checked row; `W` opens the branch list and focuses its filter; `U` opens
-the parent folder; and `Y` copies the main-pane header’s path or revision.
+A main tab’s letter opens the tab and then focuses the panel’s roving row; a view tab’s
+letter selects the tab and leaves focus where it was; a filter’s number opens its menu
+and focuses the checked row; `W` opens the branch list and focuses its filter; and `U`
+opens the parent folder.
 View tab letters are commands in a permanent `view-tabs` scope below `global`, one per
-letter, held for the bar the main pane commits and never for one still staged, so the
-stack’s `P` outranks a Preview tab’s `P` only while a pull request in a stack is open.
+letter, held for the bar the main pane commits and never for one still staged; the
+keymap check keeps them off the shell’s letters.
+
+A situational control is numbered with `attachNumbered(element, {activate})` instead of
+a letter. Its number is its place among the live numbered controls in document order,
+which the shell’s layout makes reading order, read when a number is pressed or shown;
+the first nine are `1` to `9`, and the rest have none.
+The numbers are one command, `numbered`, in `global`, registered while any control is
+numbered and marked `situational`, so its presentation is the run `1`–`9` and Help
+renders it as such. A numbered control carries no `aria-keyshortcuts`, since its number
+is not its own.
 
 Holding Shift alone outside a text field for the hold threshold reveals the keys: the
 root gains `data-key-reveal`, each live command’s first live target carries one
@@ -1615,10 +1755,10 @@ names for it:
   over the text before it: at the root, the end of the dimmed root name, the folder Up
   opens. The target and the anchor become containing blocks through zero-specificity
   rules, so one that already declares a position keeps it.
-- **Hover-revealed targets show.** A target that otherwise appears only on hover or
-  focus, such as either copy button, appears for the reveal, with its pointer events, as
-  [Reveal on Hover Keeps Keyboard Reach](#reveal-on-hover-keeps-keyboard-reach) requires
-  of every reveal trigger.
+- **Hover-revealed controls take no key.** A control that appears only on hover or
+  focus, such as either copy button, is ancillary
+  ([Keyboard Shortcuts](#keyboard-shortcuts)), so it is never a badge target and the
+  reveal never has to show it.
 - **The revealed strip** is the same yellow, with `--text` and keycaps in a badge’s
   paint. Its layer sits against the strip’s bottom edge and grows upward over the panel,
   which neither reflows nor scrolls; the panel’s pinned headers and open menus stay
@@ -1628,8 +1768,10 @@ names for it:
   the yellow, where `--muted` would not.
   The ratios are recorded beside the tokens in `static/styles.css`, and
   `tests/test_design_vocabulary.py` recomputes them.
-- **Motion and print.** Badges and the strip fade in over `--transition-fast`, appear at
-  once under `prefers-reduced-motion: reduce`, and go at once when the reveal ends.
+- **Motion and print.** Badges and the strip ease in on the [reveal motion](#reveals),
+  appear at once under `prefers-reduced-motion: reduce`, and go at once when the reveal
+  ends. A badge that stays on its target while the badges move after a key keeps its
+  node, so it does not fade in again.
   Neither prints.
 
 ### Navigational Row Collections
@@ -1868,8 +2010,8 @@ which fades opacity and drops `pointer-events` rather than setting `visibility: 
 A hidden button leaves the tab order, so the control becomes mouse-only.
 Every reveal trigger restores `pointer-events` along with the opacity, and keyboard
 focus is itself a reveal trigger.
-So is the Shift reveal for a button that is a shortcut target, so its keycap never marks
-an invisible control.
+A button that shows only on hover is ancillary, so it takes no shortcut
+([Keyboard Shortcuts](#keyboard-shortcuts)), and the Shift reveal never marks one.
 
 ## Filter Controls
 
@@ -2388,7 +2530,7 @@ frame.
 The commit’s address replaces the tab’s entry, so Back returns to where the reader
 was. The list starts from its top, and the newest row becomes the list’s Tab stop.
 A click leaves focus on the tab.
-The tab’s shortcut moves focus to the newest row without scrolling the list, so `2` then
+The tab’s shortcut moves focus to the newest row without scrolling the list, so `H` then
 `↓` opens the next commit; when the newest row is not in the list yet, the tab holds
 focus until the row arrives, unless the reader moves focus first.
 An empty history selects nothing, and the pane says “No commits yet.”
@@ -2794,6 +2936,24 @@ Avoid looping animation except for active progress indicators and
 
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
+
+### Reveals
+
+Chrome that appears because the reader asked to see it eases in on one token,
+`--motion-reveal`: a 180 ms decelerating curve, `cubic-bezier(0.2, 0, 0, 1)`, so it
+settles rather than pops.
+The Shift reveal is its user: each key badge fades in and grows from 85% of its size,
+and the revealed strip fades in.
+A reveal never animates out.
+It ends at once, because the reader has let go and is about to act on what was under it,
+and a fading badge would cover the label they reach for or point at a state a key has
+already changed.
+The duration is under the 200 ms hold that starts the Shift reveal, so a
+held Shift reads as one gesture, and a quick Shift-tap still never starts it.
+Under `prefers-reduced-motion: reduce` a reveal appears at once.
+WebKit, the macOS app’s engine, runs the reveal unprefixed: `@keyframes`, `animation`,
+and the `scale` property need no `-webkit-` form there, unlike `user-select`. A new
+reveal uses `--motion-reveal` rather than a duration of its own.
 
 ### Live Row Arrivals
 

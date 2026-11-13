@@ -539,6 +539,16 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert transcript["hunks"] and transcript["place"]
 
 
+# What the header's numbers ask for in the mount session: the pull request's page on
+# GitHub, and a refresh that recovers the comparison on screen.
+_PULL_URL = "https://github.com/octo/demo/pull/7"
+_REFRESH_BODY = (
+    '{"number":7,"retry":true,"recovery":'
+    '{"base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",'
+    '"head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}}'
+)
+
+
 def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     """Asset and renderer failures recover without a dangling readiness rejection."""
 
@@ -556,18 +566,35 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
-        # C, G, and H run the page's setTab through the shortcut facade, with or without
-        # Shift; they wait while the tab column or the page is out of reach.
+        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # Shift; they wait while the tab column or the page is out of reach. H is the
+        # Commits tab's, so Checks is E. The header's links and actions are numbered by
+        # their place, through the same facade, and a number runs what its place's control
+        # does in the paint on screen: View on GitHub opens the pull request on GitHub,
+        # Browse code asks to serve the head and, once a refresh serves it, opens the code;
+        # Refresh asks for a refresh, and moves up to 2 when Browse code goes.
         "tabKeys": [
-            "before the record, the tab column out of the page: keys C G H, live none",
+            "before the record, the tab column out of the page: keys C G E, live none",
             "C: not handled",
             "the record arrives and paintHeader puts the column in: "
-            "Conversation C, Changes G, Checks H",
+            "Conversation C, Changes G, Checks E",
             "live: conversation files checks",
+            "numbered: 1 View on GitHub, 2 Browse code",
+            f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
+            '2: POST /api/source/pin {"ref":"refs/pull/7/head"}',
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
-            "Shift+H: opened the checks route",
+            "numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh",
+            "2: navigation.open /view/",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "3: not handled",
+            "Shift+H: not handled",
+            "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
             "Ctrl+G: not handled",
             "staged inert: G: not handled",
