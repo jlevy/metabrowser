@@ -113,6 +113,17 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
+  // A commit's object id never changes, but its refs do as branches and tags move. A
+  // detail cached before the history session now shown was rebuilt (expired-session
+  // recovery keeps the cache) has refs that session has not confirmed: the row for it,
+  // when it arrives, says what they are now (adoptRowRefs), and a detail read before that
+  // is fetched again rather than served with refs the row may contradict.
+  /** @type {Set<string>} */
+  const unconfirmedRefs = new Set();
+  // The selected commit's summary on screen, so a row that arrives with other refs can
+  // replace its refs in place without touching the diff mounted under it.
+  /** @type {{revision: string, refs: string, identity: Element} | null} */
+  let mountedSummary = null;
   // Commits the server answered `commit_not_found` for: the repository does not have
   // them, which is not a failed request. Bounded like the detail cache.
   /** @type {Set<string>} */
@@ -509,6 +520,7 @@
       previousCursor: wirePage.previous_cursor ?? null,
     });
     state.scopeFingerprint = fingerprint;
+    adoptRowRefs(commits);
 
     if (pageNumber === state.nextPageNumber) {
       state.rowCount = startOrdinal + commits.length;
@@ -764,6 +776,54 @@
   }
 
   /**
+   * A comparable key for a commit's refs: the same refs give the same key.
+   *
+   * @param {MetabrowserGitRef[] | undefined} refs
+   * @returns {string}
+   */
+  function refsKey(refs) {
+    return JSON.stringify(refs ?? []);
+  }
+
+  /**
+   * Take the refs of rows the current history session just served.
+   *
+   * The history page is the session's word on a commit's refs, so a cached detail of the
+   * same commit takes them, which is what its tooltip and summary draw, and the summary on
+   * screen for it replaces its refs in place. The rest of the detail, and the diff mounted
+   * under the summary, are left alone: recovery neither refetches nor redraws them.
+   *
+   * @param {MetabrowserGitCommit[]} commits
+   * @returns {void}
+   */
+  function adoptRowRefs(commits) {
+    for (const row of commits) {
+      unconfirmedRefs.delete(row.id);
+      const key = refsKey(row.refs);
+      const cached = detailCache.get(row.id);
+      if (cached && refsKey(cached.commit.refs) !== key) {
+        const { refs: _stale, ...rest } = cached.commit;
+        // Map.set on a key it has keeps the key's place in the eviction order.
+        detailCache.set(row.id, {
+          ...cached,
+          commit: row.refs?.length ? { ...rest, refs: row.refs } : rest,
+        });
+      }
+      const mounted = mountedSummary;
+      if (mounted?.revision === row.id && mounted.refs !== key && mounted.identity.isConnected) {
+        mounted.identity.querySelector(".git-commit-refs")?.remove();
+        if (row.refs?.length) {
+          const group = document.createElement("span");
+          group.className = "git-commit-refs";
+          group.innerHTML = renderRefBadges(row.refs, "inline");
+          mounted.identity.append(group);
+        }
+        mounted.refs = key;
+      }
+    }
+  }
+
+  /**
    * Fetch one commit's detail, through a bounded cache.
    *
    * The cache is what makes hovering a row and then clicking it a single
@@ -775,8 +835,12 @@
    */
   async function fetchCommitDetail(revision, signal) {
     const cached = detailCache.get(revision);
-    if (cached) {
+    if (cached && !unconfirmedRefs.has(revision)) {
       return cached;
+    }
+    if (cached) {
+      detailCache.delete(revision);
+      unconfirmedRefs.delete(revision);
     }
     const existing = detailInFlight.get(revision);
     if (existing) {
@@ -2162,6 +2226,10 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      const identity = stage.querySelector(".git-commit-identity");
+      mountedSummary = identity
+        ? { revision: commit.id, refs: refsKey(commit.refs), identity }
+        : null;
     } finally {
       unstage();
     }
@@ -2426,8 +2494,16 @@
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
-    if (!options.preserveDetail) {
+    // Recovery keeps the cache, for the rest of a detail and the mounted diff, but not
+    // its refs: until the rebuilt session's row for a commit arrives, its cached refs are
+    // unconfirmed.
+    if (options.preserveDetail) {
+      for (const revision of detailCache.keys()) {
+        unconfirmedRefs.add(revision);
+      }
+    } else {
       detailCache.clear();
+      unconfirmedRefs.clear();
       missingRevisions.clear();
     }
     state.loading = true;
@@ -2532,6 +2608,8 @@
     disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
+    unconfirmedRefs.clear();
+    mountedSummary = null;
     missingRevisions.clear();
     refusedRevision = null;
     lastSelection = null;

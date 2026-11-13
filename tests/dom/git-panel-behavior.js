@@ -165,6 +165,22 @@ class FakeElement {
       diffHost.className = "git-commit-diff";
       this.appendChild(diffHost);
     }
+    // The full summary's identity group and its refs, so a test can watch the refs of a
+    // summary on screen replaced in place.
+    if (this._html.includes('<span class="git-commit-identity">')) {
+      const identity = new FakeElement("span", this.ownerDocument);
+      identity.className = "git-commit-identity";
+      const refs = this._html.match(
+        /<span class="git-commit-refs">([\s\S]*?)<\/span><\/span><span class="actor-name git-commit-author">/,
+      );
+      if (refs) {
+        const group = new FakeElement("span", this.ownerDocument);
+        group.className = "git-commit-refs";
+        group.innerHTML = refs[1];
+        identity.appendChild(group);
+      }
+      this.appendChild(identity);
+    }
     for (const match of this._html.matchAll(
       /class="[^"]*git-commit-file[^"]*"[^>]*data-path="([^"]+)"/g,
     )) {
@@ -2843,6 +2859,160 @@ async function run() {
     assertEqual("recovery: restored rows stop at the cap", recovered.rowCount, 4);
     assertEqual("recovery: focus lands on the capped ordinal", recovered.focusedOrdinal, 3);
     assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
+  }
+
+  // ── Recovery takes the rebuilt rows' refs ────────────────
+  //
+  // A commit's detail carries its refs, which move while its id does not. Expired-session
+  // recovery keeps the detail cache so the summary and diff on screen are not redrawn, so a
+  // cached detail takes the refs of the rebuilt row: the row, its tooltip, and the summary
+  // agree. A cached detail whose row the rebuilt session has not served is fetched again.
+  {
+    const container = document.getElementById("tab-git");
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 5000).toString(16).padStart(40, "0"),
+    );
+    const tagged = revisions[0];
+    const deep = revisions[4];
+    const ref = (revision, name, kind, extra = {}) => ({
+      id: kind === "tag" ? `refs/tags/${name}` : `refs/heads/${name}`,
+      name,
+      kind,
+      revision,
+      ...extra,
+    });
+    let moved = false;
+    const refsOf = (revision) => {
+      if (revision === tagged) {
+        return moved
+          ? [
+              ref(tagged, "main", "branch", { is_head: true, is_trunk: true }),
+              ref(tagged, "moved-tag", "tag"),
+            ]
+          : [
+              ref(tagged, "main", "branch", { is_head: true, is_trunk: true }),
+              ref(tagged, "gone-tag", "tag"),
+            ];
+      }
+      if (revision === deep) {
+        return [ref(deep, moved ? "deep-now" : "deep-before", "branch")];
+      }
+      return undefined;
+    };
+    const commitAt = (index) =>
+      commit(
+        revisions[index],
+        index + 1 < total ? [revisions[index + 1]] : [],
+        `ref move commit ${index}`,
+        refsOf(revisions[index]),
+      );
+    document.activeElement = null;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: tagged, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    let expire = false;
+    responses.set("/api/git/log", (url) => {
+      if (expire) {
+        expire = false;
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, [commitAt(page * 2), commitAt(page * 2 + 1)], total, tagged);
+    });
+    for (const revision of [tagged, deep]) {
+      responses.set(`/api/git/commit/${revision}`, () => ({
+        is_repo: true,
+        commit: commit(revision, [], "ref move detail", refsOf(revision)),
+        body: "",
+        stats: { files_changed: 1, additions: 1, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      }));
+    }
+    const detailFetches = (revision) =>
+      fetchRequests.filter((request) => request.url.startsWith(`/api/git/commit/${revision}`))
+        .length;
+    const rowHtml = (revision) =>
+      container.querySelectorAll(".git-graph-row").find((row) => row.dataset.revision === revision)
+        ?.innerHTML ?? "";
+    const hoverTooltip = async (revision) => {
+      const row = container
+        .querySelectorAll(".git-graph-row")
+        .find((candidate) => candidate.dataset.revision === revision);
+      shownTooltips.length = 0;
+      row._hovered = true;
+      row.dispatch("mouseenter");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      row._hovered = false;
+      row.dispatch("mouseleave");
+      return shownTooltips.at(-1)?.html ?? "";
+    };
+    const mountedRefs = () =>
+      document.getElementById("preview-pane").querySelector(".git-commit-refs")?.innerHTML ?? "";
+
+    const fresh = internals.emptyState();
+    fresh.headRevision = tagged;
+    internals.setStateForTests(fresh);
+    await internals.loadNextPage(true);
+    await internals.loadNextPage(false);
+    await internals.loadNextPage(false);
+    internals.renderPanel();
+    // Both details cached; the tagged commit's summary is the one on screen.
+    await internals.selectCommit(deep);
+    await internals.selectCommit(tagged);
+    assertContains("ref move: the row starts with the old tag", rowHtml(tagged), "gone-tag");
+    assertContains("ref move: the summary starts with the old tag", mountedRefs(), "gone-tag");
+    const taggedFetches = detailFetches(tagged);
+    const deepFetches = detailFetches(deep);
+    const diffRenders = renderedDiffRevisions.length;
+
+    // The session expires and the tag moves to another name; the next page answers 410.
+    moved = true;
+    expire = true;
+    await internals.loadNextPage(false);
+    internals.renderPanel();
+    const tooltip = await hoverTooltip(tagged);
+    assertContains("ref move: the rebuilt row shows the moved tag", rowHtml(tagged), "moved-tag");
+    assertNotContains("ref move: the rebuilt row drops the old tag", rowHtml(tagged), "gone-tag");
+    assertContains("ref move: the tooltip agrees with its row", tooltip, "moved-tag");
+    assertNotContains("ref move: the tooltip drops the old tag", tooltip, "gone-tag");
+    assertContains(
+      "ref move: the summary on screen agrees with its row",
+      mountedRefs(),
+      "moved-tag",
+    );
+    assertNotContains("ref move: the summary drops the old tag", mountedRefs(), "gone-tag");
+    assertContains("ref move: the summary keeps its other refs", mountedRefs(), "git-ref-head");
+    assertEqual(
+      "ref move: the rebuilt row's detail is not fetched again",
+      detailFetches(tagged),
+      taggedFetches,
+    );
+    assertEqual(
+      "ref move: recovery does not redraw the diff",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+
+    // The deep commit's row is past the replay depth, so its cached refs are unconfirmed:
+    // selecting it asks again, and draws the refs the server has now.
+    await internals.selectCommit(deep);
+    assertEqual(
+      "ref move: an unconfirmed detail is fetched again",
+      detailFetches(deep),
+      deepFetches + 1,
+    );
+    assertContains("ref move: the refetched summary has the current refs", previewHtml, "deep-now");
+    assertNotContains(
+      "ref move: the refetched summary drops the old refs",
+      previewHtml,
+      "deep-before",
+    );
   }
 
   // ── A stale cursor is a typed state with a reload action ───
