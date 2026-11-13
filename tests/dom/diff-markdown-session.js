@@ -15,7 +15,7 @@
 // changed: its chooser (`*` marks the chosen format, and `none` for a file that can show
 // only Source), what its body shows (`rendered`,
 // `source`, or `nothing` while it waits within the loading delay), whether its progress
-// mark is counting down to visible, any message under its bar, and the rendered rows:
+// mark is counting down to visible, and the rendered rows:
 // each block's kind and text, `[note]` when its source says more than its render, and
 // a fold as `[N unchanged blocks]`, open or closed.
 
@@ -398,11 +398,13 @@ function describe(file) {
     file.progress.hidden &&
     !file.bar.classList.contains("diff-file-bar-markdown");
   assert(chooserless === file.control.hidden, `${file.name}: the chooser and its bar disagree`);
+  // Showing Source instead of Rendered is a behavior, never a message: nothing but the
+  // Rendered body goes beside Source.
+  assert(file.section.childNodes.length === 3, `${file.name}: something announces the format`);
   return {
     chooser: file.control.hidden ? "none" : chips.join(" | "),
     shows,
     ...(file.progress.classList.contains("mb-delayed-loading") ? { progress: "counting" } : {}),
-    ...(file.fallback.textContent ? { message: file.fallback.textContent } : {}),
     ...(file.rendered.childNodes.length > 0 ? { rows: rows(file.rendered) } : {}),
   };
 }
@@ -499,7 +501,7 @@ async function main() {
     root.append(section);
     const state = views.add({ section, bar, toggle, source, id: entry.id });
     const [, control, progress] = bar.childNodes;
-    const [, fallback, rendered] = section.childNodes;
+    const [, rendered] = section.childNodes;
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,
       id: entry.id,
@@ -508,7 +510,6 @@ async function main() {
       source,
       control,
       progress,
-      fallback,
       rendered,
       state,
     };

@@ -1781,7 +1781,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: folderLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
+        `<div class="tree-item tree-folder disclosure-toggle ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
         `<span class="tree-item-name" id="${folderLabelId}">`,
         esc(treeNodeDisplayName(node.name)),
@@ -1901,7 +1901,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         });
       }
       parts.push(
-        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
+        `<div class="tree-item tree-file${container ? " tree-container disclosure-toggle collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(treeNodeDisplayName(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
@@ -4658,7 +4658,7 @@ function renderNavFilterBar() {
       // The shared chevron glyph, rotated by CSS to point at the state
       // it will produce — the same icon the tree uses for expansion.
       icon: ICONS.toggle || "",
-      className: "filter-drawer-toggle",
+      className: "filter-drawer-toggle disclosure-toggle",
       pressed: filterDrawerOpen,
       badge: count,
       // A glyph-only control needs a name that says what happens, and
@@ -6876,7 +6876,7 @@ function _buildRowHtml(entry, options) {
       labelId: folderLabelId,
     });
     return (
-      '<div class="tree-item tree-folder collapsed' +
+      '<div class="tree-item tree-folder disclosure-toggle collapsed' +
       muted +
       '"' +
       folderAttributes +

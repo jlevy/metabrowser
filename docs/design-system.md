@@ -719,6 +719,58 @@ A native `details` keeps its state in `open` and takes the same recipe on
 `::details-content`, as a pull request hunk’s earlier lines do.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
 
+### Disclosure Toggles Never Select Text
+
+A **disclosure toggle** is any control that shows or hides content: a tree row that owns
+a child group (a folder, a container file, a tally node, a pull request in the Pulls
+list, a folder of its changed files), a section-disclosure trigger, a fold expander, a
+diff file bar, an expandable log event or data row, a `summary`, and a menu trigger that
+carries the registry chevron.
+A control with the chevron or a `summary`’s marker is a toggle, and so is one that sets
+`aria-expanded` for content it shows in place.
+
+Every one carries `.disclosure-toggle` in its markup, beside its own primitive’s class,
+the way a notice carries `.notice`. The one rule for it is in `static/styles.css`, and
+it sets `-webkit-user-select` and `user-select` to `--toggle-user-select`, which is
+`none`. A native `summary` matches by element, so a disclosure a document writes for
+itself, in a README or a pull request’s description, behaves the same.
+Plugins use the same class; `plugin-sdk.js` lists it with the SDK’s visual helpers.
+
+A click on a toggle is a command, not a reading gesture, so it must never leave a
+selection behind. Before this rule, a triple click on a rendered Markdown diff’s **5
+unchanged blocks** fold selected its label and every paragraph it revealed, in Chrome;
+in WebKit, which is the macOS app’s engine, a double click on a folder row selected the
+folder’s name. WebKit reads only the prefixed `-webkit-user-select`, so the unprefixed
+rule the tree rows had was never applied there.
+Declare the prefixed property beside every `user-select`, not only on toggles.
+
+The rule is enough on its own.
+Measured on 2026-11-13 with real double and triple clicks, in headless Chrome on a
+folder row’s name, padding, and size and on the fold’s label and padding, and in a
+`WKWebView` on a folder row’s name and a section trigger: nothing was selected, and a
+`mousedown` handler that prevented the default of the second and third presses changed
+nothing in either engine, so there is none.
+A drag that starts in content still selects it, because the rule applies to the toggle
+alone.
+What a toggle reveals is its sibling, never its child, and stays selectable; never
+put the class on a container that holds content.
+The rule is paint only: focus, Enter and Space, `aria-expanded`, and the click target
+are the toggle’s own and do not change.
+
+Not toggles: a dialog trigger or an icon-only menu button with no chevron, such as the
+settings gear and the overlays’ triggers, which have no label to select, and the search
+field, a combobox whose text must stay editable.
+
+`test_disclosure_toggles_never_select_text` in `tests/test_design_vocabulary.py` holds
+the rule, its prefixed half on every `user-select`, that no stylesheet makes a toggle or
+anything inside it selectable (content a toggle reveals beside it may be), and the
+inventory: each registered toggle carries the class, every chevron and `summary` a
+source builds is listed with the builder of the element it goes into, and a source that
+sets `aria-expanded` is registered or named with the reason it builds no toggle.
+The check reads source text, so it cannot see which element a listed chevron lands in;
+it holds only that the builder it is listed with sits near it, and review holds the
+rest.
+
 ## Notices and Partial Content
 
 ### Notices
@@ -2822,7 +2874,10 @@ Disable selection only on controls whose primary behavior is clicking, dragging,
 toggling, or navigation.
 Never put `user-select: none` on a container whose descendants include content.
 Do not set `user-select: none` on a broad container because its children are mostly
-interactive.
+interactive. A control that shows or hides content is a disclosure toggle and takes the
+shared rule in
+[Disclosure Toggles Never Select Text](#disclosure-toggles-never-select-text).
+Pair every `user-select` with `-webkit-user-select`, which is the only one WebKit reads.
 
 ## Interface Copy
 

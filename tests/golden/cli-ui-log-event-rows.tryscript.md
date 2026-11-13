@@ -19,13 +19,13 @@ $ node tests/dom/log-event-row-session.js
   "agent-log": {
     "markup": [
       {
-        "class": "log-event-header",
+        "class": "log-event-header disclosure-toggle",
         "role": "button",
         "tabindex": "0",
         "aria-expanded": "false"
       },
       {
-        "class": "log-event-header",
+        "class": "log-event-header disclosure-toggle",
         "role": "button",
         "tabindex": "0",
         "aria-expanded": "false"
@@ -65,13 +65,13 @@ $ node tests/dom/log-event-row-session.js
   "unknown-jsonl": {
     "markup": [
       {
-        "class": "log-event-header",
+        "class": "log-event-header disclosure-toggle",
         "role": "button",
         "tabindex": "0",
         "aria-expanded": "false"
       },
       {
-        "class": "log-event-header",
+        "class": "log-event-header disclosure-toggle",
         "role": "button",
         "tabindex": "0",
         "aria-expanded": "false"
