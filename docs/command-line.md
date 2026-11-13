@@ -600,6 +600,24 @@ subject to a reported rate-limit reset.
 Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
 reads.
 
+Everything Metabrowser caches of a repository’s pull requests, the list, records,
+changed files, and refresh outcomes, is discarded by one command and fetched again when
+next wanted; the repository’s Git store stays:
+
+```shell
+echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -
+```
+
+In a checkout, run it as `metab .` instead, since the address would clone a repository
+that has no store yet.
+It prints how many files it `cleared`. A refresh that cannot write the cache ends
+`cache_unwritable`. One that finds a list a newer Metabrowser wrote ends `newer_cache`,
+and one that finds a list whose versions it cannot read, such as a write-ahead-log
+database, ends `unknown_cache`; both leave the list as it is and ask GitHub for nothing.
+Each message names the repository, why, and this command.
+A list the running Metabrowser has read the versions of and cannot use otherwise,
+damaged or from another schema, is replaced at the next refresh and needs no command.
+
 Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
 Use a current maintained release and verify the active account with
 `gh auth status --active --hostname github.com`; see
@@ -625,7 +643,9 @@ commit if the mirror has it, and the `pull_request` line says why:
 | `gh_failed` | An answer from `gh` could not be read |
 | `fetch_failed`, `git_failed` | Git failed |
 | `record_too_large` | The record is over the size a record may have |
-| `cache_unwritable` | The record could not be written to the cache |
+| `cache_unwritable` | The cache refused the write; the message says why and names the command that clears the repository’s GitHub cache |
+| `newer_cache` | A newer Metabrowser wrote the repository’s list of pull requests; the message says to upgrade or names that command |
+| `unknown_cache` | The versions of the repository’s list of pull requests cannot be read, so it is left as it is; the message says to upgrade or names that command |
 
 Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
 are listed in the record’s `unavailable`, and the rest of the record stands.
@@ -828,9 +848,15 @@ metab ./notes --api '/api/cache/sources?limit=20'
 metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
-# A route that takes a POST body.
+# A route that takes a POST body, from a file or, with -, from standard input.
 metab ./notes --api /api/kpress/render --data request.json
+metab ./notes --api /api/kpress/render --data - < request.json
 ```
+
+`--data` reads at most the largest body a route accepts, KPress render’s, which is six
+times `METABROWSER_TEXT_PREVIEW_MAX_BYTES` plus 64 KiB: 96 MiB and 64 KiB by default.
+A longer body, from a file or from standard input, is refused before anything is sent,
+and no more of it than that is read.
 
 Output is the route, the HTTP status, and the normalized envelope:
 
