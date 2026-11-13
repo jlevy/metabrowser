@@ -1838,9 +1838,8 @@ async def index(
              opens the served root in the Files tab, from whichever tab is in front.
              Its name stays the text it shows, and the description says where it
              goes, so a screen reader hears both. -->
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
-           data-served-root="{initial_root}"{mirror_attrs}
-           aria-describedby="header-home-description">{initial_path}</a>
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" aria-describedby="header-home-description"
+           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <span id="header-home-description" hidden>Go home: the root folder in the Files tab</span>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that

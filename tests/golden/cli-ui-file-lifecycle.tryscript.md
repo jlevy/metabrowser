@@ -166,15 +166,15 @@ waits. The heading at the top of the nav goes home from any tab, in the page: a 
 click, or Enter on the link, opens the served root in Files at the top of its panel and
 pushes one entry, none when Files already shows the root, and Back returns to the tab
 the reader left. A modified or middle click is left to the browser.
-Before the tab controller has loaded, a pull request’s page fetches it first, and a
-later open wins.
-Opening a path again after it failed, or after a Git commit replaced it,
-loads it again, while re-opening a path the pane already shows only delivers its
-fragment. The inventory stream’s `onopen` retries only a selection that failed as
-unreachable, and because `selectFile` claims before its first `await`, a duplicate open
-does not retry twice.
-The startup settle shows the prompt only for a `/commit/` route or the neutral Commits
-entry that no Git view claimed.
+Before the tab controller has loaded, Files in front opens the root with the tree at its
+top, on the root already shown too; a pull request’s page fetches the controller first,
+and a later open wins.
+Opening a path again after it failed, or after a Git commit replaced it, loads it again,
+while re-opening a path the pane already shows only delivers its fragment.
+The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
+because `selectFile` claims before its first `await`, a duplicate open does not retry
+twice. The startup settle shows the prompt only for a `/commit/` route or the neutral
+Commits entry that no Git view claimed.
 An address with a line anchor or `plain=1` opens its file in the Source view, and any
 other fragment or query in the file’s default view; a line anchor added to the file
 already shown selects its Source tab without loading the file again.
@@ -650,6 +650,10 @@ $ node tests/dom/preview-pane-state-session.js
       "before the tab controller loads": {
         "Files in front": {
           "address": "/view/",
+          "scrollAfterHome": {
+            "from 300": 0,
+            "on the root, from 180": 0
+          },
           "tabScript": 0
         },
         "a pull request in front": {

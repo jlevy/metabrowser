@@ -3037,6 +3037,82 @@ async function run() {
     assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
   }
 
+  // ── A newest landing outlives a session recovery ───────────
+  //
+  // An older commit deep enough to evict page zero, then a return to Commits after the
+  // server's history session expired: the landing's reveal replays page zero, the replay
+  // answers 410, and recovery rebuilds the walk. Recovery used to restore the older
+  // position after the landing had selected the newest commit, leaving its row offscreen
+  // and an older row as the list's Tab stop.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 5000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `deep commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    assertEqual("recovered landing: page zero was evicted", older.pageCache.peek(0), null);
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    responses.set("/api/git/summary", { is_repo: true, commit_count: total });
+    let replays = 0;
+    responses.set("/api/git/log", (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        replays += 1;
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    for (const revision of revisions.slice(0, 1)) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], "newest after recovery"),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const landed = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovered landing: the replay expired once", replays, 1);
+    assertEqual("recovered landing: the newest is selected", landed.selectedId, revisions[0]);
+    assertEqual("recovered landing: the list is at its top", container.scrollTop, 0);
+    assertEqual("recovered landing: the newest row is focused", landed.focusedOrdinal, 0);
+    assertEqual("recovered landing: the newest row is the Tab stop", anchor?.dataset.ordinal, "0");
+    delete container.clientHeight;
+    container.scrollTop = 0;
+    neutralLanding = false;
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a
@@ -3096,6 +3172,66 @@ async function run() {
     assertEqual("recovery: restored rows stop at the cap", recovered.rowCount, 4);
     assertEqual("recovery: focus lands on the capped ordinal", recovered.focusedOrdinal, 3);
     assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
+  }
+
+  // A selection the reader makes while recovery rebuilds the walk keeps its place: recovery
+  // gives up restoring the expired position, and asks for no pages to reach it.
+  {
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const walk = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `rebuilt ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    document.activeElement = null;
+    container.clientHeight = 44;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set(`/api/git/commit/${revisions[1]}`, {
+      is_repo: true,
+      commit: commit(revisions[1], [], "chosen during recovery"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    let logCalls = 0;
+    responses.set("/api/git/log", (url) => {
+      logCalls += 1;
+      if (logCalls === 1) {
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        // The reader picks a commit while the rebuilt walk's first page is on its way.
+        void internals.selectCommit(revisions[1]);
+      }
+      return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    const expired = internals.emptyState();
+    expired.headRevision = revisions[0];
+    expired.cursor = "history:3";
+    expired.nextPageNumber = 3;
+    expired.rowCount = 6;
+    expired.focusedOrdinal = 5;
+    internals.setStateForTests(expired);
+    await internals.loadNextPage(false);
+    for (let tick = 0; tick < 20; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const kept = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovery: the reader's selection stands", kept.selectedId, revisions[1]);
+    assertEqual("recovery: no page is asked for to restore the old place", logCalls, 2);
+    assertEqual("recovery: the reader's row is the Tab stop", anchor?.dataset.ordinal, "1");
+    delete container.clientHeight;
+    container.scrollTop = 0;
   }
 
   // ── A stale cursor is a typed state with a reload action ───

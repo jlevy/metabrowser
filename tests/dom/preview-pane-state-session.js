@@ -1093,15 +1093,32 @@ async function goingHome() {
   }
   steps["a click the browser keeps"] = modified;
 
-  // Before the tab controller has loaded: Files in front opens the root at once, and a
-  // pull request's page fetches the controller first, as a tab click does.
+  // Before the tab controller has loaded: Files in front opens the root at once with the
+  // tree at its top, on the root already shown too, and a pull request's page fetches the
+  // controller first, as a tab click does.
   const early = {};
-  const filesFirst = createShell("/view/notes.md", read, { pulls: true, deferTabs: true });
+  const earlyScroller = fakeElement({ scrollTop: 0 });
+  const filesFirst = createShell("/view/notes.md", read, {
+    pulls: true,
+    deferTabs: true,
+    scroller: earlyScroller,
+  });
   await filesFirst.sandbox.navigationController.start();
+  earlyScroller.scrollTop = 300;
   assert.equal(filesFirst.clickHome(), true);
   await settle();
+  const fromFile = earlyScroller.scrollTop;
+  assert.equal(fromFile, 0, "home before the tab controller leaves the tree scrolled");
+  const pushesOnRoot = filesFirst.writes.length;
+  earlyScroller.scrollTop = 180;
+  assert.equal(filesFirst.clickHome(), true);
+  await settle();
+  const onRoot = earlyScroller.scrollTop;
+  assert.equal(onRoot, 0, "home on the root before the tab controller leaves the tree scrolled");
+  assert.equal(filesFirst.writes.length, pushesOnRoot, "home on the root pushes nothing");
   early["Files in front"] = {
     address: filesFirst.sandbox.location.pathname,
+    scrollAfterHome: { "from 300": fromFile, "on the root, from 180": onRoot },
     tabScript: filesFirst.scriptRequests.filter((name) => name === "main-tabs.js").length,
   };
   const pullFirst = createShell("/pull/7", read, { pulls: true, deferTabs: true });

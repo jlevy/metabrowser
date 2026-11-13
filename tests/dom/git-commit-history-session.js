@@ -333,6 +333,8 @@ async function createPage(start, options = {}) {
   const previewPane = routes.createPreviewPaneLifecycle();
   let panel = null;
 
+  /** The claim whose retained content the pane shows as busy, or null. */
+  let busyClaim = null;
   const paint = (claim, text, node = new StandIn()) => {
     if (!previewPane.isCurrent(claim)) {
       return null;
@@ -351,15 +353,30 @@ async function createPage(start, options = {}) {
         panel?.onShow?.();
       }
     },
-    beginPreviewNavigation: () => false,
+    // The shell's busy state, as app.js keeps it: a claim marks content it retains as busy,
+    // a later claim clears that, and only the claim that began it ends it. An empty pane,
+    // or one that shows a `preview-empty` message, has nothing to retain.
+    beginPreviewNavigation(claim) {
+      const child = preview.children[0];
+      if (!previewPane.isCurrent(claim) || !child || child.className === "preview-empty") {
+        return false;
+      }
+      busyClaim = claim;
+      return true;
+    },
     claimPreview(owner, selection) {
       pendingStageCleanup?.();
+      busyClaim = null;
       if (owner !== "git") {
         sandbox.MetabrowserGitPanel.cancelPending();
       }
       return previewPane.claim(owner, selection);
     },
-    endPreviewNavigation() {},
+    endPreviewNavigation(claim) {
+      if (busyClaim === claim) {
+        busyClaim = null;
+      }
+    },
     isGitHistoryLanding: () => sandbox.isGitHistoryLanding(),
     isPreviewClaimCurrent: (claim) => previewPane.isCurrent(claim),
     registerNavPanel(next) {
@@ -371,7 +388,11 @@ async function createPage(start, options = {}) {
       }
       panel = null;
     },
-    renderPreviewHtml: (html, claim) => paint(claim, html.replace(/<[^>]*>/g, "")),
+    renderPreviewHtml(html, claim) {
+      const node = new StandIn();
+      node.className = /^<div class="preview-empty"/.test(html) ? "preview-empty" : "";
+      return paint(claim, html.replace(/<[^>]*>/g, ""), node);
+    },
     stagePreviewNode(node, claim) {
       if (!previewPane.isCurrent(claim)) {
         return null;
@@ -561,6 +582,7 @@ async function createPage(start, options = {}) {
         entries: entries.length,
         historyReads,
         focusMoves: StandIn.focusMoves,
+        busy: busyClaim !== null && previewPane.isCurrent(busyClaim),
         ...(options.scroller ? { scrollTop: options.scroller.scrollTop } : {}),
       };
     },
@@ -833,6 +855,8 @@ async function createPage(start, options = {}) {
     assert(waiting.pane === "file README.md", `the switch painted over the pane: ${waiting.pane}`);
     assert(waiting.owner === "git", "the landing did not take the pane");
     assert(waiting.requests.length === 0, "a commit was asked for before history named one");
+    // The first refresh replaces the walk, and the landing's busy state outlives it.
+    assert(waiting.busy, "the retained pane is not busy while history loads");
     page.held.delete("/api/git/log");
     release();
     await page.settle();
@@ -846,6 +870,7 @@ async function createPage(start, options = {}) {
     );
     assert(page.history.state === null, "the newest commit's entry is still the neutral one");
     assert(landed.historyReads === 1, "the landing asked for history more than once");
+    assert(!landed.busy, "the pane is still busy after the newest commit is shown");
 
     await page.selectRow(COMMIT_A);
     steps["an older commit"] = page.read();
@@ -880,12 +905,16 @@ async function createPage(start, options = {}) {
     let release = () => {};
     page.held.set("/api/git/log", new Promise((resolve) => (release = resolve)));
     await page.switchToCommits();
+    assert(page.facts().busy, "the retained pane is not busy while history loads");
     await page.open("src/a.py");
+    // The file's claim cancels the landing, and with it the busy state.
+    assert(!page.facts().busy, "the pane stayed busy after the reader moved on");
     page.held.delete("/api/git/log");
     release();
     await page.settle();
     const movedOn = page.read();
     assert(movedOn.pane === "file src/a.py", `a late first page took the pane: ${movedOn.pane}`);
+    assert(!page.facts().busy, "a late first page made the file busy");
     assert(movedOn.requests.length === 0, "a late first page asked for a commit");
     await page.back();
     const back = { ...page.read(), ...page.facts() };
@@ -913,9 +942,17 @@ async function createPage(start, options = {}) {
     assert(emptyRead.requests.length === 0, "an empty history asked for a commit");
 
     const failing = await createPage("/view/README.md", { logFails: true });
+    let releaseFailure = () => {};
+    failing.held.set("/api/git/log", new Promise((resolve) => (releaseFailure = resolve)));
     await failing.switchToCommits();
-    const failed = failing.read();
+    const failingBusy = failing.facts().busy;
+    assert(failingBusy, "the retained pane is not busy while the failing history loads");
+    failing.held.delete("/api/git/log");
+    releaseFailure();
+    await failing.settle();
+    const failed = { ...failing.read(), busy: failing.facts().busy };
     assert(failed.pane === "Could not load the commit history.", `failed: ${failed.pane}`);
+    assert(!failed.busy, "the pane stayed busy after the failure was shown");
     failing.options.logFails = false;
     await failing.retryHistory();
     const retried = failing.read();

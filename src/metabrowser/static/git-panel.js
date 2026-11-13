@@ -131,6 +131,9 @@
   // it belongs to and the claim it holds on the pane (landOnNewestCommit).
   /** @type {{landing: number, claim: number} | null} */
   let newestLanding = null;
+  // How many commit selections have begun, so work that outlives one can tell that a
+  // later selection placed the list (recoverHistorySession).
+  let selectionCount = 0;
   /**
    * @typedef {object} RevisionPreparation
    * @property {string} revision
@@ -1938,6 +1941,7 @@
     if (!bridge) {
       return;
     }
+    selectionCount += 1;
     /** @type {number | null} */
     let selectionClaim = null;
     /** @type {HTMLElement | null} */
@@ -2369,21 +2373,39 @@
     recoveringSession = true;
     try {
       const selectedId = state.selectedId;
+      const selectionsBefore = selectionCount;
+      // A neutral Commits landing waiting on this walk wants the newest row, ordinal zero,
+      // not the position the expired session had (landOnNewestCommit).
+      const forLanding = newestLanding !== null;
       // The new walk replays its prefix one request per page, so the
       // restored position must be bounded: the cache retains at most
       // PAGE_CACHE_PAGES pages anyway, and at the measured 13-70 ms per
       // page request this cap costs well under a second. A deeper
       // pre-expiry position lands at the cap instead of issuing one
       // request per LOG_LIMIT rows of unbounded prefix.
-      const restoreOrdinal = Math.min(
-        Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
-        PAGE_CACHE_PAGES * LOG_LIMIT - 1,
-      );
+      const restoreOrdinal = forLanding
+        ? 0
+        : Math.min(
+            Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
+            PAGE_CACHE_PAGES * LOG_LIMIT - 1,
+          );
       await refreshHistory({ preserveDetail: true, selectedId });
-      while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+      // A selection made while the walk is rebuilt, the landing's newest or the reader's
+      // own, places the list and its Tab stop itself; the old position no longer applies,
+      // and no page is fetched to reach it.
+      const selected = () => selectionCount !== selectionsBefore;
+      while (!selected() && state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
         if (!(await loadNextPage(false))) {
           break;
         }
+      }
+      if (selected()) {
+        return;
+      }
+      if (forLanding) {
+        revealNewestRow();
+        state.focusedOrdinal = 0;
+        return;
       }
       const scroller = historyScroller();
       if (scroller && state.rowCount > 0) {
@@ -2453,7 +2475,12 @@
 
     refreshing = true;
     resetHistoryRequests();
-    clearPendingState();
+    // A selection's busy state is obsolete once its walk is replaced. A waiting newest
+    // landing's is not: the new walk is what it waits for, and the pane stays busy until
+    // the landing selects, says why it cannot, or loses the pane.
+    if (!waitingLandingOwnsPending()) {
+      clearPendingState();
+    }
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeHistoryState(state);
@@ -2725,6 +2752,15 @@
     }
     newestLanding = null;
     void selectCommit(newest);
+  }
+
+  /** Whether the pane's busy state is the waiting newest landing's own, and still current. */
+  function waitingLandingOwnsPending() {
+    return (
+      newestLanding !== null &&
+      pendingPreviewClaim === newestLanding.claim &&
+      shell()?.isPreviewClaimCurrent(newestLanding.claim) === true
+    );
   }
 
   /** Scroll the newest row into view when it is not, with the history tally above it. */

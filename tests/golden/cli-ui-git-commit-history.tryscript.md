@@ -18,9 +18,9 @@ went away and came back starts over, and a folder that is not a repository has n
 panel listening.
 
 Switching to Commits names no commit, so it lands on the newest one, the top row.
-While the first page of history is on its way the pane keeps what it showed, and no
-commit is asked for; then the newest commit’s address replaces the tab’s entry, and
-history is asked for once.
+While the first page of history is on its way the pane keeps what it showed, busy
+through the refresh that replaces the walk, and no commit is asked for; then the newest
+commit’s address replaces the tab’s entry, and history is asked for once.
 A return after an older commit lands on the newest again, from the cached page and
 detail, with the list scrolled back to its top and focus where it was.
 Back steps over each switch to where the reader was, and an entry that names a commit
@@ -29,6 +29,8 @@ An entry the reader left before history arrived takes nothing when it does, and 
 the newest when Back reaches it, as a reload onto it does.
 An empty history selects nothing and says so; a failed one says so, and the retry that
 loads it lands on the newest.
+The busy state ends when the commit shows, when a failure is shown, or when the reader
+moves on.
 
 The panel’s loading session holds paint callbacks and diff assets independently.
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
@@ -288,6 +290,7 @@ $ node tests/dom/git-commit-history-session.js
       "entries": 2,
       "historyReads": 1,
       "focusMoves": 0,
+      "busy": true,
       "scrollTop": 0
     },
     "the newest commit, once history arrives": {
@@ -301,6 +304,7 @@ $ node tests/dom/git-commit-history-session.js
       "entries": 2,
       "historyReads": 1,
       "focusMoves": 0,
+      "busy": false,
       "scrollTop": 0
     },
     "an older commit": {
@@ -328,6 +332,7 @@ $ node tests/dom/git-commit-history-session.js
       "entries": 4,
       "historyReads": 1,
       "focusMoves": 0,
+      "busy": false,
       "scrollTop": 0
     },
     "Back": {
@@ -363,7 +368,8 @@ $ node tests/dom/git-commit-history-session.js
       ],
       "entries": 3,
       "historyReads": 1,
-      "focusMoves": 0
+      "focusMoves": 0,
+      "busy": false
     }
   },
   "a reload onto the tab's entry": {
@@ -388,7 +394,8 @@ $ node tests/dom/git-commit-history-session.js
       "pane": "Could not load the commit history.",
       "owner": "git",
       "navPanel": "git",
-      "requests": []
+      "requests": [],
+      "busy": false
     },
     "retried": {
       "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

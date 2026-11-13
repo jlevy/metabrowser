@@ -3792,8 +3792,10 @@ function onHomeHeadingClick(event) {
 }
 
 // Before the tab controller has loaded, the server's tab is in front: Files, unless the
-// page opened on a pull request's address. Only then does the controller have to arrive
-// before the root opens, and a later choice of the reader's cancels it, as a tab click does.
+// page opened on a pull request's address. With Files in front this does what the
+// controller's `home` does, the tree at its top and the root opened, even on the root
+// already shown. Only a pull request's page waits for the controller, and a later choice
+// of the reader's cancels it, as a tab click does.
 function goHome() {
   if (mainTabs) {
     void mainTabs.home().catch((error) => {
@@ -3805,6 +3807,10 @@ function goHome() {
     queryHtml(".nav-tab-bar")?.querySelector(".tab-btn.active") ?? null
   );
   if ((front?.dataset.tab ?? "files") === "files") {
+    const scroller = document.getElementById("tree-content");
+    if (scroller) {
+      scroller.scrollTop = 0;
+    }
     void navigateToPath("").catch(console.error);
     return;
   }
