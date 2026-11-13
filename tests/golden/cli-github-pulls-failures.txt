@@ -997,6 +997,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
+## A cache that refuses a write says why, and the command that clears it.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -1051,7 +1052,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "cache_unwritable",
-    "message": "the metadata catalog could not be written; clear the affected repository cache and retry",
+    "message": "the pull-request list could not be written to the cache: attempt to write a readonly database. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry",
     "reset_at": null,
     "at": "2026-09-17T12:03:02Z"
   },
@@ -1079,6 +1080,21 @@ Error: the refresh ended with cache_unwritable
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
+## While the directory itself refuses writes, so does that command.
+# metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
+exit: 1
+--- stdout ---
+api: /api/plugin/github/cache-clear
+status: 409
+{
+  "error": "the GitHub cache of octo/demo could not be cleared: Permission denied",
+  "code": "cache_unwritable"
+}
+--- stderr ---
+Error: /api/plugin/github/cache-clear returned HTTP 409
+--- body ---
+{}
+--- gh ---
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -1097,7 +1113,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "cache_unwritable",
-      "message": "the metadata catalog could not be written; clear the affected repository cache and retry",
+      "message": "the pull-request list could not be written to the cache: attempt to write a readonly database. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry",
       "reset_at": null,
       "at": "2026-09-17T12:03:02Z"
     },
@@ -1160,6 +1176,326 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
+## A catalog a newer Metabrowser wrote is left as it is and named, before any page is asked for; the command it names clears it, and the list is fetched again.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:03:02Z"
+    },
+    "total": null,
+    "repository_total": null,
+    "filter_totals": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "newer_cache",
+    "message": "the pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
+    "reset_at": null,
+    "at": "2026-09-17T12:03:02Z"
+  },
+  "total": null,
+  "repository_total": null,
+  "filter_totals": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with newer_cache
+--- body ---
+{"retry": true}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
+exit: 0
+--- stdout ---
+api: /api/plugin/github/cache-clear
+status: 200
+{
+  "cleared": 2,
+  "source": "https://github.com/octo/demo"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "filter_totals": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:03:02Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:03:02Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
+  "count_at": "2026-09-17T12:03:02Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_2>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+## A catalog whose versions cannot be read, here a write-ahead-log database, which no release writes, is left as it is and named the same way; the command clears it.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:03:02Z"
+    },
+    "total": null,
+    "repository_total": null,
+    "filter_totals": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "unknown_cache",
+    "message": "the pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
+    "reset_at": null,
+    "at": "2026-09-17T12:03:02Z"
+  },
+  "total": null,
+  "repository_total": null,
+  "filter_totals": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with unknown_cache
+--- body ---
+{"retry": true}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -
+exit: 0
+--- stdout ---
+api: /api/plugin/github/cache-clear
+status: 200
+{
+  "cleared": 2,
+  "source": "https://github.com/octo/demo"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "filter_totals": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:03:02Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:03:02Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
+  "count_at": "2026-09-17T12:03:02Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_3>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
 ## An environment token cannot resolve its login while offline.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1

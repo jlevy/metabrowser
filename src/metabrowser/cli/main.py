@@ -524,7 +524,8 @@ def _metab(
         None,
         "--data",
         metavar="FILE",
-        help="Send FILE as the request body, making the request a POST (--api only).",
+        help="Send FILE as the request body, making the request a POST (--api only). "
+        "- reads it from standard input.",
         rich_help_panel=_PANEL_API,
     ),
     check_api: bool = typer.Option(
