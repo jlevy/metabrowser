@@ -67,7 +67,7 @@ _PHASE_LINE = re.compile(r"^phase (.+) (\d+)$", re.MULTILINE)
 # Each phase's budget, from what it took. A run on a 10-core Mac takes about 1.5 s to
 # print the banner, 0.1 s more to serve, and 1.5 s to measure; with twelve busy loops
 # beside a load average of 17, 3.1 s, 0.3 s, and 2.5 s. In CI the whole test took from
-# 5.5 to 40 s (PR #405 and the runs after it, ubuntu-latest).
+# 5.5 to 40 s (ubuntu-latest).
 _BANNER_BUDGET_S = 30.0
 _SERVING_BUDGET_S = 15.0
 _MEASUREMENT_BUDGET_S = 90.0
@@ -308,6 +308,47 @@ def chrome_profile() -> Iterator[Path]:
         assert not survivors, f"processes outlived their group: {survivors}"
 
 
+# DIAGNOSTIC, not for merge: what the machine looks like before the first Chrome launch,
+# reported as warnings so that every matrix job finishes and shows them.
+def _cache_state() -> str:
+    parts = []
+    for directory in (Path.home() / ".cache" / "fontconfig", Path("/var/cache/fontconfig")):
+        files = [p for p in directory.glob("*") if p.is_file()] if directory.is_dir() else []
+        parts.append(
+            f"{directory}: {len(files)} files {sum(p.stat().st_size for p in files)} bytes"
+        )
+    return "; ".join(parts)
+
+
+def test_aa_diagnostic_machine_state() -> None:
+    import warnings
+
+    chrome = require_chrome()
+    real = Path(os.path.realpath(chrome))
+    load = Path("/proc/loadavg").read_text() if Path("/proc/loadavg").exists() else "n/a"
+    top = subprocess.run(
+        ["ps", "-eo", "pcpu,etime,args", "--sort=-pcpu"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.splitlines()[:8]
+    before = _cache_state()
+    started = time.monotonic()
+    total = 0
+    for path in real.parent.rglob("*"):
+        if path.is_file() and not path.is_symlink():
+            with path.open("rb") as handle:
+                while chunk := handle.read(1 << 20):
+                    total += len(chunk)
+    read_s = time.monotonic() - started
+    warnings.warn(
+        f"DIAGNOSTIC machine: chrome {chrome} -> {real}; loadavg {load.strip()}; "
+        f"read {total} bytes of {real.parent} in {read_s:.1f} s; caches before: {before}; "
+        f"top: {' | '.join(line.strip()[:120] for line in top)}",
+        stacklevel=1,
+    )
+
+
 def test_overview_labels_start_on_the_tab_label_at_every_width(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
@@ -358,25 +399,33 @@ def test_overview_labels_start_on_the_tab_label_at_every_width(
         )
     assert run.returncode == 0, f"{run.stderr or run.stdout}\nphases that ended: {phases.report()}"
     assert run.stdout == "folder overview alignment: 30 checks passed\n"
-    print("PHASES", phases.report())
-    pytest.fail("PHASES " + phases.report())
+    import warnings
+
+    warnings.warn("DIAGNOSTIC first run phases: " + phases.report(), stacklevel=1)
 
 
-# DIAGNOSTIC, not for merge: report every phase's time in CI, on a cold and a warm run.
-def test_zz_diagnostic_phase_timings(tmp_path: Path) -> None:
-    reports = []
+def test_zz_diagnostic_warm_runs(tmp_path: Path) -> None:
+    import warnings
+
+    reports = [f"caches after the first run: {_cache_state()}"]
+    made: list[_Phases] = []
+    real_phases = globals()["_Phases"]
+
     for attempt in (1, 2):
         profile = Path(tempfile.mkdtemp(prefix="overview-alignment-chrome-"))
+        started = time.monotonic()
         try:
-            started = time.monotonic()
-            try:
-                test_overview_labels_start_on_the_tab_label_at_every_width(
-                    tmp_path / f"run{attempt}", profile
-                )
-                reports.append(f"run {attempt} ok in {time.monotonic() - started:.1f} s")
-            except BaseException as error:  # noqa: BLE001
-                reports.append(f"run {attempt} failed: {error}")
+            globals()["_Phases"] = lambda: made.append(real_phases()) or made[-1]
+            test_overview_labels_start_on_the_tab_label_at_every_width(
+                tmp_path / f"run{attempt}", profile
+            )
+            reports.append(
+                f"warm run {attempt} ok in {time.monotonic() - started:.1f} s: {made[-1].report()}"
+            )
+        except BaseException as error:  # noqa: BLE001
+            reports.append(f"warm run {attempt} failed: {error}")
         finally:
+            globals()["_Phases"] = real_phases
             _kill_processes_naming(profile)
             shutil.rmtree(profile, ignore_errors=True)
-    pytest.fail("DIAGNOSTIC " + " || ".join(reports))
+    warnings.warn("DIAGNOSTIC " + " || ".join(reports), stacklevel=1)

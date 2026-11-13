@@ -14,6 +14,7 @@
 // Where text starts is layout, which only a browser computes: the column comes from
 // container queries on the pane's width, a token, and KPress's stylesheet together.
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 
 const HERE = import.meta.dirname;
@@ -98,7 +99,14 @@ phase("imported");
 let checks = 0;
 const bands = new Set();
 const offsets = [];
+const endpointPoll = setInterval(() => {
+  if (fs.existsSync(path.join(profileDir, "DevToolsActivePort"))) {
+    phase("endpoint");
+    clearInterval(endpointPoll);
+  }
+}, 20);
 const browser = await launchBrowser({
+  onSpawn: () => phase("spawned"),
   profileDir,
   width: WIDTHS[0],
   height: 900,
