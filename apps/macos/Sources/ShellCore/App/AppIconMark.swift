@@ -27,17 +27,18 @@ public nonisolated enum AppIconMark {
     /// they measure 1.7:1 and 2.3:1, under the 3:1 that graphics need (WCAG 1.4.11), so the
     /// light title bar alone draws deeper tints of the same hues: each fill's OKLCH
     /// lightness lowered in steps of half a percent, keeping its hue and its share of the
-    /// most chroma sRGB holds there, to the first step that reaches 3:1.
+    /// most chroma sRGB holds there, to the first step that reaches 4:1. The first tints
+    /// stopped at 3:1 (#B09135 and #BA73FF), and the user asked for them a little darker.
     public static func titleBarFills(dark: Bool) -> [String] {
         dark ? glyphs.map(\.fill) : [lightTitleBarM, lightTitleBarB]
     }
 
-    /// oklch(66.9% 0.1147 90.40), from the M's oklch(83.38% 0.1428 90.40) at 0.84 of the
-    /// chroma sRGB holds: 3.02:1 against #FFFFFF.
-    static let lightTitleBarM = "#B09135"
-    /// oklch(69.0% 0.2049 304.96), from the B's oklch(76.03% 0.1539 304.96) at all of the
-    /// chroma sRGB holds: 3.01:1 against #FFFFFF.
-    static let lightTitleBarB = "#BA73FF"
+    /// oklch(59.4% 0.1019 90.40), from the M's oklch(83.38% 0.1428 90.40) at 0.84 of the
+    /// chroma sRGB holds: 4.06:1 against #FFFFFF.
+    static let lightTitleBarM = "#967B2C"
+    /// oklch(62.5% 0.2547 304.96), from the B's oklch(76.03% 0.1539 304.96) at all of the
+    /// chroma sRGB holds: 4.04:1 against #FFFFFF.
+    static let lightTitleBarB = "#AD4AFF"
 
     /// `data` as a path, or nil for data outside the subset make-glyphs writes.
     public static func path(_ data: String) -> CGPath? {

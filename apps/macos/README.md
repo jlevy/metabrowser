@@ -1122,19 +1122,21 @@ AppKit draws a system title in one font and one color, so the window hides it
 - **It sits where the system title sits.** macOS 26 puts a plain window’s title at the
   leading edge, after the window buttons: the proxy icon at x 82 and the text at x 100,
   in the 13-point title-bar font.
-  A leading accessory starts at x 78, so the drawn text lands on the same point in the
-  same font, and the title bar stays 32 points tall.
+  A leading accessory starts at x 78, so the drawn title starts where the system’s does,
+  in the same font, and the title bar stays 32 points tall; its text starts 6 points
+  later than the system’s, after the logo (below).
   AppKit places accessories for tabs, full screen, and right-to-left layouts.
 - **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
   76 points tall, centers the title where macOS 26 no longer puts it, and, with the
   title hidden, AppKit shows no proxy icon there either.
-- **The logo sits in the window buttons’ row, on the title’s baseline.** The buttons are
-  14-point circles 9 points apart, from x 9 to 69 and 9 to 23 points below the top.
-  The logo is 10 points tall, the 13-point title font’s 9.16-point capitals and a tenth,
-  rounded to a Retina pixel, and stands on the title’s baseline, so it spans 11 to 21
-  points down, centered on the buttons.
-  It runs from x 78, a button gap after the zoom button, to x 92.47, and the text’s
-  first glyph, at x 102, falls 9.5 points after it.
+- **The logo is as tall as the window buttons, in their row.** The buttons are 14-point
+  circles 9 points apart, from x 9 to 69 and 9 to 23 points below the top.
+  The logo is 14 points tall, as the user asked, and centered as they are, so its top
+  and bottom are level with theirs.
+  It runs from x 78, a button gap after the zoom button, to x 98.26. The title follows
+  it by about the gap the first, 10-point mark had, 9.5 points: its label starts at x
+  106, 6 points further right than the system title’s x 100, so its first glyph, at x
+  108, falls 9.74 points after the mark.
 - **The logo is the icon’s own mark.** It draws the partial M and the B from the
   outlines and fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift`
   copies into `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh`
@@ -1149,8 +1151,10 @@ AppKit draws a system title in one font and one color, so the window hides it
   contrast. On the light one they measure 1.7:1 and 2.3:1, under the 3:1 that graphics
   need, so the light title bar alone draws deeper tints of the same hues: each OKLCH
   lightness lowered at the same share of the chroma sRGB holds, to the first
-  half-percent step that reaches 3:1. That is #B09135 for the M (3.02:1) and #BA73FF for
-  the B (3.01:1) (`AppIconMark.titleBarFills`).
+  half-percent step that reaches 4:1, past the 3:1 minimum, since the user asked for
+  them a little darker than the first, 3:1 tints.
+  That is #967B2C for the M, oklch(59.4% 0.1019 90.40), at 4.06:1, and #AD4AFF for the
+  B, oklch(62.5% 0.2547 304.96), at 4.04:1 (`AppIconMark.titleBarFills`).
 - **The logo stands in for the proxy icon.** AppKit drops the proxy icon when a leading
   accessory is present, so in a local folder’s window the logo takes its part, from
   `representedURL`. Dragging it copies or aliases the folder, never moves it, since a

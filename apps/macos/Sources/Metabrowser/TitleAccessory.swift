@@ -7,7 +7,8 @@ import ShellCore
 /// AppKit draws a system title in one style, so the window hides it
 /// (`titleVisibility = .hidden`) and shows this leading title-bar accessory instead,
 /// which AppKit places beside the window buttons, where macOS 26 puts the system title.
-/// The text's inset and fonts below reproduce that title as measured on macOS 26.5.
+/// The fonts below reproduce that title as measured on macOS 26.5, and its text follows
+/// the logo.
 ///
 /// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5).
 /// In its place the accessory draws the app's logo, which stands in for the proxy icon
@@ -39,18 +40,23 @@ final class TitleBarTitleView: NSView {
     /// 14-point circles, 9 points apart, from 9 to 23 points below its top, and the
     /// accessory's leading edge at x 78, a button gap after the zoom button.
     ///
-    /// The logo, the icon's mark (`TitleBarLogoView`), stands on the title's baseline, 21
-    /// points below the title bar's top, a tenth taller than the title font's capitals,
-    /// rounded to a Retina pixel: 10 points beside the 13-point title-bar font's 9.16. So
-    /// it spans 11 to 21 points down, centered on the buttons' row, and from the
-    /// accessory's leading edge, a button gap after the zoom button, it is 14.47 points
-    /// wide, to x 92.47.
-    private static let markHeight = (primaryFont.capHeight * 1.1 * 2).rounded() / 2
+    /// The logo, the icon's mark (`TitleBarLogoView`), is as tall as a window button, as
+    /// the user asked: 14 points. Centered in the title bar's height, as the buttons are,
+    /// it spans 9 to 23 points below the top, its top and bottom level with theirs. From
+    /// the accessory's leading edge, a button gap after the zoom button, it is 20.26
+    /// points wide, to x 98.26.
+    private static let markHeight: CGFloat = 14
     private static let markWidth = markHeight * TitleBarLogoView.aspectRatio
-    /// Where AppKit draws a plain window's title text beside its proxy icon, from the
-    /// accessory's leading edge: x 100, so the text's first glyph, at x 102, falls 9.5
-    /// points, about a button gap, after the mark.
-    private static let textInset: CGFloat = 22
+    /// From the mark to the title's first glyph: 9.5 points, about a button gap, as beside
+    /// the first, 10-point mark.
+    private static let markGap: CGFloat = 9.5
+    /// How far inside its frame the label draws its first glyph: a frame at x 100 drew it
+    /// at x 102 (measured on macOS 26.5).
+    private static let labelGlyphInset: CGFloat = 2
+    /// Where the title text starts, in whole points after the mark and its gap: 28 from
+    /// the accessory's leading edge, so the label starts at x 106 and its first glyph, at
+    /// x 108, falls 9.74 points after the mark.
+    private static let textInset = (markWidth + markGap - labelGlyphInset).rounded(.up)
     /// Space kept between the end of the title and the window's trailing edge.
     private static let windowMargin: CGFloat = 12
     /// The path menu's folder icons, as the system title's path menu draws them.
@@ -102,12 +108,11 @@ final class TitleBarTitleView: NSView {
         var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
         if isRightToLeft { text.origin.x = bounds.width - text.maxX }
         label.frame = text
-        render()
-        // On the title's baseline, which the label places once it holds the title.
-        let baseline = text.maxY - label.firstBaselineOffsetFromTop
-        var mark = NSRect(x: 0, y: baseline, width: Self.markWidth, height: Self.markHeight)
+        var mark = NSRect(
+            x: 0, y: ((bounds.height - Self.markHeight) / 2).rounded(), width: Self.markWidth, height: Self.markHeight)
         if isRightToLeft { mark.origin.x = bounds.width - mark.maxX }
         logo.frame = mark
+        render()
     }
 
     /// As wide as the whole title, but never past the window's trailing margin, so a

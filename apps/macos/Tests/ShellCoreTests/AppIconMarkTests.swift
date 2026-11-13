@@ -52,7 +52,8 @@ import Testing
         for fill in dark { #expect(contrast(fill, "#1E1E1E") >= 3) }
         // The light one needs its own: the icon's fall short there.
         for fill in AppIconMark.glyphs.map(\.fill) { #expect(contrast(fill, "#FFFFFF") < 3) }
-        for fill in light { #expect(contrast(fill, "#FFFFFF") >= 3) }
+        // 4:1, past the 3:1 graphics need, since the user asked for darker fills there.
+        for fill in light { #expect(contrast(fill, "#FFFFFF") >= 4) }
     }
 
     @Test func theLightTitleBarsFillsKeepTheIconsHues() {

@@ -122,7 +122,7 @@ through `metab --api`:
 - The title starts with the app’s logo beside the window buttons, in every window: the
   app icon’s mark alone, the colored M and B without the icon’s squircle, drawn from the
   icon masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper
-  tints of the mark’s two hues, so each reads at 3:1 or more.
+  tints of the mark’s two hues, so each reads at 4:1 or more.
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
   window’s represented URL, so the logo, in the proxy icon’s place, drags the folder and
   Command-click opens the path menu.
