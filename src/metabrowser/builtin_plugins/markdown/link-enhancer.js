@@ -19,21 +19,20 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
 ]);
 
 /**
- * The served images this page has loaded and still holds, by address, least recently
- * loaded first; each address maps to its file's inventory path.
+ * The served images this page has loaded since the last filesystem change, by address,
+ * least recently loaded first.
  *
  * KPress writes `loading="lazy"` on a document's images, and entering a file again builds
  * its document again. WebKit, the macOS app's engine, does not give a new lazy image the
  * copy the page holds: once layout shows the image it asks the network again, so the
  * images at the top of a document entered again had none for the round trip. An image
  * made eager before its address is set takes the held copy, as a lazy one does in Chrome.
- * An image the page has not loaded stays lazy, and so does one whose file may have
- * changed since it loaded (`forgetChangedImages`). docs/design-system.md, "A Repaint
- * Keeps Its Images", has the measurements.
+ * An image the page has not loaded since the last change stays lazy, and is fetched
+ * again. docs/design-system.md, "A Repaint Keeps Its Images", has the measurements.
  *
- * @type {Map<string, string>}
+ * @type {Set<string>}
  */
-const heldImages = new Map();
+const heldImages = new Set();
 /**
  * How many held images the page remembers; past it, the least recently loaded is
  * forgotten and loads lazily again. A document's first images load first, so one with
@@ -49,7 +48,14 @@ const heldImages = new Map();
  * again. Both costs grow with the bound, and one re-entry makes at most this many eager.
  */
 export const MAX_HELD_IMAGES = 1024;
-/** @type {WeakMap<Element, string>} The images whose address the enhancer set, by path. */
+/** How many times the held images have been forgotten (`forgetHeldImages`). */
+let invalidations = 0;
+/**
+ * The images whose served address the enhancer set, each with `invalidations` as it was
+ * then. A load that finishes after a later change may carry the bytes from before it.
+ *
+ * @type {WeakMap<Element, number>}
+ */
 const servedImages = new WeakMap();
 
 /**
@@ -68,18 +74,35 @@ function loadHeldImageEagerly(image, href) {
   }
 }
 
+/**
+ * Record that the enhancer set *image*'s served address, unless no change to its file
+ * would be heard: the shell's watcher reports nothing inside a hidden folder or file, one
+ * whose name starts with a dot, so such an image is never held.
+ *
+ * @param {Element} image
+ * @param {string} path
+ */
+function serveImage(image, path) {
+  if (!path.split("/").some((segment) => segment.startsWith("."))) {
+    servedImages.set(image, invalidations);
+  }
+}
+
 /** @param {Event} event */
 function rememberHeldImage(event) {
   const image = /** @type {Element | null} */ (event.target);
-  const path = image ? servedImages.get(image) : undefined;
-  const href = path === undefined ? null : image?.getAttribute("src");
-  if (path === undefined || !href) {
+  // A load from before the last change may hold what the change replaced.
+  if (!image || servedImages.get(image) !== invalidations) {
+    return;
+  }
+  const href = image.getAttribute("src");
+  if (!href) {
     return;
   }
   heldImages.delete(href);
-  heldImages.set(href, path);
+  heldImages.add(href);
   if (heldImages.size > MAX_HELD_IMAGES) {
-    const oldest = heldImages.keys().next();
+    const oldest = heldImages.values().next();
     if (!oldest.done) {
       heldImages.delete(oldest.value);
     }
@@ -87,57 +110,17 @@ function rememberHeldImage(event) {
 }
 
 /**
- * Forget each held image whose file a filesystem change may have replaced, so the next
- * document that shows it loads it lazily, from the server, as one never loaded does.
+ * Forget every held image: a filesystem change, any change, may have replaced one.
  *
- * *paths* are an inventory change as `onInventoryChange` reports it: each changed entry
- * with every ancestor whose totals it moved, down to the depth the shell watches, so a
- * change deeper than that is reported by its deepest watched ancestor. Only the deepest
- * reported paths bound a change: an ancestor of another reported path was reported for
- * that one. A held image at or beneath one of them is forgotten, and an unchanged image
- * beside them is kept. Null, for a reconnect, a resync, or the end of the first crawl,
- * forgets every image.
- *
- * @param {ReadonlyArray<string> | null} paths
+ * The plugin calls this for each change `onInventoryChange` reports, whatever its paths.
+ * The paths cannot say which images a change touched: an image can be a link to a file
+ * elsewhere, and a change deeper than the shell watches arrives as a folder. So reuse
+ * lasts only while nothing changes, which is when a reader moves between files. A load
+ * still in flight when this runs is not remembered when it finishes.
  */
-export function forgetChangedImages(paths) {
-  if (!paths) {
-    heldImages.clear();
-    return;
-  }
-  const reportedAncestors = new Set();
-  for (const path of paths) {
-    for (let ancestor = parentPath(path); ancestor !== null; ancestor = parentPath(ancestor)) {
-      reportedAncestors.add(ancestor);
-    }
-  }
-  const changed = new Set(paths.filter((path) => !reportedAncestors.has(path)));
-  for (const [href, path] of heldImages) {
-    for (
-      let scope = /** @type {string | null} */ (path);
-      scope !== null;
-      scope = parentPath(scope)
-    ) {
-      if (changed.has(scope)) {
-        heldImages.delete(href);
-        break;
-      }
-    }
-  }
-}
-
-/**
- * The inventory path of *path*'s folder: "" for a top-level entry, null for the root.
- *
- * @param {string} path
- * @returns {string | null}
- */
-function parentPath(path) {
-  if (path === "") {
-    return null;
-  }
-  const slash = path.lastIndexOf("/");
-  return slash < 0 ? "" : path.slice(0, slash);
+export function forgetHeldImages() {
+  heldImages.clear();
+  invalidations += 1;
 }
 
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
@@ -307,7 +290,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             const href = rawResourceHref(resolved);
             if (tagName === "img") {
               loadHeldImageEagerly(resource, href);
-              servedImages.set(resource, normalizedFilePath(resolved.path));
+              serveImage(resource, normalizedFilePath(resolved.path));
             }
             resource.setAttribute(descriptor.attribute, href);
           } else if (resolved.status !== "external") {

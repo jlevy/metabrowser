@@ -6,14 +6,18 @@ env:
 ---
 # Golden Test: Markdown Image Re-entry
 
-This browserless session executes the production Markdown link enhancer, imported from
-its file with every module it imports, on images as KPress writes them: lazy, at the
-address the author wrote.
-The engine’s loads are events the session fires, and filesystem changes are calls to
-`forgetChangedImages`, as the plugin’s `onInventoryChange` subscription makes them.
+This browserless session runs the production pieces together, as the page does: the
+shell’s inventory stream handlers and file store, extracted from `app.js`; the plugin
+SDK’s `onInventoryChange`; the Markdown plugin’s `index.js`, which subscribes
+`forgetHeldImages`; and the link enhancer, imported from its file, on images as KPress
+writes them: lazy, at the address the author wrote.
+The stream frames are shaped as the server sends them on the shell’s `root-depth-2`
+stream, and the engine’s loads are events the session fires.
 It pins which images a document entered again makes eager, the order of each image’s
-attribute changes, the load listener’s lifecycle, the record’s bound and least recently
-loaded eviction, and which held images a change or a reconnect forgets.
+attribute changes, the load listener’s lifecycle, that any change and any reconnect,
+even with the same snapshot, forget every held image, that a load assigned before a
+change is not remembered, that an image under a hidden name is never held, and the
+record’s bound and least recently loaded eviction.
 When an image is fetched and painted is the engine’s; see “A Repaint Keeps Its Images”
 in `docs/design-system.md`.
 
@@ -80,9 +84,35 @@ $ node tests/dom/markdown-image-reentry-session.js
       ]
     },
     {
-      "step": "after a reconnect",
+      "step": "a reconnect sends the same snapshot",
+      "before": "eager",
+      "after": "lazy"
+    },
+    {
+      "step": "the Markdown changes",
+      "before": "eager",
+      "after": "lazy"
+    },
+    {
+      "step": "an image under docs/images is replaced",
+      "before": "eager",
+      "after": "lazy"
+    },
+    {
+      "step": "a load assigned before a change finishes after it",
+      "before": "lazy",
+      "after": "lazy"
+    },
+    {
+      "step": "a load assigned after the change",
+      "before": "lazy",
+      "after": "eager"
+    },
+    {
+      "step": "images under hidden names load",
       "loading": {
-        "images/shown.png": "lazy"
+        ".assets/logo.png": "lazy",
+        "images/.cache/thumb.png": "lazy"
       }
     },
     {
@@ -107,42 +137,6 @@ $ node tests/dom/markdown-image-reentry-session.js
         "gallery/2.png": "lazy",
         "gallery/3.png": "eager",
         "extra/1.png": "eager"
-      }
-    },
-    {
-      "step": "the Markdown changes",
-      "loading": {
-        "images/shown.png": "eager",
-        "images/far.png": "eager",
-        "deep/x/y/pic.png": "eager",
-        "deep/z.png": "eager"
-      }
-    },
-    {
-      "step": "images/shown.png is replaced",
-      "loading": {
-        "images/shown.png": "lazy",
-        "images/far.png": "eager",
-        "deep/x/y/pic.png": "eager",
-        "deep/z.png": "eager"
-      }
-    },
-    {
-      "step": "a change somewhere under deep/x",
-      "loading": {
-        "images/shown.png": "lazy",
-        "images/far.png": "eager",
-        "deep/x/y/pic.png": "lazy",
-        "deep/z.png": "eager"
-      }
-    },
-    {
-      "step": "a reconnect",
-      "loading": {
-        "images/shown.png": "lazy",
-        "images/far.png": "lazy",
-        "deep/x/y/pic.png": "lazy",
-        "deep/z.png": "lazy"
       }
     }
   ]
