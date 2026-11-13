@@ -25,14 +25,31 @@ from metabrowser import kpress_adapter
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
-# The parts the session runs in, each in a browser of its own (--part in the session).
-PARTS = ("header-wide", "header-middle", "header-narrow", "pulls", "badges")
-# Whole, the session took about 18 s on a Mac and ran past 45 s on a CI runner. In parts,
-# on a Mac at a load average of 10 to 12, each header part took 9.8 to 10.0 s, the Pulls
-# rows 6.1 s, and the run badge 6.1 s: with 4 checks, the badge part is mostly Chrome's
-# launch and the page's load. 40 s gives a runner four times this machine's time for the
-# largest part, and fires before the suite's 60.
+# The parts the session runs in, each in a browser of its own (--part in the session),
+# `launch` first: it takes the first Chrome start of the job. On a CI runner the first
+# part took 10 to 20 s where the same part took 10 s elsewhere, and once ran to its 40 s
+# bound (header-wide, run 43496743423). The launcher read Chrome's DevTools port before
+# Chrome answered on it, and the throw left Chrome running, which held the session open
+# until the bound; it reproduced here once under load, as "fetch failed" and a session
+# that did not end. tests/dom/chrome-session.mjs now waits for the answer and stops
+# Chrome on a failed start.
+PARTS = (
+    "launch",
+    "header-wide",
+    "header-middle",
+    "header-narrow",
+    "offers",
+    "pulls",
+    "badges",
+)
+# On a Mac at a load average of 10 to 16, each header part took 5.0 to 6.7 s, the Pulls
+# rows 1.4 to 2.6 s, the offers and the run badge 1.4 to 1.7 s, and the launch 1.3 to
+# 1.4 s, once Chrome's exit stopped holding each process open 5 s more. A CI runner took
+# about as long as this machine once its first Chrome had started. 40 s leaves the
+# largest part six times that, and fires before the suite's 60.
 SESSION_TIMEOUT_S = 40
+# The first start's own bound, as long as the suite's gates allow an inner one.
+LAUNCH_TIMEOUT_S = 48
 
 
 def _kpress_faces(into: Path) -> Path:
@@ -49,18 +66,25 @@ def _kpress_faces(into: Path) -> Path:
 @pytest.mark.parametrize("part", PARTS)
 def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path, part: str) -> None:
     chrome = require_chrome()
-    result = subprocess.run(
-        [require_node(), str(SESSION), "--part", part],
-        capture_output=True,
-        text=True,
-        timeout=SESSION_TIMEOUT_S,
-        check=False,
-        env={
-            **os.environ,
-            "CHROME_BIN": chrome,
-            "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
-        },
-    )
+    bound = LAUNCH_TIMEOUT_S if part == "launch" else SESSION_TIMEOUT_S
+    try:
+        result = subprocess.run(
+            [require_node(), str(SESSION), "--part", part],
+            capture_output=True,
+            text=True,
+            timeout=bound,
+            check=False,
+            env={
+                **os.environ,
+                "CHROME_BIN": chrome,
+                "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
+            },
+        )
+    except subprocess.TimeoutExpired as expired:
+        # The steps it finished, each with its time, say where the bound went.
+        pytest.fail(f"{part} ran past {bound} s; its steps:\n{expired.stderr or ''}")
+    # Each step's time, shown with the case's output when it fails.
+    print(result.stderr)
     assert result.returncode == 0, result.stderr or result.stdout
     passed = re.fullmatch(rf"pull header in Chrome, {part}: (\d+) checks passed\n", result.stdout)
     assert passed is not None and int(passed.group(1)) > 0, result.stdout

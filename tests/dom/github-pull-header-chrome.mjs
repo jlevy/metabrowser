@@ -5,10 +5,13 @@
 //     node tests/dom/github-pull-header-chrome.mjs [--part NAME]
 //
 // The session runs in parts, each its own browser and its own pytest case with its own
-// bound, since all of it ran past one test's 45 s on a CI runner: the header at its widest
+// bound, since all of it ran past one test's 45 s on a CI runner. `launch` starts Chrome,
+// loads the page, and loads every face it declares, and nothing else, so the first Chrome
+// start of a CI job, the slowest there, has a case of its own. Then the header at its widest
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
-// `header-narrow`), the Pulls rows (`pulls`), and the run badge (`badges`). With no part
-// it runs every one.
+// `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
+// and the run badge (`badges`). With no part it runs every one. Each part writes how long
+// each of its steps took to stderr.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
 // tests/test_github_pull_header_chrome.py copies out of the installed package, so the
@@ -510,6 +513,12 @@ const RUN_BADGE = `async (live, width) => {
   );
   return { from: labelBefore, to: badge.textContent, width: Math.round(badge.getBoundingClientRect().width * 10) / 10, moved };
 }`;
+// The records whose status row draws an offer: to switch to the head, and to browse it.
+const OFFER_RECORDS = [
+  ["behind_head", {}],
+  ["current", { pinBehind: true }],
+  ["on_head", { checkoutAtHead: true }],
+];
 const TABS = ["", "files", "checks"];
 const WIDTHS = [980, 760, 560, 420, 360, 320];
 // Each part's header widths; together they are WIDTHS. The offers are counted in the part
@@ -519,7 +528,7 @@ const HEADER_PARTS = {
   "header-middle": [560, 420],
   "header-narrow": [360, 320],
 };
-const PARTS = [...Object.keys(HEADER_PARTS), "pulls", "badges"];
+const PARTS = ["launch", ...Object.keys(HEADER_PARTS), "offers", "pulls", "badges"];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
   const name = at < 0 ? "all" : process.argv[at + 1];
@@ -529,6 +538,16 @@ const PART = (() => {
   return name;
 })();
 const runs = (part) => PART === "all" || PART === part;
+// How long each step of the part took, on stderr, so a CI log shows where its time went.
+const began = performance.now();
+let lapAt = began;
+const lap = (step) => {
+  const now = performance.now();
+  process.stderr.write(
+    `${PART}: ${step} in ${Math.round(now - lapAt)} ms (${Math.round(now - began)} ms in all)\n`,
+  );
+  lapAt = now;
+};
 
 async function main() {
   const bin = process.env.CHROME_BIN;
@@ -541,12 +560,28 @@ async function main() {
   const server = await serve();
   try {
     const browser = await launchChrome(bin);
+    lap("Chrome started");
     try {
       await browser.send("Page.enable");
       await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/` });
       await browser.waitFor(
         `document.readyState === "complete" && Boolean(window.metabrowser?.refChip)`,
       );
+      lap("the page loaded");
+      if (runs("launch")) {
+        // Every face the page declares, loaded before any part lays text out in it.
+        const faces = await browser.evaluate(`(async () => {
+          await Promise.all([...document.fonts].map((face) => face.load().catch(() => null)));
+          await document.fonts.ready;
+          return [...document.fonts].map((face) => face.status);
+        })()`);
+        check(
+          "the page, its SDK, and every face it declares load",
+          faces.length > 0 && faces.every((status) => status === "loaded" || status === "error"),
+          JSON.stringify(faces),
+        );
+        lap(`${faces.length} faces loaded`);
+      }
       const offersDrawn = new Set();
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
@@ -606,6 +641,7 @@ async function main() {
             );
           }
         }
+        lap(`the header at ${width} px`);
         const reference = seen["absent conversation"];
         for (const [key, shape] of Object.entries(seen)) {
           check(
@@ -626,6 +662,9 @@ async function main() {
             JSON.stringify(run),
           );
         }
+      }
+      if (runs("badges")) {
+        lap("the run badge");
       }
       for (const width of runs("pulls") ? PULLS_WIDTHS : []) {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
@@ -652,8 +691,21 @@ async function main() {
             JSON.stringify(row),
           );
         }
+        lap(`the Pulls rows at ${width} px`);
       }
-      if (widths.includes(980)) {
+      // The records that carry an offer, mounted for the offers alone; in the header parts
+      // they are measured with every other record.
+      if (runs("offers")) {
+        for (const [name, change] of OFFER_RECORDS) {
+          const shape = await browser.evaluate(
+            `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(change)}, "", 980)`,
+          );
+          if (shape.offers > 0) {
+            offersDrawn.add(
+              `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`,
+            );
+          }
+        }
         check(
           "both offers are drawn by the records that carry them",
           offersDrawn.has("behind_head") &&
@@ -661,10 +713,12 @@ async function main() {
             offersDrawn.has("on_head checkoutAtHead"),
           JSON.stringify([...offersDrawn]),
         );
+        lap("the offers");
       }
     } finally {
       await browser.close();
     }
+    lap("Chrome closed");
   } finally {
     server.close();
   }
