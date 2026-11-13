@@ -499,6 +499,20 @@ A held request returns `200` with `refresh: "not_due"`. Unknown fields or invali
 return `invalid_request` (400); no GitHub repository returns `not_github` (409). See
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
+`POST github/cache-clear` takes an empty JSON object and discards everything the plugin
+caches for the served repository: the catalog, records, changed-file lists, timelines,
+previews, the stack snapshot, and every refresh outcome, each fetched again when next
+wanted. The source and its Git store stay.
+It answers `200` with `cleared`, the number of files removed, and `source`; a cache that
+refuses answers `cache_unwritable` (409) with why, and no GitHub repository `not_github`
+(409). It holds the source’s alias lock, which every writer of those files takes.
+The `cache_unwritable` message of the pull-request list, a record, a changed-file list,
+the lightweight previews, or stack metadata, and the list’s `newer_cache` and
+`unknown_cache`, name this route as the command to paste:
+`echo '{}' | metab <address> --api /api/plugin/github/cache-clear --data -`, with
+`metab .` in a checkout instead, where the address would clone a repository that has no
+store.
+
 `POST github/pull-cores-prepare` takes `state`, `window` with its `id` and catalog
 `generation`, and at most eight `numbers` per transport batch.
 A started or joined preparation returns `202` with a cache-only `status_route`. Other
@@ -691,6 +705,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
 | `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
 | `/api/plugin/github/pulls-prefetch` | covered | `--api` | `cli-github-pulls-prefetch.txt` |
+| `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |

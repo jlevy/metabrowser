@@ -4,6 +4,25 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls tab no longer stays stuck on “The metadata catalog could not be written”
+  after a different Metabrowser build used the same cache.
+  A list of pull requests this build cannot use, because it is damaged or from another
+  schema, is rebuilt at the next refresh, and the server log says why.
+  A list a newer Metabrowser wrote is left as it is for that build, and the refresh ends
+  with the new outcome `newer_cache`, without asking GitHub for anything, and says to
+  upgrade. A list whose versions cannot be read, such as a write-ahead-log database, is
+  left as it is too, and the refresh ends with the new outcome `unknown_cache`. A cache
+  that refuses a write still ends `cache_unwritable`, but the message of the list, a
+  pull request’s record, its changed files, the previews, and stack metadata now says
+  why and names the repository and the command that clears its GitHub cache.
+  That command is the new `POST /api/plugin/github/cache-clear`:
+  `echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -`,
+  or `metab .` in a checkout.
+  `--data -` reads a request body from standard input, and `--data` reads at most the
+  largest body a route accepts, 96 MiB and 64 KiB by default, refusing a longer one.
+  An unexpected error in a refresh of the list is reported as one, which the server log
+  names, instead of as `cache_unwritable`.
+
 - A folder’s File Overview is shorter.
   Under the Files, Ignored, and Total bars it shows a legend of the five largest file
   types, each a dot in its color with its name and share, plus **Other** for the rest,
