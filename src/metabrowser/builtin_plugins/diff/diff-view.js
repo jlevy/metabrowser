@@ -861,7 +861,7 @@ function scheduleFileEnhancement(view, state) {
 function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   let expanded = state.expandedFolds.has(key);
   const hidden = hiddenRows.length;
-  const control = el("button", "fold-expander diff-fold-control");
+  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", String(expanded));
   control.setAttribute("aria-controls", group.getAttribute("id") || "");
@@ -1021,7 +1021,7 @@ function renderViewFileControl(action, view, notice) {
 function renderFileBar(change, toggleId, bodyId, view) {
   const api = view.api;
   const { letter, label, notes } = fileChangeLabel(change);
-  const bar = el("div", "diff-file-bar");
+  const bar = el("div", "diff-file-bar disclosure-toggle");
   const toggle = el("button", "diff-file-toggle expanded");
   toggle.setAttribute("type", "button");
   toggle.setAttribute("id", toggleId);

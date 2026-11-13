@@ -109,7 +109,11 @@
            primary purpose is click/drag/toggle navigation: tree rows,
            tab buttons, resize handles, disclosure summaries, and graph
            nodes. Never put `user-select: none` on a container just
-           because its children are mostly interactive.
+           because its children are mostly interactive. Every control
+           that shows or hides content carries `.disclosure-toggle`
+           (below), so no toggle selects text. Declare
+           `-webkit-user-select` beside every `user-select`: WebKit, the
+           macOS app's engine, reads only the prefixed property.
 
        Progress spinners
            Every spinner that communicates loading or progress uses the
@@ -1499,6 +1503,20 @@ body {
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
 }
+/* ── Disclosure toggles — a toggle never selects text ────────────
+   Every control that shows or hides content carries .disclosure-toggle: a tree row
+   that owns a child group, a section or fold trigger, a diff file bar, an expandable
+   log or data row, a menu trigger with a chevron. A native summary is one by
+   definition, including one a document wrote. Clicking one, even twice or three times
+   in a row, selects neither its label nor the text beside it, in Chrome and in WebKit,
+   the macOS app's engine, which reads only the prefixed property (docs/design-system.md,
+   "Disclosure Toggles Never Select Text"). What a toggle reveals is its sibling, never
+   its child, so that content stays selectable. */
+.disclosure-toggle,
+summary {
+  -webkit-user-select: var(--toggle-user-select);
+  user-select: var(--toggle-user-select);
+}
 /* ── Section heading — the title of a section in a stack ─────────
    The tab bar's uppercase, bold, tracked grammar at the body size, over a neutral rule.
    A use site owns the space around it; the type and the rule are here. */
@@ -2382,6 +2400,7 @@ html.theme-anim .menu {
 }
 .resizing {
   cursor: col-resize;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -2513,6 +2532,7 @@ html[data-prose-font="sans"] {
 .tree-item.tree-page-more {
   padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
@@ -2538,6 +2558,7 @@ html[data-prose-font="sans"] {
   padding: 2px 12px 2px calc(10px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   border-left: 2px solid transparent;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   gap: 6px;
   font-size: var(--nav-font-size);
@@ -2864,6 +2885,7 @@ html[data-prose-font="sans"] {
   letter-spacing: var(--label-letter-spacing);
   color: var(--muted);
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   border-bottom: var(--tab-active-border-width) solid transparent;
   margin-bottom: -1px;
@@ -2941,6 +2963,7 @@ a.tab-btn {
   border-radius: var(--radius-pill);
   padding: var(--chip-padding-y) 9px;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   white-space: nowrap;
   transition:
@@ -3137,6 +3160,7 @@ a.tab-btn {
   font-size: var(--ui-small-font-size);
   color: var(--muted);
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   white-space: nowrap;
 }
@@ -4295,6 +4319,7 @@ pre.code-block.metabrowser-source-lines > code {
   text-align: right;
   white-space: pre;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 .source-line-numbers:hover {
@@ -4551,7 +4576,6 @@ pre.code-block.metabrowser-source-lines > code {
   /* Matches .data-table th — see the note there. */
   color: var(--label-color);
   cursor: pointer;
-  user-select: var(--toggle-user-select);
   border-bottom: var(--panel-border);
   transition: background var(--transition-fast);
   list-style: none;
@@ -4804,6 +4828,7 @@ pre.code-block.metabrowser-source-lines > code {
   padding: 5px 12px 5px 10px;
   border-left: 2px solid transparent;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
 }
 .search-palette-option-pull {
@@ -4884,6 +4909,7 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 4px;
   padding-top: 0;
   text-align: right;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
 }
 .search-palette-hint-group {
@@ -5226,6 +5252,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .tally-node {
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
 }
 .tally-node:hover {
@@ -5621,6 +5648,7 @@ pre.code-block.metabrowser-source-lines > code {
   padding-right: 12px;
   border-left: 2px solid transparent;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   font-size: var(--nav-font-size);
 }

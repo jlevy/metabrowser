@@ -2962,7 +2962,7 @@ export function mountPullsPanel(container, ctx, mb) {
       h(
         "a",
         {
-          class: "github-pulls-row collapsed",
+          class: "github-pulls-row disclosure-toggle collapsed",
           href: row.href,
           role: "treeitem",
           "aria-level": "1",

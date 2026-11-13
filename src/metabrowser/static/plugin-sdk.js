@@ -85,6 +85,10 @@
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
+//     class="disclosure-toggle"           — on any control that shows or hides
+//                                          content: the host stylesheet keeps it from
+//                                          selecting text, even on a double or triple
+//                                          click
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — contribute a synchronous named span

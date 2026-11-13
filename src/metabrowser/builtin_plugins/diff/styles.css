@@ -275,6 +275,7 @@
 }
 
 .metabrowser-diff-host .diff-split-empty {
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -282,6 +283,7 @@
   padding-right: 8px;
   text-align: right;
   color: var(--muted);
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -291,6 +293,7 @@
 }
 
 .metabrowser-diff-host .diff-line-marker {
+  -webkit-user-select: none;
   user-select: none;
   text-align: center;
 }
@@ -302,6 +305,7 @@
 
 .metabrowser-diff-host .diff-root[data-selection-side="old"] .diff-split-new .diff-line-text,
 .metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text {
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -351,6 +355,7 @@
 .metabrowser-diff-host .diff-line-no-newline {
   color: var(--muted);
   padding-left: 8px;
+  -webkit-user-select: none;
   user-select: none;
 }
 

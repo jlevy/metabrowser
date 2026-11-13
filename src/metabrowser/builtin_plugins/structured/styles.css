@@ -77,7 +77,6 @@
 
 .srow-container {
   cursor: pointer;
-  user-select: var(--toggle-user-select);
 }
 
 .srow-container:hover {

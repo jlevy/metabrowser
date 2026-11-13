@@ -254,6 +254,7 @@ export function appendBlocks(fragment, blocks, build) {
     const details = document.createElement("details");
     details.className = "diff-markdown-context";
     const summary = document.createElement("summary");
+    summary.className = "disclosure-toggle";
     summary.textContent = `${hidden.length} unchanged blocks`;
     details.append(summary);
     let mounted = false;
