@@ -7,6 +7,9 @@
 # Every size is rendered from the vector master by AppIcon/render-svg.swift. The script needs
 # only the Swift toolchain and macOS frameworks.
 #
+# It also writes Sources/ShellCore/App/AppIconMarkGeometry.swift, the mark alone, which the
+# title bar draws.
+#
 # Usage: scripts/build-icon.sh [--check | --review] [--sister SISTER.svg]
 #   --check           only check that the renderer refuses every file in AppIcon/rejects/
 #   --review          also write review images to AppIcon/review/ (ignored by git)
@@ -65,6 +68,17 @@ swiftc -O AppIcon/make-glyphs.swift -o "$work/make-glyphs"
 for params in AppIcon/metabrowser-icon*.json; do
   "$work/make-glyphs" "$params" "${params%.json}.svg"
 done
+
+# The title bar draws the mark alone, from the release master's glyph group. It has one
+# mark for both variants, so the development master must draw the same one.
+mark=Sources/ShellCore/App/AppIconMarkGeometry.swift
+"$work/make-glyphs" AppIcon/metabrowser-icon.json "$work/release.svg" --swift "$mark" >/dev/null
+"$work/make-glyphs" AppIcon/metabrowser-icon-dev.json "$work/dev.svg" --swift "$work/mark-dev.swift" >/dev/null
+if ! diff <(sed 1d "$mark") <(sed 1d "$work/mark-dev.swift") >/dev/null; then
+  echo "the development and release masters draw different marks; the title bar draws one" >&2
+  exit 1
+fi
+echo "wrote $mark"
 
 # Renders a master at the sizes an .iconset needs, once per distinct pixel size.
 icns() {

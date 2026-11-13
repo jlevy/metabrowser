@@ -39,14 +39,17 @@ final class TitleBarTitleView: NSView {
     /// 14-point circles, 9 points apart, from 9 to 23 points below its top, and the
     /// accessory's leading edge at x 78, a button gap after the zoom button.
     ///
-    /// The logo, at the accessory's leading edge and centered in its height, is 16
-    /// points (`TitleBarLogoView.size`), and its squircle fills the middle 14, a window
-    /// button's size. So the squircle sits in the buttons' row: x 79 to 93, 10 points
-    /// after the zoom button, and 9 to 23 points below the title bar's top, as they are.
-    private static let logoSize = TitleBarLogoView.size
+    /// The logo, the icon's mark (`TitleBarLogoView`), stands on the title's baseline, 21
+    /// points below the title bar's top, a tenth taller than the title font's capitals,
+    /// rounded to a Retina pixel: 10 points beside the 13-point title-bar font's 9.16. So
+    /// it spans 11 to 21 points down, centered on the buttons' row, and from the
+    /// accessory's leading edge, a button gap after the zoom button, it is 14.47 points
+    /// wide, to x 92.47.
+    private static let markHeight = (primaryFont.capHeight * 1.1 * 2).rounded() / 2
+    private static let markWidth = markHeight * TitleBarLogoView.aspectRatio
     /// Where AppKit draws a plain window's title text beside its proxy icon, from the
-    /// accessory's leading edge: x 100, so the text's first glyph falls about 9 points,
-    /// a button gap, after the logo's squircle.
+    /// accessory's leading edge: x 100, so the text's first glyph, at x 102, falls 9.5
+    /// points, about a button gap, after the mark.
     private static let textInset: CGFloat = 22
     /// Space kept between the end of the title and the window's trailing edge.
     private static let windowMargin: CGFloat = 12
@@ -96,16 +99,15 @@ final class TitleBarTitleView: NSView {
         super.layout()
         let height = ceil(measure(title?.segments ?? []).height)
         let y = ((bounds.height - height) / 2).rounded()
-        let logoY = ((bounds.height - Self.logoSize) / 2).rounded()
         var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
-        var icon = NSRect(x: 0, y: logoY, width: Self.logoSize, height: Self.logoSize)
-        if isRightToLeft {
-            text.origin.x = bounds.width - text.maxX
-            icon.origin.x = bounds.width - icon.maxX
-        }
+        if isRightToLeft { text.origin.x = bounds.width - text.maxX }
         label.frame = text
-        logo.frame = icon
         render()
+        // On the title's baseline, which the label places once it holds the title.
+        let baseline = text.maxY - label.firstBaselineOffsetFromTop
+        var mark = NSRect(x: 0, y: baseline, width: Self.markWidth, height: Self.markHeight)
+        if isRightToLeft { mark.origin.x = bounds.width - mark.maxX }
+        logo.frame = mark
     }
 
     /// As wide as the whole title, but never past the window's trailing margin, so a
@@ -114,7 +116,7 @@ final class TitleBarTitleView: NSView {
         guard let window, let title else { return }
         let ideal = Self.textInset + measure(title.segments).width
         let available = window.frame.width - leadingDistance(in: window) - Self.windowMargin
-        let width = ceil(max(Self.textInset + Self.logoSize, min(ideal, available)))
+        let width = ceil(max(Self.textInset + Self.markWidth, min(ideal, available)))
         if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
     }
 
@@ -253,47 +255,21 @@ final class TitleBarTitleView: NSView {
     }
 }
 
-/// The app's logo at the start of the title: the bundle's own icon, the one the Dock
-/// shows, so a development build shows the canary icon and a release the published one.
-/// The icon brings its own background, the squircle with its rim and panel.
+/// The app's logo at the start of the title: the icon's mark alone, the citrine partial M
+/// and the amethyst B without the squircle, rim, and panel they sit on in the app icon
+/// (`AppIconMark`). It is drawn from the icon masters' own outlines at whatever size and
+/// scale the screen needs, so it is as crisp at 1x as on a Retina screen. Both variants'
+/// icons draw the same mark, so a development build shows the same logo as a release.
 ///
 /// In a local folder's window it also stands in for the proxy icon AppKit drops beside
 /// a leading accessory; elsewhere, as in a cached mirror's window, it is only a logo.
 final class TitleBarLogoView: NSImageView, NSDraggingSource {
-    /// The icon's smallest size, whose own 16- and 32-pixel images a 1x and a Retina
-    /// screen draw unscaled. Its squircle fills the middle 14 points (14 of 16 pixels,
-    /// and 28 of 32, measured), and the transparent point around it holds the shadow.
-    static let size: CGFloat = 16
-    private static let squircleSize: CGFloat = 14
-    /// A rounded rectangle's corner radius that follows the squircle's corners at that
-    /// size. The rim's corner is 94 of its 434 units at 60% smoothing
-    /// (`AppIcon/README.md`), 3 points unsmoothed; the smoothing carries the curve
-    /// further, and of 3, 3.5, and 4 points, 4 followed the corners most closely,
-    /// leaving no gap there (compared at 8 times on macOS 26.5).
-    private static let squircleRadius: CGFloat = 4
-    /// A very slight drop shadow, close by eye and by pixel to the one macOS 26.5 draws
-    /// under the same icon at this size (`NSImage.applicationIconName`): it darkens the
-    /// light title bar beside the squircle by at most a few percent, and a little more
-    /// below it.
-    private static let shadowOffset = NSSize(width: 0, height: -0.5)
-    private static let shadowBlurRadius: CGFloat = 1
-    private static let shadowAlpha: CGFloat = 0.3
-    /// In dark mode the icon's near-black panel and dark rim almost match the title bar:
-    /// the release icon's rim measured 1.2:1 against it on macOS 26.5, where the panel
-    /// measured 16:1 against the light one. So in dark mode a hairline just outside the
-    /// squircle draws its edge, as macOS 26 lights icons' edges in dark mode, and the
-    /// shadow, which would not show, is left off.
-    private static let darkEdgeWidth: CGFloat = 0.5
-
-    /// The icon file `CFBundleIconFile` names, with every size the icon has: drawn from
-    /// its bitmaps at once. `NSApp.applicationIconImage` is a single 256-pixel snapshot,
-    /// and `NSImage(named: NSImage.applicationIconName)`, which IconServices renders,
-    /// first drew as an empty placeholder (both measured on macOS 26.5). Outside a bundle,
-    /// as in `swift run`, the application icon stands in.
-    private static let icon: NSImage? = {
-        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String
-        return name.flatMap { Bundle.main.image(forResource: $0) } ?? NSApp.applicationIconImage
-    }()
+    /// The mark's width for its height: its ink is 241.654 by 166.977 master units.
+    static let aspectRatio = AppIconMark.ink.width / AppIconMark.ink.height
+    /// The folder icon a drag shows, the proxy icon's size.
+    private static let dragImageSize: CGFloat = 16
+    /// The mark's outlines, in the master's units, in drawing order.
+    private static let paths = AppIconMark.glyphs.compactMap { AppIconMark.path($0.path) }
 
     var onPathMenu: (() -> Void)?
     /// The folder the logo stands for, or nil.
@@ -306,11 +282,11 @@ final class TitleBarLogoView: NSImageView, NSDraggingSource {
         isEditable = false
         unregisterDraggedTypes()
         // The view, not its image cell, is the accessibility element, so what it says
-        // and does is set here, never read from whichever image it draws: the cell named
-        // itself "AppIcon" in light mode and nothing in dark (measured on macOS 26.5).
+        // and does is set here, never read from the image it draws: the cell named itself
+        // after its image, "AppIcon" for the icon file and nothing for a drawn image
+        // (measured on macOS 26.5).
         cell?.setAccessibilityElement(false)
         setAccessibilityRole(.image)
-        updateImage()
     }
 
     @available(*, unavailable)
@@ -344,36 +320,37 @@ final class TitleBarLogoView: NSImageView, NSDraggingSource {
         updateImage()
     }
 
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { updateImage() }
+    }
+
+    /// The mark, filling the view, in the title bar's fills for the view's appearance
+    /// (`AppIconMark.titleBarFills`): the icon's own on a dark title bar, and deeper
+    /// tints of the same hues on a light one. It needs no shadow or edge on either.
     private func updateImage() {
-        guard let icon = Self.icon else { return }
-        guard effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua else {
-            let shadow = NSShadow()
-            shadow.shadowOffset = Self.shadowOffset
-            shadow.shadowBlurRadius = Self.shadowBlurRadius
-            shadow.shadowColor = NSColor.black.withAlphaComponent(Self.shadowAlpha)
-            self.shadow = shadow
-            image = icon
+        let size = bounds.size
+        guard size.width > 0, size.height > 0 else {
+            image = nil
             return
         }
-        shadow = nil
-        // The tertiary label color, white at a quarter, resolved in the plain dark
-        // appearance: the title bar's own is the vibrant one, whose label colors are
-        // opaque grays meant for a visual effect view to blend (its tertiary measured
-        // gray 0.25), and this image is drawn without vibrancy.
-        var edge = NSColor.tertiaryLabelColor
-        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
-            edge = NSColor(cgColor: NSColor.tertiaryLabelColor.cgColor) ?? edge
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let colors = AppIconMark.titleBarFills(dark: dark).compactMap(AppIconMark.rgb).map {
+            CGColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: 1)
         }
-        let side = Self.squircleSize, radius = Self.squircleRadius, width = Self.darkEdgeWidth
-        image = NSImage(size: NSSize(width: Self.size, height: Self.size), flipped: false) { rect in
-            icon.draw(in: rect)
-            let squircle = rect.insetBy(dx: (rect.width - side) / 2, dy: (rect.height - side) / 2)
-            let hairline = NSBezierPath(
-                roundedRect: squircle.insetBy(dx: -width / 2, dy: -width / 2),
-                xRadius: radius + width / 2, yRadius: radius + width / 2)
-            hairline.lineWidth = width
-            edge.setStroke()
-            hairline.stroke()
+        let paths = Self.paths, ink = AppIconMark.ink
+        // Flipped, as the master's y runs down.
+        image = NSImage(size: size, flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let scale = min(rect.width / ink.width, rect.height / ink.height)
+            context.scaleBy(x: scale, y: scale)
+            context.translateBy(x: -ink.minX, y: -ink.minY)
+            for (path, color) in zip(paths, colors) {
+                context.addPath(path)
+                context.setFillColor(color)
+                context.fillPath()
+            }
             return true
         }
     }
@@ -398,8 +375,10 @@ final class TitleBarLogoView: NSImageView, NSDraggingSource {
         guard dx * dx + dy * dy >= 9 else { return }
         pressed = nil
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        // The folder's own icon, since the folder is what is dragged.
-        item.setDraggingFrame(bounds, contents: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
+        // The folder's own icon, since the folder is what is dragged, centered on the mark.
+        let side = Self.dragImageSize
+        let frame = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+        item.setDraggingFrame(frame, contents: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
         beginDraggingSession(with: [item], event: start, source: self)
     }
 

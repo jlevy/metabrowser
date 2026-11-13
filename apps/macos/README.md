@@ -916,8 +916,9 @@ Terminal launch.
   A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
   and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
   The page’s `<title>` is not used.
-- **Logo:** the title starts with the app’s icon, the one the Dock shows, in the row of
-  window buttons, in every folder window, whether it shows a page or the status view.
+- **Logo:** the title starts with the app icon’s mark alone, the colored M and B without
+  the icon’s dark squircle, in the row of window buttons, in every folder window,
+  whether it shows a page or the status view.
   In a local folder’s window it stands in for the proxy icon: drag it to use the folder
   elsewhere, and Command-click or right-click it for the path menu.
   [Why the Title Is a Title-Bar Accessory](#why-the-title-is-a-title-bar-accessory) has
@@ -1127,21 +1128,29 @@ AppKit draws a system title in one font and one color, so the window hides it
 - **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
   76 points tall, centers the title where macOS 26 no longer puts it, and, with the
   title hidden, AppKit shows no proxy icon there either.
-- **The logo sits in the window buttons’ row.** The buttons are 14-point circles 9
-  points apart, from x 9 to 69 and 9 to 23 points below the top.
-  The logo is the app icon at 16 points, from x 78, and its squircle fills the middle
-  14: x 79 to 93 and 9 to 23 points down, the buttons’ size and row.
-  The text’s first glyph, at x 102, falls 9 points after it.
-- **The logo is the bundle’s icon file.** It is the icon `CFBundleIconFile` names, the
-  one the Dock shows, so a development build shows the canary icon.
-  At 16 points it draws the icon’s own 16- and 32-pixel images unscaled.
-  `NSApp.applicationIconImage` is a single 256-pixel snapshot, and the named application
-  icon, which IconServices renders, drew an empty placeholder the first time.
-  In light mode the near-black panel stands at 16:1 against the title bar, and a slight
-  drop shadow, close to the one macOS draws under the icon at that size, lifts it.
-  In dark mode the panel and the release icon’s rim nearly match the title bar (1.2:1),
-  so a half-point hairline in the tertiary label color, white at a quarter, traces the
-  squircle (2.3:1) instead.
+- **The logo sits in the window buttons’ row, on the title’s baseline.** The buttons are
+  14-point circles 9 points apart, from x 9 to 69 and 9 to 23 points below the top.
+  The logo is 10 points tall, the 13-point title font’s 9.16-point capitals and a tenth,
+  rounded to a Retina pixel, and stands on the title’s baseline, so it spans 11 to 21
+  points down, centered on the buttons.
+  It runs from x 78, a button gap after the zoom button, to x 92.47, and the text’s
+  first glyph, at x 102, falls 9.5 points after it.
+- **The logo is the icon’s own mark.** It draws the partial M and the B from the
+  outlines and fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift`
+  copies into `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh`
+  regenerates the icons; a test checks the copy against both masters.
+  They are paths, not a bitmap, so the mark is crisp at any scale.
+  Both variants’ icons draw the same mark, which the script checks, so a development
+  build shows the same logo as a release.
+  The icon’s pressed-in letter shadow belongs to its panel, so the mark alone has none,
+  and it needs no drop shadow or edge on either title bar.
+- **Its colors read on both title bars.** On the dark title bar the icon’s own fills
+  measure 10.0:1 (the citrine M, #ECC44B) and 7.4:1 (the amethyst B, #C896FF) in WCAG
+  contrast. On the light one they measure 1.7:1 and 2.3:1, under the 3:1 that graphics
+  need, so the light title bar alone draws deeper tints of the same hues: each OKLCH
+  lightness lowered at the same share of the chroma sRGB holds, to the first
+  half-percent step that reaches 3:1. That is #B09135 for the M (3.02:1) and #BA73FF for
+  the B (3.01:1) (`AppIconMark.titleBarFills`).
 - **The logo stands in for the proxy icon.** AppKit drops the proxy icon when a leading
   accessory is present, so in a local folder’s window the logo takes its part, from
   `representedURL`. Dragging it copies or aliases the folder, never moves it, since a
@@ -1153,8 +1162,8 @@ AppKit draws a system title in one font and one color, so the window hides it
   with the folder’s short name, as “Folder: fdu”, whose help gives the path, the drag,
   and the path menu, and VoiceOver’s Show Menu opens the path menu.
   A logo that stands for nothing is left out as decoration, since the title beside it
-  says Metabrowser. The view sets these itself: the image cell it replaces as the element
-  named itself “AppIcon” in light mode and nothing in dark.
+  says Metabrowser. The view sets these itself, rather than leave them to the image cell,
+  which names itself after its image.
 - **It behaves like a system title.** It dims when its window is not the main window of
   the active app (the tertiary label color, which an inactive system title measured
   close to), and AppKit dims the logo with it.
