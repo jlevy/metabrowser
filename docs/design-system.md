@@ -811,8 +811,10 @@ This is the documented exception to the hue rule in
 [Color and Theming](#color-and-theming).
 
 The lane a commit sits on colors its node, so a commit and the history below it read as
-one line. `HEAD`’s lane takes `--git-ref-local`, tying the graph to the chip that names
-the branch.
+one line. `HEAD`’s lane takes the branch blue, `--git-ref-remote`, the color most branch
+chips show. It does not take the local chip’s blue-green, though `HEAD` is usually on a
+local branch: that hue sits beside lane 4’s teal, and a lane has to stay apart from the
+five.
 
 ### Commit Nodes
 
@@ -933,10 +935,25 @@ history walk, so the answer cannot differ between the graph and the walk.
 Color still carries local, remote, and tag as a secondary signal.
 Their ground is `--git-ref-bg`, a near-neutral of its own rather than the shared chip
 surface, sitting at the value of the surfaces beside it with just enough chroma to
-separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remote`,
-`--git-ref-tag` — are one lightness and three hues, so a ref’s kind is legible without a
-second signal, and the dark theme raises only their lightness so they stay the same
-three colors.
+separate from them. The three ref colors are one lightness and three hues, so a ref’s
+kind is legible without a second signal, and the dark theme raises their lightness so
+they stay the same three colors:
+
+| Ref | Token | Color | Where |
+| --- | --- | --- | --- |
+| Remote branch | `--git-ref-remote` | Blue | A pull request’s base and head, the Pulls list, a mirror’s branches, the ref selector, and a checkout’s `origin/…` |
+| Local branch | `--git-ref-local` | Blue-green | A checkout’s own branches in its history |
+| Tag | `--git-ref-tag` | Amber | Tags everywhere |
+
+The branch most chips show is remote, so remote is the blue.
+The local blue-green is clear of that blue, of a merged pull request’s purple, and of
+the tag’s amber, and a remote branch’s name carries its remote (`origin/main`), so the
+two branch kinds never rest on hue alone.
+Each color reads at 4.5:1 or better on `--git-ref-bg` in both themes, and the figures
+are beside the tokens in `styles.css`.
+`test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple` in
+`tests/test_design_vocabulary.py` holds the contrast, the blue, and the distance from
+the merged purple.
 
 Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
 keyboard focus. The control copies the complete underlying branch or ref, regardless of
@@ -1155,7 +1172,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Element | Primitive | Why |
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
-| State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
+| State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |

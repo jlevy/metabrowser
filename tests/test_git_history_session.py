@@ -139,7 +139,7 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
             assert replayed_second_checkpoint == second_checkpoint
             assert second_checkpoint is not None
             assert second_checkpoint["prior_swimlanes"] == [
-                {"id": second["commits"][0]["id"], "color": "var(--git-ref-local)"}
+                {"id": second["commits"][0]["id"], "color": "var(--git-ref-remote)"}
             ]
         finally:
             await registry.close_all()
@@ -168,7 +168,7 @@ def test_merge_page_checkpoint_preserves_converging_lane_colors(tmp_path: Path) 
             assert checkpoint is not None
             boundary_revision = second["commits"][0]["id"]
             assert checkpoint["prior_swimlanes"] == [
-                {"id": boundary_revision, "color": "var(--git-ref-local)"},
+                {"id": boundary_revision, "color": "var(--git-ref-remote)"},
                 {"id": boundary_revision, "color": "var(--git-lane-2)"},
             ]
             assert checkpoint["color_index"] == 1
