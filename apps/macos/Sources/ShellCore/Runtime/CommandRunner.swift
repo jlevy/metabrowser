@@ -18,6 +18,16 @@ public nonisolated struct CommandResult: Equatable, Sendable {
     }
 
     public var succeeded: Bool { status.map { ExitStatus(waitStatus: $0) == .exited(0) } ?? false }
+
+    /// What the command printed, then how it ended, for showing as text: why it could
+    /// not start, that it was stopped at `timeout`, or its exit status.
+    public func transcript(timeout: Duration) -> [String] {
+        var lines = output
+        if let launchError { lines.append("could not run: \(launchError)") }
+        if timedOut { lines.append("(stopped after \(timeout.components.seconds) seconds)") }
+        if let status { lines.append("(\(ExitStatus(waitStatus: status)))") }
+        return lines
+    }
 }
 
 /// Runs short commands (`metab --version`, `metab --doctor`, a login shell) with a
@@ -30,6 +40,11 @@ public nonisolated enum CommandRunner {
 
     /// How long to wait for the exit after SIGKILL; see `SupervisorPolicy.killWait`.
     public static let killWait: Duration = .seconds(2)
+    /// How long output may keep arriving after the exit, from a background job that
+    /// holds the pipe open, before the rest of the group is killed.
+    static let outputSettle: Duration = .milliseconds(300)
+    /// The fewest output lines a command keeps: enough for all of `metab --doctor`.
+    static let minimumTailLines = 5_000
 
     public static func run(_ spec: LaunchSpec, timeout: Duration) async -> CommandResult {
         let child: SpawnedProcess
@@ -44,7 +59,7 @@ public nonisolated enum CommandRunner {
     static func oneShot(_ spec: LaunchSpec) -> LaunchSpec {
         var spec = spec
         spec.closesStdin = true
-        spec.tailLimit = max(spec.tailLimit, 5_000)
+        spec.tailLimit = max(spec.tailLimit, minimumTailLines)
         return spec
     }
 
@@ -61,7 +76,7 @@ public nonisolated enum CommandRunner {
         }
         // A background job the command started can hold the pipe open; take what has
         // arrived, then end the job with the rest of the group.
-        _ = await firstResult(within: .milliseconds(300), of: [{ @Sendable in await child.waitForOutputEnd() }])
+        _ = await firstResult(within: outputSettle, of: [{ @Sendable in await child.waitForOutputEnd() }])
         child.signalGroup(SIGKILL)  // the leader is not reaped yet, so the group is still its own
         child.release()
         return CommandResult(status: timedOut ? nil : status, output: child.recentOutput(), timedOut: timedOut)
