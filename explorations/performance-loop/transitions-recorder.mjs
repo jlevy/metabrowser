@@ -1007,6 +1007,7 @@ async function stopChrome(chrome, conn, profileDir) {
  * Network, exceptions, and console errors are collected from the page and from its
  * dedicated workers. `onSpawn` receives the Chrome process as soon as it exists, so a
  * caller's signal handler can kill it; a launch that fails after the spawn stops it here.
+ * `endpointTimeoutMs` bounds the wait for Chrome to publish its DevTools endpoint.
  */
 export async function launchBrowser({
   profileDir,
@@ -1015,6 +1016,7 @@ export async function launchBrowser({
   height = 900,
   extraArgs = [],
   onSpawn = null,
+  endpointTimeoutMs = 30000,
 }) {
   fs.rmSync(profileDir, { recursive: true, force: true });
   fs.mkdirSync(profileDir, { recursive: true });
@@ -1045,7 +1047,7 @@ export async function launchBrowser({
   try {
     let ws = null;
     const portFile = path.join(profileDir, "DevToolsActivePort");
-    const deadline = Date.now() + 30000;
+    const deadline = Date.now() + endpointTimeoutMs;
     while (!ws && Date.now() < deadline) {
       if (launchError !== null) {
         throw new Error(`Chrome could not start (${CHROME})`, { cause: launchError });
@@ -1064,7 +1066,9 @@ export async function launchBrowser({
       }
     }
     if (!ws) {
-      throw new Error("Chrome did not publish a DevTools endpoint within 30 s");
+      throw new Error(
+        `Chrome did not publish a DevTools endpoint within ${endpointTimeoutMs / 1000} s`,
+      );
     }
     conn = new Connection(ws);
     await conn.open();
