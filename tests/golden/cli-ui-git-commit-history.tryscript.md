@@ -44,10 +44,10 @@ The tab’s digit focuses the newest row instead of the older row the reader lef
 scrolling, so `↓` opens the next commit: at once when the row is mounted, or when the
 landing reveals it, unless the reader has moved focus by then; the same holds with
 Commits in front, and with a page on its way.
-A refresh that replaces the focused newest row gives focus to the new one, and focus the
-reader sends nowhere stays there.
-A landing that lost the pane or its address moves no focus, and a selection whose row a
-render replaced leaves the Tab stop on the live row.
+A refresh that replaces the focused newest row, or forgets that its focus parked on the
+scroller, gives focus to the new one, and focus the reader sends nowhere stays there.
+A landing that lost the pane or its address moves neither focus nor the Tab stop, and a
+selection whose row a render replaced leaves the Tab stop on the live row.
 
 ```console
 $ node tests/dom/git-commit-history-session.js

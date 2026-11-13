@@ -3276,6 +3276,42 @@ async function run() {
       assertTrue("digit, text click: focus stays nowhere", document.activeElement === null);
     }
 
+    // The reader scrolls the digit's row away while the landing reads HEAD, which moved
+    // again: focus parks on the scroller, and the refresh that replaces the rows forgets the
+    // parking, so no render hands focus back. The landing gives it to the new newest row.
+    {
+      filesRow.focus();
+      responses.set(
+        "/api/git/log",
+        historyPage(
+          0,
+          [commit(SHA_D, [SHA_C], "moved again"), commit(SHA_C, [], "before the move")],
+          2,
+          SHA_D,
+        ),
+      );
+      const releaseRepo = holdRepo(repoAt(SHA_D));
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "digit, parked refresh: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      // Where renderVirtualRows parks focus when the focused row leaves the window.
+      container.focus();
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "digit, parked refresh: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertTrue(
+        "digit, parked refresh: focus returns to the newest row",
+        document.activeElement === rowAt(0),
+      );
+    }
+
     // Not mounted: the reader left a commit far down a history deep enough to evict its first
     // page. The tab holds focus while the landing replays that page, and the reveal hands it
     // to the newest row; the row left never takes it, so the list stays at its top.
@@ -3488,8 +3524,9 @@ async function run() {
       assertTrue("in front: the newest row takes focus", document.activeElement === rowAt(0));
 
       // A landing that lost the pane steers nothing: a file takes it while the click's landing
-      // waits, and the digit with Commits in front hands focus to the row the reader left,
-      // as with no landing; the landing then selects nothing.
+      // waits, HEAD answers and the list renders, and the digit with Commits in front then
+      // hands focus to the row the reader left, as with no landing. That row is still the
+      // Tab stop, and the landing selects nothing.
       await internals.selectCommit(revisions[1]);
       await settle();
       filesRow.focus();
@@ -3498,8 +3535,6 @@ async function run() {
       panel.cancelPending();
       sandbox.MetabrowserShell.claimPreview("file");
       neutralLanding = false;
-      assertTrue("lost: a row takes focus", pressDigitWithCommitsShown());
-      assertTrue("lost: it is the row the reader left", document.activeElement === rowAt(1));
       releaseRepo();
       await lost;
       await settle();
@@ -3508,7 +3543,13 @@ async function run() {
         internals.stateForTests().selectedId,
         revisions[1],
       );
-      assertTrue("lost: focus stays on the row left", document.activeElement === rowAt(1));
+      assertEqual(
+        "lost: the row left is still the Tab stop",
+        rowAt(1)?.getAttribute("tabindex"),
+        "0",
+      );
+      assertTrue("lost: a row takes focus", pressDigitWithCommitsShown());
+      assertTrue("lost: it is the row the reader left", document.activeElement === rowAt(1));
 
       // Back during the digit's wait: the address is no longer the neutral entry, and the
       // landing neither selects nor moves focus when HEAD answers.

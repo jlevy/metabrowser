@@ -1387,10 +1387,11 @@
 
   /**
    * Whether focus is still where the Commits digit left it while its landing waited, so the
-   * landing may move it to the newest row: on the tab, or on the newest row. Focus parked
-   * on the scroller needs no rule: the render that mounts the newest row hands a parked
-   * row focus back (renderVirtualRows). Nowhere counts only when a refresh removed the row
-   * that held focus (refreshHistory); focus a reader sent nowhere, by clicking text, stays.
+   * landing may move it to the newest row: on the tab, on the newest row, or on the
+   * scroller, where the panel parks focus when the reader scrolls the focused row away. A
+   * refresh forgets that parking, so the render that mounts the new rows hands nothing
+   * back, and the landing must. Nowhere counts only when a refresh removed the row that
+   * held focus (refreshHistory); focus a reader sent nowhere, by clicking text, stays.
    * Anywhere else, the reader moved it, and it stays.
    *
    * @param {NewestLanding} waiting
@@ -1403,6 +1404,7 @@
     const list = panelElement()?.querySelector(".git-graph-list");
     return (
       (active.classList.contains("tab-btn") && active.dataset.tab === "git") ||
+      active === historyScroller() ||
       (list instanceof HTMLElement &&
         active === list.querySelector('.git-graph-row[data-ordinal="0"]'))
     );
@@ -3007,7 +3009,8 @@
       pendingPreviewClaim = claim;
     }
     newestLanding = { landing, claim, digitFocus: null, rowReplaced: false };
-    state.focusedOrdinal = 0;
+    // The selection moves the Tab stop when it lands, so a landing that loses the pane
+    // leaves the row the reader left as the list's Tab stop.
     state.focusSuspended = false;
     try {
       bridge.activateNavPanel("git");
