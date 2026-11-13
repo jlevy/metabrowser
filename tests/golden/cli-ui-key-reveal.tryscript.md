@@ -36,10 +36,12 @@ listener on the window hears an element’s `blur`. It plays the server’s side
 `/api/source/status` answers of the in-process application, which
 `tests/test_key_reveal_session.py` records and replays.
 `tests/test_keymap.py` holds `shellKeys`, the keys each part’s registry registered for
-the shell, to the reserved table in `src/metabrowser/keymap.py`. Each step records the
-reveal’s state, whether the root is marked, the live keymap as key, command, and target,
-the badges mounted, the strip’s surface and items, and Help’s groups; `did` is what the
-shell’s stand-in activation paths were asked.
+the shell, to the reserved table in `src/metabrowser/keymap.py`, and `shellCommands`,
+each shell letter with the command it is bound to and that command’s Help action, to the
+meanings the design system’s keymap table gives those letters.
+Each step records the reveal’s state, whether the root is marked, the live keymap as
+key, command, and target, the badges mounted, the strip’s surface and items, and Help’s
+groups; `did` is what the shell’s stand-in activation paths were asked.
 A `cost` is what one navigation or key cost: the registry’s publications, its liveness
 reads of targets, and the keycaps built for badges and the strip.
 
@@ -369,7 +371,8 @@ $ node tests/dom/key-reveal-session.js
       "help": ["anywhere","main-tabs","controls","numbered","navigation","quick-file","help"]
     }
   ],
-  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j tree.next: Next item","k tree.previous: Previous item","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder"]
 }
 ? 0
 ```
@@ -870,7 +873,8 @@ $ node tests/dom/key-reveal-session.js gestures
       "sameAsBefore": true
     }
   ],
-  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j tree.next: Next item","k tree.previous: Previous item","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder"]
 }
 ? 0
 ```
@@ -1335,7 +1339,8 @@ $ node tests/dom/key-reveal-session.js tabs
       ]
     }
   ],
-  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","n","p","r","t","u","w"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","n","p","r","t","u","w"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j pulls.files.next: Next changed file","j pulls.next: Next pull request","j tree.next: Next item","k pulls.files.previous: Previous changed file","k pulls.previous: Previous pull request","k tree.previous: Previous item","n pulls.stack.top: Next in stack","p pulls.stack.base: Previous in stack","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder","w source.switch-ref: Branch or tag"]
 }
 ? 0
 ```

@@ -681,13 +681,18 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
 
   // ── Reading what the page shows ───────────────────────────────
   const shellKeys = new Set();
+  /** Each shell letter with the command it is bound to and that command's own action,
+   * from the registry's presentation: tests/test_keymap.py holds the design system's
+   * table to these, so a documented meaning is checked against the command, not only
+   * the letter. */
+  const shellCommands = new Set();
   function liveKeys() {
     const ids = shortcuts
       .snapshot("help", { includeInactive: true })
       .flatMap((group) => group.commands)
       .flatMap((command) => command.commandIds);
     for (const id of ids) {
-      const { bindings, scope } = shortcuts.present(id);
+      const { bindings, copy, scope } = shortcuts.present(id);
       if (scope !== "view-tabs" && scope !== "help" && scope !== "quick-file") {
         // A run, the situational numbers, is written by its ends and binds every key
         // between them.
@@ -700,6 +705,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
         for (const label of labels) {
           if (/^[A-Z0-9]$/.test(label)) {
             shellKeys.add(label.toLowerCase());
+          }
+          if (/^[A-Z]$/.test(label)) {
+            shellCommands.add(`${label.toLowerCase()} ${id}: ${copy.action}`);
           }
         }
       }
@@ -885,6 +893,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     record,
     renderFilters,
     rows,
+    shellCommands,
     shellKeys,
     shiftDown,
     shiftUp,
@@ -1366,7 +1375,10 @@ async function main() {
   }
   const { steps, pages } = await PARTS[part]();
   const shellKeys = new Set(pages.flatMap((page) => [...page.shellKeys]));
-  process.stdout.write(`${render({ part, steps, shellKeys: [...shellKeys].sort() })}\n`);
+  const shellCommands = new Set(pages.flatMap((page) => [...page.shellCommands]));
+  process.stdout.write(
+    `${render({ part, steps, shellKeys: [...shellKeys].sort(), shellCommands: [...shellCommands].sort() })}\n`,
+  );
 }
 
 main().catch((error) => {

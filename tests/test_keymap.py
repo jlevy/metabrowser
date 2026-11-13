@@ -261,9 +261,10 @@ def test_letters_never_collide_on_one_screen() -> None:
 _DESIGN_SYSTEM = Path(__file__).parents[1] / "docs" / "design-system.md"
 
 
-def _documented_keymap() -> list[tuple[list[str], str]]:
+def _documented_keymap(text: str | None = None) -> list[tuple[list[str], str]]:
     """The design system's keymap table: each row's keys, lowercase, and its meaning."""
-    text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
+    if text is None:
+        text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
     start = text.index("\n## Keyboard Shortcuts\n")
     section = text[start : text.index("\n## ", start + 1)]
     table = section[section.index("### The Keymap") :]
@@ -312,6 +313,98 @@ def test_the_design_system_keymap_is_the_keys_the_app_binds() -> None:
     assert any("l" in keys and "Diff layout" in meaning for keys, meaning in rows)
     numbered = [keys for keys, _meaning in rows if any(re.search(r"\d", key) for key in keys)]
     assert numbered == [["1–9"]], "the numbers are one positional row"
+
+
+def _golden_shell_commands() -> list[tuple[str, str, str]]:
+    """Each shell letter the reveal session's registry bound, as (key, command, action).
+
+    The session prints the command each shell letter is bound to and that command's own
+    Help action, read from the production registry's presentation, so the commands keep
+    their identity and their meaning (``shellCommands`` in cli-ui-key-reveal).
+    """
+    golden = Path(__file__).parent / "golden" / "cli-ui-key-reveal.tryscript.md"
+    printed = re.findall(r'^\s*"shellCommands": (\[[^\]]*\])', golden.read_text(), re.MULTILINE)
+    assert len(printed) == 3, "every part of the session prints its shell commands"
+    entries = {entry for part in printed for entry in json.loads(part)}
+    commands = []
+    for entry in sorted(entries):
+        key, rest = entry.split(" ", 1)
+        command, action = rest.split(": ", 1)
+        commands.append((key, command, action))
+    return commands
+
+
+def _shell_meaning_problems(
+    rows: list[tuple[list[str], str]], commands: list[tuple[str, str, str]]
+) -> list[str]:
+    """Where the documented meaning of a shell letter is not its bound command's.
+
+    A row with one letter names what its command opens: the command's Help action less a
+    leading "Open", so ``F``, bound to ``main-tabs.files`` ("Open Files"), must say
+    "Files". A row of two letters is a reusable pair, written "Down or up" or "Next or
+    previous": its first letter's commands go to the next item and its second's to the
+    previous one, as their actions say.
+    """
+    problems = []
+    for key, command, action in commands:
+        held = [(keys, meaning) for keys, meaning in rows if key in keys]
+        if len(held) != 1:
+            problems.append(f"{key.upper()} ({command}) is in {len(held)} rows, not one")
+            continue
+        keys, meaning = held[0]
+        letters = [letter for letter in keys if letter.isalpha() and len(letter) == 1]
+        if len(letters) == 2:
+            expected = "Next" if letters.index(key) == 0 else "Previous"
+            if not action.startswith(expected):
+                problems.append(
+                    f"{key.upper()} is {command} ({action}), but its row lists it as the "
+                    f"{expected.lower()} key: {meaning!r}"
+                )
+            if not re.match(r"(Down or up|Next or previous)\b", meaning):
+                problems.append(f"{key.upper()}'s pair row is not a direction pair: {meaning!r}")
+            continue
+        noun = action.removeprefix("Open ")
+        if noun.lower() not in meaning.lower():
+            problems.append(f"{key.upper()} is {command} ({action}), but its row says {meaning!r}")
+    return problems
+
+
+def test_the_documented_shell_letters_mean_their_commands() -> None:
+    """Each shell letter's documented meaning is its bound command's, not only its letter.
+
+    The set check above passes with two meanings swapped, so this one reads which command
+    each letter is bound to, from the session that runs the production registry, and holds
+    the row to that command's own action.
+    """
+    commands = _golden_shell_commands()
+    assert {key for key, _command, _action in commands} == {
+        key for key in RESERVED_SHELL_KEYS if key.isalpha()
+    }
+    assert _shell_meaning_problems(_documented_keymap(), commands) == []
+
+
+def test_swapping_two_documented_shell_letters_fails_the_meaning_check() -> None:
+    """The check is red for a table that swaps Files and Pulls, or J and K, or N and P."""
+    text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
+    commands = _golden_shell_commands()
+    files_row = "| `F` | The Files tab |"
+    pulls_row = "| `R` | The Pulls tab: pull Requests |"
+    assert files_row in text and pulls_row in text
+    swapped = (
+        text.replace(files_row, "\0")
+        .replace(pulls_row, "| `F` | The Pulls tab: pull Requests |")
+        .replace("\0", "| `R` | The Files tab |")
+    )
+    problems = _shell_meaning_problems(_documented_keymap(swapped), commands)
+    assert any(problem.startswith("F is main-tabs.files") for problem in problems), problems
+    assert any(problem.startswith("R is main-tabs.pulls") for problem in problems), problems
+    for pair, reversed_pair in (
+        ("| `J` or `K` |", "| `K` or `J` |"),
+        ("| `N` or `P` |", "| `P` or `N` |"),
+    ):
+        assert pair in text
+        reversed_rows = _documented_keymap(text.replace(pair, reversed_pair))
+        assert _shell_meaning_problems(reversed_rows, commands), reversed_pair
 
 
 def test_the_numbers_stop_at_nine() -> None:
