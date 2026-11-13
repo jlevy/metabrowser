@@ -255,42 +255,91 @@ def test_the_tree_holds_its_invariants() -> None:
 
 
 def test_a_tree_opens_once_and_never_grows_without_input() -> None:
-    """A row's tree opens at its height, and late rows wait for the reader.
+    """A row's tree opens at its height, draws its first rows, and holds later changes.
 
     Opening waits ``FILES_OPEN_HOLD_MS`` for the cached list it reads at once, so a list the
     cache holds goes from closed to its rows in one step, where it went through its loading
-    line first. Rows a GitHub job brings ``LATE_ROWS_MS`` past the reader's last press or key,
-    or past the tree's opening on a landing with no input yet, are offered and drawn when the
-    reader asks; before, they pushed the rows below without input. That holds for every later
-    change to a drawn tree as well (review A3): a list's further pages wait on its line, and a
-    complete list a refresh changes floats its offer over the tree's top, so offering moves
-    nothing. Rows inside the input's window are drawn as before.
+    line first. An expanded tree with no rows drawn shows its loading line, or its notice,
+    until its rows come, and then draws them, however late: on a click whose list GitHub
+    returns seconds later (``lateRows``), a cached read slower than ``LATE_ROWS_MS``
+    (``slowCachedRead``), a poll after a failed first read (``afterFailedRead``), a tree
+    opened again (``reopened``), one shown again after its panel was hidden
+    (``shownAgain``), one a read emptied (``refreshEmptied``), a list's first page
+    (``fill``), and a landing (``landing``). Before mb-ld8g each of these offered the rows
+    as "Show N files" in place of the tree the reader had just expanded. Every opening of a
+    tree with no rows waits for its read, so one opened again on a list GitHub returned
+    while it was closed opens on its rows (``reopenedFilled``). A refresh that answers not
+    due, since another request listed the files, carries none of its rows, so the tree reads
+    them at once and shows its loading line meanwhile (``refreshNotDue``,
+    ``refreshNotDueLate``); when those reads fail, the error and Retry stand and the tree
+    reads again once a freshness window (``refreshNotDueFailing``). Only a change to rows
+    already drawn that comes ``LATE_ROWS_MS`` past the reader's last press or key waits for
+    the reader (review A3): a list's further pages wait on its line, and a complete list a
+    refresh changes floats its offer over the tree's top, so offering moves nothing.
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
         "cached": ["closed", "4 rows"],
-        "lateRows": ["closed", "loading line", "0 rows, offer: Show 2 files", "4 rows"],
-        "promptRows": ["closed", "loading line", "4 rows"],
-        "fill": {
-            # Before review A3 the drawn tree grew to 203 and 256 rows with no input.
+        # Before mb-ld8g each of these six, and `landing`, ended "0 rows, offer: Show 2 files".
+        "lateRows": ["closed", "loading line", "4 rows"],
+        "slowCachedRead": ["closed", "loading line", "4 rows"],
+        "afterFailedRead": ["closed", "notice: The server did not answer.", "4 rows"],
+        "reopened": ["closed", "loading line", "closed", "loading line", "4 rows"],
+        "shownAgain": ["closed", "loading line", "4 rows"],
+        "refreshEmptied": ["closed", "4 rows", "loading line", "4 rows"],
+        # A tree opened again on a list GitHub returned while it was closed opens on its rows
+        # in one step; before, its loading line showed first, for an answer at 0 ms.
+        "reopenedFilled": ["closed", "loading line", "closed", "4 rows"],
+        # A refresh that answers not due, with the whole list and none of its rows, is read at
+        # once, with the loading line in between (review A1). Before, the tree showed nothing
+        # ("empty") until its next read a freshness window later: rows at 60,000 and 60,700 ms.
+        "refreshNotDue": {
+            "painted": ["closed", "loading line", "4 rows"],
+            "betweenReplies": {"loading": True, "line": None, "rows": 0},
+            "drawnAt": 0,
+        },
+        "refreshNotDueLate": {"painted": ["closed", "loading line", "4 rows"], "drawnAt": 700},
+        # Every read after that answer fails: the error and Retry stand, and the tree reads
+        # again once a freshness window, then on Retry (review B1). Before, it read every
+        # second while it stayed open: 12 reads by 10 s and 123 by two windows.
+        "refreshNotDueFailing": {
+            "readsAt": [0, 0, 60_000, 120_000, 121_000],
+            "readsBy10s": 2,
+            "readsByTwoWindows": 4,
+            "notice": {"text": "The server did not answer.", "action": "retry"},
             "painted": [
                 "closed",
                 "loading line",
-                "0 rows, offer: Show 100 files",
+                "notice: The server did not answer.",
+                "loading line",
+                "4 rows",
+            ],
+            "drawnAt": 121_000,
+        },
+        "promptRows": ["closed", "loading line", "4 rows"],
+        "fill": {
+            # Before review A3 the drawn tree grew to 203 and 256 rows with no input; before
+            # mb-ld8g its first page was offered as "Show 100 files" and nothing was drawn.
+            "painted": [
+                "closed",
+                "loading line",
                 "103 rows",
                 "103 rows, offer: Show 100 more files",
                 "103 rows, offer: Show 149 more files",
                 "256 rows",
             ],
+            "drawnFirst": 103,
             "drawnWhileIdle": 103,
             "drawnAfterPress": 256,
         },
-        # Before review A4 a landing drew late rows: there was no input to count from.
-        "landing": ["closed", "loading line", "0 rows, offer: Show 2 files"],
+        # Review A4 counts a landing's lateness from the tree's opening; an empty tree draws
+        # its first rows all the same.
+        "landing": ["closed", "loading line", "4 rows"],
         "refreshed": {
             "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file"],
             "floats": True,
         },
+        "refreshedReopened": "5 rows",
         # A later refresh that brings back the rows drawn withdraws the offer (review D4);
         # before, it stood as "Show the updated list of 2 files".
         "offerWithdrawn": {
@@ -317,14 +366,24 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             },
         },
         "slowRead": ["closed", "loading line"],
-        # Each hold's span: how long it held and why it ended, an offer the tree closes on
-        # included (review B1), and a first read that fails as failed (review C7).
+        # Each hold's span: how long it held and why it ended, an offer the reader pressed
+        # and one the tree closes on (review B1), and a first read that fails as failed
+        # (review C7). Rows drawn into an empty tree were never held, so they have no span.
         "spans": {
             "cached": ["opening met 0 ms"],
-            "lateRows": ["opening met 0 ms", "lateRows reader 100 ms"],
-            "landingClosed": ["opening met 0 ms", "lateRows closed 400 ms"],
+            "lateRows": ["opening met 0 ms"],
+            "slowCachedRead": ["opening bound 150 ms"],
+            "reopened": ["opening met 0 ms", "opening met 0 ms"],
+            "fill": ["opening met 0 ms", "lateRows reader 3100 ms"],
+            "offerClosed": ["opening met 0 ms", "lateRows closed 400 ms"],
             "failedRead": ["opening failed 0 ms"],
             "slowRead": ["opening bound 150 ms"],
+        },
+        # Across every story, its refresh answering started or not due. The second was false
+        # before review A1: a not-due answer left the open tree with nothing to show.
+        "invariants": {
+            "an expanded tree with no rows drawn never offers": True,
+            "an open tree with no rows drawn shows progress, a notice, or its line": True,
         },
     }
 
@@ -365,11 +424,22 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
                 for phase in ("asked", "running", "settled")
             },
         },
-        # Late rows offered on the line: pressing the offer draws them and leaves focus on the
-        # tree's anchor, not on the document body (review A2). Only a press from the keyboard
-        # scrolls to it; a pointer pressed the offer where it is (review C4).
-        {"scenario": "offer pressed", "focus": "a.py", "scrolls": 1},
-        {"scenario": "offer clicked", "focus": "a.py", "scrolls": 0},
+        # A list's late first page is drawn into the empty tree with no offer painted (before
+        # mb-ld8g: no rows, and "Show 2 files"); its late second page is offered on the line.
+        # Pressing the offer draws it and leaves focus on the tree's anchor, not on the
+        # document body (review A2). Only a press from the keyboard scrolls to it; a pointer
+        # pressed the offer where it is (review C4).
+        *(
+            {
+                "scenario": scenario,
+                "first": {"drawn": ["a.py", "b.py"], "offer": None},
+                "offered": "Show 1 more file",
+                "focus": "a.py",
+                "scrolls": scrolls,
+                "drawn": ["a.py", "b.py", "c.py"],
+            }
+            for scenario, scrolls in (("offer pressed", 1), ("offer clicked", 0))
+        ),
     ]
 
 

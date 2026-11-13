@@ -917,7 +917,8 @@ model: text envelope; size=13386 content_bytes=13386 content_truncated=False
 Those four lines are the four layers a selection travels — the address it resolves to,
 what it is classified as, the tabs a reader would see, and a summary of the data behind
 them. Each view’s key is printed uppercase, as the keyboard shows it.
-A kind with one view, or a selection left with one, has no tab and prints no key.
+A kind with one view, or a selection left with one, prints no key: its one tab has no
+other view to switch to.
 
 It accepts browser addresses as well as paths, which is the quickest way to check that a
 URL resolves the way you expect:

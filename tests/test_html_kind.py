@@ -87,7 +87,7 @@ def test_active_content_off_drops_preview(tmp_path: Path) -> None:
     assert result["kind"] == "html"
     assert _view_ids(result) == ["source"]
     assert _default_id(result) == "source"
-    # Source alone draws no tab, so the key it declares is not served.
+    # Source alone has no other tab to switch to, so the key it declares is not served.
     assert "key" not in result["views"][0]
 
 

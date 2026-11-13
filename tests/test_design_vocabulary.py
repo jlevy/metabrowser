@@ -341,7 +341,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
             el(
                 "file-header",
                 text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
-                box("file-header-badge badge-live"),
+                box("file-header-badge-slot", el("file-header-badge badge-live")),
                 text("size file-header-size"),
                 box("icon-btn file-header-icon file-header-print"),
             ),
@@ -499,6 +499,24 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     for name in ("app.js", "tree-expansion.js"):
         source = (STATIC / name).read_text(encoding="utf-8")
         assert "tree-children-collapsed" in source, f"{name} lost the collapse class"
+    # A reveal the reader did not ask for lands in place. The rule must come
+    # after the travel it cancels, which has the same specificity.
+    instant = _rule(styles, ".tree-children-instant")
+    assert "transition: none" in instant, "the instant disclosure travels"
+    assert styles.index(".tree-children-instant {") > styles.index(".tree-children {")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    reveal = app[app.index("async function revealInTree(") :]
+    reveal = reveal[: reveal.index("\n}\n")]
+    assert "setFolderExpanded(folder, true, { instant })" in reveal, (
+        "navigation's reveal of a path animates the folders it opens"
+    )
+    assert "instant = true }" in reveal.splitlines()[0], "a reveal the reader caused travels"
+    # A landing's reveal answers no input, and its folders travelling moved the tree less.
+    landing = app[app.index("    revealInTree(initialPath, {") :]
+    assert "instant: false" in landing[: landing.index("});")]
+    toggle = app[app.index("async function toggleTreeFolder(") :]
+    toggle = toggle[: toggle.index("\n}\n")]
+    assert "instant" not in toggle, "a folder the reader clicked lands without travel"
 
 
 def test_inline_change_stats_are_bold() -> None:
@@ -2091,7 +2109,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
-    assert github[".github-pull-state-details"]["min-width"] == "0"
+    # The header's details may be narrower than its merge, whose chips then ellipsize.
+    assert github[".github-pull-meta-details"]["min-width"] == "0"
 
 
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:
@@ -2112,7 +2131,10 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # The heading scales the shared glyph to its own type and wraps text in its own track.
     assert 'class: "page-heading github-pull-title' in page
-    assert github[".github-pull-title-with-state"]["grid-template-columns"] == "auto minmax(0, 1fr)"
+    assert (
+        github[".github-pull-title-with-state"]["grid-template-columns"]
+        == "auto minmax(0, max-content) auto"
+    ), "the number is a track of its own, after the title it is never clamped with"
     title_icon = github[".github-pull-title > .github-pull-state-icon"]
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
     title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
