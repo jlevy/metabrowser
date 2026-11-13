@@ -38,6 +38,17 @@ All notable changes to Metabrowser are documented here.
   In Quick Search, pull requests follow the file results as their own group, so their
   later arrival never moves a file row or the selection.
 
+- A rendered Markdown diff no longer says “Source shows additional changes.”
+  above a file, or “Source shows changes not shown here.”
+  on a block. The **Rendered** | **Source** chooser is how to see a change that does not
+  show in the rendered document, such as a link’s destination, an HTML comment, or a
+  whitespace-only edit; Rendered does not mark one.
+  A block whose link, comment, attribute, or fence language changed still never folds
+  away with the unchanged blocks around it; one whose only change is whitespace or line
+  wrapping can stay inside a fold, as before.
+  See
+  [Rendered Markdown in Changes](docs/reviewing-pull-requests.md#rendered-markdown-in-changes).
+
 - Switching to the Commits tab selects the newest commit and shows its detail, every
   time, by a click, its shortcut, or Back onto the tab, even after you read an older
   commit there. It used to show “Select a commit to preview” on the first visit and

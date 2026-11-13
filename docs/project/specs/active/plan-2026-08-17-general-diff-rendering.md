@@ -482,9 +482,12 @@ attribute syntax, a block moved past others whose signature changed, and any blo
 label points somewhere new anywhere in the document.
 The file carries **Source shows additional changes** whenever any source change has no
 visible counterpart, a whitespace-only or rewrap edit included.
-Edited blocks pair with the neighbor they resemble (at least half their words shared),
-and a mark’s span occurs exactly once in the changed source lines; where the same words
-stand on an untouched line beside it, the mark may sit on that copy.
+Addendum, 2026-11-13: at the user’s request the page draws neither note.
+The projection still flags such blocks and files, a flagged block still never folds, and
+the **Rendered** | **Source** chooser is how a reader reaches what Rendered does not
+show. Edited blocks pair with the neighbor they resemble (at least half their words
+shared), and a mark’s span occurs exactly once in the changed source lines; where the
+same words stand on an untouched line beside it, the mark may sit on that copy.
 A run whose blocks each resemble the one in their place pairs in order.
 Otherwise runs of up to 16 blocks a side are aligned block against block, within a
 budget of word comparisons per file; past either limit an equal run pairs in order where
