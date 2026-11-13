@@ -13,7 +13,9 @@ within the maximum age plus one TTL; a repository the reader does not own keeps 
 plain TTL; a root swap cancels a background discovery; a failing one is retried once
 per TTL; and a repository past the state's entry bound is not walked on every
 rediscovery. ``GIT_TEST_ASSUME_DIFFERENT_OWNER`` makes Git refuse the repository, as it
-does after a change of owner or a revoked ``safe.directory``.
+does after a change of owner or a revoked ``safe.directory``. Git here reads no
+configuration from outside the test: a ``safe.directory = *`` there, as GitHub's Ubuntu
+runner images put in ``/etc/gitconfig``, would make Git accept the repository anyway.
 """
 
 from __future__ import annotations
@@ -122,6 +124,22 @@ def repo(tmp_path: Path) -> Path:
     _git(root, "init", "-q", "-b", "main")
     _commit(root, "first.txt")
     return root.resolve()
+
+
+@pytest.fixture(autouse=True)
+def _no_outside_git_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Git that ``repo_info`` runs reads no system, global or command-line settings.
+
+    Ordinary local reads keep the caller's Git environment (``git_environment``), so
+    these variables reach it.
+    """
+
+    empty = tmp_path / "gitconfig-empty"
+    empty.write_text("")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    for name in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture
