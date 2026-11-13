@@ -30,8 +30,9 @@ An answer that arrives after the reader chose Source is kept, and choosing Rende
 again shows it without asking.
 
 Rendered blocks are removed, added, or unchanged, with changed words marked.
-A block whose source changed in a way its render does not show, here an HTML comment,
-carries a note, and the file names Source above its blocks.
+A block whose source changed in a way its render does not show, here an HTML comment, is
+drawn like any other and never folds, and nothing is drawn to say that Source shows
+more: each row is its label and its content, and the session fails on anything else.
 Long runs of unchanged blocks fold, and a fold builds its blocks when it opens.
 A link or image that opens a file of the comparison keeps its snapshot address; every
 other local address is dropped before the shared sanitizer.
@@ -51,7 +52,7 @@ hand.
 Each step lists the requests the page made and each file whose state it changed: its
 chooser (`*` chosen, `none` when the file can show only Source), what its body shows
 (`nothing` while it waits within the loading delay), `progress` while its mark counts
-down, and its rendered rows, `[note]` marking a block whose source says more.
+down, and its rendered rows.
 
 ```console
 $ node tests/dom/diff-markdown-session.js
@@ -131,8 +132,7 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
-            "notice: Source shows additional changes.",
-            "context [note]: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
             "added: <p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
@@ -244,8 +244,7 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
-            "notice: Source shows additional changes.",
-            "context [note]: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
             "added: <p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",

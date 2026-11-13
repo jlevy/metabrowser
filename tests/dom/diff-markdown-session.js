@@ -15,9 +15,8 @@
 // changed: its chooser (`*` marks the chosen format, and `none` for a file that can show
 // only Source), what its body shows (`rendered`,
 // `source`, or `nothing` while it waits within the loading delay), whether its progress
-// mark is counting down to visible, and the rendered rows:
-// each block's kind and text, `[note]` when its source says more than its render, and
-// a fold as `[N unchanged blocks]`, open or closed.
+// mark is counting down to visible, and the rendered rows: each block's kind and text,
+// and a fold as `[N unchanged blocks]`, open or closed.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -344,9 +343,7 @@ function answer(fileId, how = "recorded") {
 function rows(article) {
   const shown = [];
   for (const node of article.childNodes) {
-    if (node.tagName === "P") {
-      shown.push(`notice: ${node.textContent}`);
-    } else if (node.tagName === "DETAILS") {
+    if (node.tagName === "DETAILS") {
       const [summary, ...inner] = node.childNodes;
       shown.push(`[${summary.textContent}${node.open ? ", open" : ""}]`);
       for (const row of inner) {
@@ -359,11 +356,20 @@ function rows(article) {
   return shown;
 }
 
+// The Rendered body holds blocks and folds and nothing that talks about them: a row is its
+// screen-reader label and its content, and no note says that Source shows more.
 function row_(row) {
+  assert(
+    row.className.startsWith("diff-markdown-block diff-markdown-"),
+    `a Rendered body holds only blocks and folds, not ${row.tagName} ${row.className}`,
+  );
   const kind = row.className.replace("diff-markdown-block diff-markdown-", "").split(" ")[0];
-  const note = row.classList.contains("diff-markdown-source-only") ? " [note]" : "";
-  const prose = row.childNodes.find((node) => node.className === "kpress-prose");
-  return `${kind}${note}: ${serialize(prose?.childNodes ?? [])}`;
+  const parts = row.childNodes.filter((node) => node.className !== "sr-only");
+  assert(
+    parts.length === 1 && parts[0].className === "kpress-prose",
+    `a ${kind} row draws a note beside its content`,
+  );
+  return `${kind}: ${serialize(parts[0].childNodes)}`;
 }
 
 function serialize(nodes) {
