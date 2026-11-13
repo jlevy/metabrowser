@@ -12,23 +12,11 @@
 //     getRegisteredView(kindId, viewId)
 //     listViewsForKind(kindId)
 //
-//   View lifecycle contract:
-//     render(container, ctx)
-//       Called when the preview pane mounts this view. Plugin owns
-//       container's innerHTML and may attach DOM listeners, fetch data,
-//       paint charts. May return a Promise; the shell awaits it for
-//       error surfacing.
-//     dispose(container) [optional]
-//       Called when the preview pane is *replaced* — specifically when
-//       (1) a different file is opened, (2) the same file is reloaded
-//       after a file-change event, or (3) an error/loading state
-//       overwrites the pane. Use it to detach window-level listeners,
-//       abort in-flight fetches, clear timers/SSE streams, and destroy
-//       Chart.js instances or other resources that would otherwise
-//       outlive their container.
-//       dispose is *not* called on tab switches within the same file
-//       — those toggle CSS display only; the container's DOM persists,
-//       and so does any state the plugin captured in closures over it.
+//   View lifecycle ("Registration and Lifecycle" in docs/plugins.md):
+//     render(container, ctx)             — own container; may return a Promise, or a
+//                                          handle with ready and dispose()
+//     dispose(container)                 — the pane was replaced, never on a tab switch:
+//                                          release listeners, requests, and timers
 //
 //   Rendering:
 //     render(template, data)             — Mustache.render with auto-escape
@@ -84,6 +72,10 @@
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
+//
+//   Keyboard ("Keyboard Shortcuts" in docs/plugins.md):
+//     shortcuts.attach(element, spec)     — a letter key and badge for a view's control;
+//                                          returns {retarget, detach}
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — contribute a synchronous named span
@@ -159,6 +151,28 @@
       return _attachedFileCatalog?.subscribe(listener) || (() => {});
     },
   });
+  // Plugin keys until static/plugin-shortcuts.js loads and takes them: 252 bytes of
+  // startup transfer, by devtools/check_startup_scripts.py.
+  const _shortcutQueue = new Set();
+  function queueShortcut(element, options) {
+    const facade = global.MetabrowserPluginShortcuts;
+    if (facade) {
+      return facade.attachShortcut(element, options);
+    }
+    const queued = { element, options };
+    _shortcutQueue.add(queued);
+    options?.signal?.addEventListener?.("abort", () => _shortcutQueue.delete(queued));
+    return {
+      retarget(next) {
+        queued.element = next;
+        queued.handle?.retarget(next);
+      },
+      detach() {
+        _shortcutQueue.delete(queued);
+        queued.handle?.detach();
+      },
+    };
+  }
   const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
 
   /** @param {unknown} value */
@@ -411,12 +425,28 @@
     );
   }
 
+  /**
+   * Copy what a copy control names, as a click on it does: the named entry to the
+   * delegate below, for a key that runs the control without a click. Only a control
+   * page code owns qualifies, as for the click. Reports whether it copied.
+   * @param {HTMLElement | null} control
+   */
+  function copyFromControl(control) {
+    if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {
+      return false;
+    }
+    _handleCopyClick(control);
+    return true;
+  }
+
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
+    copyFromControl,
     isOwnedDelegate,
     loadPluginsForKind,
     registerLoadMoreAction,
+    shortcutQueue: _shortcutQueue,
   });
 
   function registerView(kindId, viewId, spec) {
@@ -1611,6 +1641,7 @@
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
+    shortcuts: Object.freeze({ attach: queueShortcut }),
     navigation: global.MetabrowserNavigationRoute.navigation,
     sourceKind: sourceKind,
     repository: repository,

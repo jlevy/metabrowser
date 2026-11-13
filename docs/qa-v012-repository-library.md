@@ -118,8 +118,9 @@ A pull request beside a checkout has its own step:
 1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
    Look at what a hidden pane cannot show: focus rings while tabbing, the layout at each
    width, what gives way as a mirror’s headings narrow (steps 1 and 2 of 5.3), the HTML
-   Preview frame, the print preview, and Back in check 12 of 3.4 and in steps 4 and 6 of
-   5.11, which each browser’s back/forward cache treats differently.
+   Preview frame, the print preview, the Shift reveal’s keycaps and strip in checks 13
+   and 14 of 3.4, and Back in check 12 of 3.4 and in steps 4 and 6 of 5.11, which each
+   browser’s back/forward cache treats differently.
    Check 12 has been measured only in Chrome; `mb-etqi` tracks the other two.
    **Pass:** the same results in all three.
    **Fail:** a check that passes in one browser only.
@@ -913,6 +914,96 @@ line. Open that address with the browser’s developer tools open.
     The fix is #268’s, and the landing gate measured it in stock Chrome (`mb-2g6f`).
     Back in Safari and Firefox is unmeasured; `mb-etqi` tracks it, in Part 4 of the
     walk-through.
+
+13. **The Shift key reveal, and its three provisional numbers.** With focus on a tree
+    row, hold Shift alone: after about a fifth of a second a keycap appears on the Files
+    and Commits tabs, the view tabs of the open file, the header’s Up and Copy, and the
+    two filters, and the strip lists Help, Quick Search, the tabs, Up, and Copy.
+    Release Shift: all of them go.
+    Type `?`, a capital, and Shift+`↑` at your normal speed: no keycap flashes.
+    Hold Shift and press `2`: Commits opens with its first row focused, and the keycaps
+    follow; press `1`: the filters get theirs back.
+    Click while holding Shift, or scroll: the keycaps go.
+    Check 14 looks at how they are drawn.
+
+    Two constants are set by hand, not yet by measurement, and a third from Chrome’s
+    rows alone; this check measures all three.
+    Paste each snippet into the developer tools console, in Chrome and then Safari, and
+    note the largest number it logs.
+
+    - `REVEAL_HOLD_MS` in `static/key-reveal.js`, now 200. Paste
+      `let s; addEventListener("keydown", (e) => { if (e.key === "Shift") s = e.timeStamp; else if (s !== undefined) { console.log(e.key, Math.round(e.timeStamp - s)); s = undefined; } }, true);`
+      then type `?`, capitals, and Shift+`↑` twenty times each at your normal speed.
+      The constant should be the smallest round number above every gap logged.
+    - `REVEAL_POINTER_SLOP_PX` in `static/key-reveal.js`, now 4. Paste
+      `let o; addEventListener("pointermove", (e) => { o ??= [e.clientX, e.clientY]; console.log(Math.round(Math.hypot(e.clientX - o[0], e.clientY - o[1]))); }, true);`
+      then rest a hand on the mouse for five seconds, reload, and do the same on a
+      trackpad. The constant should be just above the largest drift logged.
+    - `REVEAL_STRIP_MAX_ITEMS` in `static/keyboard-help.js`, now 7. Drag the navigation
+      pane to its narrowest, open a file of a mirror’s pin, hold Shift at 100% and 200%
+      zoom, and count the rows the revealed strip takes.
+      The cap should be the most items that keep the strip within the panel’s bottom
+      quarter at 100% zoom.
+      Headless Chrome 152 measured them beside the constant: at the 180px minimum, five
+      to seven items take four rows, 135px, which is 21% of the panel in a 1280 by 800
+      window at 100% zoom, and all eight take five, 167px, which is 27%. So the strip
+      lists seven, and Branch, the eighth, stays in Help.
+      At 200% zoom even two items cover 31% of the panel, so no cap meets the rule
+      there; the strip shows only while Shift is held, so the cap targets 100% zoom.
+      Record Safari’s rows beside the constant.
+
+    Record each measurement beside its constant.
+
+14. **How the Shift reveal is drawn.** Open `overview.md` in the light theme, with focus
+    on its tree row, and hold Shift alone.
+    - Each keycap is a small yellow key with a deeper yellow border and dark text.
+      A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
+      label’s last letter, which still reads through it.
+      In the file header, the Up keycap sits over the end of the folder’s breadcrumb,
+      and the Copy keycap over the copy icon.
+      Each covers no text outside its own control: the file name, the mirror note, and
+      the size read in full.
+      At the root, Up’s control is the `/` crumb, which is narrower than a keycap, so
+      the keycap also reaches back over the last letter or two of the dimmed root name,
+      the folder Up opens.
+      No keycap is cut off, and nothing beside one moves.
+    - The Copy path button, which otherwise shows only on hover, shows while Shift is
+      held, with the pointer away from the header.
+    - The strip at the bottom of the navigation pane turns the same yellow with dark
+      text, its keycaps outlined in the deeper yellow, and grows upward over the tree.
+      The tree neither moves nor scrolls.
+    - Release Shift: the keycaps and the yellow go at once, and Copy path fades out.
+
+    Repeat in the dark theme, where the yellow is olive and the text light, and
+    everything reads as clearly.
+    Open a folder and hold Shift: the Up keycap sits over the Up button, and the path
+    after it reads in full.
+    Open a commit from **Commits** and hold Shift: the Copy keycap sits over the copy
+    icon beside the short commit ID, and the author’s name after it reads in full.
+    Repeat each theme at 200% zoom, with the navigation pane dragged to its narrowest,
+    and in a window about 480 pixels wide, where a tab cut off by the window’s edge
+    takes its keycap with it.
+    Then turn on the system’s Reduce motion setting and hold Shift: the keycaps and the
+    strip appear at once rather than fading in over about a sixth of a second.
+
+    Headless Chrome 152 ran this check on a Markdown file of a mirror’s pin in both
+    themes, at 200% zoom, with the pane at its narrowest, and 480 pixels wide, and on a
+    folder and a commit in both themes.
+    No keycap was clipped except the one on the tab the window’s edge cut off, the
+    tree’s box and scroll position did not change while the strip showed, and the
+    keycaps and the strip were gone once Shift was released.
+    For the Up and Copy keycaps, it ran on a file at the root and a nested file, of a
+    folder and of a mirror’s pin, on a folder, and on a commit, in both themes, and on a
+    nested file and a folder right to left.
+    Each keycap ended within half a pixel of its control’s inline end, and no glyph
+    outside the control lay under one except the end of the dimmed root name at the
+    root. Under emulated reduced motion the keycaps had no animation, and under print
+    media neither keycap nor strip was displayed.
+    From the hold timer to the frame that showed the keycaps took about 4 ms on the
+    Markdown file and 16 to 18 ms on the Source view of `static/app.js`, a page of about
+    15,000 elements. The contrast of the reveal’s text is computed beside its tokens in
+    `static/styles.css` and recomputed by `tests/test_design_vocabulary.py`; this check
+    is where a person judges it.
 
 **Pass:** Every check as described, in both themes.
 The console shows no error except the browser’s own request for `/favicon.ico`, which
@@ -2089,9 +2180,10 @@ uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --show card.html
 uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --untrusted --show page.html
 ```
 
-**Pass:** `page.html` is `kind: html`, views `preview (default), source`. `card.html` is
-`kind: html`, views `preview, source (default)`. `--untrusted` drops preview (source
-only). No `Serving` on `--show`.
+**Pass:** `page.html` is `kind: html`, views `preview (default, key P), source (key S)`.
+`card.html` is `kind: html`, views `preview (key P), source (default, key S)`.
+`--untrusted` drops preview, leaving `source (default)` with no key, since one view has
+no tab. No `Serving` on `--show`.
 
 **Fail:** Both files default to preview; `--untrusted` still offers preview; html files
 still classified as catch-all `text`.
