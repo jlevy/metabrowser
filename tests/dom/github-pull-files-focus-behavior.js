@@ -290,9 +290,11 @@ async function run() {
 }
 
 /**
- * Rows that came late are offered on the tree's line; pressing the offer draws them and leaves
- * focus on the tree's anchor, never on the document body. Only a press from the keyboard, a
- * click whose `detail` is 0, scrolls to the anchor: a pointer pressed the offer where it is.
+ * A list's first page comes late into the expanded, empty tree and is drawn, with no offer
+ * painted; its second page comes late too and is offered on the tree's line, since rows are
+ * drawn now. Pressing the offer draws them and leaves focus on the tree's anchor, never on the
+ * document body. Only a press from the keyboard, a click whose `detail` is 0, scrolls to the
+ * anchor: a pointer pressed the offer where it is.
  *
  * @param {Function} mountFileTree
  * @param {number} detail The click's count of pointer presses.
@@ -320,7 +322,8 @@ async function offerFocus(mountFileTree, detail) {
     owner.dataset.id = "owner";
     document.body.append(parent);
     parent.append(owner);
-    let answer;
+    /** The reads of the list not yet answered, oldest first. */
+    const reads = [];
     const view = mountFileTree({
       decorateExternalLink:
         require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
@@ -333,7 +336,7 @@ async function offerFocus(mountFileTree, detail) {
       href: (file) => `/${file}`,
       request: () =>
         new Promise((resolve) => {
-          answer = resolve;
+          reads.push(resolve);
         }),
       formatTime: (value) => value,
       page: () => null,
@@ -342,6 +345,51 @@ async function offerFocus(mountFileTree, detail) {
       focusedIn() {},
       lastInput: () => 0,
     });
+    /**
+     * One page of a two-page list GitHub fills.
+     *
+     * @param {string[]} files
+     * @param {number} offset
+     */
+    const page = (files, offset) => {
+      const complete = offset > 0;
+      return {
+        status: 200,
+        etag: null,
+        body: {
+          state: "current",
+          reason: null,
+          number: 7,
+          listed_from: "github",
+          source: "https://github.com/octo/demo",
+          generation: "0".repeat(32),
+          fetched_at: "2026-11-03T00:00:00Z",
+          reader: "gh:test",
+          head: null,
+          base: null,
+          fresh_for_s: 60,
+          refreshing: !complete,
+          last_refresh: null,
+          fetched: offset + files.length,
+          pages: complete ? 2 : 1,
+          last_page: 2,
+          complete,
+          capped: false,
+          truncated: false,
+          offset,
+          limit: 3000,
+          rows: files.map((file) => ({
+            path: file,
+            display: file,
+            previous_path: null,
+            previous_display: null,
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+          })),
+        },
+      };
+    };
     view.attach(parent, owner);
     view.controller.expand();
     await settle();
@@ -351,58 +399,40 @@ async function offerFocus(mountFileTree, detail) {
       timers.delete(id);
       timer.callback();
     }
-    now = 2000;
-    answer({
-      status: 200,
-      etag: null,
-      body: {
-        state: "current",
-        reason: null,
-        number: 7,
-        listed_from: "github",
-        source: "https://github.com/octo/demo",
-        generation: "0".repeat(32),
-        fetched_at: "2026-11-03T00:00:00Z",
-        reader: "gh:test",
-        head: null,
-        base: null,
-        fresh_for_s: 60,
-        refreshing: false,
-        last_refresh: null,
-        fetched: 2,
-        pages: 1,
-        last_page: null,
-        complete: true,
-        capped: false,
-        truncated: false,
-        offset: 0,
-        limit: 3000,
-        rows: ["a.py", "b.py"].map((file) => ({
-          path: file,
-          display: file,
-          previous_path: null,
-          previous_display: null,
-          status: "modified",
-          additions: 1,
-          deletions: 0,
-        })),
-      },
-    });
-    await settle();
     const line = view.group.children.find(
       (element) => element.getAttribute("class") === "github-pull-files-line",
     );
-    const offer = line.children.find((element) => element.tagName === "BUTTON");
-    assert.equal(offer.hidden, false, "late rows are offered");
-    offer.focus();
+    const offer = () =>
+      view.group.children.concat(line.children).find((each) => each.tagName === "BUTTON");
+    const drawnNames = () =>
+      view.group.children
+        .find((element) => element.getAttribute("class") === "github-pull-files-rows")
+        .children.map((row) => row.dataset.id);
+    now = 2000;
+    reads.shift()(page(["a.py", "b.py"], 0));
+    await settle();
+    const first = { drawn: drawnNames(), offer: offer().hidden ? null : offer().textContent };
+    // The next poll, a second later with no input since, brings the second page.
+    now = 3000;
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+    await settle();
+    reads.shift()(page(["c.py"], 2));
+    await settle();
+    assert.equal(offer().hidden, false, "a late change to drawn rows is offered");
+    const offered = offer().textContent;
+    offer().focus();
     scrolled.length = 0;
-    offer.listeners.get("click")({ detail });
+    offer().listeners.get("click")({ detail });
     await settle();
     assert.notEqual(document.activeElement, document.body, "focus stays in the tree");
     const focused = document.activeElement.dataset.id;
     const scrolls = scrolled.length;
+    const drawn = drawnNames();
     view.dispose();
-    return { focus: focused, scrolls };
+    return { first, offered, focus: focused, scrolls, drawn };
   } finally {
     Date.now = realNow;
   }

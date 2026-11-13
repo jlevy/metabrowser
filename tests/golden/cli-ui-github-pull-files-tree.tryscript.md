@@ -578,17 +578,25 @@ $ node tests/dom/github-pull-files-tree-session.js
 ## A Tree Opens Once and Never Grows Without Input
 
 A row’s tree waits `FILES_OPEN_HOLD_MS` for the cached list it reads at once, so a list
-the cache holds opens in one step (`cached`). Rows that come `LATE_ROWS_MS` after the
-reader’s last press or key, or after the tree’s opening on a landing, are offered rather
-than drawn: the first into an empty tree (`lateRows`, `landing`), a list’s further pages
-on its line (`fill`), and a refreshed complete list over the tree’s top, floating
-(`refreshed`). Rows inside the input’s window are drawn as before (`promptRows`). A
-refresh that would draw the same rows is drawn in place, since it moves nothing
-(`unchangedRefresh`), and an offer hides none of the tree’s line or notices
-(`offerKeepsNotices`). An offer that a later answer makes empty, by bringing back the
-rows drawn, is withdrawn (`offerWithdrawn`). Each hold’s span says how long it held and
-why it ended, an offer included when the tree closes on it, and a first read that fails
-as failed (`spans`).
+the cache holds opens in one step (`cached`), as does a tree opened again on a list
+GitHub returned while it was closed (`reopenedFilled`). An expanded tree with no rows
+drawn shows its loading line, or its notice, until its first rows come, and then draws
+them however late: a list GitHub returns seconds after the click (`lateRows`), a cached
+read slower than `LATE_ROWS_MS` (`slowCachedRead`), the poll after a failed first read
+(`afterFailedRead`), a tree opened again (`reopened`) or shown again (`shownAgain`), one
+a read emptied (`refreshEmptied`), a landing (`landing`), and a list’s first page
+(`fill`). Only a change to rows already drawn that comes `LATE_ROWS_MS` after the
+reader’s last press or key, or after the tree’s opening on a landing, is offered rather
+than drawn: a list’s further pages on its line (`fill`), and a refreshed complete list
+over the tree’s top, floating (`refreshed`), which opening the tree again draws
+(`refreshedReopened`). Rows inside the input’s window are drawn as before
+(`promptRows`). A refresh that would draw the same rows is drawn in place, since it
+moves nothing (`unchangedRefresh`), and an offer hides none of the tree’s line or
+notices (`offerKeepsNotices`). An offer that a later answer makes empty, by bringing
+back the rows drawn, is withdrawn (`offerWithdrawn`). Each hold’s span says how long it
+held and why it ended, an offer included when the reader presses it or the tree closes
+on it, and a first read that fails as failed (`spans`). `invariants` holds, across every
+model the stories rendered, that an expanded tree with no rows drawn never offers.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -600,7 +608,40 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   "lateRows": [
     "closed",
     "loading line",
-    "0 rows, offer: Show 2 files",
+    "4 rows"
+  ],
+  "slowCachedRead": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "afterFailedRead": [
+    "closed",
+    "notice: The server did not answer.",
+    "4 rows"
+  ],
+  "reopened": [
+    "closed",
+    "loading line",
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "reopenedFilled": [
+    "closed",
+    "loading line",
+    "closed",
+    "4 rows"
+  ],
+  "shownAgain": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "refreshEmptied": [
+    "closed",
+    "4 rows",
+    "loading line",
     "4 rows"
   ],
   "promptRows": [
@@ -612,19 +653,19 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     "painted": [
       "closed",
       "loading line",
-      "0 rows, offer: Show 100 files",
       "103 rows",
       "103 rows, offer: Show 100 more files",
       "103 rows, offer: Show 149 more files",
       "256 rows"
     ],
+    "drawnFirst": 103,
     "drawnWhileIdle": 103,
     "drawnAfterPress": 256
   },
   "landing": [
     "closed",
     "loading line",
-    "0 rows, offer: Show 2 files"
+    "4 rows"
   ],
   "refreshed": {
     "painted": [
@@ -634,6 +675,7 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     ],
     "floats": true
   },
+  "refreshedReopened": "5 rows",
   "offerWithdrawn": {
     "painted": [
       "closed",
@@ -675,10 +717,20 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "opening met 0 ms"
     ],
     "lateRows": [
-      "opening met 0 ms",
-      "lateRows reader 100 ms"
+      "opening met 0 ms"
     ],
-    "landingClosed": [
+    "slowCachedRead": [
+      "opening bound 150 ms"
+    ],
+    "reopened": [
+      "opening met 0 ms",
+      "opening met 0 ms"
+    ],
+    "fill": [
+      "opening met 0 ms",
+      "lateRows reader 3100 ms"
+    ],
+    "offerClosed": [
       "opening met 0 ms",
       "lateRows closed 400 ms"
     ],
@@ -688,6 +740,9 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     "slowRead": [
       "opening bound 150 ms"
     ]
+  },
+  "invariants": {
+    "an expanded tree with no rows drawn never offers": true
   }
 }
 ? 0

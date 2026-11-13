@@ -79,10 +79,13 @@ All notable changes to Metabrowser are documented here.
 
 - In the Pulls tab, a pull request’s changed files open in one step at their full height
   when Metabrowser holds the list.
-  A list GitHub takes a while to return is offered on the tree’s line as **Show N
-  files** instead of being drawn by itself, and so are its later pages (**Show N more
-  files**) and a refresh that changes a list already shown, which floats over the tree’s
-  top: the rows below never move while you are not interacting with the list.
+  Expanding a pull request whose list GitHub takes a while to return shows “Listing
+  changed files…” until the files arrive, and then shows them; it no longer offers
+  **Show N files** in their place.
+  Once files are shown, a change to them that arrives while you are not interacting with
+  the list waits for you: its later pages, and a refresh that changes it, are offered as
+  **Show N more files** or **Show the updated list of N files**, on the tree’s line or
+  floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
 

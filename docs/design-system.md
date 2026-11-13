@@ -1452,6 +1452,19 @@ Leaving a PR clears that mark while preserving its reader-expanded tree and rovi
 keyboard anchor. Repeated notices for the same page retain the observed diff file;
 explicit file addresses remain selected while their jump is temporarily unavailable.
 
+Expanding a row shows its changed files.
+A tree waits up to `FILES_OPEN_HOLD_MS` for the cached list before it paints open, so a
+cached list opens in one step at its height; past that, it shows its loading line,
+“Listing changed files…” with the shared delayed spinner, until the files arrive, and
+draws its first rows whenever they come.
+Once rows are drawn, a change to them — a list’s further pages, or a refresh that
+changes it — that comes `LATE_ROWS_MS` after the reader’s last press or key is offered
+rather than drawn: **Show N more files** or **Show the updated list of N files**, on the
+tree’s line, or floating over its top when the line is hidden, so drawn rows never move
+without input. **An offer stands in only for a change to drawn rows.** An expanded tree
+with none drawn never shows one.
+`test_a_tree_opens_once_and_never_grows_without_input` holds both.
+
 The tree draws a viewport window, keeping its focused anchor mounted.
 Counts name the files fetched and say when the list is partial or capped; the rows do
 not depend on hydrated diff documents.

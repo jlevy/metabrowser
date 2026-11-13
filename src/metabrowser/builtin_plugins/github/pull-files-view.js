@@ -85,8 +85,9 @@ export function mountFileTree(host) {
     h("span", { class: "spinner spinner-sm" }),
   ]);
   const lineText = h("span");
-  // Rows that came with no recent input, offered at no cost in height (LATE_ROWS_MS): on the
-  // line when it is shown, and over the tree's top, floating, when it is not.
+  // A change to drawn rows that came with no recent input, offered at no cost in height
+  // (LATE_ROWS_MS): on the line when it is shown, and over the tree's top, floating, when it
+  // is not. A tree with no rows drawn draws its first rows and never shows it.
   const offer = h("button", { type: "button", class: "github-pull-text-action", hidden: "" });
   /** Whether the offer was last pressed from the keyboard, which scrolls to where focus goes. */
   let offerByKey = false;
