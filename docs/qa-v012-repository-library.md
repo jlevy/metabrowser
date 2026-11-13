@@ -1675,9 +1675,12 @@ The banner prints
 address.
 
 1. The page shows **Count to two in the app #7** with an **Open** badge,
-   `forker wants to merge 2 commits into octo:topic from forker:count-to-two`, the
-   opened and updated times, **View on GitHub**, **Browse code**, and the `enhancement`
-   label. The status line reads `Fetched … via GitHub CLI`. The records were fetched on
+   `forker wants to merge 2 commits: forker:count-to-two → octo:topic`, the opened and
+   updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
+   The Pulls list in the navigation pane gives each row’s branches the same way, head →
+   base (`forker:count-to-two → topic` on #7’s row), and narrowing the pane shortens the
+   branch names with an ellipsis, then moves them to a line of their own, whole.
+   The status line reads `Fetched … via GitHub CLI`. The records were fetched on
    2026-09-17, so the page refreshes the record by itself: nothing spins, nothing says
    `may be out of date`, and no **Refresh** is offered meanwhile; the age gently
    breathes (it stays still with the system’s reduced-motion setting on) until it reads
@@ -1719,13 +1722,12 @@ address.
    cases are also exercised by `tests/golden/cli-ui-github-pull-page.tryscript.md`.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    and the header reads
-   `ghost wants to merge 1 commit into octo:topic from spam (deleted fork)`, as
-   github.com words a closed pull request; there is no conversation, and Changes
-   compares from the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say
-   more in the guide** is **Merged**, the header reads
-   `octo merged 1 commit into topic from guide-more`, naming who merged it rather than
-   its author, and **Checks** reads `2 success · 1 skipped`, with `docs` labeled
-   skipped.
+   `ghost wants to merge 1 commit: spam (deleted fork) → octo:topic`, with github.com’s
+   words for a closed pull request; there is no conversation, and Changes compares from
+   the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say more in the
+   guide** is **Merged**, the header reads `octo merged 1 commit: guide-more → topic`,
+   naming who merged it rather than its author, and **Checks** reads
+   `2 success · 1 skipped`, with `docs` labeled skipped.
 9. A hostile comment. Stop the server, add `HOSTILE_COMMENT` from
    `tests/github_pull_fixture.py` to pull request 7’s comments in
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so

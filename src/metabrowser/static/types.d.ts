@@ -1221,6 +1221,12 @@ type MetabrowserSdk = {
       copy?: "inline" | "sibling" | false;
     },
   ): HTMLElement;
+  /** A merge as source → target: two ref chips and the one shared arrow, left to right. */
+  mergeRefs(
+    source: { name: string; label?: string },
+    target: { name: string; label?: string },
+    options?: { kind?: string; copy?: "inline" | "sibling" | false },
+  ): HTMLElement;
   mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(

@@ -473,6 +473,11 @@ Useful helpers include:
   `mountRefCopies(primary, host)` to put secondary controls outside it; call the
   returned disposer when the row unmounts or its owner closes.
   `copy: false` renders a passive chip;
+- `mergeRefs(source, target, options)` for a merge between two branches, as the design
+  system’s one notation: the source chip, an arrow named “merges into”, then the target
+  chip, left to right in any text direction.
+  Each side is `{name, label}`, and `options` takes the chip’s `kind` and `copy`. See
+  [Merge Direction](design-system.md#merge-direction);
 - `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
   without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
   carrying the page’s owner mark, because a trusted folder’s Markdown can write the same

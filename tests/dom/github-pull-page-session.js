@@ -112,7 +112,7 @@ function summarize(model) {
     header:
       pull === null
         ? null
-        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action} ${pull.base} from ${pull.head}`,
+        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action}: ${pull.head} → ${pull.base}`,
     labels: pull === null ? [] : pull.labels,
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
