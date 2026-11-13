@@ -375,24 +375,27 @@ async def run_watcher(
         await asyncio.sleep(0)
         if not consumer.done():
             on_status(WatcherStatus(mode=mode, state="running", reason=reason))
-        await asyncio.shield(consumer)
+        # ``asyncio.wait`` joins without cancelling the consumer, like ``shield``.
+        # On Python 3.14 a cancelled ``shield`` also leaves a callback that logs the
+        # consumer's later failure as "exception in shielded future", a second
+        # report of the error the stop path below already logs.
+        await asyncio.wait((consumer,))
+        consumer.result()
     except asyncio.CancelledError:
         stop_event.set()
         # Cancellation is a request, not permission to abandon the Rust-backed
         # iterator. More than one owner can request shutdown concurrently (for
         # example the discovery budget and provider close). Each ``cancel()``
         # can inject another CancelledError into this task, including while it
-        # is already shielding the cooperative join. Keep joining until the
+        # is already in the cooperative join. Keep joining until the
         # consumer has actually left ``awatch``; otherwise event-loop teardown
         # can race a still-live RustNotify context on free-threaded Python.
         while not consumer.done():
             try:
-                await asyncio.shield(consumer)
+                await asyncio.wait((consumer,))
             except asyncio.CancelledError:
                 continue
-            except Exception:
-                break
-        if consumer.done() and not consumer.cancelled():
+        if not consumer.cancelled():
             try:
                 consumer.result()
             except Exception:
