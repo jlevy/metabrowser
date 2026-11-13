@@ -408,7 +408,8 @@ def test_single_select_dropdowns_close_on_pick() -> None:
 
 def test_only_one_dropdown_is_open_at_a_time() -> None:
     js = _read("app.js")
-    start = js.index("onMenuToggle: (key, open) =>")
+    assert "onMenuToggle: toggleFilterMenu," in js
+    start = js.index("function toggleFilterMenu(key, open)")
     block = js[start : start + 300]
     assert "filterOpenMenu = open ? key : null;" in block
 
@@ -901,7 +902,7 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
     """Age membership changes as time passes even when no filesystem event fires."""
 
     js = _read("app.js")
-    toggle_start = js.index("onMenuToggle: (key, open) =>")
+    toggle_start = js.index("function toggleFilterMenu(key, open)")
     toggle_block = js[toggle_start : toggle_start + 500]
     assert 'key === "recency" && open' in toggle_block
     assert "scheduleRootSummaryRefresh();" in toggle_block

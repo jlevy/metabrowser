@@ -178,6 +178,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
+	tests/test_key_reveal_session.py \
 	tests/test_cli_acquire_error_modes.py \
 	tests/test_cli_cache_recovery_golden.py \
 	tests/test_source_refs.py \
@@ -224,6 +225,7 @@ GOLDEN_RECORDERS := \
 	tests/test_mirror_heading_session.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
+	tests/test_key_reveal_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_diff_markdown_session.py \
 	tests/test_github_pull_page_session.py \

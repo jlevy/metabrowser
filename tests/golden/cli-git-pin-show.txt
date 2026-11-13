@@ -4,7 +4,7 @@ exit: 0
 show: README.md
 route: /view/g1-UkVBRE1FLm1k
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
 cloning <ORIGIN> into <HOME>
@@ -15,7 +15,7 @@ exit: 0
 show: a/deep/nested.md
 route: /view/g1-YQ/g1-ZGVlcA/g1-bmVzdGVkLm1k
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=27 content_bytes=27 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN> --show a/deep
@@ -24,7 +24,7 @@ exit: 0
 show: a/deep
 route: /view/g1-YQ/g1-ZGVlcA
 kind: folder
-views: overview (default), treemap
+views: overview (default, key O), treemap (key M)
 model: folder envelope; readme_path=
 --- stderr ---
 # metab file://<ORIGIN> --show links/to-readme.md
@@ -33,7 +33,7 @@ exit: 0
 show: links/to-readme.md
 route: /view/g1-bGlua3M/g1-dG8tcmVhZG1lLm1k
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN> --show bin/glyph.png
@@ -74,7 +74,7 @@ exit: 0
 show: plain.md
 route: /view/g1-cGxhaW4ubWQ
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
 cloning <ORIGIN-NAMES> into <HOME>
@@ -85,7 +85,7 @@ exit: 0
 show: g1-notes.md
 route: /view/g1-ZzEtbm90ZXMubWQ
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-tools/x.md
@@ -94,7 +94,7 @@ exit: 0
 show: g1-tools/x.md
 route: /view/g1-ZzEtdG9vbHM/g1-eC5tZA
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=5 content_bytes=5 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-data/x.md
@@ -103,7 +103,7 @@ exit: 0
 show: g1-data/x.md
 route: /view/g1-ZzEtZGF0YQ/g1-eC5tZA
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=5 content_bytes=5 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-data
@@ -112,7 +112,7 @@ exit: 0
 show: g1-data
 route: /view/g1-ZzEtZGF0YQ
 kind: folder
-views: overview (default), treemap
+views: overview (default, key O), treemap (key M)
 model: folder envelope; readme_path=
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show /view/g1-ZzEtbm90ZXMubWQ
@@ -121,7 +121,7 @@ exit: 0
 show: /view/g1-ZzEtbm90ZXMubWQ
 route: /view/g1-ZzEtbm90ZXMubWQ
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-cGxhaW4ubWQ
@@ -130,7 +130,7 @@ exit: 0
 show: g1-cGxhaW4ubWQ
 route: /view/g1-cGxhaW4ubWQ
 kind: markdown
-views: rendered (default), source
+views: rendered (default, key D), source (key S)
 model: text envelope; size=6 content_bytes=6 content_truncated=False
 --- stderr ---
 # metab file://<ORIGIN-NAMES> --show g1-data/x.md --format json
@@ -144,6 +144,7 @@ exit: 0
     {
       "id": "rendered",
       "label": "Document",
+      "key": "d",
       "default": true,
       "container_class": "content-body metabrowser-kpress-host md-body",
       "printable": true,
@@ -153,6 +154,7 @@ exit: 0
     {
       "id": "source",
       "label": "Source",
+      "key": "s",
       "default": false,
       "container_class": "content-body metabrowser-source-host",
       "printable": true,

@@ -1302,6 +1302,45 @@ def test_git_file_raw_missing_blob_is_object_unavailable(tmp_path: Path) -> None
     asyncio.run(_run())
 
 
+def test_git_folder_with_overview_alone_serves_it_without_a_key(tmp_path: Path) -> None:
+    """A README mounts Overview, and a blob the store lacks keeps Treemap off.
+
+    The folder kind declares Overview ``O`` and Treemap ``M``. The shell draws a tab strip
+    only for two views or more, so the lone Overview is served without its key, and a
+    folder whose sizes are all known keeps both keys.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    (work / "docs").mkdir(parents=True)
+    (work / "kept").mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
+    (work / "docs" / "gone.txt").write_text("gone\n", encoding="utf-8")
+    (work / "kept" / "README.md").write_text("# Kept\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "two folders")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    missing_oid = _git(work, "rev-parse", "HEAD:docs/gone.txt").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    _delete_store_blob(store, missing_oid)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            docs = (await client.get("/api/file", params={"path": _wire(b"docs")})).json()
+            assert docs["readme_path"] == _wire(b"docs", b"README.md")
+            assert docs["dir"] == {"total_files": 2}
+            assert [(view["id"], view.get("key")) for view in docs["views"]] == [("overview", None)]
+
+            kept = (await client.get("/api/file", params={"path": _wire(b"kept")})).json()
+            assert [(view["id"], view.get("key")) for view in kept["views"]] == [
+                ("overview", "o"),
+                ("treemap", "m"),
+            ]
+
+    asyncio.run(_run())
+
+
 def test_a_hook_reading_a_missing_blob_answers_the_read_error_and_no_size(tmp_path: Path) -> None:
     """A blob the store lacks has no stored size, and a hook answers the failed read.
 
