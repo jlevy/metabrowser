@@ -48,6 +48,24 @@ import Testing
         #expect(guide(uv: bin + "/uv").heading == "Metabrowser needs the metab command-line tool")
     }
 
+    /// mb-sugi: a development build of the minimum from before `--exit-on-eof` meets the
+    /// number, so the steps name the flag it lacks rather than compare the numbers.
+    @Test func aBuildFromBeforeTheServeFlagIsNamedForTheFlag() {
+        let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
+        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
+        let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
+        #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, inNewTerminal: false)])
+        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
+        #expect(upgrade[0].title(home: "/Volumes/Home")
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --exit-on-eof,"
+            + " which Metabrowser needs.")
+        let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
+        #expect(checkout[0].title(home: "/Volumes/Home")
+            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
+            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before"
+            + " --exit-on-eof, and Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
+    }
+
     /// `uv tool install` says a broken tool is already installed and changes nothing.
     @Test func aBrokenToolInstallIsReinstalled() {
         let broken = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .rejected("could not run: x"))
@@ -110,6 +128,18 @@ import Testing
         #expect(shown.steps == [.installMetab(inNewTerminal: false)])
         #expect(shown.notices == [
             "Metabrowser does not run /opt/homebrew/bin/uv itself: /opt/homebrew belongs to another account (uid 502).",
+        ])
+    }
+
+    /// A `metab` discovery would not run (mb-3o3h) is named with its reason, and with the
+    /// way to run it anyway, which is the user's choice.
+    @Test func aMetabTheAppMayNotRunIsNamedWithItsReason() {
+        let reason = "/opt/homebrew/bin is writable by its group"
+        let untrusted = CandidateOutcome(path: "/opt/homebrew/bin/metab", source: .homebrew, result: .untrusted(reason))
+        let shown = guide(tried: [untrusted], uv: bin + "/uv", loginPath: [bin])
+        #expect(shown.steps == [.installMetab(inNewTerminal: false)])
+        #expect(shown.notices == [
+            "Metabrowser does not run /opt/homebrew/bin/metab itself: \(reason). Choose metab… runs it if you trust it.",
         ])
     }
 

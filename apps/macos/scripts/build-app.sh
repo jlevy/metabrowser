@@ -2,8 +2,8 @@
 # Builds the app bundle from this SwiftPM package: a release build, the bundle layout,
 # the variant's identity and icon, and a code signature. No Xcode project.
 #
-#   scripts/build-app.sh                    # build/Metabrowser Dev.app, signed ad hoc
-#   VARIANT=release scripts/build-app.sh    # build/Metabrowser.app
+#   scripts/build-app.sh                    # build/dev/Metabrowser.app, signed ad hoc
+#   VARIANT=release scripts/build-app.sh    # build/release/Metabrowser.app
 #   VARIANT=release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" scripts/build-app.sh
 #
 # Environment:
@@ -39,7 +39,9 @@ done
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 lipo -create "${slices[@]}" -output "$app/Contents/MacOS/$executable"
-strip -x "$app/Contents/MacOS/$executable" 2>/dev/null  # local symbols: about 0.5 MB; re-signed below
+# Local symbols: about 0.5 MB. strip warns that it invalidates the linker's ad hoc
+# signature, which is replaced below.
+quietly strip -x "$app/Contents/MacOS/$executable"
 
 plist="$app/Contents/Info.plist"
 cp Resources/Info.plist "$plist"
@@ -48,6 +50,11 @@ plutil -replace CFBundleName -string "$product" "$plist"
 plutil -replace CFBundleDisplayName -string "$product" "$plist"
 plutil -replace CFBundleShortVersionString -string "$version" "$plist"
 plutil -replace CFBundleVersion -string "$build" "$plist"
+# Both variants are named Metabrowser, so the About box reads which build this is from
+# these (AppIdentity in ShellCore).
+plutil -replace MetabrowserBuildVariant -string "$variant" "$plist"
+commit="$(source_commit)"
+[[ -z "$commit" ]] || plutil -replace MetabrowserSourceCommit -string "$commit" "$plist"
 [[ -z "$scheme_suffix" ]] || suffix_url_schemes "$plist" "$scheme_suffix" "$bundle_id"
 printf 'APPL????' >"$app/Contents/PkgInfo"
 
@@ -63,4 +70,4 @@ sign "$identity" "$app" --options runtime
 codesign --verify --deep --strict --verbose=2 "$app"
 require_no_entitlements "$app"
 codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|CodeDirectory|Signature|Authority|Timestamp|TeamIdentifier)' || true
-echo "Built $app: $variant $version ($build), $(du -sh "$app" | cut -f1)"
+echo "Built $app: $variant $version ($build${commit:+, $commit}), $(du -sh "$app" | cut -f1)"

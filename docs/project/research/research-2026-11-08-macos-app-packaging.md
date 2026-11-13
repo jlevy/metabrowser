@@ -6,7 +6,9 @@
 
 **Status:** Complete; its agent-controlled server questions are taken further, and its
 per-instance cookie name corrected, in the
-[2026-11-10 addendum](#2026-11-10-addendum-server-topology-and-agent-handoff)
+[2026-11-10 addendum](#2026-11-10-addendum-server-topology-and-agent-handoff); its
+WebKit measurement gate was run, and failed, in the
+[2026-11-11 addendum](#2026-11-11-addendum-the-webkit-measurement-gate)
 
 Supersedes, for macOS,
 [Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
@@ -1299,6 +1301,40 @@ What it adds to this brief:
   that host. The later brief has host mode give every client, the app’s web views
   included, a token in the `Authorization` header that it sends only to its own origin,
   in place of any cookie.
+
+## 2026-11-11 Addendum: The WebKit Measurement Gate
+
+Recommendation 4’s gate was run in the app’s web view, in back-to-back pairs against
+Chrome, and recorded in
+[Measured in WebKit](../../large-content-rendering.md#measured-in-webkit) with its
+method, machine, and versions.
+What it changes here:
+
+- **The gate failed.** From response to laid out, WebKit took 1.6 to 5.8 times Chrome’s
+  time in the source view, 1.4 to 2.7 times in the binary view, and up to 1.5 times for
+  highlighting and the diff layout switch.
+  Its diagnostics point to a small core fix for the source view’s worst case, which
+  appends each chunk as one text node, and to none for the others.
+  So Recommendation 4’s fallback is open: an engine-specific bound, a core change that
+  also helps Safari users of the CLI, or Option F. That choice is the owner’s.
+- **Engine evidence is no longer Chromium-only** (What Metabrowser Requires of a Host),
+  for the bounds the gate covers.
+  WebKit used a seventh to a half of Chrome’s renderer memory, and its element-height
+  limit is 33,554,428 CSS px, twice Chrome’s on a 2x display.
+- **`window.print()` is now verified, and does nothing** in a `WKWebView` whose delegate
+  does not implement WebKit’s private print methods; `printOperation(with:)`, run
+  modally, prints the document.
+  Option D’s list of what the shell must implement therefore includes the page’s own
+  Print button.
+- **Drag and drop:** a folder dropped on a page opens, and a dropped file is cancelled
+  as a `file://` navigation.
+
+The last two are observations from before jlevy/metabrowser#359, which fixed both: the
+page’s Print button now reaches File > Print’s path (`mb-j3eu`), and a dropped file
+opens at its page (`mb-3h2m`). A later check run, with the app’s print bridge in the
+gate’s driver, found the Print request reaching that path and a dropped file handed to
+the app’s open path
+([`window.print()` and Drag and Drop](../../large-content-rendering.md#windowprint-and-drag-and-drop)).
 
 ## References
 

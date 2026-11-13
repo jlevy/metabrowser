@@ -75,7 +75,8 @@ public nonisolated struct WindowTitle: Equatable, Sendable {
 }
 
 extension FileChecks {
-    /// True for `/` and for the root of a mounted volume, such as `/Volumes/Backup`.
+    /// True for `/` and for the root of a mounted volume, such as `/Volumes/Backup`. A path
+    /// whose volume cannot be read counts as none, so the path menu runs on up to `/`.
     public nonisolated static func isVolumeRoot(_ path: String) -> Bool {
         (try? URL(filePath: path).resourceValues(forKeys: [.isVolumeKey]).isVolume) ?? false
     }

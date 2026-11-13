@@ -13,6 +13,7 @@
     "strictNullChecks": true
   },
   "include": [
+    "apps/macos/webkit-gate/probe.js",
     "src/metabrowser/static/**/*.d.ts",
     "src/metabrowser/static/**/*.js",
     "src/metabrowser/builtin_plugins/**/*.js"
