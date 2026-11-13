@@ -5985,6 +5985,41 @@ pre.code-block.metabrowser-source-lines > code {
   outline-offset: 1px;
 }
 
+/* ── Merge direction ────────────────────────────────────────── */
+
+/* A merge is source → target, left to right, wherever it appears
+   (docs/design-system.md, "Merge Direction"); `mergeRefs` writes it.
+   The group is `dir="ltr"`, so the arrow points from source to target
+   in a right-to-left page too. In a narrow place the two names share
+   the room equally — a name that fits in its half keeps all of it, and
+   the longer one ellipsizes first — and the arrow never gives way:
+   grid's "maximize tracks" step grows both name tracks equally from
+   zero and freezes each at its full width.
+   The group never gets narrower than both chips' padding and copy slot
+   (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
+   in each, and the arrow with its spaces (about 1.3em): the equal growth
+   gives each name at least its chip's frame and an ellipsis, and what is
+   left is the arrow's. A line too short for that floor moves the merge
+   to a line of its own (the Pulls tab's `.github-pulls-line`). */
+.merge-refs {
+  display: inline-grid;
+  grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);
+  align-items: center;
+  min-width: calc(2 * (5px + 19px) + 3em);
+  max-width: 100%;
+  vertical-align: middle;
+  font-size: var(--ui-small-font-size);
+}
+.merge-refs > .git-ref {
+  font-size: var(--ui-small-font-size);
+}
+/* The spaces around the glyph are text, kept so a copied selection reads
+   "wip → topic"; `pre` keeps them in their own grid cell. */
+.merge-refs-arrow {
+  color: var(--muted);
+  white-space: pre;
+}
+
 /* ── Commit detail view ─────────────────────────────────────── */
 
 .git-commit-view {

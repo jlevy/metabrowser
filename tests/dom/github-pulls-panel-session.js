@@ -1200,34 +1200,67 @@ async function paintStory(panel, selection = false) {
     const metadata = row(hostile).childNodes.find((node) =>
       node.classList?.contains("github-pulls-meta"),
     );
-    const numberLabel = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-number"),
+    /** @param {any} parent @param {string} name */
+    const child = (parent, name) =>
+      parent.childNodes.find((node) => node.classList?.contains(name));
+    // The line wraps: the author and the branches each carry the separator before them, so
+    // either moves to the next line whole.
+    const line = child(metadata, "github-pulls-line");
+    const numberLabel = child(line, "github-pulls-number");
+    const by = child(line, "github-pulls-by");
+    const merge = child(line, "github-pulls-merge");
+    assert(
+      metadata.textContent ===
+        `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
+      "the line reads number, author, then head → base",
     );
-    const identity = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pull-identity"),
-    );
-    const authorLabel = identity.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-author"),
-    );
-    const branches = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-refs"),
-    );
+    for (const part of [by, merge]) {
+      assert(
+        part.firstChild.classList.contains("github-pulls-sep") &&
+          part.firstChild.textContent === " · ",
+        "a part that may wrap carries its own separator",
+      );
+    }
+    const identity = child(by, "github-pull-identity");
+    const authorLabel = child(identity, "github-pulls-author");
+    const branches = child(merge, "merge-refs");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-    assert(branches.textContent.includes(" ← "), "branches keep their own smaller semantic span");
-    const chips = branches.childNodes.filter((node) => node.classList?.contains("git-ref"));
-    assert(chips.length === 2, "exactly two structured chips, including literal arrow refs");
-    assert(chips[0].dataset.refCopy === "release/←base", "raw base ref remains intact");
+    // Merge Direction: the shared group, source → target, left to right, whatever the refs say.
+    const [source, arrow, target] = branches.childNodes;
+    assert(branches.getAttribute("dir") === "ltr", "the merge reads left to right in any page");
     assert(
-      chips[1].dataset.refCopy === "feature/←<literal>",
+      branches.textContent === "fork:feature/←<literal> → release/←base",
+      "the head, the shared arrow, then the base",
+    );
+    assert(
+      arrow.classList.contains("merge-refs-arrow") &&
+        arrow.getAttribute("role") === "img" &&
+        arrow.getAttribute("aria-label") === "merges into",
+      "the arrow is named, so a reader hears the head merge into the base",
+    );
+    assert(
+      arrow.dataset.tipText === "fork:feature/←<literal> merges into release/←base",
+      "the arrow's tooltip states the whole merge a narrow row may cut short",
+    );
+    const chips = [source, target];
+    assert(
+      chips.every((chip) => chip.classList.contains("git-ref")) &&
+        source.classList.contains("merge-refs-source") &&
+        target.classList.contains("merge-refs-target"),
+      "exactly two structured chips, including literal arrow refs",
+    );
+    assert(target.dataset.refCopy === "release/←base", "raw base ref remains intact");
+    assert(
+      source.dataset.refCopy === "feature/←<literal>",
       "copy omits fork display qualification",
     );
     assert(
-      chips[1].textContent === "fork:feature/←<literal>",
+      source.textContent === "fork:feature/←<literal>",
       "head label is literal and owner-qualified",
     );
 
