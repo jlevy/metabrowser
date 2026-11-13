@@ -33,13 +33,6 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
-- `metabrowser.fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`, and
-  `formatKpressError` moved from the startup script `plugin-sdk.js` to
-  `plugin-sdk-views.js`, the `sdk-views` bundle, which the shell loads before any
-  plugin’s code runs, so a plugin still finds them wherever its code runs.
-  A browserless test that loads `plugin-sdk.js` alone must load `plugin-sdk-views.js`
-  beside it.
-
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file

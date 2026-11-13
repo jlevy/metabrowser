@@ -184,10 +184,6 @@ Plugins are not isolated from each other; reach another plugin through the SDK
 hexadecimal digits cannot be addressed.
 `src/metabrowser/asset_stamps.py` documents the policy.
 
-The KPress helpers (`fetchKpressRender`, `loadKpressAssets`, `kpressInitToc`) are
-installed by `plugin-sdk-views.js`, which the shell loads before any plugin’s code runs.
-A test that runs your plugin outside the shell loads it beside `plugin-sdk.js`.
-
 ### Kind Rules
 
 Each `[[kind]]` declares a stable `id`, a `match` table, and an optional `priority`.
