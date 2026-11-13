@@ -460,8 +460,11 @@ See
 state, and ordered commit, comment, and review identifiers.
 Commit events carry a subject and optional commit date.
 Discussion IDs are decimal strings.
-The browser asks after the selected Conversation paints and inserts the commit rows
-among its existing discussion cards.
+The browser asks after the selected Conversation paints; its first paint waits for no
+projection. A projection that answers after that paint moves nothing painted: its new
+commit rows go after everything the Conversation shows, in its order.
+A later first paint with the projection held, such as the Conversation shown again after
+another tab, places its commit rows among the discussion cards.
 During metadata refresh it can set `cached_only: true` to read the held projection.
 Provider work uses a separate slot after that refresh settles.
 A transient provider failure can return a verified prefix with `retryable: true`. The
@@ -914,6 +917,9 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pull-stack-loading` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull`, `/api/plugin/github/stacks` | `node tests/dom/github-pull-stack-mount-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pull-files-tree` | interaction | `builtin_plugins/github/pull-files-tree.js#buildFileTree`, `builtin_plugins/github/pull-files-tree.js#visibleRows`, `builtin_plugins/github/pull-files-tree.js#initialExpansion`, `builtin_plugins/github/pull-files-tree.js#toggleFolder`, `builtin_plugins/github/pull-files-tree.js#revealPath`, `builtin_plugins/github/pull-files-tree.js#holdFileList`, `builtin_plugins/github/pull-files-tree.js#describeFileList`, `builtin_plugins/github/pull-files-tree.js#createFileTreeController`, `builtin_plugins/github/pull-files-tree.js#createRowExpansion`, `builtin_plugins/github/pull-files-tree.js#windowRange`, `builtin_plugins/github/pull-files-tree.js#describeFileTree` | `/api/plugin/github/pull-files`, `/api/plugin/github/pull-files-refresh` | `node tests/dom/github-pull-files-tree-session.js` | `cli-ui-github-pull-files-tree.tryscript.md` |
 | `github.pulls-reader-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.selection-first-read` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull` | `node tests/dom/github-pull-selection-read-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.conversation-first-paint` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#rememberRendered`, `builtin_plugins/github/pull-page.js#renderedText`, `builtin_plugins/github/pull-state.js#noteListed`, `builtin_plugins/github/pull-state.js#withListedState` | `/api/plugin/github/pull`, `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-first-paint-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-files-opening` | interaction | `builtin_plugins/github/pull-files-tree.js#createFileTreeController`, `builtin_plugins/github/pull-files-tree.js#describeFileTree` | `/api/plugin/github/pull-files`, `/api/plugin/github/pull-files-refresh` | `node tests/dom/github-pull-files-opening-behavior.js` | `cli-ui-github-pull-files-tree.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `links.external-github` | interaction | `static/plugin-sdk-views.js#decorateExternalLink` | `local-only` | `node tests/dom/external-links-session.js` | `cli-ui-external-links.tryscript.md` |
 | `plugins.view-helpers-before-plugin-code` | interaction | `static/plugin-sdk.js#loadPluginsForKind`, `static/plugin-sdk.js#_ensureViewHelpers`, `static/plugin-sdk.js#_startPluginAssets`, `static/plugin-sdk-views.js#renderSourceView`, `static/asset-loader.js#ensureAsset` | `local-only` | `node tests/dom/plugin-view-helpers-session.js` | `cli-ui-plugin-view-helpers.tryscript.md` |
