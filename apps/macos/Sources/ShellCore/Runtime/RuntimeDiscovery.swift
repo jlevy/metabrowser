@@ -14,13 +14,17 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
     public var canonicalPath: @Sendable (String) -> String
     public var run: CommandRunner.Run
     public var fingerprint: @Sendable (String) -> FileFingerprint?
+    /// Why a candidate the app found by itself may not be run, or nil if it may
+    /// (`ExecutableTrust`).
+    public var refusal: @Sendable (String) -> String?
 
     public init(
         home: String, environment: [String: String], saved: Runtime?, shell: String?,
         isExecutable: @escaping @Sendable (String) -> Bool,
         canonicalPath: @escaping @Sendable (String) -> String,
         run: @escaping CommandRunner.Run,
-        fingerprint: @escaping @Sendable (String) -> FileFingerprint? = { _ in nil }
+        fingerprint: @escaping @Sendable (String) -> FileFingerprint? = { _ in nil },
+        refusal: @escaping @Sendable (String) -> String? = { ExecutableTrust.refusal($0) }
     ) {
         self.home = home
         self.environment = environment
@@ -30,6 +34,7 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
         self.canonicalPath = canonicalPath
         self.run = run
         self.fingerprint = fingerprint
+        self.refusal = refusal
     }
 
     /// `home` is `HOME` when the app has one, as uv reads it to place `~/.local/bin`, so
@@ -53,9 +58,14 @@ public nonisolated struct DiscoveryEnvironment: Sendable {
 public nonisolated enum CandidateResult: Equatable, Sendable {
     case valid(version: String)
     case missing
-    /// A working `metab` older than `MetabRequirement.minimum`.
+    /// A working `metab` older than `MetabRequirement.minimum`, or, whatever its number,
+    /// one built before `CLIServeLaunch.exitOnEOF`, which it rejects as an unknown option
+    /// (`RuntimeDiscovery.rejectsServeFlag`, `MetabRequirement.flagShortfall`).
     case tooOld(version: String)
     case rejected(String)
+    /// Not run: the app found it by itself, and another account can change it, or it could
+    /// not be examined (`ExecutableTrust`).
+    case untrusted(String)
 }
 
 public nonisolated struct CandidateOutcome: Equatable, Sendable {
@@ -77,16 +87,28 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 
 /// Finds the user's CLI install of `metab` once, at setup.
 ///
-/// Cheap locations come first, each a file check plus `metab --version`: the saved
-/// path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin directory, and the Homebrew
-/// prefixes. The login shell is consulted only when they do not answer for `metab`,
-/// `git`, or `gh`, because it runs the user's shell startup files in this app's name,
-/// which can take seconds and can raise privacy prompts the user never saw in Terminal.
+/// It runs only a candidate no other account can change (`ExecutableTrust`), since running
+/// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
+/// for Settings, the log, and the first-run steps.
+///
+/// Cheap locations come first, each a file check plus `metab --exit-on-eof --version`
+/// (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
+/// directory, and the Homebrew prefixes. The login shell is consulted only when they do
+/// not answer for `metab`, `git`, or `gh`, because it runs the user's shell startup files
+/// in this app's name, which can take seconds and can raise privacy prompts the user
+/// never saw in Terminal.
 public nonisolated enum RuntimeDiscovery {
     public static let homebrewBins = ["/opt/homebrew/bin", "/usr/local/bin"]
     public static let installCommand = "uv tool install metabrowser"
+    /// A first run after `uv tool install` compiles bytecode, so `--version` can take
+    /// seconds; one that takes longer than this is broken.
     static let versionTimeout: Duration = .seconds(20)
+    /// A login shell whose startup files take longer is given up on, and setup goes on
+    /// without its `PATH`.
     static let shellTimeout: Duration = .seconds(8)
+    /// Settings > Run Doctor stops `metab --doctor` after this, so a check stuck on a
+    /// hung tool or network leaves the window usable.
+    public static let doctorTimeout: Duration = .seconds(60)
     static let beginMarker = "__METABROWSER_LOGIN_ENV_BEGIN__"
     static let endMarker = "__METABROWSER_LOGIN_ENV_END__"
 
@@ -99,7 +121,7 @@ public nonisolated enum RuntimeDiscovery {
                 let canonical = env.isExecutable(path) ? env.canonicalPath(path) : path
                 guard seen.insert(canonical).inserted else { continue }
                 let fingerprint = env.fingerprint(path)
-                let result = await validate(path, env)
+                let result = await validate(path, env, source: source)
                 tried.append(CandidateOutcome(path: path, source: source, result: result))
                 if case .valid(let version) = result {
                     return Runtime(executable: path, version: version, source: source, fingerprint: fingerprint)
@@ -151,23 +173,73 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --version` with the same minimal environment a server gets, and holds
-    /// the version to `MetabRequirement`.
-    public static func validate(_ path: String, _ env: DiscoveryEnvironment) async -> CandidateResult {
-        guard env.isExecutable(path) else { return .missing }
-        let spec = LaunchSpec(
-            executable: path, arguments: ["--version"],
-            environment: ChildEnvironment.build(inherited: env.environment, toolDirectories: []))
-        let result = await env.run(spec, versionTimeout)
-        if let error = result.launchError { return .rejected("could not run: \(error)") }
-        if result.timedOut { return .rejected("--version did not finish within \(versionTimeout)") }
-        guard result.succeeded, let version = parseVersion(result.output) else {
-            return .rejected("--version printed: \(result.output.last ?? "nothing")")
+    /// Runs `metab --exit-on-eof --version` with the same minimal environment a server
+    /// gets, and holds the version to `MetabRequirement`.
+    ///
+    /// The flag is the one every server gets (`CLIServeLaunch.exitOnEOF`), and a version
+    /// number cannot show it: a development build of the minimum from before the flag
+    /// counts as the minimum. Click rejects an unknown option before the eager `--version`
+    /// runs, so such a build exits 2 and names the flag (`rejectsServeFlag`). Only then
+    /// does `--version` run alone, and a version this app reads from it makes the `metab`
+    /// too old whatever its number. Any other failed probe shows nothing about when the
+    /// build was made, so it is rejected with its own output and nothing more runs; so is
+    /// a probe that could not start or did not finish. A current `metab` costs one run.
+    ///
+    /// Running it executes the file, whatever it prints, so a file the app found by itself
+    /// (every `source` but `.chosen`, and no source at all) runs only if no other account
+    /// can change it (`env.refusal`, `ExecutableTrust`): discovery's candidates, a saved
+    /// runtime discovery found, and a recheck of one. That is checked just before each
+    /// run, since a folder on the path can become writable by its group, or a link on it
+    /// lead elsewhere, while the probe runs. A file the user chose in Settings is run as
+    /// chosen.
+    public static func validate(
+        _ path: String, _ env: DiscoveryEnvironment, source: RuntimeSource? = nil
+    ) async -> CandidateResult {
+        func barred() -> CandidateResult? {
+            guard env.isExecutable(path) else { return .missing }
+            if source != .chosen, let reason = env.refusal(path) { return .untrusted(reason) }
+            return nil
         }
-        guard let parsed = MetabVersion(version) else {
-            return .rejected("--version printed a version this app cannot read: \(version)")
+        if let barred = barred() { return barred }
+        let environment = ChildEnvironment.build(inherited: env.environment, toolDirectories: [])
+        func run(_ arguments: [String]) async -> CommandResult {
+            await env.run(LaunchSpec(executable: path, arguments: arguments, environment: environment), versionTimeout)
         }
-        return MetabRequirement.accepts(parsed) ? .valid(version: version) : .tooOld(version: version)
+        func unfinished(_ result: CommandResult) -> CandidateResult? {
+            if let error = result.launchError { return .rejected("could not run: \(error)") }
+            if result.timedOut { return .rejected("--version did not finish within \(versionTimeout)") }
+            return nil
+        }
+        func reading(_ result: CommandResult, _ judge: (String, MetabVersion) -> CandidateResult) -> CandidateResult {
+            guard result.succeeded, let version = parseVersion(result.output) else {
+                return .rejected("--version printed: \(result.output.last ?? "nothing")")
+            }
+            guard let parsed = MetabVersion(version) else {
+                return .rejected("--version printed a version this app cannot read: \(version)")
+            }
+            return judge(version, parsed)
+        }
+        let probe = await run([CLIServeLaunch.exitOnEOF, "--version"])
+        if let rejection = unfinished(probe) { return rejection }
+        if probe.succeeded {
+            return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
+        }
+        guard rejectsServeFlag(probe) else {
+            return .rejected("\(CLIServeLaunch.exitOnEOF) --version printed: \(probe.output.last ?? "nothing")")
+        }
+        if let barred = barred() { return barred }
+        let plain = await run(["--version"])
+        if let rejection = unfinished(plain) { return rejection }
+        return reading(plain) { version, _ in .tooOld(version: version) }
+    }
+
+    /// Whether `result` is click's rejection of `CLIServeLaunch.exitOnEOF` as an unknown
+    /// option: exit status 2, with the flag named in what it printed. The wording around
+    /// the flag is click's and is not matched. A crash, a signal, or another usage error is
+    /// not one, and shows nothing about when the build was made.
+    static func rejectsServeFlag(_ result: CommandResult) -> Bool {
+        guard let status = result.status, ExitStatus(waitStatus: status) == .exited(2) else { return false }
+        return result.output.contains { $0.contains(CLIServeLaunch.exitOnEOF) }
     }
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.
