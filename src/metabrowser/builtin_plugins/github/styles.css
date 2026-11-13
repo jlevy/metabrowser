@@ -528,24 +528,51 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line is a flex line so the branches take the room left after the number, the
-   stack, and the author, and their chips ellipsize inside it with the arrow kept
-   (docs/design-system.md, "Merge Direction"). A line of text with `text-overflow: ellipsis`
-   would not do: when it overflows, Chrome hides the merge's arrow and clips the last chip
-   at the edge. `pre` keeps the spaces around each `·`, which a flex line trims from its
-   text. */
+/* The muted line: the number, the stack badge, the author, and the branches
+   (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
+   always whole inside the row: the author and the branches each start with their separator
+   and may move to the next line, and the line is laid out as wide as the row plus one
+   separator, starting one separator to the left, so that the separator of a part that
+   starts a line falls outside the row and is clipped. The number makes up that offset.
+   Line breaks are decided by each part's floor, and a part that stays grows by equal
+   amounts toward its full width, so a line shortens names before it wraps. A line of text
+   with `text-overflow: ellipsis` would not do: when it overflows, Chrome hides the
+   merge's arrow and clips the last chip at the edge. */
 .github-pulls-meta {
-  display: flex;
-  align-items: baseline;
   grid-column: 3 / -1;
+  min-width: 0;
   overflow: hidden;
-  white-space: pre;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+.github-pulls-line {
+  --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-inline-start: calc(-1 * var(--github-pulls-sep));
+  white-space: pre;
+}
+.github-pulls-sep {
+  flex: none;
+  width: var(--github-pulls-sep);
+  text-align: center;
+}
+/* The branches never get narrower than their separator and the merge's floor, so a line
+   that cannot hold that moves them to a line of their own. */
+.github-pulls-merge {
+  display: flex;
+  flex: 1 1 0;
+  align-items: baseline;
+  max-width: max-content;
+}
+.github-pulls-merge > .merge-refs {
+  flex: 1 1 auto;
 }
 .github-pulls-number {
   color: var(--text);
   font-size: var(--nav-font-size);
+  margin-inline-start: var(--github-pulls-sep);
 }
 .github-pulls-stack {
   display: inline-flex;
@@ -789,4 +816,31 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+
+/* The author never gets narrower than its separator, its avatar if it has one, and a little
+   of the name, so neither the separator nor the avatar stands without a visible name: past
+   that, the author and its separator move to the next line together. Above it the name
+   ends in an ellipsis. The avatar's share is its 18px and the identity's 4px gap
+   (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
+   hidden, so the name's share is still there. */
+.github-pulls-by {
+  display: flex;
+  flex: 1 1 0;
+  align-items: baseline;
+  min-width: calc(var(--github-pulls-sep) + 1.75em);
+  max-width: max-content;
+  overflow: hidden;
+}
+.github-pulls-by:has(.github-pull-avatar) {
+  min-width: calc(var(--github-pulls-sep) + 18px + 4px + 1.75em);
+}
+.github-pulls-by > .github-pull-identity {
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pulls-by .github-pulls-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

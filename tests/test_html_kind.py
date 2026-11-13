@@ -54,6 +54,7 @@ def test_html_files_are_the_html_kind(tmp_path: Path) -> None:
     assert page["kind"] == "html"
     assert page["type"] == "text"
     assert _view_ids(page) == ["preview", "source"]
+    assert [view.get("key") for view in page["views"]] == ["p", "s"]
     assert _default_id(page) == "preview"
     assert legacy["kind"] == "html"
     assert _default_id(legacy) == "preview"
@@ -86,6 +87,8 @@ def test_active_content_off_drops_preview(tmp_path: Path) -> None:
     assert result["kind"] == "html"
     assert _view_ids(result) == ["source"]
     assert _default_id(result) == "source"
+    # Source alone draws no tab, so the key it declares is not served.
+    assert "key" not in result["views"][0]
 
 
 def test_percent_name_stays_an_inventory_identity(tmp_path: Path) -> None:

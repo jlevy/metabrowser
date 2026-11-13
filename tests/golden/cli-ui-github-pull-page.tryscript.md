@@ -1638,11 +1638,16 @@ and remounts it once after success even if metadata has advanced to another head
 Pending and disposed controls cannot issue duplicate requests.
 Asset and render failures retain their local Retry action.
 Opening Changes beside a checkout starts an acquisition and offers Retry changes after a
-refusal.
+refusal. The tabs answer to `C`, `G`, and `H` through the production shortcut registry
+and plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
+does not show opens through the route, as a click on its link does.
+The keys wait while the tab column is out of the page before the record arrives, return
+when the header puts it back, wait while the page is staged inert, and end with the
+page.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"tabKeys":["before the record, the tab column out of the page: keys C G H, live none","C: not handled","the record arrives and paintHeader puts the column in: Conversation C, Changes G, Checks H","live: conversation files checks","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled"]}
 ? 0
 ```
 

@@ -347,6 +347,7 @@ class FakeDocument {
     return this.root.querySelector(selector);
   }
   addEventListener() {}
+  removeEventListener() {}
 }
 
 // ── Sandbox ──────────────────────────────────────────────────
@@ -1712,9 +1713,8 @@ async function run() {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
-      for (const letter of ["j", "k"]) {
-        const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+    for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+      for (const key of ["j", "k"]) {
         const chord = keyboardEvent(key, { [modifier]: true });
         rows[1].dispatch("keydown", chord);
         assertTrue(`keyboard: ${modifier} with ${key} is ignored`, !chord.defaultPrevented);
@@ -1726,9 +1726,30 @@ async function run() {
       internals.stateForTests().selectedId,
       SHA_B,
     );
-    // Let the final focus-following selection release its single active
-    // preparation slot before the next independent preparation case.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Shift never changes a row key: Shift with K, J, or an arrow moves and
+    // opens, as without it.
+    for (const [key, from, to, revision] of [
+      ["K", 1, 0, SHA_A],
+      ["J", 0, 1, SHA_B],
+      ["ArrowUp", 1, 0, SHA_A],
+      ["ArrowDown", 0, 1, SHA_B],
+    ]) {
+      const shifted = keyboardEvent(key, { shiftKey: true });
+      rows[from].dispatch("keydown", shifted);
+      assertTrue(`keyboard: Shift with ${key} is handled`, shifted.defaultPrevented);
+      assertTrue(`keyboard: Shift with ${key} moves focus`, document.activeElement === rows[to]);
+      assertEqual(
+        `keyboard: Shift with ${key} opens the commit`,
+        internals.stateForTests().selectedId,
+        revision,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    // The Commits tab's digit hands focus back to the row the reader left.
+    document.activeElement = null;
+    assertTrue("focusRow: the roving row takes focus", internals.focusCommitRow());
+    assertTrue("focusRow: focus lands on the row left", document.activeElement === rows[1]);
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────
@@ -2498,6 +2519,177 @@ async function run() {
     sandbox.MetabrowserShell.claimPreview = originalClaim;
   }
 
+  // The commit diff another owner takes the pane from ends when that owner's content
+  // replaces it, and its `L` with it. The shell's claim and install functions are lifted
+  // from app.js; the registry and the plugin shortcut facade are production; the diff
+  // stands in for diff-view.js, which attaches `L` on its layout chip and detaches it in
+  // `dispose()` (tests/dom/diff-layout-fit-session.js pins that half).
+  {
+    const shell = sandbox.MetabrowserShell;
+    const originals = {
+      claimPreview: shell.claimPreview,
+      renderPreviewHtml: shell.renderPreviewHtml,
+      renderPreviewNode: shell.renderPreviewNode,
+      view: sandbox.metabrowser.getRegisteredView,
+    };
+    const app = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf8");
+    const lifted = [
+      "claimPreview(owner, selection)",
+      "finishRetainedPullPage()",
+      "renderPreviewHtml(html, claim)",
+      "renderPreviewNode(node, claim)",
+    ].map((signature) => {
+      const pattern = new RegExp(
+        `\\nfunction ${signature.replace(/[()]/g, "\\$&")} \\{[\\s\\S]*?\\n\\}`,
+      );
+      const source = app.match(pattern)?.[0];
+      assertTrue(`relinquished diff: app.js has ${signature}`, Boolean(source));
+      return source ?? "";
+    });
+    sandbox.cancelPendingFilePreviewStage = () => pendingStageCleanup?.();
+    sandbox.pullPageHost = null;
+    sandbox.retainedPullPageDispose = null;
+    sandbox.shellKeymap = null;
+    sandbox.clearPreviewNavigationState = (pane) => {
+      pane.classList.remove("preview-navigation-pending");
+      pane.removeAttribute("aria-busy");
+      pane.removeAttribute("data-preview-pending-claim");
+    };
+    sandbox.previewPane = {
+      claim: () => {
+        previewClaim += 1;
+        return previewClaim;
+      },
+    };
+    sandbox.isPreviewClaimCurrent = (claim) => claim === previewClaim;
+    sandbox.disposeActivePluginViews = () => {};
+    sandbox.animatePreviewContentArrival = () => {};
+    vm.runInContext(lifted.join("\n"), sandbox, { filename: "app.js (lifted)" });
+    shell.claimPreview = sandbox.claimPreview;
+    shell.renderPreviewHtml = sandbox.renderPreviewHtml;
+    shell.renderPreviewNode = sandbox.renderPreviewNode;
+
+    for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+      const filename = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
+    }
+    const registry = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+    const facade = sandbox.MetabrowserPluginShortcuts;
+    const detachRegistry = facade.attachShortcutRegistry(registry);
+    /** What Help lists of the plugin keys: it lists a command with an attachment, live or not. */
+    const helpKeys = () =>
+      registry
+        .snapshot("help", { includeInactive: true })
+        .flatMap((group) => group.commands)
+        .filter((command) => command.scope === "plugin")
+        .map((command) => `${command.bindings.visible.join("")} ${command.copy.action}`);
+    const mounts = [];
+    sandbox.metabrowser.getRegisteredView = () => ({
+      render: async (host, context) => {
+        const root = document.createElement("div");
+        const chip = document.createElement("button");
+        root.appendChild(chip);
+        host.appendChild(root);
+        const layoutKey = facade.attachShortcut(chip, {
+          activate: () => {},
+          copy: {
+            action: "Toggle diff layout",
+            description: "Switch the diff between Split and Unified.",
+            hint: "Layout",
+          },
+          group: "controls",
+          id: "diff.layout",
+          key: "l",
+          order: 40,
+        });
+        const mount = { revision: context.revision, chip, canceled: 0, disposed: 0 };
+        mounts.push(mount);
+        return {
+          cancelPending: () => {
+            mount.canceled += 1;
+          },
+          dispose: () => {
+            mount.disposed += 1;
+            layoutKey.detach();
+            root.remove();
+          },
+        };
+      },
+    });
+    const revision = "92".repeat(20);
+    responses.set(`/api/git/commit/${revision}`, {
+      is_repo: true,
+      commit: commit(revision, [], "relinquished commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+
+    await internals.selectCommit(revision);
+    const [first] = mounts;
+    assertEqual("relinquished diff: the commit view mounts one diff", mounts.length, 1);
+    assertEqual("relinquished diff: Help lists the diff's L", helpKeys(), ["L Toggle diff layout"]);
+
+    shell.claimPreview("file", { folder: false, path: "after-commit.txt" });
+    assertEqual("relinquished diff: a file claim cancels the diff's work", first.canceled, 1);
+    assertEqual("relinquished diff: the diff waits for the file's content", first.disposed, 0);
+    assertTrue("relinquished diff: the commit view stays on screen", first.chip.isConnected);
+    assertEqual("relinquished diff: L stays while the diff is shown", helpKeys(), [
+      "L Toggle diff layout",
+    ]);
+    // A second claim before the first one's content arrives keeps the one handoff.
+    const fileClaim = shell.claimPreview("file", { folder: false, path: "later.txt" });
+    assertEqual("relinquished diff: a second claim keeps the handoff", first.disposed, 0);
+
+    shell.renderPreviewHtml('<div class="file-view">later.txt</div>', fileClaim);
+    assertEqual("relinquished diff: the file's content disposes the diff", first.disposed, 1);
+    assertEqual("relinquished diff: Help no longer lists L", helpKeys(), []);
+    assertEqual(
+      "relinquished diff: the chip keeps no aria-keyshortcuts",
+      first.chip.getAttribute("aria-keyshortcuts"),
+      null,
+    );
+
+    await internals.selectCommit(revision);
+    const second = mounts[1];
+    assertEqual("relinquished diff: showing the commit again mounts a diff", mounts.length, 2);
+    assertEqual("relinquished diff: the earlier diff is disposed once", first.disposed, 1);
+    assertEqual("relinquished diff: the new diff stays mounted", second?.disposed, 0);
+    assertEqual("relinquished diff: Help lists L again", helpKeys(), ["L Toggle diff layout"]);
+    assertEqual(
+      "relinquished diff: L is on the new diff's chip",
+      second?.chip.getAttribute("aria-keyshortcuts"),
+      "L",
+    );
+
+    // The commit view's own replacement still disposes the diff it replaces.
+    const replacement = "93".repeat(20);
+    responses.set(`/api/git/commit/${replacement}`, {
+      is_repo: true,
+      commit: commit(replacement, [], "replacing commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    await internals.selectCommit(replacement);
+    assertEqual("relinquished diff: the next commit disposes the shown diff", second?.disposed, 1);
+    assertEqual("relinquished diff: one L for the shown commit", helpKeys(), [
+      "L Toggle diff layout",
+    ]);
+
+    detachRegistry();
+    registry.dispose();
+    Object.assign(shell, {
+      claimPreview: originals.claimPreview,
+      renderPreviewHtml: originals.renderPreviewHtml,
+      renderPreviewNode: originals.renderPreviewNode,
+    });
+    sandbox.metabrowser.getRegisteredView = originals.view;
+    sandbox.retainedPullPageDispose = null;
+  }
+
   // ── Changed files navigate through the shell ───────────────
   {
     openedPaths.length = 0;
@@ -2536,6 +2728,10 @@ async function run() {
   assertTrue(
     "gate: a repository registers its real Git tab before helper loading",
     registeredPanel !== null,
+  );
+  assertTrue(
+    "gate: the Commits tab hands its digit's focus to the history",
+    registeredPanel.focusRow === internals.focusCommitRow,
   );
   assertEqual("gate: an unopened Git tab does not load the view helpers", viewAssets, []);
   registeredPanel.onShow();
