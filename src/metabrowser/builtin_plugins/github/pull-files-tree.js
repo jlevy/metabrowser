@@ -732,6 +732,11 @@ function describeDrawnTree(envelope, held) {
     } else if (said.capped) {
       model.line = said.count;
     }
+    if (held.rows.length === 0 && envelope.fetched > 0) {
+      // The list holds files the tree has not drawn yet: a refresh's answer carries no rows,
+      // so the tree reads them, and it shows that it is reading rather than nothing at all.
+      model.loading = true;
+    }
     if (failure !== null) {
       model.notice = {
         severity: "warning",
@@ -1087,6 +1092,19 @@ export function createFileTreeController(deps, options) {
     );
   }
 
+  /**
+   * Whether the list holds files the tree has none of yet, as a refresh's answer says when
+   * another request already listed them: that answer carries no rows, so a read must follow.
+   */
+  function rowsDue() {
+    return (
+      envelope !== null &&
+      envelope.listed_from !== null &&
+      envelope.fetched > 0 &&
+      holder.rows().length === 0
+    );
+  }
+
   /** @param {boolean} [now] */
   function scheduleNext(now = false) {
     clearTimer();
@@ -1107,7 +1125,7 @@ export function createFileTreeController(deps, options) {
       },
       now
         ? 0
-        : envelope.refreshing || envelope.state === "pending" || recentMissing()
+        : envelope.refreshing || envelope.state === "pending" || recentMissing() || rowsDue()
           ? FILES_POLL_MS
           : Math.max(FILES_POLL_MS, envelope.fresh_for_s * 1000),
     );
@@ -1224,7 +1242,8 @@ export function createFileTreeController(deps, options) {
       }
     }
     render();
-    scheduleNext();
+    // An answer that says the list holds files the tree has none of is read at once.
+    scheduleNext(error === null && rowsDue());
   }
 
   /**

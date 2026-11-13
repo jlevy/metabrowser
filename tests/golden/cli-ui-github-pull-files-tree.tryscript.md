@@ -585,18 +585,22 @@ them however late: a list GitHub returns seconds after the click (`lateRows`), a
 read slower than `LATE_ROWS_MS` (`slowCachedRead`), the poll after a failed first read
 (`afterFailedRead`), a tree opened again (`reopened`) or shown again (`shownAgain`), one
 a read emptied (`refreshEmptied`), a landing (`landing`), and a list’s first page
-(`fill`). Only a change to rows already drawn that comes `LATE_ROWS_MS` after the
-reader’s last press or key, or after the tree’s opening on a landing, is offered rather
-than drawn: a list’s further pages on its line (`fill`), and a refreshed complete list
-over the tree’s top, floating (`refreshed`), which opening the tree again draws
-(`refreshedReopened`). Rows inside the input’s window are drawn as before
-(`promptRows`). A refresh that would draw the same rows is drawn in place, since it
-moves nothing (`unchangedRefresh`), and an offer hides none of the tree’s line or
-notices (`offerKeepsNotices`). An offer that a later answer makes empty, by bringing
-back the rows drawn, is withdrawn (`offerWithdrawn`). Each hold’s span says how long it
-held and why it ended, an offer included when the reader presses it or the tree closes
-on it, and a first read that fails as failed (`spans`). `invariants` holds, across every
-model the stories rendered, that an expanded tree with no rows drawn never offers.
+(`fill`). A refresh that answers not due, because another request listed the files,
+carries none of its rows, so the tree reads them at once and shows its loading line in
+between (`refreshNotDue`, `refreshNotDueLate`, with when the rows were drawn).
+Only a change to rows already drawn that comes `LATE_ROWS_MS` after the reader’s last
+press or key, or after the tree’s opening on a landing, is offered rather than drawn: a
+list’s further pages on its line (`fill`), and a refreshed complete list over the tree’s
+top, floating (`refreshed`), which opening the tree again draws (`refreshedReopened`).
+Rows inside the input’s window are drawn as before (`promptRows`). A refresh that would
+draw the same rows is drawn in place, since it moves nothing (`unchangedRefresh`), and
+an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An offer that a
+later answer makes empty, by bringing back the rows drawn, is withdrawn
+(`offerWithdrawn`). Each hold’s span says how long it held and why it ended, an offer
+included when the reader presses it or the tree closes on it, and a first read that
+fails as failed (`spans`). `invariants` holds, across every model the stories rendered,
+their refresh answering started or not due, that an expanded tree with no rows drawn
+never offers, and that once open it shows progress, a notice, or its line.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -644,6 +648,27 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     "loading line",
     "4 rows"
   ],
+  "refreshNotDue": {
+    "painted": [
+      "closed",
+      "loading line",
+      "4 rows"
+    ],
+    "betweenReplies": {
+      "loading": true,
+      "line": null,
+      "rows": 0
+    },
+    "drawnAt": 0
+  },
+  "refreshNotDueLate": {
+    "painted": [
+      "closed",
+      "loading line",
+      "4 rows"
+    ],
+    "drawnAt": 700
+  },
   "promptRows": [
     "closed",
     "loading line",
@@ -742,7 +767,8 @@ $ node tests/dom/github-pull-files-opening-behavior.js
     ]
   },
   "invariants": {
-    "an expanded tree with no rows drawn never offers": true
+    "an expanded tree with no rows drawn never offers": true,
+    "an open tree with no rows drawn shows progress, a notice, or its line": true
   }
 }
 ? 0

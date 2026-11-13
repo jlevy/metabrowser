@@ -268,11 +268,13 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
     (``fill``), and a landing (``landing``). Before mb-ld8g each of these offered the rows
     as "Show N files" in place of the tree the reader had just expanded. Every opening of a
     tree with no rows waits for its read, so one opened again on a list GitHub returned
-    while it was closed opens on its rows (``reopenedFilled``). Only a change to
-    rows already drawn that comes ``LATE_ROWS_MS`` past the reader's last press or key
-    waits for the reader (review A3): a list's further pages wait on its line, and a
-    complete list a refresh changes floats its offer over the tree's top, so offering moves
-    nothing.
+    while it was closed opens on its rows (``reopenedFilled``). A refresh that answers not
+    due, since another request listed the files, carries none of its rows, so the tree reads
+    them at once and shows its loading line meanwhile (``refreshNotDue``,
+    ``refreshNotDueLate``). Only a change to rows already drawn that comes ``LATE_ROWS_MS``
+    past the reader's last press or key waits for the reader (review A3): a list's further
+    pages wait on its line, and a complete list a refresh changes floats its offer over the
+    tree's top, so offering moves nothing.
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
@@ -287,6 +289,15 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
         # A tree opened again on a list GitHub returned while it was closed opens on its rows
         # in one step; before, its loading line showed first, for an answer at 0 ms.
         "reopenedFilled": ["closed", "loading line", "closed", "4 rows"],
+        # A refresh that answers not due, with the whole list and none of its rows, is read at
+        # once, with the loading line in between (review A1). Before, the tree showed nothing
+        # ("empty") until its next read a freshness window later: rows at 60,000 and 60,700 ms.
+        "refreshNotDue": {
+            "painted": ["closed", "loading line", "4 rows"],
+            "betweenReplies": {"loading": True, "line": None, "rows": 0},
+            "drawnAt": 0,
+        },
+        "refreshNotDueLate": {"painted": ["closed", "loading line", "4 rows"], "drawnAt": 700},
         "promptRows": ["closed", "loading line", "4 rows"],
         "fill": {
             # Before review A3 the drawn tree grew to 203 and 256 rows with no input; before
@@ -350,7 +361,12 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "failedRead": ["opening failed 0 ms"],
             "slowRead": ["opening bound 150 ms"],
         },
-        "invariants": {"an expanded tree with no rows drawn never offers": True},
+        # Across every story, its refresh answering started or not due. The second was false
+        # before review A1: a not-due answer left the open tree with nothing to show.
+        "invariants": {
+            "an expanded tree with no rows drawn never offers": True,
+            "an open tree with no rows drawn shows progress, a notice, or its line": True,
+        },
     }
 
 

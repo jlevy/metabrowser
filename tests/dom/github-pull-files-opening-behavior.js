@@ -31,19 +31,32 @@ async function settle() {
 const rendered = [];
 
 /**
+ * What a refresh POST answers, as `pull-files-refresh` does, its list with no rows (`limit=0`):
+ * a job started on a list not yet there, or not due, because another request already listed
+ * the whole list, as `tests/golden/cli-github-pull-files-refresh.txt` records it.
+ */
+const REFRESH_STARTED = { status: 202, body: { refresh: "started", files: recorded.pending } };
+const REFRESH_NOT_DUE = {
+  status: 200,
+  body: { refresh: "not_due", files: { ...recorded.comparison, limit: 0 } },
+};
+
+/**
  * One tree; *answers* is what each read of the list answers, in order ("fail" for a read the
  * server does not answer, and `{afterMs, body}` for one it answers that long after it was
- * asked), and a refresh POST answers that it started, with *refreshing* as its list when
- * given. What the paint shows is sampled where a frame could paint: after the click's task
- * and after each later task the session runs.
+ * asked), and a refresh POST answers *refresh*, `REFRESH_STARTED` unless given. What the paint
+ * shows is sampled where a frame could paint: after the click's task and after each later
+ * task the session runs.
  */
-function story(tree, answers, input, refreshing = null) {
+function story(tree, answers, input, refresh = REFRESH_STARTED) {
   let now = 0;
   const timers = new Map();
   let next = 1;
   const painted = [];
   let shown = "closed";
   let lastModel = null;
+  /** When rows were first drawn, by the session's clock. */
+  let drawnAt = null;
   const reads = [];
   const spans = [];
   const schedule = (callback, delayMs) => {
@@ -57,9 +70,9 @@ function story(tree, answers, input, refreshing = null) {
       request(method, route) {
         if (method === "POST") {
           return Promise.resolve({
-            status: 202,
+            status: refresh.status,
             etag: null,
-            body: { files: { ...(refreshing ?? recorded.pending), rows: [] } },
+            body: { ...refresh.body, files: { ...refresh.body.files, rows: [] } },
           });
         }
         reads.push(route);
@@ -84,6 +97,9 @@ function story(tree, answers, input, refreshing = null) {
       render(model) {
         lastModel = model;
         rendered.push(model);
+        if (drawnAt === null && model.expanded && model.rows.length > 0) {
+          drawnAt = now;
+        }
         // What the paint shows: closed while opening, else the line and the rows.
         shown =
           !model.expanded || model.opening
@@ -121,6 +137,7 @@ function story(tree, answers, input, refreshing = null) {
     spans,
     frame,
     last: () => lastModel,
+    drawnAt: () => drawnAt,
     async advance(target) {
       for (;;) {
         const due = [...timers.entries()]
@@ -203,9 +220,9 @@ async function run() {
     facts.afterFailedRead = recovered.painted;
   }
 
-  // A tree opened on a list GitHub has not returned, closed, and opened again, which reads
-  // what it knows at once and so has no opening hold: rows that come a second after the
-  // second click are drawn.
+  // A tree opened on a list GitHub has not returned, closed, and opened again: its opening
+  // hold ends at once on the read's pending answer, it shows its loading line, and rows that
+  // come a second after the second click are drawn.
   {
     const input = { at: 0 };
     const reopened = story(tree, [recorded.absent, recorded.pending, recorded.comparison], input);
@@ -290,6 +307,41 @@ async function run() {
     await emptied.advance(window);
     await emptied.advance(window + tree.FILES_POLL_MS);
     facts.refreshEmptied = emptied.painted;
+  }
+
+  // A list another request finished listing between the tree's first read, which found none,
+  // and its refresh, which answers not due with the whole list and, as that answer always
+  // does, none of its rows (review A1). The tree reads them at once and shows that it is
+  // reading in between; before, it showed nothing until its next read, a freshness window on.
+  {
+    const horizon = recorded.comparison.fresh_for_s * 1000 + tree.FILES_POLL_MS;
+    const input = { at: 0 };
+    const notDue = story(tree, [recorded.absent, recorded.comparison], input, REFRESH_NOT_DUE);
+    notDue.controller.expand();
+    notDue.frame();
+    await settle();
+    notDue.frame();
+    const between = notDue.last();
+    await notDue.advance(horizon);
+    facts.refreshNotDue = {
+      painted: notDue.painted,
+      betweenReplies: { loading: between.loading, line: between.line, rows: between.rows.length },
+      drawnAt: notDue.drawnAt(),
+    };
+    // The same on a landing, with no input yet, whose read of the rows answers late: they are
+    // drawn into the empty tree all the same, with no offer.
+    const late = story(
+      tree,
+      [recorded.absent, { afterMs: 700, body: recorded.comparison }],
+      { at: null },
+      REFRESH_NOT_DUE,
+    );
+    late.controller.expand();
+    late.frame();
+    await settle();
+    late.frame();
+    await late.advance(horizon);
+    facts.refreshNotDueLate = { painted: late.painted, drawnAt: late.drawnAt() };
   }
 
   // The same job answering within the input's window draws its rows as the click's.
@@ -419,7 +471,10 @@ async function run() {
       rows: [],
     };
     const same = { ...structuredClone(recorded.comparison), generation };
-    const unchanged = story(tree, [cached, past, same], input, { ...cached, refreshing: true });
+    const unchanged = story(tree, [cached, past, same], input, {
+      status: 202,
+      body: { refresh: "started", files: { ...cached, refreshing: true } },
+    });
     unchanged.controller.expand();
     unchanged.frame();
     await settle();
@@ -483,12 +538,18 @@ async function run() {
     spans.slowRead = slow.spans;
   }
   facts.spans = spans;
-  // Held across every model any story's tree rendered: an offer stands in only for a change
-  // to rows already drawn, so an expanded tree with none drawn never carries one.
+  // Held across every model any story's tree rendered, its refresh answering started or not
+  // due: an offer stands in only for a change to rows already drawn, so an expanded tree with
+  // none drawn never carries one, and once open it shows its files, its progress, a notice,
+  // or its line ("No changed files."), never nothing.
+  const empty = rendered.filter((model) => model.expanded && model.rows.length === 0);
   facts.invariants = {
-    "an expanded tree with no rows drawn never offers": rendered
-      .filter((model) => model.expanded && model.rows.length === 0)
-      .every((model) => model.offer === null),
+    "an expanded tree with no rows drawn never offers": empty.every(
+      (model) => model.offer === null,
+    ),
+    "an open tree with no rows drawn shows progress, a notice, or its line": empty
+      .filter((model) => !model.opening)
+      .every((model) => model.loading || model.notice !== null || model.line !== null),
   };
   return facts;
 }
