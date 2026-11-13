@@ -219,6 +219,16 @@ def _invalid_registry_cases() -> list[dict[str, str]]:
             "unsupported-schema-version",
         ),
         (
+            # The structure before this one is refused, not read: a reader for it
+            # would accept fields it does not know and paint a different palette.
+            "previous-schema-version",
+            base.replace(
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION - 1}",
+            ),
+            "unsupported-schema-version",
+        ),
+        (
             "unsupported-components",
             base.replace("max_extension_components = 2", "max_extension_components = 3"),
             "unsupported-extension-components",

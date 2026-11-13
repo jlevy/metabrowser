@@ -271,10 +271,10 @@
       "type": "integer"
     },
     "schema": {
-      "const": "file-type-registry-v4"
+      "const": "file-type-registry-v5"
     },
     "schema_version": {
-      "const": 4
+      "const": 5
     }
   },
   "required": [

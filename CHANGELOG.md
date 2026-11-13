@@ -16,6 +16,13 @@ All notable changes to Metabrowser are documented here.
   See
   [Declared deviations](docs/project/architecture/file-rollup-format/file-rollup-format.md#declared-deviations).
 
+- The type registry’s schema version is now `5` and its projection is
+  `file-type-registry-v5`, because `chroma_ratio` changes its structure.
+  A version-4 registry is refused with `unsupported-schema-version` rather than read: a
+  version-4 reader would ignore `chroma_ratio` and paint a different palette under the
+  same number. `fileTypes.schemaVersion` and `registryIdentity.schemaVersion` in the
+  plugin SDK are `5`, and every file rollup records registry schema version `5`.
+
 - Branch and tag chips are slightly smaller than the text around them, wherever they
   appear, instead of one size everywhere.
   A chip is 0.9 of its text: 11.7px in a Git history row, 12.6px in a commit’s summary

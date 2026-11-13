@@ -16,8 +16,8 @@ from typing import Any, Literal, cast
 
 from metabrowser.color_oklch import BAND_CENTER, TonePosition, band_positions
 
-FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v4"
-FILE_TYPE_REGISTRY_SCHEMA_VERSION = 4
+FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v5"
+FILE_TYPE_REGISTRY_SCHEMA_VERSION = 5
 FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"

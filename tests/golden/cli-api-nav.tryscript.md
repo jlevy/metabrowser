@@ -103,9 +103,9 @@ status: 200
   "file_type_breakdown": {
     "schema": "file-type-breakdown-v1",
     "registry": {
-      "schema_version": 4,
+      "schema_version": 5,
       "revision": 3,
-      "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7"
+      "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704"
     },
     "metrics": {
       "all": {
@@ -317,9 +317,9 @@ status: 200
   "file_type_breakdown": {
     "schema": "file-type-breakdown-v1",
     "registry": {
-      "schema_version": 4,
+      "schema_version": 5,
       "revision": 3,
-      "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7"
+      "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704"
     },
     "metrics": {
       "all": {

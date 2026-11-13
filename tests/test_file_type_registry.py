@@ -82,7 +82,7 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         .is_file()
     )
     projection = registry.projection()
-    assert projection["schema"] == "file-type-registry-v4"
+    assert projection["schema"] == "file-type-registry-v5"
     assert projection["fingerprint"] == registry.fingerprint
 
 
@@ -165,6 +165,13 @@ def test_registry_rejects_each_structural_validation_class() -> None:
             base.replace(
                 f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
                 f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION + 1}",
+            ),
+            "unsupported-schema-version",
+        ),
+        (
+            base.replace(
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION - 1}",
             ),
             "unsupported-schema-version",
         ),
@@ -301,6 +308,20 @@ def test_a_declared_chroma_ratio_overrides_only_the_chroma_upstream_would_give()
             text.replace("chroma_ratio = 1.0", "chroma_ratio = 0.5")
         ).fingerprint
     )
+
+
+def test_the_registry_refuses_the_structure_before_chroma_ratio() -> None:
+    """Version 5 is the structure that has ``chroma_ratio``. A version-4 reader
+    handed it would ignore the field and paint a different palette under the
+    same number, so the number moved, and a version-4 registry is refused rather
+    than read: the server, browser and built-in plugins ship together, so there
+    is no older consumer to keep a reader for."""
+
+    assert FILE_TYPE_REGISTRY_SCHEMA_VERSION == 5
+    previous = _minimal_registry().replace(
+        f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}", "schema_version = 4"
+    )
+    assert _error_code(previous) == "unsupported-schema-version"
 
 
 def test_a_family_that_does_not_deviate_carries_no_reason() -> None:

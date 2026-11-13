@@ -960,7 +960,7 @@
       "order": 100
     }
   ],
-  "fingerprint": "68d4ca17b298341ba396312e2ecd0e82226203917ba35ec3f180d31bd7a2c5a7",
+  "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
   "groups": [
     {
       "icon": "alignLeft",
@@ -1875,6 +1875,6 @@
   ],
   "max_extension_components": 2,
   "revision": 3,
-  "schema": "file-type-registry-v4",
-  "schema_version": 4
+  "schema": "file-type-registry-v5",
+  "schema_version": 5
 }

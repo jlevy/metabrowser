@@ -38,7 +38,7 @@ The current JSON components retain these established schema identifiers:
 
 | Component | Schema identifier | Clear artifact name |
 | --- | --- | --- |
-| Type-definition projection | `file-type-registry-v4` | `recommended-file-types.json` |
+| Type-definition projection | `file-type-registry-v5` | `recommended-file-types.json` |
 | Directory rollup | `file-type-breakdown-v1` | `file-rollup.schema.json` |
 | Conformance cases | `file-type-conformance-v1` | `file-rollup-conformance.json` |
 
@@ -117,7 +117,7 @@ The recommended source uses standard TOML with top-level scalars and ordered arr
 tables:
 
 ```toml
-schema_version = 3
+schema_version = 5
 registry_revision = 1
 max_extension_components = 2
 
@@ -167,7 +167,7 @@ priority = 100
 
 | Field | Type | Requirement |
 | --- | --- | --- |
-| `schema_version` | positive integer | Definition-file structure; `3` for the recommended listing |
+| `schema_version` | positive integer | Definition-file structure; `5` for the recommended listing |
 | `registry_revision` | positive integer | Monotone data revision included in projections and cache identity |
 | `max_extension_components` | positive integer | `2` for this format profile |
 
@@ -460,8 +460,8 @@ Validated definitions project into JSON-compatible runtime data:
 
 ```json
 {
-  "schema": "file-type-registry-v4",
-  "schema_version": 3,
+  "schema": "file-type-registry-v5",
+  "schema_version": 5,
   "revision": 1,
   "fingerprint": "normalized-registry-identity",
   "max_extension_components": 2,
@@ -537,7 +537,7 @@ The current component schema serializes a complete directory rollup as
 {
   "schema": "file-type-breakdown-v1",
   "registry": {
-    "schema_version": 3,
+    "schema_version": 5,
     "revision": 1,
     "fingerprint": "normalized-registry-identity"
   },
@@ -696,7 +696,7 @@ a standalone report:
 {
   "schema": "example-report-v1",
   "file_rollup": {
-    "type_definitions": {"schema": "file-type-registry-v4"},
+    "type_definitions": {"schema": "file-type-registry-v5"},
     "rollup": {"schema": "file-type-breakdown-v1"}
   }
 }

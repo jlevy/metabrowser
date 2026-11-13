@@ -25,7 +25,7 @@
 # own colours are told apart mostly by the two dimensions a fixed tone discards.
 # devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
-schema_version = 4
+schema_version = 5
 registry_revision = 3
 max_extension_components = 2
 
