@@ -2952,6 +2952,13 @@ export function avatarUrl(value) {
 }
 
 /** A decorative image accompanies the same visible actor, never a replacement name.
+ *
+ * The image loads eagerly. A repaint builds its actors again, the header's on every tab
+ * switch and poll, and in WebKit, the macOS app's engine, a lazy image waits for layout and
+ * then asks the network again, so an unchanged avatar painted blank for that round trip on
+ * each repaint. An eager one is the cached image at once, in WebKit and Chrome alike
+ * (docs/design-system.md, "A Repaint Keeps Its Images").
+ *
  * @param {string} name
  * @param {unknown} url
  * @param {string} [className]
@@ -2965,7 +2972,7 @@ export function authorLabel(name, url, className = "") {
       alt: "",
       width: "18",
       height: "18",
-      loading: "lazy",
+      loading: "eager",
       decoding: "async",
       fetchpriority: "low",
       crossorigin: "anonymous",
