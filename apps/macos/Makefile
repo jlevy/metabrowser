@@ -1,20 +1,24 @@
 # The native macOS app. See README.md. Needs macOS 26 and Swift 6.3 or later (Xcode 26).
 #
 #   make build                build the debug executable
-#   make test                 run the unit tests and the release scripts' checks
-#   make app                  assemble and sign build/Metabrowser Dev.app
+#   make test                 run the unit tests, the release scripts' checks, and the
+#                             WebKit gate's build and Node tests
+#   make app                  assemble and sign build/dev/Metabrowser.app
 #   make run FOLDER=path      build the app and open a folder with it
 #   make dmg                  build/Metabrowser-Dev-VERSION-arm64.dmg, checked, not notarized
 #   make release              the official build: build/Metabrowser-VERSION-arm64.dmg,
 #                             Developer ID signed, notarized, and stapled
 #   make release NOTARIZE=0   rehearse the release with an ad hoc signature
 #   make notarize [FILE=path] notarize and staple the release DMG, or FILE
+#   make webkit-gate          the WebKit measurement gate against Chrome (webkit-gate/run.mjs);
+#                             PAIRS=n and CASES=a,b pass through
 #   make clean                remove .build and build
 #
-# Every build is the dev variant (Metabrowser Dev, the canary icon) except `release`
-# and `notarize`, the official path, which build the release variant (Metabrowser, the
-# published icon). VARIANT=release or VARIANT=dev on the command line overrides that;
-# a VARIANT in the environment is ignored, so a leftover export cannot turn a
+# Every build is the dev variant (build/dev/Metabrowser.app, the canary icon) except
+# `release` and `notarize`, the official path, which build the release variant
+# (build/release/Metabrowser.app, the published icon). VARIANT=release or VARIANT=dev on
+# the command line overrides that; a VARIANT in the environment is ignored, so a leftover
+# export cannot turn a
 # development build into a release build. SIGN_IDENTITY, the notary credentials,
 # NOTARIZE, and ARCHES reach the scripts, which document them.
 
@@ -28,7 +32,7 @@ endif
 dev_variant = $(or $(VARIANT),dev)
 release_variant = $(or $(VARIANT),release)
 
-.PHONY: build test app run dmg release notarize clean
+.PHONY: build test app run dmg release notarize clean webkit-gate
 
 build:
 	$(SWIFT) build
@@ -37,12 +41,18 @@ build:
 # stress suite's spawns, which each stall it for seconds on a loaded runner: see
 # ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
 # ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
-webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests
+webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests
+#
+# The WebKit gate's driver ships in no product, so nothing else would notice a change to
+# the app's views or configuration that broke its build; the gate itself needs Chrome and
+# a logged-in session, so only its build and its Node tests, which need neither, run here.
 test:
+	$(SWIFT) build --product WebKitDriver
 	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %)
 	$(SWIFT) test $(webkit_suites:%=--filter %)
 	$(SWIFT) test --filter ExitObservationStressTests
 	scripts/test-scripts.sh
+	node --test 'webkit-gate/*.test.mjs'
 
 app:
 	VARIANT=$(dev_variant) scripts/build-app.sh
@@ -60,6 +70,9 @@ release:
 notarize:
 	set -e; source scripts/common.sh; variant_settings $(release_variant); \
 	scripts/notarize.sh $(if $(FILE),"$(FILE)","$$dmg")
+
+webkit-gate:
+	node webkit-gate/run.mjs $(if $(PAIRS),--pairs $(PAIRS)) $(if $(CASES),--cases $(CASES))
 
 clean:
 	rm -rf .build build

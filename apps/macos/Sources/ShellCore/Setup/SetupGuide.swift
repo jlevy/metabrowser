@@ -14,7 +14,8 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         case installMetab(inNewTerminal: Bool)
         /// A `metab` in uv's tool directory that does not run.
         case reinstallMetab(path: String, reason: String, inNewTerminal: Bool)
-        /// A working `metab` older than `MetabRequirement.minimum`.
+        /// A working `metab` older than `MetabRequirement.minimum`, or built before the flag
+        /// the app needs (`CandidateResult.tooOld`).
         case upgradeMetab(path: String, version: String, inNewTerminal: Bool)
         /// The minimum is not on PyPI yet: `make install` in the checkout, then Choose
         /// metab…. `oldPath` and `oldVersion` name an older `metab` found, if any.
@@ -31,12 +32,16 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
             case .reinstallMetab(let path, let reason, _):
                 return "Reinstall metab: \(shown(path)) does not run (\(reason))."
             case .upgradeMetab(let path, let version, _):
-                return "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
-                    + " and Metabrowser needs \(MetabRequirement.minimum) or later."
+                let found = "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
+                if let shortfall = MetabRequirement.flagShortfall(version) {
+                    return found + " \(shortfall), which Metabrowser needs."
+                }
+                return found + " and Metabrowser needs \(MetabRequirement.minimum) or later."
             case .buildFromCheckout(let oldPath, let oldVersion, _):
                 var found = ""
                 if let oldPath, let oldVersion {
-                    found = "\(shown(oldPath)) is metab \(MetabVersion(oldVersion)?.text ?? oldVersion), and "
+                    found = "\(shown(oldPath)) is metab \(MetabVersion(oldVersion)?.text ?? oldVersion), "
+                        + (MetabRequirement.flagShortfall(oldVersion).map { "\($0), " } ?? "") + "and "
                 }
                 return "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
                     + " with Choose metab… below: \(found)Metabrowser needs metab \(MetabRequirement.minimum) or"
@@ -107,7 +112,8 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
     /// Whether to suggest `uv tool update-shell`, so `metab` also runs in Terminal: the
     /// login shell's `PATH` lacks `binDirectory`, or is unknown. The app needs neither.
     public var suggestsUpdateShell: Bool
-    /// What the screen says besides the steps: each uv the app found and would not run.
+    /// What the screen says besides the steps: each uv and each `metab` the app found and
+    /// would not run (`ExecutableTrust`).
     public var notices: [String]
 
     /// `tried` is the last search's candidates, `uv` the uv found, if any, whether or
@@ -143,7 +149,11 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         self.binDirectory = binDirectory
         self.home = home
         suggestsUpdateShell = !(loginPath?.contains(binDirectory) ?? false)
-        notices = refusedUv.map { "Metabrowser does not run \($0.path) itself: \($0.reason)." }
+        let untrusted = tried.compactMap { outcome -> String? in
+            guard case .untrusted(let reason) = outcome.result else { return nil }
+            return "Metabrowser does not run \(outcome.path) itself: \(reason). Choose metab… runs it if you trust it."
+        }
+        notices = refusedUv.map { "Metabrowser does not run \($0.path) itself: \($0.reason)." } + untrusted
     }
 
     /// Where uv may be, in order: where its installer puts it (`XDG_BIN_HOME`, then

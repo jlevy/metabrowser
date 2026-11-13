@@ -2,7 +2,7 @@
 # Notarizes each file given (an .app, submitted as a ZIP, or a .dmg), waits for Apple's
 # verdict, saves the notary log, staples the ticket, and asks Gatekeeper to assess it.
 #
-#   APPLE_KEYCHAIN_PROFILE=metabrowser-notary scripts/notarize.sh build/Metabrowser.app
+#   APPLE_KEYCHAIN_PROFILE=metabrowser-notary scripts/notarize.sh build/release/Metabrowser.app
 #
 # Credentials, either:
 #   APPLE_KEYCHAIN_PROFILE  a profile saved by `xcrun notarytool store-credentials`, the
@@ -51,7 +51,6 @@ fi
 
 work="$(mktemp -d -t metabrowser-notarize)"
 trap 'rm -rf "$work"' EXIT
-mkdir -p build
 
 for file in "$@"; do
   name="$(basename "$file")"
@@ -72,7 +71,7 @@ for file in "$@"; do
   status="$(plutil -extract status raw -o - - <<<"$result" 2>/dev/null)" || status="unknown"
 
   # Read the log even after an Accepted verdict: it lists warnings too.
-  log="build/notary-${name// /-}.json"
+  log="$(dirname "$file")/notary-${name// /-}.json"  # beside the file: both variants are Metabrowser.app
   xcrun notarytool log "$id" "${auth[@]}" "$log" || note "could not fetch the notary log of $id"
   [[ "$status" == Accepted ]] || die "notarize: $name was not accepted (status $status); see $log"
 

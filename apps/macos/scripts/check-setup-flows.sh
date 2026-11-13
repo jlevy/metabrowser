@@ -8,15 +8,18 @@
 #   make macos-app            # first, and `make install` at the repository root
 #   scripts/check-setup-flows.sh no-metab|old-metab|disk-image
 #
-# Each run uses a copy of the app with its own bundle identifier, so it never reads or
-# changes the development app's saved runtime, recent folders, saved session, or
-# LaunchServices entry, and a scratch HOME. Discovery still looks in the Homebrew
-# prefixes and on the login shell's PATH, which a scratch HOME does not change, so the
-# script refuses to run where a metab there would be found, and no-metab also where a
-# uv there would. Nothing is downloaded or installed: "installing" uv or metab links the
-# uv on PATH and this checkout's .venv/bin/metab into the scratch ~/.local/bin, which is
-# all the app sees of a real install. The scratch folder's server log stays in
-# ~/Library/Logs/Metabrowser.
+# Each run uses a copy of the app with its own bundle identifier and its own name, and a
+# scratch HOME. The identifier keeps the development app's saved runtime, recent
+# folders, and LaunchServices entry apart. The name keeps its folders apart: the app
+# names them for itself (AppIdentity), under the account's home whatever HOME says, so
+# a copy still named Metabrowser would read and replace the session the development app
+# and a release share. Discovery still looks in the Homebrew prefixes and on the login
+# shell's PATH, which a scratch HOME does not change, so the script refuses to run where
+# a metab there would be found, and no-metab also where a uv there would. Nothing is
+# downloaded or installed: "installing" uv or metab links the uv on PATH and this
+# checkout's .venv/bin/metab into the scratch ~/.local/bin, which is all the app sees of
+# a real install. The scratch folder's server log stays in
+# ~/Library/Logs/Metabrowser Setup Check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
@@ -35,11 +38,12 @@ checkout_metab="$(cd ../.. && pwd)/.venv/bin/metab"
 uv_path="$(command -v uv)" || die "uv is not on PATH"
 
 check_id="io.github.jlevy.metabrowser.setupcheck"
+check_name="Metabrowser Setup Check"
 # Canonical, as the app opens folders, so a server's command line names this path.
 work="$(cd "$(mktemp -d -t metabrowser-setup-check)" && pwd -P)"
 home="$work/home"
 folder="$work/notes"
-copy="$work/Metabrowser Setup Check.app"
+copy="$work/$check_name.app"
 volume="$work/volume"
 mkdir -p "$home" "$folder"
 printf '# Notes\n\nA folder for the setup checks.\n' >"$folder/README.md"
@@ -66,8 +70,9 @@ cleanup() {
   [[ -z "$launched" ]] || "$lsregister" -u "$launched" || note "could not unregister $launched"
   [[ ! -d "$volume" ]] || detach_image "$volume"
   defaults delete "$check_id" 2>/dev/null || true  # absent when the app saved nothing
-  # The saved session and the recents macOS keeps, both named by the copy's identifier.
-  rm -rf "$HOME/Library/Application Support/$check_id"
+  # The saved session, in the folder named for the copy, and the recents macOS keeps,
+  # named by its identifier.
+  rm -rf "$HOME/Library/Application Support/$check_name"
   rm -f "$HOME/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/$check_id".sfl*
   rm -rf "$work"
   exit "$(check_status "$status")"
@@ -127,6 +132,10 @@ launch() {
 
 ditto "$app" "$copy"
 plutil -replace CFBundleIdentifier -string "$check_id" "$copy/Contents/Info.plist"
+# The name the app gives its folders: with Metabrowser's, the copy would restore and
+# replace the session the development app and a release share.
+plutil -replace CFBundleName -string "$check_name" "$copy/Contents/Info.plist"
+plutil -replace CFBundleDisplayName -string "$check_name" "$copy/Contents/Info.plist"
 sign - "$copy" 2>/dev/null
 mkdir -p "$home/.local/bin"
 current="$(version_of "$checkout_metab")"
