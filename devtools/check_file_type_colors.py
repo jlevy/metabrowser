@@ -133,6 +133,17 @@ def _upstream_problems(family: FileTypeFamily) -> list[Problem]:
             )
         ]
     if family.linguist is None or family.linguist_color is None:
+        if family.id in LEAVES_GITHUBS_COLOR:
+            # Leaving GitHub's color is measured from that color. Without one
+            # the allowance would hold whatever hue the family declared.
+            return [
+                Problem(
+                    family.id,
+                    "is in LEAVES_GITHUBS_COLOR but names no upstream color to leave; "
+                    "keep its linguist and linguist_color, or drop it from "
+                    "LEAVES_GITHUBS_COLOR",
+                )
+            ]
         return []
     upstream = hex_to_oklch(family.linguist_color)
     if family.deviation is not None:

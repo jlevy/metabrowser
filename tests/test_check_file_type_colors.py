@@ -65,3 +65,14 @@ def test_a_named_family_that_takes_githubs_hue_again_must_be_unnamed() -> None:
     )
     [problem] = check._upstream_problems(reverted)
     assert "declares no deviation" in problem.detail
+
+
+def test_a_named_family_without_upstream_provenance_is_refused() -> None:
+    """A named family has to name the color it leaves. Without ``linguist`` and
+    ``linguist_color`` there is no hue to measure the departure from, and the
+    allowance would hold whatever hue the family declared."""
+
+    typescript = _family("typescript")
+    stripped = replace(typescript, linguist=None, linguist_color=None)
+    [problem] = check._upstream_problems(stripped)
+    assert "names no upstream color" in problem.detail
