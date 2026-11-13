@@ -15,6 +15,16 @@ All notable changes to Metabrowser are documented here.
   pages you scroll to are still fetched.
   See [Reviewing Pull Requests](docs/reviewing-pull-requests.md).
 
+- The Pulls tab’s background preparation of pull requests keeps up on a busy server.
+  Checking which pull requests in a batch of eight were already prepared opened the
+  pull-request catalog once per pull request, 19 times for one answer.
+  It now opens it 3 times.
+  In a window serving a large repository, with other work running, these answers took
+  seconds. That is longer than the 2 seconds the list waits for one, so the list gave up
+  on each and asked again later.
+  On a stand-in of 5,000 pull requests read by eight list windows at once, an answer now
+  takes 460 ms instead of 1.25 s.
+
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
   Commits tally of commits, or the Pulls filters, at one height, so what is under it
