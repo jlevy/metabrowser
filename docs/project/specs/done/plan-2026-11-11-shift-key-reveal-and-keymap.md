@@ -1,10 +1,13 @@
 # Feature: Shift Key Reveal and a Systematic Keymap
 
-**Date:** 2026-11-11 (last updated 2026-11-11)
+**Date:** 2026-11-11 (last updated 2026-11-13)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Implemented.
+Stack #376 (#365, #374, #375, #379, #382, and #383) merged into `main` at 8f84ed6 on
+2026-11-13, and #392 settled the startup budget the stack relies on.
+The single-key on/off switch (WCAG 2.1.4) remains a separate follow-up.
 
 ## Overview
 
@@ -1126,6 +1129,9 @@ transparent node through `stagePreviewNode()` before it commits them to the main
 plugin detaches from its render handle’s `dispose()`. Disconnection does not end an
 attachment. The pull request page’s `paintHeader` removes the tab column while the page
 has no record and re-inserts it after the header, and the keys must come back with it.
+After #370, `paintHeader` removes the column only when the record is unavailable, so the
+tab links, and with them `C`, `G`, and `H`, are live while the record loads, and the
+return path runs only after a failed first read.
 As a safety net, the view-composition disposer (`view-composition.js` `mount`) also
 releases attachments inside the container it disposes.
 That net does not reach the diff view, which three hosts mount by calling its renderer
