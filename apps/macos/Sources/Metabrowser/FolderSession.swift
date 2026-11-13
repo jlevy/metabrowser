@@ -24,7 +24,15 @@ final class FolderSession: ManagedServer {
     /// What every window of the folder calls itself: from the folder's path until the
     /// server answers `/api/identity`.
     private(set) var title: WindowTitle
+    /// Every window's `window.title`: the short name, or the full name while another open
+    /// folder shares the short name, which the app delegate decides across folders
+    /// (`WindowTitle.windowTitles`).
+    var windowTitle: String {
+        didSet { if windowTitle != oldValue { windows.forEach { $0.showTitle(title, windowTitle: windowTitle) } } }
+    }
     private var identityRequest: Task<Void, Never>?
+    /// The folder's title changed, so every open folder's window title may change.
+    var onTitleChange: ((FolderSession) -> Void)?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
     /// A window became key, which is how a tab is selected.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
@@ -41,6 +49,7 @@ final class FolderSession: ManagedServer {
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate, accepted: @escaping () -> RuntimeSetup?) {
         self.root = root
         title = WindowTitle(.localFolder(root))
+        windowTitle = title.text
         let log = FolderLog(root: root, directory: appIdentity.logsDirectory())
         self.log = log
         let launch = CLIServeLaunch()
@@ -268,7 +277,7 @@ final class FolderSession: ManagedServer {
     private func adopt(_ answer: IdentityAnswer) {
         let next = WindowTitle(answer.identity(or: .localFolder(root)))
         let name = root.lastPathComponent
-        let titled = "\(name): titled \"\(next.plain)\""
+        let titled = "\(name): titled \"\(next.text)\""
         switch answer {
         case .identity:
             AppLog.app.info("\(titled, privacy: .public) from /api/identity")
@@ -278,6 +287,9 @@ final class FolderSession: ManagedServer {
         }
         guard next != title else { return }
         title = next
-        windows.forEach { $0.showTitle(next) }
+        // The app delegate retitles every open folder's windows, since this one's short name
+        // may now be shared or no longer shared.
+        if let onTitleChange { onTitleChange(self) } else { windowTitle = next.text }
+        windows.forEach { $0.showTitle(next, windowTitle: windowTitle) }
     }
 }

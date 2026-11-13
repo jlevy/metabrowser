@@ -116,46 +116,45 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
         shortName: "fdu", fullName: "~/wrk/github/fdu", kind: .folder, kindLabel: "Local folder",
         title: "fdu • Metabrowser"))
 
-    /// Seven points a character, so widths are easy to reason about.
-    private func measure(_ segments: [WindowTitle.Segment]) -> Double {
-        Double(segments.reduce(0) { $0 + $1.text.count } * 7)
-    }
-
     @Test func namesTheWindowForEachPlaceThatShowsIt() {
-        #expect(fdu.plain == "fdu • Metabrowser")
-        #expect(fdu.segments == [
-            .init("fdu", .primary), .init(" • ", .secondary), .init("Metabrowser", .secondary),
-        ])
+        // The folder's name alone: the mark at the title bar's end carries the app's.
+        #expect(fdu.text == "fdu")
         #expect(fdu.tabTitle == "fdu")
         #expect(fdu.tabToolTip == "~/wrk/github/fdu")
         #expect(fdu.subtitle == "~/wrk/github/fdu · Local folder")
-        #expect(fdu.hasProxyIcon)
+        #expect(fdu.hasPathMenu)
+        #expect(WindowTitle.windowTitles([fdu]) == ["fdu"])
     }
 
-    @Test func theDrawnTitleReadsAsThePlainTitle() {
+    @Test func theTitleIsNotThePagesTitle() {
+        // The served page keeps "My Notes • Metabrowser" for a browser's tab.
         let title = WindowTitle(.localFolder(URL(filePath: "/Volumes/Home/My Notes"), home: "/Volumes/Home"))
-        #expect(title.segments.map(\.text).joined() == title.plain)
-        #expect(title.plain == "My Notes • Metabrowser")
+        #expect(title.identity.title == "My Notes • Metabrowser")
+        #expect(title.text == "My Notes")
     }
 
-    @Test func aMirrorHasNoProxyIcon() {
+    @Test func foldersThatShareAShortNameAreTitledByTheirFullNames() {
+        func folder(_ path: String) -> WindowTitle {
+            WindowTitle(.localFolder(URL(filePath: path), home: "/Users/me"))
+        }
+        let titles = [folder("/Users/me/a/notes"), folder("/Users/me/fdu"), folder("/Users/me/b/notes")]
+        #expect(WindowTitle.windowTitles(titles) == ["~/a/notes", "fdu", "~/b/notes"])
+        // Once one of them closes, the other is its short name again.
+        #expect(WindowTitle.windowTitles([titles[0], titles[1]]) == ["notes", "fdu"])
+        #expect(WindowTitle.windowTitles([]) == [])
+        // A mirror sharing a local folder's short name is told apart the same way.
+        let mirror = WindowTitle(FolderIdentity(
+            shortName: "fdu", fullName: "github.com/jlevy/fdu@main", kind: .mirror, kindLabel: "Cached mirror",
+            title: "fdu • Metabrowser"))
+        #expect(WindowTitle.windowTitles([titles[1], mirror]) == ["~/fdu", "github.com/jlevy/fdu@main"])
+    }
+
+    @Test func aMirrorHasNoPathMenu() {
         let mirror = WindowTitle(FolderIdentity(
             shortName: "metabrowser", fullName: "github.com/jlevy/metabrowser@main", kind: .mirror,
             kindLabel: "Cached mirror", title: "metabrowser • Metabrowser"))
-        #expect(!mirror.hasProxyIcon)
+        #expect(!mirror.hasPathMenu)
         #expect(mirror.subtitle == "github.com/jlevy/metabrowser@main · Cached mirror")
-    }
-
-    @Test func theShortNameTruncatesLast() {
-        let whole = measure(fdu.segments)  // 17 characters: 119 points
-        #expect(fdu.segments(fitting: whole, measure: measure) == fdu.segments)
-        #expect(fdu.segments(fitting: 500, measure: measure) == fdu.segments)
-        // One point short: the bullet and Metabrowser go, together and whole.
-        #expect(fdu.segments(fitting: whole - 1, measure: measure) == [.init("fdu", .primary)])
-        #expect(fdu.segments(fitting: 21, measure: measure) == [.init("fdu", .primary)])
-        // Narrower than the name: the name is still drawn, for its label to truncate.
-        #expect(fdu.segments(fitting: 10, measure: measure) == [.init("fdu", .primary)])
-        #expect(fdu.segments(fitting: 0, measure: measure) == [.init("fdu", .primary)])
     }
 
     @Test func thePathMenuListsTheFolderThenEachContainingFolder() {

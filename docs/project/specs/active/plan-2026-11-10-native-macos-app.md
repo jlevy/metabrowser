@@ -112,22 +112,24 @@ through `metab --api`:
 
 ### Window and Tab Titles
 
-- The visible title shows the short name prominent and bold, then a small bullet and
-  “Metabrowser” in a lighter secondary style.
-  AppKit cannot style part of a system title, so the app hides the system title and
-  draws a native-looking attributed title in the title bar.
-- The window’s plain title is the same text, for the Window menu, Mission Control, the
-  Dock, and accessibility.
+- The visible title shows the folder’s short name alone, bold; the app icon’s mark at
+  the title bar’s trailing end carries the app’s name (`mb-9xbp`). AppKit draws a system
+  title in one style, so the app hides it and draws its own in the title bar.
+- The window’s title is the short name too, for the Window menu, Mission Control, the
+  window switcher, and accessibility, or the full name while another open folder shares
+  the short name. The served page keeps “short name • Metabrowser” as its `<title>`, for
+  a browser’s tab.
 - A native tab shows only the short name; its tooltip shows the full name.
-- The title starts with the app’s logo beside the window buttons, in every window: the
-  app icon’s mark alone, the colored M and B without the icon’s squircle, drawn from the
-  icon masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper
-  tints of the mark’s two hues, so each reads at 4:1 or more.
-  The mark is 13 points tall, with the window buttons’ 9-point gap on each side, ink to
-  ink (`mb-6bfu`).
+- The title bar’s trailing end holds the app’s logo, in every window: the app icon’s
+  mark alone, the colored M and B without the icon’s squircle, drawn from the icon
+  masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper tints
+  of the mark’s two hues, so each reads at 4:1 or more.
+  The mark is 13 points tall (`mb-6bfu`), centered on the window buttons’ row, about 9
+  points from the window’s trailing edge, and a link: a click opens the project on
+  GitHub, under a gentle hover (`mb-j441`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
-  window’s represented URL, so the logo, in the proxy icon’s place, drags the folder and
-  Command-click opens the path menu.
+  window’s represented URL, so Command-click or right-click on the title opens the path
+  menu.
 
 ### Icon and Brand
 

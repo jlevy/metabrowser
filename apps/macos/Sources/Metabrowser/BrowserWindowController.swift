@@ -22,6 +22,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let status = WindowStatus()
     private let textFinder = NSTextFinder()
     private let titleAccessory = TitleAccessoryController()
+    private let markAccessory = TitleBarMarkController()
     /// The navigation `load` submitted, whose commit reveals the page in place of the
     /// status view, until server state supersedes it (`PageReveal`).
     private var reveal = PageReveal<WKNavigation>()
@@ -71,6 +72,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         window.minSize = Self.minimumSize
         window.titleVisibility = .hidden  // TitleAccessoryController draws the title
         window.addTitlebarAccessoryViewController(titleAccessory)
+        window.addTitlebarAccessoryViewController(markAccessory)
         window.tabbingIdentifier = Self.tabbingIdentifier
         window.isReleasedWhenClosed = false
         Self.place(window)
@@ -80,7 +82,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         wire(webView)
         textFinder.findBarContainer = container
         textFinder.isIncrementalSearchingEnabled = true
-        showTitle(session.title)
+        showTitle(session.title, windowTitle: session.windowTitle)
         // A window WebKit creates for `target=_blank` shows its page at once.
         container.showsStatus = configuration == nil
     }
@@ -284,12 +286,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     /// Names the window for everything that reads its title, and draws the visible one.
-    /// The page's own `<title>` is not used: it is "Metabrowser" in every window.
-    func showTitle(_ title: WindowTitle) {
+    /// `windowTitle` is `window.title`: the folder's short name, or its full name while
+    /// another open folder shares the short name (`WindowTitle.windowTitles`). The page's
+    /// own `<title>` is not used: it names the page in a browser's tab.
+    func showTitle(_ title: WindowTitle, windowTitle: String) {
         guard let window else { return }
-        window.title = title.plain
+        window.title = windowTitle
         window.subtitle = title.subtitle
-        window.representedURL = title.hasProxyIcon ? session?.root : nil
+        window.representedURL = title.hasPathMenu ? session?.root : nil
         window.tab.title = title.tabTitle
         window.tab.toolTip = title.tabToolTip
         titleAccessory.show(title, representing: window.representedURL)
