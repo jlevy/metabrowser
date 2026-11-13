@@ -4,7 +4,8 @@
 the performance loop's gate reads from a browser. These tests hold the things that
 would make that number wrong without failing anything: the scripts it counts, the ones
 a script asks for that no tag shows, the size it gives each, and the ceilings it
-compares them with.
+compares them with. The ceilings bound cost, not membership, so the deferred
+``shell-tools`` bundle is held out of the startup scripts here as well.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import pytest
 from starlette.testclient import TestClient
@@ -117,12 +119,53 @@ def test_a_lower_ceiling_fails_and_names_the_scripts(
     )
 
 
+def _bundled_at_startup(html: str) -> list[str]:
+    """The scripts of *html*'s on-demand bundles that it also requests as startup scripts."""
+
+    bundles = json.loads(
+        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    assert "/static/git-panel.js" in {
+        urlsplit(asset["src"]).path for asset in bundles["shell-tools"]
+    }
+    startup = set(check.startup_script_paths(html))
+    bundled = {urlsplit(asset["src"]).path for assets in bundles.values() for asset in assets}
+    return sorted(bundled & startup)
+
+
+@pytest.mark.parametrize("address", [check.FOLDER_ADDRESS, check.PULL_ADDRESS])
+def test_no_on_demand_script_is_a_startup_script(address: str) -> None:
+    # An on-demand bundle's script, such as the shell's navigation, search, Help, and Git
+    # tools, loads after the first usable tree. The two ceilings bound what the startup
+    # scripts cost, not which scripts they are, and their headrooms add: at 27ea216c a
+    # shell with five shell tools as startup scripts fit both. So membership is held
+    # here, whatever the budget file allows. The one exception is the server's own: at a
+    # pull-request address its routes are a startup script (PULL_PAGE_STARTUP_SCRIPTS),
+    # and everywhere else the pull-route bundle.
+    html = check.render_shells(address)[0]
+    named = server.PULL_PAGE_STARTUP_SCRIPTS if address == check.PULL_ADDRESS else ()
+    assert _bundled_at_startup(html) == sorted(f"/static/{name}" for name in named)
+
+
+def test_a_shell_tool_made_a_startup_script_is_named() -> None:
+    # The variant that fit both ceilings at 27ea216c: five shell tools as tags before
+    # app.js.
+    eager = ["main-tabs.js", "catalog-feed.js", "git-graph.js", "git-history-window.js"]
+    eager.append("git-panel.js")
+    html = check.render_folder_shell()
+    tags = "".join(f'<script src="/static/{name}"></script>' for name in eager)
+    assert _bundled_at_startup(_tag_before_app(html, tags)) == sorted(
+        f"/static/{name}" for name in eager
+    )
+
+
 @pytest.mark.parametrize("attribute", ["", " defer", " async"], ids=["blocking", "defer", "async"])
 def test_a_script_added_to_the_shell_is_counted_whatever_its_attributes(attribute: str) -> None:
-    # git-panel.js is an on-demand script, and as one more startup script it is what the
-    # budget exists to refuse. A deferred or async script is requested as the parser
-    # meets it, the same as a blocking one. The ceiling here is the shell's own size, so
-    # that it is the added script that crosses it whatever headroom the budget file holds.
+    # git-panel.js is an on-demand script, and as a startup script it is counted against
+    # both ceilings. A deferred or async script is requested as the parser meets it, the
+    # same as a blocking one. The ceiling here is the shell's own size, so that it is the
+    # added script that crosses it: the budget file's own headroom admits this script,
+    # and test_no_on_demand_script_is_a_startup_script is what keeps it out.
     html = check.render_folder_shell()
     before = check.measure(html)
     after = check.measure(
