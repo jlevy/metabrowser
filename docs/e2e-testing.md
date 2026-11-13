@@ -282,9 +282,11 @@ Strict mode is off on a developer machine, which can add these:
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
   above;
-- `Chrome is not installed`, for the transition recorder’s checks in
-  `tests/test_transitions_instrument.py`, which measure paint and the frame clock in a
-  real headless Chrome; the CI runners have Chrome, so CI runs them.
+- `Chrome is not installed`, for the checks that need a real headless Chrome: the
+  transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
+  and the frame clock, and `tests/test_folder_overview_alignment.py`, which measures
+  where the Folder Overview’s labels start at several window widths.
+  The CI runners have Chrome, so CI runs them.
 
 ### Timeouts
 
