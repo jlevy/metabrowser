@@ -1547,6 +1547,12 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
+    avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
+    assert avatar == "calc(var(--github-pulls-sep) + 18px + 4px + 1.75em)", "a name beside it"
+    assert (github[".github-pull-avatar"]["width"], github[".github-pull-identity"]["gap"]) == (
+        "18px",
+        "4px",
+    ), "the floor counts the avatar and its gap"
     assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
