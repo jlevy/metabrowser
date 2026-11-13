@@ -1,4 +1,5 @@
-// Deferred shell controller for the Files, Commits, and Pulls tabs.
+// Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
+// from the heading above them.
 (() => {
   const MAIN_TABS = [
     { id: "files", label: "Files", key: "1" },
@@ -280,6 +281,26 @@
       panel?.onShow?.();
     }
 
+    /**
+     * The heading at the top of the nav goes home: the Files tab at the served root, from
+     * whichever tab is in front. It is the reader's own open of `/view/`, so it pushes one
+     * history entry, none when Files already shows the root, and Back returns to where the
+     * reader was. Files shows the top of its panel, where the root's rows begin.
+     *
+     * @returns {Promise<unknown>}
+     */
+    function goHome() {
+      deps.flushPull();
+      rememberMainTabAddress();
+      // Another tab in front: the switch to Files puts back this offset.
+      navPanelScroll.set("files", 0);
+      const scroller = document.getElementById("tree-content");
+      if (activeNavPanelId === "files" && scroller) {
+        scroller.scrollTop = 0;
+      }
+      return deps.openRoot();
+    }
+
     function onHistory() {
       if (gitDiscoveryFinished && deps.isGitHistoryLanding() && !hasGitPanel()) {
         void restoreNeutralGitPanel().catch(console.error);
@@ -311,6 +332,7 @@
         gitDiscoveryFinished = true;
         return restoreNeutralGitPanel();
       },
+      home: goHome,
       onHistory,
       open: openMainTab,
       register: registerNavPanel,

@@ -1484,7 +1484,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
       showTooltip(
-        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
         headerPath,
       );
       return;
@@ -1496,7 +1496,7 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipMtime),
     );
     showTooltip(
-      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
       headerPath,
     );
   });
@@ -3748,10 +3748,65 @@ function attachMainTabs() {
       flushPull: () => pullPageHost?.page()?.flush?.(),
       isGitHistoryLanding,
       isPullAddress,
+      openRoot: () => navigateToPath(""),
       restore: () => navigationController.restore(),
       scrollShadow: () => navScrollShadowUpdate?.(),
     }) ?? null;
   return mainTabs;
+}
+
+// The heading at the top of the nav is home: main-tabs.js `home`. The link keeps its
+// `/view/` address for what a browser does with a link, so a modified or middle click,
+// its context menu, and copying it behave as they do on any link. A plain primary
+// activation, by pointer or by Enter, stays in the page. It used to load `/view/` again,
+// and a browser reloading the neutral Commits entry, which has that address, kept its
+// state and came back to Commits.
+function initHomeHeading() {
+  queryHtml(".header-path")?.addEventListener("click", onHomeHeadingClick);
+}
+
+/** @param {MouseEvent} event */
+function onHomeHeadingClick(event) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  event.preventDefault();
+  goHome();
+}
+
+// Before the tab controller has loaded, the server's tab is in front: Files, unless the
+// page opened on a pull request's address. Only then does the controller have to arrive
+// before the root opens, and a later choice of the reader's cancels it, as a tab click does.
+function goHome() {
+  if (mainTabs) {
+    void mainTabs.home().catch((error) => {
+      console.error("Could not go home", error);
+    });
+    return;
+  }
+  const front = /** @type {HTMLElement | null} */ (
+    queryHtml(".nav-tab-bar")?.querySelector(".tab-btn.active") ?? null
+  );
+  if ((front?.dataset.tab ?? "files") === "files") {
+    void navigateToPath("").catch(console.error);
+    return;
+  }
+  const intent = ++mainTabIntent;
+  void window.MetabrowserAssets?.ensureAsset("main-tabs")
+    .then(() => {
+      const tabs = attachMainTabs();
+      if (intent === mainTabIntent) {
+        return tabs?.home();
+      }
+    })
+    .catch(console.error);
 }
 
 function initNavTabs() {
@@ -8358,6 +8413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
+  initHomeHeading();
   initFilterBar();
   initNavScrollShadow();
   // Only a /view/ pathname selects a file; a hash is document state, never identity.

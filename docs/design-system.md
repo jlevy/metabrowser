@@ -2116,6 +2116,18 @@ A reader who switches tabs returns to that tab’s destination, or to its defaul
 first visit. A direct URL or a browser history step selects the tab that owns the
 destination.
 
+The heading above the nav’s tab bar, the served root’s name, is home.
+Activating it, by pointer or by Enter, shows the Files tab at the served root from any
+tab, with the tree at the top of its panel.
+It pushes one history entry, or none when Files already shows the root, so Back returns
+to the tab the reader left.
+It stays a link to `/view/`, so a modified or middle click and its context menu do what
+they do on any link.
+Its accessible name is the text it shows, and a description says that it goes home, as
+its tooltip does for a pointer.
+`static/main-tabs.js` (`goHome`) owns the switch;
+`tests/dom/preview-pane-state-session.js` (`goingHome`) runs it.
+
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
 A use site does not pad, recolor, or re-letter it.

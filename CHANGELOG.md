@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The folder’s name at the top of the navigation goes home from any tab: clicking it, or
+  pressing Enter on it, shows the Files tab at the served root, with the tree scrolled
+  to the top. It no longer reloads the page, which from the Commits tab with no commit
+  selected came back to Commits.
+  Back returns to where you were, and a Command-click or middle click still opens the
+  root in a new tab. Screen readers announce that it goes home, and so does its tooltip.
+
 - A merge between two branches reads source → target, left to right, everywhere it
   appears. The Pulls list shows `claude/x → main` instead of `main ← claude/x`, and a
   pull request’s header reads “octo wants to merge 1 commit: wip → topic” instead of

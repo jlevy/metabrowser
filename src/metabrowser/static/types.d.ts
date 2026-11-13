@@ -2875,6 +2875,8 @@ declare global {
     flushPull(): void;
     isGitHistoryLanding(): boolean;
     isPullAddress(pathname: string): boolean;
+    /** The reader's own open of the served root, `/view/`. */
+    openRoot(): Promise<unknown>;
     restore(): Promise<unknown>;
     scrollShadow(): void;
   };
@@ -2884,6 +2886,8 @@ declare global {
     bindShortcuts(shortcuts: MetabrowserShortcutRegistry): void;
     finishGitDiscovery(): Promise<void>;
     fileLanding(): void;
+    /** Go home: the Files tab at the served root, from any tab. */
+    home(): Promise<unknown>;
     onHistory(): void;
     open(id: string): void;
     register(panel: MetabrowserNavPanel): void;

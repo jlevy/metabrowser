@@ -350,6 +350,9 @@ const SHELL_FUNCTIONS = [
   "cancelMainTabPreview",
   "attachMainTabs",
   "initNavTabs",
+  "initHomeHeading",
+  "onHomeHeadingClick",
+  "goHome",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -499,6 +502,15 @@ function createShell(pathname, network, options = {}) {
     button.closest = () => button;
   }
   let tabClick;
+  // The heading at the top of the nav, the link server.py writes to /view/.
+  let homeClick;
+  const heading = fakeElement({
+    addEventListener(type, listener) {
+      if (type === "click") {
+        homeClick = listener;
+      }
+    },
+  });
   const navBar = fakeElement({
     insertBefore(button, next) {
       tabButtons.splice(next ? tabButtons.indexOf(next) : tabButtons.length, 0, button);
@@ -636,9 +648,11 @@ function createShell(pathname, network, options = {}) {
     queryHtml: (selector) =>
       selector === ".nav-tab-bar"
         ? navBar
-        : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
-          ? sourceTab
-          : null,
+        : selector === ".header-path"
+          ? heading
+          : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
+            ? sourceTab
+            : null,
     queryHtmlAll: (selector) =>
       selector === ".tab-btn" ? tabButtons : selector === "[data-tab-content]" ? tabPanels : [],
     treePane: fakeElement(),
@@ -747,6 +761,7 @@ function createShell(pathname, network, options = {}) {
     }
   }
   sandbox.initNavTabs();
+  sandbox.initHomeHeading();
   // What server.py ships in the pane before any script runs.
   preview.innerHTML = sandbox.previewPlaceholderHtml(sandbox.previewPane.placeholder(0));
 
@@ -788,6 +803,28 @@ function createShell(pathname, network, options = {}) {
       return consumed;
     },
     clickTab: (panel) => tabClick({ target: tabButtons.find((btn) => btn.dataset.tab === panel) }),
+    /**
+     * Activate the heading as a browser dispatches it: a primary click, or Enter on the
+     * focused link, which arrives as the same click. Returns whether the shell kept it.
+     */
+    clickHome(fields = {}) {
+      let kept = false;
+      const event = {
+        altKey: false,
+        button: 0,
+        ctrlKey: false,
+        defaultPrevented: false,
+        metaKey: false,
+        shiftKey: false,
+        ...fields,
+        preventDefault() {
+          kept = true;
+          event.defaultPrevented = true;
+        },
+      };
+      homeClick(event);
+      return kept;
+    },
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
       for (const [index, callback] of timers.entries()) {
@@ -916,6 +953,145 @@ async function mainTabShortcuts() {
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
     keyboardRoutes: shell.writes,
   };
+}
+
+async function goingHome() {
+  // The heading at the top of the nav goes home: the Files tab at the served root, from
+  // any tab, in the page. It used to be a plain link that loaded /view/ again, and a
+  // browser that reloads the neutral Commits entry, which has that address, keeps the
+  // entry's state, so the page came back as Commits.
+  const read = (path) =>
+    Promise.resolve(jsonResponse({ kind: path === "" ? "folder" : "text", path }));
+  const scroller = fakeElement({ scrollTop: 0 });
+  const shell = createShell("/view/notes.md", read, { scroller, pulls: true });
+  const { sandbox } = shell;
+  const older = "b".repeat(40);
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  sandbox.MetabrowserPullsNav = { routeChanged() {} };
+  sandbox.MetabrowserGitPanel = {
+    cancelPending() {},
+    // The panel's own listener, after the shell's: a commit's address shows the commit.
+    async restoreCommitLanding() {
+      const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
+      if (parsed) {
+        shell.claimGit(parsed.revision);
+      }
+    },
+  };
+  await sandbox.navigationController.start();
+  sandbox.addEventListener("popstate", () => sandbox.MetabrowserGitPanel.restoreCommitLanding());
+  await settle();
+
+  /** Where the reader is: the address, the tab in front, the pane, and Files' offset. */
+  function at() {
+    const { pathname, search, hash } = sandbox.location;
+    const pane = shell.pane();
+    return {
+      address: pathname + search + hash,
+      state: plain(sandbox.history.state),
+      tab: sandbox.mainTabs?.active() ?? "files",
+      pane: pane.owner === "file" ? `${pane.owner} ${JSON.stringify(pane.path)}` : pane.owner,
+      scroll: scroller.scrollTop,
+      pushes: shell.writes.length,
+    };
+  }
+  async function home(fields) {
+    const kept = shell.clickHome(fields);
+    await settle();
+    return { kept, ...at() };
+  }
+
+  const steps = {};
+  scroller.scrollTop = 240;
+  steps["the page opens on a file, its tree scrolled"] = at();
+  shell.clickTab("git");
+  await settle();
+  const commits = at();
+  steps["Commits, from a tab click"] = commits;
+  steps["home from Commits"] = await home();
+  assert.equal(steps["home from Commits"].kept, true, "a plain click stays in the page");
+  assert.equal(steps["home from Commits"].tab, "files");
+  assert.equal(steps["home from Commits"].address, "/view/");
+  assert.equal(steps["home from Commits"].state, null, "home is not the neutral Commits entry");
+  assert.equal(steps["home from Commits"].pane, 'file ""', "home opens the served root");
+  assert.equal(steps["home from Commits"].scroll, 0, "Files starts from the top");
+  assert.equal(steps["home from Commits"].pushes, commits.pushes + 1, "home pushes one entry");
+
+  shell.pop(commits.address, commits.state);
+  await settle();
+  steps["Back from home"] = at();
+  assert.equal(steps["Back from home"].tab, "git", "Back returns to the tab the reader left");
+
+  shell.pop(`/commit/${older}`);
+  await settle();
+  steps["a commit's entry"] = at();
+  steps["home from a commit"] = await home();
+  assert.equal(steps["home from a commit"].tab, "files");
+  assert.equal(steps["home from a commit"].pane, 'file ""');
+
+  shell.clickTab("pulls");
+  await settle();
+  steps.Pulls = at();
+  steps["home from Pulls"] = await home();
+  assert.equal(steps["home from Pulls"].tab, "files");
+  assert.equal(steps["home from Pulls"].address, "/view/");
+
+  scroller.scrollTop = 500;
+  steps["home on the root it shows"] = await home();
+  assert.equal(
+    steps["home on the root it shows"].pushes,
+    steps["home from Pulls"].pushes,
+    "home on the root pushes nothing",
+  );
+  assert.equal(steps["home on the root it shows"].scroll, 0);
+
+  const before = at();
+  const modified = {};
+  for (const [name, fields] of [
+    ["Command", { metaKey: true }],
+    ["Control", { ctrlKey: true }],
+    ["Shift", { shiftKey: true }],
+    ["Option", { altKey: true }],
+    ["middle button", { button: 1 }],
+    ["already handled", { defaultPrevented: true }],
+  ]) {
+    const after = await home(fields);
+    modified[name] = after.kept ? "kept by the page" : "left to the browser";
+    assert.deepEqual({ ...after, kept: undefined }, { ...before, kept: undefined }, name);
+  }
+  steps["a click the browser keeps"] = modified;
+
+  // Before the tab controller has loaded: Files in front opens the root at once, and a
+  // pull request's page fetches the controller first, as a tab click does.
+  const early = {};
+  const filesFirst = createShell("/view/notes.md", read, { pulls: true, deferTabs: true });
+  await filesFirst.sandbox.navigationController.start();
+  assert.equal(filesFirst.clickHome(), true);
+  await settle();
+  early["Files in front"] = {
+    address: filesFirst.sandbox.location.pathname,
+    tabScript: filesFirst.scriptRequests.filter((name) => name === "main-tabs.js").length,
+  };
+  const pullFirst = createShell("/pull/7", read, { pulls: true, deferTabs: true });
+  await pullFirst.sandbox.navigationController.start();
+  assert.equal(pullFirst.sandbox.mainTabs, null, "the tab controller is not loaded yet");
+  assert.equal(pullFirst.clickHome(), true);
+  await settle();
+  early["a pull request in front"] = {
+    address: pullFirst.sandbox.location.pathname,
+    tab: pullFirst.sandbox.mainTabs?.active() ?? null,
+    tabScript: pullFirst.scriptRequests.filter((name) => name === "main-tabs.js").length,
+  };
+  assert.equal(early["a pull request in front"].tab, "files");
+  const superseded = createShell("/pull/7", read, { pulls: true, deferTabs: true });
+  await superseded.sandbox.navigationController.start();
+  superseded.clickHome();
+  await superseded.sandbox.navigateToPath("notes.md");
+  await settle();
+  early["a later open while it loads"] = superseded.sandbox.location.pathname;
+  assert.equal(early["a later open while it loads"], "/view/notes.md", "the later open wins");
+  steps["before the tab controller loads"] = early;
+  return steps;
 }
 
 async function quickSearchPullRoute() {
@@ -1634,6 +1810,7 @@ async function shell() {
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
     independentMainTabs: await independentMainTabs(),
     mainTabShortcuts: await mainTabShortcuts(),
+    goingHome: await goingHome(),
     quickSearchPullRoute: await quickSearchPullRoute(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
