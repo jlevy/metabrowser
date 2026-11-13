@@ -18,7 +18,7 @@ import Testing
     }
 
     private func found(_ setup: RuntimeSetup?) -> DiscoveryReport {
-        DiscoveryReport(setup: setup, tried: [], consultedLoginShell: false)
+        DiscoveryReport(setup: setup, tried: [])
     }
 
     @Test func anOlderSearchFinishingAfterAChoiceChangesNothing() {

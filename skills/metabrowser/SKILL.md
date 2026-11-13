@@ -119,7 +119,8 @@ Open another pull request at `/pull/<n>`, its **Changes** at `/pull/<n>/files`, 
 comparison; **Show the newer changes** selects a newly reported head.
 A refresh keeps the displayed immutable comparison until the reader chooses to move.
 Optional `gh-stack` support adds an authoritative stack-position menu.
-Use ⇧J toward its base and ⇧K toward its top; missing tooling does not block PR reading.
+Press `N` for the next member toward the stack’s top and `P` for the previous one toward
+its base; missing tooling does not block PR reading.
 Metabrowser only reads: to comment, approve, or merge, use GitHub.
 It opens github.com only.
 The

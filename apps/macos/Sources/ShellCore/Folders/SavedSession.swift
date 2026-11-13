@@ -144,6 +144,12 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots whose tab was selected, the front tab's among them: they start as the
     /// user's choice, without being checked again.
     public private(set) var selected: Set<String> = []
+    /// The root `next` returned last, while its start is outstanding, until `finish`,
+    /// `putBack`, `hold`, or `remove` settles it.
+    private var outstanding: String?
+    /// The roots selected while `outstanding`'s start was outstanding, in order, its own
+    /// included, which `putBack` keeps ahead of it.
+    private var selectedWhileOutstanding: [String] = []
 
     public init(_ session: SavedSession, isProtected: (String) -> Bool) {
         let shown = session.windows.compactMap { window in
@@ -162,41 +168,83 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     public var isEmpty: Bool { pending.isEmpty && deferred.isEmpty }
 
-    /// The next root to start. A background root that `stillOpen` no longer admits waits
-    /// for its tab instead, and the next one is tried.
+    /// The next root to start, outstanding until its start is settled. A background root
+    /// that `stillOpen` no longer admits waits for its tab instead, and the next one is
+    /// tried.
     public mutating func next(stillOpen: (String) -> Bool = { _ in true }) -> String? {
+        settle()
         while !pending.isEmpty {
             let root = pending.removeFirst()
-            if selected.contains(root) || stillOpen(root) { return root }
+            if selected.contains(root) || stillOpen(root) {
+                outstanding = root
+                return root
+            }
             deferred.append(root)
         }
         return nil
     }
 
     /// A tab of `root` was selected: it starts next. Returns false if `root` is not
-    /// waiting to start, because it has started or is not part of the restore.
+    /// waiting to start, because its start is outstanding, it has started, or it is not
+    /// part of the restore. A root whose start is outstanding is recorded as selected, so
+    /// if it is put back it starts as the user's choice, without being checked again.
     @discardableResult
     public mutating func select(_ root: String) -> Bool {
+        if root == outstanding {
+            selected.insert(root)
+            selectedWhileOutstanding.append(root)
+            return false
+        }
         guard pending.contains(root) || deferred.contains(root) else { return false }
-        remove(root)
+        pending.removeAll { $0 == root }
+        deferred.removeAll { $0 == root }
         pending.insert(root, at: 0)
         selected.insert(root)
+        if outstanding != nil { selectedWhileOutstanding.append(root) }
         return true
     }
 
-    /// `root`'s launch was refused at the last check before spawning: it waits for its
-    /// tab, unless a tab of it was selected.
+    /// `root`'s launch was refused at the last check before spawning, at its turn or at a
+    /// later restart: it waits for its tab, unless a tab of it was selected.
     public mutating func hold(_ root: String) {
+        if root == outstanding { settle() }
         guard !selected.contains(root), !deferred.contains(root) else { return }
         pending.removeAll { $0 == root }
         deferred.append(root)
     }
 
+    /// `root`, just taken with `next`, found no runtime to start from: it is next again,
+    /// after any root selected while it waited, unless its own tab was selected after
+    /// those. Once a runtime is accepted it is admitted again in its turn, keeps its
+    /// place, and a selection can still put another root before it.
+    public mutating func putBack(_ root: String) {
+        guard !pending.contains(root), !deferred.contains(root) else { return }
+        var ahead: Set<String> = []
+        if root == outstanding {
+            let since = selectedWhileOutstanding.lastIndex(of: root).map { $0 + 1 } ?? 0
+            ahead = Set(selectedWhileOutstanding[since...])
+            settle()
+        }
+        // The roots selected meanwhile are at the front, the latest first.
+        pending.insert(root, at: pending.prefix { ahead.contains($0) }.count)
+    }
+
+    /// `root`, taken with `next`, started.
+    public mutating func finish(_ root: String) {
+        if root == outstanding { settle() }
+    }
+
     /// Every tab of `root` closed before its server started.
     public mutating func remove(_ root: String) {
+        if root == outstanding { settle() }
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
         selected.remove(root)
+    }
+
+    private mutating func settle() {
+        outstanding = nil
+        selectedWhileOutstanding = []
     }
 }
 

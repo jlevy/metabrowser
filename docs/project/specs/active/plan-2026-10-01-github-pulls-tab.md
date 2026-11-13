@@ -164,8 +164,8 @@ Member rows read **1/6** · title · #123, with small middle dots, a bold positi
 title from the matching local catalog and its PR number to the right.
 The current member is marked.
 Native membership is authoritative; a missing title falls back to the PR number.
-Selection and ⇧J/⇧K navigation preserve the selected tab while clearing a preceding file
-selection. ⇧J moves toward the base and ⇧K toward the top.
+Selection and `N`/`P` navigation preserve the selected tab while clearing a preceding
+file selection. `P` moves toward the base and `N` toward the top.
 The shared shortcut registry owns editor, dialog, endpoint, and disposal behavior.
 Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
 has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
