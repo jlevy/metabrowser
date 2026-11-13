@@ -30,7 +30,7 @@ run, and asking again fetches only what failed.
 $ node tests/dom/plugin-view-helpers-session.js
 {
   "withoutACompositor": {
-    "helpersBefore": "0 of 15",
+    "helpersBefore": "0 of 16",
     "requestedTogether": [
       "link rel=stylesheet /plugin-static/fixture-kind/styles.css",
       "link rel=modulepreload <the plugin's module>",
@@ -47,7 +47,7 @@ $ node tests/dom/plugin-view-helpers-session.js
         "module evaluation: a Source view with a gutter of 1 lines"
       ]
     },
-    "helpersAfter": "15 of 15",
+    "helpersAfter": "16 of 16",
     "pluginCode": [
       "module evaluation: a Source view with a gutter of 1 lines",
       "render: a Source view with a gutter of 2 lines",
@@ -87,7 +87,7 @@ $ node tests/dom/plugin-view-helpers-session.js
   "whenTemplatesCannotBeFetched": {
     "whileHeld": {
       "loading": "pending",
-      "helpers": "15 of 15",
+      "helpers": "16 of 16",
       "templateRequests": 1,
       "pluginCode": []
     },
