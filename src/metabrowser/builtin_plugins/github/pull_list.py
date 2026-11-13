@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Final, Literal, Self
+from typing import Annotated, ClassVar, Final, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -133,6 +133,9 @@ class ListedRepository:
     slug: str
     owner: str
     repo: str
+    # Whether a checkout is what the server serves, so a command a message names serves
+    # the checkout rather than the repository's address.
+    checkout: ClassVar[bool] = False
 
     @property
     def source(self) -> str:

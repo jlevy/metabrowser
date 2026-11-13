@@ -51,12 +51,44 @@
   border-collapse: collapse;
 }
 
-/* Names the population the rows are shares of, which follows Show ignored. */
-.file-type-summary-caption {
-  padding-bottom: 4px;
+/* GitHub's Languages legend: a dot, the type, and its share, wrapping as whole
+   items so a dot never ends one line with its name on the next. */
+.file-type-summary-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-type-summary-legend[hidden] {
+  display: none;
+}
+
+.file-type-summary-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* As tall as the bars above it, so the dot reads as their color key. */
+.file-type-summary-legend-swatch {
+  flex: none;
+  width: var(--mb-distribution-track-height);
+  height: var(--mb-distribution-track-height);
+  border-radius: 50%;
+  background: var(--mb-distribution-color);
+}
+
+.file-type-summary-legend-label {
+  font-weight: var(--weight-bold);
+}
+
+.file-type-summary-legend-percent {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  text-align: left;
+  font-variant-numeric: var(--tabular-numerals);
 }
 
 .file-type-summary-type-column {
@@ -100,6 +132,24 @@
 .file-type-summary-disclosure:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 2px;
+}
+
+/* Details is the same control as an "N more" row's, outside the table: the
+   bold label with the section-disclosure chevron after it. After the rules
+   above, whose inherited weight it overrides: an "N more" row is bold because
+   its cell is, and this button has no such cell. */
+.file-type-summary-details {
+  display: grid;
+  gap: 4px;
+}
+
+.file-type-summary-details-toggle {
+  justify-self: start;
+  font-weight: var(--weight-bold);
+}
+
+.file-type-summary-details > [hidden] {
+  display: none;
 }
 
 .file-type-summary-child-row .file-type-summary-type-content {

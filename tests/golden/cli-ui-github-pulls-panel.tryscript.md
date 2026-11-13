@@ -339,7 +339,7 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "a new PR revalidates the display through ten bounded cache pages",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-32\"",
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-34\"",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5902",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5802",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5702",
@@ -544,9 +544,27 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh auth status",
       "gh api graphql catalog state=updated cursor=start"
     ],
-    "fresh cached revisit": []
+    "fresh cached revisit": [],
+    "refused newer_cache": [],
+    "refused unknown_cache": []
   },
   "failures": {
+    "newer_cache": {
+      "status": "absent",
+      "connection": {
+        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "state": "paused",
+        "reload": true
+      }
+    },
+    "unknown_cache": {
+      "status": "absent",
+      "connection": {
+        "text": "The pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "state": "paused",
+        "reload": true
+      }
+    },
     "not_logged_in": {
       "status": "current",
       "connection": {

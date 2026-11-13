@@ -72,7 +72,8 @@ _FRAME_HEADER = struct.Struct(">Q")
 _READ_CHUNK_BYTES = 64 * 1024
 _STDERR_RETAIN_BYTES = 64 * 1024
 _REAPER_MAX_INTERVAL_S = 30.0
-_HEAD_LANE_COLOR = "var(--git-ref-local)"
+# git-graph.js's HEAD_LANE_COLOR, which says why it is the remote chip's blue.
+_HEAD_LANE_COLOR = "var(--git-ref-remote)"
 _LANE_COLORS = tuple(f"var(--git-lane-{index})" for index in range(1, 6))
 
 

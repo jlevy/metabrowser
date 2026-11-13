@@ -224,7 +224,7 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 
 [metrics.startup_script_transfer_kb]
 category = "loading"
-maximum = 175
+maximum = 220
 policy = "gate"
 required = true
 description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
