@@ -22,6 +22,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import (
     gh,
+    gh_budget,
     gh_lists,
     pull_catalog,
     pull_list,
@@ -171,6 +172,129 @@ def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
     assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
     assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
     assert calls == []
+
+
+def _mostly_closed(count: int) -> list[dict[str, Any]]:
+    """*count* pull requests, every tenth open and the rest closed, newer the higher."""
+
+    return [
+        item if number % 10 == 0 else {**item, "state": "closed", "closed_at": item["created_at"]}
+        for number in range(1, count + 1)
+        for item in (generated_item(number),)
+    ]
+
+
+def _graphql_budget(remaining: int) -> None:
+    """GitHub reported *remaining* of 5,000 GraphQL points, until an hour after the clock."""
+
+    reset = int((FETCHED_AT + timedelta(hours=1)).timestamp())
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": str(remaining),
+            "x-ratelimit-reset": str(reset),
+            "x-ratelimit-resource": "graphql",
+        },
+        resource="graphql",
+    )
+
+
+def test_closed_rows_page_through_every_old_cap_in_bounded_windows(
+    repository: ListedRepository,
+) -> None:
+    """No cap on how far a filter reads: 500, 600, and the 1,000-row window all pass."""
+
+    items = _mostly_closed(2500)
+    _seed(repository, items)
+    view = ListView(repository, None, False)
+    numbers: list[int] = []
+    after: int | None = None
+    pages = 0
+    while True:
+        envelope = pull_list_envelope(view, ListWindow("closed", 100, after))
+        numbers.extend(row["number"] for row in envelope["rows"])
+        pages += 1
+        after = envelope["next_after"]
+        if after is None:
+            break
+    closed = sorted((item["number"] for item in items if item["state"] == "closed"), reverse=True)
+    assert len(closed) == 2250 and numbers == closed and pages == 23
+    assert (envelope["fetched"], envelope["total"], envelope["complete"]) == (2250, 2250, True)
+    widest = pull_list_envelope(view, ListWindow("closed", pull_catalog.MAX_WINDOW))
+    rest = pull_list_envelope(
+        view, ListWindow("closed", pull_catalog.MAX_WINDOW, widest["next_after"])
+    )
+    assert [row["number"] for row in widest["rows"] + rest["rows"]] == closed[:2000]
+    assert rest["next_after"] == closed[1999]
+
+
+def test_backfill_past_the_prefix_pauses_below_the_budget_floor_and_resumes(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reader's pages run at any budget; the background backfill waits for the floor."""
+
+    items = _mostly_closed(1205)
+    calls = _provider(monkeypatch, items)
+    _graphql_budget(1000)
+    assert not gh_budget.admission(("graphql",), now=FETCHED_AT).admitted
+
+    state = asyncio.run(refresh_pull_list(repository, "closed", target=300))
+    assert calls == [
+        "graphql:closed:start",
+        "graphql:closed:closed-100",
+        "graphql:closed:closed-200",
+    ]
+    assert (state.cached["closed"], state.done["all"], state.cursors["all"]) == (300, False, None)
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded", "a pause is not a failure"
+
+    # Nothing starts for a background ask the prefix already answers; scrolling further does.
+    view = ListView(repository, None, False)
+    assert not refresh_wanted(view, RefreshRequest("closed", 300, background=True))
+    assert refresh_wanted(view, RefreshRequest("closed", 400, background=True))
+    calls.clear()
+    state = asyncio.run(refresh_pull_list(repository, "closed", target=400))
+    assert calls == ["graphql:closed:closed-300"]
+    assert (state.cached["closed"], state.done["all"]) == (400, False)
+
+    # Above the floor, the same ask resumes the backfill and reads to the oldest row.
+    _graphql_budget(4000)
+    assert refresh_wanted(view, RefreshRequest("closed", 400, background=True))
+    calls.clear()
+    state = asyncio.run(refresh_pull_list(repository, "closed", target=400))
+    assert calls == [f"graphql:all:{'start' if not n else f'all-{n}'}" for n in range(0, 1300, 100)]
+    assert state.done["all"] and state.cached == state.totals == {
+        "all": 1205,
+        "open": 120,
+        "closed": 1085,
+    }
+
+
+def test_a_rate_hold_pauses_the_backfill_without_a_refusal_of_its_own(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another lane's refusal holds the backfill; the hold lifting resumes it."""
+
+    calls = _provider(monkeypatch, _mostly_closed(450))
+    gh_budget.hold(utc_stamp(FETCHED_AT + timedelta(minutes=5)), now=FETCHED_AT)
+    held = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    assert calls == ["graphql:open:start"]
+    assert (held.cached["open"], held.done["all"]) == (45, False)
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded" and stamp.reset_at is None
+    assert not refresh_wanted(
+        ListView(repository, None, False), RefreshRequest("open", 45, background=True)
+    )
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(minutes=6))
+    calls.clear()
+    state = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    # The list is past its window, so the scan that keeps it current goes first.
+    assert calls[0] == "graphql:updated:start"
+    assert calls[1:] == [
+        f"graphql:all:{'start' if not n else f'all-{n}'}" for n in range(0, 500, 100)
+    ]
+    assert state.done["all"] and state.cached["all"] == 450
 
 
 def test_pull_search_respects_title_budget_and_indexes_exact_numbers(

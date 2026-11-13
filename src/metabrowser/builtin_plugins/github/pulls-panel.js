@@ -66,8 +66,13 @@ export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
 const FILTER_GROUP = "github-pulls-filter";
 
-// The backend may cache every PR. Show the first 500 and extend by one cache page as
-// the reader nears the tail. The viewport and its protected anchors mount separately.
+// The backend caches every PR, and the list has no end of its own: it reads the first 500
+// from the cache, then one more cache page each time the reader nears its tail, as
+// Commits does, until the filter's last row. The viewport and its protected anchors mount
+// separately. A page's cost does not grow with depth: 2 ms of server time at the top,
+// middle, and end of a 30,000-row catalog, and 6 to 7 ms a page from Chrome, at a load
+// average of 14 to 18 (2026-11-13). So re-reading a changed prefix costs what the reader
+// scrolled through, about 0.7 s for 10,000 rows, while the rows already shown stay.
 export const WINDOW_ROWS = 100;
 export const DISPLAY_ROWS = 500;
 // Match Git history's near-tail distance.
@@ -181,12 +186,11 @@ const CHECKOUT_NOT_LISTED =
  *   countNumber: string | null,
  *   countSuffix: string | null,
  *   catalogReady: boolean,
- *   window: string | null,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
  *     reload: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
  *   refreshingRows?: number[],
  *   empty: string | null,
- *   loadMore: "ready" | "loading" | null,
+ *   progress: string | null,
  *   github: string | null,
  *   live: string,
  * }} PullsModel
@@ -335,6 +339,10 @@ function watchPaused(envelope) {
  * row says why it cannot be (offline, a failure, a rate limit). *refreshingRows* are the rows
  * whose own data GitHub is being read for now, whose titles breathe too.
  *
+ * The list never says how many rows it holds. Below the last row held, `progress` is the
+ * crawl's own indicator, the nav's file scan in its words: while a further page is read
+ * (*more*), or while GitHub's pages are still arriving and rows remain below.
+ *
  * @param {PullsEnvelope | null} envelope
  * @param {{
  *   filter: string,
@@ -369,10 +377,9 @@ export function describePulls(envelope, page) {
     countNumber: null,
     countSuffix: null,
     catalogReady: envelope?.complete === true && !envelope.refreshing,
-    window: null,
     connection: null,
     empty: null,
-    loadMore: null,
+    progress: null,
     github: null,
     live: "",
   };
@@ -403,9 +410,6 @@ export function describePulls(envelope, page) {
     model.countNumber = new Intl.NumberFormat("en-US").format(repositoryTotal);
     model.countSuffix = repositoryTotal === 1 ? " PR on " : " PRs on ";
   }
-  if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
-    model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
-  }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   const known = envelope.state === "current" || envelope.state === "stale";
   model.listName = known ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}` : name;
@@ -434,9 +438,6 @@ export function describePulls(envelope, page) {
     };
   } else if ((working || page.more) && !holding) {
     model.connection = { state: "working", text: FETCHING, reload: false };
-  } else if (!working && !envelope.complete && envelope.catalog_fetched > 0) {
-    const count = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
-    model.connection = { state: "paused", text: `Catalog paused · ${count} cached`, reload: true };
   } else {
     // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
@@ -453,17 +454,26 @@ export function describePulls(envelope, page) {
   }
   model.live = model.connection.state === "connected" ? model.listName : model.connection.text;
   const belowTotal = envelope.total === null || page.rows.length < envelope.total;
-  const cachedMore = page.rows.length < envelope.fetched;
   const providerMayHaveMore =
     !envelope.complete &&
     envelope.total !== null &&
     online &&
     !heldByRate &&
     !watchPaused(envelope);
-  if (page.more) {
-    model.loadMore = "loading";
-  } else if (holding && belowTotal && (cachedMore || providerMayHaveMore)) {
-    model.loadMore = "ready";
+  // GitHub's pages for this filter are arriving: the catalog job runs, this filter has rows
+  // it has not cached, and nothing holds or failed it.
+  const crawling =
+    asking &&
+    providerMayHaveMore &&
+    envelope.fetched < (envelope.total ?? 0) &&
+    failure === null &&
+    page.error === null;
+  if (holding && belowTotal && (page.more || crawling)) {
+    // As the nav's scan says "~N files scanned": a count only once one is known.
+    model.progress =
+      crawling && envelope.fetched > 0
+        ? `~${new Intl.NumberFormat("en-US").format(envelope.fetched)} pull requests fetched`
+        : FETCHING;
   }
   return model;
 }
@@ -2039,35 +2049,34 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Grow the displayed prefix, reading the cache before asking the shared catalog job
-   * to prioritize more rows. One scroll approach adds one page. The button can add five.
-   * @param {"scroll" | "button"} trigger
+   * Grow the displayed prefix by one page, reading the cache before asking the shared
+   * catalog job to prioritize more rows. Each approach to the tail adds one, with no end
+   * but the filter's own.
    */
-  function extendDisplay(trigger) {
+  function extendDisplay() {
     const list = held();
     const envelope = list.envelope;
-    if (disposed || envelope === null || list.more || envelope.reason === "not_github") {
-      return Promise.resolve();
-    }
-    const automatic = trigger === "scroll";
     if (
-      automatic &&
-      (!live() ||
-        windowRead !== null ||
-        list.error !== null ||
-        list.rows.length < list.displayLimit)
+      disposed ||
+      envelope === null ||
+      list.more ||
+      envelope.reason === "not_github" ||
+      !live() ||
+      windowRead !== null ||
+      list.error !== null ||
+      list.rows.length < list.displayLimit
     ) {
       return Promise.resolve();
     }
-    // At a completed or failed refresh, automatic paging can still reveal cached rows.
+    // At a completed or failed refresh, paging can still reveal cached rows.
     const cacheOnly =
       envelope.complete ||
       !online() ||
       watchPaused(envelope) ||
       rateHoldMs(envelope, deps.now()) > 0 ||
-      (automatic && refreshFailure(envelope, deps.formatTime) !== null);
+      refreshFailure(envelope, deps.formatTime) !== null;
     const limit = Math.min(
-      list.displayLimit + (automatic ? WINDOW_ROWS : DISPLAY_ROWS),
+      list.displayLimit + WINDOW_ROWS,
       envelope.total ?? Number.POSITIVE_INFINITY,
       cacheOnly ? envelope.fetched : Number.POSITIVE_INFINITY,
     );
@@ -2394,7 +2403,7 @@ export function createPullsController(deps, options = {}) {
         return true;
       }
       if (target >= list.rows.length) {
-        void extendDisplay("scroll");
+        void extendDisplay();
         return true;
       }
       const number = list.rows[target].number;
@@ -2479,10 +2488,8 @@ export function createPullsController(deps, options = {}) {
         void readRecord(number);
       }
     },
-    /** A press of Fetch more. */
-    loadMore: () => extendDisplay("button"),
     /** The reader neared the end of the displayed rows. */
-    reachedEnd: () => extendDisplay("scroll"),
+    reachedEnd: () => extendDisplay(),
     /** A press of Reload asks the repository's existing catalog job. */
     reload() {
       if (!live() || model().connection?.reload !== true || refreshReads.size > 0) {
@@ -2666,10 +2673,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionHelp,
   ]);
   const foot = h("div", { class: "github-pulls-foot" });
-  const moreButton = /** @type {HTMLButtonElement} */ (
-    h("button", { type: "button", class: "btn github-pulls-more" }, ["Fetch more"])
-  );
-  moreButton.addEventListener("click", () => void controller.loadMore());
+  // Below the last row held, while more are read or fetched: the nav's scan indicator, its
+  // spinner and words (`.index-progress` in styles.css), after the shared quiet period.
+  const progressText = h("span", { class: "index-progress-text" });
+  const progress = h("span", { class: "github-pulls-progress mb-delayed-loading" }, [
+    h("span", { class: "index-progress-spinner", "aria-hidden": "true" }),
+    progressText,
+  ]);
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
@@ -3489,15 +3499,9 @@ export function mountPullsPanel(container, ctx, mb) {
         ),
       );
     }
-    if (model.window !== null) {
-      if (lines.length > 0) {
-        lines.push(" · ");
-      }
-      lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
-    }
-    // The status and connection lines are always there, a line each, and the window's note
-    // shares the status line: the list under them starts at one height before the list
-    // answers and after, and across a filter change (they moved it 24 px on every load).
+    // The status and connection lines are always there, a line each: the list under them
+    // starts at one height before the list answers and after, and across a filter change
+    // (they moved it 24 px on every load).
     status.replaceChildren(...(lines.length > 0 ? lines : ["\u00a0"]));
     const connected = model.connection;
     const working = connected?.state === "working";
@@ -3554,10 +3558,11 @@ export function mountPullsPanel(container, ctx, mb) {
     empty.textContent = model.empty ?? "";
     empty.hidden = model.empty === null;
     const footChildren = [];
-    if (model.loadMore !== null) {
-      moreButton.disabled = model.loadMore === "loading";
-      moreButton.setAttribute("aria-busy", String(moreButton.disabled));
-      footChildren.push(moreButton);
+    if (model.progress !== null) {
+      if (progressText.textContent !== model.progress) {
+        progressText.textContent = model.progress;
+      }
+      footChildren.push(progress);
     }
     if (model.github !== null) {
       footChildren.push(
@@ -3677,6 +3682,32 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
   });
+  // The state chips and Reload are situational: through the SDK's shortcut surface each takes
+  // a number, 1 to 9, from its place among the screen's numbered controls, so the panel picks
+  // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
+  // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
+  // the group's arrow keys do, since the list it replaces may have held focus; a waiting
+  // Reload keeps its place and does nothing, as its click does. Each lasts until disposal
+  // aborts `signal`.
+  if (typeof mb.shortcuts?.attach === "function") {
+    for (const { chip, value } of tallies) {
+      mb.shortcuts.attach(chip, {
+        activate() {
+          controller.setFilter(value);
+          chip.focus();
+        },
+        id: `github.pulls.filter.${value}`,
+        numbered: true,
+        signal,
+      });
+    }
+    mb.shortcuts.attach(reloadButton, {
+      activate: () => void controller.reload(),
+      id: "github.pulls.reload",
+      numbered: true,
+      signal,
+    });
+  }
 
   /** @param {EventTarget | null} target */
   const rowOf = (target) =>

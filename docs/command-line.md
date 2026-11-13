@@ -581,8 +581,9 @@ metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&l
 
 The first command starts or joins a resumable metadata job and waits for its outcome; it
 exits 1 if the job fails.
-The job prioritizes the newest 500 matching pull requests, then continues through all
-repository metadata.
+The job prioritizes the newest `target` matching pull requests, then continues through
+all repository metadata while GitHub’s GraphQL budget admits background work; below that
+floor the job ends after the prefix, and a later refresh resumes it.
 The second command reads a cached window, offline too, with no `gh` and no Git.
 `state` is `open` by default, `closed` (including merged), or `all`. `limit` is 0 to
 1,000, and `after` is the last PR number from the preceding window.
@@ -593,7 +594,7 @@ for all pull requests, and `filter_totals` holds all three filter counts when th
 catalog knows them. `count_at` says when those counts were read.
 `fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
 `complete` becomes true when the background catalog reaches the end.
-Displaying another 500 rows does not cap or restart that catalog.
+Reading further windows does not cap or restart that catalog.
 A refresh reads metadata changed since its last checkpoint;
 `{"state": "open", "retry": true}` requests that check even while the cache is fresh,
 subject to a reported rate-limit reset.

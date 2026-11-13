@@ -393,7 +393,17 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
             return True
         return "reconnect" if ask.reconnect and stamp.outcome == "network_error" else False
     listed = read_catalog(repository.home, repository.slug)
-    return listed is None or not listed.done["all"] or refresh_is_due(stamp, now=now)
+    if listed is None or refresh_is_due(stamp, now=now):
+        return True
+    if listed.done["all"]:
+        return False
+    from metabrowser.builtin_plugins.github.pull_list_refresh import (
+        backfill_admitted,
+        prefix_wanted,
+    )
+
+    # Past the asked prefix the backfill is background work, which the budget may pause.
+    return prefix_wanted(listed, ask.name, ask.target) or backfill_admitted()
 
 
 def start_refresh(

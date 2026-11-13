@@ -612,6 +612,115 @@ def test_golden_pull_list_failures(
     check_golden("cli-github-pulls-failures.txt", rendered)
 
 
+def _budget(answers: dict[str, Any], remaining: int) -> dict[str, Any]:
+    """*answers* with every catalog page reporting *remaining* of 5,000 GraphQL points."""
+
+    api = {
+        key: {**entry, "headers": {**entry["headers"], "X-Ratelimit-Remaining": str(remaining)}}
+        if key.startswith("graphql:")
+        else entry
+        for key, entry in answers["api"].items()
+    }
+    return {**answers, "api": api}
+
+
+def _graphql(session: _Session) -> list[str]:
+    """The GraphQL requests the last command made, in order."""
+
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    return [call for call in calls if call.startswith("gh api graphql")]
+
+
+def _window_summary(result: Invocation) -> str:
+    """A window by its size, its ends, and where the next one starts."""
+
+    envelope = result.payload()
+    numbers = [row["number"] for row in envelope["rows"]]
+    header = result.stdout[: result.stdout.index("{")]
+    summary = {
+        "list": envelope["list"],
+        "total": envelope["total"],
+        "fetched": envelope["fetched"],
+        "complete": envelope["complete"],
+        "rows": len(numbers),
+        "first": numbers[0] if numbers else None,
+        "last": numbers[-1] if numbers else None,
+        "next_after": envelope["next_after"],
+    }
+    return header + json.dumps(summary) + "\n"
+
+
+def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_every_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    items = [
+        item if number % 10 == 0 else {**item, "state": "closed", "closed_at": item["created_at"]}
+        for number in range(1, 1206)
+        for item in (generated_item(number),)
+    ]
+    online = scenario(session.origin)
+    online = {**online, "api": {**online["api"], **catalog_entries(items)}}
+
+    session.say(
+        "GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter that background "
+        "work leaves to the reader. The reader's 300 Closed rows are fetched; the backfill "
+        "past them waits, and the job ends without a failure."
+    )
+    session.answer(_budget(online, 1000))
+    held = session.post({"state": "closed", "target": 300}, summarize=True)
+    assert held.exit_code == 0, held.stderr
+    assert _graphql(session) == [
+        "gh api graphql catalog state=closed cursor=start",
+        "gh api graphql catalog state=closed cursor=closed-100",
+        "gh api graphql catalog state=closed cursor=closed-200",
+    ]
+    status = session.get("?state=closed&limit=0").payload()
+    assert (status["fetched"], status["total"], status["complete"]) == (300, 1085, False)
+    assert status["last_refresh"]["outcome"] == "succeeded"
+
+    session.say(
+        "A background ask the cached prefix answers starts nothing. Scrolling asks for the "
+        "reader's next page, which is fetched at any budget."
+    )
+    idle = session.post({"state": "closed", "target": 300, "background": True})
+    assert json.loads(idle.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    scrolled = session.post({"state": "closed", "target": 400}, summarize=True)
+    assert scrolled.exit_code == 0, scrolled.stderr
+    assert _graphql(session) == ["gh api graphql catalog state=closed cursor=closed-300"]
+
+    session.advance(61)
+    session.say(
+        "The scan that keeps the list current observes 4,000 points left, and the backfill "
+        "resumes from the top to the oldest pull request in the same job."
+    )
+    session.answer(_budget(online, 4000))
+    resumed = session.post({"state": "closed", "target": 400}, summarize=True)
+    assert resumed.exit_code == 0, resumed.stderr
+    calls = _graphql(session)
+    assert calls[0] == "gh api graphql catalog state=updated cursor=start"
+    assert calls[1:] == [
+        f"gh api graphql catalog state=all cursor={'start' if not n else f'all-{n}'}"
+        for n in range(0, 1300, 100)
+    ]
+
+    session.say(
+        "Closed pages through every row in bounded windows, past 500, 600, and the "
+        "1,000-row window alike."
+    )
+    first = session.get("?state=closed&limit=1000", project=_window_summary).payload()
+    assert (len(first["rows"]), first["complete"], first["fetched"]) == (1000, True, 1085)
+    rest = session.get(
+        f"?state=closed&limit=1000&after={first['next_after']}", project=_window_summary
+    ).payload()
+    assert len(rest["rows"]) == 85 and rest["next_after"] is None
+    assert rest["rows"][-1]["number"] == 1
+
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    check_golden("cli-github-pulls-backfill.txt", rendered)
+
+
 def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
