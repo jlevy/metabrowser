@@ -322,9 +322,9 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The stack position's column takes at most half of what the title and it share.
+    # The stack position's column takes what the title and it share, but 4ch of title.
     assert " ".join(columns.group(1).split()) == (
-        "16px 16px minmax(0, 1fr) fit-content(calc((100% - 2 * 16px - 5ch - 4 * 6px) / 2)) 5ch"
+        "16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch)) 5ch"
     )
     assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
     count = _rule(css, ".github-pulls-filters .count")

@@ -1448,10 +1448,10 @@ Usernames and the repository summary use the same small metadata size and bold n
 text ink. Branch names use the remote [ref chip](#branch-chips) at its one size, head →
 base, as [Merge Direction](#merge-direction) sets them.
 Known native stack membership uses a small Layers icon and bold position in a column of
-the title line, before the age, at most half the room the title and it share and cut
-short with an ellipsis past that; the tooltip names the stack and every position.
-Their shared repository snapshot is indexed once by PR number; rows make no stack
-requests, and enrichment updates retain the row and any focused changed-file tree.
+the title line, before the age, in all the room the title and it share but 4ch of the
+title, and cut short with an ellipsis past that; the tooltip names the stack and every
+position. Their shared repository snapshot is indexed once by PR number; rows make no
+stack requests, and enrichment updates retain the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.

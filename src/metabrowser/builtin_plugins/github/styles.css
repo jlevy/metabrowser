@@ -665,15 +665,15 @@
    without a stack: a position that arrives cuts the title shorter and moves nothing, and
    the row keeps its height. On the muted line, which wraps, it moved the merge's arrow 34
    to 54 px, or took a line of its own and moved every row below 18 px. The column takes
-   at most half of the room the title and it share, the row's width less the chevron's,
-   the icon's, and the age's columns and the four gaps: a position wider than that is cut
-   short, with all of it in its tooltip, rather than pushing the age out of the row. At
-   the 180 px pane, two stacks' "12/23 · 10/14" pushed the age 17.5 px right and the pane
-   scrolled sideways. */
+   all of the room the title and it share, the row's width less the chevron's, the icon's,
+   and the age's columns and the four gaps, but 4ch the title keeps: a position wider than
+   that is cut short, with all of it in its tooltip, rather than pushing the age out of
+   the row. At the 180 px pane, two stacks' "12/23 · 10/14" pushed the age 17.5 px right
+   and the pane scrolled sideways; one stack's position still shows whole there. */
 .github-pulls-row {
   display: grid;
   grid-template-columns:
-    16px 16px minmax(0, 1fr) fit-content(calc((100% - 2 * 16px - 5ch - 4 * 6px) / 2))
+    16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch))
     5ch;
   align-items: center;
   min-height: var(--ui-row-height);
