@@ -69,6 +69,7 @@
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
 //     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
@@ -84,7 +85,7 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mountRefCopies, ageBucket/ageLabelHtml,
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies, ageBucket/ageLabelHtml,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
