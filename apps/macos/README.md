@@ -925,8 +925,8 @@ Terminal launch.
   squircle, stands at the title bar’s trailing end in every folder window, whether it
   shows a page or the status view.
   It links to the project: a click opens its repository on GitHub in the default
-  browser, the pointer becomes the pointing hand over it, and a faint capsule lights
-  behind it.
+  browser, the pointer becomes the pointing hand over it, and a faint square-cornered
+  box lights behind it.
   [Why the Title Is a Title-Bar Accessory](#why-the-title-is-a-title-bar-accessory) has
   its measurements.
 - **Size:** a new window opens 80% as tall as its screen’s usable area (the visible
@@ -1142,10 +1142,14 @@ Measured on macOS 26.5:
   The window buttons are 14-point circles 9 points apart, from x 9 to 69 and 9 to 23
   points below the top.
   The mark is 13 points tall, centered on their row from 9.5 to 22.5 points down, and
-  its ink ends 9.2 points before the window’s trailing edge, as the close button starts
-  9 points after the leading edge (`TitleBarMarkLayout`; the fifth of a point is the
-  accessory’s and the mark’s rounding to whole points, which keeps the M’s stem crisp).
-  In a narrow window the title truncates 12 points before the mark’s accessory.
+  its ink ends 14.2 points before the window’s trailing edge (`TitleBarMarkLayout`; the
+  fifth of a point is the accessory’s and the mark’s rounding to whole points, which
+  keeps the M’s stem crisp).
+  Compared by eye with 12 and 16 points in renders, 14 balances the window buttons,
+  which start 9 points after the leading edge, against a mark wider and denser than a
+  button, and keeps the mark clear of the window’s rounded top corner, which the 9.2
+  points it first had crowded (`mb-2x8f`). In a narrow window the title truncates 12
+  points before the mark’s accessory.
 - **The mark is the icon’s own.** It draws the partial M and the B from the outlines and
   fills in the icon masters’ glyph group, which `AppIcon/make-glyphs.swift` copies into
   `ShellCore`’s `AppIconMarkGeometry.swift` when `scripts/build-icon.sh` regenerates the
@@ -1170,10 +1174,12 @@ Measured on macOS 26.5:
   A press that moves 3 points drags the window instead, as the rest of the title bar
   does, so a click never moves the window and a drag never opens the page; a first click
   in a window that is not key opens it, as the window buttons act on a first click.
-  The pointer becomes the pointing hand over it, and a capsule reaching 4 points past
-  its ink across and 3 up and down lights behind it in the system’s secondary fill, 7.8%
-  black on the light title bar and 7.8% white on the dark one, and the system fill,
-  9.8%, while pressed.
+  The pointer becomes the pointing hand over it, and a square-cornered box reaching 3
+  points past its ink on every side lights behind it, 24.81 by 19 points and 11.2 points
+  short of the trailing edge, in the system’s secondary fill, 7.8% black on the light
+  title bar and 7.8% white on the dark one, and the system fill, 9.8%, while pressed.
+  Its corners are square, as the web page’s hover on the heading that names the folder
+  (`.header-path`, whose corner radius measured 0 in Chrome).
   The fills are resolved in the plain light and dark appearances, since the title bar’s
   vibrant one resolves them to opaque grays meant for vibrancy, darker than the dark
   title bar. The hover shows only in the key window, and goes out when the window resigns
