@@ -1380,8 +1380,11 @@ Compact navigation ages and branch chips retain their smaller chrome sizes.
 
 Author avatars are decorative circles beside the visible username, with fixed dimensions
 so image arrival or failure does not move the text.
-Images load lazily, asynchronously, and at low priority; only mounted catalog rows can
-create images. Missing or unsupported image URLs leave the username readable.
+Images load eagerly at low priority and decode asynchronously; only mounted catalog rows
+can create images, which bounds what the Pulls tab asks for.
+They are eager because the page builds its actors again when it repaints
+([A Repaint Keeps Its Images](#a-repaint-keeps-its-images)). Missing or unsupported
+image URLs leave the username readable.
 Use the avatar of the named actor: a merged header naming the merger shows the merger’s
 image, while the description shows its author’s image.
 Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
@@ -2949,6 +2952,30 @@ The skeleton and spinner forms above remain for content with nothing usable cach
 `test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast` holds the
 utility, its tokens, and its contrast, and
 `test_no_pull_request_surface_says_it_may_be_out_of_date` the copy.
+
+### A Repaint Keeps Its Images
+
+**A repaint never blanks an image whose address did not change.** Where it can, a view
+keeps the image’s node: the Pulls tab patches a row in place and builds its metadata
+line, avatar and all, again only when the author, the avatar, or a branch changed.
+Where a view builds its nodes again, as the pull request page builds its actors on a tab
+switch, a poll, or a return to Conversation, an image that is on screen at once is
+created with `loading="eager"`.
+
+A lazy image waits for layout before it asks for its bytes, and WebKit, the macOS app’s
+engine, then asks the network again rather than use the copy it holds.
+Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, with the
+avatar served locally after 80 ms: on each of 9 tab switches the header’s rebuilt avatar
+was requested again and had no image for 3 frames, 100 ms at that window’s 30 frames a
+second.
+Eager, it made no request and had its image in its first frame on all 9. Headless
+Chrome 152 drew the lazy image in its first frame and showed no blank frame in a
+screencast either way, so the blank was WebKit’s.
+
+Lazy loading stays for images a first paint may not reach, such as a long document’s
+figures. An image whose address does change is a new image, and its slot keeps its size,
+so its arrival moves nothing.
+`test_a_repaint_creates_avatars_that_paint_at_once` holds the avatars.
 
 ## Text Selection
 
