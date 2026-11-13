@@ -162,7 +162,7 @@ function host() {
 }
 
 /**
- * The tabs' C, G, and H under a held first paint (review E2): a landing whose description's
+ * The tabs' C, G, and E under a held first paint (review E2): a landing whose description's
  * Markdown is on its way holds the conversation over the loading page, header included, so
  * the tab column is out of the page and no tab key is live; at release the header paints and
  * all three keys are. The registry and facade are the production ones, loaded as the page

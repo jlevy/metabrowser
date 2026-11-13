@@ -1766,9 +1766,9 @@ async function run() {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    // With Commits already in front and no landing waiting, the Commits tab's digit only
+    // With Commits already in front and no landing waiting, the Commits tab's key, `H`, only
     // moves focus, back to the row the reader left. A switch to Commits lands on the newest
-    // row instead ("The Commits digit lands on the newest row", below).
+    // row instead ("The Commits key lands on the newest row", below).
     document.activeElement = null;
     assertTrue("focusRow: the roving row takes focus", internals.focusCommitRow());
     assertTrue(
@@ -2755,7 +2755,7 @@ async function run() {
     registeredPanel !== null,
   );
   assertTrue(
-    "gate: the Commits tab hands its digit's focus to the history",
+    "gate: the Commits tab hands its key's focus to the history",
     registeredPanel.focusRow === internals.focusCommitRow,
   );
   assertEqual("gate: an unopened Git tab does not load the view helpers", viewAssets, []);
@@ -3062,9 +3062,9 @@ async function run() {
     assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
   }
 
-  // ── The Commits digit lands on the newest row ──────────────
+  // ── The Commits key lands on the newest row ──────────────
   //
-  // The digit switches to Commits and then asks the panel for its row (main-tabs.js), before
+  // The key switches to Commits and then asks the panel for its row (main-tabs.js), before
   // the landing has selected anything. That row is the newest, not the older one the reader
   // left: focused without scrolling the list and made its Tab stop, so `↓` opens the next
   // commit. A newest row the list has not mounted takes focus when the landing reveals it,
@@ -3086,13 +3086,13 @@ async function run() {
     };
     const detail = (revision) => ({
       is_repo: true,
-      commit: commit(revision, [], "digit detail"),
+      commit: commit(revision, [], "key detail"),
       body: "",
       stats: { files_changed: 0, additions: 0, deletions: 0 },
       files: [],
       files_truncated: false,
     });
-    // What the digit does from another tab (main-tabs.js bindShortcuts and openMainTab): it
+    // What the key does from another tab (main-tabs.js bindShortcuts and openMainTab): it
     // gives up the pane, pushes the neutral entry, and asks the panel to land; the landing
     // shows the panel (activateNavPanel, below). Then it asks the panel for its row, or
     // focuses the tab while the panel has none.
@@ -3106,7 +3106,7 @@ async function run() {
       }
       return { landing, took };
     };
-    // A click on the tab: the button takes focus, and the switch is the digit's, without the
+    // A click on the tab: the button takes focus, and the switch is the key's, without the
     // request for a row.
     const clickCommitsTab = () => {
       tab.focus();
@@ -3114,7 +3114,7 @@ async function run() {
       neutralLanding = true;
       return panel.restoreCommitLanding();
     };
-    // The digit with Commits in front: openMainTab only shows the panel again, with no
+    // The key with Commits in front: openMainTab only shows the panel again, with no
     // landing of its own, and then asks for the row.
     const pressDigitWithCommitsShown = () => {
       registeredPanel.onShow();
@@ -3158,37 +3158,33 @@ async function run() {
       const { landing, took } = pressCommitsDigit();
       const newest = rowAt(0);
       assertTrue(
-        "digit: the newest row takes focus at once",
+        "H: the newest row takes focus at once",
         took && document.activeElement === newest,
       );
-      assertEqual("digit: focus does not scroll the list", newest?.focusCalls.at(-1), {
+      assertEqual("H: focus does not scroll the list", newest?.focusCalls.at(-1), {
         preventScroll: true,
       });
-      assertEqual("digit: the newest row is the Tab stop", newest?.getAttribute("tabindex"), "0");
-      assertEqual("digit: the row left is not", rowAt(1)?.getAttribute("tabindex"), "-1");
+      assertEqual("H: the newest row is the Tab stop", newest?.getAttribute("tabindex"), "0");
+      assertEqual("H: the row left is not", rowAt(1)?.getAttribute("tabindex"), "-1");
       await landing;
       await settle();
-      assertEqual("digit: the newest is selected", internals.stateForTests().selectedId, SHA_C);
-      assertTrue("digit: focus stays on the newest row", document.activeElement === rowAt(0));
-      assertEqual("digit: it stays the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
-      assertEqual("digit: the list stays at its top", container.scrollTop, 0);
+      assertEqual("H: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+      assertTrue("H: focus stays on the newest row", document.activeElement === rowAt(0));
+      assertEqual("H: it stays the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+      assertEqual("H: the list stays at its top", container.scrollTop, 0);
       const down = keyboardEvent("ArrowDown");
       document.activeElement.dispatch("keydown", down);
-      assertTrue("digit: ↓ is handled", down.defaultPrevented);
-      assertEqual("digit: ↓ opens the next commit", internals.stateForTests().selectedId, SHA_B);
-      assertTrue("digit: ↓ focuses its row", document.activeElement === rowAt(1));
+      assertTrue("H: ↓ is handled", down.defaultPrevented);
+      assertEqual("H: ↓ opens the next commit", internals.stateForTests().selectedId, SHA_B);
+      assertTrue("H: ↓ focuses its row", document.activeElement === rowAt(1));
       await settle();
     }
-
-    // A click on the tab lands on the newest commit too, and leaves focus on the tab.
-    {
-      filesRow.focus();
-      await clickCommitsTab();
-      await settle();
-      assertEqual("click: the newest is selected", internals.stateForTests().selectedId, SHA_C);
-      assertEqual("click: the newest row is the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
-      assertTrue("click: focus stays on the tab", document.activeElement === tab);
-    }
+    filesRow.focus();
+    await clickCommitsTab();
+    await settle();
+    assertEqual("click: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+    assertEqual("click: the newest row is the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+    assertTrue("click: focus stays on the tab", document.activeElement === tab);
 
     // HEAD moved while Commits was hidden. The landing's refresh replaces the rows, the
     // focused newest among them, and a browser then drops focus to the body; the landing
@@ -3216,29 +3212,29 @@ async function run() {
       });
       const { landing, took } = pressCommitsDigit();
       assertTrue(
-        "digit, refresh: the newest row takes focus",
+        "H, refresh: the newest row takes focus",
         took && document.activeElement === rowAt(0),
       );
       for (let tick = 0; tick < 50 && !pageAsked; tick += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      assertTrue("digit, refresh: the refresh asks for history", pageAsked);
-      assertEqual("digit, refresh: the refresh replaced the rows", rowAt(0), null);
+      assertTrue("H, refresh: the refresh asks for history", pageAsked);
+      assertEqual("H, refresh: the refresh replaced the rows", rowAt(0), null);
       // What a browser does when the focused element leaves the document.
       document.activeElement = null;
       releasePage();
       await landing;
       await settle();
       assertEqual(
-        "digit, refresh: the new newest is selected",
+        "H, refresh: the new newest is selected",
         internals.stateForTests().selectedId,
         SHA_D,
       );
       assertTrue(
-        "digit, refresh: focus returns to the newest row",
+        "H, refresh: focus returns to the newest row",
         document.activeElement === rowAt(0),
       );
-      assertEqual("digit, refresh: without scrolling", rowAt(0)?.focusCalls.at(-1), {
+      assertEqual("H, refresh: without scrolling", rowAt(0)?.focusCalls.at(-1), {
         preventScroll: true,
       });
     }
@@ -3260,7 +3256,7 @@ async function run() {
       const releaseRepo = holdRepo(repoAt(SHA_C));
       const { landing, took } = pressCommitsDigit();
       assertTrue(
-        "digit, text click: the newest row takes focus",
+        "H, text click: the newest row takes focus",
         took && document.activeElement === rowAt(0),
       );
       // A click on text no one can focus: the browser reports the body.
@@ -3269,14 +3265,14 @@ async function run() {
       await landing;
       await settle();
       assertEqual(
-        "digit, text click: the newest is selected",
+        "H, text click: the newest is selected",
         internals.stateForTests().selectedId,
         SHA_C,
       );
-      assertTrue("digit, text click: focus stays nowhere", document.activeElement === null);
+      assertTrue("H, text click: focus stays nowhere", document.activeElement === null);
     }
 
-    // The reader scrolls the digit's row away while the landing reads HEAD, which moved
+    // The reader scrolls the key's row away while the landing reads HEAD, which moved
     // again: focus parks on the scroller, and the refresh that replaces the rows forgets the
     // parking, so no render hands focus back. The landing gives it to the new newest row.
     {
@@ -3293,7 +3289,7 @@ async function run() {
       const releaseRepo = holdRepo(repoAt(SHA_D));
       const { landing, took } = pressCommitsDigit();
       assertTrue(
-        "digit, parked refresh: the newest row takes focus",
+        "H, parked refresh: the newest row takes focus",
         took && document.activeElement === rowAt(0),
       );
       // Where renderVirtualRows parks focus when the focused row leaves the window.
@@ -3302,12 +3298,12 @@ async function run() {
       await landing;
       await settle();
       assertEqual(
-        "digit, parked refresh: the new newest is selected",
+        "H, parked refresh: the new newest is selected",
         internals.stateForTests().selectedId,
         SHA_D,
       );
       assertTrue(
-        "digit, parked refresh: focus returns to the newest row",
+        "H, parked refresh: focus returns to the newest row",
         document.activeElement === rowAt(0),
       );
     }
@@ -3321,7 +3317,7 @@ async function run() {
         (index + 8000).toString(16).padStart(40, "0"),
       );
       const walk = revisions.map((revision, index) =>
-        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `digit commit ${index}`),
+        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `key commit ${index}`),
       );
       responses.set("/api/git/repo", {
         is_repo: true,
@@ -3364,44 +3360,44 @@ async function run() {
       await leaveFromFarDown();
       const left = rowAt(6);
       assertEqual(
-        "digit, unmounted: the row left is the Tab stop",
+        "H, unmounted: the row left is the Tab stop",
         left?.getAttribute("tabindex"),
         "0",
       );
-      assertEqual("digit, unmounted: the newest row is not mounted", rowAt(0), null);
+      assertEqual("H, unmounted: the newest row is not mounted", rowAt(0), null);
       const { landing, took } = pressCommitsDigit();
-      assertTrue("digit, unmounted: no row takes focus yet", !took);
-      assertTrue("digit, unmounted: the tab holds focus", document.activeElement === tab);
-      assertEqual("digit, unmounted: the row left is not focused", left?.focusCalls, []);
+      assertTrue("H, unmounted: no row takes focus yet", !took);
+      assertTrue("H, unmounted: the tab holds focus", document.activeElement === tab);
+      assertEqual("H, unmounted: the row left is not focused", left?.focusCalls, []);
       await landing;
       await settle();
       const newest = rowAt(0);
       assertEqual(
-        "digit, unmounted: the newest is selected",
+        "H, unmounted: the newest is selected",
         internals.stateForTests().selectedId,
         revisions[0],
       );
       assertTrue(
-        "digit, unmounted: the newest row takes focus once revealed",
+        "H, unmounted: the newest row takes focus once revealed",
         newest !== null && document.activeElement === newest,
       );
-      assertEqual("digit, unmounted: without scrolling", newest?.focusCalls.at(-1), {
+      assertEqual("H, unmounted: without scrolling", newest?.focusCalls.at(-1), {
         preventScroll: true,
       });
-      assertEqual("digit, unmounted: the list stays at its top", container.scrollTop, 0);
+      assertEqual("H, unmounted: the list stays at its top", container.scrollTop, 0);
       assertEqual(
-        "digit, unmounted: the newest row is the Tab stop",
+        "H, unmounted: the newest row is the Tab stop",
         newest?.getAttribute("tabindex"),
         "0",
       );
       const down = keyboardEvent("ArrowDown");
       newest?.dispatch("keydown", down);
       assertEqual(
-        "digit, unmounted: ↓ opens the next commit",
+        "H, unmounted: ↓ opens the next commit",
         internals.stateForTests().selectedId,
         revisions[1],
       );
-      assertTrue("digit, unmounted: ↓ focuses its row", document.activeElement === rowAt(1));
+      assertTrue("H, unmounted: ↓ focuses its row", document.activeElement === rowAt(1));
       await settle();
 
       // The reader moves focus while the landing waits for the first page: it stays there.
@@ -3412,25 +3408,22 @@ async function run() {
       holdFirstPage = new Promise((resolve) => (releaseFirstPage = resolve));
       firstPageAsked = false;
       const moved = pressCommitsDigit();
-      assertTrue(
-        "digit, moved: the tab holds focus",
-        !moved.took && document.activeElement === tab,
-      );
+      assertTrue("H, moved: the tab holds focus", !moved.took && document.activeElement === tab);
       for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      assertTrue("digit, moved: the landing waits for the first page", firstPageAsked);
+      assertTrue("H, moved: the landing waits for the first page", firstPageAsked);
       filter.focus();
       releaseFirstPage();
       await moved.landing;
       await settle();
       assertEqual(
-        "digit, moved: the newest is still selected",
+        "H, moved: the newest is still selected",
         internals.stateForTests().selectedId,
         revisions[0],
       );
       assertTrue(
-        "digit, moved: focus stays where the reader put it",
+        "H, moved: focus stays where the reader put it",
         document.activeElement === filter,
       );
 
@@ -3439,21 +3432,18 @@ async function run() {
       await leaveFromFarDown();
       const nowhere = pressCommitsDigit();
       assertTrue(
-        "digit, text click on the tab: the tab holds focus",
+        "H, text click on the tab: the tab holds focus",
         !nowhere.took && document.activeElement === tab,
       );
       document.activeElement = null;
       await nowhere.landing;
       await settle();
       assertEqual(
-        "digit, text click on the tab: the newest is selected",
+        "H, text click on the tab: the newest is selected",
         internals.stateForTests().selectedId,
         revisions[0],
       );
-      assertTrue(
-        "digit, text click on the tab: focus stays nowhere",
-        document.activeElement === null,
-      );
+      assertTrue("H, text click on the tab: focus stays nowhere", document.activeElement === null);
 
       // A click after focus last parked on the scroller: the reader focused a row, scrolled it
       // away, and left for Files. The landing's reveal mounts that row again, and it does not
@@ -3480,9 +3470,9 @@ async function run() {
       assertTrue("click, parked: the row left is mounted again", rowAt(1) !== null);
       assertTrue("click, parked: focus stays on the tab", document.activeElement === tab);
 
-      // The digit with Commits in front while a click's landing waits on HEAD. The reader
+      // The key with Commits in front while a click's landing waits on HEAD. The reader
       // focused a row since and scrolled it away, so focus parked on the scroller; the
-      // digit's row is still the newest, and a render that mounts the row left at the top
+      // key's row is still the newest, and a render that mounts the row left at the top
       // gives it neither focus nor the Tab stop. Page reads wait too, so nothing settles
       // until both answers come.
       filesRow.focus();
@@ -3524,7 +3514,7 @@ async function run() {
       assertTrue("in front: the newest row takes focus", document.activeElement === rowAt(0));
 
       // A landing that lost the pane steers nothing: a file takes it while the click's landing
-      // waits, HEAD answers and the list renders, and the digit with Commits in front then
+      // waits, HEAD answers and the list renders, and the key with Commits in front then
       // hands focus to the row the reader left, as with no landing. That row is still the
       // Tab stop, and the landing selects nothing.
       await internals.selectCommit(revisions[1]);
@@ -3551,7 +3541,7 @@ async function run() {
       assertTrue("lost: a row takes focus", pressDigitWithCommitsShown());
       assertTrue("lost: it is the row the reader left", document.activeElement === rowAt(1));
 
-      // Back during the digit's wait: the address is no longer the neutral entry, and the
+      // Back during the key's wait: the address is no longer the neutral entry, and the
       // landing neither selects nor moves focus when HEAD answers.
       await leaveFromFarDown();
       releaseRepo = holdRepo(repoAt(revisions[0]));
@@ -3569,7 +3559,7 @@ async function run() {
       );
       assertTrue("back: focus stays on the tab", document.activeElement === tab);
 
-      // A file takes the pane during the digit's wait, and the reader moves to it: the
+      // A file takes the pane during the key's wait, and the reader moves to it: the
       // landing ends without selecting or moving focus.
       await leaveFromFarDown();
       releaseRepo = holdRepo(repoAt(revisions[0]));
@@ -3591,7 +3581,7 @@ async function run() {
       container.scrollTop = 0;
     }
 
-    // A page on its way when the digit switches: onShow's history check waits for it and
+    // A page on its way when the key switches: onShow's history check waits for it and
     // renders nothing, so the window mounted further down is the last one drawn, though the
     // switch put the list at its top. The landing's reveal redraws it from the newest row,
     // which then takes focus.

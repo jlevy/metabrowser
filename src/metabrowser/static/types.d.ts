@@ -3086,7 +3086,7 @@ declare global {
     onShow?: (() => void) | null;
     onHide?: (() => void) | null;
     /**
-     * Focus the panel's roving row after its tab's digit opens it; false when the
+     * Focus the panel's roving row after its tab's letter opens it; false when the
      * panel has no row yet, and the tab button keeps focus.
      */
     focusRow?: (() => boolean) | null;

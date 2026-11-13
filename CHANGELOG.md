@@ -24,7 +24,7 @@ All notable changes to Metabrowser are documented here.
   time, by a click, its shortcut, or Back onto the tab, even after you read an older
   commit there. It used to show “Select a commit to preview” on the first visit and
   return to the last commit you read after that.
-  The shortcut, `2`, puts focus on the newest commit’s row, so `↓` reads the next one.
+  The shortcut, `H`, puts focus on the newest commit’s row, so `↓` reads the next one.
   A link or address that names a commit still opens that commit.
   The page you were reading stays on screen until the commit is ready, and a repository
   with no commits says “No commits yet.”

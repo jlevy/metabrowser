@@ -142,11 +142,12 @@
   /** @type {{revision: string, claim: number} | null} */
   let lastSelection = null;
   // The neutral Commits entry waiting for history to name its newest commit: the landing
-  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `digitFocus` is
-  // where the Commits tab's digit put focus while it waited, if it did (focusCommitRow), and
-  // `rowReplaced` says a refresh removed a history row that held focus (refreshHistory).
+  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `keyFocus` is
+  // where the Commits tab's key, `H`, put focus while it waited, if it did
+  // (focusCommitRow), and `rowReplaced` says a refresh removed a history row that held
+  // focus (refreshHistory).
   /**
-   * @typedef {{landing: number, claim: number, digitFocus: "row" | "tab" | null,
+   * @typedef {{landing: number, claim: number, keyFocus: "row" | "tab" | null,
    *   rowReplaced: boolean}} NewestLanding
    */
   /** @type {NewestLanding | null} */
@@ -1330,12 +1331,12 @@
   }
 
   /**
-   * Give the history's roving row focus, as the Commits tab's digit does after it
+   * Give the history's roving row focus, as the Commits tab's key, `H`, does after it
    * switches to the tab, so `↓` walks the history next. Reports whether a row took
    * focus; before the first page there is none, and the tab button keeps it.
    *
    * A switch to Commits lands on the newest commit (landOnNewestCommit), so while that
-   * landing waits, the digit's row is the newest, not the row the reader left: now when
+   * landing waits, the key's row is the newest, not the row the reader left: now when
    * it is mounted, or once the landing reveals it (focusAwaitsNewest).
    */
   function focusCommitRow() {
@@ -1344,11 +1345,11 @@
     if (waiting && bridge && newestLandingHolds(waiting, bridge)) {
       // The landing began from the newest row (landOnNewestCommit), but the reader may have
       // focused another since, with Commits in front; that row, or a suspension that would
-      // hand it focus again when a render mounts it, is not the digit's.
+      // hand it focus again when a render mounts it, is not the key's.
       state.focusedOrdinal = 0;
       state.focusSuspended = false;
-      waiting.digitFocus = focusNewestRow() ? "row" : "tab";
-      return waiting.digitFocus === "row";
+      waiting.keyFocus = focusNewestRow() ? "row" : "tab";
+      return waiting.keyFocus === "row";
     }
     const list = panelElement()?.querySelector(".git-graph-list");
     const row =
@@ -1380,7 +1381,7 @@
   }
 
   /**
-   * Whether focus is still where the Commits digit left it while its landing waited, so the
+   * Whether focus is still where the Commits key left it while its landing waited, so the
    * landing may move it to the newest row: on the tab, on the newest row, or on the
    * scroller, where the panel parks focus when the reader scrolls the focused row away. A
    * refresh forgets that parking, so the render that mounts the new rows hands nothing
@@ -2978,7 +2979,7 @@
    * ready, so the switch paints neither a prompt nor a blank frame. The newest row becomes
    * the list's Tab stop, and the row the reader left gives up its claim on focus, so a
    * render that mounts it again does not hand it focus. A click or a history step leaves
-   * focus where it was, on the tab for a click; the tab's digit moves it to the newest row
+   * focus where it was, on the tab for a click; the tab's key moves it to the newest row
    * (focusCommitRow). An empty history selects nothing and the pane says so.
    *
    * @param {number} landing
@@ -2991,7 +2992,7 @@
     if (bridge.beginPreviewNavigation(claim)) {
       pendingPreviewClaim = claim;
     }
-    newestLanding = { landing, claim, digitFocus: null, rowReplaced: false };
+    newestLanding = { landing, claim, keyFocus: null, rowReplaced: false };
     // The selection moves the Tab stop when it lands, so a landing that loses the pane
     // leaves the row the reader left as the list's Tab stop.
     state.focusSuspended = false;
@@ -3048,8 +3049,8 @@
       return;
     }
     newestLanding = null;
-    // The digit asked for the newest row, and the reveal has mounted it.
-    if (waiting.digitFocus !== null && focusAwaitsNewest(waiting)) {
+    // The key asked for the newest row, and the reveal has mounted it.
+    if (waiting.keyFocus !== null && focusAwaitsNewest(waiting)) {
       focusNewestRow();
     }
     void selectCommit(newest);

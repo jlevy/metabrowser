@@ -42,7 +42,7 @@
       );
     }
 
-    /** The registry the digits are bound to, and each present tab button's target in it.
+    /** The registry the letters are bound to, and each present tab button's target in it.
      * None between a real `pagehide`, which disposes the registry, and the `pageshow`
      * that builds the next one, so a panel registered then gets its tab and no target.
      * @type {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} */
@@ -51,9 +51,9 @@
     const tabTargets = new Map();
 
     /**
-     * Make a tab button its digit's target, which gives it the digit's
+     * Make a tab button its letter's target, which gives it the letter's
      * `aria-keyshortcuts` and, while Shift is held, its badge. A tab that is absent has
-     * no target, so its digit stays reserved and does nothing.
+     * no target, so its letter stays reserved and does nothing.
      *
      * @param {string} panelId
      */
@@ -71,7 +71,7 @@
     }
 
     /**
-     * Bind the digits to `shortcuts`, or to none: the shell passes `null` as it disposes
+     * Bind the letters to `shortcuts`, or to none: the shell passes `null` as it disposes
      * the registry, so nothing attaches to a disposed one.
      *
      * @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]> | null} shortcuts
@@ -97,8 +97,8 @@
           surfaces: { help: "always", reveal: "always" },
           targeted: true,
           handler() {
-            // The tab's own path, then its panel's row, so `1` then `↓` walks the tree;
-            // the tab button keeps focus while the panel has no rows yet. A digit for
+            // The tab's own path, then its panel's row, so `F` then `↓` walks the tree;
+            // the tab button keeps focus while the panel has no rows yet. A letter for
             // the tab already shown only moves focus.
             openMainTab(id);
             const panel = navPanels.find((candidate) => candidate.id === id);
@@ -122,7 +122,7 @@
     }
 
     // Create the button and container for a panel that was not in the
-    // server-rendered markup, then make the button its digit's target. Idempotent, so
+    // server-rendered markup, then make the button its letter's target. Idempotent, so
     // a re-registration after a root change does not duplicate the tab. Both elements
     // exist before the registry is reached, so the tab works whether or not one is bound.
     /** @param {MetabrowserNavPanel} panel */

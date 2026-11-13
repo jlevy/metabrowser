@@ -2530,7 +2530,7 @@ frame.
 The commit’s address replaces the tab’s entry, so Back returns to where the reader
 was. The list starts from its top, and the newest row becomes the list’s Tab stop.
 A click leaves focus on the tab.
-The tab’s shortcut moves focus to the newest row without scrolling the list, so `2` then
+The tab’s shortcut moves focus to the newest row without scrolling the list, so `H` then
 `↓` opens the next commit; when the newest row is not in the list yet, the tab holds
 focus until the row arrives, unless the reader moves focus first.
 An empty history selects nothing, and the pane says “No commits yet.”
