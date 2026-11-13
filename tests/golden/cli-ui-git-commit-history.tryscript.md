@@ -13,6 +13,8 @@ Now each entry restores its own view, a step within the commit shown loads nothi
 stepping on before a commit answers leaves the later entry in the pane.
 A step taken before the panel is ready ends on the entry the reader stepped to, and a
 landing that outlives the panel paints nothing.
+Only an answer that the root is no longer a repository removes the panel: a repository
+read that gets no answer keeps it, and the landing shows its commit.
 An address with a short commit ID says it needs the full lowercase one, a panel that
 went away and came back starts over, and a folder that is not a repository has no Git
 panel listening.
@@ -250,9 +252,9 @@ $ node tests/dom/git-commit-history-session.js
   },
   "a landing when the repository gate failed once": {
     "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "pane": "file src/a.py",
-    "owner": "file",
-    "navPanel": "files",
+    "pane": "commit aaaaaaa",
+    "owner": "git",
+    "navPanel": "git",
     "requests": []
   },
   "a panel that came back starts over": {

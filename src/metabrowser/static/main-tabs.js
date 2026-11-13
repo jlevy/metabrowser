@@ -21,7 +21,13 @@
     /** @type {MetabrowserNavPanel[]} */
     let navPanels = [
       // Files is the server-rendered panel, so its focus hook is the shell's tree.
-      { id: "files", label: "Files", focusRow: () => deps.focusFilesRow(), onFirstShow: null },
+      {
+        id: "files",
+        label: "Files",
+        focusRow: () => deps.focusFilesRow(),
+        onFirstShow: null,
+        onShow: () => deps.filesShown(),
+      },
     ];
     /** @type {Set<string>} */
     const navPanelsShown = new Set(["files"]);

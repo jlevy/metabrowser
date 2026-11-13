@@ -609,6 +609,106 @@
   }
 
   /**
+   * When the page asks the server for the root's tallies again: one request at a time,
+   * however many callers ask, spaced by what the last one cost.
+   *
+   * Every root aggregate upsert, every tree load, and the recency menu ask for a fresh
+   * summary. A live tree upserts its root on every write, and each answer costs the
+   * server a pass over the whole index, so a page that sent one request per ask held a
+   * growing pile of identical multi-second requests, and in WebKit, which sends them in
+   * parallel, they took every connection the Commits tab needed
+   * (explorations/tree-summary-storm/README.md).
+   *
+   * An ask while a request is in flight or waiting only marks the summary stale, and the
+   * request that follows reads it once. The next request waits out `debounceMs` after the
+   * ask and at least `minIntervalMs`, or `costFactor` times the last request's duration,
+   * after the last one settled, doubled for each failure in a row up to `maxIntervalMs`.
+   * A failure leaves the summary stale, so it is asked again after that backoff.
+   * While `wanted` is false (the page is hidden, or no summary row is on screen) a stale
+   * summary waits, and `resume` sends it once it is wanted again.
+   *
+   * @param {{
+   *   fetchSummary: () => Promise<boolean>,
+   *   wanted: () => boolean,
+   *   now: () => number,
+   *   setTimer: (callback: () => void, ms: number) => unknown,
+   *   debounceMs: number,
+   *   minIntervalMs: number,
+   *   costFactor: number,
+   *   maxIntervalMs: number,
+   * }} deps
+   */
+  function createRootSummaryRefresh(deps) {
+    let stale = false;
+    let inFlight = false;
+    let armed = false;
+    let notBefore = Number.NEGATIVE_INFINITY;
+    let failures = 0;
+
+    function arm() {
+      if (!stale || inFlight || armed || !deps.wanted()) {
+        return;
+      }
+      armed = true;
+      deps.setTimer(send, Math.max(deps.debounceMs, notBefore - deps.now()));
+    }
+
+    function send() {
+      armed = false;
+      if (!stale || inFlight || !deps.wanted()) {
+        return;
+      }
+      stale = false;
+      inFlight = true;
+      const started = deps.now();
+      /** @param {boolean} answered */
+      const settle = (answered) => {
+        inFlight = false;
+        const settled = deps.now();
+        if (answered) {
+          failures = 0;
+        } else {
+          failures += 1;
+          stale = true;
+        }
+        const spacing = Math.max(deps.minIntervalMs, (settled - started) * deps.costFactor);
+        notBefore = settled + Math.min(deps.maxIntervalMs, spacing * 2 ** failures);
+        arm();
+      };
+      let request;
+      try {
+        request = deps.fetchSummary();
+      } catch {
+        request = Promise.resolve(false);
+      }
+      request.then(
+        (answered) => settle(answered === true),
+        () => settle(false),
+      );
+    }
+
+    return Object.freeze({
+      /** The summary on screen may be out of date: refresh it, once, when allowed. */
+      request() {
+        stale = true;
+        arm();
+      },
+      /** The summary may be wanted again: send a waiting refresh. */
+      resume() {
+        arm();
+      },
+      state: () =>
+        Object.freeze({
+          stale,
+          inFlight,
+          armed,
+          notBefore: Number.isFinite(notBefore) ? notBefore : null,
+          failures,
+        }),
+    });
+  }
+
+  /**
    * Attach both fulfillment and rejection handlers immediately when an
    * independent navigation dependency begins. The caller may await an HTTP
    * result first without creating an unhandled-rejection window.
@@ -1177,6 +1277,7 @@
     createFileRevalidationTracker,
     createPageConnections,
     createPreviewPaneLifecycle,
+    createRootSummaryRefresh,
     displayPath,
     href,
     navigation,

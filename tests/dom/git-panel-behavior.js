@@ -2801,10 +2801,50 @@ async function run() {
     viewAssets.push(name);
     return new Promise((resolve, reject) => assetWaits.push({ resolve, reject }));
   };
+  // Discovery's retries, held here so the test fires them rather than waiting them out.
+  const discoveryRetries = [];
+  const realSetTimeout = sandbox.setTimeout;
+  sandbox.setTimeout = (callback, ms) => {
+    discoveryRetries.push({ callback, ms });
+    return discoveryRetries.length;
+  };
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
   assertEqual("gate: a plain folder never asks for view helpers", viewAssets, []);
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
+  assertEqual("gate: an answer that the root is no repository is final", discoveryRetries, []);
+
+  // A gate that gets no answer is asked again, at a doubling interval, until one comes.
+  // A page that gave up on its first refused or timed-out read never showed Commits.
+  responses.set("/api/git/repo", { httpStatus: 503, body: { error: "unavailable" } });
+  await panel.init();
+  assertEqual("gate: a failed read registers nothing", registeredPanel, null);
+  assertEqual(
+    "gate: a failed read is asked again",
+    discoveryRetries.map(({ ms }) => ms),
+    [1000],
+  );
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  assertEqual(
+    "gate: each failure in a row waits twice as long",
+    discoveryRetries.map(({ ms }) => ms),
+    [2000],
+  );
+  responses.set("/api/git/repo", {
+    is_repo: true,
+    root: "",
+    head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+  });
+  responses.set("/api/git/refs", { is_repo: true, refs: [] });
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  sandbox.setTimeout = realSetTimeout;
+  assertTrue("gate: the retry that gets an answer registers Commits", registeredPanel !== null);
+  assertEqual("gate: an answer ends the retries", discoveryRetries, []);
+  internals.teardown();
+  registeredPanel = null;
+  responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
 
   responses.set("/api/git/repo", {
     is_repo: true,

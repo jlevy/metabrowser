@@ -328,6 +328,27 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     shown(persisted: boolean): void;
   }>;
   createPreviewPaneLifecycle(): MetabrowserPreviewPaneLifecycle;
+  /** One root-summary request at a time, however many callers ask, spaced by its cost. */
+  createRootSummaryRefresh(deps: {
+    fetchSummary(): Promise<boolean>;
+    wanted(): boolean;
+    now(): number;
+    setTimer(callback: () => void, ms: number): unknown;
+    debounceMs: number;
+    minIntervalMs: number;
+    costFactor: number;
+    maxIntervalMs: number;
+  }): Readonly<{
+    request(): void;
+    resume(): void;
+    state(): Readonly<{
+      stale: boolean;
+      inFlight: boolean;
+      armed: boolean;
+      notBefore: number | null;
+      failures: number;
+    }>;
+  }>;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,
@@ -3117,6 +3138,8 @@ declare global {
   type MetabrowserMainTabsDeps = {
     cancelPreview(): void;
     flushPull(): void;
+    /** The Files panel came to the front: what waited while it was hidden may run. */
+    filesShown(): void;
     /** Focus the Files tree's roving row: the Files panel's `focusRow`. */
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
