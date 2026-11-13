@@ -195,9 +195,11 @@ description = "Largest contentful paint."
 
 # exp-014 measured 74 startup scripts before selected-kind loading, 33 after that
 # change, and 22 after shell tools moved behind the first usable tree on the same
-# 111,590-file corpus. The request ceiling retains headroom for a small core module
-# while preventing either eager tier from returning to the directory shell's
-# critical path.
+# 111,590-file corpus. The request ceiling retains headroom for a small core module.
+# It and the byte ceiling below bound what the startup scripts cost, and their headrooms
+# add: five shell tools made startup scripts, about 45 KB, fit both. Neither decides
+# which scripts may be startup scripts. tests/test_check_startup_scripts.py holds the
+# deferred shell-tools bundle out of the startup set exactly.
 # devtools/check_startup_scripts.py applies these two on every `make lint-check`,
 # from the shell the server renders; exp-037 is why, and records it agreeing with
 # the browser's count byte for byte.
@@ -208,23 +210,30 @@ policy = "gate"
 required = true
 description = "JavaScript requests started before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
 
-# Set from what a transferred KB of startup script costs the first tree row, measured
-# 2026-11-12 in headless Chrome 152 on cold loads of a folder's page, paired against
-# main at 27ea216c (178,592 bytes, 174 KB), with builds that differ only in comment
-# bytes; docs/project/research/research-2026-11-12-eager-startup-script-cost.md:
-#   loopback              0.18 ms/KB (95% CI 0.08-0.23), first row 118 ms
-#   10 ms, 100 Mbps link  0.28 ms/KB (0.06-0.40), first row 129 ms
-#   80 ms, 20 Mbps link   0.32 ms/KB (0.30-0.33), first row 499 ms
-#   warm load, CPU 4x     none measurable
-# On loopback that cost is the server gzipping each script as it sends it: the same
+# The size of a build whose cost was measured directly. Main's startup scripts at
+# 27ea216c (178,592 bytes, 174 KB) with comment added to 225,531 bytes (220 KB), no
+# token changed, were loaded back to back against main, cold, on a folder's page, in
+# headless Chrome 152 on 2026-11-12. First row, as the paired median ratio with its 95%
+# bootstrap interval:
+#   loopback, 30 pairs           1.07x (1.03-1.14), +6.6 ms
+#   10 ms, 100 Mbps, 20 pairs    0.99x (0.95-1.11), -0.7 ms
+#   80 ms, 20 Mbps, 10 pairs     1.04x (1.03-1.04), +19.4 ms
+# That is a rough cut, not the careful 1.1x: the host was loaded (load average 56-92 on
+# 10 cores), each path is one series, and there is no A/A series. Growth to 220 KB is
+# far inside the 1.3x rough-cut tolerance, with medians under 1.1x and intervals that
+# reach past it (explorations/performance-loop/README.md, "Comparing a candidate with
+# the previous release"). The samples, and the probe command that prints these
+# intervals from them, are experiments/exp-084; the reasoning is
+# docs/project/research/research-2026-11-12-eager-startup-script-cost.md. Per-KB slopes
+# there chose 220 as the size to measure; they are not its evidence.
+# On loopback the cost is the server gzipping each script as it sends it: the same
 # scripts sent uncompressed reached the first row 32 ms sooner. Parse runs on a worker
-# while a script streams in, at 0.01 ms/KB on the main thread. The ceiling is the
-# growth that costs the careful 1.1x tolerance on the strictest path: 10% of 129 ms at
-# 0.28 ms/KB is 47 KB over 174, rounded down. A build padded to it (225,531 bytes)
-# measured 1.07x on loopback, 0.99x and 1.04x on the two links. Comments are 41% of
-# these bytes and cost what code bytes cost. Re-derive the ceiling rather than raise
-# it: the 1.1x is measured from 174 KB, and a server that stops compressing on every
-# request changes the loopback slope.
+# while a script streams in, at 0.01 ms/KB on the main thread. Warm loads and a 4x
+# slower CPU showed no measurable cost of bytes. Comments are 41% of these bytes and
+# cost what code bytes cost. This headroom adds to the request ceiling's (above), and
+# neither decides which scripts are startup scripts. Re-derive the ceiling rather than
+# raise it: it is measured from 174 KB, and a server that stops compressing on every
+# request changes the loopback cost.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220
