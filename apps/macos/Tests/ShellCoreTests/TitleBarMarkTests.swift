@@ -85,7 +85,7 @@ import Testing
         #expect(mark.released(inside: true) == nil)
     }
 
-    @Test func aReleaseOutsideTheCapsuleOpensNothing() {
+    @Test func aReleaseOutsideTheHighlightOpensNothing() {
         var mark = TitleBarMarkInteraction()
         mark.pressed(at: inside)
         #expect(mark.released(inside: false) == nil)
