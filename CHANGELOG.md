@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Branch chips are blue.
+  A pull request’s base and head, the branches in the Pulls list, a mirror’s branches,
+  and the branch selector no longer share the purple of a merged pull request.
+  A checkout’s own local branches, in its history, are a blue-green instead of blue, and
+  the history line of the branch you are on stays blue.
+
+- The word in a badge is centered in its box instead of sitting about a pixel high: a
+  pull request’s Draft, Open, Merged, or Closed, its review and check states, and a file
+  header’s badges such as Gzip.
+  The badges keep their size.
+
 - A source file’s **Load more** is faster in Safari and other WebKit browsers.
   The text it loads goes into the page in pieces of at most 64 KiB, the size WebKit’s
   own HTML parser makes, and on a 16 MiB file each click takes WebKit a quarter to two
