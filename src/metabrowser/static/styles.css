@@ -295,6 +295,11 @@
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
+     One relative size: --git-ref-font-size, a ref chip's, is
+     --git-ref-font-scale of the text it sits in, so a chip is slightly
+     smaller than that text wherever it appears (docs/design-system.md,
+     "Branch Chips").
+
      Document (rendered prose) sizes — ONE token, deliberately:
        --document-body-font-size         prose (one step above chrome body)
      Everything else inside a rendered document (secondary text, table
@@ -318,6 +323,14 @@
   --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
+  /* A ref chip is slightly smaller than the text around it: one ratio, not
+     one size. Measured in Chrome, the text a chip sits in is 12px (a Pulls
+     row, the ref selector) to 14px (a pull request's header, a commit's
+     summary), so chips run 10.8px to 12.6px. The em resolves where the chip
+     uses it, against the size it inherits; the smallest, 10.8px bold, is
+     above the 10px micro marks, so the ratio needs no floor. */
+  --git-ref-font-scale: 0.9;
+  --git-ref-font-size: calc(var(--git-ref-font-scale) * 1em);
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
@@ -5959,18 +5972,22 @@ pre.code-block.metabrowser-source-lines > code {
    size the name carries the meaning, so it is always bold, and the
    square corner separates "a ref" from "a filter" at a glance.
 
-   This rule is the chip's one size, wherever it appears: a Git history
-   row, a commit's summary and tooltip, a pull request's header, a Pulls
-   row, the ref selector (docs/design-system.md, "Branch Chips"). No
-   context overrides its type or box; the history row once drew it at
-   10px beside the 12px everywhere else, so one branch read at two sizes.
-   16px tall, so a HEAD ring (1px out, 1px off) fits a 22px history row. */
+   This rule sizes every chip by one ratio to the text it sits in, wherever
+   it appears: a Git history row, a commit's summary and tooltip, a pull
+   request's header, a Pulls row, the ref selector (docs/design-system.md,
+   "Branch Chips"). No context overrides its type or box, and the boxes a
+   chip sits in leave the text's size to inherit. The line is 4/3 of the
+   chip's size, 16px at 12px as before, so the box scales with the text: at
+   most 16.8px, and the 15.6px chip of a 13px history row keeps a HEAD ring
+   (1px out, 1px off) inside its 22px row. Padding, the copy slot, and the
+   tag's notch stay in px: they are room around the name and a fixed-size
+   icon, not text. */
 .git-ref {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
   /* Wide enough for the branch names this project actually uses, and in
-     em so the bound keeps its meaning at the chip's size. Measured in
+     em so the bound keeps its meaning at whatever size the chip is. Measured in
      Chrome against this repository's 497 branches, remote branches, and
      tags, as copyable chips: at 10px, 220px clipped 63; at 12px, 220px
      clipped 150 and 22em (264px) clips 54, names like
@@ -5979,7 +5996,7 @@ pre.code-block.metabrowser-source-lines > code {
   max-width: 22em;
   padding: 0 5px;
   border-radius: var(--radius-tag);
-  line-height: 16px;
+  line-height: 1.333;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5988,7 +6005,7 @@ pre.code-block.metabrowser-source-lines > code {
      and ground without the circularity currentcolor would create. */
   --git-ref-ink: var(--git-ref-local);
   color: var(--git-ref-ink);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--git-ref-font-size);
   font-weight: var(--weight-bold);
 }
 
@@ -6043,8 +6060,9 @@ pre.code-block.metabrowser-source-lines > code {
    The group never gets narrower than both chips' padding and copy slot
    (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
    in each, and the arrow with its spaces (about 1.3em). The em is the
-   group's `--ui-small-font-size`, which is also every chip's one size
-   (`.git-ref`), so the ellipses are counted at the chips' own size.
+   size of the text around the merge, which the group inherits; each chip
+   is --git-ref-font-scale of it, so 3em covers the arrow at the group's
+   size and the two ellipses at the chips' smaller one.
    The equal growth gives each name at least its chip's frame and an
    ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
    to a line of its own (the Pulls tab's `.github-pulls-line`). */
@@ -6055,8 +6073,8 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: calc(2 * (5px + 19px) + 3em);
   max-width: 100%;
   vertical-align: middle;
-  /* The arrow's size; each chip carries its own, the one `.git-ref` sets. */
-  font-size: var(--ui-small-font-size);
+  /* No size of its own: the arrow is the size of the text around the merge,
+     and each chip slightly smaller than it (`.git-ref`). */
 }
 /* The spaces around the glyph are text, kept so a copied selection reads
    "wip → topic"; `pre` keeps them in their own grid cell. */

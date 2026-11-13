@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Branch and tag chips are slightly smaller than the text around them, wherever they
+  appear, instead of one size everywhere.
+  A chip is 0.9 of its text: 11.7px in a Git history row, 12.6px in a commit’s summary
+  and a pull request’s header, and 10.8px in a Pulls row and the branch selector, where
+  it was as large as the text beside it.
+  The chip’s height follows its text, and a merge’s arrow is now the size of the
+  sentence it sits in.
+  See [Branch Chips](docs/design-system.md#branch-chips).
+
 - A rendered Markdown diff no longer says “Source shows additional changes.”
   above a file, or “Source shows changes not shown here.”
   on a block. The **Rendered** | **Source** chooser is how to see a change that does not
