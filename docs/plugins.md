@@ -224,13 +224,13 @@ At most one view per kind may set `default = true`. A plugin may register a view
 kind declared by another plugin, which is useful for composing generic renderers.
 
 `key` declares a one-letter keyboard key for the view’s tab.
-It is optional; a kind with more than one view should give each view one, taken from the
-label: its first letter, or its most distinctive free letter when the first is taken, as
-the built-in Tree tab takes `R`. Write it in either case: it is stored and served
-lowercase, as `views[].key` in the `/api/file` envelope, and compared without case.
+It is optional; a kind with more than one view should give each view one: `v` for a
+rendered view, `s` for a source view, and otherwise a letter of the label, as
+[Keyboard Shortcuts](design-system.md#keyboard-shortcuts) in the design system sets out.
+Write it in either case: it is stored and served lowercase, as `views[].key` in the
+`/api/file` envelope, and compared without case.
 The manifest loader refuses a key that is not one ASCII letter, or that the shell
-reserves in every context: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. `N` and `P` are
-reserved only for the `pull-request` kind.
+reserves: `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`, in every kind.
 A key belongs to one view of a kind.
 When two views of one kind declare the same key, as two plugins that add views to one
 kind can, the first view in tab order keeps it, the later view is served without a key,
@@ -520,9 +520,9 @@ Useful helpers include:
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values, a filter or not;
-- `shortcuts.attach(element, spec)` for a letter key on one of a view’s controls, listed
-  in Help and badged while the reader holds Shift; see
-  [Keyboard Shortcuts](#keyboard-shortcuts);
+- `shortcuts.attach(element, spec)` for a letter key on one of a view’s controls, or
+  with `numbered: true` a positional number, listed in Help and badged while the reader
+  holds Shift; see [Keyboard Shortcuts](#keyboard-shortcuts);
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
@@ -670,9 +670,14 @@ Folder aggregate views can use these bounded inventory helpers:
 
 ### Keyboard Shortcuts
 
-`shortcuts.attach(element, spec)` gives one of a view’s controls a letter key (SDK 0.7).
+`shortcuts.attach(element, spec)` gives one of a view’s controls a letter key (SDK 0.7)
+or, with `numbered: true`, a positional number.
 The key does what the control does, Help lists it, and while the reader holds Shift a
 keycap badge sits on the control.
+Which kind of key a control should have, and which letter, follows
+[Keyboard Shortcuts](design-system.md#keyboard-shortcuts) in the design system: a letter
+for a known meaning, a number for a situational link or action, and no key for an
+ancillary one such as copying.
 Feature-detect it with `mb.shortcuts?.attach`:
 
 ```javascript
@@ -689,6 +694,27 @@ handle?.retarget(nextToggle); // the control was rebuilt as another element
 handle?.detach(); // idempotent; call it from dispose()
 ```
 
+A situational control, such as a link or a one-off action that depends on what the view
+shows, takes a number instead:
+
+```javascript
+const refresh = mb.shortcuts?.attach(refreshButton, {
+  id: "example.refresh",
+  numbered: true, // its number is its place among the screen's numbered controls
+  activate: () => refreshView(view),
+  signal,
+});
+```
+
+A numbered control’s number is its place, in document order, among the live numbered
+controls on the screen, the shell’s and every plugin’s, from `1` to `9`. The number is
+read when a digit is pressed or the reveal shows, so it can change as controls appear
+and go, and a tenth or later control has none.
+Help lists the numbers once, as one row, and not each numbered control.
+A numbered spec takes only `id`, `numbered`, `activate`, and `signal`; `key`, `group`,
+`order`, and `copy` are malformed beside it, since its place decides them.
+The handle, lifetime, and liveness rules below apply to it as to a letter.
+
 - A view may attach at any time, even before the shell’s keyboard support has loaded:
   the key takes effect once it has, and keeps working when the shell rebuilds it.
 - The key is live only while its element is connected, visible, enabled, and outside an
@@ -704,17 +730,18 @@ handle?.detach(); // idempotent; call it from dispose()
   Help lists it while it is attached; the shortcut strip does not.
 - Malformed input throws an error whose message starts with `shortcuts.attach:`: an
   element that is not an `HTMLElement`, a key that is not one letter, an unknown group,
-  a missing `activate`, an option the SDK decides, such as `bindings`, or an id attached
-  already with another key, group, or copy.
+  a missing `activate`, a `numbered` that is not `true`, a letter option beside
+  `numbered: true`, an option the SDK decides, such as `bindings`, or an id attached
+  already with another key, group, copy, or numbering.
   An attachment made before the shell’s keyboard support loads is checked when it loads,
   and a malformed one is then logged with `console.error`, under the same prefix,
   instead of thrown.
 - A letter the shell reserves is refused without an error, so a view keeps working if
   the shell reserves another letter later.
-  The reserved letters are `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`, the letters
-  manifest view keys may not take (see [Views](#views)), and also `N` and `P`, which a
-  pull request page uses: a plugin view may appear anywhere.
-  The control has no key, and the browser console shows one warning for its id.
+  The reserved letters are the ones manifest view keys may not take (see
+  [Views](#views)): `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. The digits `1`
+  to `9` are reserved too, and only `numbered: true` reaches them.
+  A refused control has no key, and the browser console shows one warning for its id.
 - A letter that two shown controls hold is settled when it is pressed: a shell key wins
   over a plugin key, and between plugins the one attached earlier wins.
   Only the winner runs and has a badge, and the console warns once for the id that lost.
