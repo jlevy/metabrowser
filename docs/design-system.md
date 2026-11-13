@@ -762,9 +762,14 @@ settings gear and the overlays’ triggers, which have no label to select, and t
 field, a combobox whose text must stay editable.
 
 `test_disclosure_toggles_never_select_text` in `tests/test_design_vocabulary.py` holds
-the rule, its prefixed half on every `user-select`, and the inventory: each registered
-toggle carries the class, and a source that builds a chevron, a `summary`, or
-`aria-expanded` is either registered or named with the reason it is not a toggle.
+the rule, its prefixed half on every `user-select`, that no stylesheet gives a toggle’s
+own classes a selectable `user-select`, and the inventory: each registered toggle
+carries the class, every chevron and `summary` a source builds is listed with the
+builder of the element it goes into, and a source that sets `aria-expanded` is
+registered or named with the reason it builds no toggle.
+The check reads source text, so it cannot see which element a listed chevron lands in;
+it holds only that the builder it is listed with sits near it, and review holds the
+rest.
 
 ## Notices and Partial Content
 

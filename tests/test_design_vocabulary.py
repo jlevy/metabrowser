@@ -1323,15 +1323,18 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
 # docs/design-system.md, "Disclosure Toggles Never Select Text". Every browser source
 # that builds a toggle's markers -- the registry chevron, a `summary`, `aria-expanded` --
 # is registered: with the builders that carry `.disclosure-toggle`, each named by text
-# unique to it, or with why what it builds is not a toggle. A new source fails until it
-# is registered, and a chevron or `summary` built without the class nearby fails too.
+# unique to it, or with why what it builds is not a toggle. Every chevron and `summary`
+# a source builds is listed, in order, with the builder whose element it goes into, so
+# a new one fails until it is listed, even beside a marked toggle. What the check cannot
+# see is which element a listed glyph lands in: it holds only that the builder it is
+# listed with sits within a window of it, and review holds the rest.
 
 _TOGGLE_MARKER = re.compile(
     r"aria-expanded|ariaExpanded|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\""
     r"|ICONS\.toggle|icons\.toggle|MetabrowserIcons\?\.toggle|shellIcon\(\"toggle\"\)"
     r"|registryIcon\(\"toggle\"\)|icons\.chevron|host\.chevron\(\)|srow-chevron\""
 )
-# A chevron or summary going into markup, which the class has to be close to.
+# A chevron or summary going into markup, each of which `_TOGGLE_GLYPHS` lists.
 _TOGGLE_GLYPH = re.compile(
     r"\$\{ICONS\.toggle\}|ICONS\.toggle \+|icon: ICONS\.toggle|ICONS\.toggle,|"
     r"\$\{menuChevron\}|MetabrowserIcons\?\.toggle \?\?|shellIcon\(\"toggle\"\)|"
@@ -1339,8 +1342,8 @@ _TOGGLE_GLYPH = re.compile(
     r"|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\"",
     re.MULTILINE,
 )
-# How close, in characters: just past the farthest a builder puts the class from its glyph
-# today, before it (a chip menu's caret) and after it (a Pulls row's chevron).
+# How close a glyph sits to the builder it is listed with, in characters: just past the
+# farthest today, before it (a chip menu's caret) and after it (a Pulls row's chevron).
 _TOGGLE_NEAR_BEFORE = 600
 _TOGGLE_NEAR_AFTER = 320
 
@@ -1386,16 +1389,159 @@ _NOT_TOGGLES: dict[str, str] = {
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "server.py": "the settings gear is an icon-only menu button with no chevron",
 }
-# A chevron placed far from its row's class, and the builder that carries the class.
-_GLYPH_CARRIED_ELSEWHERE: dict[tuple[str, str], str] = {
-    ("github/pull-files-view.js", "host.chevron()"): '"github-pull-folder-row disclosure-toggle"',
+# Each chevron and `summary` a source builds, in source order, with the builder whose
+# element it goes into. Whitespace in a glyph is collapsed to one space.
+_TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
+    "app.js": (
+        ("${ICONS.toggle}", 'class="tree-item tree-folder disclosure-toggle ${stateClass}'),
+        ("${ICONS.toggle}", '" tree-container disclosure-toggle collapsed"'),
+        ("icon: ICONS.toggle", 'className: "filter-drawer-toggle disclosure-toggle"'),
+        ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
+    ),
+    "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
+    "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
+    "source-ref-selector.js": (
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+        ),
+    ),
+    "agent_log/index.js": (("mb.icons.chevron", 'class="log-event-header disclosure-toggle"'),),
+    "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
+    "markdown/rendered.js": (
+        ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
+    ),
+    "diff/diff-view.js": (
+        ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
+        ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
+    ),
+    "diff/diff-markdown.js": (
+        ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
+    ),
+    "github/pulls-panel.js": (("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),),
+    "github/pull-files-view.js": (
+        ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
+    ),
+    "github/pull-page.js": (
+        ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
+        ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
+        ("chevron(),", '{ class: "fold-expander disclosure-toggle" }'),
+    ),
 }
+# A glyph built far from its builder: a folder row's parts are made by one function and
+# put in the row by another.
+_GLYPH_FAR_FROM_BUILDER: frozenset[tuple[str, str]] = frozenset(
+    {("github/pull-files-view.js", "host.chevron()")}
+)
+# The classes the registered toggles are made of. A stylesheet that gives one of them a
+# selectable `user-select` reopens the toggle, whether or not its selector also names
+# `.disclosure-toggle`.
+_TOGGLE_CLASSES: frozenset[str] = frozenset(
+    {
+        "tree-item",
+        "tree-folder",
+        "tree-container",
+        "filter-drawer-toggle",
+        "tally-node",
+        "chip",
+        "chip-menu-trigger",
+        "source-ref-selector-toggle",
+        "log-event-header",
+        "srow-container",
+        "kpress-toc-toggle",
+        "section-disclosure-trigger",
+        "file-type-summary-disclosure",
+        "file-type-summary-details-toggle",
+        "folder-overview-panel-toggle",
+        "fold-expander",
+        "diff-fold-control",
+        "diff-file-bar",
+        "github-pulls-row",
+        "github-pull-folder-row",
+        "btn",
+        "github-pull-stack-trigger",
+    }
+)
+_TOGGLE_SELECTOR = re.compile(
+    r"\.(?:disclosure-toggle|"
+    + "|".join(sorted(map(re.escape, _TOGGLE_CLASSES), key=len, reverse=True))
+    + r")(?![\w-])|(?:^|[\s>+~(,])summary(?![\w-])"
+)
 
 
 def _source_key(source: Path) -> str:
     if source.name == "server.py" or source.parent == STATIC:
         return source.name
     return f"{source.parent.name}/{source.name}"
+
+
+def _toggle_sheet_problems(name: str, css: str) -> list[str]:
+    """Where one stylesheet lets a toggle select text, in WebKit or anywhere."""
+
+    problems: list[str] = []
+    for selectors, body in _style_rules(css):
+        declarations = _declarations(body)
+        names = [declared for declared, _value in declarations]
+        values = dict(declarations)
+        # WebKit applies only the prefixed half, so one without it is a no-op there.
+        if "user-select" in names and values.get("-webkit-user-select") != values["user-select"]:
+            problems.append(f"{name}: {selectors} sets user-select without -webkit-user-select")
+        for selector in _split_top(selectors, ","):
+            toggle = _TOGGLE_SELECTOR.search(selector.strip())
+            if not toggle or selector.strip() in (".disclosure-toggle", "summary"):
+                continue
+            for declared in ("user-select", "-webkit-user-select"):
+                value = values.get(declared, "var(--toggle-user-select)")
+                if value not in ("var(--toggle-user-select)", "none"):
+                    problems.append(f"{name}: {selector} lets a toggle select text")
+        if name != "styles.css" and any(
+            selector.strip() == ".disclosure-toggle" for selector in _split_top(selectors, ",")
+        ):
+            problems.append(f"{name} redefines .disclosure-toggle")
+    return problems
+
+
+def _toggle_source_problems(key: str, text: str) -> list[str]:
+    """Where one browser source builds a toggle the registry does not account for."""
+
+    if not _TOGGLE_MARKER.search(text):
+        if key in _DISCLOSURE_TOGGLES or key in _NOT_TOGGLES:
+            return [f"{key} builds no toggle any more; drop it from the registry"]
+        return []
+    if key not in _DISCLOSURE_TOGGLES and key not in _NOT_TOGGLES:
+        return [
+            f"{key} builds a chevron, a summary, or aria-expanded. Give each toggle it "
+            "builds the .disclosure-toggle class and register its builders, or register "
+            "why it builds no toggle."
+        ]
+    problems: list[str] = []
+    builders = _DISCLOSURE_TOGGLES.get(key, ())
+    for builder in builders:
+        if "disclosure-toggle" not in builder or builder not in text:
+            problems.append(f"{key} no longer builds {builder!r}")
+    listed = _TOGGLE_GLYPHS.get(key, ())
+    matches = list(_TOGGLE_GLYPH.finditer(text))
+    found = [re.sub(r"\s+", " ", match.group().strip()) for match in matches]
+    if found != [glyph for glyph, _builder in listed]:
+        problems.append(
+            f"{key} builds the chevrons and summaries {found}, but the registry lists "
+            f"{[glyph for glyph, _builder in listed]}. Give each new one's element the "
+            ".disclosure-toggle class and list it with that element's builder."
+        )
+        return problems
+    for match, (glyph, builder) in zip(matches, listed, strict=True):
+        if builder not in builders:
+            problems.append(f"{key}: {glyph} is listed with {builder!r}, not a builder")
+            continue
+        if (key, glyph) in _GLYPH_FAR_FROM_BUILDER:
+            continue
+        nearby = text[
+            max(0, match.start() - _TOGGLE_NEAR_BEFORE) : match.end() + _TOGGLE_NEAR_AFTER
+        ]
+        if builder not in nearby:
+            line = text.count("\n", 0, match.start()) + 1
+            problems.append(f"{key}:{line} builds {glyph} away from {builder!r}")
+    return problems
 
 
 def test_disclosure_toggles_never_select_text() -> None:
@@ -1413,65 +1559,56 @@ def test_disclosure_toggles_never_select_text() -> None:
         declared = rule[selector]
         assert declared["-webkit-user-select"] == "var(--toggle-user-select)", selector
         assert declared["user-select"] == "var(--toggle-user-select)", selector
+    problems: list[str] = []
     for sheet in _stylesheets():
-        for selectors, body in _style_rules(sheet.read_text(encoding="utf-8")):
-            declarations = _declarations(body)
-            names = [name for name, _value in declarations]
-            values = dict(declarations)
-            # WebKit applies only the prefixed half, so one without it is a no-op there.
-            if "user-select" in names:
-                assert values.get("-webkit-user-select") == values["user-select"], (
-                    f"{_sheet_name(sheet)}: {selectors} sets user-select without "
-                    "-webkit-user-select"
-                )
-            for selector in _split_top(selectors, ","):
-                toggle = ".disclosure-toggle" in selector or re.search(
-                    r"(?:^|[\s>+~])summary(?![\w-])", selector
-                )
-                if not toggle or selector.strip() in (".disclosure-toggle", "summary"):
-                    continue
-                for name in ("user-select", "-webkit-user-select"):
-                    value = values.get(name, "var(--toggle-user-select)")
-                    assert value in ("var(--toggle-user-select)", "none"), (
-                        f"{_sheet_name(sheet)}: {selector} lets a toggle select text"
-                    )
-        if sheet != STATIC / "styles.css":
-            for selector, _declared in _rules_of(sheet):
-                assert selector.strip() != ".disclosure-toggle", f"{sheet.name} redefines it"
-
+        problems += _toggle_sheet_problems(_sheet_name(sheet), sheet.read_text(encoding="utf-8"))
     for source in _browser_sources():
-        text = source.read_text(encoding="utf-8")
-        key = _source_key(source)
-        if not _TOGGLE_MARKER.search(text):
-            assert key not in _DISCLOSURE_TOGGLES and key not in _NOT_TOGGLES, (
-                f"{key} builds no toggle any more; drop it from the registry"
-            )
-            continue
-        assert key in _DISCLOSURE_TOGGLES or key in _NOT_TOGGLES, (
-            f"{key} builds a chevron, a summary, or aria-expanded. Give each toggle it "
-            "builds the .disclosure-toggle class and register its builders, or register "
-            "why it builds no toggle."
+        problems += _toggle_source_problems(_source_key(source), source.read_text(encoding="utf-8"))
+    assert not problems, "\n  ".join(["toggles that can select text:", *problems])
+    every_builder = " ".join(b for listed in _DISCLOSURE_TOGGLES.values() for b in listed)
+    for name in sorted(_TOGGLE_CLASSES):
+        assert re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", every_builder), (
+            f"{name} is no registered toggle's class"
         )
-        for builder in _DISCLOSURE_TOGGLES.get(key, ()):
-            assert "disclosure-toggle" in builder
-            assert builder in text, f"{key} no longer builds {builder!r}"
-        for match in _TOGGLE_GLYPH.finditer(text):
-            glyph = match.group().strip()
-            carried = _GLYPH_CARRIED_ELSEWHERE.get((key, glyph))
-            if carried is not None:
-                assert carried in text, f"{key}: {glyph} lost the row that carries the class"
-                continue
-            nearby = text[
-                max(0, match.start() - _TOGGLE_NEAR_BEFORE) : match.end() + _TOGGLE_NEAR_AFTER
-            ]
-            line = text.count("\n", 0, match.start()) + 1
-            assert "disclosure-toggle" in nearby, (
-                f"{key}:{line} builds {glyph} with no .disclosure-toggle near it"
-            )
+    assert set(_TOGGLE_GLYPHS) <= set(_DISCLOSURE_TOGGLES)
 
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Disclosure Toggles Never Select Text" in doc
     assert "test_disclosure_toggles_never_select_text" in doc
+
+
+def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
+    """A second chevron control built beside a marked one is a toggle the class misses.
+
+    Review A of #394 traced it: the character window found the neighbour's class, so a
+    new chevron button built just after a diff fold's passed.
+    """
+
+    key = "diff/diff-view.js"
+    text = (REPO_ROOT / BUILTIN_PLUGINS / key).read_text(encoding="utf-8")
+    anchor = (
+        '  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");\n'
+    )
+    assert anchor in text
+    beside = anchor + (
+        '  const more = el("button", "diff-fold-more");\n  more.innerHTML = shellIcon("toggle");\n'
+    )
+    assert _toggle_source_problems(key, text) == []
+    assert _toggle_source_problems(key, text.replace(anchor, beside))
+
+
+def test_a_toggle_components_own_selection_override_fails() -> None:
+    """`user-select: text` on a toggle's own class reopens it, whatever the selector names."""
+
+    css = ".log-event-header {\n  -webkit-user-select: text;\n  user-select: text;\n}\n"
+    assert _toggle_sheet_problems("agent_log/styles.css", css)
+    assert _toggle_sheet_problems(
+        "styles.css",
+        ".tree-folder .tree-item-name { user-select: text; -webkit-user-select: text; }",
+    )
+    assert not _toggle_sheet_problems(
+        "agent_log/styles.css", ".log-event-raw { user-select: text; -webkit-user-select: text; }"
+    )
 
 
 def _oklch_channels(value: str) -> tuple[float, float, float]:
