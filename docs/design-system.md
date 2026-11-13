@@ -2386,8 +2386,11 @@ selects another. The selection waits for the first page of history, and the pane
 what it showed until the commit is ready, so the switch paints no prompt and no blank
 frame.
 The commit’s address replaces the tab’s entry, so Back returns to where the reader
-was. The list starts from its top, the newest row becomes the list’s Tab stop, and focus
-stays where the switch left it: on the tab, for a click or a shortcut.
+was. The list starts from its top, and the newest row becomes the list’s Tab stop.
+A click leaves focus on the tab.
+The tab’s shortcut moves focus to the newest row without scrolling the list, so `2` then
+`↓` opens the next commit; when the newest row is not in the list yet, the tab holds
+focus until the row arrives, unless the reader moves focus first.
 An empty history selects nothing, and the pane says “No commits yet.”
 Clicking Commits while it is already in front changes nothing.
 `static/git-panel.js` (`landOnNewestCommit`) owns the selection;
