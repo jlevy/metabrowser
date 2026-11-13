@@ -1638,20 +1638,6 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert "font-weight" not in github[number], number
 
 
-# A string literal on one line of code: double-quoted, single-quoted, or a template.
-_JS_LITERAL = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\\n]|\\.)*`""")
-# A literal that is, or ends or begins with, a bare "into" or "from": the joint of
-# "into <base> from <head>" around a chip.
-_MERGE_JOINT = re.compile(r"(?:^|\s|})(?:into|from)\s*$|^\s*(?:into|from)(?:\s|\$|$)")
-
-
-def _code_literals(source: str) -> list[str]:
-    """The string literals of *source*'s code lines, with comment lines left out."""
-
-    code = (line for line in source.splitlines() if not line.lstrip().startswith(("//", "*", "/*")))
-    return [literal[1:-1] for line in code for literal in _JS_LITERAL.findall(line)]
-
-
 def test_merges_read_source_to_target_in_one_notation() -> None:
     """Every merge reads source → target, through `mergeRefs` ("Merge Direction")."""
 
@@ -1670,7 +1656,9 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         r"chip\(target, \"merge-refs-target\"\),?\s*\)",
         views,
     ), "the group is the source, the arrow, then the target"
-    # Both pages draw their merge with it, head first, and place no branch chip of their own.
+    # Both pages draw their merge with it, head first. Neither draws a ref chip of its own,
+    # so neither can compose two around a connector, nor writes the left arrow; the sessions
+    # of both pages hold the rendered order, the arrow, and the literal refs.
     for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         assert re.search(
@@ -1678,40 +1666,46 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
             rf"\{{\s*name:\s*{side}\.baseRef\b",
             source,
         ), f"{name} does not draw its merge head → base through mergeRefs"
-        assert "mb.refChip(" not in source, f"{name} places a branch chip outside its merge"
+        assert not re.search(r"\brefChip(?:Html)?\(", source), f"{name} draws a ref chip itself"
         assert "←" not in source, f"{name} writes a merge target ← source"
-    # Nothing a page says joins chips with "into … from …", nor writes the left arrow.
-    scripts = [
-        path
-        for root in (STATIC, REPO_ROOT / BUILTIN_PLUGINS)
-        for path in root.rglob("*.js")
-        if "vendor" not in path.parts
-    ]
-    joints = [
-        f"{path.name}: {literal!r}"
-        for path in scripts
-        for literal in _code_literals(path.read_text(encoding="utf-8"))
-        # The arrow's own accessible name ends in "into" and joins nothing.
-        if literal != "merges into"
-        and (_MERGE_JOINT.search(literal) or re.search(r"\binto\b.*\bfrom\b", literal))
-    ]
-    assert not joints, joints
-    # The arrow is a connector, in muted ink at the chips' size; the names give way first.
+    # The arrow is a connector, in muted ink at the chips' size; the names give way first,
+    # and never past both chips' frames, an ellipsis in each, and the arrow.
     shell = dict(_rules_of(STATIC / "styles.css"))
     group = shell[".merge-refs"]
     assert group["display"] == "inline-grid"
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
-    ), "each name may shrink to nothing and the arrow never shrinks"
+    ), "each name may shrink and the arrow never shrinks"
+    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the merge's floor"
+    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
+        "0 5px",
+        "19px",
+    ), "the floor counts each chip's padding and copy slot"
     assert group["font-size"] == "var(--ui-small-font-size)"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's muted line gives the merge the room it has left, as a flex line; a line
-    # of text with an ellipsis loses the arrow in Chrome when it overflows.
+    # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
+    # loses the arrow in Chrome when it overflows. The author and the branches each carry
+    # their separator, breaks fall at their floors, and a separator that starts a line lies
+    # in the one-separator offset the row clips.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
-    assert (meta["display"], meta["white-space"]) == ("flex", "pre")
+    assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
     assert "text-overflow" not in meta
+    line = github[".github-pulls-line"]
+    assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
+    assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
+    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
+    for part in (".github-pulls-by", ".github-pulls-merge"):
+        rule = github[part]
+        assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
+    by = github[".github-pulls-by"]
+    assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
+    assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
+    author = github[".github-pulls-by .github-pulls-author"]
+    assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
+    assert ".github-pulls-who" not in github
     assert github[".github-pull-state-details"]["min-width"] == "0"
 
 

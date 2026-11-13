@@ -2876,17 +2876,27 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /** @param {PullRow} row @param {HTMLElement} stack */
   function rowMeta(row, stack) {
+    // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
+    // branches each carry the separator before them, so either moves to the next line
+    // whole, and a separator that starts a line is clipped.
+    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
-      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-      stack,
-      " · ",
-      authorLabel(row.author, row.avatar, "github-pulls-author"),
-      " · ",
-      mb.mergeRefs(
-        { name: row.headRef, label: row.headLabel },
-        { name: row.baseRef },
-        { kind: "remote", copy: "sibling" },
-      ),
+      h("span", { class: "github-pulls-line" }, [
+        h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        stack,
+        h("span", { class: "github-pulls-by" }, [
+          separator(),
+          authorLabel(row.author, row.avatar, "github-pulls-author"),
+        ]),
+        h("span", { class: "github-pulls-merge" }, [
+          separator(),
+          mb.mergeRefs(
+            { name: row.headRef, label: row.headLabel },
+            { name: row.baseRef },
+            { kind: "remote", copy: "sibling" },
+          ),
+        ]),
+      ]),
     ]);
   }
 
