@@ -20,21 +20,11 @@ All notable changes to Metabrowser are documented here.
   loaded; a conversation’s avatars still load as you scroll to them.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
 
-- A rendered Markdown diff no longer says “Source shows additional changes.”
-  above a file, or “Source shows changes not shown here.”
-  on a block. The **Rendered** | **Source** chooser is how to see a change that does not
-  show in the rendered document, such as a link’s destination, an HTML comment, or a
-  whitespace-only edit; Rendered does not mark one.
-  A block whose link, comment, attribute, or fence language changed still never folds
-  away with the unchanged blocks around it; one whose only change is whitespace or line
-  wrapping can stay inside a fold, as before.
-  See
-  [Rendered Markdown in Changes](docs/reviewing-pull-requests.md#rendered-markdown-in-changes).
-
 - Switching to the Commits tab selects the newest commit and shows its detail, every
   time, by a click, its shortcut, or Back onto the tab, even after you read an older
   commit there. It used to show “Select a commit to preview” on the first visit and
   return to the last commit you read after that.
+  The shortcut, `2`, puts focus on the newest commit’s row, so `↓` reads the next one.
   A link or address that names a commit still opens that commit.
   The page you were reading stays on screen until the commit is ready, and a repository
   with no commits says “No commits yet.”
@@ -103,15 +93,6 @@ All notable changes to Metabrowser are documented here.
   Each hold of the pull request page records a span with how long it held and why it
   ended (`githubPull:firstPaintHold`, `githubPull:changesHold`,
   `githubPulls:openingHold`, and `githubPulls:lateRowsHold`).
-
-- A pull request’s Changes no longer says “Rendered diff unavailable.
-  Showing source.” above a Markdown file it cannot render, or “Could not render Markdown.
-  Select Rendered to retry.”
-  when rendering one fails.
-  Such a file shows Source and says nothing: one that can only show Source has no
-  **Rendered** | **Source** chooser, as before, and one whose rendering failed keeps the
-  chooser, so choosing **Rendered** tries again.
-  A failed rendering is logged to the browser console.
 
 - Clicking a toggle no longer selects text, even on a double or triple click.
   A folder in the Files tree, a rendered Markdown diff’s “5 unchanged blocks”, a
@@ -346,9 +327,16 @@ All notable changes to Metabrowser are documented here.
   **Source** remains one click away, and is used for files with raw HTML, task lists,
   footnotes, or more than 48 KiB of Markdown.
   A file that can only be shown as Source has no **Rendered** | **Source** chooser.
-  When the source changed in a way the rendered view cannot show, such as a link
-  destination or an HTML comment, the file and the block say so.
-  The first screen is rendered in the background while you read **Conversation**.
+  The chooser is how to see a change that does not show in the rendered document, such
+  as a link’s destination, an HTML comment, or a whitespace-only edit; Rendered does not
+  mark one, and neither the file nor the block carries a note about it.
+  A block whose link, comment, attribute, or fence language changed never folds away
+  with the unchanged blocks around it; one whose only change is whitespace or line
+  wrapping can stay inside a fold.
+  A file whose rendering fails shows Source without a notice and keeps the chooser, so
+  choosing **Rendered** tries again; the failure is logged to the browser console.
+  The first screen is rendered in the background while you read **Conversation**. See
+  [Rendered Markdown in Changes](docs/reviewing-pull-requests.md#rendered-markdown-in-changes).
 
 - Each browser tab is titled by what it serves, so windows can be told apart: the
   folder’s name, or a cached mirror’s repository name (`tbd #123` on a pull request’s
