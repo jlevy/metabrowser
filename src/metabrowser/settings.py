@@ -29,6 +29,7 @@ from metabrowser.file_type_filters import (
     serialize_distribution_colors,
     serialize_file_type_registry,
 )
+from metabrowser.keymap import serialize_reserved_shell_keys
 
 # ── Server port ──────────────────────────────────────────────
 
@@ -401,6 +402,8 @@ def client_settings_dict(
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
         "CAPABILITIES": get_capabilities().as_wire(),
+        # The plugin shortcut facade refuses these, as the manifest loader does.
+        "RESERVED_SHELL_KEYS": serialize_reserved_shell_keys(),
     }
 
 

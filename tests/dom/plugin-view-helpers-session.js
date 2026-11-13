@@ -383,6 +383,8 @@ async function sourceHeaderReadiness() {
     const context = {
       Promise,
       isGitRevisionSource: () => managed,
+      // No keyboard infrastructure here, so no shell keymap hears the selector mount.
+      shellKeymap: null,
       document: { getElementById: () => element },
       window: {
         MetabrowserAssets: {
