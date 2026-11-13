@@ -1563,7 +1563,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 
 | Key | Meaning | Live while | Kind |
 | --- | --- | --- | --- |
-| `?` | Help | Always | Letter-like convention |
+| `?` | Help | Always | Punctuation, by convention |
 | `T` or `/` | Quick Search, the file finder | Always | Letter |
 | `F` | The Files tab | Always | Letter, main tab |
 | `R` | The Pulls tab: pull Requests | The tab is drawn: a hosted origin | Letter, main tab |

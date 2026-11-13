@@ -54,7 +54,7 @@ def test_html_files_are_the_html_kind(tmp_path: Path) -> None:
     assert page["kind"] == "html"
     assert page["type"] == "text"
     assert _view_ids(page) == ["preview", "source"]
-    assert [view.get("key") for view in page["views"]] == ["p", "s"]
+    assert [view.get("key") for view in page["views"]] == ["v", "s"]
     assert _default_id(page) == "preview"
     assert legacy["kind"] == "html"
     assert _default_id(legacy) == "preview"
