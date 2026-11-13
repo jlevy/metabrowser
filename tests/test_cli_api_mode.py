@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,8 @@ from typer.testing import CliRunner
 
 from metabrowser.cli.api_cli import (  # pyright: ignore[reportPrivateUsage]
     _emit_api_response,
+    _request_body,
+    read_bounded,
     run_api,
 )
 from metabrowser.cli.asgi_client import ApiResponse
@@ -195,3 +199,86 @@ def test_a_folder_envelope_is_complete_not_pending(root: Path, capsys: Any) -> N
     assert payload["kind"] == "folder"
     assert payload["dir"]["state"] == "complete"
     assert payload["dir"]["total_files"] is not None
+
+
+def test_data_dash_reads_the_body_from_standard_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``echo '{}' | metab … --data -`` is a command a message can name whole."""
+
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b'{"retry": true}\n')))
+    assert _request_body(Path("-")) == b'{"retry": true}\n'
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"")))
+    with pytest.raises(CLIError, match="is empty; --data needs content"):
+        _request_body(Path("-"))
+    # A file named "-" is read by any other path to it; pathlib makes ./- plain -.
+    (tmp_path / "-").write_bytes(b"{}")
+    assert _request_body(tmp_path / "-") == b"{}"
+
+
+class _Endless(io.RawIOBase):
+    """A stream that never ends, counting what it was asked for."""
+
+    def __init__(self) -> None:
+        self.served = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        assert size >= 0, "an unbounded read of an endless stream never returns"
+        self.served += size
+        return b"x" * size
+
+
+class _Failing(io.RawIOBase):
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        raise OSError(5, "Input/output error")
+
+
+def test_a_body_is_read_to_its_limit_and_refused_one_byte_past_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert read_bounded(io.BytesIO(b"12345678"), limit=8, source="s") == b"12345678"
+    with pytest.raises(CLIError, match=r"request body from s is over 8 bytes, the most --data"):
+        read_bounded(io.BytesIO(b"123456789"), limit=8, source="s")
+    endless = _Endless()
+    with pytest.raises(CLIError, match="over 1,000,000 bytes"):
+        read_bounded(endless, limit=1_000_000, source="standard input")  # pyright: ignore[reportArgumentType]
+    assert endless.served == 1_000_001
+
+    from metabrowser import server
+
+    monkeypatch.setattr(server, "MAX_REQUEST_BODY_BYTES", 8)
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b'{"a": 12345}')))
+    with pytest.raises(CLIError, match="from standard input is over 8 bytes"):
+        _request_body(Path("-"))
+    large = tmp_path / "large.json"
+    large.write_bytes(b'{"a": 12345}')
+    with pytest.raises(CLIError, match=f"from {large} is over 8 bytes"):
+        _request_body(large)
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BufferedReader(_Failing())))
+    with pytest.raises(
+        CLIError, match="cannot read request body from standard input: .*Input/output"
+    ):
+        _request_body(Path("-"))
+    with pytest.raises(CLIError, match="cannot read request body from"):
+        _request_body(tmp_path)
+
+
+def test_the_body_limit_is_the_largest_body_a_route_reads() -> None:
+    from metabrowser import server, settings, source_routes
+    from metabrowser.builtin_plugins.github import sidekick
+
+    route_limits = {
+        "kpress render": server._KPRESS_RENDER_REQUEST_MAX_BYTES,  # pyright: ignore[reportPrivateUsage]
+        "kpress export": server._KPRESS_EXPORT_REQUEST_MAX_BYTES,  # pyright: ignore[reportPrivateUsage]
+        "pending tallies": settings.PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
+        "source": source_routes.MAX_SOURCE_REQUEST_BYTES,
+        "github": sidekick.MAX_REFRESH_REQUEST_BYTES,
+    }
+    assert max(route_limits.values()) == server.MAX_REQUEST_BODY_BYTES
+    assert server.MAX_REQUEST_BODY_BYTES == 96 * 1024 * 1024 + 64 * 1024
