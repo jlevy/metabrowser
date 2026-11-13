@@ -1053,21 +1053,43 @@ request, then kilobits per second each way), as `metab --remote` puts an SSH tun
 `--cpu RATE` slows the page; `--warm N` measures in a profile whose HTTP and code caches
 N earlier loads filled, as a returning reader’s are.
 Read those costs as paired differences in milliseconds.
+The summary gives each one as the median paired difference against the first `--build`
+with a seeded 95% bootstrap interval, and, when the two builds transfer different
+startup bytes, per transferred KB. Each pair rotates the build order by one and each
+record names its position, so use a `--pairs` that is a multiple of the number of
+builds; the summary says whether every build took every position equally often.
+`--summarize FILE` prints the summary again from records already written,
+`--series NAME` reads one series of a file that keeps several, as the committed samples
+of exp-084 do, and `--control NAME` compares them with another build, as a slope between
+two candidates needs.
+`--out` appends, and each record names its run, so a file can hold several runs; the
+summary compares pairs within a run and pools runs taken under the same conditions.
+It refuses a file whose runs differ in path, link, CPU, or warm-up, which `--run ID`
+then reads one at a time, and a file of older records that repeats a pair.
 
 `eager-comments.mjs` counts how much of the startup scripts is comments, and writes
 variants of them with every comment removed or with more comment added, checking that
-neither changes a token of code:
+neither changes a token of code.
+`--fraction` sets the added comment’s length as a share of the comment it follows; the
+default, 1, doubles each one:
 
 ```shell
+cat docs/*.md > .bench/prose.txt
 node explorations/performance-loop/eager-comments.mjs --origin http://127.0.0.1:8771 \
   --strip .bench/eager/stripped --pad .bench/eager/padded --prose .bench/prose.txt
+node explorations/performance-loop/eager-comments.mjs --origin http://127.0.0.1:8771 \
+  --pad .bench/eager/220kb --prose .bench/prose.txt --fraction 0.54
 ```
 
 Copy `src/metabrowser` beside the corpus, put a variant’s scripts in its `static/`, and
 serve it with that copy first on `PYTHONPATH`; the startup-script check and the probe
 then measure the variant as they measure the checkout.
+Check each variant’s size with the startup-script check: other prose compresses
+differently. [Exp-084](experiments/exp-084-eager-startup-script-cost.md) is the round
+that set `startup_script_transfer_kb` this way, with its samples; at 27ea216c these
+commands gave its 225,531-byte and 261,266-byte builds.
 [The eager startup-script cost](../../docs/project/research/research-2026-11-12-eager-startup-script-cost.md)
-is the round that set `startup_script_transfer_kb` this way.
+is its write-up.
 
 ### WKWebView Probe
 

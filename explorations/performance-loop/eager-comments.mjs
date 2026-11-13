@@ -16,6 +16,13 @@
 //   node explorations/performance-loop/eager-comments.mjs --origin http://127.0.0.1:8411 \
 //     --strip .bench/eager/stripped --pad .bench/eager/padded --prose .bench/prose.txt
 //
+// --fraction is the added comment's length as a share of the one it follows, 1 by
+// default, which doubles every comment. The builds of experiments/exp-084 drew their
+// prose from this repository's top-level documentation, `cat docs/*.md`, at 27ea216c:
+// at the default fraction it gave the doubled build, and `--fraction 0.54` the 220 KB
+// one, 225,531 bytes as devtools/check_startup_scripts.py counts them. Other prose
+// compresses differently, so a later run checks its build's size with that check.
+//
 // --origin reads the startup set from that server's shell for a folder, as
 // devtools/check_startup_scripts.py does; script names after the options are read
 // instead. Sizes are gzip level 6, the application's middleware level. Node's gzip
@@ -59,7 +66,11 @@ function parseArgs(argv) {
     } else if (flag === "--prose") {
       options.prose = value;
     } else if (flag === "--fraction") {
+      // Number("x") is NaN, which would pad every comment with nothing.
       options.fraction = Number(value);
+      if (value.trim() === "" || !Number.isFinite(options.fraction) || options.fraction <= 0) {
+        throw new Error(`--fraction is a number above 0, not ${JSON.stringify(value)}`);
+      }
     } else {
       throw new Error(`unknown option ${flag}`);
     }

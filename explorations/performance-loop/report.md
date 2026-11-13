@@ -30,6 +30,7 @@ fast -- only that it moved.
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
 | `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round; measured without compiled bytecode) | exp-037 |
+| `first_row_ms_loopback_220kb` | 92 | **99** (accepted on other grounds; see the round) | exp-084 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -92,6 +93,7 @@ against one that did.
 | exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | - | `description_observed_driver_ms` | accepted |
 | exp-056 | [Previous-Release Rehearsal](experiments/exp-056-previous-release-rehearsal.md) | H85 | `first_row_ms` | unresolved |
 | exp-058 | [Transition Navigation Baseline](experiments/exp-058-transition-baseline.md) | H86, H88, H90, H92, H94, H95, H98, H101, H105 | `painted_ready_ms` | baseline |
+| exp-084 | [The 220 KB eager-script ceiling holds as a rough cut](experiments/exp-084-eager-startup-script-cost.md) | H107 | `first_row_ms_loopback_220kb` | accepted |
 
 ## Absolute numbers, per condition
 

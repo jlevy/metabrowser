@@ -617,6 +617,121 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
     }
 
 
+def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
+    """Plain text never paints first where a shown text's Markdown can.
+
+    The first paint of a full record waits, within ``DESCRIPTION_HOLD_MS``, for the Markdown
+    it asked for, and is not ready meanwhile, so a page it replaces stays on screen. A
+    revisit and a refreshed record with the same text paint the render kept for that text,
+    keeping the description's node. Past the bound the text paints plain and its Markdown
+    follows. The kept renders are bounded by count and by characters. The state badge's
+    first paint is the fresher of the cached record and the repository's list. Changes with
+    rendered Markdown shows its first screen only once that screen's Markdown is drawn.
+    """
+
+    assert run_session("github-pull-first-paint-behavior.js") == {
+        "firstVisit": "held, then final",
+        "refreshedSameText": "kept",
+        "revisit": "final at first paint",
+        "pastTheBound": "plain, then Markdown",
+        # The comments and reviews the first screen shows wait with the description, so none is
+        # plain at the paint that makes the page ready (review A6).
+        "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
+        # Each hold's span says how it ended (review B1).
+        "holdSpans": ["hidden met 1", "hidden bound 1"],
+        # A direct landing's loading blocks give way to the held conversation (review B5).
+        # The header waits with the body, so header and body change once (review D1).
+        "landing": {
+            "blocksBefore": True,
+            "whileHeld": {"holding": True, "blocks": False, "heading": "Pull request #7"},
+            "final": True,
+            "heading": "Count to two in the app #7",
+        },
+        # Blocks that had shown stay, the same node, over the held conversation until it shows,
+        # so the body never blinks empty between them (review C2).
+        "landingAfterBlocksShowed": {
+            "whileHeld": {
+                "holding": True,
+                "sameBlocks": True,
+                "cover": True,
+                "heading": "Pull request #7",
+            },
+            "shown": {
+                "blocks": False,
+                "holding": False,
+                "final": True,
+                "heading": "Count to two in the app #7",
+            },
+        },
+        # A page replaced during its hold stays out of sight; it never shows plain (review C7).
+        "cancelledWhileHeld": {"holding": True},
+        # The first screen is the page's own, from its top, whether the page it replaces is at
+        # its top or scrolled past the conversation; a text that comes into it as those above
+        # render is waited for too (review C1). Before, the second comment, or the first, was
+        # plain at ready.
+        "firstScreen": {
+            **{
+                scrolled: {
+                    "plainOnFirstScreenAtReady": [],
+                    "waitedFor": 3,
+                    "outcome": "met",
+                    "askedBeforeSecondAnswer": 3,
+                }
+                for scrolled in ("0", "5000")
+            },
+            # A text past the screen that fails leaves the hold met (review D4); before, it
+            # was unavailable.
+            "failsPastTheScreen": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 2,
+                "outcome": "met",
+                "askedBeforeSecondAnswer": 4,
+            },
+            # Texts asked ahead of the screen take the cascade in 4 round trips, 6 before
+            # (review D2).
+            "cascade": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 6,
+                "outcome": "met",
+                "rounds": 4,
+            },
+        },
+        # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
+        "ages": ["186 min", "185 min", "4 min"],
+        # A stale record paints the list's state when the list saw a later update.
+        "listedState": {"newerList": "Merged", "olderList": "Open"},
+        # Changes with rendered Markdown is out of sight, and not ready, until its first
+        # screen's Markdown settles or CHANGES_FIRST_SCREEN_MS passes.
+        "changes": {
+            # The file the address names is landed on while the diff is still held (review B2).
+            ending: {
+                "asked": 200,
+                "held": True,
+                "readyWhileHeld": False,
+                "shown": True,
+                "ready": True,
+                "holdingAtJump": True,
+            }
+            for ending in ("settled", "bound")
+        }
+        # A page that goes while its diff waits keeps it out of sight and records the wait as
+        # cancelled (review E1); before, the diff was shown and the wait recorded as met.
+        | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
+        "bounded": True,
+        # No tab key is live while the header waits with the held body; all three at release
+        # (review E2).
+        "tabKeysWhileHeld": {
+            "whileHeld": {"holding": True, "tabColumn": False, "live": [], "g": "not handled"},
+            "released": {
+                "holding": False,
+                "tabColumn": True,
+                "live": ["conversation", "files", "checks"],
+                "g": "opened the files route",
+            },
+        },
+    }
+
+
 def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -> None:
     """A cold selected page retains prior content until its honest core is ready."""
 
