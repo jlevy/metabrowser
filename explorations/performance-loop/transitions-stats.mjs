@@ -233,8 +233,11 @@ function binomial(n, k) {
  */
 export const chanceApart = (a, b) => 2 / binomial(a + b, a);
 
-/** Per-pair ratios candidate / control for one metric of one transition. */
-function pairRatios(ea, eb, key) {
+/**
+ * Per-pair ratios candidate / control for one metric of one transition, from two entries
+ * whose `values[key]` hold `{ v, pair }` (wkprobe-stats.mjs builds the same shape).
+ */
+export function pairRatios(ea, eb, key) {
   const a = new Map();
   for (const x of ea.values[key] ?? []) {
     a.set(x.pair, x.v);
@@ -332,7 +335,8 @@ const regimeFlags = (r) =>
     journey_subset: false,
   };
 
-const sameEverywhere = (rows, get, what, refuse) => {
+/** The one value `get` gives every row, or `refuse` with the values that differ. */
+export const sameEverywhere = (rows, get, what, refuse) => {
   const values = new Set(rows.map((r) => JSON.stringify(get(r) ?? null)));
   if (values.size > 1) {
     refuse(`${what} differs across the runs: ${[...values].join(" / ")}`);
