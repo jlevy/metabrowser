@@ -1462,11 +1462,34 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "github-pull-stack-trigger",
     }
 )
-_TOGGLE_SELECTOR = re.compile(
+# One compound selector that names a toggle: its marker class, a component class, or a
+# summary.
+_TOGGLE_COMPOUND = re.compile(
     r"\.(?:disclosure-toggle|"
     + "|".join(sorted(map(re.escape, _TOGGLE_CLASSES), key=len, reverse=True))
-    + r")(?![\w-])|(?:^|[\s>+~(,])summary(?![\w-])"
+    + r")(?![\w-])|(?:^|[(,\s])summary(?![\w-])"
 )
+
+
+def _selects_in_a_toggle(selector: str) -> bool:
+    """Whether a selector's subject is a toggle or inside one.
+
+    A compound contains the subject when it is the subject or is followed by a
+    descendant or child combinator: what it reaches is inside it, and so is any later
+    sibling of that. A compound followed by `+` or `~` is a sibling, never around the
+    subject, so content a toggle reveals beside it is not in the toggle.
+    """
+
+    tokens = _compounds(selector)
+    for index, token in enumerate(tokens):
+        if token in (">", "+", "~"):
+            continue
+        following = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if following in ("+", "~"):
+            continue
+        if _TOGGLE_COMPOUND.search(token):
+            return True
+    return False
 
 
 def _source_key(source: Path) -> str:
@@ -1487,8 +1510,10 @@ def _toggle_sheet_problems(name: str, css: str) -> list[str]:
         if "user-select" in names and values.get("-webkit-user-select") != values["user-select"]:
             problems.append(f"{name}: {selectors} sets user-select without -webkit-user-select")
         for selector in _split_top(selectors, ","):
-            toggle = _TOGGLE_SELECTOR.search(selector.strip())
-            if not toggle or selector.strip() in (".disclosure-toggle", "summary"):
+            if not _selects_in_a_toggle(selector) or selector.strip() in (
+                ".disclosure-toggle",
+                "summary",
+            ):
                 continue
             for declared in ("user-select", "-webkit-user-select"):
                 value = values.get(declared, "var(--toggle-user-select)")
@@ -1598,17 +1623,29 @@ def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
 
 
 def test_a_toggle_components_own_selection_override_fails() -> None:
-    """`user-select: text` on a toggle's own class reopens it, whatever the selector names."""
+    """`user-select: text` on a toggle, or on anything inside one, reopens it.
 
-    css = ".log-event-header {\n  -webkit-user-select: text;\n  user-select: text;\n}\n"
-    assert _toggle_sheet_problems("agent_log/styles.css", css)
-    assert _toggle_sheet_problems(
-        "styles.css",
-        ".tree-folder .tree-item-name { user-select: text; -webkit-user-select: text; }",
-    )
-    assert not _toggle_sheet_problems(
-        "agent_log/styles.css", ".log-event-raw { user-select: text; -webkit-user-select: text; }"
-    )
+    What a selector selects is its subject, so a toggle class decides only when the
+    subject is that element or inside it. Content a toggle reveals is its sibling, and a
+    rule reached through `+` or `~` may make it selectable (review B of #394).
+    """
+
+    selectable = "{ -webkit-user-select: text; user-select: text; }"
+    for reopens in (
+        ".log-event-header",
+        ".tree-folder .tree-item-name",
+        ".tree-folder > .tree-item-name",
+        ".tree-folder .tree-toggle + .tree-item-name",
+        "details > summary",
+    ):
+        assert _toggle_sheet_problems("styles.css", f"{reopens} {selectable}"), reopens
+    for revealed in (
+        ".log-event-raw",
+        ".log-event-header + .log-event-raw",
+        ".log-event-header ~ .log-event-raw pre",
+        "summary + p",
+    ):
+        assert not _toggle_sheet_problems("styles.css", f"{revealed} {selectable}"), revealed
 
 
 def _oklch_channels(value: str) -> tuple[float, float, float]:
