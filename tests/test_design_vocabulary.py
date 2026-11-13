@@ -879,38 +879,77 @@ _CHIP_TYPE_AND_BOX = frozenset(
 _CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
 
 
-def test_branch_chips_have_one_size() -> None:
-    """A ref chip is one size wherever it appears ("Branch Chips", "One Size").
+# The boxes a chip sits in, in every context: a merge's grid and the Pulls row's wrapper
+# around it, a history row's ref group, a commit summary's identity and ref groups, and
+# the ref selector's label and row name. None sets a size, so the chip scales from the
+# text beside it.
+_CHIP_CONTAINERS = frozenset(
+    {
+        "merge-refs",
+        "github-pulls-merge",
+        "git-graph-refs",
+        "git-commit-identity",
+        "git-commit-refs",
+        "source-ref-selector-label",
+        "source-ref-selector-name",
+    }
+)
 
-    The history row drew its chips at 10px and a pull request's header at 12px, through
-    a rule per context. Now `.git-ref` alone sets a chip's type and box, and no rule in
-    any shipped stylesheet restyles a chip from where it sits.
+
+def test_branch_chips_scale_with_their_text() -> None:
+    """A ref chip is slightly smaller than the text around it ("Branch Chips", "One Ratio").
+
+    One size everywhere made a chip as large as a Pulls row's text and smaller than a
+    header's. Now `.git-ref` sets its size as one ratio of the size it inherits, no rule
+    in any shipped stylesheet restyles a chip from where it sits, and no box a chip sits
+    in sets a size of its own, so in every context the ratio is to the text beside it.
     """
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
-    section = doc.split("#### One Size", 1)[1].split("\n#### ", 1)[0]
-    assert "test_branch_chips_have_one_size" in section
+    section = doc.split("#### One Ratio", 1)[1].split("\n#### ", 1)[0]
+    assert "test_branch_chips_scale_with_their_text" in section
+    # One ratio, defined once for both themes, and a size that is that ratio in em. Only the
+    # core :root defines either token: a rule anywhere else, a plugin's included, that set
+    # `--git-ref-font-size: 12px` would put back one size for every chip inside it.
+    for token in ("--git-ref-font-scale", "--git-ref-font-size"):
+        defined = [
+            (_sheet_name(sheet), selector)
+            for sheet in _stylesheets()
+            for selector, declarations in _rules_of(sheet)
+            if token in declarations
+        ]
+        assert defined == [("styles.css", ":root")], f"{token} is defined at {defined}"
+    root = dict(_rules_of(STATIC / "styles.css"))[":root"]
+    scale = float(root["--git-ref-font-scale"])
+    assert 0.8 <= scale < 1, "a chip is slightly smaller than its text, not larger or equal"
+    assert root["--git-ref-font-size"] == "calc(var(--git-ref-font-scale) * 1em)"
     shell = dict(_rules_of(STATIC / "styles.css"))
     chip = shell[".git-ref"]
-    assert chip["font-size"] == "var(--ui-small-font-size)"
+    assert chip["font-size"] == "var(--git-ref-font-size)"
     assert chip["font-weight"] == "var(--weight-bold)"
-    assert chip["line-height"] == "16px", "a HEAD ring must fit the 22px history row"
+    # The box scales with the text: 16px at 12px, and a 13px history row's chip is 15.6px,
+    # so a HEAD ring (2px out) fits the 22px row.
+    line = float(chip["line-height"])
+    assert abs(line - 4 / 3) < 0.001
+    assert 13 * scale * line + 4 <= 22
     assert chip["padding"] == "0 5px"
     assert chip["border-radius"] == "var(--radius-tag)"
-    assert chip["max-width"] == "22em", "the width bound scales with the one size"
-    sheets = [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/styles.css"))]
+    assert chip["max-width"] == "22em", "the width bound scales with the chip"
     restyled = []
-    for sheet in sheets:
+    sized = []
+    for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
-            subject = _compounds(selector)[-1]
-            if selector == ".git-ref" or not set(re.findall(r"\.([\w-]+)", subject)) & (
-                _CHIP_CLASSES
-            ):
+            classes = set(re.findall(r"\.([\w-]+)", _compounds(selector)[-1]))
+            where = f"{sheet.parent.name}/{sheet.name}: {selector}"
+            if classes & _CHIP_CONTAINERS and {"font-size", "font"} & set(declarations):
+                sized.append(where)
+            if selector == ".git-ref" or not classes & _CHIP_CLASSES:
                 continue
             touched = _CHIP_TYPE_AND_BOX & set(declarations)
             touched -= _CHIP_FORM_ROOM.get(selector, set())
             if touched:
-                restyled.append(f"{sheet.parent.name}/{sheet.name}: {selector} {sorted(touched)}")
+                restyled.append(f"{where} {sorted(touched)}")
     assert not restyled, f"a context restyles a ref chip: {restyled}"
+    assert not sized, f"a box a chip sits in sets its own size, so the chip loses its text: {sized}"
 
 
 def test_each_context_assigns_its_chip_kind() -> None:
@@ -1047,7 +1086,8 @@ def test_git_commit_summary_is_one_component() -> None:
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
-    # Its ref chips keep their one size: test_branch_chips_have_one_size.
+    # Its ref chips take their size from this text, by the chip ratio, and no rule here
+    # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
     # The revision is the documented exception: monospace at body size
     # renders optically larger than the sans beside it, so the sha sits
@@ -1999,7 +2039,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         ), f"{name} does not draw its merge head → base through mergeRefs"
         assert not re.search(r"\brefChip(?:Html)?\(", source), f"{name} draws a ref chip itself"
         assert "←" not in source, f"{name} writes a merge target ← source"
-    # The arrow is a connector, in muted ink at the chips' size; the names give way first,
+    # The arrow is a connector, in muted ink at the size of the sentence it sits in, which
+    # the group inherits (each chip is slightly smaller); the names give way first,
     # and never past both chips' frames, an ellipsis in each, and the arrow.
     shell = dict(_rules_of(STATIC / "styles.css"))
     group = shell[".merge-refs"]
@@ -2012,7 +2053,7 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         "0 5px",
         "19px",
     ), "the floor counts each chip's padding and copy slot"
-    assert group["font-size"] == "var(--ui-small-font-size)"
+    assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
     # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
