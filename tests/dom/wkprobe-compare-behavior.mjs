@@ -14,6 +14,7 @@ const stats = await import(path.join(LOOP, "wkprobe-stats.mjs"));
 const {
   CompareRefusal,
   FRESHNESS_GUARD_S,
+  PROBE_REVISION,
   compareProbe,
   formatComparison,
   relaunchFreshness,
@@ -85,21 +86,59 @@ check("freshness reads the last validation and the Last-Modified before a 304", 
       { mark: "load", at: "start", t: t0 },
     ],
     t0 + 30000,
+    t0 + 60000,
   );
   assert.equal(f.by_headers, 1);
   assert.equal(f.by_age, 1);
-  // 0.1 * 620 s - (30 - 20) s = 52 s.
-  assert.deepEqual(f.margin_s, [52, 52]);
+  // At the spawn, 0.1 * 620 s - (30 - 20) s = 52 s; at the step's end, 62 - 40 = 22 s.
+  assert.deepEqual(f.assets, [["/static/a.js?v=1", 52, 22]]);
+  assert.deepEqual(f.margin_at_start_s, [52, 52]);
+  assert.deepEqual(f.margin_at_end_s, [22, 22]);
 });
-const fresh = (margin) => ({ by_headers: 0, by_age: 40, margin_s: margin });
+check("a 304 without Cache-Control keeps the 200's directive", () => {
+  const t0 = at("2026-11-09T12:10:00Z");
+  const f = relaunchFreshness(
+    [
+      { url: "/static/a.js?v=1", status: 200, t: t0, lm: LM, cc: "max-age=600" },
+      { url: "/static/a.js?v=1", status: 304, t: t0 + 20000, lm: null, cc: null },
+    ],
+    t0 + 30000,
+  );
+  assert.equal(f.by_headers, 1);
+  assert.equal(f.by_age, 0);
+  assert.equal(relaunchRegime({ relaunch_freshness: f }), "by-headers");
+});
+check("assets held no-cache by --stale-assets make a stale regime", () => {
+  const t0 = at("2026-11-09T12:10:00Z");
+  const f = relaunchFreshness(
+    [
+      { url: "/static/a.js?v=1", status: 200, t: t0, lm: LM, cc: "no-cache", held: true },
+      { url: "/plugin-static/p/index.js", status: 200, t: t0, lm: null, cc: "no-cache" },
+    ],
+    t0 + 30000,
+  );
+  assert.deepEqual([f.held_stale, f.by_headers, f.by_age], [1, 1, 0]);
+  assert.equal(relaunchRegime({ relaunch_freshness: f }), "stale");
+});
+const fresh = (start, end = start) => ({
+  by_headers: 0,
+  held_stale: 0,
+  by_age: 40,
+  margin_at_start_s: start,
+  margin_at_end_s: end,
+});
 check("a relaunch regime is fresh, stale, mixed, by headers, or unknown", () => {
   const g = FRESHNESS_GUARD_S;
   assert.equal(relaunchRegime({ relaunch_freshness: fresh([g + 1, 900]) }), "fresh");
   assert.equal(relaunchRegime({ relaunch_freshness: fresh([-900, -g - 1]) }), "stale");
   assert.equal(relaunchRegime({ relaunch_freshness: fresh([-30, 30]) }), "mixed");
   assert.equal(relaunchRegime({ relaunch_freshness: fresh([1, 900]) }), "mixed");
+  // Fresh at the spawn but within the guard of its lifetime by the step's end.
+  assert.equal(relaunchRegime({ relaunch_freshness: fresh([30, 900], [1, 870]) }), "mixed");
   assert.equal(
-    relaunchRegime({ relaunch_freshness: { by_headers: 40, by_age: 0, margin_s: null } }),
+    relaunchRegime({
+      relaunch_freshness: { by_headers: 40, held_stale: 0, by_age: 0, assets: [] },
+    }),
     "by-headers",
   );
   assert.equal(relaunchRegime({}), "unknown");
@@ -128,7 +167,7 @@ const scenario = (name, over = {}) => ({
 
 const row = (condition, pair, names) => ({
   schema: "wkwebview-probe/v1",
-  probe_revision: 2,
+  probe_revision: PROBE_REVISION,
   name: "fixture",
   series: "s1",
   condition,
@@ -204,6 +243,18 @@ check("a metric with fewer than three values a side is a gap, not a verdict", ()
   ]);
   assert.equal(res.exitCode, 1);
 });
+check("an expected figure that no run on either side has is a gap", () => {
+  const none = (r) => {
+    r.scenarios.cold.mountedMs = null;
+  };
+  const res = cmp(series({ a: none, b: none }));
+  assert.equal(find(res, "cold", "mounted_ms"), undefined);
+  assert.deepEqual(
+    res.gaps.filter((g) => g.metric === "mounted_ms").map((g) => g.reason),
+    ["missing in all 3 a run(s) and all 3 b run(s)"],
+  );
+  assert.equal(res.exitCode, 1);
+});
 check("a scenario measured on one side only is listed, not dropped", () => {
   const rows = series({ names: ["cold", "reload"] });
   for (const r of rows.filter((x) => x.condition === "b")) {
@@ -229,7 +280,7 @@ check("a figure that exists only after an outcome is listed apart and is not a g
       hiddenReadyMs: ready ? 1200 : null,
       showToPaintedReadyMs: ready ? 30 : 400,
       showToFirstFrameMs: 15,
-      showToReadyDomMs: ready ? 2 : 380,
+      showToReadyFrameMs: ready ? 15 : 380,
     });
   };
   const res = cmp(series({ names, a: hidden(false), b: hidden(true) }));
@@ -326,7 +377,9 @@ check("a count is judged on its ranges, and a worse one is a wrong-way result", 
 
 const names = ["cold", "relaunch"];
 const regime = (margin) => (r) => {
-  r.relaunch_freshness = margin ? fresh(margin) : { by_headers: 40, by_age: 0, margin_s: null };
+  r.relaunch_freshness = margin
+    ? fresh(margin)
+    : { by_headers: 40, held_stale: 0, by_age: 0, assets: [] };
 };
 const fewerRevalidations = (r) => {
   r.scenarios.relaunch.proxy.byFamily.static = { network: 0, revalidated: 0, error: 0 };
@@ -386,9 +439,26 @@ check("headers that decide freshness are compared with an age-decided control", 
     false,
   );
   assert.ok(res.notes.some((n) => n === "relaunch regime: a stale, b by-headers"));
-  assert.equal(find(res, "relaunch", "static_revalidated").outcome, "result");
+  const e = find(res, "relaunch", "static_revalidated");
+  assert.equal(e.outcome, "result");
+  // Every relaunch verdict and expectation names both sides' regimes.
+  assert.match(e.verdict, /; relaunch regime a stale, b by-headers$/);
   assert.equal(res.expectations[0].pass, true);
+  assert.equal(
+    res.expectations[0].conditions[3],
+    "4. under which relaunch regime: relaunch regime a stale, b by-headers",
+  );
   assert.equal(res.exitCode, 0);
+});
+check("a fresh side's static relaunch figures say they cannot show a header saving", () => {
+  const res = cmp(series({ names, b: regime(null) }), {
+    expect: ["relaunch.static_revalidated:lower"],
+  });
+  const e = find(res, "relaunch", "static_revalidated");
+  assert.match(e.verdict, /relaunch regime a fresh, b by-headers \(a fresh side serves stamped/);
+  assert.match(find(res, "relaunch", "ready_ms").verdict, /relaunch regime a fresh, b by-headers$/);
+  assert.match(res.expectations[0].conditions[3], /cannot show a header saving/);
+  assert.equal(res.expectations[0].pass, false);
 });
 
 // ------------------------------------------------------------ refusals

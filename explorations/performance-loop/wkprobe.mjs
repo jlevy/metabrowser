@@ -14,8 +14,9 @@
 // loads), compiles and runs `wkprobe.swift` against the proxy, and writes one JSONL row.
 // macOS only, and the screen must stay unlocked with the display awake: a hidden page
 // never finishes its first view, so the screen guard refuses the run instead. A series
-// and `clean` hold the series lock, because both remove the probe's WebKit data. See
-// README.md, "WKWebView Probe". The statistics live in wkprobe-stats.mjs.
+// and `clean` hold the probe lock, because both remove the probe's WebKit data. See
+// README.md, "WKWebView Probe". The statistics live in wkprobe-stats.mjs, the step
+// attribution and scenario rows in wkprobe-steps.mjs, and the lock in wkprobe-lock.mjs.
 import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -32,19 +33,22 @@ import {
   provenanceChanges,
   serverFacts,
 } from "./provenance.mjs";
+import { DEFAULT_LOCK, lockHeld, releaseLock, takeLock } from "./wkprobe-lock.mjs";
 import {
+  ASSET_FAMILIES,
   CompareRefusal,
   classify,
   compareProbe,
   FAMILIES,
+  FRESHNESS_DIRECTIVE,
   formatComparison,
   PROBE_REVISION,
   parseRows,
   relaunchFreshness,
-  requestCounts,
   SCHEMA,
   summarize,
 } from "./wkprobe-stats.mjs";
+import { devicePixelRatioOf, scenarioRow, stepEntries, VISIBLE } from "./wkprobe-steps.mjs";
 
 const HERE = import.meta.dirname;
 const REPO = path.resolve(HERE, "../..");
@@ -63,11 +67,7 @@ const LIBRARY_DIRS = [
   "Application Support",
 ];
 const PORTS = [8930, 8939];
-// The default series lock: one per user, outside any checkout. A round whose harnesses
-// share another lock passes it with --lock.
-const DEFAULT_LOCK = path.join(os.tmpdir(), "metabrowser-perf-series.lock");
 const SCENARIOS = ["cold", "reload", "relaunch", "hidden-then-show"];
-const VISIBLE = new Set(["cold", "reload", "relaunch"]);
 const INVENTORY_DEADLINE_MS = 180000;
 const PLAIN_WORD = /^(?!\.{1,2}$)[\w.-]+$/;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -116,78 +116,11 @@ function removeTemps() {
   }
 }
 
-// --------------------------------------------------------------------------- series lock
-
-// The lock is a directory made with one atomic mkdir, with an `owner` file inside naming
-// who holds it. Only the holder removes it. A lock whose owner's process is gone is
-// reported as stale, never broken: another harness may write its owner differently.
-let heldLock = null;
-
-function lockOwner(dir) {
-  try {
-    return fs.readFileSync(path.join(dir, "owner"), "utf8").trim();
-  } catch (_error) {
-    return null;
-  }
-}
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-function takeLock(dir, what) {
-  try {
-    fs.mkdirSync(dir, { mode: 0o700 });
-  } catch (error) {
-    if (error.code !== "EEXIST") {
-      throw error;
-    }
-    const owner = lockOwner(dir);
-    const pid = Number(
-      (owner ?? "")
-        .match(/^(\d+)$|\bpid[=: ]+(\d+)/)
-        ?.slice(1)
-        .find(Boolean),
-    );
-    const stale =
-      pid > 0 && !pidAlive(pid)
-        ? `; its owner, pid ${pid}, is not running: if no series is running, remove ${dir}`
-        : "";
-    throw new Error(
-      `the series lock ${dir} is held${owner ? ` (${owner.split("\n")[0].slice(0, 200)})` : ""}${stale}; ${what} does not run beside another series`,
-    );
-  }
-  heldLock = dir;
-  fs.writeFileSync(
-    path.join(dir, "owner"),
-    `pid ${process.pid}: wkprobe.mjs ${what}, since ${new Date().toISOString()}\n`,
-    { mode: 0o600 },
-  );
-}
-function releaseLock() {
-  if (!heldLock) {
-    return;
-  }
-  const dir = heldLock;
-  heldLock = null;
-  if ((lockOwner(dir) ?? "").startsWith(`pid ${process.pid}:`)) {
-    fs.rmSync(path.join(dir, "owner"), { force: true });
-    try {
-      fs.rmdirSync(dir);
-    } catch (_error) {
-      // Not empty: someone else's file; leave it.
-    }
-  }
-}
-
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
     killAll();
     // Only the lock's holder may remove the probe's data; a reader holds no lock.
-    if (heldLock) {
+    if (lockHeld()) {
       cleanLibrary();
     }
     removeTemps();
@@ -258,7 +191,23 @@ function compileProbe() {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const flags = ["-O", "-swift-version", "5", "-framework", "AppKit", "-framework", "WebKit"];
+  // Every argument but the paths, which the hash names anyway.
+  const flags = [
+    "-O",
+    "-swift-version",
+    "5",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "WebKit",
+    "-Xlinker",
+    "-sectcreate",
+    "-Xlinker",
+    "__TEXT",
+    "-Xlinker",
+    "__info_plist",
+    "-Xlinker",
+  ];
   const hash = crypto
     .createHash("sha256")
     .update(fs.readFileSync(SOURCE))
@@ -274,24 +223,10 @@ function compileProbe() {
     fs.writeFileSync(plist, PLIST);
     const partial = `${bin}.partial-${process.pid}`;
     try {
-      execFileSync(
-        "swiftc",
-        [
-          ...flags,
-          "-Xlinker",
-          "-sectcreate",
-          "-Xlinker",
-          "__TEXT",
-          "-Xlinker",
-          "__info_plist",
-          "-Xlinker",
-          plist,
-          SOURCE,
-          "-o",
-          partial,
-        ],
-        { stdio: ["ignore", "inherit", "inherit"], timeout: 300000 },
-      );
+      execFileSync("swiftc", [...flags, plist, SOURCE, "-o", partial], {
+        stdio: ["ignore", "inherit", "inherit"],
+        timeout: 300000,
+      });
       fs.renameSync(partial, bin);
     } finally {
       fs.rmSync(partial, { force: true });
@@ -354,7 +289,13 @@ const screenUsable = (s) => !!s && !s.locked && !s.displayAsleep && s.onConsole 
 
 function runProbe(bin, job, timeoutMs = 180000) {
   return new Promise((resolve) => {
-    const child = track(spawn(bin, [JSON.stringify(job)], { stdio: ["ignore", "ignore", "pipe"] }));
+    // The probe exits when its stdin pipe closes (`lifeline`), as it does when this
+    // process dies, however it dies, so it never runs on against a store or the display.
+    const child = track(
+      spawn(bin, [JSON.stringify({ ...job, lifeline: true })], {
+        stdio: ["pipe", "ignore", "pipe"],
+      }),
+    );
     let stderr = "";
     child.stderr.on("data", (d) => {
       stderr += d;
@@ -523,8 +464,15 @@ async function stopServer(server) {
  * records a marker and answers 204 without reaching the server. Headers, `Host`
  * included, pass unchanged, so the server sees the origin the page has.
  */
-function startProxy(listenPort, upstreamPort) {
+function startProxy(listenPort, upstreamPort, { staleAssets = false } = {}) {
   const log = [];
+  // --stale-assets: an asset response that no freshness directive covers gets `no-cache`,
+  // so WebKit revalidates it at every relaunch, as it does a stale install's.
+  const held = (url, status, cc) =>
+    staleAssets &&
+    status < 400 &&
+    ASSET_FAMILIES.has(classify(url).family) &&
+    !FRESHNESS_DIRECTIVE.test(cc ?? "");
   const agent = new http.Agent({ keepAlive: true, maxSockets: 64 });
   const server = http.createServer((req, res) => {
     const t = Date.now();
@@ -556,10 +504,17 @@ function startProxy(listenPort, upstreamPort) {
       },
       (ur) => {
         entry.status = ur.statusCode;
-        entry.cc = ur.headers["cache-control"] ?? null;
-        entry.lm = ur.headers["last-modified"] ?? null;
-        entry.etag = Boolean(ur.headers.etag);
-        res.writeHead(ur.statusCode, ur.headers);
+        let headers = ur.headers;
+        if (held(req.url, ur.statusCode, ur.headers["cache-control"])) {
+          const cc = ur.headers["cache-control"];
+          headers = { ...ur.headers, "cache-control": cc ? `${cc}, no-cache` : "no-cache" };
+          entry.held = true;
+        }
+        // The headers as WebKit saw them, which is what decides its freshness.
+        entry.cc = headers["cache-control"] ?? null;
+        entry.lm = headers["last-modified"] ?? null;
+        entry.etag = Boolean(headers.etag);
+        res.writeHead(ur.statusCode, headers);
         ur.on("data", (c) => {
           entry.bytes += c.length;
           res.write(c);
@@ -599,137 +554,6 @@ function startProxy(listenPort, upstreamPort) {
       });
     });
   });
-}
-
-/** Proxy entries between a step's start and end marks. */
-function stepEntries(log, step, from) {
-  const start = log.findIndex((e, i) => i >= from && e.mark === step && e.at === "start");
-  const end = log.findIndex((e, i) => i > start && e.mark === step && e.at === "end");
-  if (start < 0 || end < 0) {
-    return null;
-  }
-  return { entries: log.slice(start + 1, end).filter((e) => !e.mark), next: end + 1 };
-}
-
-// --------------------------------------------------------------------------- one run
-
-const present = (v) => v !== null && v !== undefined;
-
-function scenarioRow(name, stepOut, entries, ctx) {
-  const facts = stepOut?.facts ?? {};
-  const refusals = [];
-  const { proxy, page } = requestCounts(entries, facts.resources);
-  const screens = [stepOut?.screenBefore, stepOut?.screenAfter].filter(Boolean);
-  for (const s of screens) {
-    if (s.locked || s.displayAsleep || s.onConsole === false) {
-      refusals.push([
-        "screen",
-        `locked ${s.locked}, display asleep ${s.displayAsleep}, on console ${s.onConsole}`,
-      ]);
-      break;
-    }
-  }
-  if (!stepOut) {
-    refusals.push(["probe", ctx.probeError ?? "the probe wrote no result for this step"]);
-    return { name, refusals, proxy, page };
-  }
-  if (entries === null) {
-    refusals.push(["marks", "the proxy did not log this step's start and end marks"]);
-  }
-  const vis = facts.vis ?? [];
-  if (!(stepOut.raf >= 30)) {
-    refusals.push(["raf", `${stepOut.raf} animation frames per second`]);
-  }
-  const out = { name, refusals };
-  if (VISIBLE.has(name)) {
-    if (vis.some(([, v]) => v !== "visible") || facts.visibility !== "visible") {
-      refusals.push([
-        "visibility",
-        `visibility ${vis.map((v) => v[1]).join(",")} then ${facts.visibility}`,
-      ]);
-    }
-    if (!present(stepOut.readyMs)) {
-      refusals.push(["converged", "the subject never became ready"]);
-    }
-    Object.assign(out, {
-      readyMs: stepOut.readyMs ?? null,
-      mountedMs: stepOut.mountedMs ?? null,
-    });
-  } else {
-    // The page clock's mark just before the show splits the visibility history: hidden
-    // before it, and visible from the show to the end of the step.
-    const chain = stepOut.showChain ?? null;
-    const t0 = chain?.t0 ?? Number.POSITIVE_INFINITY;
-    const before = vis.filter(([t]) => t < t0).map((v) => v[1]);
-    const after = vis.filter(([t]) => t >= t0).map((v) => v[1]);
-    if (
-      stepOut.visibilityHidden !== "hidden" ||
-      before.some((v) => v !== "hidden") ||
-      stepOut.visibilityShown !== "visible" ||
-      after.some((v) => v !== "visible") ||
-      facts.visibility !== "visible"
-    ) {
-      refusals.push([
-        "visibility",
-        `hidden phase ${stepOut.visibilityHidden} (${before.join(",")}), shown ${stepOut.visibilityShown} (${after.join(",")}), at the end ${facts.visibility}`,
-      ]);
-    }
-    const since = (v) => (present(v) && chain ? Math.round(v - chain.t0) : null);
-    const painted = since(chain?.painted);
-    if (painted === null) {
-      refusals.push(["converged", "no painted frame with ready content after the show"]);
-    }
-    Object.assign(out, {
-      hiddenMounted: present(stepOut.hiddenMountedMs),
-      hiddenMountedMs: stepOut.hiddenMountedMs ?? null,
-      hiddenReady: stepOut.hiddenReady === true,
-      hiddenReadyMs: stepOut.hiddenReadyMs ?? null,
-      showToPaintedReadyMs: painted,
-      showToFirstFrameMs: since(chain?.firstFrame),
-      showToReadyFrameMs: since(chain?.readyFrame),
-      showToReadyDomMs: stepOut.showToReadyDomMs ?? null,
-      showToVisibleMs: stepOut.showToVisibleMs ?? null,
-      showToPaintedReadyNativeMs: stepOut.showToPaintedReadyNativeMs ?? null,
-      showFrames: chain ? { visible: chain.frames, hidden: chain.hiddenFrames } : null,
-      rafHidden: stepOut.rafHidden,
-    });
-  }
-  if (facts.version !== ctx.version) {
-    refusals.push(["build_identity", `page reports ${facts.version}, expected ${ctx.version}`]);
-  }
-  if (facts.w !== ctx.viewport[0] || facts.h !== ctx.viewport[1]) {
-    refusals.push(["viewport", `${facts.w}x${facts.h}, requested ${ctx.viewport.join("x")}`]);
-  }
-  if ((facts.errors ?? []).length) {
-    refusals.push(["page_exceptions", facts.errors[0]]);
-  }
-  if ((facts.alerts ?? []).length) {
-    refusals.push(["rendered_errors", facts.alerts[0]]);
-  }
-  return {
-    ...out,
-    commitMs: stepOut.commitMs ?? null,
-    finishMs: stepOut.finishMs ?? null,
-    raf: stepOut.raf,
-    dpr: facts.dpr ?? null,
-    navType: facts.navType ?? null,
-    fcp: facts.fcp ?? null,
-    dcl: facts.dcl ?? null,
-    visibility: vis,
-    screen: screens,
-    proxy,
-    page,
-    // What the page says it loaded: path, initiator, transfer, encoded, and decoded bytes.
-    resources: (facts.resources ?? [])
-      .slice(0, 300)
-      .map((r) => [r[0].slice(0, 100), r[2], r[3], r[4]]),
-    requests: (entries ?? []).slice(0, 200).map((e) => ({
-      m: e.method === "GET" ? undefined : e.method,
-      u: e.url.slice(0, 120),
-      st: e.status,
-      c: e.inm || e.ims ? 1 : undefined,
-    })),
-  };
 }
 
 async function oneRun(options) {
@@ -825,7 +649,7 @@ async function oneRun(options) {
       row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
     }
     row.facts = await serverFacts(server.base);
-    proxy = await startProxy(proxyPort, serverPort);
+    proxy = await startProxy(proxyPort, serverPort, { staleAssets: flags.stale_assets });
     row.ports = { server: serverPort, proxy: proxyPort };
     const job = (store, windowMode, steps, outName) => ({
       base: proxy.base,
@@ -884,7 +708,7 @@ async function oneRun(options) {
       if (got) {
         cursor = got.next;
       }
-      return { s, entries: got ? got.entries : null };
+      return { s, entries: got ? got.entries : null, endAt: got?.endAt ?? null };
     };
     const newStore = () => {
       const id = crypto.randomUUID().toUpperCase();
@@ -906,8 +730,9 @@ async function oneRun(options) {
         const re = take(a.out, "reload");
         row.scenarios.reload = scenarioRow("reload", re.s, re.entries, ctx);
       }
+      intact("after the first launch");
     }
-    if (scenarios.includes("relaunch") && intact("before the relaunch")) {
+    if (scenarios.includes("relaunch") && !row.refusals.some(([g]) => g === "store_wiped")) {
       const b = await launch("relaunch", job(store, "visible", ["load"], "relaunch"));
       const re = take(b.out, "load");
       row.scenarios.relaunch = scenarioRow("relaunch", re.s, re.entries, ctx);
@@ -915,7 +740,13 @@ async function oneRun(options) {
         Math.round((launches.relaunch.started - launches.first.started) / 100) / 10;
       row.scenarios.relaunch.sinceFirstExitS =
         Math.round((launches.relaunch.started - launches.first.ended) / 100) / 10;
-      row.relaunch_freshness = relaunchFreshness(firstLog, launches.relaunch.started);
+      // WebKit looks each asset up somewhere between the relaunch's spawn and its step's
+      // end mark (the process's exit when the mark is missing), so both ends are kept.
+      row.relaunch_freshness = relaunchFreshness(
+        firstLog,
+        launches.relaunch.started,
+        re.endAt ?? launches.relaunch.ended,
+      );
       intact("during the relaunch");
     }
     if (scenarios.includes("hidden-then-show")) {
@@ -934,10 +765,10 @@ async function oneRun(options) {
     if (ages.length) {
       row.static_last_modified_age_s = [Math.min(...ages), Math.max(...ages)];
     }
-    const dprs = new Set(Object.values(row.scenarios).map((sc) => sc.dpr));
-    row.device_pixel_ratio = dprs.size === 1 ? [...dprs][0] : [...dprs];
-    if (dprs.size > 1) {
-      row.refusals.push(["viewport", `device pixel ratios ${[...dprs].join(", ")}`]);
+    const dpr = devicePixelRatioOf(row.scenarios);
+    row.device_pixel_ratio = dpr.ratio;
+    if (dpr.refusal) {
+      row.refusals.push(dpr.refusal);
     }
     for (const sc of Object.values(row.scenarios)) {
       for (const [guard, detail] of sc.refusals) {
@@ -1020,6 +851,10 @@ async function cmdRun(argv) {
       // Diagnostic only: keep each probe process alive this long after it writes its
       // result, to test whether the relaunch depends on unflushed cache writes.
       "exit-delay-ms": { type: "string", default: "0" },
+      // Diagnostic only: give every asset response no freshness directive covers
+      // `Cache-Control: no-cache`, so a condition whose assets are judged by age
+      // relaunches as a stale install does, whatever its files' age.
+      "stale-assets": { type: "boolean", default: false },
     },
   });
   if (!values.corpus) {
@@ -1072,7 +907,11 @@ async function cmdRun(argv) {
   if (exitDelay < 0 || exitDelay > 60000) {
     throw new Error("--exit-delay-ms must be a whole number of milliseconds up to 60000");
   }
-  const flags = { no_preflight: values["no-preflight"], exit_delay_ms: exitDelay };
+  const flags = {
+    no_preflight: values["no-preflight"],
+    exit_delay_ms: exitDelay,
+    stale_assets: values["stale-assets"],
+  };
   const outFile = values.out
     ? path.resolve(values.out)
     : path.join(BENCH, values.name, "runs.jsonl");
@@ -1200,12 +1039,13 @@ const USAGE = `usage:
   wkprobe.mjs run --corpus PATH --condition LABEL=PATH/TO/metab [--condition LABEL=PATH]
                   [--runs 3] [--scenarios ${SCENARIOS.join(",")}] [--name NAME] [--out FILE]
                   [--viewport 1440x900] [--wait-for-screen SECONDS] [--lock DIR]
-                  [--no-preflight] [--exit-delay-ms MS]   (the last two are diagnostics)
+                  [--no-preflight] [--exit-delay-ms MS] [--stale-assets]   (diagnostics)
   wkprobe.mjs summarize RUNS.jsonl
   wkprobe.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                   [--expect SCENARIO.METRIC:lower|higher]... [--format markdown|json]
   wkprobe.mjs clean [--lock DIR]   (remove the probe's data stores and caches under ~/Library)
-run and clean hold the series lock (default ${DEFAULT_LOCK}) and refuse while another holds it.
+run and clean hold the probe lock (default ${DEFAULT_LOCK}) and refuse while another
+holds it; it keeps two probe series or cleans apart, and no other harness takes it.
 compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or
 an expectation not met, and 2 when it refuses.`;
 

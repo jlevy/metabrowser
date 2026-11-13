@@ -25,12 +25,14 @@ import {
 export { CompareRefusal, MIN_RUNS };
 
 export const SCHEMA = "wkwebview-probe/v1";
-// 2 times show-to-ready to the first painted frame with ready content, loads
-// `hidden-then-show` into a store of its own, counts background, stream, and outgoing
-// requests apart from the judged totals, and records the relaunch's freshness inputs.
-// compare reads revision 2 only: revision 1 rows mean something else in every one of
-// those figures, and none was ever valid outside a locked-screen test.
-export const PROBE_REVISION = 2;
+// 2 timed show-to-ready to the first painted frame with ready content, loaded
+// `hidden-then-show` into a store of its own, counted background, stream, and outgoing
+// requests apart from the judged totals, and recorded the relaunch's freshness inputs.
+// 3 records each asset's freshness at both ends of the relaunch step, keeps a 200's
+// headers across a 304 that lacks them, and takes the DOM ready after the show from the
+// frame chain instead of a poll. compare reads revision 3 only: no earlier row was ever
+// valid outside a locked-screen test, and each means something else in those figures.
+export const PROBE_REVISION = 3;
 
 // ------------------------------------------------------------------------- requests
 
@@ -100,66 +102,83 @@ export function requestCounts(entries, resources) {
 
 // ------------------------------------------------------------------------- freshness
 
-const ASSET_FAMILIES = new Set(["static", "plugin_static", "kpress_static"]);
+export const ASSET_FAMILIES = new Set(["static", "plugin_static", "kpress_static"]);
 // A Cache-Control directive that decides freshness by itself; without one, WebKit keeps a
 // response with a Last-Modified fresh for a tenth of its age when it was validated.
-const FRESHNESS_DIRECTIVE = /(?:^|[,\s])(?:max-age|s-maxage|no-cache|no-store)\b/i;
-// Seconds of margin on either side of a heuristic lifetime: the relaunch looks an asset up
-// a few seconds after it starts, and Last-Modified and Date have a resolution of 1 s.
-export const FRESHNESS_GUARD_S = 5;
+export const FRESHNESS_DIRECTIVE = /(?:^|[,\s])(?:max-age|s-maxage|no-cache|no-store)\b/i;
+// Seconds of margin on either side of a heuristic lifetime, for the 1 s resolution of
+// Last-Modified and Date. When WebKit looks an asset up is bounded by the two ends kept.
+export const FRESHNESS_GUARD_S = 2;
 
-const range = (xs) =>
-  xs.length ? [Math.round(Math.min(...xs) * 10) / 10, Math.round(Math.max(...xs) * 10) / 10] : null;
+const round1 = (v) => Math.round(v * 10) / 10;
+const range = (xs) => (xs.length ? [round1(Math.min(...xs)), round1(Math.max(...xs))] : null);
 
 /**
  * How the assets the first launch stored will be judged at the relaunch, from the first
- * launch's proxy entries: each asset URL's last validation (its last logged response),
- * its Last-Modified (a 304 carries none, so the 200 before it gives it), and its
- * Cache-Control. An asset whose headers decide is counted in `by_headers`. For each
- * asset judged by age, `margin_s` ranges over its heuristic lifetime minus the time from
- * that validation to the relaunch's start: positive is fresh, negative stale.
+ * launch's proxy entries. For each asset URL: its last validation (its last logged
+ * response), and the headers WebKit then kept. A 200 replaces them; a 304 updates only
+ * the ones it carries (RFC 9111, 4.3.4), so a 304 with no Last-Modified or Cache-Control
+ * keeps the 200's. An asset whose headers decide is counted in `by_headers`, and one the
+ * proxy marked `no-cache` under --stale-assets in `held_stale`. For each asset judged by
+ * age, `assets` holds its URL and its heuristic lifetime minus the time from that
+ * validation to the relaunch's spawn and to its step's end, between which WebKit looked
+ * it up: positive is fresh, negative stale. The two `margin_at_*` ranges summarize them.
  */
-export function relaunchFreshness(entries, relaunchStartMs) {
+export function relaunchFreshness(entries, relaunchStartMs, relaunchEndMs = relaunchStartMs) {
   const byUrl = new Map();
   for (const e of entries ?? []) {
     if (e.mark || !e.status || e.status >= 400 || !ASSET_FAMILIES.has(classify(e.url).family)) {
       continue;
     }
-    const u = byUrl.get(e.url) ?? { lm: null };
+    const u = byUrl.get(e.url) ?? { lm: null, cc: null, held: false };
     u.t = e.t;
-    u.cc = e.cc ?? null;
-    if (e.lm) {
-      u.lm = e.lm;
+    if (e.status !== 304 || e.cc) {
+      u.cc = e.cc ?? null;
+      u.held = Boolean(e.held);
+    }
+    if (e.status !== 304 || e.lm) {
+      u.lm = e.lm ?? null;
     }
     byUrl.set(e.url, u);
   }
   let byHeaders = 0;
-  const ages = [];
-  const margins = [];
-  for (const u of byUrl.values()) {
+  let heldStale = 0;
+  const assets = [];
+  for (const [url, u] of byUrl) {
+    if (u.held) {
+      heldStale += 1;
+      continue;
+    }
     const lm = u.lm ? Date.parse(u.lm) : Number.NaN;
     // No directive and no Last-Modified: nothing makes it fresh, whatever its age.
     if ((u.cc && FRESHNESS_DIRECTIVE.test(u.cc)) || !Number.isFinite(lm)) {
       byHeaders += 1;
       continue;
     }
-    const age = (u.t - lm) / 1000;
-    ages.push(age);
-    margins.push(0.1 * age - (relaunchStartMs - u.t) / 1000);
+    const lifetime = Math.max(0, (0.1 * (u.t - lm)) / 1000);
+    assets.push([
+      url.slice(0, 120),
+      round1(lifetime - (relaunchStartMs - u.t) / 1000),
+      round1(lifetime - (relaunchEndMs - u.t) / 1000),
+    ]);
   }
   return {
     by_headers: byHeaders,
-    by_age: ages.length,
-    age_s: range(ages),
-    margin_s: range(margins),
+    held_stale: heldStale,
+    by_age: assets.length,
+    margin_at_start_s: range(assets.map((a) => a[1])),
+    margin_at_end_s: range(assets.map((a) => a[2])),
+    assets,
   };
 }
 
 /**
- * A run's relaunch regime: `by-headers` when every asset's freshness came from its
- * headers, so install age plays no part; `fresh` or `stale` when every asset judged by
- * age was fresh, or stale, by more than the guard; `mixed` when some were near or on
- * either side of their lifetime; `unknown` when the row has no record.
+ * A run's relaunch regime: `fresh` when every asset judged by age was still fresh, by
+ * more than the guard, at the relaunch step's end; `stale` when every one was already
+ * stale at the relaunch's spawn, or every asset without a directive was held stale by
+ * --stale-assets; `mixed` when some were near or on either side of their lifetime;
+ * `by-headers` when headers decided every asset, so install age played no part; and
+ * `unknown` when the row has no record.
  */
 export function relaunchRegime(row) {
   const f = row?.relaunch_freshness;
@@ -167,13 +186,15 @@ export function relaunchRegime(row) {
     return "unknown";
   }
   if (!f.by_age) {
-    return "by-headers";
+    return f.held_stale ? "stale" : "by-headers";
   }
-  const [lo, hi] = f.margin_s;
-  if (lo > FRESHNESS_GUARD_S) {
+  if (f.held_stale) {
+    return "mixed";
+  }
+  if (f.margin_at_end_s[0] > FRESHNESS_GUARD_S) {
     return "fresh";
   }
-  if (hi < -FRESHNESS_GUARD_S) {
+  if (f.margin_at_start_s[1] < -FRESHNESS_GUARD_S) {
     return "stale";
   }
   return "mixed";
@@ -230,7 +251,7 @@ export const METRICS = [
   T("commit_ms", (s) => s.commitMs),
   T("show_to_painted_ready_ms", (s) => s.showToPaintedReadyMs),
   T("show_to_first_frame_ms", (s) => s.showToFirstFrameMs, null),
-  T("show_to_ready_dom_ms", (s) => s.showToReadyDomMs, null),
+  T("show_to_ready_frame_ms", (s) => s.showToReadyFrameMs, null),
   C("mounted_while_hidden", (s) => bool01(s.hiddenMounted), "higher"),
   C("ready_while_hidden", (s) => bool01(s.hiddenReady), "higher"),
   T("hidden_mounted_ms", (s) => s.hiddenMountedMs, "lower", "mounted while hidden"),
@@ -252,6 +273,23 @@ export const METRICS = [
 ];
 
 export const metric = (key) => METRICS.find((m) => m.key === key);
+
+// The figures every valid run of a scenario should have, so one that no run on either
+// side has is still listed as a gap rather than dropped from the table.
+const VISIBLE_EXPECTED = ["ready_ms", "mounted_ms", "commit_ms"];
+export const EXPECTED = {
+  cold: VISIBLE_EXPECTED,
+  reload: VISIBLE_EXPECTED,
+  relaunch: VISIBLE_EXPECTED,
+  "hidden-then-show": [
+    "show_to_painted_ready_ms",
+    "show_to_first_frame_ms",
+    "show_to_ready_frame_ms",
+    "commit_ms",
+    "mounted_while_hidden",
+    "ready_while_hidden",
+  ],
+};
 
 /** scenario -> { id, runs, values: metric key -> [{ v, pair }] } over the valid runs. */
 export function collect(condition) {
@@ -354,9 +392,9 @@ export function compareProbe(rows, { control, candidate, tolerance = 1.3, expect
   const notes = [
     `every run served corpus ${all[0].corpus.commit.slice(0, 8)} (${all[0].server?.indexed_files} indexed files) at ${all[0].viewport}, device pixel ratio ${all[0].device_pixel_ratio}`,
   ];
-  if (flags?.no_preflight || flags?.exit_delay_ms) {
+  if (flags?.no_preflight || flags?.exit_delay_ms || flags?.stale_assets) {
     notes.push(
-      `NOT THE STANDARD REGIME: ${[flags.no_preflight && "no screen preflight", flags.exit_delay_ms && `a ${flags.exit_delay_ms} ms delay before each probe exits`].filter(Boolean).join(", ")}`,
+      `NOT THE STANDARD REGIME: ${[flags.no_preflight && "no screen preflight", flags.exit_delay_ms && `a ${flags.exit_delay_ms} ms delay before each probe exits`, flags.stale_assets && "assets without a freshness directive held stale with no-cache (--stale-assets)"].filter(Boolean).join(", ")}`,
     );
   }
   for (const [what, get] of [
@@ -386,6 +424,16 @@ export function compareProbe(rows, { control, candidate, tolerance = 1.3, expect
   const ra = regimes(A);
   const rb = regimes(B);
   const block = relaunchBlock(ra, rb, [A.label, B.label]);
+  const regimeLine =
+    ra.length && rb.length
+      ? `relaunch regime ${A.label} ${ra.join("/")}, ${B.label} ${rb.join("/")}`
+      : null;
+  // A fresh side's stamped assets come from WebKit's cache with no request at all, so no
+  // header change can lower a static figure below its 0.
+  const freshCaveat = (key) =>
+    key.startsWith("static_") && (ra.includes("fresh") || rb.includes("fresh"))
+      ? " (a fresh side serves stamped assets from cache with no request, so this cannot show a header saving; --stale-assets can)"
+      : "";
   if (ra.length && rb.length) {
     notes.push(
       `relaunch regime: ${A.label} ${ra.join("/")}, ${B.label} ${rb.join("/")}${block ? "; relaunch is not judged" : ""}`,
@@ -422,6 +470,13 @@ export function compareProbe(rows, { control, candidate, tolerance = 1.3, expect
       const va = valuesOf(ea, m.key);
       const vb = valuesOf(eb, m.key);
       if (!va.length && !vb.length) {
+        if (EXPECTED[id]?.includes(m.key)) {
+          gaps.push({
+            id,
+            metric: m.key,
+            reason: `missing in all ${ea.runs} ${A.label} run(s) and all ${eb.runs} ${B.label} run(s)`,
+          });
+        }
         continue;
       }
       if (m.conditional) {
@@ -451,6 +506,10 @@ export function compareProbe(rows, { control, candidate, tolerance = 1.3, expect
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
+      if (id === "relaunch" && regimeLine) {
+        j.regime = `${regimeLine}${freshCaveat(m.key)}`;
+        j.verdict += `; ${j.regime}`;
+      }
       if (j.outcome === "unpaired") {
         gaps.push({ id, metric: m.key, reason: j.verdict });
       }
@@ -493,6 +552,7 @@ export function compareProbe(rows, { control, candidate, tolerance = 1.3, expect
         `1. the median moved ${predicted}: ${moved ? "yes" : "no"} (${fmtStat(e.control, e.kind, FMT_DECIMALS)} → ${fmtStat(e.candidate, e.kind, FMT_DECIMALS)})`,
         `2. the ranges do not overlap at n≥${MIN_RUNS}${e.kind === "time" ? ", beyond the tolerance on back-to-back pairs" : ""}: ${apart ? "yes" : "no"} (${e.verdict})`,
         `3. nothing else moved the wrong way without being accounted for: ${others.length} wrong-way result(s) elsewhere to account for`,
+        ...(e.regime ? [`4. under which relaunch regime: ${e.regime}`] : []),
       ],
     };
   });
@@ -612,7 +672,7 @@ export function summarize(rows) {
     for (const e of byId.values()) {
       for (const m of METRICS) {
         const n = (e.values[m.key] ?? []).length;
-        if (n && n < e.runs && !m.conditional) {
+        if ((n || EXPECTED[e.id]?.includes(m.key)) && n < e.runs && !m.conditional) {
           lines.push(`- \`${e.id}\` ${m.key}: missing in ${e.runs - n} of ${e.runs} run(s)`);
         }
       }
@@ -640,7 +700,7 @@ export function summarize(rows) {
       const ones = (key) => valuesOf(h, key).filter((x) => x === 1).length;
       lines.push(
         "",
-        `Hidden then shown: mounted while hidden in ${ones("mounted_while_hidden")} of ${h.runs} runs (at ${cell(h, "hidden_mounted_ms")} ms), ready while hidden in ${ones("ready_while_hidden")} of ${h.runs}; show to first frame ${cell(h, "show_to_first_frame_ms")} ms, to painted ready ${cell(h, "show_to_painted_ready_ms")} ms (the DOM ready read ${cell(h, "show_to_ready_dom_ms")} ms).`,
+        `Hidden then shown: mounted while hidden in ${ones("mounted_while_hidden")} of ${h.runs} runs (at ${cell(h, "hidden_mounted_ms")} ms), ready while hidden in ${ones("ready_while_hidden")} of ${h.runs}; show to first frame ${cell(h, "show_to_first_frame_ms")} ms, to the first frame that began ready ${cell(h, "show_to_ready_frame_ms")} ms, to painted ready ${cell(h, "show_to_painted_ready_ms")} ms.`,
       );
     }
     lines.push("");

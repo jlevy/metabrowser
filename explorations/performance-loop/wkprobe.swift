@@ -50,6 +50,19 @@ struct Job: Decodable {
   // Diagnostic: wait this long after writing the result before exiting, to test whether
   // the relaunch depends on cache writes the first process had not flushed.
   let exitDelayMs: Double?
+  // Exit when stdin reaches EOF, as it does when the wrapper holding its pipe dies.
+  let lifeline: Bool?
+}
+
+/// Reads stdin on a thread of its own and exits the process at EOF, so a probe whose
+/// wrapper was killed does not run on against a store or hold the display awake.
+func watchLifeline() {
+  Thread.detachNewThread {
+    var buffer = [UInt8](repeating: 0, count: 256)
+    while read(0, &buffer, buffer.count) > 0 {}
+    FileHandle.standardError.write("wkprobe: stdin closed, exiting\n".data(using: .utf8)!)
+    exit(3)
+  }
 }
 
 /// Locked screen, a session that is not on the console, and a sleeping display all stop
@@ -348,14 +361,16 @@ final class Probe: NSObject, WKNavigationDelegate {
       _ = await js(showChainJS)
       let t1 = nowMs()
       window.orderFrontRegardless()
+      // Only two reads that force no style or layout are polled here, so the probe puts
+      // no layout of its own between the show and the painted frame. The chain's
+      // `readyFrame` is the DOM ready after the show.
       let shown = await watch(
         [
-          ("visible", "document.visibilityState === 'visible'"), ("ready", readyExpr),
+          ("visible", "document.visibilityState === 'visible'"),
           ("painted", "!!window.__wkShow && window.__wkShow.painted !== null"),
         ], from: t1, until: ["visible", "painted"], timeoutMs: job.readyTimeoutMs)
       // The native clock's view of the same events: when a poll first saw each one.
       row["showToVisibleMs"] = shown["visible"].map { Int($0) } as Any
-      row["showToReadyDomMs"] = shown["ready"].map { Int($0) } as Any
       row["showToPaintedReadyNativeMs"] = shown["painted"].map { Int($0) } as Any
       row["visibilityShown"] = await js("document.visibilityState") as Any
       row["showChain"] = await jsJSON("window.__wkShow || null") as Any
@@ -426,6 +441,7 @@ else {
   FileHandle.standardError.write("usage: mb-wkprobe JOB_JSON\n".data(using: .utf8)!)
   exit(2)
 }
+if job.lifeline == true { watchLifeline() }
 Task { @MainActor in
   let probe = Probe(job: job)
   await probe.run()
