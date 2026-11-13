@@ -528,24 +528,51 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line is a flex line so the author and the branches take the room left after the
-   number and the stack, and the chips ellipsize inside it with the arrow kept
-   (docs/design-system.md, "Merge Direction"). A line of text with `text-overflow: ellipsis`
-   would not do: when it overflows, Chrome hides the merge's arrow and clips the last chip
-   at the edge. `pre` keeps the spaces around each `·`, which a flex line trims from its
-   text. */
+/* The muted line: the number, the stack badge, the author, and the branches
+   (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
+   always whole inside the row: the author and the branches each start with their separator
+   and may move to the next line, and the line is laid out as wide as the row plus one
+   separator, starting one separator to the left, so that the separator of a part that
+   starts a line falls outside the row and is clipped. The number makes up that offset.
+   Line breaks are decided by each part's floor, and a part that stays grows by equal
+   amounts toward its full width, so a line shortens names before it wraps. A line of text
+   with `text-overflow: ellipsis` would not do: when it overflows, Chrome hides the
+   merge's arrow and clips the last chip at the edge. */
 .github-pulls-meta {
-  display: flex;
-  align-items: baseline;
   grid-column: 3 / -1;
+  min-width: 0;
   overflow: hidden;
-  white-space: pre;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+.github-pulls-line {
+  --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-inline-start: calc(-1 * var(--github-pulls-sep));
+  white-space: pre;
+}
+.github-pulls-sep {
+  flex: none;
+  width: var(--github-pulls-sep);
+  text-align: center;
+}
+/* The branches never get narrower than their separator and the merge's floor, so a line
+   that cannot hold that moves them to a line of their own. */
+.github-pulls-merge {
+  display: flex;
+  flex: 1 1 0;
+  align-items: baseline;
+  max-width: max-content;
+}
+.github-pulls-merge > .merge-refs {
+  flex: 1 1 auto;
 }
 .github-pulls-number {
   color: var(--text);
   font-size: var(--nav-font-size);
+  margin-inline-start: var(--github-pulls-sep);
 }
 .github-pulls-stack {
   display: inline-flex;
@@ -791,29 +818,15 @@
   border-radius: 50%;
 }
 
-/* When the line is short, its parts give way in this order, so the merge's arrow always
-   shows, down to the narrowest navigation pane (180px), with a long login, an avatar, and a
-   stack badge. The number keeps its width.
-   1. The author and the branch names share the room the number and the stack leave, as a
-      grid: grid's "maximize tracks" step grows both from their floors by equal amounts, so a
-      short author keeps its whole name and a long one cannot crowd out the branches. Each
-      ends in an ellipsis: the author, with its separator and avatar, down to nothing, and
-      the branches down to the merge's floor (static/styles.css, `.merge-refs`).
-   2. Then the stack badge. Flex has no priorities, only factors, so the pair's is a
-      million to the badge's 1: while the pair can give, the badge's share is a millionth of
-      the shortfall, under a sixty-fourth of a pixel, and once the pair is at its floor the
-      badge takes the rest. A factor below 1 would not do, since flex applies only that
-      fraction of the shortfall when it is all that is left. */
-.github-pulls-who {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) max-content minmax(auto, max-content);
-  align-items: baseline;
-  flex-shrink: 1000000;
-}
+/* The author never gets narrower than its separator and a little of the name (or its
+   avatar), so the separator never stands alone: past that, the author and its separator
+   move to the next line together. Above it the name ends in an ellipsis. */
 .github-pulls-by {
   display: flex;
+  flex: 1 1 0;
   align-items: baseline;
-  min-width: 0;
+  min-width: calc(var(--github-pulls-sep) + 1.75em);
+  max-width: max-content;
   overflow: hidden;
 }
 .github-pulls-by > .github-pull-identity {
@@ -824,8 +837,4 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.github-pulls-meta > .github-pulls-stack {
-  min-width: 0;
-  overflow: hidden;
 }

@@ -1588,7 +1588,7 @@ address.
    updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
    The Pulls list in the navigation pane gives each row’s branches the same way, head →
    base (`forker:count-to-two → topic` on #7’s row), and narrowing the pane shortens the
-   branch names with an ellipsis but keeps the arrow.
+   branch names with an ellipsis, then moves them to a line of their own, whole.
    The status line reads `Fetched … via GitHub CLI`. The records were fetched on
    2026-09-17, so the page refreshes the record by itself: nothing spins, nothing says
    `may be out of date`, and no **Refresh** is offered meanwhile; the age gently

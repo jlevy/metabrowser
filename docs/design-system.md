@@ -983,17 +983,20 @@ A rename in a diff reads the same way, `old → new`.
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the chips’ `--ui-small-font-size`. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow, so a crowded line cannot push the arrow out |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow; a place too narrow for that gives the merge a line of its own |
 
-On the Pulls tab the muted line gives way so that the arrow always shows, down to the
-narrowest navigation pane (180px) with a long login, an avatar, and a stack badge.
-The number keeps its width.
-The author and the branches share the rest equally, as a grid: a short author keeps its
-whole name, and a long one cannot crowd out the branches.
-The author ellipsizes away with its avatar and the separator before it, and the branches
-shrink down to the merge’s floor.
-Only then does the stack badge give way.
-The line is a flex line rather than a line of text with `text-overflow: ellipsis`,
+On the Pulls tab the muted line wraps rather than clips, so both chips and the arrow are
+always whole inside the row, down to the narrowest navigation pane (180px) with a
+five-digit number, a long login, an avatar, and a stack badge.
+The author and the branches each start with their separator.
+A part moves to the next line when the line cannot hold its floor: the author’s is its
+separator and a little of the name or its avatar, so a separator never stands alone, and
+the branches’ is their separator and the merge’s floor.
+A part that stays grows by equal amounts toward its full width, so the line shortens
+names before it wraps.
+The line starts one separator to the left of the row, so the separator of a part that
+starts a line is clipped.
+It is a wrapping flex line rather than a line of text with `text-overflow: ellipsis`,
 because an overflowing line of text loses the arrow in Chrome.
 
 The rendered group, for a pull request from `wip` into `topic`:
@@ -1010,11 +1013,11 @@ The rendered group, for a pull request from `wip` into `topic`:
 It appears in the header of [the pull request page](#the-pull-request-page) and on each
 row of [the Pulls tab](#the-pulls-tab); a new surface that shows a merge calls
 `mergeRefs`. `test_merges_read_source_to_target_in_one_notation` in
-`tests/test_design_vocabulary.py` holds that both call it head first, that no browser
-code draws two ref chips by hand joined by “into”, “from”, or an arrow, and the arrow’s
-name, direction, floor, and tokens, and the order in which the Pulls tab’s line gives
-way. The sessions of both pages hold the order, the arrow’s name, and the literal refs
-they draw.
+`tests/test_design_vocabulary.py` holds that both call it head first, that neither draws
+a ref chip of its own or writes `←`, the arrow’s name, direction, floor, and tokens, and
+the rules by which the Pulls tab’s line wraps.
+The sessions of both pages hold the order, the arrow’s name, and the literal refs they
+draw.
 
 ### File Change Status
 
@@ -1335,9 +1338,9 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
-| Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes before the branches’ arrow can be pushed out ([Merge Direction](#merge-direction)) |
+| Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
 | Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
-| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Compact contextual chips below the title’s primary size; they share the room the number and stack leave with the author, and ellipsize there, keeping the arrow ([Merge Direction](#merge-direction)) |
+| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Compact contextual chips below the title’s primary size; they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
 | Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |

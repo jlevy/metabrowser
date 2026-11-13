@@ -5824,10 +5824,10 @@ pre.code-block.metabrowser-source-lines > code {
    zero and freezes each at its full width.
    The group never gets narrower than both chips' padding and copy slot
    (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
-   in each, and the arrow with its spaces (about 1.3em), so a crowded line cannot push
-   the arrow out: the equal growth gives each name at least its chip's
-   frame and an ellipsis, and what is left is the arrow's. Measured in
-   Chrome at the narrowest navigation pane, 180px. */
+   in each, and the arrow with its spaces (about 1.3em): the equal growth
+   gives each name at least its chip's frame and an ellipsis, and what is
+   left is the arrow's. A line too short for that floor moves the merge
+   to a line of its own (the Pulls tab's `.github-pulls-line`). */
 .merge-refs {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);

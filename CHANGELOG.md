@@ -9,10 +9,10 @@ All notable changes to Metabrowser are documented here.
   pull request’s header reads “octo wants to merge 1 commit: wip → topic” instead of
   “wants to merge 1 commit into topic from wip”.
   The arrow is named “merges into” for screen readers, stays left to right in a
-  right-to-left page, and stays in a narrow Pulls row, down to the narrowest navigation
-  pane: the row’s author and branch names now shorten with an ellipsis, sharing the
-  room, and its stack badge gives way last; the arrow used to disappear from a row too
-  narrow for its line.
+  right-to-left page, and stays whole in a narrow Pulls row, down to the narrowest
+  navigation pane: the row’s author and branch names now shorten with an ellipsis, and
+  where even that is too wide the branches move to a line of their own, so nothing is
+  clipped; the arrow used to disappear from a row too narrow for its line.
   Plugins draw the same notation with the new SDK helper
   `mergeRefs(source, target, options)`; see
   [Merge Direction](docs/design-system.md#merge-direction).

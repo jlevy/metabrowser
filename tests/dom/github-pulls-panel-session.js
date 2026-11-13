@@ -1203,20 +1203,27 @@ async function paintStory(panel, selection = false) {
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    const numberLabel = child(metadata, "github-pulls-number");
-    // The author and the branches share what the number and the stack leave; the author
-    // gives way with the separator before it.
-    const who = child(metadata, "github-pulls-who");
-    const by = child(who, "github-pulls-by");
+    // The line wraps: the author and the branches each carry the separator before them, so
+    // either moves to the next line whole.
+    const line = child(metadata, "github-pulls-line");
+    const numberLabel = child(line, "github-pulls-number");
+    const by = child(line, "github-pulls-by");
+    const merge = child(line, "github-pulls-merge");
     assert(
       metadata.textContent ===
         `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
       "the line reads number, author, then head → base",
     );
-    assert(by.textContent.startsWith(" · "), "the author's separator gives way with it");
+    for (const part of [by, merge]) {
+      assert(
+        part.firstChild.classList.contains("github-pulls-sep") &&
+          part.firstChild.textContent === " · ",
+        "a part that may wrap carries its own separator",
+      );
+    }
     const identity = child(by, "github-pull-identity");
     const authorLabel = child(identity, "github-pulls-author");
-    const branches = child(who, "merge-refs");
+    const branches = child(merge, "merge-refs");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
