@@ -1141,9 +1141,13 @@ transparent node through `stagePreviewNode()` before it commits them to the main
 plugin detaches from its render handle’s `dispose()`. Disconnection does not end an
 attachment. The pull request page’s `paintHeader` removes the tab column while the page
 has no record and re-inserts it after the header, and the keys must come back with it.
-After #370, `paintHeader` removes the column only when the record is unavailable, so the
-tab links, and with them `C`, `G`, and `H`, are live while the record loads, and the
-return path runs only after a failed first read.
+After #370, `paintHeader` removes the column only when the record is unavailable.
+After #369, a cold landing also holds the header with the body for up to
+`DESCRIPTION_HOLD_MS`, and the column stays out of the page until the hold releases, so
+`C`, `G`, and `H` are not live during the hold.
+The release inserts the column through the return path, which retargets the same links.
+The `tabKeysWhileHeld` fact in `tests/dom/github-pull-first-paint-behavior.js` pins that
+the three keys are not live while the header is held and are live after the release.
 As a safety net, the view-composition disposer (`view-composition.js` `mount`) also
 releases attachments inside the container it disposes.
 That net does not reach the diff view, which three hosts mount by calling its renderer

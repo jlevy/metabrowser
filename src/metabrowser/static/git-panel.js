@@ -142,8 +142,14 @@
   /** @type {{revision: string, claim: number} | null} */
   let lastSelection = null;
   // The neutral Commits entry waiting for history to name its newest commit: the landing
-  // it belongs to and the claim it holds on the pane (landOnNewestCommit).
-  /** @type {{landing: number, claim: number} | null} */
+  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `digitFocus` is
+  // where the Commits tab's digit put focus while it waited, if it did (focusCommitRow), and
+  // `rowReplaced` says a refresh removed a history row that held focus (refreshHistory).
+  /**
+   * @typedef {{landing: number, claim: number, digitFocus: "row" | "tab" | null,
+   *   rowReplaced: boolean}} NewestLanding
+   */
+  /** @type {NewestLanding | null} */
   let newestLanding = null;
   // How many commit selections have begun, so work that outlives one can tell that a
   // later selection placed the list (recoverHistorySession).
@@ -1327,8 +1333,23 @@
    * Give the history's roving row focus, as the Commits tab's digit does after it
    * switches to the tab, so `↓` walks the history next. Reports whether a row took
    * focus; before the first page there is none, and the tab button keeps it.
+   *
+   * A switch to Commits lands on the newest commit (landOnNewestCommit), so while that
+   * landing waits, the digit's row is the newest, not the row the reader left: now when
+   * it is mounted, or once the landing reveals it (focusAwaitsNewest).
    */
   function focusCommitRow() {
+    const waiting = newestLanding;
+    const bridge = shell();
+    if (waiting && bridge && newestLandingHolds(waiting, bridge)) {
+      // The landing began from the newest row (landOnNewestCommit), but the reader may have
+      // focused another since, with Commits in front; that row, or a suspension that would
+      // hand it focus again when a render mounts it, is not the digit's.
+      state.focusedOrdinal = 0;
+      state.focusSuspended = false;
+      waiting.digitFocus = focusNewestRow() ? "row" : "tab";
+      return waiting.digitFocus === "row";
+    }
     const list = panelElement()?.querySelector(".git-graph-list");
     const row =
       list?.querySelector(".git-graph-row[data-roving-anchor]") ??
@@ -1338,6 +1359,49 @@
     }
     row.focus();
     return true;
+  }
+
+  /**
+   * Focus the newest row, ordinal zero, and make it the list's Tab stop. Focus never scrolls
+   * the list: the switch to Commits puts it at its top, and the landing's reveal scrolls it
+   * there when it is not. False when the row is not mounted.
+   */
+  function focusNewestRow() {
+    const list = panelElement()?.querySelector(".git-graph-list");
+    const row = list?.querySelector('.git-graph-row[data-ordinal="0"]');
+    if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+      return false;
+    }
+    state.focusedOrdinal = 0;
+    state.focusSuspended = false;
+    setCommitRowAnchor(list, row);
+    row.focus({ preventScroll: true });
+    return true;
+  }
+
+  /**
+   * Whether focus is still where the Commits digit left it while its landing waited, so the
+   * landing may move it to the newest row: on the tab, on the newest row, or on the
+   * scroller, where the panel parks focus when the reader scrolls the focused row away. A
+   * refresh forgets that parking, so the render that mounts the new rows hands nothing
+   * back, and the landing must. Nowhere counts only when a refresh removed the row that
+   * held focus (refreshHistory); focus a reader sent nowhere, by clicking text, stays.
+   * Anywhere else, the reader moved it, and it stays.
+   *
+   * @param {NewestLanding} waiting
+   */
+  function focusAwaitsNewest(waiting) {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === document.body || !active.isConnected) {
+      return waiting.rowReplaced;
+    }
+    const list = panelElement()?.querySelector(".git-graph-list");
+    return (
+      (active.classList.contains("tab-btn") && active.dataset.tab === "git") ||
+      active === historyScroller() ||
+      (list instanceof HTMLElement &&
+        active === list.querySelector('.git-graph-row[data-ordinal="0"]'))
+    );
   }
 
   /** @param {Event} event */
@@ -2274,14 +2338,13 @@
       },
       { revision },
     ).finally(() => {
-      if (
-        state.selectedId === revision &&
-        selectedRowForAnchor?.parentElement instanceof HTMLElement
-      ) {
+      // A render while the commit loaded replaced the row, and anchored the list's own; the
+      // replaced row keeps its old window as a parent, so only the document can say so.
+      if (state.selectedId === revision && selectedRowForAnchor?.isConnected === true) {
         measure(
           "gitRevision:rowAnchor",
           () => {
-            if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
+            if (selectedRowForAnchor?.isConnected === true) {
               const list = panelElement()?.querySelector(".git-graph-list");
               if (list instanceof HTMLElement) {
                 setCommitRowAnchor(list, selectedRowForAnchor);
@@ -2694,6 +2757,17 @@
     }
     abortPreparation(preparationSlot);
     preparationSlot = null;
+    // The render below replaces every row, and a row that held focus takes it out of the
+    // document; a waiting landing gives it to the newest row (focusAwaitsNewest).
+    const active = document.activeElement;
+    if (
+      newestLanding !== null &&
+      active instanceof HTMLElement &&
+      active.isConnected &&
+      active.classList.contains("git-graph-row")
+    ) {
+      newestLanding.rowReplaced = true;
+    }
     disposeHistoryState(state);
     state = emptyState();
     state.selectedId = options.selectedId ?? null;
@@ -2901,9 +2975,11 @@
    * this panel does. A return to Commits after an older commit lands on the newest again.
    *
    * The pane is claimed now and keeps what it shows, marked busy, until the commit is
-   * ready, so the switch paints neither a prompt nor a blank frame. Focus stays where the
-   * switch left it, on the tab for a click or a shortcut; the newest row becomes the list's
-   * Tab stop. An empty history selects nothing and the pane says so.
+   * ready, so the switch paints neither a prompt nor a blank frame. The newest row becomes
+   * the list's Tab stop, and the row the reader left gives up its claim on focus, so a
+   * render that mounts it again does not hand it focus. A click or a history step leaves
+   * focus where it was, on the tab for a click; the tab's digit moves it to the newest row
+   * (focusCommitRow). An empty history selects nothing and the pane says so.
    *
    * @param {number} landing
    * @param {MetabrowserShellRuntime} bridge
@@ -2915,7 +2991,10 @@
     if (bridge.beginPreviewNavigation(claim)) {
       pendingPreviewClaim = claim;
     }
-    newestLanding = { landing, claim };
+    newestLanding = { landing, claim, digitFocus: null, rowReplaced: false };
+    // The selection moves the Tab stop when it lands, so a landing that loses the pane
+    // leaves the row the reader left as the list's Tab stop.
+    state.focusSuspended = false;
     try {
       bridge.activateNavPanel("git");
       if (viewHelpersReady || (await ensureViewHelpers())) {
@@ -2939,12 +3018,7 @@
     if (!waiting || !bridge) {
       return;
     }
-    if (
-      !started ||
-      waiting.landing !== landingGeneration ||
-      !bridge.isPreviewClaimCurrent(waiting.claim) ||
-      !bridge.isGitHistoryLanding()
-    ) {
+    if (!newestLandingHolds(waiting, bridge)) {
       newestLanding = null;
       return;
     }
@@ -2974,7 +3048,27 @@
       return;
     }
     newestLanding = null;
+    // The digit asked for the newest row, and the reveal has mounted it.
+    if (waiting.digitFocus !== null && focusAwaitsNewest(waiting)) {
+      focusNewestRow();
+    }
     void selectCommit(newest);
+  }
+
+  /**
+   * Whether a newest landing still waits: no later landing replaced it, and nothing took the
+   * pane or the address since it began.
+   *
+   * @param {{landing: number, claim: number}} waiting
+   * @param {MetabrowserShellRuntime} bridge
+   */
+  function newestLandingHolds(waiting, bridge) {
+    return (
+      started &&
+      waiting.landing === landingGeneration &&
+      bridge.isPreviewClaimCurrent(waiting.claim) &&
+      bridge.isGitHistoryLanding()
+    );
   }
 
   /** Whether the pane's busy state is the waiting newest landing's own, and still current. */
@@ -2992,8 +3086,14 @@
     if (!scroller) {
       return;
     }
+    // A window mounted from the first row, with the list at its top. A window from further
+    // down is redrawn even at the top: a switch resets the scroll before any render reads it.
     const range = state.mountedRange;
-    if (range?.segmentStart === 0 && (scroller.scrollTop || 0) <= historyOrigin()) {
+    if (
+      range?.segmentStart === 0 &&
+      range.start === 0 &&
+      (scroller.scrollTop || 0) <= historyOrigin()
+    ) {
       return;
     }
     state.virtualWindow.rebaseToOrdinal(0, viewportHeight(scroller), "start");

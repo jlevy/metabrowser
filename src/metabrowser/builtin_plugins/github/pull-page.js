@@ -2953,11 +2953,20 @@ export function avatarUrl(value) {
 }
 
 /** A decorative image accompanies the same visible actor, never a replacement name.
+ *
+ * When the image loads is its placement's (docs/design-system.md, "A Repaint Keeps Its
+ * Images"). Lazy, the default, leaves an avatar the reader has not scrolled to unasked, as
+ * the conversation's are: its sections are kept across tabs and polls. A placement whose
+ * avatar a repaint builds again passes `eager`, as the header does on every tab switch and
+ * poll: in WebKit, the macOS app's engine, a lazy image waits for layout and then asks the
+ * network again, so the unchanged avatar had no image for that round trip after each one.
+ *
  * @param {string} name
  * @param {unknown} url
  * @param {string} [className]
+ * @param {{loading?: "lazy" | "eager"}} [options]
  */
-export function authorLabel(name, url, className = "") {
+export function authorLabel(name, url, className = "", { loading = "lazy" } = {}) {
   const label = h("span", { class: "github-pull-identity" });
   const safe = avatarUrl(url);
   if (safe !== null) {
@@ -2966,7 +2975,7 @@ export function authorLabel(name, url, className = "") {
       alt: "",
       width: "18",
       height: "18",
-      loading: "lazy",
+      loading,
       decoding: "async",
       fetchpriority: "low",
       crossorigin: "anonymous",
@@ -4120,7 +4129,9 @@ export function mountPullPage(container, ctx, mb) {
     stateRow.hidden = false;
     stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
     stateDetails.replaceChildren(
-      ...(pull.actor === null ? [] : [authorLabel(pull.actor, pull.actorAvatar)]),
+      ...(pull.actor === null
+        ? []
+        : [authorLabel(pull.actor, pull.actorAvatar, "", { loading: "eager" })]),
       `${pull.actor === null ? "" : " "}${pull.action}: `,
       mb.mergeRefs(
         { name: pull.headRef, label: pull.head },
