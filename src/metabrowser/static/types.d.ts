@@ -3079,6 +3079,8 @@ declare global {
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
     isPullAddress(pathname: string): boolean;
+    /** The reader's own open of the served root, `/view/`. */
+    openRoot(): Promise<unknown>;
     restore(): Promise<unknown>;
     scrollShadow(): void;
   };
@@ -3089,6 +3091,8 @@ declare global {
     bindShortcuts(shortcuts: MetabrowserShortcutRegistry | null): void;
     finishGitDiscovery(): Promise<void>;
     fileLanding(): void;
+    /** Go home: the Files tab at the served root, from any tab. */
+    home(): Promise<unknown>;
     onHistory(): void;
     open(id: string): void;
     register(panel: MetabrowserNavPanel): void;
@@ -3110,6 +3114,8 @@ declare global {
     beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
+    /** The address is the neutral Commits entry: `/view/` with no commit chosen. */
+    isGitHistoryLanding(): boolean;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     openPullRequest(route: MetabrowserPullRoute): Promise<{ status: string }>;
     registerNavPanel(panel: MetabrowserNavPanel): void;

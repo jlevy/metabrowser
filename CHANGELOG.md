@@ -33,6 +33,21 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
+- Switching to the Commits tab selects the newest commit and shows its detail, every
+  time, by a click, its shortcut, or Back onto the tab, even after you read an older
+  commit there. It used to show “Select a commit to preview” on the first visit and
+  return to the last commit you read after that.
+  A link or address that names a commit still opens that commit.
+  The page you were reading stays on screen until the commit is ready, and a repository
+  with no commits says “No commits yet.”
+
+- The folder’s name at the top of the navigation goes home from any tab: clicking it, or
+  pressing Enter on it, shows the Files tab at the served root, with the tree scrolled
+  to the top. It no longer reloads the page, which from the Commits tab with no commit
+  selected came back to Commits.
+  Back returns to where you were, and a Command-click or middle click still opens the
+  root in a new tab. Screen readers announce that it goes home, and so does its tooltip.
+
 - Branch and tag chips are one size everywhere.
   A Git history row’s chips are 12px, as a pull request’s header, the Pulls list, a
   commit’s summary, and the branch selector already were; they were 10px in the history.
