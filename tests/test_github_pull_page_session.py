@@ -556,6 +556,24 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
+        # C, G, and H run the page's setTab through the shortcut facade, with or without
+        # Shift; they wait while the tab column or the page is out of reach.
+        "tabKeys": [
+            "before the record, the tab column out of the page: keys C G H, live none",
+            "C: not handled",
+            "the record arrives and paintHeader puts the column in: "
+            "Conversation C, Changes G, Checks H",
+            "live: conversation files checks",
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the route arrives: Changes",
+            "Shift+H: opened the checks route",
+            "Shift+C: opened the conversation route",
+            "Ctrl+G: not handled",
+            "staged inert: G: not handled",
+            "committed: G: opened the files route",
+            "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+        ],
     }
 
 

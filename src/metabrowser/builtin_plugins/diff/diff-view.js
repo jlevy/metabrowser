@@ -27,6 +27,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["ensureAsset"]} [ensureAsset]
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
+ * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
  */
 
 /**
@@ -63,6 +64,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
  * @property {"unified" | "split"} layout What the diff draws.
  * @property {HTMLElement | null} layoutControl
+ * @property {MetabrowserPublicPluginShortcutHandle | null} layoutKey `L`, on the option it
+ *   would select, once the toolbar has drawn the control.
  * @property {number} layoutGeneration
  * @property {boolean} listTruncated The comparison's own list stopped at its bound.
  * @property {boolean} narrow The diff is too narrow for Split.
@@ -1204,6 +1207,34 @@ function renderLayoutControl(view) {
     select: "one",
     value: view.layout,
   });
+  // The markup is new, so `L`'s badge moves to the new chip it would select.
+  const option = view.layoutKey ? layoutKeyOption(view) : null;
+  if (option) {
+    view.layoutKey?.retarget(option);
+  }
+}
+
+/**
+ * The layout chip `L` would select, the one not checked: what its badge sits on.
+ *
+ * @param {MountedDiffState} view
+ * @returns {HTMLElement | null}
+ */
+function layoutKeyOption(view) {
+  const other = view.layout === "split" ? "unified" : "split";
+  return /** @type {HTMLElement | null} */ (
+    view.layoutControl?.querySelector(`[data-chip-value="${other}"]`) ?? null
+  );
+}
+
+/**
+ * `L`: switch to the other layout, exactly as clicking its chip does. It goes through
+ * `setLayout`, so where Split does not fit, `L` chooses Split and its sideways scroll.
+ *
+ * @param {MountedDiffState} view
+ */
+export function toggleLayout(view) {
+  setLayout(view, view.layout === "split" ? "unified" : "split");
 }
 
 /**
@@ -1359,6 +1390,25 @@ function renderDiffToolbar(totals, view, showSummary) {
       }
     },
   });
+  // Once, after the first draw; each later draw retargets it, and dispose() detaches it.
+  // Every host reaches this view through the plugin's render, so a diff file, the Git
+  // commit view, and a pull request's Changes all have `L`.
+  const shortcuts = view.api?.shortcuts;
+  const option = typeof shortcuts?.attach === "function" ? layoutKeyOption(view) : null;
+  if (shortcuts && option) {
+    view.layoutKey = shortcuts.attach(option, {
+      activate: () => toggleLayout(view),
+      copy: {
+        action: "Toggle diff layout",
+        description: "Switch the diff between Split and Unified.",
+        hint: "Layout",
+      },
+      group: "controls",
+      id: "diff.layout",
+      key: "l",
+      order: 40,
+    });
+  }
   return { toolbar, unbind };
 }
 
@@ -2591,6 +2641,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layout: drawnLayout(chosenLayout, narrow, false),
     layoutControl: null,
     layoutGeneration: 0,
+    layoutKey: null,
     listTruncated: false,
     narrow,
     hydrationFailure: el("div", "diff-availability diff-hydration-failure"),
@@ -2906,6 +2957,8 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       cancelPendingWork();
       view.viewFile?.dispose();
+      view.layoutKey?.detach();
+      view.layoutKey = null;
       unbind();
       removeSelectionGate();
       root.remove();

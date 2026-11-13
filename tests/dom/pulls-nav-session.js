@@ -94,6 +94,10 @@ function createShell(
           log.push(`view told: move ${delta}${how?.repeat ? " repeating" : ""}`);
           return true;
         },
+        moveFile: (delta, how) => {
+          log.push(`view told: move file ${delta}${how?.repeat ? " repeating" : ""}`);
+          return true;
+        },
         released: () => log.push("view told: released"),
         activateAnchor: () => {
           log.push("view told: open the row with focus");
@@ -429,7 +433,7 @@ async function stackKeysStory() {
   const press = (key, values = {}) => {
     const event = {
       key,
-      shiftKey: true,
+      shiftKey: false,
       repeat: false,
       altKey: false,
       ctrlKey: false,
@@ -445,44 +449,63 @@ async function stackKeysStory() {
     dispatch(event);
     return event.defaultPrevented;
   };
-  assert(press("J"));
-  assert(press("K"));
+  assert(press("p"));
+  assert(press("n"));
   assert.deepEqual(moves, [-1, 1], "global direction reaches the active subtab without row focus");
+  // Shift never changes a key, so a reader holding it still walks the stack.
+  assert(press("P", { shiftKey: true }));
+  assert(press("N", { shiftKey: true }));
+  assert.deepEqual(moves, [-1, 1, -1, 1], "Shift+P and Shift+N walk the stack as P and N do");
+  assert.equal(press("n", { metaKey: true }), false, "Command+N stays the browser's");
   const rowScope = registry.activateScope("pull-rows");
-  const plainJ = press("j", { shiftKey: false });
+  const plainJ = press("j");
   assert(plainJ);
   assert.deepEqual(page.take(), ["view told: move 1"]);
-  assert.equal(press("J", { repeat: true }), false);
-  assert.equal(press("J", { target: { tagName: "INPUT" } }), false);
-  assert.equal(press("J", { target: { tagName: "DIV", isContentEditable: true } }), false);
+  // On a focused row, J and K move the row with or without Shift; only N and P
+  // reach the stack.
+  const shiftedRowKeys = [press("J", { shiftKey: true }), press("K", { shiftKey: true })];
+  const shiftedRowMoves = page.take();
+  assert.deepEqual(shiftedRowKeys, [true, true]);
+  assert.deepEqual(shiftedRowMoves, ["view told: move 1", "view told: move -1"]);
+  const fileScope = registry.activateScope("pull-files");
+  const shiftedFileKeys = [press("J", { shiftKey: true }), press("K", { shiftKey: true })];
+  const shiftedFileMoves = page.take();
+  fileScope();
+  assert.deepEqual(shiftedFileKeys, [true, true]);
+  assert.deepEqual(shiftedFileMoves, ["view told: move file 1", "view told: move file -1"]);
+  assert(press("n"), "N still walks the stack while a row has focus");
+  assert.deepEqual(moves, [-1, 1, -1, 1, 1], "row keys never reach the stack");
+  assert.equal(press("P", { repeat: true }), false);
+  assert.equal(press("P", { target: { tagName: "INPUT" } }), false);
+  assert.equal(press("P", { target: { tagName: "DIV", isContentEditable: true } }), false);
   const closeHelp = registry.activateScope("help", { exclusive: true });
-  assert.equal(press("J"), false);
+  assert.equal(press("P"), false);
   closeHelp();
   const closeModal = registry.activateScope("dialog", { exclusive: true });
-  assert.equal(press("K"), false);
+  assert.equal(press("N"), false);
   closeModal();
-  assert.deepEqual(moves, [-1, 1], "repeat, editor, Help and modal never navigate");
+  assert.deepEqual(moves, [-1, 1, -1, 1, 1], "repeat, editor, Help and modal never navigate");
   endpoint = true;
-  assert(press("J"));
+  assert(press("p"));
   assert.equal(moves.at(-1), "endpoint", "endpoint is consumed without a row fallback");
   assert.deepEqual(page.take(), []);
   endpoint = false;
   known = false;
-  assert.equal(press("K"), false);
+  assert.equal(press("n"), false);
   known = true;
-  assert(press("K"), "newly known membership becomes available without re-registration");
+  assert(press("n"), "newly known membership becomes available without re-registration");
   page.shell.pages.set(7, {});
-  assert.equal(press("J"), false, "custom PR pages may omit stack navigation");
+  assert.equal(press("p"), false, "custom PR pages may omit stack navigation");
   page.shell.pages.set(7, { hasStack: () => true });
-  assert.equal(press("J"), false, "a partial capability cannot consume navigation");
+  assert.equal(press("p"), false, "a partial capability cannot consume navigation");
   page.shell.pages.set(7, renderer);
   page.deps.activate("files");
-  assert.equal(press("J"), false, "a hidden Pulls panel does not own a global command");
+  assert.equal(press("p"), false, "a hidden Pulls panel does not own a global command");
   page.deps.activate("pulls");
   page.shell.address = new URL("/pulls", "http://x");
-  assert.equal(press("J"), false, "the list has no active PR stack");
+  assert.equal(press("p"), false, "the list has no active PR stack");
   page.shell.address = new URL("/view/README.md", "http://x");
-  assert.equal(press("K"), false, "another preview does not reuse an old PR capability");
+  assert.equal(press("n"), false, "another preview does not reuse an old PR capability");
   page.shell.address = new URL("/pull/7/checks", "http://x");
   const help = registry
     .snapshot("help", { includeInactive: true })
@@ -493,12 +516,12 @@ async function stackKeysStory() {
   }));
   assert.deepEqual(
     Array.from(copy, (entry) => entry.keys),
-    ["Shift plus J", "Shift plus K"],
+    ["N", "P"],
   );
-  const visible = registry.present("pulls.stack.base").bindings.visible[0].keys;
-  assert.deepEqual(Array.from(visible), ["⇧", "J"]);
+  const visible = registry.present("pulls.stack.base").bindings.visible;
+  assert.deepEqual(Array.from(visible), ["P"]);
   host.dispose();
-  assert.equal(press("J"), false, "disposed pages cannot navigate even before registry cleanup");
+  assert.equal(press("p"), false, "disposed pages cannot navigate even before registry cleanup");
   rowScope();
   for (const remove of unregister) {
     remove();
@@ -507,8 +530,11 @@ async function stackKeysStory() {
   registry.dispose();
   return {
     directions: moves.slice(0, 2),
+    shiftedDirections: moves.slice(2, 4),
     endpointConsumed: true,
     plainJRemainsRowNavigation: plainJ,
+    shiftedRowKeysMoveTheRow: { handled: shiftedRowKeys, did: shiftedRowMoves },
+    shiftedFileKeysMoveTheFile: { handled: shiftedFileKeys, did: shiftedFileMoves },
     guards: [
       "repeat",
       "input",

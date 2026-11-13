@@ -8,6 +8,7 @@ the existing preview navigation path.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
@@ -57,6 +58,9 @@ def test_quick_file_assets_load_in_deferred_dependency_order() -> None:
         "/static/keyboard-shortcuts.js",
         "/static/overlay-layer.js",
         "/static/keyboard-help.js",
+        "/static/key-reveal.js",
+        "/static/shell-keymap.js",
+        "/static/plugin-shortcuts.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
     )
@@ -124,17 +128,31 @@ def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
     assert 'hostDocument.addEventListener("keydown"' not in palette
 
 
+# A document-level key listener, however the call is wrapped across lines.
+DOCUMENT_KEY_LISTENER = re.compile(
+    r"\b(?:hostDocument|document)\.addEventListener\(\s*\"key(?:down|up)\""
+)
+
+
 def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
     registry = proc_browser.STATIC_DIR.joinpath("keyboard-shortcuts.js").read_text()
     assert registry.count('hostDocument.addEventListener("keydown"') == 1
+    # The key reveal hears keys only through the registry's observer, and the registry's
+    # one keyup listener, which exists only while an observer does, dispatches nothing.
+    assert registry.count('hostDocument.addEventListener("keyup"') == 1
     for filename in (
+        "key-reveal.js",
         "keyboard-help.js",
+        "main-tabs.js",
         "overlay-layer.js",
+        "plugin-shortcuts.js",
+        "pulls-nav.js",
         "search-palette.js",
+        "shell-keymap.js",
         "tree-keyboard-navigation.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
-        assert 'hostDocument.addEventListener("keydown"' not in source
+        assert DOCUMENT_KEY_LISTENER.search(source) is None, filename
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
