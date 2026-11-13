@@ -78,10 +78,9 @@ function summarize(model) {
       model.countNumber === null
         ? model.repository
         : model.countNumber + model.countSuffix + model.repository,
-    window: model.window,
     connection: model.connection,
     empty: model.empty,
-    loadMore: model.loadMore,
+    progress: model.progress,
     github: model.github,
     live: model.live || null,
     rowsHeld: rows.length || null,
@@ -359,7 +358,7 @@ async function run() {
   controller.dispose();
 
   // A large real catalog is read in bounded cache pages. Older backfill progress does not
-  // replace the prefix or silently enlarge the display budget.
+  // replace the prefix or read rows ahead of the reader; scrolling reads them, a page at a time.
   page = createPage();
   page.clock.now = Date.parse(recorded.large_0.body.fetched_at) + 30_000;
   controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
@@ -379,22 +378,39 @@ async function run() {
   assert(controller.snapshot().rows === 500, "catalog growth must not grow display");
   assert(page.rowsVersion() === beforeProgress, "older appends preserve prefix identity");
   steps.push(page.observe("6,000 cached: the same 500 rows stay in place", controller));
-  void controller.loadMore();
-  await settle();
   for (let index = 5; index < 10; index += 1) {
+    const approach = controller.reachedEnd();
+    await settle();
+    assert(page.waitingCount() === 1, "each approach to the tail reads one page");
+    if (index === 5) {
+      const reading = page.observe("nearing the tail reads the next cached page", controller);
+      assert(
+        reading.paint.progress === "Fetching pull requests…",
+        "a page on its way shows the crawl's indicator below the rows",
+      );
+      steps.push(reading);
+    }
     await page.answer(recorded[`large_${index}`]);
+    await approach;
   }
-  assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
+  assert(controller.snapshot().rows === 1000, "five approaches read five more pages");
   assert(page.filterTotals()?.all === 6000, "an older append cannot roll back newer tallies");
   const moreCached = page.observe(
-    "Fetch more displays another 500 cached rows without provider work",
+    "scrolling to the tail five times reads 500 more cached rows without provider work",
     controller,
   );
   assert(
     moreCached.paint.listName.endsWith("6,000 pull requests"),
     "the selected total stays current",
   );
-  assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
+  assert(
+    !JSON.stringify(moreCached.paint).match(/Showing last|cached|Fetch more/u),
+    "no notice says how many rows are held",
+  );
+  assert(
+    moreCached.paint.progress === undefined,
+    "every row is cached: the next page waits for the reader, with nothing below the rows",
+  );
   assert(
     moreCached.paint.connection.state === "connected" &&
       moreCached.paint.connection.refreshing === true &&

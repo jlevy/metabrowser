@@ -1790,7 +1790,7 @@ measure metadata ingestion.
    Record whether the browser cache is retained.
    Cached metadata GETs make no provider calls, and a fresh complete catalog does not
    restart backfill. Verify the selected PR and cached conversation, Open/Closed/All, and
-   Fetch more without losing the count or selection.
+   scrolling past the first 500 rows without losing the count or selection.
 3. **One incremental revalidation.** Change one old PR’s timestamp and title in the
    fixture, then explicitly Retry or wait until due.
    Observe the UPDATED_AT prefix scan, the changed row, and unchanged unrelated rows.

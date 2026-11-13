@@ -1957,7 +1957,14 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert 'class: "btn github-pulls-reload"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
-    assert 'class: "btn github-pulls-more"' in panel
+    # No control or notice counts the rows held. Below them, pages still on their way show
+    # the nav's own scan indicator, its spinner and text classes, after the quiet period.
+    assert "github-pulls-more" not in panel and "Showing last" not in panel
+    assert "Catalog paused" not in panel
+    assert 'class: "github-pulls-progress mb-delayed-loading"' in panel
+    assert 'h("span", { class: "index-progress-spinner", "aria-hidden": "true" })' in panel
+    assert 'h("span", { class: "index-progress-text" })' in panel
+    assert "pull requests fetched" in panel
     # Rows already shown are never covered by progress ("Refreshing Content"): the spinner and
     # "Fetching pull requests…" are only for a list with no rows. While rows are held, the
     # connection row keeps its age, muted and breathing, and a row whose data GitHub is read

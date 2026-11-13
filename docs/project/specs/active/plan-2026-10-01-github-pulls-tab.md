@@ -185,7 +185,10 @@ A filter starts with up to 500 matching summaries.
 When the reader approaches the end of the visible prefix, the list admits one more
 bounded window from the local catalog.
 If the catalog still needs rows, the shared refresh job fills the missing metadata.
-**Fetch more** remains available for an explicit larger request and recovery.
+Bead `mb-0zil` removed the cap this left visible: there is no **Fetch more** and no
+“Showing last N”. Scrolling continues to the filter’s oldest row, the navigation’s scan
+indicator shows below the rows while pages are read or fetched, and the backfill past
+the reader’s prefix waits for GitHub’s GraphQL budget (`gh_budget`).
 
 Keep the active row, its scroll position, and the selected filter while rows append.
 Preserve the server’s page cursor across partial windows and stop at the filter’s real
