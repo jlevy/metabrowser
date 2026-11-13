@@ -200,6 +200,18 @@ make install
 uv --config-file uv.toml run --frozen metab ./path/to/directory
 ```
 
+### macOS App
+
+There is also an optional native macOS app in [apps/macos](apps/macos/README.md), a thin
+shell over `metab` that opens each folder in its own window.
+It is an alpha preview: a development build you build from source, not yet a signed or
+notarized release, and it may change.
+It needs macOS 26 or later on Apple silicon, Xcode 26 with Swift 6.3 or later to build
+it (`make macos-app`), and the `metab` CLI, which the app finds and runs; without one it
+shows what to install.
+It needs `metab` 0.12.1 or later, so until that is on PyPI it runs a source checkout’s;
+see [the macOS app](docs/installation.md#the-macos-app) in the installation guide.
+
 > [!WARNING]
 > Metabrowser is not a secure, public-facing web server.
 > It is a local tool for trusted users browsing files locally or via trusted channels
@@ -343,7 +355,8 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 
 Using Metabrowser:
 
-- [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Installation](docs/installation.md) — uv setup, upgrades, the macOS app, and the
+  agent skill
 - [Reviewing pull requests](docs/reviewing-pull-requests.md) — open a GitHub pull
   request from its URL, including private and large repositories, several at once, and
   offline
