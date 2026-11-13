@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The author’s avatar in a pull request’s header no longer flickers in the macOS app.
+  Switching tabs, or a refresh while the page was open, blanked it for a moment, because
+  each repaint built it again as a lazy image, which WebKit fetched again before drawing
+  it. The header’s avatar, and a Pulls row’s, now load at once from the copy already
+  loaded; a conversation’s avatars still load as you scroll to them.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
 - Switching to the Commits tab selects the newest commit and shows its detail, every
   time, by a click, its shortcut, or Back onto the tab, even after you read an older
   commit there. It used to show “Select a commit to preview” on the first visit and

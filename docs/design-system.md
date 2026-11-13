@@ -1380,8 +1380,14 @@ Compact navigation ages and branch chips retain their smaller chrome sizes.
 
 Author avatars are decorative circles beside the visible username, with fixed dimensions
 so image arrival or failure does not move the text.
-Images load lazily, asynchronously, and at low priority; only mounted catalog rows can
-create images. Missing or unsupported image URLs leave the username readable.
+Images load at low priority and decode asynchronously, and when they load depends on
+where they are ([A Repaint Keeps Its Images](#a-repaint-keeps-its-images)). The header’s
+avatar is eager, because every repaint builds it again.
+A Pulls row’s is eager, because only mounted catalog rows can create images, which
+bounds what the Pulls tab asks for.
+The conversation’s are lazy: its sections are kept across tabs and polls, and an avatar
+far down a long conversation waits until the reader nears it.
+Missing or unsupported image URLs leave the username readable.
 Use the avatar of the named actor: a merged header naming the merger shows the merger’s
 image, while the description shows its author’s image.
 Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
@@ -2952,6 +2958,39 @@ The skeleton and spinner forms above remain for content with nothing usable cach
 `test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast` holds the
 utility, its tokens, and its contrast, and
 `test_no_pull_request_surface_says_it_may_be_out_of_date` the copy.
+
+### A Repaint Keeps Its Images
+
+**A repaint never blanks an image whose address did not change.** Where it can, a view
+keeps the image’s node: the Pulls tab patches a row in place and builds its metadata
+line, avatar and all, again only when the author, the avatar, or a branch changed, and
+the pull request page keeps its conversation’s sections across tabs and polls.
+Where a repaint builds an image again, as the pull request page builds its header’s
+actor on every tab switch and poll, the image is created with `loading="eager"`. So is
+an image that only the visible window creates, such as a Pulls row’s avatar, which the
+list mounts again as it scrolls back.
+The conversation’s avatars stay `loading="lazy"`, as a long document’s figures do, so
+neither is asked for until the reader nears it.
+
+A lazy image waits for layout before it asks for its bytes, and WebKit, the macOS app’s
+engine, then asks the network again rather than use the copy it holds.
+Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, with the
+avatar served locally after 80 ms, by reading the header’s avatar at each animation
+frame and counting requests at the server: on each of 9 tab switches the rebuilt lazy
+avatar was requested again, and its `complete` was false and its `naturalWidth` 0 for 3
+frames, 100 ms at that window’s 30 frames a second.
+Eager, it made no request, and `complete` and `naturalWidth` were set in its first frame
+on all 9. That the eager avatar then paints in that frame is an inference: a page cannot
+read WebKit’s decoding or paint.
+Pixels were read only in headless Chrome 152, whose screencast showed no blank avatar
+frame in 9 switches either way; Chrome had the lazy image complete in its first frame
+too, so the blank was WebKit’s.
+
+An image whose address does change is a new image, and its slot keeps its size, so its
+arrival moves nothing.
+`test_each_avatar_loads_by_its_placement_across_repaints` checks, in a browserless DOM,
+each avatar’s loading by placement and which avatars a repaint keeps or builds: its
+attributes and node lifecycle, not its paint.
 
 ## Text Selection
 

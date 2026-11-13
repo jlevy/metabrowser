@@ -124,9 +124,10 @@ through `metab --api`:
   mark alone, the colored M and B without the icon’s squircle, drawn from the icon
   masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper tints
   of the mark’s two hues, so each reads at 4:1 or more.
-  The mark is 13 points tall (`mb-6bfu`), centered on the window buttons’ row, about 9
-  points from the window’s trailing edge, and a link: a click opens the project on
-  GitHub, under a gentle hover (`mb-j441`).
+  The mark is 13 points tall (`mb-6bfu`), centered on the window buttons’ row, about 14
+  points from the window’s trailing edge (`mb-2x8f`), and a link: a click opens the
+  project on GitHub, under a gentle hover with square corners, as the web page’s hovers
+  have (`mb-j441`, `mb-2x8f`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
   window’s represented URL, so Command-click, right-click, or VoiceOver’s Show Menu on
   the title opens the path menu.
