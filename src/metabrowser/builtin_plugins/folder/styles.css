@@ -154,6 +154,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -166,6 +167,7 @@
   color: var(--viz-text);
   opacity: 0.8;
   font-variant-numeric: tabular-nums;
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -233,6 +235,7 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   font-variant-numeric: tabular-nums;
+  -webkit-user-select: text;
   user-select: text;
 }
 

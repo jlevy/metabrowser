@@ -176,7 +176,7 @@
 
     var collapsedCls = startCollapsed ? " collapsed" : " expanded";
     var html =
-      '<div class="tally-node' +
+      '<div class="tally-node disclosure-toggle' +
       collapsedCls +
       '"><span class="tally-toggle">' +
       ICONS.toggle +

@@ -651,6 +651,7 @@
   font-size: var(--nav-font-size);
   text-decoration: none;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   /* The sticky filters do not cover a row brought into view. */
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
@@ -788,6 +789,7 @@
   font-size: var(--nav-font-size);
   text-decoration: none;
   cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }

@@ -25,7 +25,7 @@ export function createPanelSlot(descriptor) {
   let disposeDisclosure = () => {};
   if (collapsible) {
     const toggle = document.createElement("button");
-    toggle.className = "folder-overview-panel-toggle section-disclosure-trigger";
+    toggle.className = "folder-overview-panel-toggle section-disclosure-trigger disclosure-toggle";
     toggle.type = "button";
     toggle.textContent = descriptor.label;
     toggle.setAttribute("id", toggleId);
