@@ -255,8 +255,9 @@ async function run() {
     setup();
     window.location.pathname = "/pull/10";
     const posts = [];
-    globalThis.fetch = async (_route, options = {}) => {
-      if (options.method === "POST") {
+    globalThis.fetch = async (route, options = {}) => {
+      // A commit timeline read is not the refresh this counts.
+      if (options.method === "POST" && !route.includes("pull-timeline")) {
         posts.push(JSON.parse(options.body));
       }
       const answer = options.method === "POST" ? checkout.started : checkout.before;

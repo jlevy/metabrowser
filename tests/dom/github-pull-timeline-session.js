@@ -1,4 +1,5 @@
-// A selected Conversation paints before its optional GitHub projection.
+// A selected Conversation paints before its optional GitHub projection, which then goes
+// after everything painted; a first paint with the projection already held places it.
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -58,7 +59,7 @@ const response = (body, status = 200) => ({
   json: async () => body,
 });
 
-function mount(mountPullPage, envelope) {
+function mount(mountPullPage, envelope, how = {}) {
   const frames = new Map();
   const timers = new Map();
   const marks = [];
@@ -156,7 +157,7 @@ function mount(mountPullPage, envelope) {
       ensureAsset: async () => {},
       loadKpressAssets: async () => {},
       ...refHelpers(document),
-      formatAge: () => ({ label: "1d ago", className: "age" }),
+      formatAge: how.formatAge ?? (() => ({ label: "1d ago", className: "age" })),
       formatTimestamp: () => "Sep 16, 2026",
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
@@ -216,16 +217,37 @@ async function run() {
   const { mountPullPage, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
+  const commit = {
+    kind: "commit",
+    oid: firstCommit,
+    subject: "<img> First commit",
+    committed_at: "2026-09-16T09:00:00Z",
+  };
+  const events = [
+    { kind: "review", id: "15" }, // A pending review stays with the unmatched discussion.
+    { kind: "comment", id: wideId },
+    commit,
+    commit, // A page boundary can repeat an event.
+    { kind: "comment", id: wideId },
+    { kind: "review", id: wideId },
+    { kind: "commit", oid: lastCommit, subject: "Last commit", committed_at: null },
+    { kind: "commit", oid: "https://example.com/", subject: "Invalid ID" },
+  ];
+  const cachedOnly = { number: 7, record_revision: firstRevision, cached_only: true };
+
+  // The conversation paints at once, reading no commits; the commits that answer once it is
+  // shown go after everything it painted, in their order, with every painted node in place.
   const session = mount(mountPullPage, fixture());
   await session.handle.ready;
   await settle();
   session.frame();
   assert.equal(session.timelines.length, 0, "staging never starts a timeline read");
-  const body = session.body();
-  const original = order(body);
-  const description = body.children[0].querySelector(".metabrowser-kpress-host");
-  const focus = body.children[1].querySelector("a[href]");
-  assert.ok(description && focus);
+  const placed = session.body();
+  const original = order(placed);
+  const painted = [...placed.children];
+  const heldDescription = placed.children[0].querySelector(".metabrowser-kpress-host");
+  const focus = placed.children[1].querySelector("a[href]");
+  assert.ok(heldDescription && focus, "the description's Markdown is in its first paint");
   document.activeElement = focus;
   assert.ok(session.markdown.includes(`review/${wideId}`));
   assert.ok(session.markdown.includes(`issue_comment/${wideId}`));
@@ -235,7 +257,7 @@ async function run() {
   session.frame();
   const [first] = session.timelines;
   // Commits join a conversation already shown: the age breathes, and nothing spins.
-  assert.equal(body.querySelector(".spinner"), null);
+  assert.equal(placed.querySelector(".spinner"), null);
   const age = session.status().querySelector(".github-pull-freshness");
   assert.ok(age.classes.has("mb-refreshing"));
   assert.equal(age.getAttribute("aria-busy"), "true");
@@ -244,25 +266,27 @@ async function run() {
     session.marks.indexOf("githubPull:conversationReady") <
       session.marks.indexOf("timeline request"),
   );
-  const commit = {
-    kind: "commit",
-    oid: firstCommit,
-    subject: "<img> First commit",
-    committed_at: "2026-09-16T09:00:00Z",
-  };
-  first.answer("partial", [
-    { kind: "review", id: "15" }, // A pending review stays with the unmatched discussion.
-    { kind: "comment", id: wideId },
-    commit,
-    commit, // A page boundary can repeat an event.
-    { kind: "comment", id: wideId },
-    { kind: "review", id: wideId },
-    { kind: "commit", oid: lastCommit, subject: "Last commit", committed_at: null },
-    { kind: "commit", oid: "https://example.com/", subject: "Invalid ID" },
-  ]);
+  first.answer("partial", events);
   await settle();
-  const interleaved = order(body);
   assert.equal(age.getAttribute("aria-busy"), null, "the commits arrived");
+  const appended = order(placed);
+  assert.deepEqual(
+    appended,
+    [...original, "<img> First commit", "Last commit", "Some commits may be missing."],
+    "late commits go after everything painted",
+  );
+  assert.deepEqual(placed.children.slice(0, painted.length), painted, "nothing painted moved");
+  assert.equal(document.activeElement, focus);
+  assert.ok(session.marks.includes("githubPull:timelineReady"));
+
+  // A first paint with the projection held places its commits among the cards, in provider
+  // order: here the Conversation painted again on a tab's return.
+  window.location.pathname = "/pull/7/checks";
+  session.handle.land({ tab: "checks" });
+  window.location.pathname = "/pull/7";
+  session.handle.land({ tab: "" });
+  await settle();
+  const interleaved = order(placed);
   assert.deepEqual(interleaved.slice(0, 8), [
     "body",
     `issue_comment/${wideId}`,
@@ -273,32 +297,32 @@ async function run() {
     "review/15",
     "Some commits may be missing.",
   ]);
-  assert.equal(body.children[0].querySelector(".metabrowser-kpress-host"), description);
-  assert.equal(body.children[3].querySelector("a[href]"), focus);
-  assert.equal(document.activeElement, focus);
-  assert.ok(body.children[2].textContent.includes("committed 1d ago"));
-  assert.doesNotMatch(body.children[4].textContent, /committed/);
-  const link = body.children[2].querySelector("a[href]");
+  assert.equal(placed.children[0].querySelector(".metabrowser-kpress-host"), heldDescription);
+  assert.ok(placed.children[2].textContent.includes("committed 1d ago"));
+  assert.doesNotMatch(placed.children[4].textContent, /committed/);
+  const link = placed.children[2].querySelector("a[href]");
   const destination = link.getAttribute("href");
   assert.equal(destination, `https://github.com/octo/demo/pull/7/commits/${firstCommit}`);
   assert.equal(link.textContent, firstCommit.slice(0, 7));
   assert.equal(link.getAttribute("target"), "_blank");
   assert.equal(link.getAttribute("rel"), "noopener noreferrer");
   assert.equal(link.children.at(0).getAttribute("data-external-kind"), "github");
-  assert.ok(session.marks.includes("githubPull:timelineReady"));
+  session.frame();
+  session.frame();
+  assert.equal(session.timelines.length, 1, "a held projection is not read again");
 
   // The last published result is still shown if this exact record starts refreshing.
   session.replace({ ...fixture(), refreshing: true });
   session.timer(SLOW_POLL_MS);
   await settle();
-  assert.deepEqual(order(body), interleaved);
+  assert.deepEqual(order(placed), interleaved);
   assert.equal(session.timelines.length, 1);
-  // A changed record immediately retires its ordering, without repainting its same texts.
+  // A changed record keeps the rows it shows, and its same texts, until its own answers.
   session.replace({ ...fixture(), record_revision: nextRevision });
   session.timer(FAST_POLL_MS);
   await settle();
-  assert.deepEqual(order(body), original);
-  assert.equal(body.children[0].querySelector(".metabrowser-kpress-host"), description);
+  assert.deepEqual(order(placed), interleaved);
+  assert.equal(placed.children[0].querySelector(".metabrowser-kpress-host"), heldDescription);
   session.frame();
   session.frame();
   const replacement = session.timelines[1];
@@ -310,18 +334,91 @@ async function run() {
   assert.equal(replacement.signal.aborted, true);
   replacement.answer("complete", [commit]);
   await settle();
-  assert.deepEqual(order(body), original);
+  assert.deepEqual(order(placed), interleaved);
   session.frame();
   session.frame();
   const departing = session.timelines[2];
   assert.equal(departing.request.record_revision, firstRevision);
-  window.location.pathname = "/pull/7/files";
-  session.handle.setTab("files");
-  assert.equal(departing.signal.aborted, true);
+  // Its answer removes what it no longer has, and moves nothing else.
   departing.answer("complete", [commit]);
   await settle();
-  assert.equal(body.querySelector(".github-pull-commit"), null);
+  assert.deepEqual(
+    order(placed),
+    interleaved.filter((part) => !["Last commit", "Some commits may be missing."].includes(part)),
+  );
+  window.location.pathname = "/pull/7/files";
+  session.handle.setTab("files");
+  assert.equal(placed.querySelector(".github-pull-commit"), null);
   session.handle.dispose();
+
+  // A changed record keeps the rows it shows while its own timeline is on its way, and
+  // retires them when that answers with nothing: they may name commits it no longer has.
+  const superseded = mount(mountPullPage, fixture());
+  await superseded.handle.ready;
+  await settle();
+  superseded.handle.activate();
+  superseded.frame();
+  superseded.frame();
+  superseded.timelines[0].answer("complete", [commit]);
+  await settle();
+  assert.ok(superseded.body().querySelector(".github-pull-commit"));
+  superseded.replace({ ...fixture(), record_revision: nextRevision });
+  superseded.timer(SLOW_POLL_MS);
+  await settle();
+  assert.ok(superseded.body().querySelector(".github-pull-commit"), "kept while its read runs");
+  superseded.frame();
+  superseded.frame();
+  assert.equal(superseded.timelines[1].request.record_revision, nextRevision);
+  superseded.timelines[1].answer("unavailable", []);
+  await settle();
+  assert.equal(
+    superseded.body().querySelector(".github-pull-commit"),
+    null,
+    "a record with no projection of its own shows no other record's commits",
+  );
+  assert.deepEqual(order(superseded.body()), original);
+  superseded.handle.dispose();
+
+  // A kept commit row tells its age again at each paint, as a kept card does: three hours on,
+  // a refresh that adds a comment and a timeline that answers the same commit read it as of
+  // now (review C5).
+  {
+    let clock = Date.parse("2026-09-16T18:00:00Z");
+    const minutesAgo = (seconds) => ({
+      label: `${Math.round((clock - seconds * 1000) / 60_000)} min`,
+      className: "age",
+    });
+    const aged = mount(mountPullPage, fixture(), { formatAge: minutesAgo });
+    await aged.handle.ready;
+    await settle();
+    aged.handle.activate();
+    aged.frame();
+    aged.frame();
+    const recent = { ...commit, committed_at: "2026-09-16T17:50:00Z" };
+    aged.timelines[0].answer("complete", [recent]);
+    await settle();
+    const commitAge = () =>
+      aged.body().querySelector(".github-pull-commit")?.querySelector(".github-pull-age")
+        ?.textContent;
+    const atFirst = commitAge();
+    clock += 180 * 60_000;
+    const later = { ...fixture(), record_revision: nextRevision };
+    later.record.issue_comments.push({
+      ...later.record.issue_comments[0],
+      id: 99,
+      timeline_id: "99",
+      body: "A later comment.",
+    });
+    aged.replace(later);
+    aged.timer(SLOW_POLL_MS);
+    await settle();
+    aged.frame();
+    aged.frame();
+    aged.timelines.at(-1).answer("complete", [recent]);
+    await settle();
+    assert.deepEqual([atFirst, commitAge()], ["10 min", "190 min"], "a kept commit row's age");
+    aged.handle.dispose();
+  }
 
   // A stale page can show held commits without putting a timeline provider read
   // ahead of metadata. A missed lookup is remembered throughout the refresh.
@@ -329,15 +426,12 @@ async function run() {
     const stale = mount(mountPullPage, fixture("stale"));
     await stale.handle.ready;
     await settle();
+    assert.equal(stale.timelines.length, 0, "a staged stale page reads no commits");
     stale.handle.activate();
     stale.frame();
     stale.frame();
     const [cached] = stale.timelines;
-    assert.deepEqual(cached.request, {
-      number: 7,
-      record_revision: firstRevision,
-      cached_only: true,
-    });
+    assert.deepEqual(cached.request, cachedOnly);
     assert.equal(stale.body().querySelector(".spinner"), null);
     if (outcome === "hit") {
       cached.answer("complete", [commit]);
@@ -452,9 +546,12 @@ async function run() {
         commit,
       ]);
       await settle();
-      assert.equal(transient.body().querySelectorAll(".github-pull-commit").length, 2);
+      const rows = transient.body().querySelectorAll(".github-pull-commit");
+      assert.equal(rows.length, 2);
       assert.equal(document.activeElement, commitLink);
-      assert.ok(transient.body().querySelectorAll(".github-pull-commit")[1].contains(commitLink));
+      // The shown row stays where it is; the recovered one follows everything painted.
+      assert.ok(rows[0].contains(commitLink));
+      assert.match(rows[1].textContent, /Recovered commit/);
       assert.equal(
         transient.marks.filter((label) => label === "githubPull:timelineReady").length,
         1,
@@ -468,14 +565,18 @@ async function run() {
   }
   return {
     interleaved: interleaved.slice(0, 8),
+    appended: appended.slice(original.length),
     destination,
     heldMarkdownAndFocus: true,
+    lateCommitsMoveNothing: true,
     staleCacheHitBeforeMetadata: true,
     staleCacheMissWaited: true,
     supersededReadAborted: true,
     departedReadAborted: true,
     unavailableKeepsDiscussion: true,
     transientRetryIsBoundedAndKeepsPartial: true,
+    supersededRowsRetired: true,
+    keptCommitRowsRetellAges: true,
   };
 }
 
