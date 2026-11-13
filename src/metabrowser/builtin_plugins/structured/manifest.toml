@@ -20,7 +20,7 @@ priority = 0
 kind = "structured"
 id = "tree"
 label = "Tree"
-key = "r"
+key = "v"
 default = true
 
 [[view]]

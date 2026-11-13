@@ -230,6 +230,13 @@ The bare digit is the binding that actually works there.
 
 ### Key Allocation Rules
 
+> **Superseded on 2026-11-13.** The main tabs are letters now, situational items take
+> positional numbers, and ancillary items have no key; see
+> [the addendum](#addendum-2026-11-13-letters-numbers-and-no-ancillary-keys) and
+> [Keyboard Shortcuts](../../../design-system.md#keyboard-shortcuts) in the design
+> system, the one reference.
+> The rules below are the plan as it shipped first.
+
 Every key belongs to one of three tiers, allocated in this order:
 
 1. **Digits select the navigation pane’s tabs, one fixed digit per tab.** Files is `1`,
@@ -275,6 +282,9 @@ registration and arbitrates a shared one at dispatch, and the open questions ask
 built-in plugins should declare theirs so the build can see them too.
 
 ### Keymap
+
+> **Superseded on 2026-11-13.** The current keymap is the table in
+> [Keyboard Shortcuts](../../../design-system.md#keyboard-shortcuts).
 
 | Key | Target | Live while | Tier | Reason |
 | --- | --- | --- | --- | --- |
@@ -1686,6 +1696,51 @@ phase 2 lands.
 - **The Metabrowser menu.** It has no key here because `M` is Treemap and its other
   letters are taken or weak.
   Is there a letter worth reserving for it?
+
+## Addendum, 2026-11-13: Letters, Numbers, and No Ancillary Keys
+
+The user refined the scheme after the stack merged.
+Their rules, in their words: no shortcuts on “ancillary” items like copying a hash, but
+shortcuts on major tabs and major buttons wherever possible; “letters for known meanings
+and numbers for one-off actions that don’t fit known patterns”; a few letters are
+reusable semantics, as `J` and `K` are down and up and `N` and `P` next and previous at
+a higher level, as in Vim; situational items, such as links and other actions, take `1`,
+`2`, `3`, and on in sequence up to `9`, then stop; and Help must make clear the numbers
+are not fixed. The main tabs move to Files, Pulls, Commits, in that order.
+
+What changed, against the plan above:
+
+- **Allocation.** The digit tier for the navigation tabs is gone.
+  Letters name known meanings and keep them everywhere (`F`, `R`, `H`, `T`, `U`, `W`);
+  reusable letters (`J` and `K`, `N` and `P`, `V` and `S`) apply wherever their meaning
+  does; tab letters stay scoped to their bar.
+- **Main tabs.** Files `F`, Pulls `R`, Commits `H`, in that order.
+  `P` was asked for Pulls first, and the user then chose `P` for previous, so Pulls took
+  `R`, for pull Requests; `U` stays Up.
+- **Collisions settled.** The HTML Preview tab moved from `P` to `V`, so `P` means only
+  previous. `V` became every kind’s rendered view, so Document (`D`), Tree (`R`, which
+  Pulls now holds), and Log (`L`) moved to `V` too, and Raw JSON moved from `R` to `S`,
+  the source. Checks moved from `H`, now History, to `E`, the one free letter of its
+  label: `C` is Conversation’s, `K` moves a row up, and `S` is Source.
+- **Numbers.** A situational control is numbered by one registry mechanism,
+  `attachNumbered()`, which the shell calls and plugins reach through
+  `metabrowser.shortcuts.attach(element, {numbered: true, ...})`: its number is its
+  place among the live numbered controls in document order, `1` to `9`, and a tenth gets
+  none. The registry presents the numbers as one `situational` command, so Help shows one
+  row, `1`–`9`, under “On this screen”, and no digit has a fixed meaning.
+  The Files tab’s filters moved from `X` and `A` to their numbers; a pull request’s
+  header links and actions are numbered.
+- **Ancillary.** `Y` and its copy target are gone, with the commit view’s lent Copy
+  revision and `copyFromControl()`. A control shown only on hover takes no key, so the
+  reveal’s hover override went too.
+- **Reserved table.** `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, `W`, and `1` to `9`,
+  all for every kind; `X`, `Y`, and `A` are free.
+- **Motion.** The badges and strip ease in on a new design-system token,
+  `--motion-reveal`, 180 ms on a decelerating curve, with a slight grow for a badge, and
+  still go at once on release; reduced motion shows them at once.
+- **Documentation.** [Keyboard Shortcuts](../../../design-system.md#keyboard-shortcuts)
+  in the design system is the single reference, and `tests/test_keymap.py` holds its
+  table to the bound keys.
 
 ## References
 

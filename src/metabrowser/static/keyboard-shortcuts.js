@@ -15,6 +15,8 @@
    * @typedef {object} BindingPresentation
    * @property {string} ariaKeyshortcuts
    * @property {BindingPresentation} [preferred]
+   * @property {boolean} [range] The keycaps are the ends of a run of keys, as the
+   *   numbers 1 to 9 are, rather than alternatives.
    * @property {string} spoken
    * @property {readonly string[]} visible One keycap label per alternative.
    */
@@ -33,6 +35,8 @@
    * @property {string} scope
    * @property {Readonly<Record<string, "active" | "always">>} surfaces
    * @property {boolean} [targeted]
+   * @property {boolean} [situational] Its bindings are positional, a run of numbers no
+   *   control owns, so it is presented as that run rather than as alternatives.
    * @property {(context: Record<string, unknown>) => boolean} [available]
    */
   /** @typedef {"beside" | "inline-end"} BadgePlacement */
@@ -50,6 +54,17 @@
    * @typedef {object} ShortcutTargetHandle
    * @property {() => void} detach
    * @property {(element: HTMLElement) => void} retarget
+   */
+  /**
+   * One situational control the numbers reach: a link or an action that depends on
+   * what the screen shows. Its number is its place among the live ones, so it has none
+   * of its own.
+   *
+   * @typedef {object} NumberedRecord
+   * @property {() => unknown} activate
+   * @property {HTMLElement | null} badge
+   * @property {HTMLElement} element
+   * @property {BadgePlacement} placement
    */
   /**
    * @typedef {object} ShortcutPresentation
@@ -130,9 +145,10 @@
       label: "Controls",
       order: 18,
     }),
-    filters: Object.freeze({
-      context: "Available while the Files tab is shown.",
-      label: "Filters",
+    // The numbers are positional, so Help gives them one row and never a fixed meaning.
+    numbered: Object.freeze({
+      context: "The numbers are not fixed: each screen numbers its own links and actions.",
+      label: "On this screen",
       order: 19,
     }),
     navigation: Object.freeze({
@@ -161,6 +177,18 @@
       order: 40,
     }),
   });
+
+  // The situational numbers: links and actions that depend on what the screen shows take
+  // 1, 2, 3, and on in reading order, which is document order in the shell's layout (the
+  // navigation pane before the main pane, top to bottom), up to 9. A tenth and later get
+  // no key: no 0, no letter, and no wrap-around (docs/design-system.md, "Keyboard
+  // Shortcuts").
+  const NUMBERED_LIMIT = 9;
+  const NUMBERED_COMMAND_ID = "numbered";
+  /** @type {readonly ShortcutBinding[]} */
+  const NUMBERED_BINDINGS = Object.freeze(
+    Array.from({ length: NUMBERED_LIMIT }, (_, index) => Object.freeze({ key: String(index + 1) })),
+  );
 
   // Keys that are named but never bound: the single-key entry point renders
   // them, as the Shift in Help's closing note, and the binding validator
@@ -254,7 +282,7 @@
     if (matchOptions.physical) {
       return (
         bindingClass === "digit" &&
-        // Digit1 through Digit9, the keys the navigation pane's tab digits use.
+        // Digit1 through Digit9, the keys the situational numbers use.
         /^[1-9]$/.test(normalized.key) &&
         !isDigitKey(event.key) &&
         event.code === `Digit${normalized.key}`
@@ -373,9 +401,28 @@
   }
 
   /**
-   * One keycap per alternative, joined by "or". Every binding is a single key, so an
-   * alternative is one keycap; a group of them is spoken as one visually hidden
-   * phrase, such as "T or slash", with its keycaps and separators hidden.
+   * The situational numbers as one run, written by its ends: `1` to `9`. No number has
+   * a fixed meaning, so no surface lists one alone, and none names a control in
+   * `aria-keyshortcuts`; each is announced only through the run's spoken form.
+   *
+   * @param {readonly ShortcutBinding[]} bindings
+   * @returns {BindingPresentation}
+   */
+  function describeRange(bindings) {
+    const ends = [bindings[0], bindings[bindings.length - 1]].map((binding) =>
+      keyDefinition(normalizeBinding(binding).key),
+    );
+    const visible = Object.freeze(ends.map((end) => end.visible));
+    const spoken = `${ends[0].spoken} to ${ends[1].spoken}`;
+    const run = { ariaKeyshortcuts: "", range: true, spoken, visible };
+    return Object.freeze({ ...run, preferred: Object.freeze({ ...run }) });
+  }
+
+  /**
+   * One keycap per alternative, joined by "or", or a run's two ends joined by a dash.
+   * Every binding is a single key, so an alternative is one keycap; a group of them is
+   * spoken as one visually hidden phrase, such as "T or slash" or "1 to 9", with its
+   * keycaps and separators hidden.
    *
    * @param {Document} hostDocument
    * @param {HTMLElement} container
@@ -393,7 +440,7 @@
       if (index > 0) {
         const separator = hostDocument.createElement("span");
         separator.className = "shortcut-binding-separator";
-        separator.textContent = "or";
+        separator.textContent = presentation.range ? "–" : "or";
         separator.setAttribute("aria-hidden", "true");
         container.append(separator);
       }
@@ -490,6 +537,9 @@
     if (descriptor.targeted !== undefined && typeof descriptor.targeted !== "boolean") {
       throw new TypeError("Shortcut command targeted must be a boolean");
     }
+    if (descriptor.situational !== undefined && typeof descriptor.situational !== "boolean") {
+      throw new TypeError("Shortcut command situational must be a boolean");
+    }
     return true;
   }
 
@@ -521,6 +571,13 @@
     const keyObservers = new Set();
     // Whether the key reveal shows: badges exist only then (static/key-reveal.js).
     let revealed = false;
+    /** The situational controls, in the order they were attached; their numbers come
+     * from where they are on screen, read when a number is pressed or shown.
+     * @type {NumberedRecord[]} */
+    const numbered = [];
+    /** Releases the numbers' one command, registered while any control is numbered.
+     * @type {(() => void) | null} */
+    let releaseNumbered = null;
 
     /** @param {ShortcutEvent} event */
     function deliver(event) {
@@ -577,8 +634,8 @@
     // From highest to lowest: activated scopes, most recent first, until an
     // exclusive modal; then `global`; then the permanent scopes below it. A
     // permanent scope lets a letter mean one thing in `global` while that
-    // command is available and fall through to another otherwise, as the
-    // stack's P does to the Preview tab's.
+    // command is available and fall through to another otherwise, and a shell
+    // key outrank a plugin key on the same letter.
     function activeLayers() {
       /** @type {string[]} */
       const layers = [];
@@ -631,7 +688,7 @@
         : undefined;
       /** @type {Readonly<ShortcutPresentation>} */
       const presentation = Object.freeze({
-        bindings: describeBindings(bindings),
+        bindings: descriptor.situational ? describeRange(bindings) : describeBindings(bindings),
         commandIds: Object.freeze([descriptor.id]),
         control,
         copy: Object.freeze({ ...descriptor.copy }),
@@ -751,12 +808,50 @@
             : null;
         for (const record of records) {
           if (record === chosen && entry) {
-            mountBadge(record, entry);
+            mountBadge(record, entry.descriptor.bindings[0].key);
           } else {
             unmountBadge(record);
           }
         }
       }
+      // The numbers go to the live situational controls in reading order, the first nine,
+      // while their command's scope is active: never behind Help or Quick Search.
+      const numbers = commands.get(NUMBERED_COMMAND_ID);
+      const shown =
+        revealed && numbers && activeScopes.has(numbers.descriptor.scope) ? liveNumbered() : [];
+      for (const [index, record] of shown.entries()) {
+        mountBadge(record, String(index + 1));
+      }
+      for (const record of numbered) {
+        if (!shown.includes(record)) {
+          unmountBadge(record);
+        }
+      }
+    }
+
+    /**
+     * The live situational controls in reading order, at most nine: the one a number
+     * reaches is at that place. Ordered first, so the liveness reads stop at the ninth.
+     */
+    function liveNumbered() {
+      const ordered = [...numbered].sort((left, right) =>
+        left.element === right.element
+          ? 0
+          : precedesInDocument(left.element, right.element)
+            ? -1
+            : 1,
+      );
+      /** @type {NumberedRecord[]} */
+      const live = [];
+      for (const record of ordered) {
+        if (live.length === NUMBERED_LIMIT) {
+          break;
+        }
+        if (isTargetLive(record.element)) {
+          live.push(record);
+        }
+      }
+      return live;
     }
 
     /**
@@ -779,12 +874,13 @@
      * target's `aria-keyshortcuts` instead. `inline-end` puts it inside the target,
      * which becomes its containing block through `.kbd-badge-host`; `beside` puts it
      * in the nearest badge anchor, at the target's inline end and vertical center,
-     * measured once as it mounts.
+     * measured once as it mounts. A badge already in place keeps its node, so it does
+     * not fade in again when the badges move after a key.
      *
-     * @param {ShortcutTargetRecord} record
-     * @param {ShortcutEntry} entry
+     * @param {{badge: HTMLElement | null, element: HTMLElement, placement: BadgePlacement}} record
+     * @param {string} key
      */
-    function mountBadge(record, entry) {
+    function mountBadge(record, key) {
       const anchor =
         record.placement === "beside"
           ? /** @type {HTMLElement | null} */ (record.element.closest(BADGE_ANCHOR_SELECTOR)) ||
@@ -794,11 +890,15 @@
         unmountBadge(record);
         return;
       }
-      if (record.badge?.isConnected && record.badge.parentElement === anchor) {
+      if (
+        record.badge?.isConnected &&
+        record.badge.parentElement === anchor &&
+        record.badge.textContent === describeKey(key).visible
+      ) {
         return;
       }
       unmountBadge(record);
-      const badge = appendKey(hostDocument, anchor, entry.descriptor.bindings[0].key);
+      const badge = appendKey(hostDocument, anchor, key);
       badge.className = "kbd kbd-badge";
       badge.setAttribute("aria-hidden", "true");
       badge.dataset.kbdPlacement = record.placement;
@@ -818,7 +918,7 @@
       record.badge = badge;
     }
 
-    /** @param {ShortcutTargetRecord} record */
+    /** @param {{badge: HTMLElement | null, element: HTMLElement}} record */
     function unmountBadge(record) {
       if (!record.badge) {
         return;
@@ -897,6 +997,125 @@
       });
     }
 
+    /**
+     * Number a situational control: a link or an action that depends on what the screen
+     * shows. Its number is its place among the live numbered controls in reading order,
+     * 1 to 9, read when a number is pressed or shown, so the same number reaches
+     * different controls on different screens and a tenth control has none. The shell
+     * and the plugin facade both number through this one call, so no surface picks its
+     * own digits. A numbered control carries no `aria-keyshortcuts`, because its number
+     * is not its own; Help describes the numbers once. `retarget()` follows a rebuilt
+     * control and `detach()` is idempotent, as for `attachTarget()`.
+     *
+     * @param {HTMLElement} element
+     * @param {{activate: () => unknown, placement?: BadgePlacement}} numberOptions
+     * @returns {Readonly<ShortcutTargetHandle>}
+     */
+    function attachNumbered(element, numberOptions) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      requireTargetElement(element);
+      const activate = numberOptions?.activate;
+      if (typeof activate !== "function") {
+        throw new TypeError("A numbered control requires an activate function");
+      }
+      const placement = numberOptions.placement ?? "inline-end";
+      if (!BADGE_PLACEMENTS.has(placement)) {
+        throw new TypeError(`Unknown badge placement: ${placement}`);
+      }
+      /** @type {NumberedRecord} */
+      const record = { activate, badge: null, element, placement };
+      batch(() => {
+        numbered.push(record);
+        if (!releaseNumbered) {
+          releaseNumbered = register(numberedCommand());
+        }
+        followBadges();
+        publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+      });
+      let attached = true;
+      return Object.freeze({
+        /** @param {HTMLElement} next */
+        retarget(next) {
+          requireTargetElement(next);
+          if (!attached || next === record.element) {
+            return;
+          }
+          unmountBadge(record);
+          record.element = next;
+          followBadges();
+          publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+        },
+        detach() {
+          if (!attached) {
+            return;
+          }
+          attached = false;
+          batch(() => {
+            unmountBadge(record);
+            numbered.splice(numbered.indexOf(record), 1);
+            if (numbered.length === 0 && releaseNumbered) {
+              const release = releaseNumbered;
+              releaseNumbered = null;
+              release();
+            }
+            followBadges();
+            publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+          });
+        },
+      });
+    }
+
+    /**
+     * The numbers' one command: `1` to `9` in `global`, presented as one run, which Help
+     * lists in its own group as positional. A number reaches the control at its place.
+     *
+     * @returns {ShortcutCommand}
+     */
+    function numberedCommand() {
+      return {
+        // Live while one numbered control is, so a number with nothing to reach leaves the
+        // key to the browser.
+        available: () => liveNumbered().length > 0,
+        bindings: NUMBERED_BINDINGS,
+        copy: {
+          action: "Numbered links and actions",
+          description: "Hold Shift to see what each number opens or runs on this screen.",
+          hint: "Numbered",
+        },
+        group: "numbered",
+        handler: (context) => {
+          const place = numberOf(context);
+          const record = place === null ? undefined : liveNumbered()[place - 1];
+          return record !== undefined && record.activate() !== false;
+        },
+        id: NUMBERED_COMMAND_ID,
+        order: 10,
+        scope: "global",
+        situational: true,
+        surfaces: { help: "always" },
+      };
+    }
+
+    /**
+     * Which number a key pressed: the digit typed, or else its digit-row key, as Shift+1
+     * types `!` on a US layout. `context.number` names one for `invoke()`.
+     *
+     * @param {Record<string, unknown>} context
+     * @returns {number | null}
+     */
+    function numberOf(context) {
+      if (typeof context.number === "number") {
+        return context.number;
+      }
+      const event = /** @type {{key?: unknown, code?: unknown} | undefined} */ (context.event);
+      const typed = typeof event?.key === "string" ? event.key : "";
+      const physical = typeof event?.code === "string" ? /^Digit([1-9])$/.exec(event.code) : null;
+      const digit = /^[1-9]$/.test(typed) ? typed : physical?.[1];
+      return digit === undefined ? null : Number(digit);
+    }
+
     /** @param {unknown} element */
     function requireTargetElement(element) {
       if (
@@ -925,7 +1144,7 @@
     /**
      * Read every attached target's liveness again and move the badges, after a key
      * the registry handled while revealed: a handler can show or hide a target
-     * through a style change that publishes nothing, as the Files tab's digit shows
+     * through a style change that publishes nothing, as the Files tab's `F` shows
      * the filter bar. Publishes a `dispatch` event so the revealed strip follows.
      */
     function refreshBadges() {
@@ -985,7 +1204,7 @@
       requireNonemptyString(scope, "an activation scope");
       if (PERMANENT_SCOPES.includes(scope)) {
         // Always active already, in a fixed order: activating one would lift it above
-        // `global`, so a view tab's P would outrank the stack's.
+        // `global`, so a view tab's or a plugin's key would outrank the shell's.
         throw new TypeError(`A permanent scope cannot be activated: ${scope}`);
       }
       const activation = {
@@ -1197,6 +1416,8 @@
                 previous &&
                 !previous.control &&
                 !presentation.control &&
+                !previous.bindings.range &&
+                !presentation.bindings.range &&
                 previous.copy.hint === presentation.copy.hint
               ) {
                 rendered[rendered.length - 1] = Object.freeze({
@@ -1251,6 +1472,11 @@
         }
       }
       targets.clear();
+      for (const record of numbered) {
+        unmountBadge(record);
+      }
+      numbered.length = 0;
+      releaseNumbered = null;
       commands.clear();
       activations.length = 0;
       subscribers.clear();
@@ -1263,6 +1489,7 @@
         appendBinding(hostDocument, container, presentation),
       /** @param {HTMLElement} container @param {string} key */
       appendKey: (container, key) => appendKey(hostDocument, container, key),
+      attachNumbered,
       attachTarget,
       batch,
       describeBindings,
@@ -1274,6 +1501,8 @@
       isRevealed: () => revealed,
       /** @param {HTMLElement} element */
       isTargetLive: (element) => isTargetLive(element),
+      /** The controls the numbers reach now, in order: 1 is the first. */
+      liveNumbers: () => Object.freeze(liveNumbered().map((record) => record.element)),
       liveTarget,
       observeKeys,
       present,
@@ -1288,6 +1517,7 @@
   window.MetabrowserKeyboardShortcuts = Object.freeze({
     GROUP_DEFINITIONS,
     KEY_DEFINITIONS,
+    NUMBERED_LIMIT,
     appendBinding,
     appendKey,
     bindingSignature,

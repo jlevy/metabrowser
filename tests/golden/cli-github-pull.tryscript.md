@@ -659,7 +659,7 @@ pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 show: docs/draft.md
 route: /view/g1-ZG9jcw/g1-ZHJhZnQubWQ
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=8 content_bytes=8 content_truncated=False
 ? 0
 ```

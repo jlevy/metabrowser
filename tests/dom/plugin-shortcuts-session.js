@@ -1,7 +1,7 @@
 // Browserless session: the plugin shortcut surface, on the production code.
 //
 // `window.metabrowser.shortcuts.attach()` gives a plugin view's control a letter key
-// and a badge. The eager SDK (static/plugin-sdk.js) queues each attachment made before
+// and a badge, or, with `numbered: true`, a number from its place on screen. The eager SDK (static/plugin-sdk.js) queues each attachment made before
 // the facade (static/plugin-shortcuts.js) loads, and the facade takes the queue and
 // replays every attachment onto each shortcut registry the shell attaches. This loads
 // the SDK and its startup prerequisites, the registry, the overlay layer, Help, the
@@ -28,17 +28,17 @@ const staticDir = path.join(repoRoot, "src/metabrowser/static");
 
 // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py.
 const RESERVED_SHELL_KEYS = Object.freeze({
+  f: null,
+  r: null,
+  h: null,
   t: null,
   j: null,
   k: null,
+  n: null,
+  p: null,
   u: null,
   w: null,
-  x: null,
-  y: null,
-  a: null,
-  ...Object.fromEntries([..."0123456789"].map((digit) => [digit, null])),
-  n: ["pull-request"],
-  p: ["pull-request"],
+  ...Object.fromEntries([..."123456789"].map((digit) => [digit, null])),
 });
 
 // The startup scripts the SDK needs, then the SDK; then the `shell-tools` scripts this
@@ -243,11 +243,13 @@ function createPage() {
       group.querySelector(".help-shortcut-heading").textContent,
       ...group.querySelectorAll(".help-command-row").map(
         (row) =>
+          // The keycaps and what joins them, "or" between alternatives and a dash across a
+          // run, as a reader sees them; the spoken phrase is for assistive technology.
           `${row
             .querySelector(".help-command-binding")
-            .querySelectorAll("kbd")
-            .map((keycap) => keycap.textContent)
-            .join(" or ")} ${row.querySelector(".help-command-label").textContent}`,
+            .children.filter((part) => !part.classList.contains("visually-hidden"))
+            .map((part) => part.textContent)
+            .join(" ")} ${row.querySelector(".help-command-label").textContent}`,
       ),
     ]);
   }
@@ -635,6 +637,81 @@ async function main() {
     }),
   );
 
+  // ── Numbered: a situational control takes its number from its place ──────
+  // The registry numbers every live numbered control in document order, the shell's
+  // and the plugins' alike, 1 to 9; Help lists the numbers once, as one run.
+  const numberedView = element(document, "div", { class: "content-body numbered-host" });
+  preview.append(numberedView);
+  const openLink = track(control("Open on site"));
+  const refresh = track(control("Refresh"));
+  numberedView.append(openLink, refresh);
+  const numbered = (id, ran) => ({
+    activate: () => page.did.push(`${id} ran for ${ran}`),
+    id,
+    numbered: true,
+  });
+  const refreshNumber = mb.shortcuts.attach(refresh, numbered("demo.refresh", "Refresh"));
+  const openNumber = mb.shortcuts.attach(openLink, numbered("demo.open", "the link"));
+  page.shortcuts.setRevealed(true);
+  steps.push(
+    page.record("numbered controls take 1 and 2 by their place, not their attach order", {
+      numbers: page.shortcuts.liveNumbers().map((target) => labelOf(target)),
+      handled1: page.press("1"),
+      handled2: page.press("@", { code: "Digit2", shiftKey: true }),
+      handled3: page.press("3"),
+    }),
+  );
+  page.shortcuts.setRevealed(false);
+  openLink.remove();
+  steps.push(
+    page.record("the link taken out of the page: Refresh moves up to 1", {
+      numbers: page.shortcuts.liveNumbers().map((target) => labelOf(target)),
+      handled1: page.press("1"),
+    }),
+  );
+  const rebuilt = track(control("Refresh"));
+  numberedView.replaceChildren(openLink, rebuilt);
+  refreshNumber.retarget(rebuilt);
+  page.press("?", { shiftKey: true });
+  const helpWithNumbers = page.helpShown();
+  page.press("Escape");
+  steps.push(
+    page.record("retargeted after a rebuild; Help lists the numbers once, as a run", {
+      numbers: page.shortcuts.liveNumbers().map((target) => labelOf(target)),
+      help: helpWithNumbers.filter((group) => group[0] === "On this screen"),
+    }),
+  );
+  steps.push(
+    page.record("a numbered control states no key, group, order, or copy", {
+      thrown: [
+        thrown(() =>
+          mb.shortcuts.attach(control("x"), { ...numbered("demo.keyed", "x"), key: "g" }),
+        ),
+        thrown(() =>
+          mb.shortcuts.attach(control("x"), {
+            ...numbered("demo.copied", "x"),
+            copy: { action: "x", description: "x.", hint: "x" },
+          }),
+        ),
+        thrown(() =>
+          mb.shortcuts.attach(control("x"), { ...numbered("demo.false", "x"), numbered: false }),
+        ),
+        thrown(() => mb.shortcuts.attach(control("x"), spec("demo.refresh", "g", "Refresh"))),
+      ],
+    }),
+  );
+  openNumber.detach();
+  refreshNumber.detach();
+  refreshNumber.detach();
+  numberedView.remove();
+  steps.push(
+    page.record("both detached: no numbers, and the numbers leave Help", {
+      numbers: page.shortcuts.liveNumbers().map((target) => labelOf(target)),
+      handled1: page.press("1"),
+      registered: page.shortcuts.present("numbered") !== null,
+    }),
+  );
+
   // ── Registry teardown and rebuild ─────────────────────────────
   page.teardown();
   steps.push(
@@ -696,7 +773,7 @@ async function main() {
         rooted = track(control("Rooted"));
         root.append(rooted);
         container.append(root);
-        mb.shortcuts.attach(rooted, spec("demo.rooted", "r", "Rooted"));
+        mb.shortcuts.attach(rooted, spec("demo.rooted", "x", "Rooted"));
         // Its dispose removes its root and forgets the key.
         return {
           dispose() {
@@ -762,7 +839,7 @@ async function main() {
       render(container) {
         const failing = track(control("Failing"));
         container.append(failing);
-        mb.shortcuts.attach(failing, spec("demo.failing", "f", "Failing"));
+        mb.shortcuts.attach(failing, spec("demo.failing", "a", "Failing"));
         throw new Error("the demo view failed");
       },
     },

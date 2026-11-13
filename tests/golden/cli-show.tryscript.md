@@ -45,7 +45,7 @@ $ metab showroot --show README.md
 show: README.md
 route: /view/README.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```
@@ -69,7 +69,7 @@ $ metab showroot --show data.json
 show: data.json
 route: /view/data.json
 kind: structured
-views: tree (default, key R), source (key S)
+views: tree (default, key V), source (key S)
 model: text envelope; size=33 content_bytes=33 content_truncated=False
 ? 0
 ```
@@ -93,7 +93,7 @@ $ metab showroot --show session.jsonl
 show: session.jsonl
 route: /view/session.jsonl
 kind: agent-log
-views: log (default, key L), charts (key C), raw (key R)
+views: log (default, key V), charts (key C), raw (key S)
 model: jsonl envelope; size=66
 ? 0
 ```
@@ -105,7 +105,7 @@ $ metab showroot --show events.jsonl
 show: events.jsonl
 route: /view/events.jsonl
 kind: unknown-jsonl
-views: log (default, key L), raw (key R)
+views: log (default, key V), raw (key S)
 model: jsonl envelope; size=35
 ? 0
 ```
@@ -141,7 +141,7 @@ $ metab showroot --show page.html
 show: page.html
 route: /view/page.html
 kind: html
-views: preview (default, key P), source (key S)
+views: preview (default, key V), source (key S)
 model: text envelope; size=49 content_bytes=49 content_truncated=False
 ? 0
 ```
@@ -153,7 +153,7 @@ $ metab showroot --show card.html
 show: card.html
 route: /view/card.html
 kind: html
-views: preview (key P), source (default, key S)
+views: preview (key V), source (default, key S)
 model: text envelope; size=30 content_bytes=30 content_truncated=False
 ? 0
 ```
@@ -182,7 +182,7 @@ $ metab showroot --show README.md --format json
     {
       "id": "rendered",
       "label": "Document",
-      "key": "d",
+      "key": "v",
       "default": true,
       "container_class": "content-body metabrowser-kpress-host md-body",
       "printable": true,
@@ -227,7 +227,7 @@ $ metab showroot --show /view/README.md
 show: /view/README.md
 route: /view/README.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```
@@ -242,7 +242,7 @@ $ metab showroot --show '%41.md'
 show: %41.md
 route: /view/%2541.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=8 content_bytes=8 content_truncated=False
 ? 0
 ```
@@ -252,7 +252,7 @@ $ metab showroot --show '/view/%2541.md'
 show: /view/%2541.md
 route: /view/%2541.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=8 content_bytes=8 content_truncated=False
 ? 0
 ```
@@ -268,7 +268,7 @@ $ metab showroot --show '%2541.md'
 show: %2541.md
 route: /view/%252541.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```
@@ -278,7 +278,7 @@ $ metab showroot --show '/view/%252541.md'
 show: /view/%252541.md
 route: /view/%252541.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```

@@ -33,7 +33,7 @@ methods = ["GET"]
 kind = "agent-log"
 id = "log"
 label = "Log"
-key = "l"
+key = "v"
 default = true
 
 [[view]]
@@ -46,4 +46,4 @@ key = "c"
 kind = "agent-log"
 id = "raw"
 label = "Raw JSON"
-key = "r"
+key = "s"

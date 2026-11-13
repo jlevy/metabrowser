@@ -1,7 +1,7 @@
 """The app.js seams the shell keymap reaches its controls through.
 
-``static/shell-keymap.js`` gives the view tabs, the header's Up and Copy, the filters,
-and the branch switcher their keys, and ``tests/dom/key-reveal-session.js`` runs it with
+``static/shell-keymap.js`` gives the view tabs, the header's Up, and the branch switcher
+their letters and the filters their numbers, and ``tests/dom/key-reveal-session.js`` runs it with
 the production registry. What a key does there is an activation path that app.js owns:
 each runs what a click runs, through a named function a click shares, and never by
 synthesizing the click. ``app.js`` is a legacy module no session loads whole, so these
@@ -52,8 +52,8 @@ def test_the_view_tab_bar_is_a_tablist_carrying_each_declared_key() -> None:
     assert "data-view-key=" in render
 
 
-def test_a_filter_key_opens_its_menu_through_the_triggers_path() -> None:
-    """The trigger's click and the filter keys share toggleFilterMenu, extracted from the
+def test_a_filter_number_opens_its_menu_through_the_triggers_path() -> None:
+    """The trigger's click and the filter numbers share toggleFilterMenu, extracted from the
     filter bar's closure; the keymap's openFilterMenu then focuses the menu's row."""
 
     js = _read_app_js()
@@ -142,15 +142,13 @@ def test_the_keyboard_infrastructure_owns_the_reveal_and_the_keymap() -> None:
     assert dispose.index("shellKeymap?.dispose();") < dispose.index("shortcutRegistry?.dispose();")
 
 
-def test_header_controls_are_read_from_the_committed_pane_and_anchor_their_badges() -> None:
+def test_the_header_parent_is_read_from_the_committed_pane_and_anchors_its_badge() -> None:
     js = _read_app_js()
     keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
-    controls = keymap[keymap.index("function headerControls()") :]
-    controls = controls[: controls.index("\n    }\n")]
-    assert '".folder-up[data-nav-dir]:not([disabled])"' in controls
-    assert '".folder-breadcrumb [data-nav-dir]"' in controls
-    assert '".file-header-copy"' in controls
-    assert "lentCopy && pane()?.contains(lentCopy)" in controls
+    parent = keymap[keymap.index("function headerParent()") :]
+    parent = parent[: parent.index("\n    }\n")]
+    assert '".folder-up[data-nav-dir]:not([disabled])"' in parent
+    assert '".folder-breadcrumb [data-nav-dir]"' in parent
     assert '<div class="file-header folder-header" data-kbd-badge-anchor>' in js
     assert '<div class="file-header" data-kbd-badge-anchor>' in js
     filters = _function_source(js, "renderNavFilterBar")
@@ -159,21 +157,22 @@ def test_header_controls_are_read_from_the_committed_pane_and_anchor_their_badge
     )
 
 
-def test_the_commit_view_lends_its_copy_revision_through_the_keymaps_module() -> None:
-    """The Git panel and the shell keymap load in one on-demand bundle, so the lent Copy
-    lives in the keymap's module, where a rebuilt keymap finds it, and not in app.js."""
+def test_copying_is_ancillary_and_has_no_key() -> None:
+    """Copying a path, a revision, or a hash is ancillary, so no copy control has a key: the
+    shell keymap registers no copy command, the commit view lends none, and the SDK keeps
+    no keyboard entry to the copy delegate (docs/design-system.md, "Keyboard Shortcuts").
+    """
 
-    panel = proc_browser.STATIC_DIR.joinpath("git-panel.js").read_text()
-    assert "window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy)" in panel
-    assert '<div class="git-commit-header" data-kbd-badge-anchor>' in panel
     keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
-    assert "Object.freeze({ attachHeaderCopy, createShellKeymap })" in keymap
-    js = _read_app_js()
-    assert "attachHeaderCopy" not in js
-    assert "headerCopyBridge" not in js
-    bundle = proc_browser.STATIC_DIR.joinpath("..", "server.py").read_text()
-    tools = bundle[bundle.index('"shell-tools": [') :]
-    assert tools.index('{"src": shell_keymap_url}') < tools.index('{"src": git_panel_url}')
+    assert "header.copy" not in keymap
+    assert "file-header-copy" not in keymap
+    assert "Object.freeze({ createShellKeymap })" in keymap
+    panel = proc_browser.STATIC_DIR.joinpath("git-panel.js").read_text()
+    assert "attachHeaderCopy" not in panel
+    assert "data-kbd-badge-anchor" not in panel
+    sdk = proc_browser.STATIC_DIR.joinpath("plugin-sdk.js").read_text()
+    assert "copyFromControl" not in sdk
+    assert "attachHeaderCopy" not in _read_app_js()
 
 
 def _tags(source: str, token: str) -> list[str]:
@@ -187,10 +186,10 @@ def _tags(source: str, token: str) -> list[str]:
 
 
 def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
-    """``headerControls()`` finds Up and Copy by class and attribute in markup app.js writes,
-    and the session renders its own copy of that markup, so these pin the producers: if
-    one stops emitting a hook, ``U`` or ``Y`` would find nothing and stop working while
-    the session still passed."""
+    """``headerParent()`` finds Up by class and attribute in markup app.js writes, and the
+    session renders its own copy of that markup, so these pin the producers: if one stops
+    emitting a hook, ``U`` would find nothing and stop working while the session still
+    passed."""
 
     js = _read_app_js()
     keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
@@ -221,8 +220,7 @@ def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
     assert '${attr}="${esc(walked)}"${ownedControlAttr()}' in address
     assert '".folder-breadcrumb [data-nav-dir]"' in keymap
 
-    # Copy on a file: `.file-header-copy` in the file header's breadcrumb, an owned copy
-    # control the SDK's copyFromControl() accepts.
+    # The file header anchors the badge beside its folder's crumb.
     render = _function_source(js, "renderFile")
     file_header = render[
         render.index("html = '<div class=\"file-header\" data-kbd-badge-anchor>';") :
@@ -230,19 +228,6 @@ def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
     file_header = file_header[: file_header.index('html += "</div>";')]
     crumbs = file_header.index("'<span class=\"file-header-path folder-breadcrumb\">' +")
     assert file_header.index("headerAddressHtml(data.path, true) +") > crumbs
-    copy = _tags(file_header, "file-header-copy")
-    assert len(copy) == 1, copy
-    assert 'data-mb-copy="text"' in copy[0]
-    assert "data-mb-copy-text=" in copy[0]
-    assert "${ownedControlAttr()}" in copy[0]
-    assert file_header.index("file-header-copy") < file_header.index('"</span>";')
-    assert '".file-header-copy"' in keymap
-    sdk = proc_browser.STATIC_DIR.joinpath("plugin-sdk.js").read_text()
-    copy_from_control = sdk[sdk.index("function copyFromControl(") :]
-    copy_from_control = copy_from_control[: copy_from_control.index("\n  }\n")]
-    assert "if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {" in copy_from_control
-    assert "_handleCopyClick(control);" in copy_from_control
-    assert "window.MetabrowserPluginHost?.copyFromControl(target) ?? false" in keymap
 
 
 def test_the_view_tab_markup_carries_the_hooks_the_keymap_reads() -> None:

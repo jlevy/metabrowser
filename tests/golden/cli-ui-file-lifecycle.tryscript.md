@@ -544,13 +544,13 @@ $ node tests/dom/preview-pane-state-session.js
     "mainTabShortcuts": {
       "tabOrder": [
         "files",
-        "git",
-        "pulls"
+        "pulls",
+        "git"
       ],
       "ariaKeys": [
-        "1",
-        "2",
-        "3"
+        "F",
+        "R",
+        "H"
       ],
       "keyboardRoutes": [
         "/pulls",

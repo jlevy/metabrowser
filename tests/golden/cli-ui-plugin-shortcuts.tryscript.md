@@ -7,11 +7,15 @@ env:
 # Golden Test: The Plugin Shortcut Surface
 
 A plugin view gives one of its controls a letter key and a badge with
-`metabrowser.shortcuts.attach(element, {id, key, group, order, copy, activate, signal})`.
-Plugin code can run before the shortcut registry exists, which arrives in the on-demand
-`shell-tools` bundle and is rebuilt after a real `pagehide`, so the eager SDK queues
-each attachment and the facade, `static/plugin-shortcuts.js`, takes the queue as it
-loads and replays every attachment onto each registry the shell attaches.
+`metabrowser.shortcuts.attach(element, {id, key, group, order, copy, activate, signal})`,
+or a situational control a number from its place on screen with
+`metabrowser.shortcuts.attach(element, {id, numbered: true, activate, signal})`, through
+the registry’s one numbering, which the shell’s numbered controls share (“Keyboard
+Shortcuts” in `docs/design-system.md`). Plugin code can run before the shortcut registry
+exists, which arrives in the on-demand `shell-tools` bundle and is rebuilt after a real
+`pagehide`, so the eager SDK queues each attachment and the facade,
+`static/plugin-shortcuts.js`, takes the queue as it loads and replays every attachment
+onto each registry the shell attaches.
 
 This browserless session loads the production SDK and its startup prerequisites, the
 registry, the overlay layer, Help, the facade, and view composition whole, in the
@@ -31,11 +35,14 @@ table; two plugins on one letter, where the earlier attachment runs and badges a
 later is warned; a shell view tab outranking a plugin key; two mounts of one command id;
 a rebuilt control retargeted; a control taken out of the page and put back; the inert
 stage; an aborted signal and an idempotent detach; malformed input, which throws with
-the `shortcuts.attach:` prefix; the registry torn down and rebuilt; and view composition
-releasing a key that a view’s own `dispose()` forgot, whether or not the facade had
-loaded (before, its entry leaves the queue), including one whose `dispose()` takes its
-own root out of the container, a render that finishes after its stage was cancelled, and
-a render that attaches a key and then fails.
+the `shortcuts.attach:` prefix; two numbered controls taking `1` and `2` by their place
+and not their attach order, renumbered when one leaves the page, retargeted after a
+rebuild, listed in Help once as the run `1`–`9`, refusing a key, copy, or a false
+`numbered`, and leaving Help when both detach; the registry torn down and rebuilt; and
+view composition releasing a key that a view’s own `dispose()` forgot, whether or not
+the facade had loaded (before, its entry leaves the queue), including one whose
+`dispose()` takes its own root out of the container, a render that finishes after its
+stage was cancelled, and a render that attaches a key and then fails.
 `tests/test_keymap.py` holds the printed reserved table and refused letters to
 `src/metabrowser/keymap.py`.
 
@@ -118,8 +125,8 @@ $ node tests/dom/plugin-shortcuts-session.js
       "step": "every letter tried: the facade refuses exactly the reserved ones",
       "keys": ["L plugin.demo.layout: Unified","M plugin.demo.moved: After"],
       "aria": ["Unified: L","Stale: none","Before: none","After: M","Find: none","Next: none"],
-      "reservedKeys": ["0: every kind","1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","a: every kind","j: every kind","k: every kind","n: pull-request","p: pull-request","t: every kind","u: every kind","w: every kind","x: every kind","y: every kind"],
-      "refused": ["a","j","k","n","p","t","u","w","x","y"]
+      "reservedKeys": ["1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","f: every kind","h: every kind","j: every kind","k: every kind","n: every kind","p: every kind","r: every kind","t: every kind","u: every kind","w: every kind"],
+      "refused": ["f","h","j","k","n","p","r","t","u","w"]
     },
     {
       "step": "two plugins on O, both shown: the earlier runs and badges, the later is warned",
@@ -228,40 +235,82 @@ $ node tests/dom/plugin-shortcuts-session.js
       "thrown": ["shortcuts.attach: the element needs an HTMLElement","shortcuts.attach: demo.digit: key must be one letter a-z, not 1","shortcuts.attach: demo.long: key must be one letter a-z, not gg","shortcuts.attach: demo.group: group must be \"view-tabs\" or \"controls\", not tabs","shortcuts.attach: demo.inert: activate must be a function","shortcuts.attach: id must be a dotted name such as \"diff.layout\", not undotted","shortcuts.attach: bindings is not an option; the facade decides it","shortcuts.attach: demo.layout is attached already with another key, group, or copy","shortcuts.attach: retarget needs an HTMLElement"]
     },
     {
+      "step": "numbered controls take 1 and 2 by their place, not their attach order",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none"],
+      "numbers": ["Open on site","Refresh"],
+      "handled1": true,
+      "handled2": true,
+      "handled3": false,
+      "badges": ["L on Split","M on After","O on Beta","1 on Open on site","2 on Refresh"],
+      "did": ["demo.open ran for the link","demo.refresh ran for Refresh"]
+    },
+    {
+      "step": "the link taken out of the page: Refresh moves up to 1",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none"],
+      "numbers": ["Refresh"],
+      "handled1": true,
+      "did": ["demo.refresh ran for Refresh"]
+    },
+    {
+      "step": "retargeted after a rebuild; Help lists the numbers once, as a run",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none"],
+      "numbers": ["Open on site","Refresh"],
+      "help": [
+        ["On this screen","1 – 9 Numbered links and actions"]
+      ]
+    },
+    {
+      "step": "a numbered control states no key, group, order, or copy",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none"],
+      "thrown": ["shortcuts.attach: demo.keyed: a numbered control takes no key; its place decides","shortcuts.attach: demo.copied: a numbered control takes no copy; its place decides","shortcuts.attach: demo.false: numbered must be true or left out","shortcuts.attach: demo.refresh is attached already with another key, group, or copy"]
+    },
+    {
+      "step": "both detached: no numbers, and the numbers leave Help",
+      "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none"],
+      "numbers": [],
+      "handled1": false,
+      "registered": false
+    },
+    {
       "step": "pagehide: the facade lets go, then the registry is disposed",
       "keys": [],
-      "aria": ["Unified: none","Stale: none","Before: none","After: none","Find: none","Next: none","Alpha: none","Beta: none","Log: none","Unified (second view): none","Split: none","Close: none"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: none","Find: none","Next: none","Alpha: none","Beta: none","Log: none","Unified (second view): none","Split: none","Close: none","Open on site: none","Refresh: none","Refresh: none"],
       "handled": false
     },
     {
       "step": "pageshow: a new registry, and every attachment replayed onto it",
       "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
-      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none"],
       "handled": true,
       "did": ["demo.layout ran for the first view's layout"]
     },
     {
       "step": "a view whose dispose forgot its key: view composition releases it",
       "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
-      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none"],
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none","Leaky: none"],
       "ariaWhileMounted": "V",
       "handled": false
     },
     {
       "step": "a view whose dispose removed its own root and forgot its key: released",
       "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
-      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none"],
-      "ariaWhileMounted": "R"
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none","Leaky: none","Rooted: none"],
+      "ariaWhileMounted": "X"
     },
     {
       "step": "a render that finished after its stage was cancelled: released",
       "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
-      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none","Slow: none"]
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none","Leaky: none","Rooted: none","Slow: none"]
     },
     {
       "step": "a render that attached a key and then failed: released",
       "keys": ["L plugin.demo.layout: Split","M plugin.demo.moved: After","O plugin.beta.open: Beta"],
-      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Leaky: none","Rooted: none","Slow: none","Failing: none"]
+      "aria": ["Unified: none","Stale: none","Before: none","After: M","Find: none","Next: none","Alpha: none","Beta: O","Log: none","Unified (second view): none","Split: L","Close: none","Open on site: none","Refresh: none","Refresh: none","Leaky: none","Rooted: none","Slow: none","Failing: none"]
     },
     {
       "step": "disposed while queued, before the facade loaded: never bound",

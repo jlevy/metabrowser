@@ -1884,8 +1884,6 @@ type MetabrowserPluginHostRuntime = Readonly<{
   registerLoadMoreAction(name: string, action: () => unknown): void;
   /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
   isOwnedDelegate(element: Element | null | undefined): boolean;
-  /** Copy what an owned copy control names, as its click does; see plugin-sdk.js. */
-  copyFromControl(control: HTMLElement | null): boolean;
   /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
   configureAssets(
@@ -2145,6 +2143,8 @@ type MetabrowserShortcutEvent = Readonly<{
 type MetabrowserBindingPresentation = Readonly<{
   ariaKeyshortcuts: string;
   preferred?: MetabrowserBindingPresentation;
+  /** The keycaps are a run's two ends, the situational numbers 1 to 9, not alternatives. */
+  range?: boolean;
   spoken: string;
   /** One keycap label per alternative: every binding is a single key. */
   visible: ReadonlyArray<string>;
@@ -2169,6 +2169,8 @@ type MetabrowserShortcutCommand = Readonly<{
   surfaces: Readonly<Record<string, "active" | "always">>;
   /** Live only while one of its attached targets is live; see `attachTarget`. */
   targeted?: boolean;
+  /** Its bindings are positional numbers no control owns, presented as one run. */
+  situational?: boolean;
 }>;
 
 /** Where a badge sits: inside its target, or past its inline end in a badge anchor. */
@@ -2212,6 +2214,14 @@ type MetabrowserShortcutRegistry = Readonly<{
     element: HTMLElement,
     options?: { placement?: MetabrowserBadgePlacement; rank?: number },
   ): MetabrowserShortcutTarget;
+  /**
+   * Number a situational control: its number is its place, 1 to 9, among the live
+   * numbered controls in reading order, so it has no fixed key of its own.
+   */
+  attachNumbered(
+    element: HTMLElement,
+    options: { activate(): unknown; placement?: MetabrowserBadgePlacement },
+  ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
   dispose(): void;
@@ -2229,6 +2239,8 @@ type MetabrowserShortcutRegistry = Readonly<{
   isTargetLive(element: HTMLElement): boolean;
   /** The element a command would act on now, its first live target by rank and order. */
   liveTarget(commandId: string): HTMLElement | null;
+  /** The controls the numbers reach now, in order: the first is 1, and there are at most 9. */
+  liveNumbers(): ReadonlyArray<HTMLElement>;
   /** Hear each key after dispatch as `(event, handled)`, and each `keyup` as unhandled. */
   observeKeys(observer: (event: KeyboardEvent, handled: boolean) => void): () => void;
   present(commandId: string): MetabrowserShortcutPresentation | null;
@@ -2251,6 +2263,8 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   KEY_DEFINITIONS: Readonly<
     Record<string, Readonly<{ aria: string; spoken: string; visible: string }>>
   >;
+  /** How many situational controls the numbers reach: 1 to 9, and no more. */
+  NUMBERED_LIMIT: number;
   appendBinding(
     document: Document,
     container: HTMLElement,
@@ -2339,9 +2353,8 @@ type MetabrowserKeyRevealRuntime = Readonly<{
 /**
  * What app.js lends static/shell-keymap.js: the paths that activate the shell's controls,
  * each the one its control's click runs, and which only app.js can reach. The keymap
- * finds the main pane and the filter bar by their ids, copies through the SDK, takes the
- * commit view's lent Copy through its own `attachHeaderCopy()`, and asks the selector's
- * module for its mounted selector.
+ * finds the main pane and the filter bar by their ids, and asks the selector's module for
+ * its mounted selector.
  */
 type MetabrowserShellKeymapShell = Readonly<{
   openFolder(dir: string): void;
@@ -2365,28 +2378,37 @@ type MetabrowserShellKeymapApi = Readonly<{
 }>;
 
 type MetabrowserShellKeymapRuntime = Readonly<{
-  /** Lend the header's Copy key a committed commit view's Copy revision; returns its release. */
-  attachHeaderCopy(button: HTMLElement): () => void;
   createShellKeymap(options: {
     shortcuts: MetabrowserShortcutRegistry;
     shell: MetabrowserShellKeymapShell;
   }): MetabrowserShellKeymapApi;
 }>;
 
-/** What a plugin passes `metabrowser.shortcuts.attach()`; see docs/plugins.md. */
-type MetabrowserPluginShortcutSpec = Readonly<{
-  /** Dotted, such as `diff.layout`; one id is one command, whatever it is attached to. */
-  id: string;
-  /** One ASCII letter, case ignored. */
-  key: string;
-  group: "controls" | "view-tabs";
-  order: number;
-  copy: Readonly<{ action: string; description: string; hint: string }>;
-  /** The control's own activation path, never a synthesized click. */
-  activate(): unknown;
-  /** Aborting it detaches the key. */
-  signal?: AbortSignal;
-}>;
+/**
+ * What a plugin passes `metabrowser.shortcuts.attach()`; see docs/plugins.md. A letter
+ * key names a known meaning; a situational control asks for `numbered: true` instead and
+ * takes its number from its place on screen, with no letter, group, order, or copy.
+ */
+type MetabrowserPluginShortcutSpec = Readonly<
+  {
+    /** Dotted, such as `diff.layout`; one id is one command, whatever it is attached to. */
+    id: string;
+    /** The control's own activation path, never a synthesized click. */
+    activate(): unknown;
+    /** Aborting it detaches the key. */
+    signal?: AbortSignal;
+  } & (
+    | {
+        /** One ASCII letter, case ignored. */
+        key: string;
+        group: "controls" | "view-tabs";
+        order: number;
+        copy: Readonly<{ action: string; description: string; hint: string }>;
+        numbered?: undefined;
+      }
+    | { numbered: true }
+  )
+>;
 
 /** What `metabrowser.shortcuts.attach()` returns: move the key's target, or let it go. */
 type MetabrowserPluginShortcutHandle = Readonly<{
@@ -3064,7 +3086,7 @@ declare global {
     onShow?: (() => void) | null;
     onHide?: (() => void) | null;
     /**
-     * Focus the panel's roving row after its tab's digit opens it; false when the
+     * Focus the panel's roving row after its tab's letter opens it; false when the
      * panel has no row yet, and the tab button keeps focus.
      */
     focusRow?: (() => boolean) | null;

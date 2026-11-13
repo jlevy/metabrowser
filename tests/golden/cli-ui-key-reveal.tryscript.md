@@ -15,8 +15,16 @@ or a lost `keyup` ends it.
 A capital or `?` typed within the threshold, Shift+wheel, Shift with the pointer
 travelling, and Shift during a press never reveal.
 The shell’s keys are targeted: each acts only while its control is on screen, so `U`
-does nothing at the root and `Y` nothing on a folder, and a view tab’s letter follows
-the bar the main pane commits, never one still staged.
+does nothing at the root, and a view tab’s letter follows the bar the main pane commits,
+never one still staged.
+Letters name known meanings, as “Keyboard Shortcuts” in `docs/design-system.md` sets
+out: `F`, `R`, and `H` for the Files, Pulls, and Commits tabs, `V` and `S` for a file’s
+rendered view and its source, and `N` and `P` for the next and previous item one level
+up. The filters are situational, so they take numbers from the registry’s one numbering,
+1 to 9 in reading order: `numbers` lists what each number reaches, the first being 1.
+Copying is ancillary, so no copy control carries a key, and Help lists the numbers as
+one positional row and gives no digit a fixed meaning; the session fails if either
+breaks.
 
 This browserless session loads the production registry, `static/key-reveal.js`,
 `static/shell-keymap.js`, Help with the real overlay layer, the file tree’s keys, Quick
@@ -28,19 +36,21 @@ listener on the window hears an element’s `blur`. It plays the server’s side
 `/api/source/status` answers of the in-process application, which
 `tests/test_key_reveal_session.py` records and replays.
 `tests/test_keymap.py` holds `shellKeys`, the keys each part’s registry registered for
-the shell, to the reserved table in `src/metabrowser/keymap.py`. Each step records the
-reveal’s state, whether the root is marked, the live keymap as key, command, and target,
-the badges mounted, the strip’s surface and items, and Help’s groups; `did` is what the
-shell’s stand-in activation paths were asked.
+the shell, to the reserved table in `src/metabrowser/keymap.py`, and `shellCommands`,
+each shell letter with the command it is bound to and that command’s Help action, to the
+meanings the design system’s keymap table gives those letters.
+Each step records the reveal’s state, whether the root is marked, the live keymap as
+key, command, and target, the badges mounted, the strip’s surface and items, and Help’s
+groups; `did` is what the shell’s stand-in activation paths were asked.
 A `cost` is what one navigation or key cost: the registry’s publications, its liveness
 reads of targets, and the keycaps built for badges and the strip.
 
 ## A Folder’s Files
 
-The keymap of a plain folder: the file type filter’s menu, the root and a folder below
-it, a Markdown file and a move to another of its kind, an agent log, structured data,
-and HTML without active content, and the view tab letters following the committed bar
-through a cancelled stage.
+The keymap of a plain folder: the file type filter’s number and menu, the root and a
+folder below it, a Markdown file and a move to another of its kind, its Copy path with
+no key, an agent log, structured data, and HTML without active content, and the view tab
+letters following the committed bar through a cancelled stage.
 
 ```console
 $ node tests/dom/key-reveal-session.js
@@ -54,40 +64,40 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
-      "step": "X opens the file type filter and focuses its checked row",
+      "step": "2 opens the file type filter and focuses its checked row",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
-        "key": "x",
+        "key": "2",
         "handled": true
       },
       "focus": {
@@ -105,18 +115,18 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "next": {
         "menu": "filter-type-menu",
         "row": ".md",
@@ -132,20 +142,19 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "s",
         "handled": true
@@ -159,20 +168,19 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "cost": {
         "publications": ["batch(target)"],
         "targetReads": 0,
@@ -180,29 +188,51 @@ $ node tests/dom/key-reveal-session.js
       }
     },
     {
-      "step": "a folder below the root has no Copy",
+      "step": "copying is ancillary: the Copy path button has no key, and Y does nothing",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["O","view-tabs.o","Overview tab"],
-        ["M","view-tabs.m","Treemap tab"],
-        ["U","header.parent","Open parent folder"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
+        ["S","view-tabs.s","Source tab"],
+        ["U","header.parent","/ crumb"],
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "y",
         "handled": false
-      }
+      },
+      "ancillary": ["Copy path"]
+    },
+    {
+      "step": "a folder below the root has Up",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["U","header.parent","Open parent folder"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "U opens the folder above",
@@ -211,19 +241,19 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
         ["U","header.parent","Open parent folder"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "did": ["opened the folder \"\""]
     },
     {
@@ -233,18 +263,18 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "u",
         "handled": false
@@ -257,18 +287,18 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "did": ["selected the treemap tab"]
     },
     {
@@ -278,46 +308,44 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["L","view-tabs.l","Log tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Log tab"],
         ["C","view-tabs.c","Charts tab"],
-        ["R","view-tabs.r","Raw JSON tab"],
+        ["S","view-tabs.s","Raw JSON tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
-      "step": "R follows the committed bar, and a cancelled stage changes nothing",
+      "step": "V follows the committed bar, and a cancelled stage changes nothing",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["R","view-tabs.r","Tree tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
-      "r": {
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "v": {
         "structured": "Tree",
-        "agentLog": "Raw JSON",
+        "agentLog": "Log",
         "back": "Tree",
         "whileStaged": "Tree",
         "afterCancel": "Tree"
@@ -330,21 +358,21 @@ $ node tests/dom/key-reveal-session.js
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","quick-file","help"]
     }
   ],
-  "shellKeys": ["1","2","3","a","j","k","t","u","x","y"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j tree.next: Next item","k tree.previous: Previous item","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder"]
 }
 ? 0
 ```
@@ -367,20 +395,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "Shift held past the threshold reveals",
@@ -389,28 +416,26 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["U","beside, in file-header"],
-        ["Y","beside, in file-header"],
-        ["D","Document tab"],
+        ["V","Document tab"],
         ["S","Source tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+        "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "a navigation while revealed moves the badges in one pass",
@@ -419,32 +444,30 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["R","view-tabs.r","Tree tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["U","beside, in file-header"],
-        ["Y","beside, in file-header"],
-        ["R","Tree tab"],
+        ["V","Tree tab"],
         ["S","Source tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+        "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "cost": {
         "publications": ["batch(target,registration)"],
-        "targetReads": 10,
-        "keycapsCreated": 12
+        "targetReads": 6,
+        "keycapsCreated": 10
       }
     },
     {
@@ -454,20 +477,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "a capital typed within the threshold never reveals",
@@ -476,20 +498,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "Z",
         "handled": false
@@ -502,12 +523,13 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["? or Esc","help.close",null]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "Shift+wheel never reveals",
@@ -516,20 +538,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "Shift with the pointer travelling to a click never reveals",
@@ -538,20 +559,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "a resting hand within the slop still reveals",
@@ -560,28 +580,26 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["U","beside, in file-header"],
-        ["Y","beside, in file-header"],
-        ["D","Document tab"],
+        ["V","Document tab"],
         ["S","Source tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+        "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "a pointer press while revealed dismisses it",
@@ -590,20 +608,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "Shift during a press that moved focus never reveals",
@@ -612,13 +629,11 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -627,12 +642,13 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "focusedRow": "docs"
     },
     {
@@ -642,13 +658,11 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -657,20 +671,20 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["U","beside, in file-header"],
-        ["Y","beside, in file-header"],
-        ["D","Document tab"],
+        ["V","Document tab"],
         ["S","Source tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+        "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "ArrowUp",
         "handled": true
@@ -678,8 +692,8 @@ $ node tests/dom/key-reveal-session.js gestures
       "focusedRow": "README.md",
       "cost": {
         "publications": ["dispatch"],
-        "targetReads": 10,
-        "keycapsCreated": 6
+        "targetReads": 6,
+        "keycapsCreated": 5
       },
       "did": ["the tree opened README.md"]
     },
@@ -690,13 +704,11 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -705,20 +717,20 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["U","beside, in file-header"],
-        ["Y","beside, in file-header"],
-        ["D","Document tab"],
+        ["V","Document tab"],
         ["S","Source tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","U Up","Y Copy"]
+        "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "focusedRow": "docs",
       "repeats": {
         "publications": [],
@@ -734,20 +746,19 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "a key without Shift ends a reveal whose keyup was lost",
@@ -756,13 +767,11 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -771,12 +780,13 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "the page going hidden ends the reveal",
@@ -785,13 +795,11 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -800,12 +808,13 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "Shift in Quick Search's field never reveals",
@@ -817,12 +826,13 @@ $ node tests/dom/key-reveal-session.js gestures
         ["Enter","quick-file.activate",null],
         ["Esc","quick-file.close",null]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "focus": "combobox"
     },
     {
@@ -832,12 +842,13 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["? or Esc","help.close",null]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "reveal",
         "items": []
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "the keymap after a pageshow rebuild",
@@ -846,34 +857,35 @@ $ node tests/dom/key-reveal-session.js gestures
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["D","view-tabs.d","Document tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "sameAsBefore": true
     }
   ],
-  "shellKeys": ["1","2","3","a","j","k","t","u","x","y"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j tree.next: Next item","k tree.previous: Previous item","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder"]
 }
 ? 0
 ```
 
 ## The Main Tabs, a Commit, a Stack, and a Pin
 
-`2` and `1` under a held Shift, a commit view’s Copy revision, Commits registered while
-the registry is down, Pulls drawn before Git discovery, the Preview tab’s `P` beside the
-stack’s, a pull request in and outside a stack, and a mirror’s pin with its branch
-switcher and no modified-within filter.
+`H` and `F` under a held Shift, a commit view’s Copy revision with no key, Commits
+registered while the registry is down, Pulls drawn before Git discovery and the tab
+order Files, Pulls, Commits, the Preview tab’s `V` with `P` left to the stack, a pull
+request in and outside a stack, a mirror’s pin with its branch switcher and its one
+filter numbered 1, and Help’s one positional row for the numbers.
 
 ```console
 $ node tests/dom/key-reveal-session.js tabs
@@ -887,45 +899,46 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
-      "step": "2 with Shift still held opens Commits, focuses its row, and keeps the reveal",
+      "step": "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
       "reveal": "revealed",
       "rootMarked": true,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"]
       ],
+      "numbers": [],
       "badges": [
-        ["1","Files tab"],
-        ["2","Commits tab"],
+        ["F","Files tab"],
+        ["H","Commits tab"],
         ["O","Overview tab"],
         ["M","Treemap tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","2 Commits"]
+        "items": ["? Help","T or / Quick Search","F Files","H Commits"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
-        "key": "2",
+        "key": "h",
         "handled": true
       },
       "active": "git",
@@ -933,18 +946,17 @@ $ node tests/dom/key-reveal-session.js tabs
       "did": ["address /view/"]
     },
     {
-      "step": "1 during the reveal shows the filter bar, and X and A gain badges",
+      "step": "F during the reveal shows the filter bar, and its filters gain 1 and 2",
       "reveal": "revealed",
       "rootMarked": true,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -953,21 +965,22 @@ $ node tests/dom/key-reveal-session.js tabs
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [
-        ["1","Files tab"],
-        ["2","Commits tab"],
-        ["A","Modified within"],
-        ["X","File type"],
+        ["F","Files tab"],
+        ["H","Commits tab"],
+        ["1","Modified within"],
+        ["2","File type"],
         ["O","Overview tab"],
         ["M","Treemap tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","2 Commits"]
+        "items": ["? Help","T or / Quick Search","F Files","H Commits"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
-        "key": "1",
+        "key": "f",
         "handled": true
       },
       "active": "files",
@@ -980,12 +993,11 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"],
+        ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
         ["←","tree.parent-or-collapse",null],
@@ -994,12 +1006,13 @@ $ node tests/dom/key-reveal-session.js tabs
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
       "step": "J on a commit row ends the reveal, since the row handles it itself",
@@ -1008,41 +1021,42 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "did": ["address /view/","the commit row moved down from a1"]
     },
     {
-      "step": "a commit view's Y copies its revision",
+      "step": "a commit view's Copy revision is ancillary and has no key",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["Y","header.copy","Copy revision"]
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "y",
-        "handled": true
+        "handled": false
       },
-      "did": ["copied 0123456789abcdef0123456789abcdef01234567"]
+      "ancillary": ["Copy revision"]
     },
     {
       "step": "Commits registered while the registry is down gets its tab, then its key",
@@ -1051,130 +1065,133 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "whileDown": {
         "threw": null,
         "tab": true,
         "container": true,
         "key": null
       },
-      "key": "2",
+      "key": "H",
       "pressed": {
-        "key": "2",
+        "key": "h",
         "handled": true
       },
       "active": "git",
       "did": ["address /view/"]
     },
     {
-      "step": "Pulls drawn before Commits keeps 3, and 2 stays reserved",
+      "step": "Pulls drawn before Commits has R, and H does nothing until Commits comes",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
-        "key": "2",
+        "key": "h",
         "handled": false
-      }
+      },
+      "tabs": ["Files","Pulls"]
     },
     {
-      "step": "a repository with a hosted origin shows Files, Commits, and Pulls",
+      "step": "a repository with a hosted origin shows Files, Pulls, and Commits",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "tabs": ["Files","Pulls","Commits"]
     },
     {
-      "step": "the Preview tab's P sits beside the stack's P",
+      "step": "the Preview tab is V, and P outside a stack does nothing",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
-        ["P","view-tabs.p","Preview tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
+        ["V","view-tabs.v","Preview tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"],
-        ["X","filter.type","File type"],
-        ["A","filter.recency","Modified within"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
-        "key": "p",
+        "key": "v",
         "handled": true
       },
+      "p": false,
       "did": ["selected the preview tab"]
     },
     {
-      "step": "3 again, once the list has rows, moves focus to the selected row",
+      "step": "R again, once the list has rows, moves focus to the selected row",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
-        ["P","view-tabs.p","Preview tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
+        ["V","view-tabs.v","Preview tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
-        ["Y","header.copy","Copy path"]
+        ["U","header.parent","/ crumb"]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
-        "key": "3",
+        "key": "r",
         "handled": true
       },
       "focus": "#7",
@@ -1187,16 +1204,17 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"]
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "focus": "#7",
       "pressed": {
         "key": "n",
@@ -1210,22 +1228,23 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["N","pulls.stack.top",null],
         ["P","pulls.stack.base",null]
       ],
+      "numbers": [],
       "badges": [
-        ["1","Files tab"],
-        ["2","Commits tab"],
-        ["3","Pulls tab"]
+        ["F","Files tab"],
+        ["R","Pulls tab"],
+        ["H","Commits tab"]
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","1 Files","2 Commits","3 Pulls","N or P Stack"]
+        "items": ["? Help","T or / Quick Search","F Files","R Pulls","H Commits","N or P Stack"]
       },
-      "help": ["anywhere","main-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "n",
         "handled": true
@@ -1239,18 +1258,19 @@ $ node tests/dom/key-reveal-session.js tabs
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
-        ["2","main-tabs.git","Commits tab"],
-        ["3","main-tabs.pulls","Pulls tab"],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
         ["N","pulls.stack.top",null],
         ["P","pulls.stack.base",null]
       ],
+      "numbers": [],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","filters","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "p",
         "handled": true
@@ -1258,33 +1278,69 @@ $ node tests/dom/key-reveal-session.js tabs
       "did": ["moved toward its base"]
     },
     {
-      "step": "a mirror's pin has W and no A",
+      "step": "a mirror's pin has W, and its one filter is 1",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
         ["?","help.open",null],
         ["T or /","quick-file.open",null],
-        ["1","main-tabs.files","Files tab"],
+        ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
         ["W","source.switch-ref","Branch: topic"],
-        ["X","filter.type","File type"]
+        ["1–9","numbered",null]
       ],
+      "numbers": ["File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","filters","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
         "key": "w",
         "handled": true
       },
-      "a": false,
+      "two": false,
       "did": ["opened the branch list and focused its filter"]
+    },
+    {
+      "step": "Help lists the numbers once, as positional",
+      "reveal": "revealed",
+      "rootMarked": true,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["W","source.switch-ref","Branch: topic"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["File type"],
+      "badges": [
+        ["F","Files tab"],
+        ["1","File type"],
+        ["W","Branch: topic"],
+        ["O","Overview tab"],
+        ["M","Treemap tab"]
+      ],
+      "strip": {
+        "surface": "reveal",
+        "items": ["? Help","T or / Quick Search","F Files","W Branch"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "helpDigits": [
+        {
+          "keys": "1–9",
+          "range": true,
+          "action": "Numbered links and actions"
+        }
+      ]
     }
   ],
-  "shellKeys": ["1","2","3","a","j","k","n","p","t","u","w","x","y"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","n","p","r","t","u","w"],
+  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j pulls.files.next: Next changed file","j pulls.next: Next pull request","j tree.next: Next item","k pulls.files.previous: Previous changed file","k pulls.previous: Previous pull request","k tree.previous: Previous item","n pulls.stack.top: Next in stack","p pulls.stack.base: Previous in stack","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder","w source.switch-ref: Branch or tag"]
 }
 ? 0
 ```
