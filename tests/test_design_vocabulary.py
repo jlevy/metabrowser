@@ -1447,12 +1447,12 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     overview = (plugins / "folder/overview.js").read_text(encoding="utf-8")
     assert '"section-heading folder-overview-panel-heading"' in overview
     diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
-    assert '"fold-expander diff-fold-control"' in diff
+    assert '"fold-expander diff-fold-control disclosure-toggle"' in diff
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
     assert headings and len(headings) == page.count('h("h2",')
     assert all('class: "section-heading"' in attributes for attributes in headings)
-    assert 'h("summary", { class: "fold-expander" }' in page
+    assert 'h("summary", { class: "fold-expander disclosure-toggle" }' in page
     # A hunk's fold states its size and then the inverse, as a fold does.
     assert "earlier ${lines}" in page and "`Hide ${earlierLines} ${lines}`" in page
     assert "section-disclosure-trigger" not in page
@@ -1472,6 +1472,336 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert travel["interpolate-size"] == "allow-keywords"
     assert travel["height"] == "0"
     assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
+
+
+# ── Disclosure toggles never select text ───────────────────────────
+#
+# docs/design-system.md, "Disclosure Toggles Never Select Text". Every browser source
+# that builds a toggle's markers -- the registry chevron, a `summary`, `aria-expanded` --
+# is registered: with the builders that carry `.disclosure-toggle`, each named by text
+# unique to it, or with why what it builds is not a toggle. Every chevron and `summary`
+# a source builds is listed, in order, with the builder whose element it goes into, so
+# a new one fails until it is listed, even beside a marked toggle. What the check cannot
+# see is which element a listed glyph lands in: it holds only that the builder it is
+# listed with sits within a window of it, and review holds the rest.
+
+_TOGGLE_MARKER = re.compile(
+    r"aria-expanded|ariaExpanded|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\""
+    r"|ICONS\.toggle|icons\.toggle|MetabrowserIcons\?\.toggle|shellIcon\(\"toggle\"\)"
+    r"|registryIcon\(\"toggle\"\)|icons\.chevron|host\.chevron\(\)|srow-chevron\""
+)
+# A chevron or summary going into markup, each of which `_TOGGLE_GLYPHS` lists.
+_TOGGLE_GLYPH = re.compile(
+    r"\$\{ICONS\.toggle\}|ICONS\.toggle \+|icon: ICONS\.toggle|ICONS\.toggle,|"
+    r"\$\{menuChevron\}|MetabrowserIcons\?\.toggle \?\?|shellIcon\(\"toggle\"\)|"
+    r"mb\.icons\.chevron|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
+    r"|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\"",
+    re.MULTILINE,
+)
+# How close a glyph sits to the builder it is listed with, in characters: just past the
+# farthest today, before it (a chip menu's caret) and after it (a Pulls row's chevron).
+_TOGGLE_NEAR_BEFORE = 600
+_TOGGLE_NEAR_AFTER = 320
+
+_DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
+    "app.js": (
+        'class="tree-item tree-folder disclosure-toggle ${stateClass}',
+        '" tree-container disclosure-toggle collapsed"',
+        "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'",
+        'className: "filter-drawer-toggle disclosure-toggle"',
+    ),
+    "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
+    "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
+    "source-ref-selector.js": (
+        '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+    ),
+    "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "structured/tree.js": ('" srow-container disclosure-toggle"',),
+    "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
+    "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
+    "folder/distribution-view.js": (
+        "file-type-summary-details-toggle disclosure-toggle",
+        '"file-type-summary-disclosure section-disclosure-trigger disclosure-toggle"',
+    ),
+    "folder/overview.js": (
+        '"folder-overview-panel-toggle section-disclosure-trigger disclosure-toggle"',
+    ),
+    "diff/diff-view.js": (
+        '"fold-expander diff-fold-control disclosure-toggle"',
+        '"diff-file-bar disclosure-toggle"',
+    ),
+    "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
+    "github/pulls-panel.js": ('"github-pulls-row disclosure-toggle collapsed"',),
+    "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
+    "github/pull-page.js": (
+        '"btn github-pull-stack-trigger disclosure-toggle"',
+        '{ class: "fold-expander disclosure-toggle" }',
+    ),
+}
+# Sources with a marker that build no toggle of their own, and why.
+_NOT_TOGGLES: dict[str, str] = {
+    "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
+    "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
+    "search-palette.js": "the search field is a combobox, and its text stays editable",
+    "server.py": "the settings gear is an icon-only menu button with no chevron",
+}
+# Each chevron and `summary` a source builds, in source order, with the builder whose
+# element it goes into. Whitespace in a glyph is collapsed to one space.
+_TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
+    "app.js": (
+        ("${ICONS.toggle}", 'class="tree-item tree-folder disclosure-toggle ${stateClass}'),
+        ("${ICONS.toggle}", '" tree-container disclosure-toggle collapsed"'),
+        ("icon: ICONS.toggle", 'className: "filter-drawer-toggle disclosure-toggle"'),
+        ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
+    ),
+    "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
+    "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
+    "source-ref-selector.js": (
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+        ),
+    ),
+    "agent_log/index.js": (("mb.icons.chevron", 'class="log-event-header disclosure-toggle"'),),
+    "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
+    "markdown/rendered.js": (
+        ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
+    ),
+    "diff/diff-view.js": (
+        ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
+        ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
+    ),
+    "diff/diff-markdown.js": (
+        ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
+    ),
+    "github/pulls-panel.js": (("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),),
+    "github/pull-files-view.js": (
+        ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
+    ),
+    "github/pull-page.js": (
+        ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
+        ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
+        ("chevron(),", '{ class: "fold-expander disclosure-toggle" }'),
+    ),
+}
+# A glyph built far from its builder: a folder row's parts are made by one function and
+# put in the row by another.
+_GLYPH_FAR_FROM_BUILDER: frozenset[tuple[str, str]] = frozenset(
+    {("github/pull-files-view.js", "host.chevron()")}
+)
+# The classes the registered toggles are made of. A stylesheet that gives one of them a
+# selectable `user-select` reopens the toggle, whether or not its selector also names
+# `.disclosure-toggle`.
+_TOGGLE_CLASSES: frozenset[str] = frozenset(
+    {
+        "tree-item",
+        "tree-folder",
+        "tree-container",
+        "filter-drawer-toggle",
+        "tally-node",
+        "chip",
+        "chip-menu-trigger",
+        "source-ref-selector-toggle",
+        "log-event-header",
+        "srow-container",
+        "kpress-toc-toggle",
+        "section-disclosure-trigger",
+        "file-type-summary-disclosure",
+        "file-type-summary-details-toggle",
+        "folder-overview-panel-toggle",
+        "fold-expander",
+        "diff-fold-control",
+        "diff-file-bar",
+        "github-pulls-row",
+        "github-pull-folder-row",
+        "btn",
+        "github-pull-stack-trigger",
+    }
+)
+# One compound selector that names a toggle: its marker class, a component class, or a
+# summary.
+_TOGGLE_COMPOUND = re.compile(
+    r"\.(?:disclosure-toggle|"
+    + "|".join(sorted(map(re.escape, _TOGGLE_CLASSES), key=len, reverse=True))
+    + r")(?![\w-])|(?:^|[(,\s])summary(?![\w-])"
+)
+
+
+def _selects_in_a_toggle(selector: str) -> bool:
+    """Whether a selector's subject is a toggle or inside one.
+
+    A compound contains the subject when it is the subject or is followed by a
+    descendant or child combinator: what it reaches is inside it, and so is any later
+    sibling of that. A compound followed by `+` or `~` is a sibling, never around the
+    subject, so content a toggle reveals beside it is not in the toggle.
+    """
+
+    tokens = _compounds(selector)
+    for index, token in enumerate(tokens):
+        if token in (">", "+", "~"):
+            continue
+        following = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if following in ("+", "~"):
+            continue
+        if _TOGGLE_COMPOUND.search(token):
+            return True
+    return False
+
+
+def _source_key(source: Path) -> str:
+    if source.name == "server.py" or source.parent == STATIC:
+        return source.name
+    return f"{source.parent.name}/{source.name}"
+
+
+def _toggle_sheet_problems(name: str, css: str) -> list[str]:
+    """Where one stylesheet lets a toggle select text, in WebKit or anywhere."""
+
+    problems: list[str] = []
+    for selectors, body in _style_rules(css):
+        declarations = _declarations(body)
+        names = [declared for declared, _value in declarations]
+        values = dict(declarations)
+        # WebKit applies only the prefixed half, so one without it is a no-op there.
+        if "user-select" in names and values.get("-webkit-user-select") != values["user-select"]:
+            problems.append(f"{name}: {selectors} sets user-select without -webkit-user-select")
+        for selector in _split_top(selectors, ","):
+            if not _selects_in_a_toggle(selector) or selector.strip() in (
+                ".disclosure-toggle",
+                "summary",
+            ):
+                continue
+            for declared in ("user-select", "-webkit-user-select"):
+                value = values.get(declared, "var(--toggle-user-select)")
+                if value not in ("var(--toggle-user-select)", "none"):
+                    problems.append(f"{name}: {selector} lets a toggle select text")
+        if name != "styles.css" and any(
+            selector.strip() == ".disclosure-toggle" for selector in _split_top(selectors, ",")
+        ):
+            problems.append(f"{name} redefines .disclosure-toggle")
+    return problems
+
+
+def _toggle_source_problems(key: str, text: str) -> list[str]:
+    """Where one browser source builds a toggle the registry does not account for."""
+
+    if not _TOGGLE_MARKER.search(text):
+        if key in _DISCLOSURE_TOGGLES or key in _NOT_TOGGLES:
+            return [f"{key} builds no toggle any more; drop it from the registry"]
+        return []
+    if key not in _DISCLOSURE_TOGGLES and key not in _NOT_TOGGLES:
+        return [
+            f"{key} builds a chevron, a summary, or aria-expanded. Give each toggle it "
+            "builds the .disclosure-toggle class and register its builders, or register "
+            "why it builds no toggle."
+        ]
+    problems: list[str] = []
+    builders = _DISCLOSURE_TOGGLES.get(key, ())
+    for builder in builders:
+        if "disclosure-toggle" not in builder or builder not in text:
+            problems.append(f"{key} no longer builds {builder!r}")
+    listed = _TOGGLE_GLYPHS.get(key, ())
+    matches = list(_TOGGLE_GLYPH.finditer(text))
+    found = [re.sub(r"\s+", " ", match.group().strip()) for match in matches]
+    if found != [glyph for glyph, _builder in listed]:
+        problems.append(
+            f"{key} builds the chevrons and summaries {found}, but the registry lists "
+            f"{[glyph for glyph, _builder in listed]}. Give each new one's element the "
+            ".disclosure-toggle class and list it with that element's builder."
+        )
+        return problems
+    for match, (glyph, builder) in zip(matches, listed, strict=True):
+        if builder not in builders:
+            problems.append(f"{key}: {glyph} is listed with {builder!r}, not a builder")
+            continue
+        if (key, glyph) in _GLYPH_FAR_FROM_BUILDER:
+            continue
+        nearby = text[
+            max(0, match.start() - _TOGGLE_NEAR_BEFORE) : match.end() + _TOGGLE_NEAR_AFTER
+        ]
+        if builder not in nearby:
+            line = text.count("\n", 0, match.start()) + 1
+            problems.append(f"{key}:{line} builds {glyph} away from {builder!r}")
+    return problems
+
+
+def test_disclosure_toggles_never_select_text() -> None:
+    """A toggle carries one class, and its one rule keeps every engine from selecting text.
+
+    A triple click on a rendered Markdown diff's unchanged-blocks fold selected its label
+    and every paragraph it revealed, and in WebKit, the macOS app's engine, a double click
+    on a folder row selected its name: WebKit reads only `-webkit-user-select`.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "--toggle-user-select: none;" in styles
+    rule = dict(_rules_of(STATIC / "styles.css"))
+    for selector in (".disclosure-toggle", "summary"):
+        declared = rule[selector]
+        assert declared["-webkit-user-select"] == "var(--toggle-user-select)", selector
+        assert declared["user-select"] == "var(--toggle-user-select)", selector
+    problems: list[str] = []
+    for sheet in _stylesheets():
+        problems += _toggle_sheet_problems(_sheet_name(sheet), sheet.read_text(encoding="utf-8"))
+    for source in _browser_sources():
+        problems += _toggle_source_problems(_source_key(source), source.read_text(encoding="utf-8"))
+    assert not problems, "\n  ".join(["toggles that can select text:", *problems])
+    every_builder = " ".join(b for listed in _DISCLOSURE_TOGGLES.values() for b in listed)
+    for name in sorted(_TOGGLE_CLASSES):
+        assert re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", every_builder), (
+            f"{name} is no registered toggle's class"
+        )
+    assert set(_TOGGLE_GLYPHS) <= set(_DISCLOSURE_TOGGLES)
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Disclosure Toggles Never Select Text" in doc
+    assert "test_disclosure_toggles_never_select_text" in doc
+
+
+def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
+    """A second chevron control built beside a marked one is a toggle the class misses.
+
+    Review A of #394 traced it: the character window found the neighbour's class, so a
+    new chevron button built just after a diff fold's passed.
+    """
+
+    key = "diff/diff-view.js"
+    text = (REPO_ROOT / BUILTIN_PLUGINS / key).read_text(encoding="utf-8")
+    anchor = (
+        '  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");\n'
+    )
+    assert anchor in text
+    beside = anchor + (
+        '  const more = el("button", "diff-fold-more");\n  more.innerHTML = shellIcon("toggle");\n'
+    )
+    assert _toggle_source_problems(key, text) == []
+    assert _toggle_source_problems(key, text.replace(anchor, beside))
+
+
+def test_a_toggle_components_own_selection_override_fails() -> None:
+    """`user-select: text` on a toggle, or on anything inside one, reopens it.
+
+    What a selector selects is its subject, so a toggle class decides only when the
+    subject is that element or inside it. Content a toggle reveals is its sibling, and a
+    rule reached through `+` or `~` may make it selectable (review B of #394).
+    """
+
+    selectable = "{ -webkit-user-select: text; user-select: text; }"
+    for reopens in (
+        ".log-event-header",
+        ".tree-folder .tree-item-name",
+        ".tree-folder > .tree-item-name",
+        ".tree-folder .tree-toggle + .tree-item-name",
+        "details > summary",
+    ):
+        assert _toggle_sheet_problems("styles.css", f"{reopens} {selectable}"), reopens
+    for revealed in (
+        ".log-event-raw",
+        ".log-event-header + .log-event-raw",
+        ".log-event-header ~ .log-event-raw pre",
+        "summary + p",
+    ):
+        assert not _toggle_sheet_problems("styles.css", f"{revealed} {selectable}"), revealed
 
 
 def _oklch_channels(value: str) -> tuple[float, float, float]:

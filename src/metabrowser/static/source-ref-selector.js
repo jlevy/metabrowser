@@ -517,7 +517,7 @@
   function build(element) {
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle";
+    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
     toggle.dataset.tipText = "Switch branch or tag";
     const label = document.createElement("span");
