@@ -2980,7 +2980,11 @@ export function mountPullsPanel(container, ctx, mb) {
         h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
         h("span", { class: "github-pulls-by" }, [
           separator(),
-          authorLabel(row.author, row.avatar, "github-pulls-author"),
+          // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
+          // this asks for no avatar outside that window, and a row the window mounts again
+          // as the list scrolls back draws its avatar at once: WebKit fetches a new lazy
+          // image again (docs/design-system.md, "A Repaint Keeps Its Images").
+          authorLabel(row.author, row.avatar, "github-pulls-author", { loading: "eager" }),
         ]),
         h("span", { class: "github-pulls-merge" }, [
           separator(),
