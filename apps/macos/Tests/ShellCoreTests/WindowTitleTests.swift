@@ -135,9 +135,9 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
 
     @Test func foldersThatShareAShortNameAreTitledByTheirFullNames() {
         func folder(_ path: String) -> WindowTitle {
-            WindowTitle(.localFolder(URL(filePath: path), home: "/Users/me"))
+            WindowTitle(.localFolder(URL(filePath: path), home: "/Volumes/Home"))
         }
-        let titles = [folder("/Users/me/a/notes"), folder("/Users/me/fdu"), folder("/Users/me/b/notes")]
+        let titles = [folder("/Volumes/Home/a/notes"), folder("/Volumes/Home/fdu"), folder("/Volumes/Home/b/notes")]
         #expect(WindowTitle.windowTitles(titles) == ["~/a/notes", "fdu", "~/b/notes"])
         // Once one of them closes, the other is its short name again.
         #expect(WindowTitle.windowTitles([titles[0], titles[1]]) == ["notes", "fdu"])
