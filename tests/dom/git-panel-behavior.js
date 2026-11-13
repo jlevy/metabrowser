@@ -3211,6 +3211,272 @@ async function run() {
     );
   }
 
+  // ── Refs stay current through every rebuild ───────────────
+  //
+  // A detail's refs are true for the history session they were read in. Each case below
+  // fails without the session stamp on details and the summary on screen: a selected
+  // commit recovery does not replay (B1), work that outlives a rebuild (B2), a refetched
+  // detail after eviction (B3), and the summary record after its view goes (B4).
+  {
+    const container = document.getElementById("tab-git");
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const at = (index) => revisions[index];
+    let moved = false;
+    let headRef = "refs/heads/main";
+    let expire = false;
+    // Each commit carries one branch whose name says whether the refs have moved yet.
+    const refsOf = (revision) => {
+      const name = `b${revisions.indexOf(revision)}-${moved ? "now" : "old"}`;
+      return [{ id: `refs/heads/${name}`, name, kind: "branch", revision }];
+    };
+    const detailFor = (revision) => ({
+      is_repo: true,
+      commit: commit(revision, [], "session stamp detail", refsOf(revision)),
+      body: "",
+      stats: { files_changed: 1, additions: 1, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    const serveDetail = (revision) =>
+      responses.set(`/api/git/commit/${revision}`, () => detailFor(revision));
+    const serveAll = () => {
+      responses.set("/api/git/repo", () => ({
+        is_repo: true,
+        root: "",
+        head: { ref: headRef, revision: at(0), detached: false, unborn: false },
+      }));
+      responses.set("/api/git/refs", { is_repo: true, refs: [] });
+      responses.set("/api/git/log", (url) => {
+        if (expire) {
+          expire = false;
+          return { httpStatus: 410 };
+        }
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        const page = cursor ? Number(cursor.split(":")[1]) : 0;
+        const commits = [page * 2, page * 2 + 1].map((index) =>
+          commit(
+            at(index),
+            index + 1 < total ? [at(index + 1)] : [],
+            `stamp ${index}`,
+            refsOf(at(index)),
+          ),
+        );
+        return historyPage(page, commits, total, at(0));
+      });
+      for (const revision of revisions) {
+        serveDetail(revision);
+      }
+    };
+    const detailFetches = (revision) =>
+      fetchRequests.filter((request) => request.url.startsWith(`/api/git/commit/${revision}`))
+        .length;
+    const mountedRefs = () =>
+      document.getElementById("preview-pane").querySelector(".git-commit-refs")?.innerHTML ?? "";
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+    // Rows 0..5 loaded and a cursor left for page 3, so the next page request can expire.
+    // Recovery replays at most rows 0..3, so row 4 is past its depth.
+    const freshSession = async () => {
+      moved = false;
+      headRef = "refs/heads/main";
+      expire = false;
+      serveAll();
+      document.activeElement = null;
+      const fresh = internals.emptyState();
+      fresh.headRevision = at(0);
+      fresh.headRef = headRef;
+      internals.setStateForTests(fresh);
+      await internals.loadNextPage(true);
+      await internals.loadNextPage(false);
+      await internals.loadNextPage(false);
+      internals.renderPanel();
+    };
+    const expireAndRecover = async () => {
+      moved = true;
+      expire = true;
+      await internals.loadNextPage(false);
+      internals.renderPanel();
+    };
+    const rowFor = (revision) =>
+      container.querySelectorAll(".git-graph-row").find((row) => row.dataset.revision === revision);
+
+    // B1: the selected commit is past the replay depth, so no rebuilt row confirms its
+    // refs; recovery reads them again and replaces only the refs group.
+    await freshSession();
+    await internals.selectCommit(at(4));
+    assertContains("B1 recovery: the summary starts with the old branch", mountedRefs(), "b4-old");
+    let diffRenders = renderedDiffRevisions.length;
+    let comparisons = comparisonFetches.length;
+    await expireAndRecover();
+    assertContains(
+      "B1 recovery: an unreplayed selection takes its current refs",
+      mountedRefs(),
+      "b4-now",
+    );
+    assertNotContains(
+      "B1 recovery: an unreplayed selection drops its old refs",
+      mountedRefs(),
+      "b4-old",
+    );
+    assertEqual(
+      "B1 recovery: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "B1 recovery: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+
+    // B1: a full refresh whose first page does not hold the commit on screen.
+    await freshSession();
+    await internals.selectCommit(at(4));
+    assertContains("B1 refresh: the summary starts with the old branch", mountedRefs(), "b4-old");
+    diffRenders = renderedDiffRevisions.length;
+    comparisons = comparisonFetches.length;
+    moved = true;
+    headRef = "refs/heads/other";
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && !mountedRefs().includes("b4-now"); attempt += 1) {
+      await tick();
+    }
+    assertContains(
+      "B1 refresh: a summary off the first page takes its current refs",
+      mountedRefs(),
+      "b4-now",
+    );
+    assertEqual(
+      "B1 refresh: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "B1 refresh: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+
+    // B2: a selection staged with old refs waits for the diff's assets while the history
+    // is rebuilt; it installs with the refs the rebuilt session confirmed.
+    await freshSession();
+    const ensureKindAssets = sandbox.metabrowser.ensureKindAssets;
+    let releaseAssets = () => {};
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = resolve;
+      });
+    const staging = internals.selectCommit(at(0));
+    await tick();
+    await expireAndRecover();
+    releaseAssets();
+    await staging;
+    await tick();
+    sandbox.metabrowser.ensureKindAssets = ensureKindAssets;
+    assertContains(
+      "B2 staged: the installed summary has the current refs",
+      mountedRefs(),
+      "b0-now",
+    );
+    assertNotContains(
+      "B2 staged: the installed summary drops the old refs",
+      mountedRefs(),
+      "b0-old",
+    );
+
+    // B2: the selected row's detail was evicted, so hovering it reads the detail without a
+    // preparation; that read answers after the rebuild with the old refs, and must not put
+    // them back in the cache or on the tooltip.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    for (const index of [1, 2, 3]) {
+      await internals.fetchCommitDetail(at(index));
+    }
+    const oldDetail = detailFor(at(0));
+    let answerHover = () => {};
+    responses.set(
+      `/api/git/commit/${at(0)}`,
+      () =>
+        new Promise((resolve) => {
+          answerHover = () => resolve(oldDetail);
+        }),
+    );
+    const hovered = rowFor(at(0));
+    shownTooltips.length = 0;
+    hovered._hovered = true;
+    hovered.dispatch("mouseenter");
+    await tick();
+    await expireAndRecover();
+    serveDetail(at(0));
+    answerHover();
+    await tick();
+    hovered._hovered = false;
+    hovered.dispatch("mouseleave");
+    const afterHover = await internals.fetchCommitDetail(at(0));
+    assertEqual(
+      "B2 hover: a read that outlived its session leaves no old refs in the cache",
+      afterHover?.commit.refs?.map((ref) => ref.name),
+      ["b0-now"],
+    );
+    assertTrue(
+      "B2 hover: the tooltip never shows the old refs",
+      !shownTooltips.some((tip) => tip.html.includes("b0-old")),
+    );
+
+    // B3: a detail cached before recovery, past its replay depth, is evicted; reading it
+    // twice afterward fetches it once. Twice over, for repeated recovery and eviction.
+    for (const round of [1, 2]) {
+      await freshSession();
+      for (const index of [0, 1, 4]) {
+        await internals.fetchCommitDetail(at(index));
+      }
+      await expireAndRecover();
+      for (const index of [2, 3, 5]) {
+        await internals.fetchCommitDetail(at(index));
+      }
+      const before = detailFetches(at(4));
+      await internals.fetchCommitDetail(at(4));
+      await internals.fetchCommitDetail(at(4));
+      assertEqual(
+        `B3 round ${round}: an evicted, refetched detail is read from the cache the second time`,
+        detailFetches(at(4)),
+        before + 1,
+      );
+    }
+
+    // B4: the summary record goes with its view: when another owner takes the preview,
+    // when a selection fails, and never when a retired view is disposed after a newer one.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    assertEqual("B4: the summary on screen is recorded", internals.mountedSummaryRevision(), at(0));
+    const handoff = panel.cancelPending();
+    assertEqual(
+      "B4: a relinquished view releases its summary",
+      internals.mountedSummaryRevision(),
+      null,
+    );
+    await internals.selectCommit(at(1));
+    assertEqual("B4: the next view records its summary", internals.mountedSummaryRevision(), at(1));
+    handoff?.();
+    assertEqual(
+      "B4: disposing the retired view keeps the newer summary",
+      internals.mountedSummaryRevision(),
+      at(1),
+    );
+    responses.set(`/api/git/commit/${at(5)}`, {
+      httpStatus: 404,
+      body: { error: "commit not found", code: "commit_not_found" },
+    });
+    await internals.selectCommit(at(5));
+    assertEqual(
+      "B4: a failed selection releases the summary",
+      internals.mountedSummaryRevision(),
+      null,
+    );
+  }
+
   // ── A stale cursor is a typed state with a reload action ───
   //
   // `history_stale` means the refs the walk was fingerprinted by moved, as

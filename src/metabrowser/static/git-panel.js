@@ -116,16 +116,20 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
-  // A commit's object id never changes, but its refs do as branches and tags move. A
-  // detail cached before the history session now shown was rebuilt (expired-session
-  // recovery keeps the cache) has refs that session has not confirmed: the row for it,
-  // when it arrives, says what they are now (adoptRowRefs), and a detail read before that
-  // is fetched again rather than served with refs the row may contradict.
-  /** @type {Set<string>} */
-  const unconfirmedRefs = new Set();
-  // The selected commit's summary on screen, so a row that arrives with other refs can
-  // replace its refs in place without touching the diff mounted under it.
-  /** @type {{revision: string, refs: string, identity: Element} | null} */
+  // A commit's object id never changes, but its refs do as branches and tags move, so a
+  // detail's refs are true only for the history session they were read in: the
+  // `historyGeneration` every rebuild of the history advances. This records it per detail.
+  // A detail from an older session is not served from the cache, not stored by a request
+  // that outlives its session, and not drawn without being confirmed: by the current
+  // session's row for it (adoptRowRefs) or by reading it again. The record goes with the
+  // detail, so evicting a detail leaves nothing behind.
+  /** @type {WeakMap<MetabrowserGitCommitDetail, number>} */
+  const refsReadIn = new WeakMap();
+  // The selected commit's summary on screen and the session its refs were confirmed in,
+  // so its refs can be brought up to date in place without touching the diff under it.
+  // Released when that view is relinquished or disposed.
+  /** @typedef {{revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
+  /** @type {MountedSummary | null} */
   let mountedSummary = null;
   // Commits the server answered `commit_not_found` for: the repository does not have
   // them, which is not a failed request. Bounded like the detail cache.
@@ -804,28 +808,86 @@
    */
   function adoptRowRefs(commits) {
     for (const row of commits) {
-      unconfirmedRefs.delete(row.id);
-      const key = refsKey(row.refs);
       const cached = detailCache.get(row.id);
-      if (cached && refsKey(cached.commit.refs) !== key) {
-        const { refs: _stale, ...rest } = cached.commit;
-        // Map.set on a key it has keeps the key's place in the eviction order.
-        detailCache.set(row.id, {
-          ...cached,
-          commit: row.refs?.length ? { ...rest, refs: row.refs } : rest,
-        });
-      }
-      const mounted = mountedSummary;
-      if (mounted?.revision === row.id && mounted.refs !== key && mounted.identity.isConnected) {
-        mounted.identity.querySelector(".git-commit-refs")?.remove();
-        if (row.refs?.length) {
-          const group = document.createElement("span");
-          group.className = "git-commit-refs";
-          group.innerHTML = renderRefBadges(row.refs, "inline");
-          mounted.identity.append(group);
+      if (cached) {
+        let confirmed = cached;
+        if (refsKey(cached.commit.refs) !== refsKey(row.refs)) {
+          const { refs: _stale, ...rest } = cached.commit;
+          confirmed = { ...cached, commit: row.refs?.length ? { ...rest, refs: row.refs } : rest };
+          // Map.set on a key it has keeps the key's place in the eviction order.
+          detailCache.set(row.id, confirmed);
         }
-        mounted.refs = key;
+        refsReadIn.set(confirmed, historyGeneration);
       }
+      if (mountedSummary?.revision === row.id) {
+        applySummaryRefs(mountedSummary, row.refs, historyGeneration);
+      }
+    }
+  }
+
+  /**
+   * Put a commit's current refs in the summary on screen for it, replacing only its refs
+   * group. A summary no longer on screen is released instead.
+   *
+   * @param {MountedSummary} mounted
+   * @param {MetabrowserGitRef[] | undefined} refs
+   * @param {number} generation The session the refs were confirmed in.
+   * @returns {void}
+   */
+  function applySummaryRefs(mounted, refs, generation) {
+    if (!mounted.identity.isConnected) {
+      releaseMountedSummary(mounted);
+      return;
+    }
+    const key = refsKey(refs);
+    if (mounted.refs !== key) {
+      mounted.identity.querySelector(".git-commit-refs")?.remove();
+      if (refs?.length) {
+        const group = document.createElement("span");
+        group.className = "git-commit-refs";
+        group.innerHTML = renderRefBadges(refs, "inline");
+        mounted.identity.append(group);
+      }
+      mounted.refs = key;
+    }
+    mounted.generation = generation;
+  }
+
+  /**
+   * Confirm the refs of the summary on screen in the current session. Its row, when the
+   * session serves it, does that; a summary whose row the session has not served, as a
+   * commit past recovery's replay depth or off a refreshed first page, or one staged in
+   * an older session, reads its commit again and takes only the refs.
+   *
+   * @returns {Promise<void>}
+   */
+  async function revalidateMountedSummary() {
+    const mounted = mountedSummary;
+    if (!mounted || mounted.generation === historyGeneration) {
+      return;
+    }
+    const generation = historyGeneration;
+    const detail = await fetchCommitDetail(mounted.revision);
+    if (
+      detail &&
+      mountedSummary === mounted &&
+      generation === historyGeneration &&
+      refsReadIn.get(detail) === generation
+    ) {
+      applySummaryRefs(mounted, detail.commit.refs, generation);
+    }
+  }
+
+  /**
+   * Let go of the summary on screen. With *mounted*, only if it is still that one, so a
+   * retired view never releases the summary that replaced it.
+   *
+   * @param {MountedSummary | null} [mounted]
+   * @returns {void}
+   */
+  function releaseMountedSummary(mounted = mountedSummary) {
+    if (mountedSummary === mounted) {
+      mountedSummary = null;
     }
   }
 
@@ -841,17 +903,18 @@
    */
   async function fetchCommitDetail(revision, signal) {
     const cached = detailCache.get(revision);
-    if (cached && !unconfirmedRefs.has(revision)) {
+    if (cached && refsReadIn.get(cached) === historyGeneration) {
       return cached;
     }
     if (cached) {
+      // Read in an older session: its refs may have moved since.
       detailCache.delete(revision);
-      unconfirmedRefs.delete(revision);
     }
     const existing = detailInFlight.get(revision);
     if (existing) {
       return existing;
     }
+    const generation = historyGeneration;
     const request = measureAsync(
       "gitRevision:detailData",
       async () => {
@@ -874,6 +937,12 @@
             return null;
           }
           missingRevisions.delete(revision);
+          refsReadIn.set(detail, generation);
+          // A request that outlived its session answers its caller, who checks the
+          // generation, but does not put refs that may have moved into the cache.
+          if (generation !== historyGeneration) {
+            return detail;
+          }
           // Insertion-ordered eviction: Map preserves insertion order, so
           // the first key is the oldest entry.
           if (detailCache.size >= DETAIL_CACHE_SIZE) {
@@ -1769,8 +1838,12 @@
         lastSelection?.revision === revision &&
         shell()?.isPreviewClaimCurrent(lastSelection.claim);
       const preparation = selectedHere ? null : prepareRevision(revision, true);
-      const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
-      if (!detail) {
+      let detail = await (preparation?.detail ?? fetchCommitDetail(revision));
+      // The history was rebuilt while the detail was read: read it in this session.
+      if (detail && refsReadIn.get(detail) !== historyGeneration) {
+        detail = await fetchCommitDetail(revision);
+      }
+      if (!detail || refsReadIn.get(detail) !== historyGeneration) {
         return;
       }
       if (hoverRevision !== revision || !rowElement.matches(":hover")) {
@@ -1825,6 +1898,7 @@
     preparationSlot = null;
     const relinquished = commitDiffHandle;
     commitDiffHandle = null;
+    releaseMountedSummary();
     relinquished?.cancelPending?.();
     return relinquished ? () => relinquished.dispose?.() : null;
   }
@@ -2272,9 +2346,14 @@
           ? (window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy) ?? null)
           : null;
       const identity = stage.querySelector(".git-commit-identity");
+      // A detail the cache did not hand out is the caller's, which vouches for it.
+      const generation = refsReadIn.get(detail) ?? historyGeneration;
       mountedSummary = identity
-        ? { revision: commit.id, refs: refsKey(commit.refs), identity }
+        ? { revision: commit.id, refs: refsKey(commit.refs), generation, identity }
         : null;
+      // Staged in an older session, as when the history was rebuilt while the diff's
+      // assets loaded: confirm its refs now.
+      void revalidateMountedSummary();
     } finally {
       unstage();
     }
@@ -2353,6 +2432,7 @@
   function disposeCommitDiff() {
     commitDiffHandle?.dispose?.();
     commitDiffHandle = null;
+    releaseMountedSummary();
   }
 
   /**
@@ -2461,6 +2541,9 @@
           break;
         }
       }
+      // The replay confirmed the refs of the rows it served; the summary on screen may
+      // be a commit it did not reach.
+      await revalidateMountedSummary();
       const scroller = historyScroller();
       if (scroller && state.rowCount > 0) {
         const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
@@ -2540,15 +2623,12 @@
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
     // Recovery keeps the cache, for the rest of a detail and the mounted diff, but not
-    // its refs: until the rebuilt session's row for a commit arrives, its cached refs are
-    // unconfirmed.
-    if (options.preserveDetail) {
-      for (const revision of detailCache.keys()) {
-        unconfirmedRefs.add(revision);
-      }
-    } else {
+    // its refs: resetHistoryRequests began a new session, so a cached detail serves again
+    // only once that session's row confirms its refs (adoptRowRefs). A detail request
+    // already on its way belongs to the old session and is not joined.
+    detailInFlight.clear();
+    if (!options.preserveDetail) {
       detailCache.clear();
-      unconfirmedRefs.clear();
       missingRevisions.clear();
     }
     state.loading = true;
@@ -2574,6 +2654,11 @@
       void loadHistorySummary();
     } finally {
       refreshing = false;
+    }
+    // Recovery confirms the summary after its replay; a full refresh does it here, for a
+    // summary whose commit the first page does not hold.
+    if (!options.preserveDetail) {
+      await revalidateMountedSummary();
     }
     if (restoreLanding) {
       await restoreCommitLanding();
@@ -2655,7 +2740,7 @@
     disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
-    unconfirmedRefs.clear();
+    detailInFlight.clear();
     mountedSummary = null;
     missingRevisions.clear();
     refusedRevision = null;
@@ -2796,6 +2881,8 @@
       loadNextPage,
       retryFailedPage,
       selectCommit,
+      fetchCommitDetail,
+      mountedSummaryRevision: () => mountedSummary?.revision ?? null,
       wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {
         if (state.pageCache !== next.pageCache) {
