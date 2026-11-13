@@ -1,4 +1,5 @@
-// Deferred shell controller for the Files, Commits, and Pulls tabs.
+// Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
+// from the heading above them.
 (() => {
   const MAIN_TABS = [
     { id: "files", label: "Files", key: "1" },
@@ -217,7 +218,6 @@
       const state = { ...window.history.state };
       delete state.gitLanding;
       window.history.replaceState(state, "", "/view/");
-      mainTabDestinations.delete("git");
       await deps.restore();
     }
 
@@ -236,9 +236,11 @@
       return deps.isPullAddress(pathname) ? "pulls" : null;
     }
 
+    // Files and Pulls return to what they last showed. Commits keeps no destination: a
+    // switch to it always lands on the newest commit (openMainTab).
     function rememberMainTabAddress() {
       const panel = mainTabAtAddress();
-      if (panel) {
+      if (panel && panel !== "git") {
         const { pathname, search, hash } = window.location;
         mainTabDestinations.set(panel, {
           href: `${pathname}${search}${hash}`,
@@ -284,13 +286,14 @@
         return;
       }
       const href = saved?.href ?? (panelId === "pulls" ? "/pulls" : "/view/");
-      // Git history has a neutral landing with no commit. Keep it in history without a new route.
-      const state =
-        panelId === "git"
-          ? saved && href !== "/view/"
-            ? { cachedCommit: true }
-            : { gitLanding: true }
-          : (saved?.state ?? null);
+      // A switch to Commits names no commit, so it pushes the neutral history entry, which
+      // has no route of its own, and the Git panel selects the newest commit there,
+      // replacing the entry with that commit's address (git-panel.js, landOnNewestCommit).
+      // The newest commit is the top row, so the panel starts from its top.
+      const state = panelId === "git" ? { gitLanding: true } : (saved?.state ?? null);
+      if (panelId === "git") {
+        navPanelScroll.delete("git");
+      }
       deps.cancelPreview();
       window.history.pushState(state, "", href);
       rememberMainTabAddress();
@@ -301,7 +304,7 @@
       void deps.restore().catch((error) => {
         console.error("Could not restore main navigation tab", error);
       });
-      if (panelId === "git" && !deps.isGitHistoryLanding()) {
+      if (panelId === "git") {
         void window.MetabrowserGitPanel?.restoreCommitLanding();
       }
     }
@@ -370,6 +373,26 @@
       panel?.onShow?.();
     }
 
+    /**
+     * The heading at the top of the nav goes home: the Files tab at the served root, from
+     * whichever tab is in front. It is the reader's own open of `/view/`, so it pushes one
+     * history entry, none when Files already shows the root, and Back returns to where the
+     * reader was. Files shows the top of its panel, where the root's rows begin.
+     *
+     * @returns {Promise<unknown>}
+     */
+    function goHome() {
+      deps.flushPull();
+      rememberMainTabAddress();
+      // Another tab in front: the switch to Files puts back this offset.
+      navPanelScroll.set("files", 0);
+      const scroller = document.getElementById("tree-content");
+      if (activeNavPanelId === "files" && scroller) {
+        scroller.scrollTop = 0;
+      }
+      return deps.openRoot();
+    }
+
     function onHistory() {
       if (gitDiscoveryFinished && deps.isGitHistoryLanding() && !hasGitPanel()) {
         void restoreNeutralGitPanel().catch(console.error);
@@ -405,6 +428,7 @@
         }
         return restoreNeutralGitPanel();
       },
+      home: goHome,
       onHistory,
       open: openMainTab,
       register: registerNavPanel,

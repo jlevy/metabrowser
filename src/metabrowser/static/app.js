@@ -1497,7 +1497,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
       showTooltip(
-        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
         headerPath,
       );
       return;
@@ -1509,7 +1509,7 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipMtime),
     );
     showTooltip(
-      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Jump to root</div>`,
+      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
       headerPath,
     );
   });
@@ -3766,10 +3766,71 @@ function attachMainTabs() {
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
+      openRoot: () => navigateToPath(""),
       restore: () => navigationController.restore(),
       scrollShadow: () => navScrollShadowUpdate?.(),
     }) ?? null;
   return mainTabs;
+}
+
+// The heading at the top of the nav is home: main-tabs.js `home`. The link keeps its
+// `/view/` address for what a browser does with a link, so a modified or middle click,
+// its context menu, and copying it behave as they do on any link. A plain primary
+// activation, by pointer or by Enter, stays in the page. It used to load `/view/` again,
+// and a browser reloading the neutral Commits entry, which has that address, kept its
+// state and came back to Commits.
+function initHomeHeading() {
+  queryHtml(".header-path")?.addEventListener("click", onHomeHeadingClick);
+}
+
+/** @param {MouseEvent} event */
+function onHomeHeadingClick(event) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  event.preventDefault();
+  goHome();
+}
+
+// Before the tab controller has loaded, the server's tab is in front: Files, unless the
+// page opened on a pull request's address. With Files in front this does what the
+// controller's `home` does, the tree at its top and the root opened, even on the root
+// already shown. Only a pull request's page waits for the controller, and a later choice
+// of the reader's cancels it, as a tab click does.
+function goHome() {
+  if (mainTabs) {
+    void mainTabs.home().catch((error) => {
+      console.error("Could not go home", error);
+    });
+    return;
+  }
+  const front = /** @type {HTMLElement | null} */ (
+    queryHtml(".nav-tab-bar")?.querySelector(".tab-btn.active") ?? null
+  );
+  if ((front?.dataset.tab ?? "files") === "files") {
+    const scroller = document.getElementById("tree-content");
+    if (scroller) {
+      scroller.scrollTop = 0;
+    }
+    void navigateToPath("").catch(console.error);
+    return;
+  }
+  const intent = ++mainTabIntent;
+  void window.MetabrowserAssets?.ensureAsset("main-tabs")
+    .then(() => {
+      const tabs = attachMainTabs();
+      if (intent === mainTabIntent) {
+        return tabs?.home();
+      }
+    })
+    .catch(console.error);
 }
 
 function initNavTabs() {
@@ -3896,6 +3957,7 @@ window.MetabrowserShell = Object.freeze({
   beginPreviewNavigation,
   claimPreview,
   endPreviewNavigation,
+  isGitHistoryLanding,
   isPreviewClaimCurrent,
   openPullRequest: async (route) => {
     const generation = pullHistoryGeneration;
@@ -7776,11 +7838,12 @@ function settleUnclaimedPreview() {
   }
 }
 
-// Only a /commit/ route waits on the Git panel to select something; a /view/
-// route is claimed by its own file selection. Startup calls this once the
-// shell tools, and with them the Git panel, have settled.
+// Only a /commit/ route and the neutral Commits entry wait on the Git panel to
+// select something; any other /view/ route is claimed by its own file
+// selection. Startup calls this once the shell tools, and with them the Git
+// panel, have settled.
 function settleCommitRoutePreview() {
-  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname)) {
+  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname) || isGitHistoryLanding()) {
     settleUnclaimedPreview();
   }
 }
@@ -7980,7 +8043,10 @@ async function applyNavigationTarget(target, context) {
   const keepFilesScroll = mainTabs?.takeFilesScroll() ?? false;
   if (isGitHistoryLanding()) {
     if (context.source !== "user") {
-      showNavigationLanding("Select a commit to preview.");
+      // The neutral Commits entry is the Git panel's, as a /commit/ address is: the
+      // panel selects the newest commit there, and the pane keeps what it shows until
+      // that commit is ready (git-panel.js, landOnNewestCommit). A prompt painted here
+      // would flash for as long as the first page of history takes.
       return { status: "cancelled" };
     }
     // An explicit Files root open can have the same address as the Git history entry.
@@ -8484,6 +8550,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
+  initHomeHeading();
   initFilterBar();
   initNavScrollShadow();
   // Only a /view/ pathname selects a file; a hash is document state, never identity.

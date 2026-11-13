@@ -423,9 +423,10 @@ async function main() {
     `a folder's address reads ${folder.mainHeading.file.text}`,
   );
   assert(
-    folder.tooltips.navigationHeading.served === `${folderRoot} Jump to root` &&
+    folder.tooltips.navigationHeading.served ===
+      `${folderRoot} Go home: the root folder in the Files tab` &&
       folder.tooltips.navigationHeading.afterTreeLoad ===
-        `${folderRoot} 3 files 140 bytes Jump to root`,
+        `${folderRoot} 3 files 140 bytes Go home: the root folder in the Files tab`,
     "a folder's tooltip changed",
   );
   assert(
@@ -471,9 +472,12 @@ async function main() {
     assert(page.tooltips.rootName === sentence, `${page.subject}: the name's tooltip is wrong`);
     assert(page.tooltips.note === sentence, `${page.subject}: the note's tooltip is wrong`);
     const { served: before, afterTreeLoad: after } = page.tooltips.navigationHeading;
-    assert(before === `${name} ${sentence} Jump to root`, `${page.subject}: tooltip: ${before}`);
     assert(
-      after === `${name} 3 files 140 bytes ${sentence} Jump to root`,
+      before === `${name} ${sentence} Go home: the root folder in the Files tab`,
+      `${page.subject}: tooltip: ${before}`,
+    );
+    assert(
+      after === `${name} 3 files 140 bytes ${sentence} Go home: the root folder in the Files tab`,
       `${page.subject}: tooltip after the tree loads: ${after}`,
     );
     // The mirror's line of a tooltip is the one that wraps.

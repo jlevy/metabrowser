@@ -2398,10 +2398,37 @@ new tab keep working.
 `a.tab-btn` states what a `<button>` gets from the browser, so the two render as one
 tab.
 
-Files, Commits, and Pulls each keep their last selection and navigation scroll position.
-A reader who switches tabs returns to that tab’s destination, or to its default on the
+Files and Pulls each keep their last selection and navigation scroll position.
+A reader who switches to one returns to that tab’s destination, or to its default on the
 first visit. A direct URL or a browser history step selects the tab that owns the
 destination.
+
+Switching to Commits always selects the newest commit, the top row, and shows its
+detail, whether by a click, the tab’s shortcut, or a history step onto the tab’s own
+entry; a return after reading an older commit lands on the newest again.
+Only an address that names a commit, opened directly or reached by Back or Forward,
+selects another. The selection waits for the first page of history, and the pane keeps
+what it showed until the commit is ready, so the switch paints no prompt and no blank
+frame.
+The commit’s address replaces the tab’s entry, so Back returns to where the reader
+was. The list starts from its top, the newest row becomes the list’s Tab stop, and focus
+stays where the switch left it: on the tab, for a click or a shortcut.
+An empty history selects nothing, and the pane says “No commits yet.”
+Clicking Commits while it is already in front changes nothing.
+`static/git-panel.js` (`landOnNewestCommit`) owns the selection;
+`tests/dom/git-commit-history-session.js` runs it.
+
+The heading above the nav’s tab bar, the served root’s name, is home.
+Activating it, by pointer or by Enter, shows the Files tab at the served root from any
+tab, with the tree at the top of its panel.
+It pushes one history entry, or none when Files already shows the root, so Back returns
+to the tab the reader left.
+It stays a link to `/view/`, so a modified or middle click and its context menu do what
+they do on any link.
+Its accessible name is the text it shows, and a description says that it goes home, as
+its tooltip does for a pointer.
+`static/main-tabs.js` (`goHome`) owns the switch;
+`tests/dom/preview-pane-state-session.js` (`goingHome`) runs it.
 
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.

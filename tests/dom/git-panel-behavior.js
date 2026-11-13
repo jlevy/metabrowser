@@ -418,9 +418,13 @@ sandbox.MetabrowserNavigationRoute = {
 };
 /** @type {string[]} Routes the panel replaced, newest last. */
 const replacedRoutes = [];
+// Whether the address is the neutral Commits entry, which a switch to Commits pushes. A
+// replaced entry is a commit's address, so it is the neutral entry no longer.
+let neutralLanding = false;
 sandbox.history = {
   replaceState: (_state, _title, url) => {
     replacedRoutes.push(String(url));
+    neutralLanding = false;
   },
 };
 
@@ -438,6 +442,7 @@ const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
   rememberMainTabAddress() {},
+  isGitHistoryLanding: () => neutralLanding,
   claimPreview: () => {
     pendingStageCleanup?.();
     previewClaim += 1;
@@ -3059,6 +3064,215 @@ async function run() {
   await internals.selectCommit(SHA_B);
   assertTrue("head: a refresh clears the detail cache", fetchCount > afterRefresh);
 
+  // ── Switching to Commits lands on the newest commit ────────
+  //
+  // The neutral Commits entry selects the top row once history is here, an older selection
+  // notwithstanding. The newest row is selected and is the list's Tab stop, focus stays on
+  // the tab the switch left it on, a scrolled list comes back to its top, and a return
+  // with history loaded asks only whether HEAD moved, never for history again.
+  {
+    responses.set(`/api/git/commit/${SHA_C}`, {
+      is_repo: true,
+      commit: commit(SHA_C, [], "after checkout"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    const container = document.getElementById("tab-git");
+    const tab = document.createElement("button");
+    tab.focus();
+    container.scrollTop = 500;
+    const requestsBefore = fetchRequests.length;
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = fetchRequests.slice(requestsBefore).map((request) => request.url);
+    assertEqual("newest: the top row is selected", internals.stateForTests().selectedId, SHA_C);
+    assertEqual(
+      "newest: its address replaces the entry",
+      replacedRoutes.at(-1),
+      `/commit/${SHA_C}`,
+    );
+    const newestRow = container.querySelector('.git-graph-row[data-ordinal="0"]');
+    assertTrue("newest: the row is marked", newestRow?.classList.contains("selected") === true);
+    assertEqual("newest: the row is the Tab stop", newestRow?.getAttribute("tabindex"), "0");
+    assertTrue("newest: focus stays on the tab", document.activeElement === tab);
+    assertEqual("newest: the list is back at its top", container.scrollTop, 0);
+    assertEqual("newest: history is not asked for again", asked, [
+      "/api/git/repo",
+      `/api/git/commit/${SHA_C}`,
+    ]);
+    // An address that names a commit wins: the entry is not the neutral one.
+    await internals.selectCommit(SHA_B);
+    const landedBefore = replacedRoutes.length;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "newest: a non-neutral address selects nothing",
+      replacedRoutes.length,
+      landedBefore,
+    );
+    assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
+  }
+
+  // ── A newest landing outlives a session recovery ───────────
+  //
+  // An older commit deep enough to evict page zero, then a return to Commits after the
+  // server's history session expired: the landing's reveal replays page zero, the replay
+  // answers 410, and recovery rebuilds the walk. Recovery used to restore the older
+  // position after the landing had selected the newest commit, leaving its row offscreen
+  // and an older row as the list's Tab stop.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 5000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `deep commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    assertEqual("recovered landing: page zero was evicted", older.pageCache.peek(0), null);
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    responses.set("/api/git/summary", { is_repo: true, commit_count: total });
+    let replays = 0;
+    responses.set("/api/git/log", (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        replays += 1;
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    for (const revision of revisions.slice(0, 1)) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], "newest after recovery"),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const landed = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovered landing: the replay expired once", replays, 1);
+    assertEqual("recovered landing: the newest is selected", landed.selectedId, revisions[0]);
+    assertEqual("recovered landing: the list is at its top", container.scrollTop, 0);
+    assertEqual("recovered landing: the newest row is focused", landed.focusedOrdinal, 0);
+    assertEqual("recovered landing: the newest row is the Tab stop", anchor?.dataset.ordinal, "0");
+    delete container.clientHeight;
+    container.scrollTop = 0;
+    neutralLanding = false;
+  }
+
+  // ── A recovery the reader left places nothing ──────────────
+  //
+  // The same expired landing, but the reader switches to Files while recovery's first page
+  // is on its way. The scroller is shared, so a recovery that went on to reveal the newest
+  // row wrote over the offset Files had put back. Leaving Commits cancels the landing, and
+  // recovery now places nothing once Commits is not in front or another owner holds the pane.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 7000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `left commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    let releaseFirstPage = () => {};
+    const firstPageHeld = new Promise((resolve) => (releaseFirstPage = resolve));
+    let firstPageAsked = false;
+    responses.set("/api/git/log", async (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        firstPageAsked = true;
+        await firstPageHeld;
+      }
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    neutralLanding = true;
+    void panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertTrue("left recovery: recovery's first page is held", firstPageAsked);
+    // The reader switches to Files: the shell gives up the pane, which cancels Git's pending
+    // work, hides the Commits panel, and puts back the offset Files had in the shared scroller.
+    panel.cancelPending();
+    sandbox.MetabrowserShell.claimPreview("none");
+    neutralLanding = false;
+    container.style.display = "none";
+    container.scrollTop = 250;
+    previewHtml = '<div class="file-view">Files preview</div>';
+    const routesBefore = replacedRoutes.length;
+    releaseFirstPage();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertEqual("left recovery: Files keeps its offset", container.scrollTop, 250);
+    assertEqual(
+      "left recovery: the Files preview stays",
+      previewHtml,
+      '<div class="file-view">Files preview</div>',
+    );
+    assertEqual("left recovery: no commit takes the address", replacedRoutes.length, routesBefore);
+    delete container.style.display;
+    delete container.clientHeight;
+    container.scrollTop = 0;
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a
@@ -3118,6 +3332,66 @@ async function run() {
     assertEqual("recovery: restored rows stop at the cap", recovered.rowCount, 4);
     assertEqual("recovery: focus lands on the capped ordinal", recovered.focusedOrdinal, 3);
     assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
+  }
+
+  // A selection the reader makes while recovery rebuilds the walk keeps its place: recovery
+  // gives up restoring the expired position, and asks for no pages to reach it.
+  {
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const walk = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `rebuilt ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    document.activeElement = null;
+    container.clientHeight = 44;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set(`/api/git/commit/${revisions[1]}`, {
+      is_repo: true,
+      commit: commit(revisions[1], [], "chosen during recovery"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    let logCalls = 0;
+    responses.set("/api/git/log", (url) => {
+      logCalls += 1;
+      if (logCalls === 1) {
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        // The reader picks a commit while the rebuilt walk's first page is on its way.
+        void internals.selectCommit(revisions[1]);
+      }
+      return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    const expired = internals.emptyState();
+    expired.headRevision = revisions[0];
+    expired.cursor = "history:3";
+    expired.nextPageNumber = 3;
+    expired.rowCount = 6;
+    expired.focusedOrdinal = 5;
+    internals.setStateForTests(expired);
+    await internals.loadNextPage(false);
+    for (let tick = 0; tick < 20; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const kept = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovery: the reader's selection stands", kept.selectedId, revisions[1]);
+    assertEqual("recovery: no page is asked for to restore the old place", logCalls, 2);
+    assertEqual("recovery: the reader's row is the Tab stop", anchor?.dataset.ordinal, "1");
+    delete container.clientHeight;
+    container.scrollTop = 0;
   }
 
   // ── Recovery takes the rebuilt rows' refs ────────────────
@@ -3909,37 +4183,6 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
-
-    const cachedMissing = "9".repeat(40);
-    let askedForFreshness = false;
-    freshnessController = {
-      fetchMissing() {
-        askedForFreshness = true;
-        throw new Error("tab restoration must not start source refresh");
-      },
-    };
-    responses.set(`/api/git/commit/${cachedMissing}`, notFound);
-    const originalLocation = sandbox.location;
-    const originalParse = sandbox.MetabrowserNavigationRoute.parseCommit;
-    sandbox.location = { pathname: `/commit/${cachedMissing}` };
-    sandbox.MetabrowserNavigationRoute.parseCommit = () => ({ revision: cachedMissing });
-    sandbox.history.state = { cachedCommit: true };
-    responses.set("/api/git/repo", {
-      is_repo: true,
-      root: "",
-      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
-    });
-    await panel.init();
-    internals.teardown();
-    sandbox.location = originalLocation;
-    sandbox.MetabrowserNavigationRoute.parseCommit = originalParse;
-    delete sandbox.history.state;
-    assertEqual("missing cached selection: no refresh", askedForFreshness, false);
-    assertContains(
-      "missing cached selection: names the local miss",
-      previewHtml,
-      "not available in the local repository",
-    );
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {

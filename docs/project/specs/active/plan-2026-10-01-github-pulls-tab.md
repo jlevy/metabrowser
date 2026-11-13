@@ -292,6 +292,12 @@ local navigation issues no acquisition or refresh requests.
 
 ## Main Tab Destinations and Progress
 
+**Addendum (2026-11-12, `mb-7jeb`):** owner request supersedes the Commits half of this
+section. Commits keeps no destination: every switch to it, the first or a later one,
+selects the newest commit and reads its detail, and only an address that names a commit
+selects another. Files and Pulls still restore their destinations.
+The current rule is in [The Tab Bar](../../../design-system.md#the-tab-bar).
+
 A deliberate switch between Files, Commits, and Pulls restores the destination that tab
 last showed in this browser page.
 On first visit, Files opens the served root, Pulls opens the Open list, and Commits
