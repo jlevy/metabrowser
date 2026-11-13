@@ -1,17 +1,19 @@
 import AppKit
 import ShellCore
 
-/// The window title, drawn in two weights: the folder's short name bold, then a bullet
-/// and "Metabrowser" in a secondary style.
+/// The app's logo and the window title, drawn in two weights: the folder's short name
+/// bold, then a bullet and "Metabrowser" in a secondary style.
 ///
 /// AppKit draws a system title in one style, so the window hides it
 /// (`titleVisibility = .hidden`) and shows this leading title-bar accessory instead,
 /// which AppKit places beside the window buttons, where macOS 26 puts the system title.
-/// The insets and fonts below reproduce that title as measured on macOS 26.5.
+/// The fonts below reproduce that title as measured on macOS 26.5, and its text follows
+/// the logo.
 ///
-/// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5),
-/// so the accessory draws one: drag it to use the folder elsewhere, and Command-click
-/// or right-click it, or the title, for the path menu.
+/// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5).
+/// In its place the accessory draws the app's logo, which stands in for the proxy icon
+/// when the window shows a local folder: drag it to use the folder elsewhere, and
+/// Command-click or right-click it, or the title, for the path menu.
 final class TitleAccessoryController: NSTitlebarAccessoryViewController {
     private let titleView = TitleBarTitleView()
 
@@ -25,7 +27,8 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 
     override func loadView() { view = titleView }
 
-    /// `url` is the folder the proxy icon stands for, or nil for no icon.
+    /// `url` is the folder the logo stands for, or nil when the window shows no local
+    /// folder, so the logo is only a logo.
     func show(_ title: WindowTitle, representing url: URL?) {
         loadViewIfNeeded()
         titleView.show(title, representing: url)
@@ -33,20 +36,43 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 }
 
 final class TitleBarTitleView: NSView {
-    /// Where AppKit draws a plain window's proxy icon and title, from the accessory's
-    /// leading edge (78 points from the window's, after the window buttons).
-    private static let iconInset: CGFloat = 4
-    private static let iconSize: CGFloat = 16
-    private static let textInsetWithIcon: CGFloat = 22
-    private static let textInsetWithoutIcon: CGFloat = 4
+    /// The title bar as measured on macOS 26.5: 32 points tall, with the window buttons
+    /// 14-point circles, 9 points apart, from 9 to 23 points below its top, and the
+    /// accessory's leading edge at x 78, a button gap after the zoom button.
+    ///
+    /// The logo, the icon's mark (`TitleBarLogoView`), is 13 points tall, a little under a
+    /// window button, as the user asked. Centered in the title bar's height, as the
+    /// buttons are, it spans 9.5 to 22.5 points below the top. From the accessory's
+    /// leading edge it is 18.81 points wide, to x 96.81.
+    private static let markHeight: CGFloat = 13
+    private static let markWidth = markHeight * TitleBarLogoView.aspectRatio
+    /// The visible space on each side of the mark, ink to ink, as the user asked: the 9
+    /// points AppKit leaves between the zoom button and the accessory, the window buttons'
+    /// own gap, and about the same from the mark to the title's first glyph.
+    ///
+    /// Measured in 2x renders on macOS 26.5, to a fraction of a pixel from antialiasing,
+    /// for a title starting with a bold "f": 9.00 points left and 9.39 right in light
+    /// mode, and 9.53 and 9.23 in dark mode, where the offscreen window button's darker
+    /// rim measured half a point inside its frame. A title starting with "m" measured 0.6
+    /// points more on the right, for the letter's own side bearing.
+    private static let markGap: CGFloat = 9
+    /// How far right of its frame the label draws the title's first ink: 2.19 points for
+    /// a bold "f" in light mode, and 2.04 in dark (measured on macOS 26.5).
+    private static let labelGlyphInset: CGFloat = 2.2
+    /// Where the title text starts, to the nearest whole point after the mark, its gap,
+    /// and the label's own inset, so the text is never set off a pixel: 26 from the
+    /// accessory's leading edge, so the label starts at x 104 and its first ink at x 106.2.
+    private static let textInset = (markWidth + markGap - labelGlyphInset).rounded()
     /// Space kept between the end of the title and the window's trailing edge.
     private static let windowMargin: CGFloat = 12
+    /// The path menu's folder icons, as the system title's path menu draws them.
+    private static let menuIconSize: CGFloat = 16
 
     private static let primaryFont = NSFont.titleBarFont(ofSize: 0)
     private static let secondaryFont = NSFont.systemFont(ofSize: primaryFont.pointSize)
 
     private let label = NSTextField(labelWithString: "")
-    private let proxyIcon = ProxyIconView()
+    private let logo = TitleBarLogoView()
     /// Measures runs of segments as `label` would draw them.
     private let scratch = NSTextField(labelWithString: "")
     private var title: WindowTitle?
@@ -60,9 +86,8 @@ final class TitleBarTitleView: NSView {
             field.maximumNumberOfLines = 1
         }
         label.cell?.truncatesLastVisibleLine = true
-        proxyIcon.onPathMenu = { [weak self] in self?.showPathMenu() }
-        proxyIcon.isHidden = true
-        addSubview(proxyIcon)
+        logo.onPathMenu = { [weak self] in self?.showPathMenu() }
+        addSubview(logo)
         addSubview(label)
     }
 
@@ -72,30 +97,29 @@ final class TitleBarTitleView: NSView {
     func show(_ title: WindowTitle, representing url: URL?) {
         self.title = title
         self.url = url
-        proxyIcon.url = url
         toolTip = title.subtitle
-        proxyIcon.toolTip = title.subtitle
+        logo.represent(url, title: title)
         updateWidth()
         needsLayout = true
     }
 
     // MARK: - Layout
 
-    private var textInset: CGFloat { url == nil ? Self.textInsetWithoutIcon : Self.textInsetWithIcon }
     private var isRightToLeft: Bool { userInterfaceLayoutDirection == .rightToLeft }
 
     override func layout() {
         super.layout()
         let height = ceil(measure(title?.segments ?? []).height)
         let y = ((bounds.height - height) / 2).rounded()
-        var text = NSRect(x: textInset, y: y, width: max(0, bounds.width - textInset), height: height)
-        var icon = NSRect(x: Self.iconInset, y: y + 1, width: Self.iconSize, height: Self.iconSize)
-        if isRightToLeft {
-            text.origin.x = bounds.width - text.maxX
-            icon.origin.x = bounds.width - icon.maxX
-        }
+        var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
+        if isRightToLeft { text.origin.x = bounds.width - text.maxX }
         label.frame = text
-        proxyIcon.frame = icon
+        // Centered to the nearest half point, a Retina pixel, since 13 points leave an odd
+        // 19 of the title bar's 32.
+        let markY = (bounds.height - Self.markHeight).rounded() / 2
+        var mark = NSRect(x: 0, y: markY, width: Self.markWidth, height: Self.markHeight)
+        if isRightToLeft { mark.origin.x = bounds.width - mark.maxX }
+        logo.frame = mark
         render()
     }
 
@@ -103,9 +127,9 @@ final class TitleBarTitleView: NSView {
     /// narrow window truncates it.
     private func updateWidth() {
         guard let window, let title else { return }
-        let ideal = textInset + measure(title.segments).width
+        let ideal = Self.textInset + measure(title.segments).width
         let available = window.frame.width - leadingDistance(in: window) - Self.windowMargin
-        let width = ceil(max(textInset + Self.iconSize, min(ideal, available)))
+        let width = ceil(max(Self.textInset + Self.markWidth, min(ideal, available)))
         if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
     }
 
@@ -192,13 +216,13 @@ final class TitleBarTitleView: NSView {
 
     // MARK: - Mouse
 
-    /// The title moves the window like the system title; only the proxy icon keeps its
-    /// clicks, for dragging.
+    /// The title moves the window like the system title; only the logo of a folder's
+    /// window keeps its clicks, for dragging the folder.
     override var mouseDownCanMoveWindow: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
-        return hit === proxyIcon ? proxyIcon : self
+        return hit === logo && url != nil ? logo : self
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -227,10 +251,10 @@ final class TitleBarTitleView: NSView {
             item.target = self
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
             item.image = NSWorkspace.shared.icon(forFile: path)
-            item.image?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
+            item.image?.size = NSSize(width: Self.menuIconSize, height: Self.menuIconSize)
             menu.addItem(item)
         }
-        let anchor = NSPoint(x: proxyIcon.frame.minX - 10, y: label.frame.maxY + 4)
+        let anchor = NSPoint(x: logo.frame.minX - 10, y: label.frame.maxY + 4)
         menu.popUp(positioning: menu.items.first, at: anchor, in: self)
     }
 
@@ -244,28 +268,105 @@ final class TitleBarTitleView: NSView {
     }
 }
 
-/// The folder's icon at the start of the title, standing in for the proxy icon AppKit
-/// drops beside a leading accessory.
-final class ProxyIconView: NSImageView, NSDraggingSource {
-    var onPathMenu: (() -> Void)?
-    private var pressed: NSEvent?
+/// The app's logo at the start of the title: the icon's mark alone, the citrine partial M
+/// and the amethyst B without the squircle, rim, and panel they sit on in the app icon
+/// (`AppIconMark`). It is drawn from the icon masters' own outlines at whatever size and
+/// scale the screen needs, so it is as crisp at 1x as on a Retina screen. Both variants'
+/// icons draw the same mark, so a development build shows the same logo as a release.
+///
+/// In a local folder's window it also stands in for the proxy icon AppKit drops beside
+/// a leading accessory; elsewhere, as in a cached mirror's window, it is only a logo.
+final class TitleBarLogoView: NSImageView, NSDraggingSource {
+    /// The mark's width for its height: its ink is 241.654 by 166.977 master units.
+    static let aspectRatio = AppIconMark.ink.width / AppIconMark.ink.height
+    /// The folder icon a drag shows, the proxy icon's size.
+    private static let dragImageSize: CGFloat = 16
+    /// The mark's outlines, in the master's units, in drawing order.
+    private static let paths = AppIconMark.glyphs.compactMap { AppIconMark.path($0.path) }
 
-    var url: URL? {
-        didSet {
-            image = url.map { NSWorkspace.shared.icon(forFile: $0.path(percentEncoded: false)) }
-            isHidden = url == nil
-        }
-    }
+    var onPathMenu: (() -> Void)?
+    /// The folder the logo stands for, or nil.
+    private(set) var url: URL?
+    private var pressed: NSEvent?
 
     init() {
         super.init(frame: .zero)
         imageScaling = .scaleProportionallyUpOrDown
         isEditable = false
         unregisterDraggedTypes()
+        // The view, not its image cell, is the accessibility element, so what it says
+        // and does is set here, never read from the image it draws: the cell named itself
+        // after its image, "AppIcon" for the icon file and nothing for a drawn image
+        // (measured on macOS 26.5).
+        cell?.setAccessibilityElement(false)
+        setAccessibilityRole(.image)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
+
+    /// Makes the logo stand for the local folder `url`, which `title` names, or, for nil,
+    /// for nothing. A folder's logo is an accessibility element named for the folder,
+    /// whose help says what it does; a logo that stands for nothing is decoration, left
+    /// out, since the title beside it already says Metabrowser.
+    func represent(_ url: URL?, title: WindowTitle) {
+        self.url = url
+        toolTip = title.subtitle
+        setAccessibilityElement(url != nil)
+        setAccessibilityLabel(url == nil ? nil : "Folder: \(title.identity.shortName)")
+        setAccessibilityHelp(
+            url == nil
+                ? nil
+                : "\(title.identity.fullName). Drag it to copy or alias the folder in another app. "
+                + "Command-click, right-click, or Show Menu opens the folder's path menu.")
+    }
+
+    /// VoiceOver's Show Menu opens the path menu, as Command-click does.
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard url != nil, let onPathMenu else { return false }
+        onPathMenu()
+        return true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateImage()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { updateImage() }
+    }
+
+    /// The mark, filling the view, in the title bar's fills for the view's appearance
+    /// (`AppIconMark.titleBarFills`): the icon's own on a dark title bar, and deeper
+    /// tints of the same hues on a light one. It needs no shadow or edge on either.
+    private func updateImage() {
+        let size = bounds.size
+        guard size.width > 0, size.height > 0 else {
+            image = nil
+            return
+        }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let colors = AppIconMark.titleBarFills(dark: dark).compactMap(AppIconMark.rgb).map {
+            CGColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: 1)
+        }
+        let paths = Self.paths, ink = AppIconMark.ink
+        // Flipped, as the master's y runs down.
+        image = NSImage(size: size, flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let scale = min(rect.width / ink.width, rect.height / ink.height)
+            context.scaleBy(x: scale, y: scale)
+            context.translateBy(x: -ink.minX, y: -ink.minY)
+            for (path, color) in zip(paths, colors) {
+                context.addPath(path)
+                context.setFillColor(color)
+                context.fillPath()
+            }
+            return true
+        }
+    }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -287,7 +388,10 @@ final class ProxyIconView: NSImageView, NSDraggingSource {
         guard dx * dx + dy * dy >= 9 else { return }
         pressed = nil
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        item.setDraggingFrame(bounds, contents: image)
+        // The folder's own icon, since the folder is what is dragged, centered on the mark.
+        let side = Self.dragImageSize
+        let frame = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+        item.setDraggingFrame(frame, contents: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
         beginDraggingSession(with: [item], event: start, source: self)
     }
 

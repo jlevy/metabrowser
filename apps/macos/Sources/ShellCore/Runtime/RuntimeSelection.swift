@@ -7,11 +7,13 @@ import Foundation
 /// when it starts, and only the newest one's result applies: an older search that
 /// finishes after a newer choice changes nothing, not the setup, the saved settings,
 /// the window, or the folders waiting for a runtime. A search a choice overtook stops
-/// counting as running at once.
+/// counting as running at once, and if the choice adopts nothing, the search is owed
+/// again (`needsSearch`).
 ///
-/// `setup` is the one place the current runtime lives. A search that finds nothing
-/// clears it, not only its display, so a folder opened next waits for a runtime instead
-/// of starting the one that failed; servers already running keep theirs.
+/// `setup` is the one place the current runtime lives, and the saved settings follow
+/// it. A search that finds nothing clears both, not only the display, so neither a
+/// folder opened next nor the next launch starts the runtime that failed; servers
+/// already running keep theirs.
 ///
 /// A runtime whose file changed is unverified until a recheck, a search, or a choice
 /// validates what to run, whichever of them finishes it: no server starts from it
@@ -21,7 +23,7 @@ public final class RuntimeSelection {
     public enum Outcome: Equatable, Sendable {
         /// The runtime is now this one, and it is saved.
         case adopted(RuntimeSetup)
-        /// The search found nothing, and the runtime is now none.
+        /// The search found nothing, and the runtime is now none, also when saved.
         case notFound
         /// The chosen file is not a working `metab`; nothing changed.
         case rejected(CandidateResult)
@@ -49,6 +51,9 @@ public final class RuntimeSelection {
     private let settings: RuntimeSettings
     private var latest = 0
     private var operation: Operation?
+    /// Whether a choice overtook a running search, and nothing has answered that search
+    /// since: no newer search started, and no choice was adopted.
+    private var isSearchUnanswered = false
 
     public init(settings: RuntimeSettings, setup: RuntimeSetup?) {
         self.settings = settings
@@ -70,6 +75,12 @@ public final class RuntimeSelection {
 
     /// Whether the runtime is unverified and nothing running will validate it.
     public var needsRecheck: Bool { setup != nil && isUnverified && operation == nil }
+
+    /// Whether a search was overtaken by a choice that adopted nothing, so nothing running
+    /// will answer it: its own result no longer counts, and the folders and the restore
+    /// waiting for it would wait for Find Again. The caller searches again, with a fresh
+    /// ticket, so the overtaken search's late result still changes nothing.
+    public var needsSearch: Bool { isSearchUnanswered && operation == nil }
 
     /// The runtime to open `folder` with, or nil after adding it to the folders waiting
     /// for one.
@@ -96,6 +107,7 @@ public final class RuntimeSelection {
         operation = nil
         tried = report.tried
         guard let found = report.setup else {
+            settings.clear()
             clear()
             return .notFound
         }
@@ -116,6 +128,7 @@ public final class RuntimeSelection {
         guard ticket.number == latest else { return .superseded }
         operation = nil
         guard case .valid(let version) = result else { return .rejected(result) }
+        isSearchUnanswered = false  // the chosen runtime answers it
         return adopt(RuntimeSetup(
             runtime: Runtime(executable: path, version: version, source: .chosen, fingerprint: fingerprint),
             tools: setup?.tools ?? tools()))
@@ -154,6 +167,11 @@ public final class RuntimeSelection {
     }
 
     private func next(_ started: Operation) -> Ticket {
+        switch started {
+        case .search: isSearchUnanswered = false
+        case .choice: if operation == .search { isSearchUnanswered = true }
+        case .recheck: break
+        }
         operation = started
         latest += 1
         return Ticket(number: latest)

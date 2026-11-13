@@ -75,13 +75,14 @@ private struct StartingView: View {
 
 /// A spinner that appears only after `delay`, so a quick start or reload never flashes one.
 private struct DelayedSpinner: View {
+    /// Below this, a delay reads as instant, and a spinner would only flash.
     static let delay = Duration.milliseconds(300)
     @State private var showsSpinner = false
 
     var body: some View {
         ProgressView().opacity(showsSpinner ? 1 : 0)
             .task {
-                try? await Task.sleep(for: Self.delay)
+                try? await Task.sleep(for: Self.delay)  // cancelled: the view went away
                 showsSpinner = true
             }
     }
@@ -94,8 +95,11 @@ private struct FailureView: View {
     let revealLogs: () -> Void
     let showSettings: () -> Void
 
+    /// The newest lines fit the view; Reveal Logs shows the rest.
+    private static let shownLines = 120
+
     private var output: String {
-        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(120).joined(separator: "\n")
+        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(Self.shownLines).joined(separator: "\n")
     }
 
     var body: some View {

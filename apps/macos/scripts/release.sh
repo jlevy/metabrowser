@@ -27,6 +27,16 @@ else
   export NOTARIZE="${NOTARIZE:-auto}"
 fi
 
+# Why apps/macos may not match the commit, or empty. A failed `git status` is not a clean
+# tree, or an official build could skip the check that it was built from a commit.
+if ! tree_status="$(git status --porcelain -- . 2>&1)"; then
+  tree_problem="git status failed, so apps/macos may not match the commit: $tree_status"
+elif [[ -n "$tree_status" ]]; then
+  tree_problem="apps/macos has uncommitted changes"
+else
+  tree_problem=""
+fi
+
 # An official build checks what it needs before it spends a build on it.
 if [[ "$NOTARIZE" == 1 ]]; then
   problems=()
@@ -41,15 +51,15 @@ if [[ "$NOTARIZE" == 1 ]]; then
   if [[ "$variant" == release && ! -f "$icon_source" ]]; then
     problems+=("$icon_source does not exist; an official build carries the published icon")
   fi
-  if [[ "$variant" == release && -n "$(git status --porcelain -- . 2>/dev/null)" ]]; then
-    problems+=("apps/macos has uncommitted changes; an official build is built from a commit")
+  if [[ "$variant" == release && -n "$tree_problem" ]]; then
+    problems+=("$tree_problem; an official build is built from a commit")
   fi
   if ((${#problems[@]})); then
     printf 'error: %s\n' "${problems[@]}" >&2
     die "not an official build; NOTARIZE=0 rehearses it with an ad hoc signature"
   fi
-elif [[ -n "$(git status --porcelain -- . 2>/dev/null)" ]]; then
-  note "apps/macos has uncommitted changes, so this build matches no commit"
+elif [[ -n "$tree_problem" ]]; then
+  note "$tree_problem, so this build matches no commit"
 fi
 
 scripts/build-app.sh
@@ -77,7 +87,7 @@ else
 fi
 [[ "$NOTARIZE" != 1 && "$variant" == release ]] && state="$state; a rehearsal, not an official build"
 echo
-echo "$product $version ($(build_number)), $arch_label, $state:"
+echo "$product $version ($(build_number)), the $variant variant, $arch_label, $state:"
 for output in "${outputs[@]}"; do
   if [[ -d "$output" ]]; then
     size="$(du -sk "$output" | cut -f1) KB on disk"

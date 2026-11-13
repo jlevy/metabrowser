@@ -15,12 +15,12 @@ pre-commit:
       stage_fixed: true
 
     biome:
-      glob: "*.{js,css,json}"
+      glob: "*.{js,mjs,css,json}"
       run: make biome-fix STAGED_FILES="{staged_files}"
       stage_fixed: true
 
     browser-types:
-      glob: "*.{js,ts}"
+      glob: "*.{js,mjs,ts}"
       run: make browser-types
 
     codespell:

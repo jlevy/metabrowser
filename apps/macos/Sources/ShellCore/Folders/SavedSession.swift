@@ -142,8 +142,11 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots waiting for one of their tabs to be selected.
     public private(set) var deferred: [String] = []
     /// The roots whose tab was selected, the front tab's among them: they start as the
-    /// user's choice, without being checked again.
+    /// user's choice, without the background check, before their turn or after it.
     public private(set) var selected: Set<String> = []
+    /// The roots whose restored start launched, which a later selection still marks as
+    /// selected.
+    public private(set) var started: Set<String> = []
     /// The root `next` returned last, while its start is outstanding, until `finish`,
     /// `putBack`, `hold`, or `remove` settles it.
     private var outstanding: String?
@@ -168,6 +171,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     public var isEmpty: Bool { pending.isEmpty && deferred.isEmpty }
 
+    /// Whether `root` is the one `next` returned last and its start is not yet settled.
+    public func isOutstanding(_ root: String) -> Bool { outstanding == root }
+
     /// The next root to start, outstanding until its start is settled. A background root
     /// that `stillOpen` no longer admits waits for its tab instead, and the next one is
     /// tried.
@@ -186,8 +192,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
 
     /// A tab of `root` was selected: it starts next. Returns false if `root` is not
     /// waiting to start, because its start is outstanding, it has started, or it is not
-    /// part of the restore. A root whose start is outstanding is recorded as selected, so
-    /// if it is put back it starts as the user's choice, without being checked again.
+    /// part of the restore. A root whose start is outstanding, or that has started, is
+    /// recorded as selected, so if it is put back or requeued it starts as the user's
+    /// choice, without the background check.
     @discardableResult
     public mutating func select(_ root: String) -> Bool {
         if root == outstanding {
@@ -195,7 +202,10 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
             selectedWhileOutstanding.append(root)
             return false
         }
-        guard pending.contains(root) || deferred.contains(root) else { return false }
+        guard pending.contains(root) || deferred.contains(root) else {
+            if started.contains(root) { selected.insert(root) }
+            return false
+        }
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
         pending.insert(root, at: 0)
@@ -229,17 +239,44 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
         pending.insert(root, at: pending.prefix { ahead.contains($0) }.count)
     }
 
-    /// `root`, taken with `next`, started.
+    /// `root`, taken with `next`, started. A start that `remove` (or another settle)
+    /// already ended is not this one: a root whose tabs all closed while its start waited
+    /// is forgotten, even if that start then reports it launched.
     public mutating func finish(_ root: String) {
-        if root == outstanding { settle() }
+        guard root == outstanding else { return }
+        settle()
+        started.insert(root)
     }
 
-    /// Every tab of `root` closed before its server started.
+    /// `root`, selected, had a later start refused at the moment of spawning, as a restart
+    /// whose saved path now leads to another folder is: it starts next again, as the
+    /// user's choice, so it is resolved again. One not selected waits for its tab (`hold`).
+    public mutating func requeue(_ root: String) {
+        guard selected.contains(root), root != outstanding, !pending.contains(root) else { return }
+        deferred.removeAll { $0 == root }
+        pending.insert(root, at: 0)
+    }
+
+    /// Every tab of `root` closed, before its server started or after.
     public mutating func remove(_ root: String) {
         if root == outstanding { settle() }
         pending.removeAll { $0 == root }
         deferred.removeAll { $0 == root }
         selected.remove(root)
+        started.remove(root)
+    }
+
+    /// The user chose to start `saved`, whose path now leads to the folder `canonical`
+    /// (`RootActivation`), and its tabs moved to that folder's session: `saved` leaves the
+    /// restore, and `canonical` starts next as the user's choice, whether it waited to
+    /// start or for its tab, or has no session yet. One that is open already (`isOpen`)
+    /// and not waiting here is left as it is: starting, running, failed, or waiting for a
+    /// runtime.
+    public mutating func redirect(_ saved: String, to canonical: String, isOpen: Bool) {
+        remove(saved)
+        guard !select(canonical), !isOpen else { return }
+        pending.insert(canonical, at: 0)
+        selected.insert(canonical)
     }
 
     private mutating func settle() {
@@ -248,14 +285,16 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
     }
 }
 
-/// The saved session: one JSON file, owner-only, in the app's own Application Support
-/// folder, which the bundle identifier names, so each variant keeps its own.
+/// The saved session: one JSON file, owner-only, in the app's Application Support folder
+/// (`AppIdentity.supportDirectory`), which both variants share.
 ///
-/// A save publishes atomically: it writes a private temporary file beside the session
-/// and renames it over the old one, so a reader, the next launch after a crash
-/// included, finds the previous session or the new one and never part of one. It
-/// promises atomic visibility, not durability: a power loss may lose the last save,
-/// which costs only the windows of that moment.
+/// A save publishes atomically: it writes a private temporary file beside the session,
+/// named uniquely, and renames it over the old one, so a reader, the next launch after a
+/// crash included, finds the previous session or the new one and never part of one.
+/// Two copies of the app running at once, a development build and a release or two
+/// development builds, therefore never mix their saves: the last one wins. It promises
+/// atomic visibility, not durability: a power loss may lose the last save, which costs
+/// only the windows of that moment.
 public nonisolated struct SessionStore: Sendable {
     public static let fileName = "session.json"
     /// A session of a hundred tabs is about 20 KB; a file past this is not one.

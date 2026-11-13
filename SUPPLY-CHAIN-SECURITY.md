@@ -256,6 +256,21 @@ Its source is [pygments/pygments](https://github.com/pygments/pygments), its lic
 BSD-2-Clause, and its Python requirement, `>=3.9`, covers this project’s supported
 range. Its registry artifact hashes in `uv.lock` are unchanged.
 
+### Node Type Declarations (November 11, 2026)
+
+`@types/node` 24.19.2 is a new development dependency.
+`make lint-check` now type-checks the WebKit gate’s Node modules strictly
+(`apps/macos/webkit-gate/tsconfig.json`), and Node’s own modules have no declarations
+without it. Its source is
+[DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped), its license is
+MIT, and it has no install scripts: it ships declaration files, a README, and a license.
+The release was published on October 9, 2026, so it satisfies the 14-day cool-off
+without an exception, and its 24.x line matches the Node 24 release CI pins.
+Its one dependency, `undici-types` 7.24.6 from
+[nodejs/undici](https://github.com/nodejs/undici) (MIT, declarations only, published
+March 25, 2026), is the only other new lock record.
+Neither is loaded at run time; only TypeScript reads them.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:

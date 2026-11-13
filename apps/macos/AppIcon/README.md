@@ -42,16 +42,17 @@ The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs f
 | `metabrowser-icon-sym-*.json`, `metabrowser-icon-norise-*.json` | Parameters of the refresh families, for review only. |
 | `base-release.svg`, `base-dev.svg` | The sister app’s v6 icon structure with an empty glyph group: the release base and the canary scheme, a gold rim and a warm sheen. |
 | `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
-| `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions. |
+| `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions; with `--swift`, it also writes the mark alone for the title bar. |
+| `../Sources/ShellCore/App/AppIconMarkGeometry.swift` | The mark alone, which the app’s title bar draws: the release master’s glyph path data and fills, generated; `AppIconMarkTests` checks it against both masters. |
 | `render-svg.swift` | Renders a master to PNG at any size that divides 2048. |
 | `rejects/` | SVGs the renderer must refuse, each naming the reason in its first line. |
 | `review-sheet.swift` | Lays out the review images. |
-| `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, and with `--review`, the review images. |
+| `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, writes the title bar’s mark after checking that both masters draw the same one, and with `--review`, the review images. |
 
 ## Regenerate
 
 ```shell
-scripts/build-icon.sh                   # from apps/macos: every master and both .icns files
+scripts/build-icon.sh                   # from apps/macos: every master, both .icns files, and the title bar's mark
 scripts/build-icon.sh --review          # also AppIcon/review/ (git ignores it), with a release .icns per variant in review/icns/
 scripts/build-icon.sh --check           # only check that the renderer refuses every file in AppIcon/rejects/
 ```

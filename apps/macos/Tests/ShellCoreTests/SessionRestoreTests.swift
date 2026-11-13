@@ -277,6 +277,61 @@ import Testing
         #expect(try store.load() == session)
     }
 
+    /// mb-d71s: a development build and a release now share one session file, and two
+    /// copies can run at once. Each save is a whole file renamed into place, so however
+    /// their saves interleave, a launch reads one copy's session or the other's, never a
+    /// mix, and no temporary file is left behind. The last save wins.
+    @Test func twoCopiesSavingAtOnceNeverLeaveAMixedFile() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let small = session
+        // Large enough that a write takes many system calls, so a torn file would show.
+        let large = SavedSession(windows: (0..<200).map { index in
+            SavedWindow(
+                tabs: [SavedTab(root: "/Homes/me/project-\(index)", page: .view(of: "notes/\(index).md"))],
+                selected: 0, frame: "0 0 1200 820 0 0 1512 949 ")
+        })
+        try SessionStore(directory: directory).save(small)
+        let rounds = 150
+        let dev = Task.detached { try Self.save(small, to: directory, times: rounds) }
+        let release = Task.detached { try Self.save(large, to: directory, times: rounds) }
+        let launches = Task.detached {
+            Self.unexpectedLoads(from: directory, times: rounds * 2, allowed: [small, large])
+        }
+        try await dev.value
+        try await release.value
+        #expect(await launches.value == [])
+        let last = try SessionStore(directory: directory).load()
+        #expect(last == small || last == large)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))
+            == [SessionStore.fileName])
+    }
+
+    nonisolated private static func save(_ session: SavedSession, to directory: URL, times: Int) throws {
+        let store = SessionStore(directory: directory)
+        for _ in 0..<times { try store.save(session) }
+    }
+
+    /// What each load found that is not one of `allowed`: an error, nothing, or another
+    /// session.
+    nonisolated private static func unexpectedLoads(
+        from directory: URL, times: Int, allowed: [SavedSession]
+    ) -> [String] {
+        let store = SessionStore(directory: directory)
+        var unexpected: [String] = []
+        for _ in 0..<times {
+            do {
+                let loaded = try store.load()
+                if !allowed.contains(where: { $0 == loaded }) {
+                    unexpected.append(loaded.map { "\($0.windows.count) window(s)" } ?? "no session")
+                }
+            } catch {
+                unexpected.append(String(describing: error))
+            }
+        }
+        return unexpected
+    }
+
     @Test func anUnreadableFileIsAnErrorNotAnEmptySession() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

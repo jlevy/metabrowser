@@ -49,6 +49,7 @@ biome-fix:
 browser-types:
 	npx --no-install tsc --noEmit -p tsconfig.json
 	npx --no-install tsc --noEmit -p tsconfig.legacy.json
+	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
 format lint lint-check test test-admitted-git audit build: | install
 
@@ -66,7 +67,8 @@ format:
 	$(MAKE) format-markdown
 	$(UV_RUN) ruff format src tests devtools explorations
 	npx --no-install biome format --write \
-		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom explorations \
+		apps/macos/webkit-gate src/metabrowser/static src/metabrowser/builtin_plugins tests/dom \
+		explorations \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
 format-markdown:
@@ -279,7 +281,7 @@ verify: install lint-check test audit build
 # The native macOS app in apps/macos (README.md there). It needs macOS and Swift, so
 # elsewhere these targets say so and succeed, and `verify` does not depend on them.
 MACOS_APP_TARGETS := macos-build macos-test macos-app macos-run macos-dmg macos-release \
-	macos-notarize macos-clean
+	macos-notarize macos-clean macos-webkit-gate
 .PHONY: $(MACOS_APP_TARGETS)
 $(MACOS_APP_TARGETS):
 ifeq ($(shell uname -s),Darwin)
