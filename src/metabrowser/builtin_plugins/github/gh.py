@@ -40,8 +40,8 @@ from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.git.process import (
     forget_process_group,
     kill_when_spawned,
+    start_process_group,
     terminate_git_process,
-    track_process_group,
 )
 
 log = logging.getLogger(__name__)
@@ -247,8 +247,10 @@ async def _run(
         raise GhUnavailableError
     env = gh_environment()
 
-    async def spawn_and_track() -> asyncio.subprocess.Process:
-        proc = await asyncio.create_subprocess_exec(
+    own_group = os.name == "posix"
+
+    async def spawn() -> asyncio.subprocess.Process:
+        return await asyncio.create_subprocess_exec(
             exe,
             *args,
             stdin=subprocess.DEVNULL,
@@ -256,18 +258,18 @@ async def _run(
             stderr=asyncio.subprocess.PIPE,
             env=env,
             cwd=cwd,
-            start_new_session=os.name == "posix",
+            start_new_session=own_group,
         )
-        if os.name == "posix":
-            # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
-            track_process_group(proc)
-        return proc
 
-    spawn = asyncio.create_task(spawn_and_track())
+    # A Ctrl-C, hangup, or closed stdin that cannot unwind kills Git's groups; gh's too,
+    # including one whose spawn is under way when the stop begins.
+    spawning = asyncio.create_task(
+        start_process_group(spawn, program=exe, cwd=cwd, env=env) if own_group else spawn()
+    )
     try:
-        proc = await asyncio.shield(spawn)
+        proc = await asyncio.shield(spawning)
     except asyncio.CancelledError:
-        await kill_when_spawned(spawn)
+        await kill_when_spawned(spawning)
         raise
     except OSError as exc:
         raise GhError(f"could not run gh: {exc.strerror}") from exc
