@@ -80,7 +80,7 @@ status: 200
     {
       "id": "rendered",
       "label": "Document",
-      "key": "d",
+      "key": "v",
       "default": true,
       "container_class": "content-body metabrowser-kpress-host md-body",
       "printable": true,
@@ -171,7 +171,7 @@ status: 200
     {
       "id": "rendered",
       "label": "Document",
-      "key": "d",
+      "key": "v",
       "default": true,
       "container_class": "content-body metabrowser-kpress-host md-body",
       "printable": true,

@@ -23,10 +23,10 @@ before: >-
 # Golden tests: view keys across plugin manifests
 
 A view’s one-letter `key` is checked at two levels.
-The manifest loader refuses a key that no view of any kind may hold.
+The manifest loader refuses a key that no view of any kind may hold, which today is
+every key the shell reserves ("Keyboard Shortcuts" in `docs/design-system.md`).
 `keymap.check_view_keys` checks a kind’s merged view list, which spans manifests: the
-first view in tab order keeps a shared key, a key the shell reserves for that kind is
-dropped, and the view is still served.
+first view in tab order keeps a shared key, and the view that loses it is still served.
 `--show` prints what the server serves, and `--doctor` reports each dropped key and
 exits 1.
 
@@ -36,7 +36,7 @@ The `before:` block writes five operator plugins, loaded with `--plugins-dir`:
 - `beta` adds a More view to `myk`, keyed `M`. Keys are compared without case, so it
   collides with Main.
 - `prnotes` adds a Notes view to `pull-request`, keyed `N`, which the shell reserves
-  there for the next pull request in a stack.
+  everywhere: `N` and `P` mean next and previous wherever they apply.
 - `reskey` adds an Outline view to `markdown`, keyed `T`, which the shell reserves
   everywhere for Quick Search.
 - `steal` overrides Markdown’s Document view and keys it `s`, which the built-in Source
@@ -87,15 +87,20 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
 ? 1
 ```
 
-## Test: a pull-request view keyed N loads, and is served without the key
+## Test: a view keyed N is refused at load, since N means next everywhere
 
-`N` and `P` are reserved only for `pull-request`, so the loader accepts the manifest,
-since another kind could use the letter, and the merged list drops it.
+`N` and `P` are reusable next and previous keys, reserved in every kind, so the loader
+refuses the manifest as it refuses `T` below.
 
 ```console
-$ metab --doctor --plugins-dir stack >/dev/null
-metab --doctor: 1 problem(s):
-  • plugin 'prnotes': view 'notes' of kind 'pull-request' declares key 'n', which is reserved for the shell's next pull request in the stack; the view is served without a key
+$ metab --doctor --json --plugins-dir stack 2>/dev/null
+{
+  "ok": false,
+  "plugin_count": 11,
+  "problems": [
+    "[CWD]/stack/prnotes/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'N' is reserved for the shell's next item [type=value_error, input_value='N', input_type=str]\n    For further information visit [PYDANTIC_URL]"
+  ]
+}
 ? 1
 ```
 

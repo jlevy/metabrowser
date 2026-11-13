@@ -172,14 +172,15 @@ const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
 /**
  * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
- * default, keeps it, and the others take a distinctive letter of their label: chan-*g*es, and
- * the next letter of Checks (docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md,
- * "Key Allocation Rules"). `C` is also the Charts tab's, which is never shown beside a page.
+ * default, keeps it, and the others take a free letter of their label: chan-*g*es, and
+ * ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a row up
+ * (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's, which is
+ * never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
-  Object.freeze({ id: "checks", label: "Checks", key: "h" }),
+  Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
 
 /** @type {Readonly<Record<string, string>>} */
@@ -3348,7 +3349,7 @@ export function createStackMenu(initial, number, deps) {
 }
 
 /**
- * Give the page's tab links their keys, `C`, `G`, and `H`, through the SDK's shortcut
+ * Give the page's tab links their keys, `C`, `G`, and `E`, through the SDK's shortcut
  * surface. A key runs `setTab`, the page handle's own path, which moves the address as a
  * click on the link does. The links are kept across paints, so each key lasts until
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
@@ -3385,6 +3386,52 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
       }),
     ];
   });
+}
+
+/**
+ * Number the header's situational controls, its links and one-off actions, through the
+ * SDK's shortcut surface: each takes 1 to 9 from its place on screen, as the shell's
+ * numbered controls do, so nothing here picks a digit (docs/design-system.md, "Keyboard
+ * Shortcuts"). *held* maps what a control does, such as `refresh`, to its handle and the
+ * action it runs now; the header is rebuilt on each paint, so a control that is drawn
+ * again moves its number to its new element and runs its new action, one no longer drawn
+ * lets its number go, and one drawn for the first time takes one. Each lasts until
+ * *signal* aborts, as the page's disposal aborts it.
+ *
+ * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
+ * @param {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} held
+ * @param {ReadonlyMap<string, {element: HTMLElement, run: () => unknown}>} controls
+ * @param {AbortSignal} signal
+ */
+export function numberHeaderControls(shortcuts, held, controls, signal) {
+  if (typeof shortcuts?.attach !== "function") {
+    return;
+  }
+  for (const [name, entry] of held) {
+    if (!controls.has(name)) {
+      entry.handle.detach();
+      held.delete(name);
+    }
+  }
+  for (const [name, control] of controls) {
+    const entry = held.get(name);
+    if (entry) {
+      entry.run = control.run;
+      entry.handle.retarget(control.element);
+      continue;
+    }
+    /** @type {{handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}} */
+    const next = {
+      handle: shortcuts.attach(control.element, {
+        activate: () => next.run(),
+        id: `github.pull.header.${name}`,
+        numbered: true,
+        signal,
+      }),
+      run: control.run,
+    };
+    held.set(name, next);
+  }
 }
 
 /**
@@ -3998,6 +4045,9 @@ export function mountPullPage(container, ctx, mb) {
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
+  /** The header's numbered links and actions, by what each does; see `numberHeaderControls`.
+   * @type {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} */
+  const headerNumbers = new Map();
 
   /** Optional membership retains its status-row disclosure while other header details repaint.
    * @param {PullModel} model
@@ -4117,6 +4167,9 @@ export function mountPullPage(container, ctx, mb) {
   function paintHeader(model) {
     const children = [];
     const pull = model.pull;
+    /** The situational controls this paint draws, by what each does, for their numbers.
+     * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
+    const numbered = new Map();
     if (pull !== null) {
       // The updated age is left out where it reads the same as the merged or closed age
       // beside it, or else the opened age; its exact time joins the tooltip of the age it
@@ -4126,6 +4179,31 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
+      const onGitHub = mb.decorateExternalLink(
+        outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
+        {
+          icon: "github",
+          position: "before",
+        },
+      );
+      if (onGitHub.tagName === "A") {
+        numbered.set("github", {
+          element: onGitHub,
+          run: () =>
+            window.open(onGitHub.getAttribute("href") ?? "", "_blank", "noopener,noreferrer"),
+        });
+      }
+      const browse = model.browse === null ? null : browseControl(model.browse);
+      if (browse !== null) {
+        const root = mb.navigation.href({ path: "" });
+        numbered.set("browse", {
+          element: browse,
+          run:
+            model.browse?.kind === "link"
+              ? () => mb.navigation.open({ path: "" })
+              : () => controller.browseCode(root),
+        });
+      }
       children.push(
         h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
           pullStateIcon(pull.state, { named: false }),
@@ -4144,15 +4222,9 @@ export function mountPullPage(container, ctx, mb) {
             ? []
             : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
           " · ",
-          mb.decorateExternalLink(
-            outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
-            {
-              icon: "github",
-              position: "before",
-            },
-          ),
-          model.browse === null ? null : " · ",
-          model.browse === null ? null : browseControl(model.browse),
+          onGitHub,
+          browse === null ? null : " · ",
+          browse,
         ]),
       );
       if (pull.labels.length > 0) {
@@ -4200,7 +4272,7 @@ export function mountPullPage(container, ctx, mb) {
       const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
         model.status === "absent" ? "Fetch" : "Refresh",
       ]);
-      refresh.addEventListener("click", () => {
+      const refreshNow = () => {
         if (listening.signal.aborted || shown?.canRefresh !== true) {
           return;
         }
@@ -4209,18 +4281,23 @@ export function mountPullPage(container, ctx, mb) {
         void controller.requestRefresh(
           displayed === null ? undefined : { base: displayed.left, head: displayed.right },
         );
-      });
+      };
+      refresh.addEventListener("click", refreshNow);
+      numbered.set("refresh", { element: refresh, run: refreshNow });
       status.append(refresh);
     }
     if (model.headOffer !== null) {
       const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
         "Switch to the head",
       ]);
-      button.addEventListener("click", () => void controller.switchToHead());
+      const switchNow = () => void controller.switchToHead();
+      button.addEventListener("click", switchNow);
+      numbered.set("switch", { element: button, run: switchNow });
       status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
     }
     if (model.checkoutAtHead !== null) {
       const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
+      numbered.set("checkout", { element: root, run: () => mb.navigation.open({ path: "" }) });
       status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
     }
     children.push(status);
@@ -4258,6 +4335,7 @@ export function mountPullPage(container, ctx, mb) {
       }
     }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
+    numberHeaderControls(mb.shortcuts, headerNumbers, numbered, listening.signal);
   }
 
   /**

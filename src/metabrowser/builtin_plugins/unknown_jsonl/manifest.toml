@@ -15,10 +15,10 @@ sdk_version = "0.7"
 kind = "unknown-jsonl"
 id = "log"
 label = "Log"
-key = "l"
+key = "v"
 
 [[view]]
 kind = "unknown-jsonl"
 id = "raw"
 label = "Raw JSON"
-key = "r"
+key = "s"

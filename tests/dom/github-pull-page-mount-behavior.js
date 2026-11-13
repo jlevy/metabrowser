@@ -252,7 +252,12 @@ async function releasedFilesMounts(page, initial, diffView, errors) {
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
-        navigation: { href: () => "/view/" },
+        navigation: {
+          href: () => "/view/",
+          async open(target) {
+            asked.push(`navigation.open /view/${target.path}`);
+          },
+        },
         sourceKind: () => "git_revision",
         icons: { toggle: "" },
       },
@@ -418,7 +423,12 @@ async function markdownOwnership() {
           ...require("./sdk-ref-fixture.js").refHelpers(document),
           formatAge: () => ({ label: "now", className: "age" }),
           formatTimestamp: () => "now",
-          navigation: { href: () => "/view/" },
+          navigation: {
+            href: () => "/view/",
+            async open(target) {
+              asked.push(`navigation.open /view/${target.path}`);
+            },
+          },
           sourceKind: () => "git_revision",
           icons: { toggle: "" },
         },
@@ -535,7 +545,12 @@ async function mountOn(page, body, tab, ageLabel) {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: (seconds) => ({ label: ageLabel(seconds), className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
-      navigation: { href: () => "/view/" },
+      navigation: {
+        href: () => "/view/",
+        async open(target) {
+          asked.push(`navigation.open /view/${target.path}`);
+        },
+      },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
     },
@@ -544,7 +559,8 @@ async function mountOn(page, body, tab, ageLabel) {
   return { container, handle };
 }
 
-// The page's tabs answer to C, G, and H through the SDK's shortcut surface. The production
+// The page's tabs answer to C, G, and E through the SDK's shortcut surface, and its header's
+// links and actions to the numbers of their places, through the same surface. The production
 // shortcut registry and plugin shortcut facade (static/keyboard-shortcuts.js and
 // static/plugin-shortcuts.js) load whole into a realm of their own, as `shell-tools` loads
 // them, and the page's `mb.shortcuts.attach` is the facade's, as the SDK's is once it has
@@ -608,21 +624,36 @@ async function tabKeys(page) {
     clearTimeout: (id) => timers.delete(id),
   };
   let answer = recorded.pending.body;
-  globalThis.fetch = async (route) =>
-    route.startsWith("/api/plugin/github/pull?")
+  /** What a header number asked for: a request the page sent, a tab it opened, a page it
+   * navigated to. Read and emptied by `numberResult`. */
+  const asked = [];
+  globalThis.fetch = async (route, init = {}) => {
+    if (init.method === "POST") {
+      asked.push(`POST ${route.split("?")[0]} ${init.body}`);
+    }
+    if (route.startsWith("/api/plugin/github/pull-refresh")) {
+      // The refresh answers with the envelope it started from, as the route does.
+      return {
+        status: 202,
+        headers: { get: () => null },
+        json: async () => ({ refresh: "started", pull: answer }),
+      };
+    }
+    return route.startsWith("/api/plugin/github/pull?")
       ? { status: 200, headers: { get: () => null }, json: async () => answer }
       : { status: 304, headers: { get: () => null } };
+  };
+  globalThis.window.open = (url, target, features) => {
+    asked.push(`window.open ${url} ${target} ${features}`);
+    return null;
+  };
   const shell = {
     console,
     document: globalThis.document,
     HTMLElement: LiveElement,
     // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py, as the shell serves it.
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: {
-        ...Object.fromEntries([..."tjkuwxya0123456789"].map((key) => [key, null])),
-        n: ["pull-request"],
-        p: ["pull-request"],
-      },
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;
@@ -655,7 +686,12 @@ async function tabKeys(page) {
       ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: () => "now",
-      navigation: { href: () => "/view/" },
+      navigation: {
+        href: () => "/view/",
+        async open(target) {
+          asked.push(`navigation.open /view/${target.path}`);
+        },
+      },
       sourceKind: () => "git_revision",
       icons: { toggle: "" },
       shortcuts: { attach: facade.attachShortcut },
@@ -715,6 +751,23 @@ async function tabKeys(page) {
       ? `${name}: opened the ${opened[0] || "conversation"} route`
       : `${name}: showed ${shown()}`;
   };
+  /** The header's numbered controls now, in order, by their text. */
+  const numbered = () =>
+    registry
+      .liveNumbers()
+      .map((control, at) => `${at + 1} ${control.textContent.trim()}`)
+      .join(", ") || "none";
+  /** Press a number, let the page act, and say what it asked for, or that nothing took it. */
+  const numberResult = async (digit) => {
+    asked.length = 0;
+    const handled = press(digit);
+    for (const callback of [...timers.values()]) {
+      callback();
+    }
+    timers.clear();
+    await settle();
+    return handled ? `${digit}: ${asked.join("; ") || "nothing asked"}` : `${digit}: not handled`;
+  };
   /** The route answers an opened tab as pull-route.js does: the address moves, and setTab. */
   const arrive = (tab) => {
     window.location.pathname = tab ? `/pull/7/${tab}` : "/pull/7";
@@ -734,11 +787,39 @@ async function tabKeys(page) {
   assert.ok(container.querySelector(".tab-bar"), "the record put the tab column in");
   steps.push(`the record arrives and paintHeader puts the column in: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
+  // The header's links and actions are situational: numbered by their place, 1 to 9.
+  steps.push(`numbered: ${numbered()}`);
+  steps.push(await numberResult("1"));
+  steps.push(await numberResult("2"));
   steps.push(result("c"));
   steps.push(result("g"));
   arrive("files");
   steps.push(`the route arrives: ${shown()}`);
+  // Changes offers Refresh, which takes the next number.
+  steps.push(`numbered on Changes: ${numbered()}`);
+  // A refresh whose answer serves the pull request's head repaints Browse code as a link:
+  // 2 now opens the code in the page, the action of this paint, where it asked the server
+  // to serve the head before.
+  const atHead = structuredClone(recorded.current.body);
+  atHead.pin = atHead.record.pull.head.sha;
+  atHead.pin_ref = "refs/pull/7/head";
+  answer = atHead;
+  steps.push(await numberResult("3"));
+  steps.push(`numbered after a refresh serves the head: ${numbered()}`);
+  steps.push(await numberResult("2"));
+  // A refresh whose answer has no pin repaints the header without Browse code: Refresh
+  // moves up to 2, and 2 runs it, and 3 reaches nothing.
+  const unpinned = structuredClone(recorded.current.body);
+  unpinned.pin = null;
+  unpinned.pin_ref = null;
+  answer = unpinned;
+  steps.push(await numberResult("3"));
+  steps.push(`numbered after a refresh with no pin: ${numbered()}`);
+  steps.push(await numberResult("2"));
+  steps.push(await numberResult("3"));
+  // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
+  steps.push(result("e", { shiftKey: true }));
   arrive("checks");
   steps.push(result("C", { shiftKey: true }));
   arrive("");
@@ -1088,7 +1169,12 @@ async function run() {
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
-        navigation: { href: () => "/view/" },
+        navigation: {
+          href: () => "/view/",
+          async open(target) {
+            asked.push(`navigation.open /view/${target.path}`);
+          },
+        },
         sourceKind: () => "git_revision",
         icons: { toggle: "" },
       },
@@ -1257,7 +1343,12 @@ async function run() {
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
-        navigation: { href: () => "/view/" },
+        navigation: {
+          href: () => "/view/",
+          async open(target) {
+            asked.push(`navigation.open /view/${target.path}`);
+          },
+        },
         sourceKind: () => "git_revision",
         icons: { toggle: "" },
       },
@@ -1360,7 +1451,12 @@ async function run() {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: () => "now",
-      navigation: { href: () => "/view/" },
+      navigation: {
+        href: () => "/view/",
+        async open(target) {
+          asked.push(`navigation.open /view/${target.path}`);
+        },
+      },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
     },
@@ -1452,7 +1548,12 @@ async function run() {
           ...require("./sdk-ref-fixture.js").refHelpers(document),
           formatAge: () => ({ label: "now", className: "age" }),
           formatTimestamp: () => "now",
-          navigation: { href: () => "/view/" },
+          navigation: {
+            href: () => "/view/",
+            async open(target) {
+              asked.push(`navigation.open /view/${target.path}`);
+            },
+          },
           sourceKind: () => "git_revision",
           icons: { toggle: "" },
         },

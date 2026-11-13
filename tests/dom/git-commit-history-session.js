@@ -561,9 +561,9 @@ async function createPage(start, options = {}) {
     /**
      * The reader clicking the Commits tab. main-tabs.js, which preview-pane-state-session.js
      * runs, gives up the pane, pushes the neutral entry, shows the panel, applies the
-     * address, and asks the panel to land; this is that. The tab's digit does the same and
-     * then asks the panel for its row, which this session, with no rows mounted, cannot
-     * show; git-panel-behavior.js runs the digit against the panel's rows.
+     * address, and asks the panel to land; this is that. The tab's key, `H`, does the same
+     * and then asks the panel for its row, which this session, with no rows mounted, cannot
+     * show; git-panel-behavior.js runs the key against the panel's rows.
      */
     async switchToCommits() {
       sandbox.MetabrowserShell.claimPreview("none");

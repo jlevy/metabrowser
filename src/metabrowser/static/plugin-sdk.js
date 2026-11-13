@@ -79,8 +79,9 @@
 //                                          click
 //
 //   Keyboard ("Keyboard Shortcuts" in docs/plugins.md):
-//     shortcuts.attach(element, spec)     — a letter key and badge for a view's control;
-//                                          returns {retarget, detach}
+//     shortcuts.attach(element, spec)     — a letter key and badge for a view's control,
+//                                          or with `numbered: true` a positional
+//                                          number; returns {retarget, detach}
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — contribute a synchronous named span
@@ -430,24 +431,9 @@
     );
   }
 
-  /**
-   * Copy what a copy control names, as a click on it does: the named entry to the
-   * delegate below, for a key that runs the control without a click. Only a control
-   * page code owns qualifies, as for the click. Reports whether it copied.
-   * @param {HTMLElement | null} control
-   */
-  function copyFromControl(control) {
-    if (!control?.dataset.mbCopy || !isOwnedDelegate(control)) {
-      return false;
-    }
-    _handleCopyClick(control);
-    return true;
-  }
-
   global.MetabrowserPluginHost = Object.freeze({
     attachFileCatalog,
     configureAssets,
-    copyFromControl,
     isOwnedDelegate,
     loadPluginsForKind,
     registerLoadMoreAction,

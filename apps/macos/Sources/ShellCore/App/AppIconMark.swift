@@ -26,19 +26,25 @@ public nonisolated enum AppIconMark {
     /// measures 10.0:1 and the amethyst B 7.4:1 (WCAG contrast). On the light one, #FFFFFF,
     /// they measure 1.7:1 and 2.3:1, under the 3:1 that graphics need (WCAG 1.4.11), so the
     /// light title bar alone draws deeper tints of the same hues: each fill's OKLCH
-    /// lightness lowered in steps of half a percent, keeping its hue and its share of the
-    /// most chroma sRGB holds there, to the first step that reaches 4:1. The first tints
-    /// stopped at 3:1 (#B09135 and #BA73FF), and the user asked for them a little darker.
+    /// lightness lowered in steps of half a percent, keeping its hue at a set share of the
+    /// most chroma sRGB holds there, to the first step that reaches 4:1.
+    ///
+    /// The shares are the user's: the first tints kept each fill's own share (0.84 for the
+    /// M, all of it for the B) and stopped at 3:1 (#B09135 and #BA73FF); the user asked for
+    /// them a little darker (4:1: #967B2C and #AD4AFF), and then for more saturation in the
+    /// M and less in the B. At those shares the B carried 2.5 times the M's chroma
+    /// (0.2547 against 0.1019), so the purple outweighed the gold. The M now takes all of
+    /// its chroma and the B 0.65 of its own, which brings that to 1.4 times.
     public static func titleBarFills(dark: Bool) -> [String] {
         dark ? glyphs.map(\.fill) : [lightTitleBarM, lightTitleBarB]
     }
 
-    /// oklch(59.4% 0.1019 90.40), from the M's oklch(83.38% 0.1428 90.40) at 0.84 of the
-    /// chroma sRGB holds: 4.06:1 against #FFFFFF.
-    static let lightTitleBarM = "#967B2C"
-    /// oklch(62.5% 0.2547 304.96), from the B's oklch(76.03% 0.1539 304.96) at all of the
-    /// chroma sRGB holds: 4.04:1 against #FFFFFF.
-    static let lightTitleBarB = "#AD4AFF"
+    /// oklch(59.5% 0.1216 90.40), from the M's oklch(83.38% 0.1428 90.40) at all of the
+    /// chroma sRGB holds: 4.03:1 against #FFFFFF.
+    static let lightTitleBarM = "#9A7B00"
+    /// oklch(61.0% 0.1735 304.96), from the B's oklch(76.03% 0.1539 304.96) at 0.65 of the
+    /// chroma sRGB holds: 4.10:1 against #FFFFFF.
+    static let lightTitleBarB = "#9C62D5"
 
     /// `data` as a path, or nil for data outside the subset make-glyphs writes.
     public static func path(_ data: String) -> CGPath? {
