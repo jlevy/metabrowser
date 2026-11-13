@@ -24,8 +24,10 @@ the recording and then the transcript.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import sqlite3
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -40,6 +42,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write_list_refresh
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
@@ -247,6 +250,32 @@ def _record(
             assert read() == recorded["refreshed"]
             provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
 
+            # Two refusals the real worker reaches before asking GitHub anything: a catalog a
+            # newer release wrote, and one whose versions cannot be read. Each is asked for
+            # through the refresh route, read back through the list route, and the catalog
+            # put back as it was for the story that follows.
+            catalog = home / "sources" / published.slug / "pulls" / "catalog.sqlite3"
+            saved = catalog.read_bytes()
+
+            def newer(db: sqlite3.Connection) -> None:
+                (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+                declared = json.loads(value) | {"projection_version": CATALOG_PROJECTION + 1}
+                db.execute("UPDATE checkpoint SET value=?", (json.dumps(declared),))
+                db.commit()
+
+            def write_ahead_log(db: sqlite3.Connection) -> None:
+                assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+
+            for name, change in (("newer_cache", newer), ("unknown_cache", write_ahead_log)):
+                with contextlib.closing(sqlite3.connect(catalog)) as db:
+                    change(db)
+                refused = ask(state="all", target=500, retry=True)
+                assert refused["status"] == 202, refused
+                settled()
+                recorded[f"failed {name}"] = read()
+                provider_calls[f"refused {name}"] = logged_gh_calls(tmp_path)
+                catalog.write_bytes(saved)
+
             # Actual persisted failure stamps, read through the production cache-only route.
             # Worker/network classification is covered by the catalog backend's own cases.
             for name in (
@@ -432,6 +461,18 @@ def test_recording_is_what_a_served_mirror_answers(
     ):
         envelope = recorded[f"failed {name}"]["body"]
         assert envelope["last_refresh"]["outcome"] == name and envelope["fetched"] == 102
+    clear = "`echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`"
+    for name in ("newer_cache", "unknown_cache"):
+        # A catalog left as it is reads as none, and its refusal names the clear.
+        envelope = recorded[f"failed {name}"]["body"]
+        assert envelope["last_refresh"]["outcome"] == name
+        assert clear in envelope["last_refresh"]["message"]
+        assert (envelope["state"], envelope["reason"], envelope["fetched"]) == (
+            "absent",
+            "not_cached",
+            0,
+        )
+        assert provider_calls[f"refused {name}"] == []
     assert recorded["another_reader"]["body"]["reader"] == f"gh:{ANOTHER_READER}"
     assert recorded["another_reader"]["body"]["state"] == "stale"
     assert (
@@ -506,6 +547,8 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
         "account_changed",
         "gh_failed",
         "cache_unwritable",
+        "newer_cache",
+        "unknown_cache",
     ):
         assert f"failed {name}" in recording, name
 
