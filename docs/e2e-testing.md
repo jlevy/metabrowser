@@ -517,9 +517,10 @@ surface. Author, action, and age must share a baseline while branch chips stay s
 On a PR in a known stack, open the position menu.
 Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
 click, and keyboard selection.
-Use ⇧J toward the base and ⇧K toward the top; preserve the selected PR tab and clear the
-old file selection. Confirm endpoint handling and that an editor or open dialog retains
-its keys.
+Use `P` toward the base and `N` toward the top, with and without Shift; preserve the
+selected PR tab and clear the old file selection.
+With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row and not the
+stack. Confirm endpoint handling and that an editor or open dialog retains its keys.
 
 ### Quick Search and Main Tabs
 
@@ -538,7 +539,9 @@ catalog. Reopen a cached result with `gh` unavailable.
 In a plain folder, the dialog should still say Quick Search and search only files.
 
 After Git discovery, check Files, Commits, and Pulls order and the fixed numbers in
-Help. Try the plain digits if the browser owns the Command chords.
+Help, with no `⌘` beside them.
+Check that `1`, `2`, and `3` open each tab with and without Shift, and that Command or
+Ctrl with a digit still switches browser tabs.
 In a plain folder, check that the Files shortcut still uses `1` and the other numbers
 leave the selection alone.
 

@@ -143,6 +143,8 @@ function createContext() {
   };
   const sandbox = {
     __probe: probe,
+    // No keyboard infrastructure here, so no shell keymap follows the filter bar.
+    shellKeymap: null,
     Array,
     CustomEvent: class {
       constructor(type, init) {

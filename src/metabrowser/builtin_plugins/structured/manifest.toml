@@ -20,12 +20,14 @@ priority = 0
 kind = "structured"
 id = "tree"
 label = "Tree"
+key = "r"
 default = true
 
 [[view]]
 kind = "structured"
 id = "source"
 label = "Source"
+key = "s"
 printable = true
 print_profile = "source"
 render_runtime = "client"

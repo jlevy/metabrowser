@@ -20,6 +20,32 @@
   }
 
   /**
+   * Release every plugin key attached to an element inside `container`, the net under a
+   * view's own `dispose()`: through the plugin shortcut facade once it has loaded, and
+   * before then in the SDK's queue, which holds every key attached until it loads.
+   *
+   * @param {HTMLElement} container
+   */
+  function releaseShortcutsWithin(container) {
+    const facade = window.MetabrowserPluginShortcuts;
+    if (facade) {
+      facade.releaseWithin(container);
+      return;
+    }
+    const Node = window.Node;
+    const queue = window.MetabrowserPluginHost?.shortcutQueue ?? new Set();
+    for (const queued of queue) {
+      // What the plugin passed is checked only when the facade takes it.
+      if (typeof Node === "function" && queued.element instanceof Node) {
+        if (container.contains(queued.element)) {
+          // The queue lets go of the element as well as the key.
+          queue.delete(queued);
+        }
+      }
+    }
+  }
+
+  /**
    * Own the transfer from a staged preview to the active preview.
    *
    * A stage may be cancelled before commit. Once committed, its disposer list
@@ -140,6 +166,9 @@
         return;
       }
       record.disposed = true;
+      // The net runs before the view's own dispose, which may take its DOM, and the keys
+      // attached inside it, out of the container. Detaching twice is harmless.
+      releaseShortcutsWithin(container);
       if (typeof record.handle?.dispose === "function") {
         record.handle.dispose();
       }
@@ -154,6 +183,8 @@
           ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
           : null;
       if (record.disposed) {
+        // Rendered after the net ran: it is cast again over what this render attached.
+        releaseShortcutsWithin(container);
         handle?.dispose?.();
         return "cancelled";
       }
@@ -167,6 +198,9 @@
       options.afterMount?.(container);
       return "mounted";
     } catch (error) {
+      // A render that failed may have attached keys first, and the error state below
+      // takes its DOM out of the container, past the net.
+      releaseShortcutsWithin(container);
       if (record.disposed) {
         return "cancelled";
       }
