@@ -103,6 +103,18 @@ import Testing
         for fill in light { #expect(contrast(fill, "#FFFFFF") >= 4) }
     }
 
+    /// The user asked for more saturation in the light M and less in the light B: at each
+    /// fill's own share of the chroma sRGB holds, the B carried 2.5 times the M's chroma
+    /// (#967B2C against #AD4AFF). The balanced pair keeps it under 1.5 times, and the M at
+    /// least as saturated as that first tint.
+    @Test func theLightTitleBarsFillsBalanceTheirSaturation() {
+        let light = AppIconMark.titleBarFills(dark: false)
+        let m = chroma(light[0]), b = chroma(light[1])
+        #expect(m > chroma("#967B2C"), "the M is more saturated than #967B2C")
+        #expect(b < chroma("#AD4AFF"), "the B is less saturated than #AD4AFF")
+        #expect(b / m < 1.5, "the B carries \(b / m) times the M's chroma")
+    }
+
     @Test func theLightTitleBarsFillsKeepTheIconsHues() {
         for (tint, fill) in zip(AppIconMark.titleBarFills(dark: false), AppIconMark.glyphs.map(\.fill)) {
             let difference = abs(hue(tint) - hue(fill))
@@ -149,4 +161,9 @@ import Testing
     }
 
     private func lightness(_ hex: String) -> Double { oklab(hex).l }
+
+    private func chroma(_ hex: String) -> Double {
+        let lab = oklab(hex)
+        return (lab.a * lab.a + lab.b * lab.b).squareRoot()
+    }
 }
