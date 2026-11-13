@@ -550,6 +550,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/cache-clear",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull",
       "methods": [
         "GET",
@@ -836,7 +843,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 62
+  "count": 63
 }
 ? 0
 ```

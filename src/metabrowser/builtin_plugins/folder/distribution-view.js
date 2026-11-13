@@ -71,13 +71,20 @@ export function mountDistributionView(container, model, palette, metricClasses, 
     groups: new Map(),
     /** @type {Set<string>} */
     expandedFamilies: new Set(),
+    // Whether Details is open. Held on the handle rather than the body, so it
+    // survives every repaint of this mount — a control change, a refresh, a
+    // skeleton while a rescan runs — and starts closed on the next mount, like
+    // every other default in the Overview, rather than becoming a preference.
+    detailsExpanded: false,
     /** @type {ReadonlyArray<SummaryRow>} */
     lastRows: [],
     /** @type {ReadonlyArray<SummaryGroup>} */
     lastGroupOrder: [],
     table: /** @type {HTMLTableElement | null} */ (null),
     metricHeader: /** @type {HTMLTableCellElement | null} */ (null),
-    caption: /** @type {HTMLTableCaptionElement | null} */ (null),
+    caption: /** @type {HTMLElement | null} */ (null),
+    legend: /** @type {HTMLElement | null} */ (null),
+    detailsToggle: /** @type {HTMLButtonElement | null} */ (null),
     metric: /** @type {"files" | "size"} */ ("files"),
     status: /** @type {HTMLElement | null} */ (null),
     mode: "",
@@ -131,6 +138,10 @@ export function updateDistributionView(handle, model) {
   if (handle.caption) {
     handle.caption.textContent = model.caption ?? "";
   }
+  updateLegend(handle, model.legend ?? []);
+  // The rows are kept current while Details is closed. They are bounded — ten
+  // to a group and the families someone opened — so opening Details has
+  // nothing left to build and shows the numbers at once.
   updateRows(handle, model.rows, model.groups || [], handle.metric);
   if (!handle.status) {
     return;
@@ -187,7 +198,81 @@ function resetBody(handle, mode) {
   handle.table = null;
   handle.metricHeader = null;
   handle.caption = null;
+  handle.legend = null;
+  handle.detailsToggle = null;
   handle.status = null;
+}
+
+/**
+ * Release what this view holds: its markup, its rows, and its disclosure state.
+ * The handle is done after this; a later update would build an empty body.
+ *
+ * @param {DistributionHandle} handle
+ */
+export function disposeDistributionView(handle) {
+  resetBody(handle, "disposed");
+  handle.expandedFamilies.clear();
+  handle.detailsExpanded = false;
+  handle.lastRows = [];
+  handle.lastGroupOrder = [];
+  handle.root.remove();
+}
+
+/**
+ * Open or close Details. The one transition of the compact summary: the
+ * caption and legend above it never move, and the table inside keeps the
+ * families someone opened in it.
+ *
+ * @param {DistributionHandle} handle
+ */
+export function toggleDetails(handle) {
+  handle.detailsExpanded = !handle.detailsExpanded;
+  applyDetailsState(handle);
+}
+
+/** @param {DistributionHandle} handle */
+function applyDetailsState(handle) {
+  if (!handle.detailsToggle || !handle.table) {
+    return;
+  }
+  handle.detailsToggle.setAttribute("aria-expanded", String(handle.detailsExpanded));
+  handle.table.hidden = !handle.detailsExpanded;
+}
+
+/**
+ * The compact summary's legend, GitHub's Languages box in this table's colors:
+ * a dot, the type, and its share, for each entry the model names.
+ *
+ * Rebuilt whole on each update. It is at most a handful of items with nothing
+ * focusable in them, so there is no state in it to preserve.
+ *
+ * @param {DistributionHandle} handle
+ * @param {ReadonlyArray<SummaryLegendEntry>} entries
+ */
+function updateLegend(handle, entries) {
+  if (!handle.legend) {
+    return;
+  }
+  handle.legend.hidden = entries.length === 0;
+  handle.legend.replaceChildren(
+    ...entries.map((entry) => {
+      const item = document.createElement("li");
+      item.className = "file-type-summary-legend-item";
+      item.dataset.legendKey = entry.key;
+      const swatch = document.createElement("span");
+      swatch.className = "file-type-summary-legend-swatch";
+      swatch.setAttribute("aria-hidden", "true");
+      handle.palette.paint(swatch, entry.paletteKey);
+      const label = document.createElement("span");
+      label.className = "file-type-summary-legend-label";
+      label.textContent = entry.label;
+      const percent = document.createElement("span");
+      percent.className = "file-type-summary-legend-percent";
+      percent.textContent = entry.percent;
+      item.append(swatch, label, percent);
+      return item;
+    }),
+  );
 }
 
 /** @param {DistributionHandle} handle */
@@ -217,12 +302,40 @@ function ensureDistributionBody(handle) {
     }
   }
   thead.append(headerRow);
-  const caption = document.createElement("caption");
-  caption.className = "file-type-summary-caption";
-  table.append(caption, columns, thead);
+  table.append(columns, thead);
+
+  // The compact summary: the largest types. The caption names the population
+  // their shares are of, for the legend and the table alike, so it labels both.
+  // It is for assistive technology only: on screen the population bars above
+  // and the Show ignored checkbox already say which population that is, and a
+  // line restating it was one more thing to read before the legend.
+  const captionId = `${handle.idPrefix}-caption`;
+  const share = element(handle.body, "file-type-summary-share");
+  const caption = element(share, "file-type-summary-caption sr-only");
+  caption.id = captionId;
+  const legend = document.createElement("ul");
+  legend.className = "file-type-summary-legend";
+  legend.setAttribute("aria-labelledby", captionId);
+  share.append(legend);
+
+  // Everything else, behind the same disclosure an "N more" row uses.
+  const details = element(handle.body, "file-type-summary-details");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className =
+    "file-type-summary-disclosure section-disclosure-trigger file-type-summary-details-toggle";
+  toggle.textContent = "Details";
+  table.id = `${handle.idPrefix}-details`;
+  table.setAttribute("aria-labelledby", captionId);
+  toggle.setAttribute("aria-controls", table.id);
+  toggle.addEventListener("click", () => toggleDetails(handle));
+  details.append(toggle, table);
+
   handle.caption = caption;
-  handle.body.append(table);
+  handle.legend = legend;
+  handle.detailsToggle = toggle;
   handle.table = table;
+  applyDetailsState(handle);
   handle.status = element(handle.body, "file-type-summary-status");
   handle.status.setAttribute("role", "status");
 }
@@ -451,11 +564,12 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 }
 
 /** @typedef {{id: string, label: string}} SummaryGroup */
+/** @typedef {{key: string, label: string, paletteKey: string, kind: "family" | "other", value: number, percent: string, share: number}} SummaryLegendEntry */
 /** @typedef {{key: string, rawKey?: string | null, extension?: string | null, iconPath?: string | null, label: string, category: string, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
-/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLTableCaptionElement | null, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

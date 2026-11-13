@@ -168,19 +168,28 @@ $ metab --help
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ API (--api ROUTE) ──────────────────────────────────────────────────────────╮
 │ --data        FILE  Send FILE as the request body, making the request a POST │
-│                     (--api only).                                            │
+│                     (--api only). - reads it from standard input.            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
-│ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │
-│ --host        TEXT                         Host to bind to. A concrete value │
-│                                            is automatically permitted by the │
-│                                            Host-header allowlist; wildcard   │
-│                                            binds (0.0.0.0, ::) use loopback  │
-│                                            for the local URL, and additional │
-│                                            trusted names can be allowed with │
-│                                            METABROWSER_ALLOWED_HOSTS (see    │
-│                                            SECURITY.md).                     │
-│                                            [default: 127.0.0.1]              │
+│ --port               INTEGER RANGE               Server port.                │
+│                      [1<=x<=65535]               [default: 8411]             │
+│ --host               TEXT                        Host to bind to. A concrete │
+│                                                  value is automatically      │
+│                                                  permitted by the            │
+│                                                  Host-header allowlist;      │
+│                                                  wildcard binds (0.0.0.0,    │
+│                                                  ::) use loopback for the    │
+│                                                  local URL, and additional   │
+│                                                  trusted names can be        │
+│                                                  allowed with                │
+│                                                  METABROWSER_ALLOWED_HOSTS   │
+│                                                  (see SECURITY.md).          │
+│                                                  [default: 127.0.0.1]        │
+│ --exit-on-eof                                    Stop serving when stdin     │
+│                                                  closes, as it does when the │
+│                                                  process that started the    │
+│                                                  server and holds its stdin  │
+│                                                  exits, even by crashing.    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Walk (--walk) ──────────────────────────────────────────────────────────────╮
 │ --stream       --all-at-once                          Streaming emits one    │

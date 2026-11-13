@@ -11,7 +11,7 @@ any pull request of the repository.
 A job outlives the request that started it, and its failures become typed outcomes
 rather than exceptions. A graceful shutdown cancels whatever is still running through the
 application lifespan, which kills each job's Git; a Ctrl-C exits at once instead, after
-:func:`metabrowser.git.process.kill_live_process_groups` has killed them. A server that
+:func:`metabrowser.git.process.stop_process_groups` has killed them. A server that
 is killed outright cannot do either, and its Git keeps the store's fetch lock until it
 exits, so nothing else writes or cleans the store under it.
 

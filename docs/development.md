@@ -750,7 +750,7 @@ again:
 | Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
 | File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
 | Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
-| Database schemas | N/A | Metabrowser has none |
+| Database schemas | VERSION + FAIL FAST, else REBUILD | The GitHub plugin’s PR catalog is a disposable cache that names its versions: one newer or unreadable is kept and refused with the command that clears it, any other rebuilt; see [Lists of pull requests](project/architecture/arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests) |
 
 Raise it with the maintainers if a change needs a different answer; do not assume a
 stricter one and build the layer anyway.

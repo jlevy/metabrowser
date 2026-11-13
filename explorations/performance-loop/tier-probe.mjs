@@ -6,11 +6,21 @@
 // and this is the instrument that measures it. It drives stock Chrome over the DevTools
 // Protocol with a throwaway profile and loads one address on each named build in turn,
 // every load in a browser context of its own so the HTTP cache starts empty. Builds are
-// loaded back to back, so a ratio is between two loads taken next to each other.
+// loaded back to back, so a ratio is between two loads taken next to each other, and
+// every other pair runs them in the reverse order so neither build always goes first.
 //
 //   node tier-probe.mjs --out probe.jsonl --pairs 8 --path "/view/src/a.py#L40" \
 //     --module plugin-sdk-views.js \
 //     --build base=http://127.0.0.1:8771 --build after=http://127.0.0.1:8773
+//
+// Three options change the conditions of every load:
+//
+// - `--network LATENCY:DOWN:UP` emulates a link (milliseconds per request, kilobits per
+//   second down and up), as `metab --remote` puts an SSH tunnel between the browser and
+//   the server;
+// - `--cpu RATE` slows the page's CPU by that factor;
+// - `--warm N` loads each build N times first in Chrome's default profile and measures
+//   there, so the HTTP cache and V8's code cache are filled as a returning reader's are.
 //
 // Per load it records, as one JSON line:
 //
@@ -19,15 +29,21 @@
 // - every script requested at all, so a module that left the startup set is seen where
 //   it went;
 // - compile and evaluate time of the scripts named by --module, from a trace;
-// - first contentful paint, DOMContentLoaded, the first tree row, and, on a file
-//   address, when a Source view first appeared, whether it had its line gutter at that
-//   moment, and the gutter's width and the code's left edge one frame later;
+// - what the startup scripts cost, from the same trace: when their last byte arrived,
+//   their background (streamed) parse, their main-thread compile and evaluate, lazy
+//   function compiles and parses before the first tree row, and main-thread busy time
+//   to that row;
+// - first contentful paint, DOMContentLoaded, the first tree row and the frame after it,
+//   and, on a file address, when a Source view first appeared, whether it had its line
+//   gutter at that moment, and the gutter's width and the code's left edge one frame
+//   later;
 // - every layout shift with the elements that moved.
 //
 // The byte counts, request counts, gutter presence, and shift sources do not depend on
-// how busy the machine is. The timings do: read them only as pair ratios, and only from
-// a quiet machine. Headless Chrome paints offscreen, so its paint timings are not the
-// release gate's, which `run.py record` takes from a visible window.
+// how busy the machine is. The timings do: read them only as pair ratios or paired
+// differences, and only from a quiet machine. Headless Chrome paints offscreen, so its
+// paint timings are not the release gate's, which `run.py record` takes from a visible
+// window.
 
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -50,7 +66,17 @@ const SETTLE_MS = 600;
 const POLL_MS = 20;
 
 function parseArgs(argv) {
-  const options = { builds: [], modules: [], pairs: 5, path: "/", out: "", done: "" };
+  const options = {
+    builds: [],
+    modules: [],
+    pairs: 5,
+    path: "/",
+    out: "",
+    done: "",
+    network: "",
+    cpu: 1,
+    warm: 0,
+  };
   for (let index = 0; index < argv.length; index += 2) {
     const [flag, value] = [argv[index], argv[index + 1]];
     if (value === undefined) {
@@ -67,6 +93,15 @@ function parseArgs(argv) {
       options.path = value;
     } else if (flag === "--out") {
       options.out = value;
+    } else if (flag === "--network") {
+      if (!/^\d+:\d+:\d+$/.test(value)) {
+        throw new Error("--network is LATENCY_MS:DOWN_KBPS:UP_KBPS, such as 80:20000:5000");
+      }
+      options.network = value;
+    } else if (flag === "--cpu") {
+      options.cpu = Number(value);
+    } else if (flag === "--warm") {
+      options.warm = Number(value);
     } else if (flag === "--done") {
       // A page expression that is true once the load under study has finished, for a
       // view this probe has no rule for.
@@ -114,6 +149,11 @@ const PAGE_PROBE = `(() => {
   const look = () => {
     if (!probe.firstRow && document.querySelector("#tree-content [data-path]")) {
       probe.firstRow = performance.now();
+      // The mark puts the row on the trace's clock, which bounds the main-thread sums.
+      performance.mark("tier-probe-first-row");
+      requestAnimationFrame(() => {
+        probe.firstRowFrame = performance.now();
+      });
     }
     const pre = !probe.source && document.querySelector(".metabrowser-source-lines");
     if (pre) {
@@ -152,9 +192,25 @@ const PAGE_REPORT = `JSON.stringify((() => {
   return {
     probe: window.__tierProbe || null,
     domContentLoaded: navigation ? navigation.domContentLoadedEventEnd : null,
+    htmlResponseEnd: navigation ? navigation.responseEnd : null,
     scripts,
   };
 })())`;
+
+// What the trace records of a startup script's cost. Chrome streams a classic script's
+// parse onto a worker while it downloads (v8.parseOnBackground), so the main thread
+// compiles only what streaming left (v8.compile), runs its top level (EvaluateScript),
+// and compiles each function the first time it runs (V8.CompileCode around
+// V8.ParseFunction).
+const TRACE_CATEGORIES = [
+  "devtools.timeline",
+  "disabled-by-default-devtools.timeline",
+  "v8",
+  "disabled-by-default-v8.compile",
+  "blink.user_timing",
+  "toplevel",
+  "__metadata",
+];
 
 class Browser {
   static async launch() {
@@ -239,20 +295,122 @@ class Browser {
     this.child.kill();
     // Chrome still writes to its profile while it exits; removing it sooner fails.
     await Promise.race([exited, sleep(5000)]);
+    // On a loaded host Chrome can outlive SIGTERM, and its handle keeps this process
+    // running after the summary.
+    if (this.child.exitCode === null && this.child.signalCode === null) {
+      this.child.kill("SIGKILL");
+      await Promise.race([exited, sleep(5000)]);
+    }
     rmSync(this.profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 }
 
+async function emulate(browser, sessionId, options) {
+  if (options.network) {
+    const [latency, downKbps, upKbps] = options.network.split(":").map(Number);
+    await browser.send("Network.enable", {}, sessionId);
+    await browser.send(
+      "Network.emulateNetworkConditions",
+      {
+        offline: false,
+        latency,
+        downloadThroughput: (downKbps * 1000) / 8,
+        uploadThroughput: (upKbps * 1000) / 8,
+      },
+      sessionId,
+    );
+  }
+  if (options.cpu > 1) {
+    await browser.send("Emulation.setCPUThrottlingRate", { rate: options.cpu }, sessionId);
+  }
+}
+
+// The startup scripts' cost, from the load's trace; see TRACE_CATEGORIES.
+function startupCost(events, startupNames, origin, firstRowMs) {
+  const pathOf = (url) => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return "";
+    }
+  };
+  // The renderer's main thread is the one that evaluated the page's scripts.
+  const evaluations = new Map();
+  for (const event of events) {
+    if (event.name === "EvaluateScript") {
+      const key = `${event.pid}:${event.tid}`;
+      evaluations.set(key, (evaluations.get(key) ?? 0) + 1);
+    }
+  }
+  const main = [...evaluations.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const onMain = (event) => `${event.pid}:${event.tid}` === main;
+  let navigationStart = null;
+  let firstRowAt = Number.POSITIVE_INFINITY;
+  for (const event of events) {
+    if (event.name === "navigationStart" && onMain(event)) {
+      if ((event.args?.data?.documentLoaderURL ?? "").startsWith(origin)) {
+        navigationStart = event.ts;
+      }
+    } else if (event.name === "tier-probe-first-row") {
+      firstRowAt = event.ts;
+    }
+  }
+  if (firstRowAt === Number.POSITIVE_INFINITY && navigationStart !== null && firstRowMs) {
+    firstRowAt = navigationStart + firstRowMs * 1000;
+  }
+  const cost = {
+    backgroundParseMs: 0,
+    mainCompileMs: 0,
+    evaluateMs: 0,
+    lazyCompileMs: 0,
+    lazyParseMs: 0,
+    mainBusyToFirstRowMs: 0,
+    streamed: 0,
+    compiled: 0,
+    codeCacheConsumed: 0,
+  };
+  const ms = (event) => (event.dur ?? 0) / 1000;
+  for (const event of events) {
+    if (event.ph !== "X") {
+      continue;
+    }
+    const startup = startupNames.has(pathOf(event.args?.data?.url ?? event.args?.fileName ?? ""));
+    if (event.name === "v8.parseOnBackground" && startup) {
+      cost.backgroundParseMs += ms(event);
+    } else if (event.name === "v8.compile" && startup && onMain(event)) {
+      cost.mainCompileMs += ms(event);
+      cost.compiled += 1;
+      cost.streamed += event.args?.data?.streamed ? 1 : 0;
+      cost.codeCacheConsumed += event.args?.data?.consumedCacheSize ? 1 : 0;
+    } else if (event.name === "EvaluateScript" && startup && onMain(event)) {
+      cost.evaluateMs += ms(event);
+    } else if (onMain(event) && event.ts >= (navigationStart ?? 0) && event.ts <= firstRowAt) {
+      if (event.name === "V8.CompileCode") {
+        cost.lazyCompileMs += ms(event);
+      } else if (event.name === "V8.ParseFunction") {
+        cost.lazyParseMs += ms(event);
+      } else if (event.name === "RunTask") {
+        cost.mainBusyToFirstRowMs += ms(event);
+      }
+    }
+  }
+  return cost;
+}
+
 async function loadOnce(browser, name, origin, options) {
-  const { browserContextId } = await browser.send("Target.createBrowserContext", {
-    disposeOnDetach: true,
-  });
+  // A warm series loads in the default profile, whose caches the warm-up loads filled.
+  const { browserContextId } =
+    options.warm > 0
+      ? { browserContextId: undefined }
+      : await browser.send("Target.createBrowserContext", { disposeOnDetach: true });
   const { targetId } = await browser.send("Target.createTarget", {
     url: "about:blank",
-    browserContextId,
+    // Only a new window takes a size in the default profile.
+    ...(browserContextId ? { browserContextId } : { newWindow: true }),
     ...VIEWPORT,
   });
   const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true });
+  await emulate(browser, sessionId, options);
   const events = [];
   let finishTrace = () => {};
   const traced = new Promise((resolve) => {
@@ -276,7 +434,7 @@ async function loadOnce(browser, name, origin, options) {
     "Tracing.start",
     {
       transferMode: "ReportEvents",
-      traceConfig: { includedCategories: ["devtools.timeline", "v8"] },
+      traceConfig: { includedCategories: TRACE_CATEGORIES },
     },
     sessionId,
   );
@@ -310,7 +468,9 @@ async function loadOnce(browser, name, origin, options) {
   await traced;
   browser.listeners.delete(listener);
   await browser.send("Target.closeTarget", { targetId });
-  await browser.send("Target.disposeBrowserContext", { browserContextId });
+  if (browserContextId) {
+    await browser.send("Target.disposeBrowserContext", { browserContextId });
+  }
 
   const named = (url) => options.modules.some((module_) => url.includes(module_));
   let moduleEvaluateMs = 0;
@@ -335,20 +495,35 @@ async function loadOnce(browser, name, origin, options) {
     (script) => script.start < page.domContentLoaded && !script.name.includes("/static/vendor/"),
   );
   const sum = (list, field) => list.reduce((total, script) => total + script[field], 0);
+  const firstRowMs = page.probe?.firstRow ?? null;
   return {
     build: name,
     path: options.path,
+    network: options.network || null,
+    cpu: options.cpu,
+    warm: options.warm,
     complete,
     load1,
     chrome: Browser.version,
     firstContentfulPaintMs: page.probe?.paints?.["first-contentful-paint"] ?? null,
     domContentLoadedMs: page.domContentLoaded,
-    firstRowMs: page.probe?.firstRow ?? null,
+    firstRowMs,
+    firstRowFrameMs: page.probe?.firstRowFrame ?? null,
+    htmlResponseEndMs: page.htmlResponseEnd ?? null,
     source: page.probe?.source ?? null,
     shifts: page.probe?.shifts ?? [],
     startupScriptRequests: startup.length,
     startupScriptTransferBytes: sum(startup, "transferred"),
     startupScriptDecodedBytes: sum(startup, "decoded"),
+    // A script read from the HTTP cache reports no transfer.
+    startupScriptsFromCache: startup.filter((script) => script.transferred === 0).length,
+    startupScriptsLastByteMs: startup.length ? Math.max(...startup.map((s) => s.end)) : null,
+    startupCost: startupCost(
+      events,
+      new Set(startup.map((script) => script.name)),
+      origin,
+      firstRowMs,
+    ),
     moduleInStartupSet: startup.some((script) => named(script.name)),
     moduleEvaluateMs,
     moduleCompileMs,
@@ -356,6 +531,17 @@ async function loadOnce(browser, name, origin, options) {
     scripts,
   };
 }
+
+// The timings a startup comparison reads, as [label, value of a record].
+const COST_TIMINGS = [
+  ["firstRowMs", (record) => record.firstRowMs],
+  ["startupScriptsLastByteMs", (record) => record.startupScriptsLastByteMs],
+  ["backgroundParseMs", (record) => record.startupCost.backgroundParseMs],
+  ["mainCompileMs", (record) => record.startupCost.mainCompileMs],
+  ["evaluateMs", (record) => record.startupCost.evaluateMs],
+  ["lazyCompileMs", (record) => record.startupCost.lazyCompileMs],
+  ["mainBusyToFirstRowMs", (record) => record.startupCost.mainBusyToFirstRowMs],
+];
 
 function summarize(records, builds, options) {
   for (const [name] of builds) {
@@ -397,6 +583,16 @@ function summarize(records, builds, options) {
       );
     }
     console.log(`  layout shift sources: ${JSON.stringify(Object.fromEntries(shiftSources))}`);
+    const cost = last.startupCost;
+    console.log(
+      `  startup scripts: ${last.startupScriptsFromCache} from the HTTP cache, ` +
+        `${cost.streamed}/${cost.compiled} streamed, ${cost.codeCacheConsumed} from the code ` +
+        `cache; medians ` +
+        COST_TIMINGS.map(
+          ([label, value]) =>
+            `${label} ${median(rows.map(value).filter(Number.isFinite))?.toFixed(1)}`,
+        ).join(", "),
+    );
   }
   const [control, ...candidates] = builds.map(([name]) => name);
   const timing = (record, field) =>
@@ -426,6 +622,24 @@ function summarize(records, builds, options) {
         );
       }
     }
+    // A cost in milliseconds compares as a paired difference: a ratio of two small
+    // numbers says little.
+    for (const [label, value] of COST_TIMINGS) {
+      const differences = [];
+      for (let pair = 0; pair < options.pairs; pair += 1) {
+        const a = records.find((record) => record.pair === pair && record.build === control);
+        const b = records.find((record) => record.pair === pair && record.build === candidate);
+        if (a?.complete && b?.complete && Number.isFinite(value(a)) && Number.isFinite(value(b))) {
+          differences.push(value(b) - value(a));
+        }
+      }
+      if (differences.length) {
+        console.log(
+          `${candidate}-${control} ${label}: median difference ` +
+            `${median(differences).toFixed(2)} ms over ${differences.length} pairs`,
+        );
+      }
+    }
   }
 }
 
@@ -433,12 +647,16 @@ const options = parseArgs(process.argv.slice(2));
 const browser = await Browser.launch();
 const records = [];
 try {
-  // One discarded load per build: the first after launch pays for process start.
+  // Discarded loads per build: the first after launch pays for process start, and a warm
+  // series fills the caches. V8 writes a script's code cache on its second run.
   for (const [name, origin] of options.builds) {
-    await loadOnce(browser, name, origin, options);
+    for (let load = 0; load < Math.max(1, options.warm); load += 1) {
+      await loadOnce(browser, name, origin, options);
+    }
   }
   for (let pair = 0; pair < options.pairs; pair += 1) {
-    for (const [name, origin] of options.builds) {
+    const order = pair % 2 ? [...options.builds].reverse() : options.builds;
+    for (const [name, origin] of order) {
       const record = {
         pair,
         recordedAt: Date.now() / 1000,

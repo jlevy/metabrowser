@@ -463,14 +463,22 @@ async def _prepare(
                     )
     except (OSError, PrivateStorageError, *READ_FAILURES, ValueError) as exc:
         if owns():
-            from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+            from metabrowser.builtin_plugins.github.gh_lists import cache_unwritable, utc_stamp
 
+            unwritable = (
+                cache_unwritable(
+                    "the pull-request previews",
+                    exc,
+                    source=window.source,
+                    checkout=isinstance(publication, ListedRepository) and publication.checkout,
+                )
+                if isinstance(exc, (OSError, PrivateStorageError))
+                else None
+            )
             window.failure = PullRefreshStamp(
-                outcome="cache_unwritable"
-                if isinstance(exc, (OSError, PrivateStorageError))
-                else "gh_failed",
-                message="The local pull-request cache could not be written"
-                if isinstance(exc, (OSError, PrivateStorageError))
+                outcome="cache_unwritable" if unwritable is not None else "gh_failed",
+                message=str(unwritable)[:1000]
+                if unwritable is not None
                 else "GitHub returned unreadable pull-request metadata",
                 at=utc_stamp(pulls.utc_now()),
                 reader=catalog.reader if catalog is not None else None,

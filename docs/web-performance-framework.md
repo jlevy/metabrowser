@@ -148,9 +148,11 @@ initial navigation gap even when it attributes zero blocking, rendering, scripts
 resources to that frame, so duration alone is not evidence that the UI thread was busy.
 Inventory and catalog delivery have a tighter attribution gate: no callback may cross 50
 ms, and all such callbacks together may consume at most 5% of the measurement window.
-Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 175 KB;
-the limits retain measured headroom above its 22-request, 154 KB directory shell while
+Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 220 KB,
 preventing plugins or post-usable-state shell tools from returning to the critical path.
+The byte ceiling is set where growth alone would cost a cold first row the careful 1.1x
+tolerance, from the measured cost of a transferred kilobyte
+([eager startup-script cost](project/research/research-2026-11-12-eager-startup-script-cost.md)).
 Render-blocking startup stylesheets separately gate server work at 75 ms.
 Their bounded attribution records wait time and response completion as well,
 distinguishing a slow handler from connection-pool queueing or transfer without allowing

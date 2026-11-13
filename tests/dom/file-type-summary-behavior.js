@@ -221,9 +221,59 @@ function familyRow() {
     "summary has no standalone metadata row",
     handle.root.children.length === 1 && handle.root.children[0] === handle.body,
   );
-  check("the caption is the table's first child", handle.table.children[0] === handle.caption);
-  check("visual table headers are removed", handle.table.children[2].className === "sr-only");
-  check("summary has one selected metric column", handle.table.children[1].children.length === 2);
+  const share = handle.body.children[0];
+  const details = handle.body.children[1];
+  check(
+    "the caption precedes the legend in the compact summary",
+    share.className === "file-type-summary-share" &&
+      share.children[0] === handle.caption &&
+      share.children[1] === handle.legend &&
+      handle.legend.tagName === "UL",
+  );
+  check(
+    "the caption is for screen readers only",
+    handle.caption.className.split(" ").includes("sr-only"),
+    handle.caption.className,
+  );
+  check(
+    "the caption names the population for the legend and the table alike",
+    handle.caption.id === "file-type-summary-1-caption" &&
+      handle.legend.attributes["aria-labelledby"] === handle.caption.id &&
+      handle.table.attributes["aria-labelledby"] === handle.caption.id,
+  );
+  check(
+    "the table sits in Details behind a toggle",
+    details.className === "file-type-summary-details" &&
+      details.children[0] === handle.detailsToggle &&
+      details.children[1] === handle.table &&
+      handle.body.children[2] === handle.status,
+  );
+  check(
+    "Details is the disclosure an N more row uses, closed on mount",
+    handle.detailsToggle.tagName === "BUTTON" &&
+      handle.detailsToggle.type === "button" &&
+      handle.detailsToggle.className.split(" ").includes("file-type-summary-disclosure") &&
+      handle.detailsToggle.className.split(" ").includes("section-disclosure-trigger") &&
+      handle.detailsToggle.textContent === "Details" &&
+      handle.detailsToggle.attributes["aria-expanded"] === "false" &&
+      handle.detailsToggle.attributes["aria-controls"] === handle.table.id &&
+      handle.table.hidden === true,
+  );
+  check(
+    "a closed Details still holds current rows, so opening it builds nothing",
+    handle.rows.size === 4 && handle.groups.size === 4,
+  );
+  check("visual table headers are removed", handle.table.children[1].className === "sr-only");
+  check("summary has one selected metric column", handle.table.children[0].children.length === 2);
+  check(
+    "a model without a legend leaves the list empty and hidden",
+    handle.legend.children.length === 0 && handle.legend.hidden === true,
+  );
+  check(
+    "a hidden legend and a closed table are not displayed",
+    styles.includes(".file-type-summary-legend[hidden]") &&
+      styles.includes(".file-type-summary-details > [hidden]"),
+  );
   check(
     "semantic metric header follows the selected measure",
     handle.metricHeader.textContent === "Files",
@@ -316,6 +366,98 @@ function familyRow() {
       handle.rows.get(".py").metricFill.className === filesColorClass,
   );
 
+  const legendModel = {
+    ...updated,
+    legend: [
+      {
+        key: "family:python",
+        label: "Python",
+        paletteKey: "family:python",
+        kind: "family",
+        value: 75,
+        percent: "75%",
+        share: 75,
+      },
+      {
+        key: "legend:other",
+        label: '<img src=x onerror="pwned">',
+        paletteKey: "",
+        kind: "other",
+        value: 25,
+        percent: "25%",
+        share: 25,
+      },
+    ],
+  };
+  view.updateDistributionView(handle, legendModel);
+  const [pythonItem, otherItem] = handle.legend.children;
+  check(
+    "each legend entry is a dot, the type, and its share",
+    handle.legend.hidden === false &&
+      handle.legend.children.length === 2 &&
+      pythonItem.tagName === "LI" &&
+      pythonItem.dataset.legendKey === "family:python" &&
+      pythonItem.children.map((child) => child.className).join(",") ===
+        "file-type-summary-legend-swatch slot-amily:python,file-type-summary-legend-label,file-type-summary-legend-percent" &&
+      pythonItem.children[0].attributes["aria-hidden"] === "true" &&
+      pythonItem.children[1].textContent === "Python" &&
+      pythonItem.children[2].textContent === "75%",
+    pythonItem.children.map((child) => `${child.className}=${child.textContent}`).join(" | "),
+  );
+  check(
+    "Other's dot takes the neutral, and labels are text",
+    otherItem.children[0].className === "file-type-summary-legend-swatch slot-other" &&
+      otherItem.children[1].textContent === '<img src=x onerror="pwned">',
+  );
+  check(
+    "legend entries wrap whole, so a dot never ends a line without its name",
+    /\.file-type-summary-legend-item \{[^}]*white-space: nowrap;/.test(styles) &&
+      /\.file-type-summary-legend \{[^}]*flex-wrap: wrap;/.test(styles),
+  );
+  check(
+    "the legend uses the distribution tokens, not local colors",
+    /\.file-type-summary-legend-swatch \{[^}]*background: var\(--mb-distribution-color\);/.test(
+      styles,
+    ) && !/#[0-9a-f]{3,8}\b|rgb\(|oklch\(/i.test(styles),
+  );
+
+  const pyRowBeforeDetails = handle.rows.get(".py").tr;
+  handle.detailsToggle.listeners.click();
+  check(
+    "opening Details shows the table it controls, with the rows it already held",
+    handle.detailsToggle.attributes["aria-expanded"] === "true" &&
+      handle.table.hidden === false &&
+      handle.rows.get(".py").tr === pyRowBeforeDetails,
+  );
+  view.updateDistributionView(handle, { ...legendModel, metric: "files" });
+  check(
+    "an open Details survives an update",
+    handle.detailsToggle.attributes["aria-expanded"] === "true" && handle.table.hidden === false,
+  );
+  const detailsToggleBeforeRescan = handle.detailsToggle;
+  view.updateDistributionView(handle, { state: "pending", rows: [] });
+  check(
+    "a skeleton takes the legend and Details with the rest of the body",
+    handle.legend === null && handle.detailsToggle === null && handle.table === null,
+  );
+  view.updateDistributionView(handle, legendModel);
+  check(
+    "Details reopens as it was once the rescan answers",
+    handle.detailsToggle !== detailsToggleBeforeRescan &&
+      handle.detailsToggle.attributes["aria-expanded"] === "true" &&
+      handle.table.hidden === false &&
+      handle.legend.children.length === 2,
+  );
+  handle.detailsToggle.listeners.click();
+  check(
+    "closing Details hides the table and keeps the compact summary",
+    handle.detailsToggle.attributes["aria-expanded"] === "false" &&
+      handle.table.hidden === true &&
+      handle.legend.hidden === false &&
+      handle.legend.children.length === 2,
+  );
+  handle.detailsToggle.listeners.click();
+
   view.updateDistributionView(handle, { ...updated, rows: [familyRow()] });
   const family = handle.rows.get("family:javascript");
   check(
@@ -359,6 +501,14 @@ function familyRow() {
   check(
     "family parent and child share one palette identity",
     family.metricFill.className === jsChild.metricFill.className,
+  );
+  handle.detailsToggle.listeners.click();
+  handle.detailsToggle.listeners.click();
+  check(
+    "a family opened inside Details stays open across closing and reopening Details",
+    handle.detailsToggle.attributes["aria-expanded"] === "true" &&
+      family.disclosure.attributes["aria-expanded"] === "true" &&
+      handle.rows.get("family:javascript/.js") === jsChild,
   );
 
   const singleton = {
@@ -579,6 +729,35 @@ function familyRow() {
       handle.table === null &&
       handle.body.children.length === 0,
     `children=${handle.body.children.length}`,
+  );
+
+  // Disposal releases the markup, the rows, and both kinds of disclosure state.
+  const disposable = new Element("div");
+  const disposed = view.mountDistributionView(
+    disposable,
+    { ...first, rows: [familyRow()] },
+    palette,
+    metricClasses,
+    fileTypeIcon,
+  );
+  disposed.detailsToggle.listeners.click();
+  disposed.rows.get("family:javascript").disclosure.listeners.click();
+  check(
+    "a view about to be disposed holds open disclosures",
+    disposed.detailsExpanded === true && disposed.expandedFamilies.size === 1,
+  );
+  view.disposeDistributionView(disposed);
+  check(
+    "disposal removes the view and releases its rows and disclosure state",
+    disposable.children.length === 0 &&
+      disposed.rows.size === 0 &&
+      disposed.groups.size === 0 &&
+      disposed.expandedFamilies.size === 0 &&
+      disposed.detailsExpanded === false &&
+      disposed.table === null &&
+      disposed.legend === null &&
+      disposed.detailsToggle === null &&
+      disposed.lastRows.length === 0,
   );
 
   if (failures.length) {

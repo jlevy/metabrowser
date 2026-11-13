@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import stat
 from datetime import datetime
 from pathlib import Path
@@ -473,6 +474,47 @@ def _require_published_source(home: Path, slug: str) -> None:
         raise FileNotFoundError("no source is published under this slug")
 
 
+def clear_pulls(home: Path, slug: str) -> int:
+    """Remove every entry of the source's ``pulls`` directory; how many. Blocking.
+
+    That directory is this plugin's whole cache of the repository: records, changed-file
+    lists, timelines, previews, the catalog and its sidecars, the stack snapshot, and every
+    refresh outcome, each fetched again when it is next wanted. The source's own records
+    and its store are the cache's and stay. A slug no source holds has nothing to clear,
+    and nothing is created for it.
+
+    It runs under the source's alias lock, which every writer of the directory takes, so a
+    writer finds each of its files whole or gone, never half removed, and a job still
+    running publishes into an empty directory as it would into a new one. Entries are
+    removed through the directory's descriptor, so a link is removed, never followed.
+    The work is one unlink for each cached file, as many as the cache holds.
+    """
+
+    try:
+        _require_published_source(home, slug)
+    except FileNotFoundError:
+        return 0
+    relative = source_pulls_directory(slug)
+    with source_alias_lock(home, slug):
+        try:
+            os.lstat(home / relative)
+        except FileNotFoundError:
+            return 0
+        directory = ensure_private_directory(home, relative)
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            with os.scandir(fd) as listed:
+                entries = [(entry.name, entry.is_dir(follow_symlinks=False)) for entry in listed]
+            for name, is_directory in entries:
+                if is_directory:
+                    shutil.rmtree(name, dir_fd=fd)
+                else:
+                    os.unlink(name, dir_fd=fd)
+            return len(entries)
+        finally:
+            os.close(fd)
+
+
 def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) -> PullRecord:
     """Retain only the latest shared comparison whose reader and inputs still match."""
     comparison = None
@@ -626,6 +668,10 @@ def read_pull_record(
 MAX_PULL_REFRESH_BYTES: Final = 4096
 
 
+# The most a refresh outcome's message keeps; every message a stamp records fits it.
+MAX_REFRESH_MESSAGE_CHARS: Final = 1000
+
+
 class PullRefreshStamp(_Model):
     """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
 
@@ -636,7 +682,7 @@ class PullRefreshStamp(_Model):
     """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
-    message: Annotated[str, StringConstraints(max_length=1000)] | None = None
+    message: Annotated[str, StringConstraints(max_length=MAX_REFRESH_MESSAGE_CHARS)] | None = None
     reset_at: Timestamp | None = None
     at: Timestamp
     reader: Reader | None = None
@@ -737,6 +783,7 @@ __all__ = [
     "MAX_STATUSES",
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
+    "MAX_REFRESH_MESSAGE_CHARS",
     "PULL_RECORD_SCHEMA",
     "PullObservationSuperseded",
     "PullRefreshStamp",
@@ -756,6 +803,7 @@ __all__ = [
     "Truncation",
     "UnavailablePart",
     "apply_text_budget",
+    "clear_pulls",
     "cut_escaped",
     "cut_text",
     "ensure_pulls_directory",

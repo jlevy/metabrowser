@@ -119,19 +119,21 @@ def test_a_lower_ceiling_fails_and_names_the_scripts(
 
 @pytest.mark.parametrize("attribute", ["", " defer", " async"], ids=["blocking", "defer", "async"])
 def test_a_script_added_to_the_shell_is_counted_whatever_its_attributes(attribute: str) -> None:
-    # git-panel.js is an on-demand script. As one more startup script it is what the
-    # budget exists to refuse: with it the shell is over. A deferred or async script
-    # is requested as the parser meets it, the same as a blocking one.
+    # git-panel.js is an on-demand script, and as one more startup script it is what the
+    # budget exists to refuse. A deferred or async script is requested as the parser
+    # meets it, the same as a blocking one. The ceiling here is the shell's own size, so
+    # that it is the added script that crosses it whatever headroom the budget file holds.
     html = check.render_folder_shell()
     before = check.measure(html)
     after = check.measure(
         _tag_before_app(html, f'<script{attribute} src="/static/git-panel.js"></script>')
     )
+    at_the_shell = check.Limits(requests=len(after), transfer_kb=check.transfer_kb(before))
 
     assert [script.url_path for script in after if script not in before] == ["/static/git-panel.js"]
     assert len(after) == len(before) + 1
-    assert check.problems(before, check.load_limits()) == []
-    over = check.problems(after, check.load_limits())
+    assert check.problems(before, at_the_shell) == []
+    over = check.problems(after, at_the_shell)
     assert len(over) == 1 and over[0].startswith("startup_script_transfer_kb:")
 
 

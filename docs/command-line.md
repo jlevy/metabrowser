@@ -114,6 +114,61 @@ Metabrowser warns when it ignores one of its own.
 See [SECURITY.md](../SECURITY.md) for why the list runs that way.
 These flags also apply to `--api`, `--show`, and `--check-api`.
 
+### Stopping when the parent exits
+
+```shell
+# Serve until stdin closes: in a terminal, until Ctrl-D.
+metab ./notes --no-open --exit-on-eof
+```
+
+`--exit-on-eof` stops the server when its stdin closes.
+It is for a program that starts `metab` and holds its stdin open, as the macOS app does:
+however that program ends, by quitting or by crashing, the kernel closes the pipe, and
+the server stops by itself.
+Whatever arrives on stdin before it closes is read and dropped.
+Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
+it, a stdin that is not open at all is refused before serving.
+
+The watch begins as soon as the command line is read, before the server reads ROOT,
+dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
+startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
+A stdin that is closed from the start therefore stops the server, possibly before it
+prints its address: the watch and startup run side by side, so either can come first.
+Python’s start, the import of `metab` itself, and the reading of its command line come
+before the watch: a stdin that closes during them is seen as soon as they end, and a
+hang there, such as a disk that stops answering while `metab` loads, is not covered.
+A stdin that closes while startup is failing ends the process either way, with the
+failure’s status or with 0.
+
+The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
+the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
+them) and any `gh` are killed, and the process exits at once, with status 0. Those run
+in process groups of their own, which would outlive the server, and a fetch holds its
+store’s lock, so each group is killed with every helper in it, and no new one is
+started. The stop finds them in the system’s list of the server’s child processes, so it
+kills one whose start has not finished too, and it does not wait on the server’s event
+loop, even when that loop is stuck.
+It waits only for a start under way on another thread, at most `SPAWN_WAIT_S` (in
+`metabrowser/git/process.py`), and then looks at the server’s children once more.
+Each look takes a few system calls per child; on a Linux kernel without per-thread child
+lists, it reads every process’s `/proc` entry.
+Three things escape it: a child that has not yet begun running Git when that wait ends;
+with Ctrl-C or a hangup, a child the interrupted thread had forked and that had not yet
+begun running Git, since that thread gets no wait at all; and the helpers of a Git whose
+start failed, which Python’s asyncio kills alone.
+On systems other than macOS and Linux, which cannot list a process’s children this way,
+a start under way is not covered.
+Each child is confirmed to be the server’s own, not yet reaped, just before it is
+signalled; in the microsecond or so between the two, another thread could reap it, and
+the signal would reach someone else only if the system had meanwhile given its ID to a
+new process that already leads a group of its own, which takes far longer to happen.
+`_unreaped_child` in `metabrowser/git/process.py` records the measurements.
+Other Git, which only reads, runs in the server’s own process group and is not
+signalled; it holds no lock, and it ends when it next writes to, or reads from, the
+server that is gone.
+A stderr too full to take the notice at once, because nothing is reading it, gets no
+notice, and the stop goes on without it; so does one Ctrl-C’s.
+
 ### Serving a Git source
 
 ```shell
@@ -545,6 +600,24 @@ subject to a reported rate-limit reset.
 Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
 reads.
 
+Everything Metabrowser caches of a repository’s pull requests, the list, records,
+changed files, and refresh outcomes, is discarded by one command and fetched again when
+next wanted; the repository’s Git store stays:
+
+```shell
+echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -
+```
+
+In a checkout, run it as `metab .` instead, since the address would clone a repository
+that has no store yet.
+It prints how many files it `cleared`. A refresh that cannot write the cache ends
+`cache_unwritable`. One that finds a list a newer Metabrowser wrote ends `newer_cache`,
+and one that finds a list whose versions it cannot read, such as a write-ahead-log
+database, ends `unknown_cache`; both leave the list as it is and ask GitHub for nothing.
+Each message names the repository, why, and this command.
+A list the running Metabrowser has read the versions of and cannot use otherwise,
+damaged or from another schema, is replaced at the next refresh and needs no command.
+
 Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
 Use a current maintained release and verify the active account with
 `gh auth status --active --hostname github.com`; see
@@ -570,7 +643,9 @@ commit if the mirror has it, and the `pull_request` line says why:
 | `gh_failed` | An answer from `gh` could not be read |
 | `fetch_failed`, `git_failed` | Git failed |
 | `record_too_large` | The record is over the size a record may have |
-| `cache_unwritable` | The record could not be written to the cache |
+| `cache_unwritable` | The cache refused the write; the message says why and names the command that clears the repository’s GitHub cache |
+| `newer_cache` | A newer Metabrowser wrote the repository’s list of pull requests; the message says to upgrade or names that command |
+| `unknown_cache` | The versions of the repository’s list of pull requests cannot be read, so it is left as it is; the message says to upgrade or names that command |
 
 Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
 are listed in the record’s `unavailable`, and the rest of the record stands.
@@ -773,9 +848,15 @@ metab ./notes --api '/api/cache/sources?limit=20'
 metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
-# A route that takes a POST body.
+# A route that takes a POST body, from a file or, with -, from standard input.
 metab ./notes --api /api/kpress/render --data request.json
+metab ./notes --api /api/kpress/render --data - < request.json
 ```
+
+`--data` reads at most the largest body a route accepts, KPress render’s, which is six
+times `METABROWSER_TEXT_PREVIEW_MAX_BYTES` plus 64 KiB: 96 MiB and 64 KiB by default.
+A longer body, from a file or from standard input, is refused before anything is sent,
+and no more of it than that is read.
 
 Output is the route, the HTTP status, and the normalized envelope:
 
