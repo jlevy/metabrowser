@@ -1,4 +1,8 @@
-import { mountDistributionView, updateDistributionView } from "./distribution-view.js";
+import {
+  disposeDistributionView,
+  mountDistributionView,
+  updateDistributionView,
+} from "./distribution-view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-summary-model.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} SummaryPalette */
@@ -174,6 +178,7 @@ export function mountFileTypeSummary(
     unsubscribeControls();
     unsubscribeActive();
     projection.release();
+    disposeDistributionView(view);
   }
   return Object.freeze({
     dispose,

@@ -731,9 +731,73 @@
    }
   }
  },
- "failed not_logged_in": {
+ "failed newer_cache": {
   "status": 200,
   "etag": "\"pulls-12\"",
+  "body": {
+   "state": "absent",
+   "reason": "not_cached",
+   "source": "https://github.com/octo/demo",
+   "list": "all",
+   "fetched_at": null,
+   "reader": null,
+   "fresh_for_s": 60.0,
+   "refreshing": false,
+   "last_refresh": {
+    "outcome": "newer_cache",
+    "message": "the pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+   },
+   "total": null,
+   "repository_total": null,
+   "filter_totals": null,
+   "count_at": null,
+   "catalog_fetched": 0,
+   "generation": null,
+   "fetched": 0,
+   "complete": false,
+   "truncated": false,
+   "limit": 100,
+   "next_after": null,
+   "rows": []
+  }
+ },
+ "failed unknown_cache": {
+  "status": 200,
+  "etag": "\"pulls-13\"",
+  "body": {
+   "state": "absent",
+   "reason": "not_cached",
+   "source": "https://github.com/octo/demo",
+   "list": "all",
+   "fetched_at": null,
+   "reader": null,
+   "fresh_for_s": 60.0,
+   "refreshing": false,
+   "last_refresh": {
+    "outcome": "unknown_cache",
+    "message": "the pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+   },
+   "total": null,
+   "repository_total": null,
+   "filter_totals": null,
+   "count_at": null,
+   "catalog_fetched": 0,
+   "generation": null,
+   "fetched": 0,
+   "complete": false,
+   "truncated": false,
+   "limit": 100,
+   "next_after": null,
+   "rows": []
+  }
+ },
+ "failed not_logged_in": {
+  "status": 200,
+  "etag": "\"pulls-14\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -771,7 +835,7 @@
  },
  "failed gh_too_old": {
   "status": 200,
-  "etag": "\"pulls-13\"",
+  "etag": "\"pulls-15\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -809,7 +873,7 @@
  },
  "failed not_found_or_private": {
   "status": 200,
-  "etag": "\"pulls-14\"",
+  "etag": "\"pulls-16\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -847,7 +911,7 @@
  },
  "failed network_error": {
   "status": 200,
-  "etag": "\"pulls-15\"",
+  "etag": "\"pulls-17\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -885,7 +949,7 @@
  },
  "failed gh_failed": {
   "status": 200,
-  "etag": "\"pulls-16\"",
+  "etag": "\"pulls-18\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -923,7 +987,7 @@
  },
  "failed account_changed": {
   "status": 200,
-  "etag": "\"pulls-17\"",
+  "etag": "\"pulls-19\"",
   "body": {
    "state": "stale",
    "reason": null,
@@ -961,7 +1025,7 @@
  },
  "failed gh_missing": {
   "status": 200,
-  "etag": "\"pulls-18\"",
+  "etag": "\"pulls-20\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -999,7 +1063,7 @@
  },
  "failed cache_unwritable": {
   "status": 200,
-  "etag": "\"pulls-19\"",
+  "etag": "\"pulls-21\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1037,7 +1101,7 @@
  },
  "failed rate_limited": {
   "status": 200,
-  "etag": "\"pulls-20\"",
+  "etag": "\"pulls-22\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1115,7 +1179,7 @@
  },
  "another_reader": {
   "status": 200,
-  "etag": "\"pulls-21\"",
+  "etag": "\"pulls-23\"",
   "body": {
    "state": "stale",
    "reason": null,
@@ -1153,7 +1217,7 @@
  },
  "open_gh_missing": {
   "status": 200,
-  "etag": "\"pulls-48\"",
+  "etag": "\"pulls-50\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1189,7 +1253,7 @@
  },
  "landing_gh_missing": {
   "status": 200,
-  "etag": "\"pulls-49\"",
+  "etag": "\"pulls-51\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1265,7 +1329,7 @@
  },
  "landing_empty_refreshing": {
   "status": 200,
-  "etag": "\"pulls-50\"",
+  "etag": "\"pulls-52\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1301,7 +1365,7 @@
  },
  "landing_found_rows": {
   "status": 200,
-  "etag": "\"pulls-51\"",
+  "etag": "\"pulls-53\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1337,7 +1401,7 @@
  },
  "not_github": {
   "status": 200,
-  "etag": "\"pulls-52\"",
+  "etag": "\"pulls-54\"",
   "body": {
    "state": "absent",
    "reason": "not_github",
@@ -1385,6 +1449,8 @@
    "gh auth status",
    "gh api graphql catalog state=updated cursor=start"
   ],
-  "fresh cached revisit": []
+  "fresh cached revisit": [],
+  "refused newer_cache": [],
+  "refused unknown_cache": []
  }
 }

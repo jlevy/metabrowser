@@ -182,6 +182,64 @@ function normalizeBreakdown(raw) {
 }
 
 /** @param {unknown} raw */
+function normalizeLegend(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new TypeError("file-type legend must be an object");
+  }
+  const value = /** @type {Record<string, unknown>} */ (raw);
+  if (value.schema !== "file-type-legend-v1") {
+    throw new TypeError("unsupported file-type legend schema");
+  }
+  /** @param {unknown} candidate */
+  const count = (candidate) =>
+    Number.isInteger(candidate) && /** @type {number} */ (candidate) >= 0;
+  /** @param {unknown} rawView @param {string} label */
+  const view = (rawView, label) => {
+    const item = /** @type {Record<string, unknown> | null} */ (
+      rawView && typeof rawView === "object" ? rawView : null
+    );
+    if (!item || !count(item.total) || !count(item.other) || !Array.isArray(item.named)) {
+      throw new TypeError(`file-type legend ${label} is invalid`);
+    }
+    return Object.freeze({
+      total: /** @type {number} */ (item.total),
+      other: /** @type {number} */ (item.other),
+      named: Object.freeze(
+        item.named.map((rawEntry) => {
+          const entry = /** @type {Record<string, unknown> | null} */ (
+            rawEntry && typeof rawEntry === "object" ? rawEntry : null
+          );
+          if (!entry || typeof entry.family !== "string" || !count(entry.value)) {
+            throw new TypeError(`file-type legend ${label} entry is invalid`);
+          }
+          return Object.freeze({
+            family: entry.family,
+            value: /** @type {number} */ (entry.value),
+          });
+        }),
+      ),
+    });
+  };
+  /** @param {unknown} rawMeasure @param {string} label */
+  const populations = (rawMeasure, label) => {
+    const item = /** @type {Record<string, unknown> | null} */ (
+      rawMeasure && typeof rawMeasure === "object" ? rawMeasure : null
+    );
+    if (!item) {
+      throw new TypeError(`file-type legend ${label} is invalid`);
+    }
+    return Object.freeze({
+      all: view(item.all, `${label} all`),
+      unignored: view(item.unignored, `${label} unignored`),
+    });
+  };
+  return Object.freeze({
+    files: populations(value.files, "files"),
+    bytes: populations(value.bytes, "bytes"),
+  });
+}
+
+/** @param {unknown} raw */
 export function normalizeRollupEnvelope(raw) {
   if (!raw || typeof raw !== "object") {
     throw new TypeError("rollup envelope must be an object");
@@ -195,6 +253,8 @@ export function normalizeRollupEnvelope(raw) {
   const breakdown = value.file_type_breakdown
     ? normalizeBreakdown(value.file_type_breakdown)
     : null;
+  // The route sends the legend with every breakdown and never one without.
+  const legend = breakdown ? normalizeLegend(value.file_type_legend) : null;
   return Object.freeze({
     path: typeof value.path === "string" ? value.path : "",
     indexStatus: typeof value.index_status === "string" ? value.index_status : "pending",
@@ -202,6 +262,7 @@ export function normalizeRollupEnvelope(raw) {
     maxFiles: integer(value.max_files),
     truncated: value.truncated === true,
     breakdown,
+    legend,
     registry: breakdown?.registry ?? null,
     groups: breakdown?.groups ?? Object.freeze([]),
     specialTypes: breakdown
@@ -267,6 +328,10 @@ const VISIBLE_ROWS_PER_SUBSECTION = 10;
  * and bytes, so an entry can be worth a row in one and not the other — which
  * is right, because it is a claim about what is being measured rather than
  * about the entry.
+ *
+ * The route's compact legend names a family only above this same share
+ * (LEGEND_MINIMUM_SHARE_PERCENT in file_type_legend.py), so it never names one
+ * these rows fold away; tests/test_file_type_legend.py holds the two equal.
  */
 const MINIMUM_VISIBLE_SHARE = 1;
 
@@ -597,6 +662,74 @@ function buildRegistryRows(
 }
 
 /**
+ * The compact summary's legend, for the measure and population on screen.
+ *
+ * Which families it names, in what order, and how much is left for Other are
+ * the route's: `/api/rollup` answers `file_type_legend` for every measure and
+ * population (see file_type_legend.py for the rule), so this only picks the
+ * one the controls select and gives each entry its name, color, and share.
+ *
+ * @param {ReturnType<typeof normalizeRollupEnvelope>} envelope
+ * @param {"files" | "size"} metric
+ * @param {boolean} showIgnored
+ * @param {NonNullable<ReturnType<typeof selectPopulation>>} population
+ * @param {MetabrowserPublicFileTypeTaxonomyRuntime} runtime
+ * @param {Intl.NumberFormat} percentFormatter
+ */
+export function buildFileTypeLegend(
+  envelope,
+  metric,
+  showIgnored,
+  population,
+  runtime,
+  percentFormatter,
+) {
+  if (!envelope.legend) {
+    throw new TypeError("file-type summary requires the rollup's legend");
+  }
+  const view =
+    envelope.legend[metric === "files" ? "files" : "bytes"][showIgnored ? "all" : "unignored"];
+  const total = metric === "files" ? population.files : population.bytes;
+  if (view.total !== total) {
+    throw new TypeError("file-type legend does not match the rollup population");
+  }
+  const familyLabels = new Map(runtime.families.map((family) => [family.id, family.label]));
+  /** @type {Array<{key: string, label: string, paletteKey: string, kind: "family" | "other", value: number, percent: string, share: number}>} */
+  const entries = view.named.map((entry) => {
+    const label = familyLabels.get(entry.family);
+    if (label === undefined) {
+      throw new TypeError(`unknown file-type family in legend: ${entry.family}`);
+    }
+    return Object.freeze({
+      key: `family:${entry.family}`,
+      label,
+      // The same key the family's rows and population segments are painted with.
+      paletteKey: `family:${entry.family}`,
+      kind: /** @type {const} */ ("family"),
+      value: entry.value,
+      percent: formatPercent(entry.value, total, percentFormatter),
+      share: percentShare(entry.value, total),
+    });
+  });
+  if (view.other > 0) {
+    entries.push(
+      Object.freeze({
+        key: "legend:other",
+        label: "Other",
+        // The neutral, as on the population bars, where the files no family
+        // claims are painted the same way.
+        paletteKey: OTHER_KEY,
+        kind: /** @type {const} */ ("other"),
+        value: view.other,
+        percent: formatPercent(view.other, total, percentFormatter),
+        share: percentShare(view.other, total),
+      }),
+    );
+  }
+  return Object.freeze(entries);
+}
+
+/**
  * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
@@ -621,6 +754,7 @@ export function buildFileTypeSummaryModel(
       ),
       metric: selectedMetric,
       rows: [],
+      legend: Object.freeze([]),
       files: 0,
       bytes: 0,
       scanning: envelope?.indexStatus === "scanning",
@@ -654,11 +788,20 @@ export function buildFileTypeSummaryModel(
   const base = {
     metric: selectedMetric,
     rows,
+    legend: buildFileTypeLegend(
+      envelope,
+      selectedMetric,
+      showIgnored,
+      population,
+      runtime,
+      percentFormatter,
+    ),
     groups: groupDescriptors,
-    // The rows' percentages match exactly one of the tally rows above them, and which
-    // one follows Show ignored. The numbers are all consistent, so without this a reader
-    // has to compare two tables to tell two populations from a defect. The count is in
-    // the measure the rows show, so it is the number their shares add up to.
+    // The legend's and the rows' percentages match exactly one of the tally rows above
+    // them, and which one follows Show ignored. The count is in the measure the rows
+    // show, so it is the number their shares add up to. The view gives this to
+    // assistive technology as the legend's and the table's name; on screen the tally
+    // bars and the Show ignored checkbox already say which population it is.
     caption: `Share of ${showIgnored ? "Total" : "Files"} (${
       selectedMetric === "size" ? bytesText : filesText
     })`,

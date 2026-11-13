@@ -1,0 +1,4 @@
+<!-- render-svg refuses: path data has a number with no command -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="0 0L16 16" fill="#FF0000"/>
+</svg>

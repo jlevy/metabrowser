@@ -131,13 +131,14 @@
   text-align: start;
   cursor: pointer;
 }
-/* A badge's box and type are `.file-header-badge`; its state is its ink and edge. */
+/* A badge's box, type, and centered capitals are `.file-header-badge`; its state is its ink
+   and edge. Its height is the line and the two borders, as the base's is the line and pads. */
 .github-pull-badge {
   padding-block: 0;
   border: 1px solid currentcolor;
+  block-size: calc(1lh + 2 * 1px);
   font-weight: var(--weight-medium);
   line-height: 16px;
-  white-space: nowrap;
 }
 /* A state's badge is as wide as the widest state's, so a stale record that turns out
    merged does not widen it under the reader: sizers under the label give the width. The

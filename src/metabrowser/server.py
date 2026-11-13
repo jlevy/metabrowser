@@ -100,6 +100,7 @@ from metabrowser.file_kinds import (
     register_file_kind_detector,
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.folder_discovery import discover_folder
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
@@ -2541,6 +2542,7 @@ async def api_rollup(request: Request) -> Response:
         ):
             raise TypeError("the rollup read returned the wrong projections")
         payload = rollup.payload
+        breakdown = payload.get("file_type_breakdown") if payload is not None else None
         state = coordinated.result.state
         indexed_files = diagnostic.payload.files_indexed
         status = _index_status_from_state(
@@ -2555,9 +2557,8 @@ async def api_rollup(request: Request) -> Response:
                     "path": subpath,
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
-                    "file_type_breakdown": (
-                        payload.get("file_type_breakdown") if payload is not None else None
-                    ),
+                    "file_type_breakdown": breakdown,
+                    "file_type_legend": build_file_type_legend(breakdown),
                     "index_status": status,
                     "indexed_files": indexed_files,
                     "max_files": runtime.config.budget.max_files,
@@ -3308,6 +3309,11 @@ async def _read_bounded_json_request(request: Request, max_bytes: int) -> Any:
 # leaves ample room for every supported path and option without an unbounded read.
 _KPRESS_RENDER_REQUEST_MAX_BYTES = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
 _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
+# The largest request body a route reads: KPress render's, 96 MiB by default, past
+# export's and the pending-tally diagnostic's 64 KiB, a source route's 4 KiB, and the
+# GitHub routes' 1 KiB (tests/test_cli_api_mode.py checks it). `metab --api --data`
+# reads no more than this before it refuses, so a body no route takes is never held.
+MAX_REQUEST_BODY_BYTES: Final = _KPRESS_RENDER_REQUEST_MAX_BYTES
 
 
 @log_async_calls(if_slower_than=0.1)

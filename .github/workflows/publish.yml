@@ -9,6 +9,11 @@ env:
 
 jobs:
   build-and-publish:
+    # Every published release runs this workflow, and the macOS app's releases are
+    # tagged macos-v<VERSION> (apps/macos/README.md), so only a v tag, the Python
+    # package's, runs this job. "Verify release tag and package version" still refuses a
+    # v tag that is not v<MAJOR>.<MINOR>.<PATCH>.
+    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

@@ -208,13 +208,18 @@ global.window = { METABROWSER_SETTINGS: {} };
   const summaryModelCalls = [];
   const summaryBody = new Element("div");
   summaryBody.querySelector = () => null;
+  let disposedViews = 0;
   const mountFileTypeSummary = new Function(
+    "disposeDistributionView",
     "mountDistributionView",
     "updateDistributionView",
     "buildFileTypeSummaryModel",
     "normalizeRollupEnvelope",
     `${fileTypeSummarySource}\nreturn mountFileTypeSummary;`,
   )(
+    () => {
+      disposedViews += 1;
+    },
     () => ({ body: summaryBody }),
     () => {},
     (envelope, showIgnored, _formatters, _fileTypes, metric) => {
@@ -353,7 +358,7 @@ global.window = { METABROWSER_SETTINGS: {} };
     summaryControls,
     {},
   );
-  mountFileTypeSummary(
+  const summaryMount = mountFileTypeSummary(
     new Element("div"),
     panelContext,
     summaryMb,
@@ -414,6 +419,13 @@ global.window = { METABROWSER_SETTINGS: {} };
       totalsCompositions.at(-1)?.files.value === 8 &&
       projectedRollup?.indexStatus === "done",
     JSON.stringify({ totalsCompositions, projectedRollup }),
+  );
+  summaryMount.dispose();
+  summaryMount.dispose();
+  check(
+    "disposing the breakdown releases its view once",
+    disposedViews === 1,
+    `disposed ${disposedViews} views`,
   );
 
   const source = fs.readFileSync(
