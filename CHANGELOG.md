@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls tab’s lists have no limit.
+  Open, Closed, and All keep loading as you scroll, a page at a time, through the oldest
+  pull request, as Commits does.
+  “Showing last N”, “Catalog paused · N cached”, and **Fetch more** are gone.
+  While pages are still being read or fetched from GitHub, the file scan’s spinner shows
+  below the last row with “~N pull requests fetched”.
+  The background fetch of older pull requests now waits while GitHub’s GraphQL budget is
+  below the quarter Metabrowser leaves to you, as other background work already did; the
+  pages you scroll to are still fetched.
+  See [Reviewing Pull Requests](docs/reviewing-pull-requests.md).
+
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
   Commits tally of commits, or the Pulls filters, at one height, so what is under it

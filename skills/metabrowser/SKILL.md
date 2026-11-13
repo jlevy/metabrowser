@@ -76,7 +76,8 @@ tab. The catalog starts with Open PRs; Closed includes merged PRs.
 Metadata loads incrementally and stays current while Pulls or a PR page is visible.
 During a disconnection, the Pulls connection status keeps cached rows available and
 offers **Reload**. The catalog resumes updates automatically when GitHub is reachable.
-Scrolling near the end or choosing **Fetch more** extends the displayed window.
+Scrolling near the end loads the next page, with no limit, and a spinner below the rows
+shows fetch progress.
 Press `T` or `/` to open **Quick Search**. Type `#` for recent PRs, then add a number
 prefix or title words to narrow the list.
 After initial Files work is idle, both repository modes prepare catalog metadata and

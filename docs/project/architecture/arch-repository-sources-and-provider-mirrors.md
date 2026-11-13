@@ -886,6 +886,15 @@ store.
 Descriptions, comments, reviews, checks, patches, and repository objects are absent.
 The worker prioritizes the requested filter’s newest display prefix, then backfills all
 PRs in descending creation order.
+Nothing caps the catalog’s size; a client’s scrolling raises its prefix a page at a
+time. The prefix and the freshness scan are the reader’s work, and run at any budget.
+The backfill past the prefix is background work: before each page it asks
+`gh_budget.admission` for the `graphql` resource, and below the background floor or
+under a rate hold it stops at the page boundary without recording a failure.
+`POST pulls-refresh` then starts no job for an ask whose prefix is cached, and a later
+ask resumes from the saved cursor once GitHub reports budget above the floor.
+A real page of `cli/cli` took 1.6 to 1.8 s and one GraphQL point (2026-11-13), so a
+30,000-PR backfill is about 300 points, 6% of an hour’s 5,000, over 8 to 9 minutes.
 It resumes a committed cursor after cancellation or restart.
 A changed account or repository identity atomically replaces the catalog; a rejected
 cursor restarts that scan once without discarding already cached rows.

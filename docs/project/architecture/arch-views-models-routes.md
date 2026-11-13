@@ -500,8 +500,13 @@ GET opens SQLite read-only and runs neither Git nor `gh`.
 `POST github/pulls-refresh` takes `state`, `target` (default 500), and `retry`. It
 starts or joins one repository catalog job, returning `202` with a filter-specific
 `status_route`; the one-shot CLI waits for its outcome.
-`target` prioritizes a display prefix, while background work continues through all
-lightweight metadata.
+`target` prioritizes a display prefix, with no upper bound but the filter’s own, while
+background work continues through all lightweight metadata as long as GitHub’s GraphQL
+budget admits background work (`gh_budget`). Below the floor the backfill pauses at a
+page boundary, the job succeeds, and a `background` ask whose prefix is already cached
+returns `not_due`; a larger `target` still fetches the reader’s pages.
+`cli-github-pulls-backfill.txt` pins a pause, a scroll past it, the resumption, and
+Closed paged past 1,000 rows.
 A higher target on a complete, fresh catalog needs no provider request.
 Joining a job updates its requested filter and target; an explicit retry is retained
 until the worker consumes it.
@@ -711,8 +716,8 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-snapshot` | covered | `--api` | `cli-github-pull-snapshot.txt` |
 | `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
-| `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
-| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
+| `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-backfill.txt` |
+| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt` |
 | `/api/plugin/github/pull-cores-prepare` | covered | `--api` | `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/stacks` | covered | `--api` | `cli-github-stacks.txt` |
 | `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |

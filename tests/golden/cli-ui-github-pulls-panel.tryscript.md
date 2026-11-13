@@ -11,10 +11,12 @@ The exact repository total is separate from the selected filter’s total, cache
 progress, and displayed rows.
 The visible panel watches the repository.
 An admitted lightweight catalog job can finish in the background after the panel hides.
-Opening the panel reads cache pages of 100 rows up to its initial display budget of 500.
-Scrolling within 240 pixels of the displayed tail requests another cache page.
-Fetch more increases the display budget by 500. Either action can prioritize matching
-metadata that the background walk has yet to cache.
+Opening the panel reads cache pages of 100 rows, the first 500 of them.
+Scrolling within 240 pixels of the displayed tail requests another cache page, with no
+end but the filter’s own, and can prioritize matching metadata that the background walk
+has yet to cache. No notice says how many rows are held.
+Below the last row, while a page is read or GitHub’s pages for the filter still arrive,
+the navigation’s scan indicator shows its spinner and “~N pull requests fetched”.
 
 A progress-only catalog update retains the displayed prefix and its row identity.
 A changed generation stages the displayed range in bounded cache pages and accepts it
@@ -119,13 +121,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
         "summary": "102 PRs on octo/demo",
-        "window": "Showing last 100",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
         "rows": [
@@ -251,14 +251,12 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
         "summary": "1,000 PRs on octo/demo",
-        "window": "Showing last 500",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
@@ -282,14 +280,12 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
-        "window": "Showing last 500",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
@@ -302,29 +298,56 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
-      "step": "Fetch more displays another 500 cached rows without provider work",
+      "step": "nearing the tail reads the next cached page",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5501",
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5401",
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5301",
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5201",
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5101"
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5501"
       ],
       "timer": "fast",
-      "painted": 6,
+      "painted": 1,
       "paint": {
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
-        "window": "Showing last 1,000",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
+        "progress": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
+        "rowsHeld": 500,
+        "rows": [
+          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor · work-5999 → topic | /pull/5999",
+          "…",
+          "[Closed] Work item 5502 | #5502 · contributor · work-5502 → topic | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor · work-5501 → topic | /pull/5501"
+        ]
+      }
+    },
+    {
+      "step": "scrolling to the tail five times reads 500 more cached rows without provider work",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5401",
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5301",
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5201",
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5101"
+      ],
+      "timer": "fast",
+      "painted": 9,
+      "paint": {
+        "filter": "closed",
+        "status": "current",
+        "listName": "Pull requests of octo/demo: 6,000 pull requests",
+        "summary": "6,000 PRs on octo/demo",
+        "connection": {
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
+        },
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
@@ -357,14 +380,12 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
         "summary": "6,001 PRs on octo/demo",
-        "window": "Showing last 1,000",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
@@ -543,7 +564,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh api graphql catalog state=all cursor=start",
       "gh api graphql catalog state=all cursor=all-100"
     ],
-    "cached windows, filters, Fetch more and reopen": [],
+    "cached windows, filters, scrolling and reopen": [],
     "due metadata refresh": [
       "gh auth status",
       "gh api graphql catalog state=updated cursor=start"
@@ -1168,6 +1189,9 @@ $ node tests/dom/github-pulls-viewport-behavior.js
 ## Test: Page Near the Pulls Tail
 
 The controller adds one page on a near-tail signal and keeps selection in place.
+Nothing caps it: approaches read past 500, 600, and 1,000 rows to the filter’s last row.
+A reader parked at the tail keeps reading as GitHub’s pages land, under the scan
+indicator, which leaves with the last row.
 It stops at the actual filter tail and reads cached rows after a provider failure.
 A late page cannot change the newly selected filter or consume its reconnect hint.
 Offline, rate limits, focus, external setup recovery, and Reload all use the same watch
@@ -1178,9 +1202,12 @@ $ node tests/dom/github-pulls-catalog-behavior.js
 {
   "defaultFilter": "open",
   "initialRows": 500,
-  "explicitRows": 1000,
+  "rateHeldScrollRows": 1000,
   "scrollRows": 600,
   "terminalRows": 645,
+  "uncappedScrollRows": 2500,
+  "parkedTailRows": 2000,
+  "countNotices": 0,
   "repeatedScrollSharesRequest": true,
   "keepsSelection": true,
   "cachedGrowthKeepsEveryRow": true,
@@ -1190,7 +1217,7 @@ $ node tests/dom/github-pulls-catalog-behavior.js
   "progressOnlyReads": 1,
   "generationPages": 10,
   "detailReads": 0,
-  "priorityTarget": 1000,
+  "priorityTarget": 600,
   "lateWindowRejected": true,
   "ownerTransferred": true,
   "mixedGenerationRejected": true,

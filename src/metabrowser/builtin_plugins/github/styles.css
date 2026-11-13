@@ -943,6 +943,19 @@
   padding: 6px var(--pane-header-padding-x);
   font-size: var(--ui-small-font-size);
 }
+/* Pages still being read or fetched below the last row: the nav's index-progress
+   component, its spinner and text classes reused so the two cannot drift into two progress
+   languages. Only the layout is restated; the nav's top border and sidebar ground belong to
+   a bar at the panel's foot, not to the end of a list. */
+.github-pulls-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 18px;
+  color: var(--muted);
+  line-height: 1.2;
+}
 .github-pulls-foot a {
   color: var(--link);
   text-decoration: none;

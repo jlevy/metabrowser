@@ -1444,7 +1444,7 @@
    "gh api graphql catalog state=all cursor=start",
    "gh api graphql catalog state=all cursor=all-100"
   ],
-  "cached windows, filters, Fetch more and reopen": [],
+  "cached windows, filters, scrolling and reopen": [],
   "due metadata refresh": [
    "gh auth status",
    "gh api graphql catalog state=updated cursor=start"
