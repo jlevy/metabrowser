@@ -150,14 +150,17 @@ Inventory and catalog delivery have a tighter attribution gate: no callback may 
 ms, and all such callbacks together may consume at most 5% of the measurement window.
 Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 220 KB
 transferred. The two ceilings bound what that tier costs, not which scripts are in it,
-and their headrooms add: a shell with five of its deferred tools made startup scripts
-fit both. Tests hold membership exactly.
-`tests/test_check_startup_scripts.py` fails if any script of the deferred `shell-tools`
-bundle is a startup script, `tests/test_plugin_extra_assets.py` keeps plugin scripts out
-of the shell’s tags, and the startup-script check fails on any script a startup script
-requests. The byte ceiling is the size of a build whose cold first row, against `main`,
-measured a median under 1.1x on each path: rough-cut evidence from a loaded host, not
-the careful 1.1x
+and their headrooms add: at 27ea216c, a shell with five of its deferred tools made
+startup scripts fit both.
+Tests hold membership instead.
+`tests/test_check_startup_scripts.py` fails if a script of any on-demand bundle, the
+deferred `shell-tools` among them, is a startup script, apart from the pull-request
+page’s routes that the server names as one; `tests/test_plugin_extra_assets.py` keeps
+plugin scripts out of the shell’s tags; and the startup-script check fails on any script
+a startup script requests.
+The byte ceiling is the size of a build whose cold first row, against `main`, measured a
+median under 1.1x on each path: rough-cut evidence from a loaded host, not the careful
+1.1x
 ([eager startup-script cost](project/research/research-2026-11-12-eager-startup-script-cost.md)).
 Render-blocking startup stylesheets separately gate server work at 75 ms.
 Their bounded attribution records wait time and response completion as well,

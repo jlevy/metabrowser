@@ -63,8 +63,9 @@ experiment:
     reason: >-
       Accepted as a rough cut. Paired against main, the 220 KB build's first row was 1.07x
       (1.03-1.14) on loopback, 0.99x (0.95-1.11) on a 10 ms link, and 1.04x (1.03-1.04) on
-      an 80 ms link: far inside the 1.3x rough cut, with medians under the careful 1.1x and
-      intervals that reach past it. It sets startup_script_transfer_kb = 220. It does not
+      an 80 ms link: medians and intervals inside the 1.3x rough cut, medians under the
+      careful 1.1x, and intervals that reach past it. Pair by pair, 3 of 30 loopback pairs
+      exceeded 1.3x and were not rerun. It sets startup_script_transfer_kb = 220. It does not
       establish the careful 1.1x, which needs a quiet host, two series per path, and an A/A
       series.
 ---
@@ -76,9 +77,13 @@ goes, and why `startup_script_transfer_kb` is 220. This record carries its sampl
 its verdict, so the numbers beside that constant can be regenerated.
 
 The samples are one record per load.
-The six series taken before the instrument moved into `tier-probe.mjs` named some fields
-differently (`bgParseMs`, `startupScriptsLastEndMs`, a flat cost record); they are
-projected onto the probe’s names with no value changed.
+The five series taken before the instrument moved into `tier-probe.mjs` (`local-cold`,
+`local-gzip`, `near-cold`, `far-cold`, and `cpu4-cold`) named some fields differently
+(`bgParseMs`, `startupScriptsLastEndMs`, a flat cost record); they are projected onto
+the probe’s names with no value changed.
+Every record predates the probe’s first-row bound on its compile and evaluation sums and
+its count of scripts evaluated again after that row, so none records that count; the
+first-row timings depend on neither.
 Each record keeps the timings, byte counts, and trace sums the summary reads, and drops
 the per-script lists and layout shifts.
 
@@ -104,8 +109,12 @@ That is the evidence for 220 KB. The
 [tolerance rule](../README.md#comparing-a-candidate-with-the-previous-release) reserves
 the careful 1.1x for a quiet machine; these ran on a loaded one, one series per path,
 with no A/A series to show the noise between two identical builds.
-So they are a rough cut: far inside 1.3x, medians under 1.1x, upper ends past it on
-loopback and the 10 ms link.
+So they are a rough cut, read off the median pair ratio and its interval: inside 1.3x,
+medians under 1.1x, upper ends past it on loopback and the 10 ms link.
+The rule itself judges each pair, and the probe now counts them.
+On loopback 3 of 30 pairs exceeded 1.3x (1.30, 1.33, and 1.39) and none fell below
+1/1.3; on the 10 ms link one exceeded it and two fell below.
+The rule’s rerun step was not applied to them.
 
 ## The Slopes
 

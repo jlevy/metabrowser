@@ -1058,9 +1058,13 @@ with a seeded 95% bootstrap interval, and, when the two builds transfer differen
 startup bytes, per transferred KB. Each pair rotates the build order by one and each
 record names its position, so use a `--pairs` that is a multiple of the number of
 builds; the summary says whether every build took every position equally often.
-`--summarize FILE` prints the summary again from records already written, and
-`--control NAME` compares them with another build, as a slope between two candidates
-needs.
+`--summarize FILE` prints the summary again from records already written,
+`--series NAME` reads one series of a file that keeps several, as the committed samples
+of exp-084 do, and `--control NAME` compares them with another build, as a slope between
+two candidates needs.
+`--out` appends, and each record names its run, so a file can hold several runs; the
+summary compares pairs within a run and pools them, and it refuses a file of older
+records that repeats a pair.
 
 `eager-comments.mjs` counts how much of the startup scripts is comments, and writes
 variants of them with every comment removed or with more comment added, checking that

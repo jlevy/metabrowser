@@ -43,7 +43,7 @@ def test_tree_navigator_is_ordered_in_the_deferred_shell_tools() -> None:
         "/static/search-palette.js",
     )
     # That none of the bundle is a startup script is
-    # tests/test_check_startup_scripts.py::test_no_shell_tool_is_a_startup_script.
+    # tests/test_check_startup_scripts.py::test_no_on_demand_script_is_a_startup_script.
     positions = [html.index(asset) for asset in assets]
     assert positions == sorted(positions)
 

@@ -25,7 +25,9 @@
 //   node tier-probe.mjs --summarize probe.jsonl --control stripped
 //
 // A file that keeps several series names each record's `series`, and `--series NAME`
-// reads one of them, as the committed samples of experiments/exp-084 are read.
+// reads one of them, as the committed samples of experiments/exp-084 are read. `--out`
+// appends, so a file can also hold several runs; each record names its `run`, and the
+// summary compares pairs within a run and pools them.
 //
 // Three options change the conditions of every load:
 //
@@ -467,13 +469,16 @@ function startupCost(events, startupNames, origin, firstRowMs) {
     const toFirstRow = event.ts >= (navigationStart ?? 0) && event.ts <= firstRowAt;
     if (event.name === "v8.parseOnBackground") {
       cost.backgroundParseMs += startup && toFirstRow ? ms(event) : 0;
-    } else if (!onMain(event)) {
       continue;
-    } else if (event.name === "EvaluateScript" && startup && !toFirstRow) {
-      cost.evaluatedAfterFirstRow += 1;
-    } else if (!toFirstRow) {
+    }
+    if (!onMain(event)) {
       continue;
-    } else if (event.name === "v8.compile" && startup) {
+    }
+    if (!toFirstRow) {
+      cost.evaluatedAfterFirstRow += event.name === "EvaluateScript" && startup ? 1 : 0;
+      continue;
+    }
+    if (event.name === "v8.compile" && startup) {
       cost.mainCompileMs += ms(event);
       cost.compiled += 1;
       cost.streamed += event.args?.data?.streamed ? 1 : 0;
@@ -640,14 +645,19 @@ const COST_TIMINGS = [
   ["mainBusyToFirstRowMs", (record) => record.startupCost?.mainBusyToFirstRowMs],
 ];
 
+// A pair is its number within one run: --out appends, so a file can hold several runs,
+// each numbering its pairs from 0. Records written before the probe named its run have
+// none, and recorded() refuses a file of them that repeats a pair.
+const pairKey = (record) => `${record.run ?? ""}#${record.pair}`;
+
 // Each record's place in its pair's load order: the one it recorded, or, for a record
 // written before the probe recorded it, its place among its pair's records in the file,
 // which is the order they were loaded in.
 function positions(records) {
   const seen = new Map();
   return records.map((record) => {
-    const place = seen.get(record.pair) ?? 0;
-    seen.set(record.pair, place + 1);
+    const place = seen.get(pairKey(record)) ?? 0;
+    seen.set(pairKey(record), place + 1);
     return record.position ?? place;
   });
 }
@@ -655,9 +665,9 @@ function positions(records) {
 // [control record, candidate record] for each pair in which both loads completed.
 function pairsOf(records, control, candidate) {
   const pairs = [];
-  for (const pair of new Set(records.map((record) => record.pair))) {
-    const a = records.find((record) => record.pair === pair && record.build === control);
-    const b = records.find((record) => record.pair === pair && record.build === candidate);
+  for (const key of new Set(records.map(pairKey))) {
+    const a = records.find((record) => pairKey(record) === key && record.build === control);
+    const b = records.find((record) => pairKey(record) === key && record.build === candidate);
     if (a?.complete && b?.complete) {
       pairs.push([a, b]);
     }
@@ -715,8 +725,11 @@ function summarize(records, builds, options) {
       `  startup scripts: ${last.startupScriptsFromCache} from the HTTP cache, ` +
         (cost
           ? `${cost.streamed}/${cost.compiled} streamed, ${cost.codeCacheConsumed} from the ` +
-            `code cache, ${cost.evaluatedAfterFirstRow ?? 0} evaluated again after the first ` +
-            `row; `
+            `code cache` +
+            // Records written before the probe counted it do not say.
+            (cost.evaluatedAfterFirstRow === undefined
+              ? "; "
+              : `, ${cost.evaluatedAfterFirstRow} evaluated again after the first row; `)
           : "") +
         `medians ` +
         COST_TIMINGS.map(
@@ -782,10 +795,15 @@ function summarize(records, builds, options) {
       if (usable.length) {
         const ratios = usable.map(([a, b]) => timing(b, field) / timing(a, field));
         const loads = usable.flatMap(([a, b]) => [a.load1, b.load1]);
+        // The loop's README judges a tolerance pair by pair, so say how many crossed each.
+        const crossed = (limit) =>
+          `${ratios.filter((ratio) => ratio > limit).length} above ${limit}x and ` +
+          `${ratios.filter((ratio) => ratio < 1 / limit).length} below 1/${limit}x`;
         console.log(
           `${candidate}/${control} ${field}: median ratio ` +
             `${withInterval(ratios, 3, { signed: false })}, ` +
-            `pairs ${Math.min(...ratios).toFixed(2)}-${Math.max(...ratios).toFixed(2)}, ` +
+            `pairs ${Math.min(...ratios).toFixed(2)}-${Math.max(...ratios).toFixed(2)} ` +
+            `(${crossed(1.1)}; ${crossed(1.3)}), ` +
             `load ${Math.min(...loads).toFixed(0)}-${Math.max(...loads).toFixed(0)}`,
         );
       }
@@ -834,6 +852,21 @@ function recorded(file, control, series) {
     throw new Error(`${file} holds several series; name one with --series: ${named.join(", ")}`);
   }
   const records = series ? all.filter((record) => record.series === series) : all;
+  const seen = new Set();
+  for (const record of records) {
+    const key = `${pairKey(record)} ${record.build}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `${file} has pair ${record.pair} of ${record.build} twice: it holds more than one run ` +
+          `whose records do not name it, so split it into one file a run`,
+      );
+    }
+    seen.add(key);
+  }
+  const runs = new Set(records.map((record) => record.run ?? ""));
+  if (runs.size > 1) {
+    console.log(`${runs.size} runs, their pairs compared within each run and pooled`);
+  }
   const names = [...new Set(records.map((record) => record.build))];
   if (control && !names.includes(control)) {
     throw new Error(`--control ${control} is not a build in ${file}: ${names.join(", ")}`);
@@ -852,6 +885,9 @@ async function run(options) {
   }
   const browser = await Browser.launch();
   const records = [];
+  // Names this run's records, so a file that --out appended several runs to keeps them
+  // apart.
+  const runId = new Date().toISOString();
   try {
     // Discarded loads per build: the first after launch pays for process start, and a
     // warm series fills the caches. V8 writes a script's code cache on its second run.
@@ -867,6 +903,7 @@ async function run(options) {
       const order = [...builds.slice(shift), ...builds.slice(0, shift)];
       for (const [position, [name, origin]] of order.entries()) {
         const record = {
+          run: runId,
           pair,
           position,
           recordedAt: Date.now() / 1000,

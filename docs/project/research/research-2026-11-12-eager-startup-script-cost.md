@@ -63,7 +63,7 @@ ranges, so a `//` inside a string or a regular expression is not counted:
 | JSDoc blocks (`/** … */`) | 71,395 | 11.8% of decoded |
 | One-line type annotations (179 `/** @type {…} */`) | 6,700 | 1.1% of decoded |
 | Transferred, as the check counts it | 178,592 |  |
-| Transferred with every comment removed | 104,937 | 58.8% of today’s |
+| Transferred with every comment removed | 104,937 | 58.8% of `main`’s |
 
 Prose compresses worse than code, so removing the comments cuts 73,655 of the 178,592
 transferred bytes, 41%, although they are 32% of the decoded ones.
@@ -229,13 +229,13 @@ Candidate units for the per-commit gate:
 **Description:** Hold transferred bytes as the unit, and set the ceiling at a size whose
 cost was measured directly: a build padded with comment to that size, loaded against
 `main` on each path, whose median first row stays under the careful 1.1x tolerance.
-The tolerance is the smallest change the repository’s performance policy treats as a
-regression, so the gate stops eager growth before it becomes one.
+That is the tolerance for a claim about one change; the evidence below supports it only
+as a rough cut.
 
 The slopes picked the size to measure.
 At 10% of each path’s first row they allowed 64 KB of growth on loopback and 47 KB on
-the 10 ms link, so 47 KB over today’s 174 KB, rounded down, gave 220 KB. They are not
-the evidence for it.
+the 10 ms link, so 47 KB over the 174 KB of 27ea216c, rounded down, gave 220 KB. They
+are not the evidence for it.
 The 10 ms slope is the least certain (0.06 to 0.40 ms/KB), and the direct measurement
 disagreed with both link slopes: on the 10 ms link the slope predicted +12.8 ms and the
 build measured −0.7 ms, and on the 80 ms link it predicted +14.7 ms and the build
@@ -259,9 +259,13 @@ and 1.09x in three loopback series and 1.05x on the 10 ms link, with two A/A ser
 **This is a rough cut.** Every series ran on a loaded host, each path as one series, and
 this round had no A/A series, so under
 [the tolerance rule](../../../explorations/performance-loop/README.md#comparing-a-candidate-with-the-previous-release)
-it supports the 1.3x rough cut, not the careful 1.1x. Within that, growth to 220 KB is
-far inside 1.3x, and its medians are under 1.1x, but the intervals reach 1.14x on
-loopback and 1.11x on the 10 ms link.
+it supports the 1.3x rough cut, not the careful 1.1x. The rough cut here is read off the
+median pair ratio and its interval: growth to 220 KB is inside 1.3x, and its medians are
+under 1.1x, but the intervals reach 1.14x on loopback and 1.11x on the 10 ms link.
+The rule itself judges each pair.
+On loopback 3 of 30 pairs exceeded 1.3x (1.30, 1.33, and 1.39) and none fell below
+1/1.3; on the 10 ms link one pair exceeded it and two fell below.
+The rule’s rerun step was not applied to them.
 The careful claim needs a quiet host, at least 24 pairs per path in two independent
 series, and an A/A series.
 
@@ -277,9 +281,9 @@ series, and an A/A series.
 - The cost includes the server’s per-request compression, about 0.11 ms of every KB. If
   the server stops compressing per request, the measurement changes.
 - The ceiling bounds bytes at the shell’s request count.
-  Its headroom adds to `startup_script_requests`’s: five deferred shell tools made
-  startup scripts, 45 KB and five requests, fit both ceilings and cost about 1.09x on
-  the 10 ms link in the review’s replication.
+  Its headroom adds to `startup_script_requests`’s: at 27ea216c, five deferred shell
+  tools made startup scripts, about 45 KB and five requests, fit both ceilings, and in
+  the review’s replication cost 1.04x and 1.11x on loopback and 1.09x on the 10 ms link.
   Which scripts may be startup scripts is held by a test instead
   (`tests/test_check_startup_scripts.py`).
 
@@ -343,11 +347,11 @@ its path, size, and modification time, instead of compressing it on every reques
 
 Adopt Option B: `startup_script_transfer_kb = 220`, in the same unit, with the
 measurement beside the constant as rough-cut evidence.
-At 220 KB the gate allows about 46 KB beyond `main` (178,592 bytes today against 225,791
-allowed). The keyboard stack, 346 bytes over the old ceiling, fits with its comments and
-annotations intact.
-Hold the startup set’s membership with a test, not with the ceilings:
-no script of the deferred `shell-tools` bundle may be a startup script.
+At 220 KB the gate allows about 46 KB beyond `main` (178,592 bytes at 27ea216c against
+225,791 allowed). The keyboard stack, 346 bytes over the old ceiling, fits with its
+comments and annotations intact.
+Hold the startup set’s membership with a test, not with the ceilings: no script of an
+on-demand bundle, the deferred `shell-tools` among them, may be a startup script.
 
 When the eager tier needs to shrink, prefer removing per-request compression (Option E)
 and requests over trimming bytes.
@@ -360,7 +364,7 @@ Re-derive the ceiling after either lands, since each moves a slope this derivati
 - [x] Set `startup_script_transfer_kb` to 220 with the measurement recorded beside it
 - [x] Commit the samples and the interval computation
   ([exp-084](../../../explorations/performance-loop/experiments/exp-084-eager-startup-script-cost.md))
-- [x] Hold the `shell-tools` bundle out of the startup set with a test
+- [x] Hold every on-demand bundle out of the startup set with a test
 - [ ] Re-measure the 220 KB build on a quiet host, in two series per path with an A/A
   series, for the careful 1.1x (`mb-djo1`)
 - [ ] Compress each static script once and re-measure the loopback slope
