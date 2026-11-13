@@ -596,14 +596,13 @@ def test_close_drains_a_watcher_batch_that_races_the_stop_quietly(
     ``close`` refuses public calls at once but joins the watcher afterwards, and a
     backend can still hand over the batch it had collected when the stop arrived.
     That batch used to reach the closed public ``refresh`` and log an
-    ``InventoryClosedError`` traceback twice at shutdown.
+    ``InventoryClosedError`` traceback twice at shutdown. It is applied before the
+    inventory closes.
     """
 
     import metabrowser.watch_backends as watch_backends
 
-    (tmp_path / "late.txt").write_text("late", encoding="utf-8")
-
-    async def run() -> list[dict[str, object]]:
+    async def run() -> tuple[list[dict[str, object]], FsEntry | None]:
         loop_errors: list[dict[str, object]] = []
         asyncio.get_running_loop().set_exception_handler(
             lambda _loop, context: loop_errors.append(context)
@@ -625,6 +624,9 @@ def test_close_drains_a_watcher_batch_that_races_the_stop_quietly(
 
         monkeypatch.setattr(watch_backends, "awatch", late_batch_awatch)
         store = await _open_settled(tmp_path, InventoryConfig(watch_mode="native"))
+        # Created after discovery, so only the late batch can put it in the index.
+        assert store.get("late.txt") is None
+        (tmp_path / "late.txt").write_text("late", encoding="utf-8")
         close_task = asyncio.create_task(store.close())
         try:
             await asyncio.wait_for(saw_stop.wait(), timeout=1.0)
@@ -643,10 +645,13 @@ def test_close_drains_a_watcher_batch_that_races_the_stop_quietly(
             for task in asyncio.all_tasks()
             if task is not asyncio.current_task()
         )
-        return loop_errors
+        return loop_errors, store.get("late.txt")
 
     with caplog.at_level(logging.DEBUG):
-        loop_errors = asyncio.run(run())
+        loop_errors, late_entry = asyncio.run(run())
+    # The batch was applied, not dropped, before the inventory closed.
+    assert late_entry is not None
+    assert (late_entry.type, late_entry.size) == ("file", len("late"))
     assert [str(context.get("message")) for context in loop_errors] == []
     assert [
         record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
