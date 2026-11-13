@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Switching to the Commits tab selects the newest commit and shows its detail, every
+  time, by a click, its shortcut, or Back onto the tab, even after you read an older
+  commit there. It used to show “Select a commit to preview” on the first visit and
+  return to the last commit you read after that.
+  A link or address that names a commit still opens that commit.
+  The page you were reading stays on screen until the commit is ready, and a repository
+  with no commits says “No commits yet.”
+
 - The folder’s name at the top of the navigation goes home from any tab: clicking it, or
   pressing Enter on it, shows the Files tab at the served root, with the tree scrolled
   to the top. It no longer reloads the page, which from the Commits tab with no commit

@@ -124,6 +124,10 @@
   // shows changes nothing.
   /** @type {{revision: string, claim: number} | null} */
   let lastSelection = null;
+  // The neutral Commits entry waiting for history to name its newest commit: the landing
+  // it belongs to and the claim it holds on the pane (landOnNewestCommit).
+  /** @type {{landing: number, claim: number} | null} */
+  let newestLanding = null;
   /**
    * @typedef {object} RevisionPreparation
    * @property {string} revision
@@ -610,6 +614,7 @@
         state.loading = false;
         state.loadingPage = null;
         renderPanel();
+        selectNewestWhenReady();
       }
     }
     if (recoverSession && requestGeneration === historyGeneration && state === requestState) {
@@ -1887,7 +1892,7 @@
 
   /**
    * @param {string} revision
-   * @param {{fromRoute?: boolean, cachedOnly?: boolean, rowElement?: HTMLElement}} [options]
+   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
    *   the route is not rewritten. Pointer and keyboard paths pass their row
    *   so immediate feedback does not search the mounted history.
@@ -2017,20 +2022,7 @@
         }
         if (!detail) {
           disposeCommitDiff();
-          if (missingRevisions.has(revision) && options.cachedOnly) {
-            bridge.renderPreviewNode(
-              missingCommitNode(
-                {
-                  state: "not_found",
-                  title: "Commit not found",
-                  detail: "This commit is not available in the local repository.",
-                  retry: false,
-                },
-                null,
-              ),
-              previewClaim,
-            );
-          } else if (missingRevisions.has(revision)) {
+          if (missingRevisions.has(revision)) {
             // Waits for the first state only, so the pane stays busy until it shows
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
@@ -2453,6 +2445,8 @@
       void loadHistorySummary();
     } finally {
       refreshing = false;
+      // The first page landed while the refresh still held the panel.
+      selectNewestWhenReady();
     }
     if (restoreLanding) {
       await restoreCommitLanding();
@@ -2535,6 +2529,7 @@
     missingRevisions.clear();
     refusedRevision = null;
     lastSelection = null;
+    newestLanding = null;
     refColors = new Map();
     started = false;
     viewHelpersReady = false;
@@ -2553,6 +2548,9 @@
    * such as a fragment, changes nothing. A failure is reported here rather than rejected, so
    * a bad revision in a shared link degrades to an ordinary empty panel.
    *
+   * The neutral Commits entry names no commit, and lands on the newest one
+   * (landOnNewestCommit). An address that names a commit always wins over the newest.
+   *
    * @returns {Promise<void>}
    */
   async function restoreCommitLanding() {
@@ -2561,7 +2559,13 @@
     const bridge = shell();
     const pathname = window.location?.pathname ?? "";
     const wanted = routes?.parseCommit?.(pathname)?.revision;
-    if (!wanted || !bridge) {
+    if (!bridge) {
+      return;
+    }
+    if (!wanted) {
+      if (started && bridge.isGitHistoryLanding()) {
+        await landOnNewestCommit(landing, bridge);
+      }
       return;
     }
     if (lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim)) {
@@ -2581,10 +2585,7 @@
         window.location.pathname === pathname &&
         !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, {
-          fromRoute: true,
-          cachedOnly: window.history.state?.cachedCommit === true,
-        });
+        await selectCommit(wanted, { fromRoute: true });
       }
     } catch (error) {
       console.error(
@@ -2593,6 +2594,106 @@
         error,
       );
     }
+  }
+
+  /**
+   * Switching to Commits names no commit: a tab click or its shortcut pushes the neutral
+   * history entry (main-tabs.js), and Back or Forward can step onto one. The panel selects
+   * the newest commit there, the top row, as soon as the first page of history is here,
+   * and the selection replaces the entry with that commit's address, as every selection in
+   * this panel does. A return to Commits after an older commit lands on the newest again.
+   *
+   * The pane is claimed now and keeps what it shows, marked busy, until the commit is
+   * ready, so the switch paints neither a prompt nor a blank frame. Focus stays where the
+   * switch left it, on the tab for a click or a shortcut; the newest row becomes the list's
+   * Tab stop. An empty history selects nothing and the pane says so.
+   *
+   * @param {number} landing
+   * @param {MetabrowserShellRuntime} bridge
+   * @returns {Promise<void>}
+   */
+  async function landOnNewestCommit(landing, bridge) {
+    clearPendingState();
+    const claim = bridge.claimPreview("git");
+    if (bridge.beginPreviewNavigation(claim)) {
+      pendingPreviewClaim = claim;
+    }
+    newestLanding = { landing, claim };
+    try {
+      bridge.activateNavPanel("git");
+      if (viewHelpersReady || (await ensureViewHelpers())) {
+        await ensureHistory();
+      }
+    } catch (error) {
+      console.error("metabrowser git panel: landing on the newest commit failed", error);
+    }
+    selectNewestWhenReady();
+  }
+
+  /**
+   * Answer a waiting newest landing once history can. It runs when the landing has caught
+   * up and whenever a page of history settles, so the first page selects the newest commit
+   * whichever arrives last, and nothing asks for history twice. Anything that took the pane
+   * or the address since, a file, a pull request, or a commit's own address, ends the wait.
+   */
+  function selectNewestWhenReady() {
+    const waiting = newestLanding;
+    const bridge = shell();
+    if (!waiting || !bridge) {
+      return;
+    }
+    if (
+      !started ||
+      waiting.landing !== landingGeneration ||
+      !bridge.isPreviewClaimCurrent(waiting.claim) ||
+      !bridge.isGitHistoryLanding()
+    ) {
+      newestLanding = null;
+      return;
+    }
+    if (refreshing || viewHelpersPending !== null || (state.rowCount === 0 && state.loading)) {
+      return;
+    }
+    if (state.rowCount === 0) {
+      // Still waiting: a refresh that finds commits, or a retry that loads them, selects one.
+      const message =
+        state.failed || viewHelpersFailed
+          ? "Could not load the commit history."
+          : state.endReached
+            ? "No commits yet."
+            : null;
+      if (message) {
+        bridge.renderPreviewHtml(`<div class="preview-empty">${message}</div>`, waiting.claim);
+        if (pendingPreviewClaim === waiting.claim) {
+          clearPendingState();
+        }
+      }
+      return;
+    }
+    revealNewestRow();
+    // An evicted first page is replayed by the window the reveal mounts, which comes back here.
+    const newest = state.pageCache.peek(0)?.commits[0]?.id;
+    if (!newest) {
+      return;
+    }
+    newestLanding = null;
+    void selectCommit(newest);
+  }
+
+  /** Scroll the newest row into view when it is not, with the history tally above it. */
+  function revealNewestRow() {
+    const scroller = historyScroller();
+    if (!scroller) {
+      return;
+    }
+    const range = state.mountedRange;
+    if (range?.segmentStart === 0 && (scroller.scrollTop || 0) <= historyOrigin()) {
+      return;
+    }
+    state.virtualWindow.rebaseToOrdinal(0, viewportHeight(scroller), "start");
+    scroller.scrollTop = 0;
+    state.mountedRange = null;
+    renderVirtualRows(true);
   }
 
   /**

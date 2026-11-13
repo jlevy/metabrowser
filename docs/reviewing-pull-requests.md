@@ -34,7 +34,8 @@ Choose **Pulls** beside Files and Commits.
 It starts on **Open**; the filters are **Open**, **Closed**, and **All**. Closed
 includes merged pull requests.
 Small tallies show each filter’s total when the catalog knows it.
-Switching among Files, Commits, and Pulls restores each tab’s last selection.
+Switching back to Files or Pulls restores that tab’s last selection; switching to
+Commits selects the newest commit.
 The list shows the newest pull requests first, with their open, draft, merged, or closed
 state. The status gives the repository’s total and name, with the number in bold.
 

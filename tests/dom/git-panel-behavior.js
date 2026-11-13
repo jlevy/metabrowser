@@ -401,9 +401,13 @@ sandbox.MetabrowserNavigationRoute = {
 };
 /** @type {string[]} Routes the panel replaced, newest last. */
 const replacedRoutes = [];
+// Whether the address is the neutral Commits entry, which a switch to Commits pushes. A
+// replaced entry is a commit's address, so it is the neutral entry no longer.
+let neutralLanding = false;
 sandbox.history = {
   replaceState: (_state, _title, url) => {
     replacedRoutes.push(String(url));
+    neutralLanding = false;
   },
 };
 
@@ -421,6 +425,7 @@ const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
   rememberMainTabAddress() {},
+  isGitHistoryLanding: () => neutralLanding,
   claimPreview: () => {
     pendingStageCleanup?.();
     previewClaim += 1;
@@ -2784,6 +2789,58 @@ async function run() {
   await internals.selectCommit(SHA_B);
   assertTrue("head: a refresh clears the detail cache", fetchCount > afterRefresh);
 
+  // ── Switching to Commits lands on the newest commit ────────
+  //
+  // The neutral Commits entry selects the top row once history is here, an older selection
+  // notwithstanding. The newest row is selected and is the list's Tab stop, focus stays on
+  // the tab the switch left it on, a scrolled list comes back to its top, and a return
+  // with history loaded asks only whether HEAD moved, never for history again.
+  {
+    responses.set(`/api/git/commit/${SHA_C}`, {
+      is_repo: true,
+      commit: commit(SHA_C, [], "after checkout"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    const container = document.getElementById("tab-git");
+    const tab = document.createElement("button");
+    tab.focus();
+    container.scrollTop = 500;
+    const requestsBefore = fetchRequests.length;
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = fetchRequests.slice(requestsBefore).map((request) => request.url);
+    assertEqual("newest: the top row is selected", internals.stateForTests().selectedId, SHA_C);
+    assertEqual(
+      "newest: its address replaces the entry",
+      replacedRoutes.at(-1),
+      `/commit/${SHA_C}`,
+    );
+    const newestRow = container.querySelector('.git-graph-row[data-ordinal="0"]');
+    assertTrue("newest: the row is marked", newestRow?.classList.contains("selected") === true);
+    assertEqual("newest: the row is the Tab stop", newestRow?.getAttribute("tabindex"), "0");
+    assertTrue("newest: focus stays on the tab", document.activeElement === tab);
+    assertEqual("newest: the list is back at its top", container.scrollTop, 0);
+    assertEqual("newest: history is not asked for again", asked, [
+      "/api/git/repo",
+      `/api/git/commit/${SHA_C}`,
+    ]);
+    // An address that names a commit wins: the entry is not the neutral one.
+    await internals.selectCommit(SHA_B);
+    const landedBefore = replacedRoutes.length;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "newest: a non-neutral address selects nothing",
+      replacedRoutes.length,
+      landedBefore,
+    );
+    assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a
@@ -3000,37 +3057,6 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
-
-    const cachedMissing = "9".repeat(40);
-    let askedForFreshness = false;
-    freshnessController = {
-      fetchMissing() {
-        askedForFreshness = true;
-        throw new Error("tab restoration must not start source refresh");
-      },
-    };
-    responses.set(`/api/git/commit/${cachedMissing}`, notFound);
-    const originalLocation = sandbox.location;
-    const originalParse = sandbox.MetabrowserNavigationRoute.parseCommit;
-    sandbox.location = { pathname: `/commit/${cachedMissing}` };
-    sandbox.MetabrowserNavigationRoute.parseCommit = () => ({ revision: cachedMissing });
-    sandbox.history.state = { cachedCommit: true };
-    responses.set("/api/git/repo", {
-      is_repo: true,
-      root: "",
-      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
-    });
-    await panel.init();
-    internals.teardown();
-    sandbox.location = originalLocation;
-    sandbox.MetabrowserNavigationRoute.parseCommit = originalParse;
-    delete sandbox.history.state;
-    assertEqual("missing cached selection: no refresh", askedForFreshness, false);
-    assertContains(
-      "missing cached selection: names the local miss",
-      previewHtml,
-      "not available in the local repository",
-    );
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {

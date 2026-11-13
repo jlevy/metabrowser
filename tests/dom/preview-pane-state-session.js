@@ -971,6 +971,8 @@ async function goingHome() {
   sandbox.MetabrowserGitPanel = {
     cancelPending() {},
     // The panel's own listener, after the shell's: a commit's address shows the commit.
+    // It selects nothing on the neutral entry, as for an empty history or a first page
+    // still on its way, which is where going home used to come back to Commits.
     async restoreCommitLanding() {
       const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
       if (parsed) {
@@ -1007,7 +1009,7 @@ async function goingHome() {
   shell.clickTab("git");
   await settle();
   const commits = at();
-  steps["Commits, from a tab click"] = commits;
+  steps["Commits, before a commit is selected"] = commits;
   steps["home from Commits"] = await home();
   assert.equal(steps["home from Commits"].kept, true, "a plain click stays in the page");
   assert.equal(steps["home from Commits"].tab, "files");
@@ -1166,17 +1168,28 @@ async function independentMainTabs() {
       }
     },
   };
+  const newest = "c".repeat(40);
   const commitLandings = [];
+  // The panel's contract, which git-commit-history-session.js runs on the production
+  // panel: a commit's address shows that commit, and the neutral Commits entry lands on
+  // the newest commit, whose address replaces the entry. It listens to history itself.
   sandbox.MetabrowserGitPanel = {
     cancelPending() {},
     async restoreCommitLanding() {
       const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
-      commitLandings.push(parsed.revision);
-      shell.claimGit(parsed.revision);
+      if (parsed) {
+        commitLandings.push(parsed.revision.slice(0, 7));
+        shell.claimGit(parsed.revision);
+      } else if (sandbox.isGitHistoryLanding()) {
+        commitLandings.push("newest");
+        sandbox.history.replaceState(null, "", `/commit/${newest}`);
+        shell.claimGit(newest);
+      }
     },
   };
   sandbox.history.replaceState(null, "", selectedFile);
   const initial = sandbox.navigationController.start();
+  sandbox.addEventListener("popstate", () => sandbox.MetabrowserGitPanel.restoreCommitLanding());
   await settle();
 
   function snapshot() {
@@ -1212,11 +1225,18 @@ async function independentMainTabs() {
   shell.pop("/pulls?state=closed");
   await settle();
   scroller.scrollTop = 80;
+  const landingWrites = shell.writes.length;
   await open("git");
-  assert.equal(selections.at(-1).address, "/view/");
-  assert.equal(sandbox.history.state.gitLanding, true);
-  assert.match(shell.pane().shows, /Select a commit to preview/);
-  assert.deepEqual(commitLandings, [], "a first Git visit does not open commit detail");
+  assert.deepEqual(
+    shell.writes.slice(landingWrites),
+    ["/view/"],
+    "a switch to Commits pushes the neutral entry",
+  );
+  assert.equal(selections.at(-1).address, `/commit/${newest}`);
+  assert.equal(sandbox.history.state, null, "the newest commit replaced the neutral entry");
+  assert.deepEqual(commitLandings, ["newest"], "a first Commits visit lands on the newest");
+  assert.doesNotMatch(shell.pane().shows, /Select a commit to preview/);
+  // The reader selects an older commit, and one of its files.
   sandbox.history.replaceState(null, "", commit);
   sandbox.mainTabs.remember();
   scroller.scrollTop = 120;
@@ -1233,10 +1253,13 @@ async function independentMainTabs() {
   assert.equal(scroller.scrollTop, 80, "revealing the PR must not replace the saved offset");
   assert.deepEqual(sandbox.history.state, place);
   await open("git");
-  assert.equal(selections.at(-1).address, commit);
-  assert.equal(sandbox.history.state.cachedCommit, true);
-  assert.deepEqual(commitLandings, [older]);
-  assert.equal(scroller.scrollTop, 120);
+  assert.equal(
+    selections.at(-1).address,
+    `/commit/${newest}`,
+    "a return to Commits lands on the newest, not the older commit",
+  );
+  assert.deepEqual(commitLandings, ["newest", "newest"]);
+  assert.equal(scroller.scrollTop, 0, "Commits starts from its top, where the newest is");
   const still = shell.pane().claim;
   const pushed = shell.writes.length;
   shell.clickTab("git");
@@ -1263,19 +1286,23 @@ async function independentMainTabs() {
     "the first Files visit opens its root",
   );
   const activeAfterHistory = sandbox.mainTabs.active();
+  // A history step onto the neutral entry is a switch with no commit named: the panel
+  // lands on the newest, and the shell paints no prompt over it.
   shell.pop("/view/", { gitLanding: true });
   await settle();
   assert.equal(sandbox.mainTabs.active(), "git");
-  assert.match(shell.pane().shows, /Select a commit to preview/);
+  assert.equal(sandbox.location.pathname, `/commit/${newest}`);
+  assert.doesNotMatch(shell.pane().shows, /Select a commit to preview/);
   shell.pop("/view/");
   await settle();
   assert.equal(sandbox.mainTabs.active(), "files", "Files and neutral Git can share a pathname");
   assert.equal(shell.pane().owner, "file");
 
+  // A reload onto the neutral entry leaves the shell's loading placeholder for the panel.
   const reloaded = createShell("/view/", read);
   reloaded.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
   await reloaded.sandbox.navigationController.start();
-  assert.match(reloaded.pane().shows, /Select a commit to preview/);
+  assert.equal(reloaded.pane().phase, "starting", "startup paints nothing over the entry");
   await reloaded.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(reloaded.sandbox.mainTabs.active(), "git", "deferred registration restores Git");
   const unavailable = createShell("/view/", read, { withoutGit: true });
@@ -1305,7 +1332,7 @@ async function independentMainTabs() {
   pendingGit.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   await pendingGit.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
-  assert.match(pendingGit.pane().shows, /Select a commit to preview/);
+  assert.doesNotMatch(pendingGit.pane().shows, /Select a commit to preview/);
 
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
   assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");
@@ -1359,7 +1386,7 @@ async function independentMainTabs() {
     selections,
     historyPushes: shell.writes.length,
     activeAfterHistory,
-    neutralGitDetailOpens: commitLandings.length - 1,
+    commitLandings,
   };
 }
 

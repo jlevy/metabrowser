@@ -2909,6 +2909,8 @@ declare global {
     beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
+    /** The address is the neutral Commits entry: `/view/` with no commit chosen. */
+    isGitHistoryLanding(): boolean;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     openPullRequest(route: MetabrowserPullRoute): Promise<{ status: string }>;
     registerNavPanel(panel: MetabrowserNavPanel): void;

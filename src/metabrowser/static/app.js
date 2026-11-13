@@ -3915,6 +3915,7 @@ window.MetabrowserShell = Object.freeze({
   beginPreviewNavigation,
   claimPreview,
   endPreviewNavigation,
+  isGitHistoryLanding,
   isPreviewClaimCurrent,
   openPullRequest: async (route) => {
     const generation = pullHistoryGeneration;
@@ -7740,11 +7741,12 @@ function settleUnclaimedPreview() {
   }
 }
 
-// Only a /commit/ route waits on the Git panel to select something; a /view/
-// route is claimed by its own file selection. Startup calls this once the
-// shell tools, and with them the Git panel, have settled.
+// Only a /commit/ route and the neutral Commits entry wait on the Git panel to
+// select something; any other /view/ route is claimed by its own file
+// selection. Startup calls this once the shell tools, and with them the Git
+// panel, have settled.
 function settleCommitRoutePreview() {
-  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname)) {
+  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname) || isGitHistoryLanding()) {
     settleUnclaimedPreview();
   }
 }
@@ -7944,7 +7946,10 @@ async function applyNavigationTarget(target, context) {
   const keepFilesScroll = mainTabs?.takeFilesScroll() ?? false;
   if (isGitHistoryLanding()) {
     if (context.source !== "user") {
-      showNavigationLanding("Select a commit to preview.");
+      // The neutral Commits entry is the Git panel's, as a /commit/ address is: the
+      // panel selects the newest commit there, and the pane keeps what it shows until
+      // that commit is ready (git-panel.js, landOnNewestCommit). A prompt painted here
+      // would flash for as long as the first page of history takes.
       return { status: "cancelled" };
     }
     // An explicit Files root open can have the same address as the Git history entry.
