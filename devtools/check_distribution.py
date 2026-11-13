@@ -23,6 +23,11 @@ REPOSITORY_ONLY_PARTS = {
     "dist",
     "node_modules",
 }
+# Repository-root directories that never ship, matched only at the top of the archive
+# (after the sdist's `metabrowser-<version>/` prefix), so a package directory of the
+# same name deeper in the tree is not flagged. Native app shells such as apps/macos
+# build with their own toolchains.
+REPOSITORY_ONLY_TOP_LEVEL = {"apps"}
 REPOSITORY_ONLY_NAMES = {".copier-answers.yml", "AGENTS.md", "CLAUDE.md", "skills-lock.json"}
 EXPECTED_LICENSE_METADATA = {
     "License-Expression: AGPL-3.0-or-later",
@@ -227,7 +232,12 @@ def _inspect_wheel(wheel: Path) -> None:
             if not any(name.endswith(suffix) for name in names):
                 raise RuntimeError(f"wheel is missing {suffix}")
         forbidden_parts = REPOSITORY_ONLY_PARTS | {"tests", "devtools"}
-        leaked = [name for name in names if forbidden_parts.intersection(Path(name).parts)]
+        leaked = [
+            name
+            for name in names
+            if forbidden_parts.intersection(Path(name).parts)
+            or REPOSITORY_ONLY_TOP_LEVEL.intersection(Path(name).parts[:1])
+        ]
         if leaked:
             raise RuntimeError(f"wheel contains repository-only files: {leaked[:10]}")
         metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
@@ -268,6 +278,7 @@ def _inspect_sdist(sdist: Path) -> None:
             for name in names
             if REPOSITORY_ONLY_PARTS.intersection(Path(name).parts)
             or Path(name).name in REPOSITORY_ONLY_NAMES
+            or REPOSITORY_ONLY_TOP_LEVEL.intersection(Path(name).parts[1:2])
         ]
         if leaked:
             raise RuntimeError(f"sdist contains repository-only files: {leaked[:10]}")

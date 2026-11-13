@@ -54,8 +54,9 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
-        "macos_tier: runs only on macOS, on its extended ACLs or its case-insensitive "
-        "file system; `make test-macos` runs these alone and fails if one skips",
+        "macos_tier: runs only on macOS, on its extended ACLs, its case-insensitive "
+        "file system, or Apple's git shim; `make test-macos` runs these alone and fails "
+        "if one skips",
     )
     # The hooks that judge a skip against its tier; see tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)

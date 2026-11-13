@@ -1,0 +1,21 @@
+{
+  "_about": "Alternate release master for review (metabrowser-icon-corner-bevel.svg): the M's rising diagonal runs to the cap line and the B's top-left corner is cut parallel to it, one channel away. Not built into Resources. Each parameter is documented in README.md.",
+  "variant": "release",
+  "junction": "corner-bevel",
+  "gap": 21.437,
+  "gapMeasure": "perpendicular",
+  "cornerCut": 0.5,
+  "faceTopFlat": 1.0,
+  "stem": 31.464,
+  "diagonal": 31.464,
+  "angle": 28.9993,
+  "capLine": 172.023,
+  "baseline": 339,
+  "crotch": 239.451,
+  "vertexFlat": 284.418,
+  "centroidX": 262.598,
+  "bSize": 232,
+  "overlapTopFlat": 0.697,
+  "minSliver": 6,
+  "fills": { "first": "#ECC44B", "b": "#C896FF" }
+}

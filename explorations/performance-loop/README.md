@@ -644,6 +644,301 @@ It is not accepted by `record`: the initial-load ledger and its budgets use a di
 schema. Run at least three visible-Chrome captures for each condition, alternate
 condition order, and keep the repository and selected subjects unchanged.
 
+### Transition Navigation Scenario
+
+Use this scenario when the hypothesis is about how a UI transition looks: whether a main
+tab switch, a revisit, a pull request page, or a view tab paints its destination at
+once, without a blank or loading frame, and without moving content that is already on
+screen. It is the instrument for the transition campaign (`mb-mpo0`), and
+[exp-058](experiments/exp-058-transition-baseline.md) is its baseline.
+
+One series runs every journey on one or two builds of `metab` against a standalone clone
+of this repository:
+
+```shell
+node explorations/performance-loop/transitions.mjs run --exp exp-NNN \
+  --corpus /path/to/standalone-clone --runs 6 \
+  --condition control=/envs/control/.venv/bin/metab \
+  --condition candidate=/envs/candidate/.venv/bin/metab
+node explorations/performance-loop/transitions.mjs summarize .bench/transitions/exp-NNN/runs.jsonl
+node explorations/performance-loop/transitions.mjs compare .bench/transitions/exp-NNN/runs.jsonl \
+  --control control --candidate candidate --expect TRANSITION:METRIC:lower
+```
+
+It needs Node 24 and Chrome (`CHROME_BIN` overrides the macOS default) and adds no
+dependency. A run of every journey takes seven to ten minutes, about half of it the
+warm-up pass, and a condition’s first run takes longer while its warm-up fills the
+GitHub cache.
+
+The corpus must be a clean Git checkout, and `run` refuses one that is not.
+Use a standalone clone with its own refs, not a worktree of a checkout other work
+commits to: the Commits list walks the corpus’s `HEAD` and trunk refs, and a ref that
+moves under a series changes the list and resets the server’s caches.
+Each run records the corpus’s commit, cleanliness, trunk, and a hash of all its refs at
+its start and end, and refuses itself (`corpus_changed`) if any moved.
+
+`--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup`
+measures a cold server, and `--keep-going` continues past refusals to list them all.
+None of them is the standard regime: such a run says so when it starts, records
+`regime_flags`, and writes to `diagnostic.jsonl` instead of `runs.jsonl` unless `--out`
+names a file, and `compare` refuses to mix it with standard runs.
+
+**The regime.** Each run starts a fresh server from the condition’s `metab` on a free
+port in 8890–8899, waits for its inventory to complete, runs every journey once
+unrecorded, then runs them again measured.
+A refusal in the warm-up pass refuses the run (`warmup_…`) and skips the measured pass,
+because it leaves the server in an unknown state.
+A pass stops at its first refused transition: the run is invalid from there on.
+Each journey opens its own fresh Chrome profile, so the browser is cold (empty HTTP
+cache, new document) while the server is warm: whatever it caches in memory or in its
+state directory holds what the warm-up pass asked for.
+Each condition keeps one cache and configuration directory
+(`.bench/transitions/<exp>/state/<label>/`, passed as `--cache-dir` and `--config-dir`)
+across its runs, so GitHub records are read from cache and network variance stays out of
+the measured pass. The server still refreshes the pull request catalog on its own
+schedule, so that work can overlap a run, and two conditions can hold different catalog
+snapshots; `compare` prints the catalog totals each condition saw.
+Two conditions alternate within each pair: the first `--condition` leads odd pairs and
+the second leads even ones (`--order fixed` keeps the given order).
+The viewport is 1440×900 at device scale 1, headless by default, and input is trusted
+CDP pointer and key events; driver-owned scrolling and the hit test happen before the
+clock starts.
+
+**Builds are identified by content.** A build is its `metab --version` line and, for an
+editable checkout, its commit, whether it is dirty, and for a dirty tree a hash of its
+diff against `HEAD` and of its untracked files, read without writing to the checkout.
+A wheel is identified by the hash of its `RECORD`. Provenance is read again when a run
+ends, and a build that changed during the run refuses it (`build_changed`), since an
+editable install serves its files live.
+
+**Subjects are named by identity.** `SUBJECTS` in `transitions-journeys.mjs` names every
+file by path, every commit by full ID, and every pull request by number, and a subject
+that is not listed refuses the run instead of measuring a neighbor.
+The Pulls list follows GitHub, so newer pull requests push the merged subjects down the
+Closed list, past the rows a virtualized list mounts.
+A subject row that is not mounted is scrolled to, one screen at a time from the top of
+the list and before the clock starts, and the journey records where it sat (`facts`: its
+offset in the list and the screens scrolled), so a list that moved shows in the record.
+The open pull request count still moves the list that `pulls.first_show` and the
+main-tab Pulls rows land on.
+
+| Journey | Transitions |
+| --- | --- |
+| `landing` | Cold landing on a Markdown file, then a reload |
+| `files` | Eight cold file clicks across kinds, four revisits, history back and forward, hover then click |
+| `keyboard` | ArrowDown to three cold neighbors, ArrowUp to two revisits |
+| `views` | View tab first visit and two revisits for Markdown, JSON, and a folder’s Overview and Treemap |
+| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected |
+| `commits` | Commits first show, three cold commits, two revisits, hover then click |
+| `pulls` | Pulls first show, list to pull request, its tabs first and again, pull request to pull request cold, revisit, and after a hover, history back, and Changes to another pull request |
+| `tree` | Folder expand, collapse, re-expand, and a nested expand |
+| `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
+| `skim` | ArrowDown held over six rows: one `keyDown`, five more flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
+| `reveal` | A landing on a file three folders down, its ancestors collapsed |
+
+**How a frame is read.** Every frame is read once, after its own style and layout and
+before it paints: the recorder’s `requestAnimationFrame` callback creates a
+ResizeObserver on the document element, and Chrome delivers a new observation in the
+same frame’s rendering steps, after layout and after every ResizeObserver the page
+created earlier. The read forces no layout, and a later task cannot change what a frame
+was recorded as showing.
+
+**Useful content** is visible, laid-out content in the preview’s active view: a text
+node on screen (its parent rendered, not at zero opacity or hidden, with a non-empty
+text box that no clipping ancestor or the viewport cuts away) outside a placeholder,
+prompt, or screen-reader-only label; or an `<img>` once it has loaded and its `decode()`
+has resolved, a `<video>` with a current frame, or a canvas, iframe, or large SVG laid
+out at a useful size.
+The search skips, without counting them, the subtrees of elements with no box and of
+elements wholly outside the viewport, so a view that hides or scrolls away its first
+lines is still found; it tests at most 400 text nodes.
+Canvas and iframe pixels are not read.
+
+**Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
+mix revisions but judges two sets of rows of one older revision against each other,
+noting what that revision records differently (`REVISION_NOTES` in
+`transitions-stats.mjs`). Revision 3 redefined the clocks and the frame accounting.
+Revision 4 reads a 304 for a request a worker made as `revalidated` (revision 3 read it
+as `network`, so its cache disposition counts are wrong for worker requests), takes a
+region’s first rendered match rather than its first match, and skips hidden and
+off-screen subtrees when it looks for useful content.
+
+**What each transition records.** The clock starts at the input event’s own `timeStamp`
+(the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
+start for a landing).
+
+- `readyMs`: the post-layout read of the first frame that showed the exact requested
+  subject with useful content and no mounted placeholder.
+  The ready predicate names the route, the active main tab, and a rendered surface, so a
+  surface kept mounted but hidden cannot satisfy it, and a frame is a candidate only
+  when the input reached the page before its read.
+  A predicate that already holds when the transition is armed, or in a frame before the
+  input, refuses the transition (`ready_before_input`).
+- `paintedReadyMs`: when that frame reached the screen, on the frame clock: the first
+  frame boundary after its main-thread rendering ended, which is its post-layout read or
+  the end of a Long Animation Frame entry that covers the read, for a frame over 50 ms.
+  A task that runs after the ready frame does not move it, however long.
+  `nextFrameMs` is the begin time of the next frame, which revision 2 reported as
+  painted ready.
+- settle time, apart from readiness: `settledMs`, when the preview last changed in the
+  window, and `navSettledMs`, when the navigation panels did.
+- blank frames (the preview showed no useful content) and frames with a visible
+  placeholder, in the preview and in the active navigation panel, counted over the whole
+  window from the input to its end (the ready frame’s next frame plus the transition’s
+  settle time), split before and after the ready frame, and in milliseconds; a frame
+  that shows the destination’s own prompt, which a main tab with nothing selected lands
+  on by design, is not blank where the journey declares it (`emptyState`). A frame that
+  still shows the prompt that was on screen at the input is blank, unlike old content
+  that lingers; those frames are also reported apart (`blankFramesOriginPrompt`), so a
+  round that removes them can say what they showed;
+- the movement of each named region (`REGIONS` in `transitions-recorder.mjs`) over the
+  window, per tracked component of its post-layout box: the largest single step, the net
+  displacement, and the path length (every step summed), for the page and for each group
+  (`tree`, `palette`). A region is its selector’s first rendered match, not an element:
+  one the product re-creates, or that is absent for some frames, is still the same
+  region, a hidden surface kept mounted ahead of it is passed over, and its next box is
+  measured from where it last was, so a pull request page replaced by one with a taller
+  header moves the tab bar below it.
+  A tree row is identified by its `data-path`, so a different row is a replacement, not
+  a movement;
+- Layout Instability entries with value, `hadRecentInput`, and their sources;
+- requests by class (`data`, `plugin`, `static`, `kpress`, `background`, `stream`,
+  `document`, `other`), from the page and its workers, and duplicate requests for the
+  selected subject per route.
+  A read of a pull request that follows the page’s own `pull-refresh` POST for that
+  number in the same window is a settlement read, the page polling until a refresh it
+  asked for settles, and is counted apart (`subjectSettlementReads`, shown but not
+  judged), so a duplicate is a read that follows no refresh (`subjectReads`).
+  `background` is the Pulls catalog work on its own timers: the core-preparation and
+  catalog-refresh POSTs (the palette posts the same refresh, flagged background) and the
+  warm walk over All, eight rows at a time (`pulls?state=all&limit=8`); the visible
+  list’s own window reads are `data`. The rule is by URL shape (`requestClass`), so a
+  change to the walk’s batch size moves it into `data`;
+- cache disposition per request by route family (`static`, `plugin_static`,
+  `kpress_static`, `data`, `document`): `revalidated` for a 304 on the wire, read from
+  `Network.responseReceivedExtraInfo`, which is the only event that shows a 304 the
+  browser answered to its own cache (`responseReceived` reports the cached 200). For a
+  request a worker makes, Chrome sends that event on the page’s session, so it is
+  matched to its request by ID across sessions; `cache` when the memory or disk cache
+  answered with no exchange; `network` for any other response; and `pending` when no
+  response event arrived;
+- milestones, each timed like painted ready and waited for after the window closes, so
+  no other field’s window moves: on a landing, `shellToolsReady` and `styledMarkdown`;
+  on every pull request transition, `prHeader`, and on a Conversation,
+  `prDescriptionShown` and `prDescriptionFinal`. A milestone that never arrives is
+  `null` and named in `milestonesMissing`;
+- `inputSpanMs` and `readyAfterLastInputMs` for gestures of several events, a watched
+  list’s row replacements (the palette’s results), request body bytes of every POST,
+  top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
+  presentation time for the first `pointerdown`, `click`, and `keydown`), the
+  application’s `…ToReady` spans, the DOM node count, and the one-minute load average
+  when the transition started.
+
+**Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
+`compare` leave it out, when any of these fails anywhere in its passes:
+
+- `build_identity` and `build_changed`: the version line the server renders equals
+  `metab --version` for the condition, the server serves the corpus on the port the run
+  chose, a dirty build has a content identity, and the build did not change;
+- `corpus_changed`: the corpus’s commit, cleanliness, trunk, and refs did not move;
+- `warmup_…`: the warm-up pass passed every guard;
+- `visibility`, `viewport`, `raf`, and `frame_clock`: `visibilityState` stayed
+  `visible`, the viewport was at least 1440×900, at least two frames arrived after each
+  input, and the median frame step stayed under 50 ms (a throttled page, not a slow
+  one);
+- `page_exceptions` and `rendered_errors`: no uncaught exception in the page or its
+  workers, and no visible `role="alert"` or `.preview-error` in the preview or the
+  active navigation panel;
+- `ready_before_input` and `converged`: each transition’s predicate was false before its
+  input, became true within its timeout, and after settling the route, selected row,
+  rendered subject, active tab, and mounted owner all agree;
+- `input_observed`, `hit_test`, `target_missing`, `subject_missing`, and `setup`: the
+  trusted input reached the page, a press at the target’s center lands on it, and every
+  subject and setup step was found.
+
+**How a round uses it.** Run the control and the candidate in one series, at least six
+runs each, then `compare`, naming the hypothesis’s metric with
+`--expect TRANSITION:METRIC:lower` (or `higher`). `compare` refuses, and exits 2, when a
+condition has fewer than three valid runs, a label is missing (only `--aa` names one), a
+condition pools two builds or a dirty build has no content identity, the corpus commit,
+cleanliness, trunk, refs, server git log head, or indexed file count differ, the
+scenario revisions differ, or the regime or the journeys requested differ.
+It notes a mixed harness or Chrome version, a non-standard regime, a dirty build with
+its content identity, the catalog totals per condition, runs without a back-to-back
+partner, and an A/A comparison.
+
+For each transition and metric it needs three values on both sides, and it lists every
+gap: a transition measured on one side only, a metric with fewer values, and a value
+missing in some runs, such as a milestone that never arrived, including one that no run
+on either side reached.
+Times and frame counts are judged on back-to-back pairs, as the runbook’s tolerance rule
+says
+([Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)):
+each candidate run divided by the control run of its pair, against `--tolerance` (1.3 by
+default, the rough cut on this loaded machine; it must be below 2). Ranges apart with
+two or more pairs beyond the tolerance is a result; one pair beyond under separated
+ranges is a rerun of that pair; ranges apart with every pair within is not a result; and
+two pairs beyond under overlapping ranges must be explained.
+One pair beyond under overlapping ranges is listed with the pair to rerun but is not a
+wrong-way result: at three runs a side it is common under load (88 of the 4,199
+comparisons of the exp-058 A/A split), and the runbook’s rerun of that pair is for a
+release. When the medians are equal, the pairs beyond the tolerance give the direction.
+A zero control median against a non-zero candidate with separated ranges is a result on
+the ranges alone, so a transition that gains its first long task in every run is a
+result; under overlapping ranges it goes through the pair rule, where a pair whose
+control is 0 and whose candidate is not is beyond any tolerance.
+A settle time the control reached after the candidate’s window closed (the window ends a
+settle time after the ready frame, so a build that is ready sooner is watched for less
+time) is marked, since a lower candidate value may only be a shorter window.
+Counts (requests, replacements, movement, shifts) are judged on their ranges.
+Every line shows the pooled medians and ranges beside the pair ratios, and the report
+ends with the chance that two identical builds separate on one comparison at the n in
+hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how many
+comparisons that predicts.
+It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
+wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
+the wrong direction), a gap, or an expectation not met.
+Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
+`next_frame_ms`, `window_ms`, `nav_settled_ms`, `uncredited_frames`,
+`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`, and the
+`revalidated` counts.
+Write the verdict with the accept rule below, and say what did not move.
+
+`compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
+halves, paired in recorded order, an A/A check of the instrument’s resolution on that
+build (it needs six runs); it exits 1 only on a gap.
+`samples RUNS.jsonl --out FILE` keeps only the fields `summarize` and `compare` read,
+with paths reduced to their last component in identities and in refusal details, so a
+round can commit its samples beside its artifact and regenerate its tables from them.
+
+`tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
+its recorder in headless Chrome on synthetic pages built to fail each definition above.
+
+**Limits.** Headless Chrome only; the native app’s WebKit is not measured.
+Painted ready is read from the main thread: raster and GPU time are not visible to the
+page, so a frame whose raster is slow reaches the screen later than its estimate, and a
+headless Chrome presents earlier than a display would.
+Painted ready is at most a frame after Chrome presents the ready frame, and can be
+before it by the compositor, raster, and GPU time after the main thread.
+Event Timing’s presentation time for the click, which Chrome rounds to 8 ms, is the
+ready frame’s presentation only when the click’s next paint already shows the ready
+subject, as on the recorder’s synchronous test pages; a transition that becomes ready
+later, on a response or a timer, is ready some frames after that paint.
+On the synchronous long-frame page, Chrome presented 9 to 12 ms after painted ready in
+five CI runs and 23 to 43 ms after it with the renderer’s CPU throttled fourfold.
+Frames are placed in a transition’s window by their begin time (the rAF timestamp),
+which Chrome can set before the input’s own `timeStamp` for a frame it draws after the
+input: a probe page’s ready frame began 0.2 ms before the press and showed what the
+press’s handler did.
+Such a ready frame is outside the window, so its transition reads `framesToReady` 0 and
+leaves that frame out of the blank and placeholder counts.
+A ResizeObserver round after the first (the product’s own observers of content deeper
+than the document element) can change a frame after the recorder read it.
+The Pulls catalog walk runs for about the first minute of every page load and overlaps
+most journeys; its requests are counted as `background`, not as data.
+The palette query’s pull request results come from the live catalog, so which rows
+interleave can change as pull requests are opened; the files answer first either way.
+
 ### Start-Up Work, in Pairs
 
 Every probe above starts once a tree is being served.
@@ -749,6 +1044,30 @@ the elements that moved.
 Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
+
+It also splits what the startup scripts cost, from the load’s trace: when their last
+byte arrived, their parse on a worker while they streamed in, their compile and
+evaluation on the main thread, and the main thread’s busy time to the first tree row.
+`--network LATENCY:DOWN:UP` puts an emulated link under every load (milliseconds per
+request, then kilobits per second each way), as `metab --remote` puts an SSH tunnel;
+`--cpu RATE` slows the page; `--warm N` measures in a profile whose HTTP and code caches
+N earlier loads filled, as a returning reader’s are.
+Read those costs as paired differences in milliseconds.
+
+`eager-comments.mjs` counts how much of the startup scripts is comments, and writes
+variants of them with every comment removed or with more comment added, checking that
+neither changes a token of code:
+
+```shell
+node explorations/performance-loop/eager-comments.mjs --origin http://127.0.0.1:8771 \
+  --strip .bench/eager/stripped --pad .bench/eager/padded --prose .bench/prose.txt
+```
+
+Copy `src/metabrowser` beside the corpus, put a variant’s scripts in its `static/`, and
+serve it with that copy first on `PYTHONPATH`; the startup-script check and the probe
+then measure the variant as they measure the checkout.
+[The eager startup-script cost](../../docs/project/research/research-2026-11-12-eager-startup-script-cost.md)
+is the round that set `startup_script_transfer_kb` this way.
 
 ### WKWebView Probe
 

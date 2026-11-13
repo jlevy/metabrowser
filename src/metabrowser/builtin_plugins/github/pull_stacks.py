@@ -24,6 +24,8 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     PullDataError,
     UnreadableItemError,
     as_dict,
+    cache_failure_reason,
+    cache_unwritable,
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.gh_lists import active_account as active_account
@@ -357,9 +359,22 @@ async def refresh_stacks(
         )
     except (RecordError, PrivateStorageError, OSError, LayoutError, FutureLayoutFormatError) as exc:
         log.debug("optional stack cache refused a write: %s", exc)
+        # Clearing the plugin's cache mends what it holds, not the home's layout or records.
+        message = (
+            str(
+                cache_unwritable(
+                    "optional stack metadata",
+                    exc,
+                    source=repository.source,
+                    checkout=repository.checkout,
+                )
+            )
+            if isinstance(exc, (PrivateStorageError, OSError))
+            else f"optional stack metadata could not be cached: {cache_failure_reason(exc)}"
+        )
         stamp = PullRefreshStamp(
             outcome="cache_unwritable",
-            message="Optional stack metadata could not be cached",
+            message=message[:1000],
             at=utc_stamp(pull_list.utc_now()),
             reader=reader,
         )

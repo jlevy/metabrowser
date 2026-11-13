@@ -665,6 +665,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
 }>;
 
 type MetabrowserSourceAppendRuntime = Readonly<{
+  TEXT_NODE_MAX_LENGTH: number;
   appendSourceText(root: ParentNode | null, text: string): boolean;
   commitChunkCache(options: {
     cached: Record<string, unknown>;
@@ -693,6 +694,7 @@ type MetabrowserSourceAppendRuntime = Readonly<{
   }): boolean;
   syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
   syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
+  textPieces(text: string, limit?: number): string[];
 }>;
 
 type MetabrowserViewStateRuntime = Readonly<{
