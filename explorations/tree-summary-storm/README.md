@@ -38,10 +38,14 @@ Four things compound.
   Requests queued for one pass at a time, so each waited for the pass in progress and
   then ran its own.
 
-- **WebKit sends identical requests in parallel.** WebKit opens six HTTP/1.1 connections
-  to a host, shared by every web view in the app, and each page’s event stream holds
-  one. It sent a page’s pile of root summaries on every other free connection, so the
-  Commits tab’s `/api/git/*` requests waited behind multi-second summaries.
+- **WebKit sends identical requests in parallel.** WebKit opened six HTTP/1.1
+  connections to the server, and each page’s event stream held one: one page’s server
+  answered five summaries at once, and four pages’ answered two.
+  It sent a page’s pile of root summaries on every other free connection, so the Commits
+  tab’s `/api/git/*` requests waited behind multi-second summaries.
+  The four pages here are frames of one web view; the app’s windows and tabs all use
+  WebKit’s default data store (`WebConfiguration`), so they should share the same six,
+  but that was not measured.
   Chrome holds identical GETs behind its HTTP cache lock and sends them one at a time,
   which left its other connections free; Commits loaded there.
 
