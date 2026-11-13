@@ -448,6 +448,9 @@ Useful helpers include:
   `name` is the complete copy value; `label` may display an owner or shortened name.
   Options also select `kind` (`local`, `remote`, or `tag`), `trunk`, and `head`. Use
   inline copying for a standalone chip.
+  A chip has one size wherever it appears, so a plugin places it and never restyles it,
+  and passes `trunk` and `head` only from a Git ref’s `is_trunk` and `is_head`; see
+  [Branch Chips](design-system.md#branch-chips).
   Inside a primary link or button, choose `copy: "sibling"` and call
   `mountRefCopies(primary, host)` to put secondary controls outside it; call the
   returned disposer when the row unmounts or its owner closes.
