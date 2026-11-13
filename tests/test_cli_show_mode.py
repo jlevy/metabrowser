@@ -94,7 +94,7 @@ def test_show_reports_the_four_layers_for_a_markdown_file(root: Path, capsys: An
     assert "show: README.md" in out
     assert "route: /view/README.md" in out
     assert "kind: markdown" in out
-    assert "views: rendered (default), source" in out
+    assert "views: rendered (default, key D), source (key S)" in out
     assert "model: text envelope;" in out
 
 
@@ -103,7 +103,7 @@ def test_show_reports_a_folder_as_a_folder_with_its_own_views(root: Path, capsys
 
     out = capsys.readouterr().out
     assert "kind: folder" in out
-    assert "views: overview (default), treemap" in out
+    assert "views: overview (default, key O), treemap (key M)" in out
 
 
 def test_show_reports_a_binary_kind(root: Path, capsys: Any) -> None:

@@ -67,6 +67,9 @@ public final class ServerSupervisor {
     public var mayLaunch: (() -> Bool)?
     /// Whether the latest launch was refused by `mayLaunch`.
     public private(set) var launchWasRefused = false
+    /// Called right after a child is created, before it is ready; not when creating it
+    /// fails. What a folder records as the runtime its server started from.
+    public var onSpawn: (() -> Void)?
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -122,10 +125,15 @@ public final class ServerSupervisor {
 
     /// Starts a server unless one is starting, running, or stopping, or the supervisor has
     /// been shut down.
-    public func start() async {
+    ///
+    /// - Parameter newSpec: what to run from now on, if a server starts, as `restart`
+    ///   takes it; nil runs the same command as before.
+    public func start(using newSpec: LaunchSpec? = nil) async {
         guard !isShutDown else { return }
         switch state {
-        case .stopped, .failed: await launchChild()
+        case .stopped, .failed:
+            if let newSpec { spec = newSpec }
+            await launchChild()
         case .starting, .ready, .stopping: return
         }
     }
@@ -209,6 +217,7 @@ public final class ServerSupervisor {
         }
         process = child
         event("started pid \(child.pid) as the leader of its own process group")
+        onSpawn?()
         // Exits before ready are this function's to report (the race below watches for
         // them); this task reports an exit after ready.
         Task { [weak self] in

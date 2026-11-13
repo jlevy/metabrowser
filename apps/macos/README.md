@@ -1,6 +1,8 @@
 # Metabrowser for macOS
 
-**Status:** Spike. This is step 1 of Option D in the
+**Status:** Alpha preview: a development build, built from source and not yet a signed
+or notarized release, and it may change.
+This is step 1 of Option D in the
 [macOS app research brief](../../docs/project/research/research-2026-11-08-macos-app-packaging.md):
 a hand-written Swift app that uses an existing command-line install of `metab`.
 
@@ -25,7 +27,11 @@ It runs on arm64 Macs with macOS 26 or later.
 
 ## Build, Test, and Run
 
-You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a CLI install:
+You need macOS 26 or later, Xcode 26 (Swift 6.3 or later), and a `metab` the app
+accepts, 0.12.1 or later ([The Version It Requires](#the-version-it-requires)). Until
+0.12.1 is published, that is a source checkout’s: `make install` at the repository root
+builds `.venv/bin/metab`, and Settings > Choose metab… points the app at it (so does
+`open --env METABROWSER_METAB=…`). Once 0.12.1 is published, a CLI install does:
 
 ```shell
 uv tool install metabrowser
@@ -105,13 +111,14 @@ LaunchServices registration, and a URL scheme claimed twice has no defined targe
 To run the tests against a real server too:
 
 ```shell
-cd apps/macos
-METABROWSER_SHELL_TEST_METAB=$HOME/.local/bin/metab make test
+METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test  # at the repository root
 ```
 
-`make test` runs the suites in three processes: the WebKit suites and the exit stress
-suite each stall the main actor, which every suite shares, so they run apart from the
-rest. A bare `swift test` runs them all in one process.
+The live tests check that `metab` against the version the app requires, so it must be
+0.12.1 or later. `make test` (in `apps/macos`, which `make macos-test` runs) runs the
+suites in three processes: the WebKit suites and the exit stress suite each stall the
+main actor, which every suite shares, so they run apart from the rest.
+A bare `swift test` runs them all in one process.
 
 Where to look while it runs:
 
@@ -188,6 +195,48 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 9. **The page’s Print button.** On a Markdown page, the page’s Print button opens the
    same print panel as File > Print; pressing it again while the panel is open does
    nothing.
+
+### Checking the Setup Flows by Hand
+
+What a new user sees first is a window, which no unit test reaches.
+`scripts/check-setup-flows.sh` sets up each case on the built development app, says what
+to look for, and waits for Return between steps:
+
+```shell
+make install && make macos-app   # at the repository root
+cd apps/macos
+scripts/check-setup-flows.sh no-metab
+scripts/check-setup-flows.sh old-metab
+scripts/check-setup-flows.sh disk-image
+```
+
+Each run copies the app under its own bundle identifier,
+`io.github.jlevy.metabrowser.setupcheck`, so it never touches the development app’s
+saved runtime, recents, saved session, or LaunchServices entry, and opens it with a
+scratch `HOME`. A scratch `HOME` hides only what is under it: discovery and the
+first-run screen still look in `/opt/homebrew/bin`, `/usr/local/bin`, and on the login
+shell’s `PATH`, which with the scratch `HOME` is the system’s own (`/etc/paths` and
+`/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
+found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
+`no-metab` cannot run, and `old-metab` covers the screen with uv.
+It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
+this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
+copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
+saved session, and recents.
+A copy that needs SIGKILL, a server left running, and a server started from the older
+`metab` in `old-metab` are each a failed check: the script finishes its cleanup, then
+exits nonzero, keeping an earlier nonzero status if it had one.
+`scripts/test-scripts.sh` checks that accounting, and that every script starts with its
+interpreter line, on stand-in processes.
+
+| Case | What it checks |
+| --- | --- |
+| `no-metab` | No uv and no `metab`: the uv install and the source checkout step are shown, then only the checkout step, still for a new Terminal window, once uv appears, then the waiting folder opens by itself once `metab` does |
+| `old-metab` | A stand-in reporting 0.12.0: the checkout step naming it and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting 0.13.0 under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
+
+Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
+accepts and so a Developer ID build (`mb-e9fm`); its detection is tested on the path.
 
 ### Continuous Integration
 
@@ -336,11 +385,12 @@ With a signed, notarized, and stapled release:
    ticket, which needs no network, and asks once whether to open an app downloaded from
    the Internet, saying Apple checked it for malicious software.
    An app opened straight from the DMG or from Downloads runs from a randomized
-   read-only copy (App Translocation); it works, but belongs in Applications.
-4. **Runtime.** The app runs the `metab` command-line tool and does not yet install it.
-   Without one, the first launch shows the install command,
-   `uv tool install metabrowser`, and every place it looked, and Find Again picks up the
-   new install.
+   read-only copy (App Translocation); it works, but belongs in Applications, and a
+   launch notice says so ([The Launch Notice](#the-launch-notice)).
+4. **Runtime.** The app runs the `metab` command-line tool and does not install it.
+   Without one, or with one older than 0.12.1, the first launch shows the commands still
+   missing ([The First Run Without metab](#the-first-run-without-metab)) and continues
+   by itself once `metab` is installed.
 5. **Privacy prompts.** Opening a folder in Desktop, Documents, Downloads, iCloud Drive,
    or on a removable or network volume asks once, in Metabrowser’s name, because the app
    is responsible for the server it starts.
@@ -363,6 +413,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
+| `Sources/ShellCore/Setup/` | The `metab` version the app requires, the first-run steps without one, fingerprints and watches of the files that decide the runtime, the offer to restart servers after an upgrade, and the launch notice for a disk-image or translocated copy. |
 | `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, folder identity and window titles, files opened inside folders, tab placement, the saved session and its restore order, protected locations, the navigation policy, the web view configuration, the tab discard policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
@@ -370,6 +421,7 @@ Do not hand one out as a release.
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
+| `scripts/check-setup-flows.sh` | The manual checks of the first-run screens and the launch notice ([Checking the Setup Flows by Hand](#checking-the-setup-flows-by-hand)). |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
@@ -454,18 +506,156 @@ The login shell comes last and runs only when the earlier locations miss `metab`
 or `gh`. It runs your shell startup files in the app’s name, which can take seconds and
 can raise privacy prompts you never saw in Terminal.
 One install reached two ways is tried once.
-Setup saves the runtime and the absolute paths of `git` and `gh`; later launches only
-check that the saved `metab` is still executable, so they start no extra process.
-If nothing is found, Settings shows the install command and every place it looked.
+`~/.local/bin` is the one in `HOME`, as uv reads it; a Finder launch’s `HOME` is the
+account’s own. Setup saves the runtime and the absolute paths of `git` and `gh`; later
+launches only check that the saved `metab` is still executable and is the file that was
+validated ([The Version It Requires](#the-version-it-requires)), so they start no extra
+process. If nothing usable is found, Settings shows the steps that are missing
+([The First Run Without metab](#the-first-run-without-metab)) and every place it looked.
 Settings also chooses another `metab` with an open panel, runs `metab --doctor`, and
 reveals the logs folder.
 The runtime chosen there or found by Find Again is what folders opened afterwards start,
 and what an open folder starts at its next Retry or File > Restart Server; until then,
 open folders keep their servers.
+Every start asks for the runtime the app accepts (`FolderServer`): a folder’s first
+start, a restored folder’s start when its turn or its tab comes, Retry, Restart Server,
+and the restart after an upgrade.
+It asks before it stops anything, and again at the last moment before the child spawns,
+after the launch gate and any earlier server’s stop (`ServerSupervisor.mayLaunch`),
+beside a restored background folder’s root check; the second answer must be the runtime
+the command was built from, and one replaced meanwhile is built again from.
+While there is none, because a search found nothing or the runtime’s file changed and
+its check has not answered, a start spawns nothing and its windows say so, a restart
+stops nothing if it has not yet, and both go ahead once a runtime is accepted.
+A folder the user opened or restarted waits on its own; a restore puts its root back at
+the front of its queue and pauses, so when a runtime is accepted each root is admitted
+again in its turn, in the restore’s order, with selected tabs first, including a tab
+selected while that root was waiting to start, which then starts it without the check.
+A restored background folder keeps its root check after it starts, so a later restart
+that finds its root changed, such as the one after an upgrade, spawns nothing; the
+folder waits for one of its tabs to be selected, which starts it once.
+A folder records the runtime it started from only once its child is created.
 When Find Again and a choice overlap, the one started last wins: a search that finishes
 after a newer choice changes nothing.
 A Find Again that finds nothing leaves no runtime, so the next folder waits for one
 instead of starting the `metab` that failed.
+
+### The First Run Without metab
+
+When a search finds no usable `metab`, Settings shows only the steps still missing, each
+a command with a Copy button (`SetupGuide`, `Sources/ShellCore/Setup/SetupGuide.swift`):
+
+| Found | Steps shown |
+| --- | --- |
+| No uv | Install uv with its official installer, `curl -LsSf https://astral.sh/uv/install.sh \| sh` (or `brew install uv` when Homebrew is installed), then the `metab` step below in a new Terminal window |
+| uv, no `metab` | `uv tool install metabrowser` |
+| A `metab` in uv’s tool directory that does not run | `uv tool install --reinstall metabrowser`, since a plain install reports it as installed and changes nothing |
+| A `metab` older than the minimum | `uv tool install --upgrade 'metabrowser>=0.12.1'` |
+
+Those are the steps once the minimum is on PyPI (`MetabRequirement.isReleased`). Until
+then uv can install only an older release, so every case ends in one step instead:
+`make install` at the root of the source checkout the app was built from, then Choose
+metab… and its `.venv/bin/metab`, naming the older `metab` found, if any.
+A step after uv’s says to run it in a new Terminal window while uv’s directory is not on
+the login shell’s `PATH` from the search, since the window that ran the installer has
+not read the `PATH` it added.
+
+- **Finding uv:** where its installer puts it (`XDG_BIN_HOME`, `XDG_DATA_HOME/../bin`,
+  or `~/.local/bin`), `/opt/homebrew/bin`, `/usr/local/bin`, then the login shell’s
+  `PATH` from the search, so a file check suffices.
+- **Where `metab` will appear:** `uv tool dir --bin`, asked of the first uv found that
+  no other account can change (`ExecutableTrust`), with uv’s location variables passed
+  through. Without one, or if it fails to answer (logged), uv’s documented default, which
+  the screen names.
+- **Which uv it runs:** the app runs a uv it found by itself only if every directory and
+  link from `/` to the file, and the file, belong to this user or root, none is writable
+  by its group or by every account, no access control entry grants a right to change it,
+  and every one of them could be examined, its access control list included: a failure
+  to read either refuses the uv.
+  Each one refused is named on the screen and in the log with the reason; the steps
+  still count it as installed, since the user’s Terminal is what runs it.
+  A standard Homebrew prefix is writable by the `admin` group, so its uv is refused,
+  which costs only the question: uv’s default directory is the answer a Finder launch
+  gets.
+- **Continuing by itself:** the app watches that directory, every place discovery looks
+  without a shell, every candidate the last search tried (those on the login shell’s
+  `PATH` among them), and every place uv may be, once a second and when the app becomes
+  active. A file’s fingerprint includes its mode, so `chmod +x` alone is a change.
+  When `metab` appears or changes, it searches again, adopts the result, and opens the
+  folders that were waiting.
+  When uv appears, the steps shrink to the ones left.
+- **Terminal:** `~/.local/bin` is not on macOS’s default `PATH`. The app needs nothing
+  there, but Terminal does, so the screen suggests `uv tool update-shell` unless the
+  login shell’s `PATH` already has uv’s tool directory.
+
+The app never runs an installer itself.
+“Install for me” (`mb-34oi`) waits on the clean-account matrix (`mb-5fp7`).
+
+### The Version It Requires
+
+`MetabRequirement` (`Sources/ShellCore/Setup/MetabVersion.swift`) sets the oldest
+`metab` the app runs: 0.12.1, the first release with `GET /api/identity`. 0.12.0, the
+latest published release, lacks the route, and 0.12.1 is not published yet, so for now
+only a source checkout’s `metab` meets it.
+A development build of 0.12.1 (`0.12.1.dev214+8b0603f7`, which PEP 440 orders before
+0.12.1) counts as 0.12.1, or no checkout would run.
+Its number says only that it was built after 0.12.0: one built before the route reached
+`main` runs too, and its windows keep the names derived from their paths.
+
+- **Below the minimum,** discovery skips that `metab` and tries the next place.
+  If none qualifies, the app starts no server: Settings shows the version found, the
+  version needed, and, once the minimum is published,
+  `uv tool install --upgrade 'metabrowser>=0.12.1'` to copy (before then, the source
+  checkout step above), and folders wait.
+  The command asks for a floor rather than an exact version, because uv keeps the
+  requirement in the tool’s receipt and a later `uv tool upgrade` would never move past
+  a pin. Choose metab… refuses an older `metab` the same way.
+- **Noticing an upgrade.** The runtime records its executable’s fingerprint (device,
+  inode, size, modification time, and mode) from just before `metab --version` ran.
+  The app compares it with the file once a second and when the app becomes active, and
+  checks before each folder it opens, and at launch before it restores the last session.
+  A change counts once two looks agree, which debounces a file caught in the middle of
+  an install without proving the installer is done: the check reads the file again, and
+  a later change is a new one.
+  Once a change has settled, or when a folder opens and its check sees the file changed,
+  no server starts from the old runtime until a check, a Find Again, or a choice
+  validates one, whichever finishes it; a choice being validated is never overtaken by a
+  check the app starts by itself.
+  The check runs `metab --version` again.
+  A version the app accepts replaces the old one, and if open folders run servers that
+  the same `metab` started at another version, an alert offers to restart them; a folder
+  whose server never started is not counted.
+  The restart uses the runtime accepted when the alert is answered, and restarts nothing
+  if a later change left none.
+  Anything else leaves no runtime, and a search looks for another.
+- **What it cannot prevent:** an upgrade run in Terminal rewrites the environment the
+  running servers import from, before the app notices or the user agrees, so a server
+  can load new code beside old until it restarts (the
+  [setup flows brief](../../docs/project/research/research-2026-11-11-uv-and-macos-app-install.md),
+  Where This Breaks). An upgrade that changes only a dependency leaves `metab` itself
+  unchanged and goes unnoticed.
+
+### The Launch Notice
+
+A copy opened from its disk image runs from a read-only volume, and a quarantined copy
+opened where it was downloaded runs from a randomized read-only mirror (App
+Translocation). Neither can be replaced in place, and the first stops working when the
+image is ejected. macOS has no API to detect either, so `LaunchLocation`
+(`Sources/ShellCore/Setup/LaunchLocation.swift`) reads the bundle’s path and volume, as
+Sparkle does: a path containing `/AppTranslocation/` is translocated, and otherwise a
+volume that `statfs` reports read-only is a disk image.
+`URLResourceKey.volumeIsReadOnlyKey` is not used, since it reports the sealed system
+volume as writable.
+
+At launch such a copy shows “Move Metabrowser to Applications”, which says why and how:
+drag the app to Applications in Finder, then open it from there.
+Show in Finder opens the Applications folder and, on a disk image, selects the app in
+the image; for a translocated copy, whose path hides the original, it opens the
+Applications folder only.
+Continue goes on, and “Don’t remind me” stops the notice for that bundle identifier.
+The app moves nothing itself.
+A copy it made of a translocated app would keep its quarantine and be translocated again
+unless the app removed the attribute, which is a decision for a person.
 
 ### The Child’s Environment
 
@@ -489,9 +679,9 @@ Terminal launch.
 - **Title:** the folder’s short name in bold, then a bullet and “Metabrowser” in a
   secondary style (`fdu • Metabrowser`), so each window says at a glance which folder it
   shows. The names come from `GET /api/identity`, asked once the server is ready.
-  Until then, and from a `metab` without the route, the window names the folder from its
-  path as `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain
-  text, which the Window menu, Mission Control, the Dock, and accessibility read.
+  Until then, and if the route fails, the window names the folder from its path as
+  `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain text,
+  which the Window menu, Mission Control, the Dock, and accessibility read.
   A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
   and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
   The page’s `<title>` is not used.
@@ -737,14 +927,13 @@ Each gap points to the part of the brief that closes it.
 | **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
-| **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |
 | **App-managed runtime** | None: a CLI install is required. | Recommendation 5.2; Wrapping uv |
 | **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized. | Recommendation 6 |
-| **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
+| **Updates** | None: `brew upgrade --cask`, no in-app update notice, and no Sparkle. A copy run from its disk image or translocated gets a launch notice, and moving it is left to the user in Finder. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
 | **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
 | **WebKit measurement gate** | Not run. Large-content bounds were measured in Chrome; `window.print()` and drag and drop are not yet checked by hand. | Recommendation 4 (`mb-etqi`) |

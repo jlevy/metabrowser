@@ -208,6 +208,37 @@
   --kbd-color: var(--muted);
   --kbd-bg: var(--hover-bg);
 
+  /* Shift reveal: the keycap badges and the revealed shortcut strip
+     (docs/design-system.md, "Badge Targets and the Shift Reveal"). The
+     reveal is the live-row yellow, --row-flash-bg. The strip's layer is
+     that color; a badge is that color at 60% opacity, mixed with
+     transparent as --highlight-bg is, so it follows --row-flash-bg in both
+     themes and needs no dark override. It is 60% because a keycap,
+     17 to 20px wide in Chrome, is wider than a tab's 12px inline-end
+     padding and covers the label's last letter, which should still read
+     through its leading edge (judged in headless Chrome 152 in both
+     themes against 75%, under which the letter all but went). The border
+     is a deeper tone of the same hue, with more chroma and a step toward
+     the text, so a keycap on the yellow strip keeps its edge. The text is
+     the body text, because --muted reads 4.09:1 on the light yellow and
+     2.49:1 on the dark one.
+
+     Contrast, as WCAG 2 relative luminance from these oklch values, with a
+     badge blended in sRGB over each surface a target sits on (--bg,
+     --sidebar-bg, --viz-surface, --hover-bg, --highlight-bg), its lowest:
+       light  strip 15.46:1  badge 15.10:1
+       dark   strip 4.76:1  badge 6.55:1
+     A keycap on the strip reads as the strip does. The dark yellow passes
+     with --text as it is, so the reveal keeps --row-flash-bg's lightness
+     rather than taking its own. test_key_reveal_text_meets_contrast_in_both_themes
+     in tests/test_design_vocabulary.py recomputes every figure here and
+     fails when one drifts. The border's dark override is beside
+     --row-flash-bg. */
+  --key-reveal-bg: var(--row-flash-bg);
+  --kbd-badge-bg: color-mix(in srgb, var(--row-flash-bg) 60%, transparent);
+  --kbd-badge-border: oklch(78% 0.13 98.1);
+  --kbd-badge-color: var(--text);
+
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. The default "clean" font set keeps KPress's vendored
      faces (PT Serif prose / Source Sans UI), so family hooks stay unset and
@@ -1165,6 +1196,9 @@
   --scrollbar-thumb-hover: oklch(54.9% 0.026 264.3);
   --tally-skeleton-bg: oklch(41.7% 0.019 264.3);
   --row-flash-bg: oklch(50.98% 0.0977 98.1);
+  /* The Shift reveal's badge border, a deeper tone of the dark yellow; see
+     the light tokens. */
+  --kbd-badge-border: oklch(66% 0.12 98.1);
   /* Lift rather than deepen: the dark categorical palette is already light
      against a near-black page (see the light-theme note beside this token). */
   --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
@@ -2049,10 +2083,10 @@ html.theme-anim .menu {
    announces stays whatever the markup says. Keys stand alone as marks;
    do not nest one inside a <code> or restyle it per surface.
 
-   Dynamic shortcut surfaces use the shared binding renderer. It emits
-   one .kbd per physical key, an unambiguous visual separator, and one
-   expanded spoken phrase for aliases or chords; callers never assemble
-   those pieces themselves. */
+   Dynamic shortcut surfaces use the shared binding renderer. Every
+   binding is a single key, so it emits one .kbd per alternative, the
+   word "or" between alternatives, and one expanded spoken phrase for
+   them; callers never assemble those pieces themselves. */
 
 .kbd {
   display: inline-flex;
@@ -2088,6 +2122,89 @@ html.theme-anim .menu {
 .shortcut-binding-separator {
   margin-inline: 3px;
   color: var(--muted);
+}
+
+/* ── Keyboard keys — Shift reveal badges ─────────────────────────
+   While Shift is held alone, the registry mounts one badge on the first
+   live target of each live command (docs/design-system.md, "Badge Targets
+   and the Shift Reveal"):
+
+     <kbd class="kbd kbd-badge" aria-hidden="true"
+          data-kbd-placement="inline-end">S</kbd>
+
+   A badge is a .kbd, so it keeps the keycap's type, caps, padding, and
+   radius from the rule above; this modifier changes only its paint: the
+   reveal's translucent yellow fill, its deeper border, body text, and the
+   small elevation. It is absolutely positioned and ignores the pointer, so
+   it changes no box and a click lands on the target beneath it. No call
+   site styles a badge.
+
+   Placement has two forms, and neither depends on a container that clips:
+   - inline-end, inside the target over its inline-end padding, vertically
+     centered. The registry marks the target .kbd-badge-host while it
+     carries a badge. For tabs, chips, and text buttons.
+   - beside, also over the target's own inline end, but positioned in the
+     nearest [data-kbd-badge-anchor]: the file header, the folder header,
+     or the commit view's heading. For icon buttons and for targets in a
+     clipping row, such as the Copy path button and the breadcrumbs inside
+     the path row's overflow: hidden, which would cut off a badge inside
+     them. The registry measures the target once as the badge mounts and
+     writes its inline end and vertical center, from the anchor's
+     inline-start and top edges, as --kbd-badge-inline and
+     --kbd-badge-block. The badge's inline end is the anchor's width less
+     that from the anchor's inline end, which is the target's inline end:
+     100% is the anchor's padding box, and no anchor has an inline border.
+     So the badge covers the end of its own control, an icon or a crumb's
+     last letter, and none of the text after it. A crumb narrower than a
+     keycap, such as the root's /, lets the badge reach back over the text
+     before it: at the root, the end of the dimmed root name, the folder Up
+     opens.
+
+   The badge fades in over --transition-fast, appears at once under
+   reduced motion, and goes at once: the registry removes it when the
+   reveal ends, so nothing animates it out. */
+.kbd-badge {
+  position: absolute;
+  pointer-events: none;
+  background: var(--kbd-badge-bg);
+  border-color: var(--kbd-badge-border);
+  color: var(--kbd-badge-color);
+  box-shadow: var(--shadow-sm);
+  animation: key-reveal-in var(--transition-fast);
+}
+.kbd-badge[data-kbd-placement="inline-end"] {
+  inset-inline-end: 0;
+  top: 50%;
+  translate: 0 -50%;
+}
+.kbd-badge[data-kbd-placement="beside"] {
+  inset-inline-end: calc(100% - var(--kbd-badge-inline));
+  top: var(--kbd-badge-block);
+  translate: 0 -50%;
+}
+/* The containing blocks, at zero specificity, so a target or an anchor
+   that already declares a position keeps it. Neither offsets anything,
+   so becoming one moves no box. */
+:where(.kbd-badge-host) {
+  position: relative;
+}
+:where([data-kbd-badge-anchor]) {
+  position: relative;
+}
+/* A target that shows only on hover or focus shows for the reveal, so a
+   badge inside it does not inherit its transparency and a badge beside it
+   does not point at nothing. Only a target carries aria-keyshortcuts among
+   the reveal-on-hover buttons, and the reveal restores pointer-events
+   with the opacity, as every reveal trigger does ("Reveal on Hover Keeps
+   Keyboard Reach"). It fades out on the button's own transition. */
+[data-key-reveal] .icon-btn-reveal[aria-keyshortcuts] {
+  opacity: 1;
+  pointer-events: auto;
+}
+@keyframes key-reveal-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -2137,6 +2254,8 @@ html.theme-anim .menu {
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   line-height: 1.2;
+  /* The containing block of the revealed layer below. */
+  position: relative;
 }
 .nav-shortcut-hints[hidden] {
   display: none;
@@ -2175,6 +2294,56 @@ html.theme-anim .menu {
   outline: 2px solid var(--link);
   outline-offset: 2px;
   border-radius: var(--radius-chrome);
+}
+/* ── Keyboard keys — the revealed strip ──────────────────────────
+   While Shift reveals the keys, Help appends a second layer to the strip,
+   .nav-shortcut-reveal, listing the live commands of the `reveal` surface.
+   The host keeps its resting items and its in-flow size. The layer is out
+   of flow, against the host's bottom edge, one pixel taller than the
+   host's padding box at least so it covers the host's top border, and as
+   tall as its items need: it grows upward over the tree, history, or pull
+   list, which neither reflows nor scrolls. It declares no z-index, so the
+   panel's pinned headers and open menus, which declare one, stay above
+   it, and rows, which do not, stay under it.
+
+   It is the reveal's yellow with --text, since --muted does not reach
+   4.5:1 on it, and its keycaps take a badge's paint, so the strip and
+   the badges read as one set. The ratios are beside the tokens. */
+.nav-shortcut-reveal {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  min-height: calc(100% + 1px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--kbd-badge-border);
+  background: var(--key-reveal-bg);
+  color: var(--text);
+  animation: key-reveal-in var(--transition-fast);
+}
+.nav-shortcut-reveal[hidden] {
+  display: none;
+}
+.nav-shortcut-reveal .kbd {
+  background: var(--kbd-badge-bg);
+  border-color: var(--kbd-badge-border);
+  color: var(--kbd-badge-color);
+}
+.nav-shortcut-reveal .shortcut-binding-separator {
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The reveal appears at once. Hiding is already immediate. */
+  .kbd-badge,
+  .nav-shortcut-reveal {
+    animation: none;
+  }
+  [data-key-reveal] .icon-btn-reveal[aria-keyshortcuts] {
+    transition: none;
+  }
 }
 
 .index-progress[hidden] {
@@ -5427,6 +5596,10 @@ pre.code-block.metabrowser-source-lines > code {
   /* Covers Quick File too: its overlay is a .modal-overlay. */
   .modal-overlay,
   .nav-shortcut-hints,
+  /* The Shift reveal: a badge can sit in the commit view's heading, which
+     prints, and the revealed strip is never on paper either. */
+  .kbd-badge,
+  .nav-shortcut-reveal,
   .index-progress,
   .loading,
   .spinner {

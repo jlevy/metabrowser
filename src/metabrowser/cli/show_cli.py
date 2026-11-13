@@ -99,11 +99,18 @@ def _describe_views(views: Any) -> str:
     for view in views:
         if not isinstance(view, dict):
             continue
-        label = str(view.get("id", "?"))
-        if view.get("default"):
-            label += " (default)"
-        rendered.append(label)
+        rendered.append(_describe_view(view))
     return ", ".join(rendered) if rendered else "none"
+
+
+def _describe_view(view: Mapping[str, Any]) -> str:
+    """Name a view with its default mark and its key, as Help writes it: uppercase."""
+    notes = ["default"] if view.get("default") else []
+    key = view.get("key")
+    if isinstance(key, str):
+        notes.append(f"key {key.upper()}")
+    label = str(view.get("id", "?"))
+    return f"{label} ({', '.join(notes)})" if notes else label
 
 
 def _describe_model(payload: dict[str, Any]) -> str:
