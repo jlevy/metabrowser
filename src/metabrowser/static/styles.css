@@ -1077,15 +1077,30 @@
   --git-lane-4: oklch(0.69 0.1 186.78);
   --git-lane-5: oklch(0.68 0.21 304.41);
 
-  /* Ref badges, and the lane color for the branch HEAD is on. Each is
-     text on the chip ground below, so all three sit at the same
-     lightness and differ by hue: local, remote, tag. */
+  /* File change letters. Renamed is a blue of its own rather than a ref
+     color: the letter sits beside added's green, and the ref colors below
+     answer a different question. */
   --git-status-added: oklch(48% 0.09 149.18);
   --git-status-deleted: oklch(50% 0.12 27.2);
   --git-status-modified: oklch(50% 0.1 85);
-  --git-status-renamed: var(--git-ref-local);
-  --git-ref-local: oklch(0.5 0.1 259.52);
-  --git-ref-remote: oklch(0.5 0.1 301.25);
+  --git-status-renamed: oklch(50% 0.1 259.52);
+
+  /* Ref chips. Each is text on the chip ground below, so all three sit
+     at the same lightness and differ by hue: remote, local, tag.
+     Remote is the blue because it is the branch most chips show: a pull
+     request's base and head, a mirror's branches, the ref selector, and
+     a checkout's `origin/…`. It is also the lane color for the branch
+     HEAD is on (git-graph.js). Local, which only a checkout's history
+     shows, is a blue-green: clear of that blue, of a merged pull
+     request's purple (--github-pull-merged), and of the tag's amber.
+     Its chroma is the most sRGB holds at this lightness and hue. Hue is
+     not the only signal between the two: a remote branch's name carries
+     its remote, as `origin/topic` does.
+     WCAG contrast of the text on --git-ref-bg, the same for the solid
+     trunk form that swaps the two: remote 5.22:1, local 5.00:1, tag
+     5.31:1. */
+  --git-ref-remote: oklch(0.5 0.1 259.52);
+  --git-ref-local: oklch(0.5 0.085 205);
   --git-ref-tag: oklch(0.5 0.14 71.1);
   /* Branch and tag chips carry their own ground, so a ref never reads as
      a filter chip: a near-neutral at the value of the surfaces beside
@@ -1212,16 +1227,18 @@
      re-tuning them per theme would break the separation they were
      chosen for as a set. Badge colors do need lifting — the light
      values are text on a dark surface here, not on a light one. Each
-     keeps its hue and chroma and rises in lightness only, so the three
-     stay the same three colors. `--git-ref-local` is overridden here
-     too: it used to inherit a themed token, and a literal light value
-     would be unreadable on this background. */
+     keeps its hue and rises in lightness, so the three stay the same
+     three colors; local also takes remote's chroma, which sRGB holds at
+     this lightness. Every one is a literal here: a light value inherited
+     would be unreadable on this background.
+     WCAG contrast on --git-ref-bg: remote 6.71:1, local 6.99:1, tag
+     7.06:1. */
   --git-status-added: oklch(78% 0.09 149.18);
   --git-status-deleted: oklch(78% 0.12 27.2);
   --git-status-modified: oklch(78% 0.1 85);
-  --git-status-renamed: var(--git-ref-local);
-  --git-ref-local: oklch(0.74 0.1 259.52);
-  --git-ref-remote: oklch(0.74 0.1 301.25);
+  --git-status-renamed: oklch(74% 0.1 259.52);
+  --git-ref-remote: oklch(0.74 0.1 259.52);
+  --git-ref-local: oklch(0.74 0.1 205);
   --git-ref-tag: oklch(0.76 0.14 71.1);
   --git-ref-bg: oklch(26% 0.008 240);
 }
@@ -3643,15 +3660,30 @@ a.tab-btn {
    across the header, the settings gear, so it must not grow chrome
    that those do not have. */
 
+/* A badge is one word or two on one line, and centers its capitals, not
+   the font's line box. Centered by its line box, 12px Source Sans 3
+   left 3.14px above its capitals and 5px below its baseline in a 16px
+   box, so the word sat 0.93px high, in Chrome and in WebKit alike and
+   in both themes. text-box trims the line to the capitals and the baseline, and
+   align-content centers what is left in a box held at the size the line
+   and pads gave it: 1lh plus the block pads and borders. The capitals
+   then sit 0.02-0.04px off center in Chrome and 0.07-0.09px in WebKit,
+   which rounds the trimmed height to a whole pixel. The system font set
+   sat 0.23px high; Chrome now centers it, and WebKit's whole-pixel trim
+   leaves it where it was. An engine without text-box keeps the untrimmed
+   line, centered as before. A variant that changes the block pads or
+   border restates block-size to match. */
 .file-header-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-block;
+  flex-shrink: 0;
+  block-size: calc(1lh + 2 * 2px);
   padding: 2px 8px;
   border-radius: var(--radius-chrome);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
-  flex-shrink: 0;
+  white-space: nowrap;
+  align-content: center;
+  text-box: trim-both cap alphabetic;
 }
 .badge-completed {
   background: oklch(92.2% 0.037 152.6);
