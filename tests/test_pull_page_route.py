@@ -174,8 +174,9 @@ def test_a_text_is_asked_for_one_pane_ahead_and_no_further() -> None:
         in source
     )
     assert "{ root: pane, rootMargin: MARKDOWN_AHEAD }" in source
-    # Only the description is asked for at once, or a page with no observer at all.
-    assert source.count('part === "body" || observer === null') == 2
+    # Only the description is asked for at once, or a page with no observer at all: the one
+    # rule every paint and every new record's asks go through.
+    assert source.count('part === "body" || observer === null') == 1
     styles = (PAGE_JS.parent.parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
     assert re.search(r"\n\.preview-pane \{[^}]*overflow-y: auto;", styles)
     with TestClient(app) as client:

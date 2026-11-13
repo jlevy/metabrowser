@@ -254,6 +254,81 @@ def test_the_tree_holds_its_invariants() -> None:
     assert checks["a list for another read starts again at 0"] is True
 
 
+def test_a_tree_opens_once_and_never_grows_without_input() -> None:
+    """A row's tree opens at its height, and late rows wait for the reader.
+
+    Opening waits ``FILES_OPEN_HOLD_MS`` for the cached list it reads at once, so a list the
+    cache holds goes from closed to its rows in one step, where it went through its loading
+    line first. Rows a GitHub job brings ``LATE_ROWS_MS`` past the reader's last press or key,
+    or past the tree's opening on a landing with no input yet, are offered and drawn when the
+    reader asks; before, they pushed the rows below without input. That holds for every later
+    change to a drawn tree as well (review A3): a list's further pages wait on its line, and a
+    complete list a refresh changes floats its offer over the tree's top, so offering moves
+    nothing. Rows inside the input's window are drawn as before.
+    """
+
+    assert run_session("github-pull-files-opening-behavior.js") == {
+        "cached": ["closed", "4 rows"],
+        "lateRows": ["closed", "loading line", "0 rows, offer: Show 2 files", "4 rows"],
+        "promptRows": ["closed", "loading line", "4 rows"],
+        "fill": {
+            # Before review A3 the drawn tree grew to 203 and 256 rows with no input.
+            "painted": [
+                "closed",
+                "loading line",
+                "0 rows, offer: Show 100 files",
+                "103 rows",
+                "103 rows, offer: Show 100 more files",
+                "103 rows, offer: Show 149 more files",
+                "256 rows",
+            ],
+            "drawnWhileIdle": 103,
+            "drawnAfterPress": 256,
+        },
+        # Before review A4 a landing drew late rows: there was no input to count from.
+        "landing": ["closed", "loading line", "0 rows, offer: Show 2 files"],
+        "refreshed": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file"],
+            "floats": True,
+        },
+        # A later refresh that brings back the rows drawn withdraws the offer (review D4);
+        # before, it stood as "Show the updated list of 2 files".
+        "offerWithdrawn": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file", "4 rows"],
+            "spans": ["opening met 0 ms", "lateRows withdrawn 60000 ms"],
+        },
+        # A refresh that changes nothing draws the same rows, so it is drawn in place and
+        # offers nothing (review C3); before, "Show the updated list of 2 files".
+        "unchangedRefresh": {"painted": ["closed", "4 rows"], "reads": 3, "offer": None},
+        # An offer joins what the drawn tree says and hides none of it (review C6).
+        "offerKeepsNotices": {
+            "stopped": {
+                "line": "200 files so far, 2 of 3 pages",
+                "notice": (
+                    "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. "
+                    "No automatic attempt runs before then."
+                ),
+                "offer": "Show 5 more files",
+            },
+            "failedPoll": {
+                "notice": "The server did not answer.",
+                "action": "retry",
+                "offer": "Show 1 more file",
+            },
+        },
+        "slowRead": ["closed", "loading line"],
+        # Each hold's span: how long it held and why it ended, an offer the tree closes on
+        # included (review B1), and a first read that fails as failed (review C7).
+        "spans": {
+            "cached": ["opening met 0 ms"],
+            "lateRows": ["opening met 0 ms", "lateRows reader 100 ms"],
+            "landingClosed": ["opening met 0 ms", "lateRows closed 400 ms"],
+            "failedRead": ["opening failed 0 ms"],
+            "slowRead": ["opening bound 150 ms"],
+        },
+    }
+
+
 def test_the_recording_holds_every_failure_the_plan_names() -> None:
     """Each typed state of the plan's table has a recorded answer the session plays."""
 
@@ -290,6 +365,11 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
                 for phase in ("asked", "running", "settled")
             },
         },
+        # Late rows offered on the line: pressing the offer draws them and leaves focus on the
+        # tree's anchor, not on the document body (review A2). Only a press from the keyboard
+        # scrolls to it; a pointer pressed the offer where it is (review C4).
+        {"scenario": "offer pressed", "focus": "a.py", "scrolls": 1},
+        {"scenario": "offer clicked", "focus": "a.py", "scrolls": 0},
     ]
 
 
