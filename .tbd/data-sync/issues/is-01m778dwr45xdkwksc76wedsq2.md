@@ -5,8 +5,8 @@ title: "PR #365 B2: Help can never list a live plugin command"
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m778dvx23m1ywrx09d79z4xc
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:51:52.963Z
-updated_at: 2026-11-12T06:55:46.903Z
+updated_at: 2026-11-13T16:45:58.328Z
 started_at: 2026-11-12T06:51:55.693Z
 closed_at: 2026-11-12T06:55:46.902Z
 close_reason: fixed in 05af931; disposition https://github.com/jlevy/metabrowser/pull/365#issuecomment-6816982501

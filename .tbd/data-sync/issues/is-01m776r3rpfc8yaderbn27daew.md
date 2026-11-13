@@ -5,8 +5,8 @@ title: "PR #365 A2: Reveal machine key-event source and order vs registry unspec
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m776r2cnzdym10bxpzq6f94g
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:22:30.677Z
-updated_at: 2026-11-12T06:32:13.086Z
+updated_at: 2026-11-13T16:45:51.562Z
 started_at: 2026-11-12T06:22:48.325Z
 closed_at: 2026-11-12T06:32:13.085Z
 close_reason: "fixed in 1e29a30 (PR #365 review A A2); see the disposition reply"

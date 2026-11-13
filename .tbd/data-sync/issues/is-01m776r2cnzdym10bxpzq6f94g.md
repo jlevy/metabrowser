@@ -5,8 +5,8 @@ title: "Address PR #365 review A: Shift key reveal spec"
 kind: task
 status: closed
 priority: 1
-version: 19
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 20
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -30,7 +30,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:22:29.267Z
-updated_at: 2026-11-12T06:32:18.424Z
+updated_at: 2026-11-13T16:45:42.196Z
 started_at: 2026-11-12T06:22:47.627Z
 closed_at: 2026-11-12T06:32:18.423Z
 close_reason: "All review A findings dispositioned (16 fixed) and the marked reply posted on PR #365"

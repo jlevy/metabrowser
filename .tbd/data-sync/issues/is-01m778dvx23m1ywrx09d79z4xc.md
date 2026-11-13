@@ -5,8 +5,8 @@ title: "Address PR #365 review B: Shift key reveal spec follow-up"
 kind: task
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -17,7 +17,7 @@ child_order_hints:
   - is-01m778dy0vgndw7mg223vpnx57
   - is-01m778dyebxr132jsgh61qvxen
 created_at: 2026-11-12T06:51:52.097Z
-updated_at: 2026-11-12T06:55:48.784Z
+updated_at: 2026-11-13T16:45:43.543Z
 closed_at: 2026-11-12T06:55:48.783Z
 close_reason: Review B fully dispositioned at 05af931
 resolution: null

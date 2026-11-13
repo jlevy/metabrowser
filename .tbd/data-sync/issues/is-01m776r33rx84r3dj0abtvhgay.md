@@ -5,8 +5,8 @@ title: "PR #365 A1: HTML Preview P and stack P collide at registration in global
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m776r2cnzdym10bxpzq6f94g
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:22:30.005Z
-updated_at: 2026-11-12T06:32:12.719Z
+updated_at: 2026-11-13T16:45:51.102Z
 started_at: 2026-11-12T06:22:47.979Z
 closed_at: 2026-11-12T06:32:12.718Z
 close_reason: "fixed in 1e29a30 (PR #365 review A A1); see the disposition reply"

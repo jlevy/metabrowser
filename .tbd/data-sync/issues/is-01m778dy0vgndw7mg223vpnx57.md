@@ -5,8 +5,8 @@ title: "PR #365 B5: Staged syncViewTabs(null) disposer runs on a cancelled stage
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-11-shift-key-reveal-and-keymap.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m778dvx23m1ywrx09d79z4xc
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:51:54.266Z
-updated_at: 2026-11-12T06:55:48.029Z
+updated_at: 2026-11-13T16:45:59.554Z
 started_at: 2026-11-12T06:51:56.777Z
 closed_at: 2026-11-12T06:55:48.028Z
 close_reason: fixed in 05af931; disposition https://github.com/jlevy/metabrowser/pull/365#issuecomment-6816982501
