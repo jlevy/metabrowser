@@ -237,7 +237,8 @@ export function describeRow(row, repository) {
   const headLabel = rowHead(row, repository);
   const baseRef = text(row.base_ref);
   const headRef = text(row.head_ref);
-  const refs = `${baseRef} ← ${headLabel}`;
+  // Source → target, as `mb.mergeRefs` draws it (docs/design-system.md, "Merge Direction").
+  const refs = `${headLabel} → ${baseRef}`;
   return {
     number: row.number,
     href: `/pull/${row.number}`,
@@ -2875,16 +2876,26 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /** @param {PullRow} row @param {HTMLElement} stack */
   function rowMeta(row, stack) {
+    // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
+    // branches each carry the separator before them, so either moves to the next line
+    // whole, and a separator that starts a line is clipped.
+    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
-      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-      stack,
-      " · ",
-      authorLabel(row.author, row.avatar, "github-pulls-author"),
-      " · ",
-      h("span", { class: "github-pulls-refs" }, [
-        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
-        " ← ",
-        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
+      h("span", { class: "github-pulls-line" }, [
+        h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        stack,
+        h("span", { class: "github-pulls-by" }, [
+          separator(),
+          authorLabel(row.author, row.avatar, "github-pulls-author"),
+        ]),
+        h("span", { class: "github-pulls-merge" }, [
+          separator(),
+          mb.mergeRefs(
+            { name: row.headRef, label: row.headLabel },
+            { name: row.baseRef },
+            { kind: "remote", copy: "sibling" },
+          ),
+        ]),
       ]),
     ]);
   }

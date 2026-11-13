@@ -916,17 +916,19 @@ function describeCore(pull) {
     actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
     baseRef: text(pull.base?.ref),
     headRef: text(pull.head?.ref),
-    // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
-    // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
-    // An account GitHub deleted is its "ghost"; a record that names no merger at all
-    // says only "merged 6 commits into", rather than crediting anyone.
+    // "<merger> merged 6 commits: <head> → <base>", and for an open, draft, or closed
+    // pull request "<author> wants to merge 1 commit: <head> → <base>". The verbs are
+    // github.com's; the branches read source → target, never github.com's "into <base>
+    // from <head>" (docs/design-system.md, "Merge Direction"). An account GitHub deleted
+    // is its "ghost"; a record that names no merger at all says only "merged 6 commits",
+    // rather than crediting anyone.
     actor:
       state !== "merged"
         ? who(pull.author)
         : typeof pull.merged_by === "string" && pull.merged_by
           ? pull.merged_by
           : null,
-    action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
+    action: `${state === "merged" ? "merged" : "wants to merge"}${count}`,
     base: sideName(pull.base, crossRepository),
     head: sideName(pull.head, crossRepository),
     htmlUrl: text(pull.html_url),
@@ -3063,7 +3065,7 @@ export function mountPullPage(container, ctx, mb) {
   const body = h("div", { class: "github-pull-body" });
   const stackColumn = h("div", { class: "github-pull-stacks", hidden: "" });
   const stateBadge = h("span");
-  const stateDetails = h("span");
+  const stateDetails = h("span", { class: "github-pull-state-details" });
   const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stackColumn, stateDetails]);
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
@@ -3607,10 +3609,12 @@ export function mountPullPage(container, ctx, mb) {
     stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
     stateDetails.replaceChildren(
       ...(pull.actor === null ? [] : [authorLabel(pull.actor, pull.actorAvatar)]),
-      `${pull.actor === null ? "" : " "}${pull.action} `,
-      mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
-      " from ",
-      mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
+      `${pull.actor === null ? "" : " "}${pull.action}: `,
+      mb.mergeRefs(
+        { name: pull.headRef, label: pull.head },
+        { name: pull.baseRef, label: pull.base },
+        { kind: "remote" },
+      ),
     );
     return stateRow;
   }
