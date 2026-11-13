@@ -23,6 +23,13 @@ All notable changes to Metabrowser are documented here.
   snapshot changed does, so folder rollups also refresh after it.
   See [the plugin guide](docs/plugins.md).
 
+- Shutting down no longer logs a file watcher traceback.
+  A change the watcher picked up just as the server stopped used to be refused by the
+  already-closed inventory, and the log showed an `InventoryClosedError` twice: as
+  “exception in shielded future” and as “watcher failed while stopping”.
+  That last change is now applied before the inventory closes, and a watcher that does
+  fail while stopping is reported once.
+
 - The Pulls tab’s lists have no limit.
   Open, Closed, and All keep loading as you scroll, a page at a time, through the oldest
   pull request, as Commits does.
