@@ -3475,6 +3475,155 @@ async function run() {
       internals.mountedSummaryRevision(),
       null,
     );
+
+    // C1: a read that would confirm the refs of the summary on screen fails. The summary
+    // shows no refs rather than the old session's, and the diff is left alone; the next
+    // page to arrive tries again. Through recovery, a full refresh, and a staged install.
+    const failDetail = (revision) =>
+      responses.set(`/api/git/commit/${revision}`, {
+        httpStatus: 500,
+        body: { error: "boom", code: "internal" },
+      });
+    await freshSession();
+    await internals.selectCommit(at(4));
+    diffRenders = renderedDiffRevisions.length;
+    comparisons = comparisonFetches.length;
+    failDetail(at(4));
+    await expireAndRecover();
+    assertNotContains("C1 recovery: a failed read shows no old refs", mountedRefs(), "b4-old");
+    assertEqual("C1 recovery: the summary shows no refs", mountedRefs(), "");
+    assertEqual(
+      "C1 recovery: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "C1 recovery: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+    serveDetail(at(4));
+    await internals.loadNextPage(false);
+    await tick();
+    assertContains(
+      "C1 recovery: the next page to arrive confirms the refs",
+      mountedRefs(),
+      "b4-now",
+    );
+
+    await freshSession();
+    await internals.selectCommit(at(4));
+    failDetail(at(4));
+    moved = true;
+    headRef = "refs/heads/other";
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && mountedRefs().includes("b4-old"); attempt += 1) {
+      await tick();
+    }
+    await tick();
+    assertNotContains("C1 refresh: a failed read shows no old refs", mountedRefs(), "b4-old");
+    serveDetail(at(4));
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && !mountedRefs().includes("b4-now"); attempt += 1) {
+      await tick();
+    }
+    assertContains(
+      "C1 refresh: showing the panel again confirms the refs",
+      mountedRefs(),
+      "b4-now",
+    );
+
+    await freshSession();
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = resolve;
+      });
+    const stagingDeep = internals.selectCommit(at(4));
+    await tick();
+    failDetail(at(4));
+    await expireAndRecover();
+    releaseAssets();
+    await stagingDeep;
+    await tick();
+    sandbox.metabrowser.ensureKindAssets = ensureKindAssets;
+    assertNotContains("C1 staged: a failed read installs no old refs", mountedRefs(), "b4-old");
+    serveDetail(at(4));
+
+    // C2: a confirmation still waiting on its read does not keep a summary that was taken
+    // off the screen alive.
+    const v8 = require("node:v8");
+    v8.setFlagsFromString("--expose-gc");
+    const collect = vm.runInNewContext("gc");
+    await freshSession();
+    await internals.selectCommit(at(4));
+    let answerDeep = () => {};
+    responses.set(
+      `/api/git/commit/${at(4)}`,
+      () =>
+        new Promise((resolve) => {
+          answerDeep = () => resolve(detailFor(at(4)));
+        }),
+    );
+    const identityRef = new WeakRef(
+      document.getElementById("preview-pane").querySelector(".git-commit-identity"),
+    );
+    const recovering = expireAndRecover();
+    await tick();
+    panel.cancelPending();
+    sandbox.MetabrowserShell.renderPreviewHtml(
+      "<div>elsewhere</div>",
+      sandbox.MetabrowserShell.claimPreview("file"),
+    );
+    stagedPreviewNodes.length = 0;
+    previewNode = null;
+    await tick();
+    collect();
+    await tick();
+    collect();
+    assertTrue(
+      "C2: a pending confirmation does not keep a disposed summary alive",
+      identityRef.deref() === undefined,
+    );
+    answerDeep();
+    await recovering;
+    serveDetail(at(4));
+
+    // C3: the selected row's evicted detail is read on hover without a preparation, and
+    // the panel is torn down before it answers. The late answer starts no further read
+    // and puts nothing in the cleared cache.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    for (const index of [1, 2, 3]) {
+      await internals.fetchCommitDetail(at(index));
+    }
+    let answerLate = () => {};
+    const lateDetail = detailFor(at(0));
+    responses.set(
+      `/api/git/commit/${at(0)}`,
+      () =>
+        new Promise((resolve) => {
+          answerLate = () => resolve(lateDetail);
+        }),
+    );
+    const lateRow = rowFor(at(0));
+    lateRow._hovered = true;
+    lateRow.dispatch("mouseenter");
+    await tick();
+    internals.teardown();
+    serveDetail(at(0));
+    const beforeLate = detailFetches(at(0));
+    answerLate();
+    await tick();
+    await tick();
+    lateRow._hovered = false;
+    const afterLate = detailFetches(at(0));
+    assertEqual("C3: a hover answered after teardown reads nothing more", afterLate, beforeLate);
+    await internals.fetchCommitDetail(at(0));
+    assertEqual("C3: the cleared cache stays empty", detailFetches(at(0)), afterLate + 1);
+    // Put the panel back for the cases after this one.
+    await panel.init();
+    registeredPanel.onShow();
+    await tick();
   }
 
   // ── A stale cursor is a typed state with a reload action ───

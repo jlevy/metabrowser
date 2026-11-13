@@ -127,10 +127,12 @@
   const refsReadIn = new WeakMap();
   // The selected commit's summary on screen and the session its refs were confirmed in,
   // so its refs can be brought up to date in place without touching the diff under it.
-  // Released when that view is relinquished or disposed.
-  /** @typedef {{revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
+  // Released when that view is relinquished or disposed. `token` names the mount without
+  // holding its DOM, which is all a confirmation still on its way keeps.
+  /** @typedef {{token: number, revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
   /** @type {MountedSummary | null} */
   let mountedSummary = null;
+  let summaryMounts = 0;
   // Commits the server answered `commit_not_found` for: the repository does not have
   // them, which is not a failed request. Bounded like the detail cache.
   /** @type {Set<string>} */
@@ -531,6 +533,9 @@
     });
     state.scopeFingerprint = fingerprint;
     adoptRowRefs(commits);
+    if (!refreshing && !recoveringSession) {
+      void revalidateMountedSummary();
+    }
 
     if (pageNumber === state.nextPageNumber) {
       state.rowCount = startOrdinal + commits.length;
@@ -859,18 +864,43 @@
    * commit past recovery's replay depth or off a refreshed first page, or one staged in
    * an older session, reads its commit again and takes only the refs.
    *
+   * Refs from an older session are never shown: the summary drops them before it reads,
+   * and a read that fails or is not of this session leaves it with none, still
+   * unconfirmed, so the next page that arrives or the next showing of the panel tries
+   * again.
+   *
    * @returns {Promise<void>}
    */
-  async function revalidateMountedSummary() {
+  function revalidateMountedSummary() {
     const mounted = mountedSummary;
     if (!mounted || mounted.generation === historyGeneration) {
-      return;
+      return Promise.resolve();
     }
-    const generation = historyGeneration;
-    const detail = await fetchCommitDetail(mounted.revision);
+    if (!mounted.identity.isConnected) {
+      releaseMountedSummary(mounted);
+      return Promise.resolve();
+    }
+    mounted.identity.querySelector(".git-commit-refs")?.remove();
+    mounted.refs = "";
+    return confirmSummaryRefs(mounted.token, mounted.revision, historyGeneration);
+  }
+
+  /**
+   * Read a commit and give its refs to the summary on screen, if that is still the mount
+   * *token* names and the session is still *generation*. It holds no DOM while it waits,
+   * so a summary disposed meanwhile is not kept alive by a slow or stalled read.
+   *
+   * @param {number} token
+   * @param {string} revision
+   * @param {number} generation
+   * @returns {Promise<void>}
+   */
+  async function confirmSummaryRefs(token, revision, generation) {
+    const detail = await fetchCommitDetail(revision);
+    const mounted = mountedSummary;
     if (
+      mounted?.token === token &&
       detail &&
-      mountedSummary === mounted &&
       generation === historyGeneration &&
       refsReadIn.get(detail) === generation
     ) {
@@ -1839,8 +1869,15 @@
         shell()?.isPreviewClaimCurrent(lastSelection.claim);
       const preparation = selectedHere ? null : prepareRevision(revision, true);
       let detail = await (preparation?.detail ?? fetchCommitDetail(revision));
-      // The history was rebuilt while the detail was read: read it in this session.
-      if (detail && refsReadIn.get(detail) !== historyGeneration) {
+      // The history was rebuilt while the detail was read: read it in this session, if
+      // the hover is still wanted. A hover cancelled meanwhile, as by teardown, asks
+      // nothing more.
+      if (
+        detail &&
+        refsReadIn.get(detail) !== historyGeneration &&
+        hoverRevision === revision &&
+        rowElement.isConnected
+      ) {
         detail = await fetchCommitDetail(revision);
       }
       if (!detail || refsReadIn.get(detail) !== historyGeneration) {
@@ -2349,7 +2386,13 @@
       // A detail the cache did not hand out is the caller's, which vouches for it.
       const generation = refsReadIn.get(detail) ?? historyGeneration;
       mountedSummary = identity
-        ? { revision: commit.id, refs: refsKey(commit.refs), generation, identity }
+        ? {
+            token: ++summaryMounts,
+            revision: commit.id,
+            refs: refsKey(commit.refs),
+            generation,
+            identity,
+          }
         : null;
       // Staged in an older session, as when the history was rebuilt while the diff's
       // assets loaded: confirm its refs now.
@@ -2704,6 +2747,8 @@
       await refreshHistory();
       return;
     }
+    // A summary whose refs a read could not confirm tries again each time the panel shows.
+    void revalidateMountedSummary();
 
     if (state.failed) {
       if (state.failedPage !== null) {
