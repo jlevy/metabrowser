@@ -42,7 +42,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, Literal, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -68,6 +68,7 @@ class CheckoutRepository(ListedRepository):
     Before a store is attached, its page withholds any shared comparison.
     """
 
+    checkout: ClassVar[bool] = True
     git_source: GitSource
     checkout_root: Path
     cached: PublishedSource | None = field(default=None, compare=False, repr=False)

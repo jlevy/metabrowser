@@ -46,6 +46,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     UnreadableItemError,
     active_account,
     as_dict,
+    cache_unwritable,
     read_list,
     readable_items,
     utc_stamp,
@@ -255,8 +256,11 @@ async def _write(repository: ListedRepository, listed: PullFileList) -> None:
         await asyncio.to_thread(write_pull_files, repository.home, repository.slug, listed)
     except (RecordTooLargeError, PrivateStorageError, OSError) as exc:
         log.debug("could not write the list of changed files: %s", exc)
-        raise PullDataError(
-            "cache_unwritable", "the list of changed files could not be written to the cache"
+        raise cache_unwritable(
+            f"the changed files of pull request #{listed.number}",
+            exc,
+            source=repository.source,
+            checkout=repository.checkout,
         ) from exc
 
 
