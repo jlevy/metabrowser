@@ -3,15 +3,19 @@ type: is
 id: is-01m78fd7rt1t7eww5sqks2xgbn
 title: Install review build 2704 (1f86a4c) to /Applications
 kind: task
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
 parent_id: is-01m76h3hxc44pkpkv2k8syp145
 created_at: 2026-11-12T18:13:05.945Z
-updated_at: 2026-11-13T00:37:22.528Z
+updated_at: 2026-11-13T06:26:23.039Z
+closed_at: 2026-11-13T06:26:23.038Z
+close_reason: "Installed 2026-11-12: dev 0.1.0 (2704, 1f86a4c), codesign verified. session.json copied to ~/Library/Application Support/Metabrowser; all 5 windows restored, each server ready, logs in ~/Library/Logs/Metabrowser; the metaproc window's Pulls list is current (refresh succeeded) with the app's metab."
+resolution: null
+duplicate_of: null
 ---
 Built from the stack top 41858a3d plus #367, with the mb-sugi fix. Waits for the running Metabrowser to quit; install with ditto, verify codesign and MetabrowserSourceCommit, then relaunch and check the windows restore with the review build's metab.
 
