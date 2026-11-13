@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Markdown document’s images no longer blink when you come back to its file in the
+  macOS app. Opening another file and returning built the document again with lazy
+  images, which WebKit fetched again before drawing them, so the images at the top were
+  blank for a moment. An image already loaded in the page now loads at once from that
+  copy; one you have not reached yet still waits until you scroll to it.
+  An image changed on disk while the page is open shows its new content after a reload,
+  as it already did in Chrome.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
 - TypeScript is a saturated yellow, departing from GitHub’s colors on purpose.
   GitHub makes TypeScript and Python both blue, and wherever file types are colored —
   the tree’s file icons, the File Overview’s bars and legend, and the Treemap — the two

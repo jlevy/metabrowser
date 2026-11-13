@@ -3172,6 +3172,44 @@ arrival moves nothing.
 each avatar’s loading by placement and which avatars a repaint keeps or builds: its
 attributes and node lifecycle, not its paint.
 
+A Markdown document is built again each time its file is entered; switching between its
+Document and Source views keeps it.
+KPress writes its images lazy, and one far down a long document should wait for the
+reader. So an image whose served address has already loaded in this page is made eager
+before that address is set, and takes the copy the page holds; an image the page has not
+loaded stays lazy. The authored address is removed first: an eager image asks for its
+address at once, and the authored one, relative to the document, is not where the image
+is served. The page remembers as many such addresses as one document’s link enhancer
+admits, 4,096, and past that the oldest load lazily again.
+
+Measured in the same WKWebView on 2026-11-13, on a document with three images in its
+first screen and one 4,800 px down, served by Metabrowser behind a proxy that delayed
+each image 80 ms and counted requests, and reading each of the three at each animation
+frame and again after layout.
+Leaving for another file and coming back, each of 5 returns asked for all three images
+again and left each without its image for 3 frames, 100 ms at 30 frames a second.
+With the held images eager, the returns asked for none, and each image was complete,
+with its width, in its first frame.
+Making the shown images eager in the first frame, after they had been created lazy,
+changed nothing: each return still asked for all three, and each was blank for 3 or 4
+frames. So WebKit had given up the copy when it deferred them, an inference from the
+counts. Without removing the authored address first, each return also asked the server
+for the three images at their authored addresses.
+Switching to Source and back built nothing, before and after: no request and no blank
+frame. Headless Chrome 152 asked for nothing and had every image complete in its first
+frame, before and after, and neither engine asked for the image far down.
+
+An image from outside the served tree, such as a badge, keeps the address its author
+wrote, which it has, lazy, from the moment the document is parsed.
+WebKit still asks for it again: with one added to the first screen and served with
+`max-age=300`, each of 5 returns asked for it and left it blank for 3 frames, while
+Chrome asked for nothing and had it complete in its first frame.
+A held image is not asked for again, so one changed on disk while the page is open shows
+its new content after a reload, in WebKit now as in Chrome before.
+`test_a_reentered_document_takes_the_images_the_page_holds` checks, in a browserless
+DOM, which images the production link enhancer makes eager, the order in which it sets
+their attributes, and when it forgets one: attributes, not loading or paint.
+
 ## Text Selection
 
 Text selection is content behavior.

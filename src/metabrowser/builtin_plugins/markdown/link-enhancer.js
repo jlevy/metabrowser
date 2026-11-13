@@ -18,6 +18,60 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
   Object.freeze({ selector: "object[data]", attribute: "data" }),
 ]);
 
+/**
+ * The addresses of the served images this page has loaded, oldest first.
+ *
+ * KPress writes `loading="lazy"` on a document's images, and entering a file again builds
+ * its document again. WebKit, the macOS app's engine, does not give a new lazy image the
+ * copy the page holds: once layout shows the image it asks the network again, so the
+ * images at the top of a document entered again had none for the round trip. An image
+ * made eager before its address is set takes the held copy, as a lazy one does in Chrome.
+ * An image the page has not loaded stays lazy. docs/design-system.md, "A Repaint Keeps
+ * Its Images", has the measurements.
+ *
+ * At most as many as one document's enhancer admits, so a long document's first images
+ * are not forgotten by the time the reader leaves it. Past that, the oldest is forgotten
+ * and loads lazily again.
+ *
+ * @type {Set<string>}
+ */
+const heldImages = new Set();
+/** @type {WeakSet<Element>} The images whose address the enhancer set. */
+const servedImages = new WeakSet();
+
+/**
+ * Make *image* eager if the page holds the image at *href*, before its address is set.
+ *
+ * The authored address goes first. An eager image asks for its address at once, and the
+ * authored one, relative to the document, is not where the image is served.
+ *
+ * @param {Element} image
+ * @param {string} href
+ */
+function loadHeldImageEagerly(image, href) {
+  if (heldImages.has(href)) {
+    image.removeAttribute("src");
+    image.setAttribute("loading", "eager");
+  }
+}
+
+/** @param {Event} event */
+function rememberHeldImage(event) {
+  const image = /** @type {Element | null} */ (event.target);
+  const href = image && servedImages.has(image) ? image.getAttribute("src") : null;
+  if (!href) {
+    return;
+  }
+  heldImages.delete(href);
+  heldImages.add(href);
+  if (heldImages.size > MAX_ENHANCED_TARGETS) {
+    const oldest = heldImages.values().next();
+    if (!oldest.done) {
+      heldImages.delete(oldest.value);
+    }
+  }
+}
+
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
 
 /**
@@ -182,7 +236,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         },
         (resolved) => {
           if (resolved.status === "internal") {
-            resource.setAttribute(descriptor.attribute, rawResourceHref(resolved));
+            const href = rawResourceHref(resolved);
+            if (tagName === "img") {
+              loadHeldImageEagerly(resource, href);
+              servedImages.add(resource);
+            }
+            resource.setAttribute(descriptor.attribute, href);
           } else if (resolved.status !== "external") {
             disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
           }
@@ -289,6 +348,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   }
 
   container.addEventListener("click", handleClick);
+  // A load does not bubble, so the container hears its images' in the capture phase.
+  container.addEventListener("load", rememberHeldImage, true);
   eventTarget.addEventListener("metabrowser:navigation-fragment", handleFragment);
   scheduleFragment(mb.navigation.current());
 
@@ -309,6 +370,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         workerClient.dispose();
       }
       container.removeEventListener("click", handleClick);
+      container.removeEventListener("load", rememberHeldImage, true);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
       if (fragmentFrame) {
         cancel(fragmentFrame);
