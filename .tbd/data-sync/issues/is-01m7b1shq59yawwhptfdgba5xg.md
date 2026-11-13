@@ -3,9 +3,9 @@ type: is
 id: is-01m7b1shq59yawwhptfdgba5xg
 title: Commits digit focuses the old row after the newest-commit landing
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md
 delegate: claude-code@macbookpro
 labels: []
@@ -20,7 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-13T18:12:52.580Z
-updated_at: 2026-11-13T19:09:00.657Z
+updated_at: 2026-11-13T19:48:12.895Z
 started_at: 2026-11-13T18:13:07.673Z
+closed_at: 2026-11-13T19:48:12.894Z
+close_reason: "Fixed in #400 (merged bfca78d4): the Commits digit focuses the newest row; spec and CHANGELOG reconciled; two review rounds addressed."
+resolution: null
+duplicate_of: null
 ---
 After #395 (Commits selects the newest commit), the `2` key runs openMainTab, which starts landOnNewestCommit, and then synchronously calls focusCommitRow. That focuses the roving anchor still mounted, the previously selected older commit, while the landing later selects the newest. Focus and selection split: Down or J then moves from the old row. design-system.md also contradicts itself (digit moves focus to the roving row vs. focus stays on the tab). Fix: the digit lands focus on the newest row; reconcile the docs; add a shortcut variant to the switching-to-Commits session. Also fix the done spec's stale C/G/H sentence after #369's held first paint, and the CHANGELOG Unreleased 'Rendered by default' entry that #394 and #397 contradict.
