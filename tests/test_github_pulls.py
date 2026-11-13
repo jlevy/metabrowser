@@ -2316,7 +2316,13 @@ def test_metadata_publication_refits_after_merge_and_preserves_record_on_rename_
     with pytest.raises(PullDataError) as error:
         asyncio.run(pulls._write(listed, metadata))  # pyright: ignore[reportPrivateUsage]
     assert error.value.state == "cache_unwritable"
-    assert str(error.value) == "its record could not be written to the cache"
+    assert str(error.value) == (
+        "the record of pull request #7 could not be written to the cache: the file system "
+        "refused it. To clear the GitHub cache of octo/demo, run `echo '{}' | metab "
+        "https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, "
+        "then retry"
+    )
+    assert "private path detail" not in str(error.value)
     assert stand.record(7) == merged
 
 

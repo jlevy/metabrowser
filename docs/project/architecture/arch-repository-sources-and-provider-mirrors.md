@@ -932,11 +932,35 @@ Readers and writers admit only the exact two tables and required index; extra tr
 views, or altered schema are refused before a checkpoint or row is used.
 The database is initialized in memory and published atomically, so an interrupted
 initialization cannot expose a half-built schema.
-Empty initialization remnants can be rebuilt by an explicit write; corrupt or unknown
-schemas receive a typed cache-write refusal requiring the affected repository cache to
-be cleared. Reads create no database, journal, source, or store and never widen
-permissions. SQLite value limits and a read instruction budget bound malformed-cache
-work.
+A catalog the writer cannot use is replaced only after every version it declares has
+been read and none is past this release’s; failing admission alone never permits it.
+One a newer Metabrowser wrote declares it: a `user_version`, a checkpoint
+`schema_version`, or a row `projection_version` past this release’s. Builds on one
+machine share one cache, so it is left as it is, and the refresh ends `newer_cache`
+before asking GitHub for a page, saying to upgrade or to clear the repository’s GitHub
+cache.
+Replacing it instead would have the two builds rebuild each other’s catalog for as
+long as both run. One whose versions cannot all be read safely is left as it is too, and
+the refresh ends `unknown_cache` the same way: a write-ahead-log file, which no release
+writes and whose log SQLite would have to open; any object named `checkpoint`, found as
+SQLite resolves the name, ignoring letter case, that is not this release’s exact table;
+a checkpoint that is not a JSON object of text, or that gives a version as anything but
+a whole number; or damage or an error where the versions are kept.
+A write-ahead-log file is still read for what it declares, in memory with its header set
+to rollback mode and its log and shared-memory files unopened, up to 32 MiB; one whose
+file declares a newer version is `newer_cache`. Anything else, an empty remnant, a file
+that is not SQLite, a schema with objects of its own, or a checkpoint outside the model,
+is disposable: the next write replaces it with an empty catalog under the lock, removing
+its sidecars first, and logs why, as a record another schema wrote is fetched again.
+None of the old file’s SQL runs: the versions are read only from a checkpoint table of
+this release’s own definition, its schema is refused before a statement writes, and the
+file is replaced, not written.
+`tests/test_github_pull_list.py` pins each shape to the version that names it, so a
+change to the tables, the checkpoint, or a row fails until that version is raised.
+A file the home refuses, shared with other users or a link, is neither: the write ends
+`cache_unwritable` with the home’s reason, and `POST github/cache-clear` removes it.
+Reads create no database, journal, source, or store and never widen permissions.
+SQLite value limits and a read instruction budget bound malformed-cache work.
 
 The last outcome remains in `list-all.refresh.json`. A failed refresh preserves the last
 committed page; a stamp that cannot be written is retained in process memory.
