@@ -54,6 +54,20 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert "box-shadow: none" not in css
 
 
+def test_overview_text_has_one_inset_at_every_width() -> None:
+    """Host text starts on the tab label; no container query moves it.
+
+    The card's width still follows KPress's bands, but the text inset is declared once.
+    When it followed the README's prose inset, the panel labels stepped from 0.75 to 4
+    to 2.5 rem as the pane widened. tests/test_folder_overview_alignment.py measures
+    the edge in Chrome; this holds the declaration where Chrome is not installed.
+    """
+
+    css = _overview_rules()
+    assert css.count("--folder-overview-text-inset:") == 1
+    assert "--folder-overview-text-inset: var(--file-tab-padding-x);" in css
+
+
 def test_the_readme_card_fills_the_same_column_as_every_other_panel() -> None:
     """Every panel shares the README card edge and the normal pane text gutter."""
 

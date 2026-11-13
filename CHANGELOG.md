@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A folder’s Overview keeps its section labels at one left edge at every window width.
+  **File Overview**, **README**, and File Overview’s controls and **Details** toggle
+  start under the Overview tab’s label.
+  On a desktop-width window they used to sit 4 rem or 2.5 rem in from the section rule,
+  depending on the width, and 0.75 rem on a narrow one.
+  The README’s text keeps its own margins inside its card.
+  See
+  [Folder Overview Is a Panel Stack](docs/design-system.md#folder-overview-is-a-panel-stack).
+
 - Branch and tag chips are slightly smaller than the text around them, wherever they
   appear, instead of one size everywhere.
   A chip is 0.9 of its text: 11.7px in a Git history row, 12.6px in a commit’s summary
