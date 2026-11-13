@@ -1077,14 +1077,21 @@ evidence. `wkprobe.mjs` drives a real `WKWebView` on macOS against a fresh serve
 given `metab`:
 
 ```shell
-node explorations/performance-loop/wkprobe.mjs run --corpus /path/to/frozen-checkout \
+node explorations/performance-loop/wkprobe.mjs run --corpus /path/to/standalone-clone \
   --runs 3 --name NAME \
   --condition control=/envs/control/.venv/bin/metab \
   --condition candidate=/envs/candidate/.venv/bin/metab
 node explorations/performance-loop/wkprobe.mjs summarize .bench/wkprobe/NAME/runs.jsonl
 node explorations/performance-loop/wkprobe.mjs compare .bench/wkprobe/NAME/runs.jsonl \
-  --control control --candidate candidate
+  --control control --candidate candidate --expect SCENARIO.METRIC:lower
 ```
+
+It needs macOS 14 or later (website data stores by identifier), `swiftc` from the Xcode
+Command Line Tools, and Node 20.11 or later, and adds no dependency.
+The corpus must be a clean Git checkout with a `README.md` at its root, the probe’s
+fixed subject, and `run` refuses one that is not; a standalone clone with its own refs
+keeps it still, as for the transition scenario.
+The server and the proxy take the first free ports in 8930–8939.
 
 **Runs need an unlocked screen with the display awake.** A locked screen, a sleeping
 display, or a session moved off the console hides every page, and a hidden page never
@@ -1093,45 +1100,104 @@ The probe shows a 160×100 window at 2% opacity in the screen’s bottom-left co
 other windows and click-through, holding a web view of the full 1440×900 viewport; the
 page lays out at that viewport and only a corner is drawn.
 `--wait-for-screen SECONDS` waits for an unlocked screen before the first run.
+Each probe process holds an activity assertion that keeps the display awake and the
+process out of App Nap, which would otherwise coalesce the timers that poll the page.
+
+**One series at a time.** `run` and `clean` remove the probe’s WebKit data, so either
+could wipe a running series’ store between its first launch and its relaunch.
+Both hold the series lock for as long as they run, a directory made with one atomic
+`mkdir` with an `owner` file inside, and refuse to start while another process holds it.
+The default is `metabrowser-perf-series.lock` in the per-user temporary directory; a
+round whose harnesses share another lock passes it with `--lock DIR`. A lock whose owner
+is no longer running is reported as stale and left for a person to remove.
+Each run also writes a sentinel under the probe’s `~/Library` name, which every cleanup
+removes, and refuses itself (`store_wiped`) if a launch finds it gone.
 
 **How it is built.** `wkprobe.swift` is one Swift file, compiled by `swiftc` the first
-time a source and compiler pair is seen, into `.bench/wkprobe/bin/`. There is no Xcode
-project and no signing.
+time a source, Info.plist, flag, and compiler combination is seen, into
+`.bench/wkprobe/bin/`, under a temporary name that is renamed when the compile finishes.
+There is no Xcode project and no signing.
 The wrapper embeds an Info.plist naming the bundle identifier
-`org.metabrowser.perf.wkprobe`, so WebKit files everything under that one name in
-`~/Library/WebKit`, `~/Library/Caches`, and `~/Library/HTTPStorages`. Each run removes
-its website data stores and then every `~/Library` entry with that identifier, and
-`wkprobe.mjs clean` does the same by hand.
+`org.metabrowser.perf.wkprobe` and disabling App Nap, so WebKit files everything under
+that one name in `~/Library/WebKit`, `~/Library/Caches`, and `~/Library/HTTPStorages`. A
+run whose probe reports another identifier is refused (`bundle_identity`), since its
+data would be filed where cleanup does not look.
+Each run removes its website data stores and then every `~/Library` entry with that
+identifier, and `wkprobe.mjs clean` does the same by hand.
 
 **Ground truth.** WebKit reports no subresource loads to the app, so a logging reverse
 proxy in front of the server is the page’s origin and records every request that reached
 the network: method, path, status, and conditional headers.
-A 304 is a revalidation and any other response a network fetch.
+It forwards every header, `Host` included, so the server sees the page’s own origin.
+A 304 is a revalidation, a status of 400 or more or no response an error, and any other
+response a network fetch.
 A resource the page’s Resource Timing lists with no matching proxy request in the same
 step came from WebKit’s cache.
 WebKit’s own sizes cannot say so, because a disk-cache hit after a relaunch can report a
 non-zero `transferSize`. Counts are reported by family: `document`, `static`,
 `plugin_static`, `kpress_static`, and `data`. Every step is bracketed by `/__mark`
 requests to the proxy, which is how each request is attributed to its step.
+Requests are classed by the transition recorder’s `requestClass`: the Pulls catalog’s
+own timer work (`background`) and the event stream (`stream`) are counted apart and kept
+out of the judged totals and families, because they run for as long as a step’s window
+stays open. On a reload the outgoing page lives until the new document commits, so a
+request logged before the step’s own document request is counted as `outgoing`. The
+server’s pull request catalog still differs between conditions, since each keeps its own
+state directory, and `compare` prints the catalog totals each condition saw.
+The page stays on the proxy: a main-frame navigation to another origin is cancelled and
+refuses the run (`navigation`), and a content rule list blocks every load that would
+leave loopback, so a corpus with remote images adds no requests the proxy cannot see.
 
 **Scenarios.** Each run starts the server with the condition’s state directory
 (`.bench/wkprobe/NAME/state/LABEL/`, so GitHub data comes from cache), loads
-`/view/README.md` once from a throwaway ephemeral store to warm the server, and then,
-with one new persistent data store on one fixed proxy origin:
+`/view/README.md` once from a throwaway ephemeral store to warm the server, and then, on
+one fixed proxy origin:
 
 | Scenario | What it does |
 | --- | --- |
-| `cold` | The first load in the new store |
+| `cold` | The first load in a new persistent store |
 | `reload` | `WKWebView.reload()` in the same process |
 | `relaunch` | A new probe process on the same store and origin, as the app relaunches |
-| `hidden-then-show` | A new process loads into a window that has never been ordered in, waits for the first view to mount (the subject rendered and the shell tools ready), waits 5 s more to see whether it becomes ready while hidden, then shows the window and times show-to-ready |
+| `hidden-then-show` | A new process on a second new store loads into a window that has never been ordered in, waits up to 20 s for the first view to mount (the subject rendered and the shell tools ready), waits 5 s more to see whether it becomes ready while hidden, then shows the window and times the first painted frame with ready content |
 
-Ready is the transition scenario’s subject test: the exact path rendered, the pending
-modifier cleared, and content without a placeholder in the active view.
-It is polled from the native side every 10 ms, so a hidden page’s throttled timers do
-not slow the clock. A relaunch’s revalidations depend on time: assets without
-`Cache-Control` are fresh for a tenth of the age their `Last-Modified` gives them, so
-each row records that age and the seconds between the first launch and the relaunch.
+`hidden-then-show` loads cold into a store of its own, so what it measures does not
+depend on which other scenarios ran.
+
+Ready is a subset of the transition scenario’s file-ready test: the route, the Files
+main tab, the exact subject rendered in a laid-out active view with child content, the
+pending modifier cleared, and no placeholder laid out in the active view.
+It does not look for useful visible content.
+In the visible scenarios, ready and mounted (`ready_ms`, `mounted_ms`) are DOM states
+polled from the native side every 10 ms, so a page’s throttled timers cannot slow the
+clock.
+In `hidden-then-show`, an animation-frame chain started just before the show tests
+the predicate at the start of each frame the page runs visible, and
+`show_to_painted_ready_ms` is the start of the frame after the first one that began
+ready: the double-animation-frame boundary of the transition scenarios, on the page’s
+clock from the show.
+A page that was ready while hidden is timed to its first painted frame, not to the first
+poll. `show_to_first_frame_ms` and the DOM read `show_to_ready_dom_ms` are shown and not
+judged. Not mounting, or not becoming ready, while hidden is an outcome
+(`mounted_while_hidden`, `ready_while_hidden`), not a refusal; `hidden_mounted_ms` and
+`hidden_ready_ms` exist only in the runs where it happened, and `compare` lists them
+apart when either side has fewer than three.
+
+**A relaunch depends on the install’s age.** An asset whose `Cache-Control` has no
+freshness directive stays fresh for a tenth of the age its `Last-Modified` gave it when
+it was last validated.
+Whether a relaunch revalidates the stamped assets therefore depends on how long ago the
+condition’s files were written, compared with the seconds between the launches.
+Each row records, for every asset the first launch stored, its lifetime minus the time
+from its last validation to the relaunch (`relaunch_freshness`), and `compare` classes
+each run as `fresh` or `stale` when every asset judged by age is more than 5 s on one
+side of its lifetime, `mixed` otherwise, and `by-headers` when headers decide every
+asset. It does not judge `relaunch`, and lists it as a gap, when a run is `mixed`, when
+one condition’s runs differ, or when both conditions are judged by age and their regimes
+differ. A condition whose headers decide is compared with either regime, because the
+headers are then what differs, and the note names the other side’s regime.
+Two conditions whose files were written at least ten minutes before the series relaunch
+`fresh` throughout; a `stale` reading needs files younger than ten times the gap between
+launches, which a series outgrows within minutes.
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when:
@@ -1139,22 +1205,75 @@ each row records that age and the seconds between the first launch and the relau
 - `screen`: the screen was locked, the display asleep, or the session off the console,
   before the run or before or after any step;
 - `visibility`: a visible scenario saw `visibilityState` other than `visible`, or
-  `hidden-then-show` was not hidden before the show and visible after it;
-- `build_identity`: the version line the server or the page renders differs from
-  `metab --version`;
-- `converged`: a scenario never became ready, or the hidden first view never mounted;
-- `raf`: a visible scenario ran fewer than 30 animation frames per second;
+  `hidden-then-show` was not hidden throughout its hidden phase and visible from the
+  show to the end of the step;
+- `build_identity` and `build_changed`: the version line the server or the page renders
+  differs from `metab --version`, the server serves another tree or port, a dirty build
+  has no content identity, or the build changed during the run;
+- `corpus_changed`: the corpus’s commit, cleanliness, trunk, or refs moved;
+- `converged`: a visible scenario never became ready, or `hidden-then-show` drew no
+  painted frame with ready content after the show;
+- `raf`: a scenario ran fewer than 30 animation frames per second at the end of its
+  step, which for `hidden-then-show` is after the show;
+- `store_wiped`, `bundle_identity`, and `offline_rules`: the probe’s data was removed
+  during the run, the probe ran under another bundle identifier, or its content rule
+  list did not compile;
 - `viewport`, `page_exceptions`, `rendered_errors`, `webcontent_terminated`,
-  `navigation`, `probe`, and `marks`: the page was not the requested size, threw, showed
-  an alert, lost its web content process or a navigation, the probe wrote no result, or
-  the proxy did not log a step’s marks.
+  `navigation`, `probe`, `marks`, and `run_error`: the page was not the requested size
+  or its scenarios disagreed on the device pixel ratio, it threw, showed an alert, lost
+  its web content process or a navigation, the probe wrote no result, the proxy did not
+  log a step’s marks, or the run failed outright, as when a server does not start.
 
-`compare` applies [the accept rule](#the-accept-rule): at least three valid runs per
-condition, ranges that do not overlap, and for a time a ratio beyond `--tolerance` (1.3
-by default; it must be below 2). Counts are judged on their ranges.
-It refuses runs on different corpus commits and notes a mixed WebKit version or harness
-commit. `--no-preflight` runs with the screen locked so the other guards can be
-exercised; every scenario is then refused by its own screen guard.
+**Builds, corpora, and servers.** Builds and corpora are identified as the transition
+scenario identifies them, by the same functions (`provenance.mjs`): a build by its
+version line, commit, dirty state, and the content of a dirty tree or a wheel’s
+`RECORD`, and a corpus by its commit, cleanliness, trunk, and refs, each read again when
+the run ends. A server is started with `--exit-on-eof` when its `metab --help` lists it,
+so it stops when the Node process that started it dies, however it dies; an older build
+is stopped by its process group only.
+A server that fails to start is stopped at once.
+
+**How `compare` judges.** It applies [the accept rule](#the-accept-rule) with the
+transition scenario’s arithmetic (`judge` and the pair ratios in
+`transitions-stats.mjs`). For each scenario and metric it needs three values on both
+sides, and it lists every gap: a scenario measured on one side only, a metric with fewer
+values, and a value missing in some runs.
+Times are judged on back-to-back pair ratios against `--tolerance` (1.3 by default; it
+must be below 2), with the outcomes the transition `compare` gives (a result, a pair to
+rerun, not a result, or a difference to explain), and counts on their ranges.
+`--expect SCENARIO.METRIC:lower` (or `higher`) names the hypothesis’s metric.
+It refuses, and exits 2, when a condition has fewer than three valid runs, a condition
+pools two builds or a dirty build has no content identity, the corpus has no commit or
+is not clean, the corpus commit, trunk, refs, server git log head, or indexed file count
+differ, the scenarios requested, viewport, device pixel ratio, or regime flags differ,
+or a row is of an older probe revision.
+It notes mixed WebKit, macOS, or harness states, each condition’s catalog totals and
+relaunch regimes, and runs without a back-to-back partner.
+It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
+wrong-way result, a gap, or an expectation not met.
+Figures it shows but does not judge are marked: `show_to_first_frame_ms`,
+`show_to_ready_dom_ms`, `hidden_ready_ms`, `requests_background`, `requests_stream`,
+`requests_outgoing`, and the `revalidated` counts.
+`tests/test_wkprobe_compare.py` runs these decisions on synthetic rows.
+
+`--no-preflight` skips the screen check before each run, so the other guards can be
+exercised while the screen is locked, when every scenario is refused by its own screen
+guard; on an unlocked screen its runs are valid.
+`--exit-delay-ms MS` keeps each probe process alive after it writes its result, to test
+whether a relaunch depends on cache writes the first process had not yet flushed.
+Both are recorded in `regime_flags`, and `compare` refuses to mix them and notes either.
+
+**Limits.** Only a 160×100 corner of the page is drawn, so raster and compositing cost
+less than in the app’s full window.
+Every request passes through a proxy the app does not have.
+Outside `hidden-then-show`, ready is a DOM state read by a poll, not a painted frame,
+and the painted frame that scenario reads is the page’s animation-frame clock, which
+does not see raster or compositing.
+The ready test is a subset of the transition scenario’s and does not look for useful
+visible content. The probe is a bare executable, not the app: it has none of the app’s
+sandbox, process settings, or delegates beyond navigation.
+Not yet checked on an unlocked screen: whether WebKit counts the 2% window as visible,
+and whether a relaunch reads cache writes the first process had not flushed.
 
 ### Attributing Stateful-Navigation Delay
 
