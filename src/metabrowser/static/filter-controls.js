@@ -305,7 +305,7 @@
     return (
       `<span class="chip-menu" data-chip-menu="${esc(spec.key)}"` +
       ` aria-expanded="${spec.open === true}">` +
-      `<button type="button" class="chip chip-menu-trigger" data-chip-menu-toggle="${esc(spec.key)}"` +
+      `<button type="button" class="chip chip-menu-trigger disclosure-toggle" data-chip-menu-toggle="${esc(spec.key)}"` +
       // A trigger showing a value has to look different from one
       // showing "Any …", or a set filter is invisible until you read
       // the label — which is the one thing a collapsed control must

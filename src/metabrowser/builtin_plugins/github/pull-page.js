@@ -3083,7 +3083,7 @@ export function createStackMenu(initial, number, deps) {
   const trigger = h(
     "summary",
     {
-      class: "btn github-pull-stack-trigger",
+      class: "btn github-pull-stack-trigger disclosure-toggle",
       "aria-label": `Navigate Stack #${stack.number}, position ${position + 1} of ${stack.pulls.length}`,
       "aria-haspopup": "menu",
       "aria-controls": menuId,
@@ -4613,7 +4613,7 @@ export function mountPullPage(container, ctx, mb) {
           const lines = `line${earlierLines === 1 ? "" : "s"}`;
           const plain = hunkLines([{ kind: "context", text: earlier }]);
           const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
-            h("summary", { class: "fold-expander" }, [
+            h("summary", { class: "fold-expander disclosure-toggle" }, [
               chevron(),
               h("span", { class: "github-pull-fold-closed" }, [`${earlierLines} earlier ${lines}`]),
               h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),

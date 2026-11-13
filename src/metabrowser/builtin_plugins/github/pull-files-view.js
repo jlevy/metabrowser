@@ -225,7 +225,10 @@ export function mountFileTree(host) {
       h(
         row.kind === "file" && href !== null ? "a" : "div",
         {
-          class: row.kind === "folder" ? "github-pull-folder-row" : "github-pull-file-row",
+          class:
+            row.kind === "folder"
+              ? "github-pull-folder-row disclosure-toggle"
+              : "github-pull-file-row",
           role: "treeitem",
           tabindex: "-1",
           ...(href === null ? {} : { href }),

@@ -177,7 +177,7 @@
     var rowClass = "srow";
     var chevronHtml = "";
     if (row.kind === "open") {
-      rowClass += " srow-container";
+      rowClass += " srow-container disclosure-toggle";
       rowClass += row.expanded ? " srow-expanded" : " srow-collapsed";
       chevronHtml = '<span class="srow-chevron" aria-hidden="true">▸</span>';
     } else if (row.kind === "empty") {

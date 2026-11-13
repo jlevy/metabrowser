@@ -354,7 +354,8 @@ async function main() {
     const toggle = make("button");
     bar.append(...(lead ? [make("span"), toggle] : [toggle]));
     const state = view.add({ section, bar, toggle, source, id });
-    const [, fallback, rendered] = section.children;
+    assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
+    const [, rendered] = section.children;
     const at = bar.children.indexOf(toggle);
     const [control, progress] = bar.children.slice(at + 1, at + 3);
     return {
@@ -363,7 +364,6 @@ async function main() {
       source,
       rendered,
       progress,
-      fallback,
       state,
       control,
       toggle,
@@ -437,7 +437,6 @@ async function main() {
   calls[1].reject(busy);
   await new Promise(setImmediate);
   assert.equal(b.renderedChoice.attributes.get("aria-checked"), "true");
-  assert.equal(b.fallback.textContent, "");
   assert.equal(b.control.hidden, false, "a busy server keeps the chooser");
   assert.equal(calls.length, 2);
   time.advance(99);
@@ -475,7 +474,9 @@ async function main() {
     "its bar lays out as any other file's",
   );
   assert.equal(document.activeElement, c.toggle, "a removed chooser returns focus to the file");
-  assert.equal(c.fallback.hidden, false);
+  assert.equal(c.source.hidden, false, "it shows Source");
+  assert.equal(c.rendered.hidden, true);
+  assert.equal(c.section.children.length, 3, "and adds nothing to say so");
 
   await a.renderedChoice.click();
   assert.equal(calls.length, 4, "the answer that arrived after Source was chosen is reused");
@@ -493,17 +494,24 @@ async function main() {
 
   observer.notify([arrival(d)]);
   assert.equal(calls.length, 5);
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (...args) => warned.push(args);
   calls[4].reject(new Error("Server is broken"));
   await new Promise(setImmediate);
+  console.warn = warn;
+  assert.equal(warned.length, 1, "a failed render is logged to the console");
+  assert.equal(warned[0][1].message, "Server is broken");
   assert.equal(d.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(d.renderedChoice.disabled, false, "a transport error allows another attempt");
   assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
   assert.equal(d.progress.hidden, false);
   assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
-  assert.match(d.fallback.textContent, /retry/);
+  assert.equal(d.source.hidden, false, "a failed render shows Source");
+  assert.equal(d.section.children.length, 3, "and says nothing about it");
   await d.renderedChoice.click();
-  assert.equal(calls.length, 6);
-  assert.equal(d.fallback.hidden, true);
+  assert.equal(calls.length, 6, "choosing Rendered asks again");
+  assert.equal(d.source.hidden, false, "Source stays until the answer arrives");
   view.dispose();
   assert.equal(calls[5].signal.aborted, true, "disposal stops the request in flight");
   assert.equal(observer.observed.size, 0);
@@ -513,8 +521,13 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(d.rendered.hidden, true);
 
-  // A sanitizer that loaded nothing, or whose load failed, is loaded again by the retry
-  // its message offers.
+  // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
+  // is chosen again. Each failure is logged, not shown.
+  const warn2 = console.warn;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
   let attempts = 0;
   const retried = [];
   const root2 = make("div");
@@ -550,19 +563,20 @@ async function main() {
   bar2.append(toggle2);
   view2.add({ section: section2, bar: bar2, toggle: toggle2, source: source2, id: "e" });
   const [, control2] = bar2.children;
-  const [, fallback2, rendered2] = section2.children;
+  const [, rendered2] = section2.children;
   view2.observe(root2, null);
   observer.notify([{ target: section2, isIntersecting: true }]);
   retried[0].resolve(ready);
   await new Promise(setImmediate);
-  assert.match(fallback2.textContent, /retry/);
+  assert.equal(rendered2.hidden, true);
+  assert.equal(source2.hidden, false);
   assert.equal(control2.hidden, false, "an empty sanitizer load keeps the chooser");
   await control2.children[0].click();
   assert.equal(retried.length, 2);
   retried[1].resolve(ready);
   await new Promise(setImmediate);
   assert.equal(attempts, 2, "the empty load was not kept");
-  assert.match(fallback2.textContent, /retry/);
+  assert.equal(source2.hidden, false);
   assert.equal(control2.hidden, false, "a failed sanitizer load keeps the chooser");
   assert.equal(rendered2.hidden, true);
   await control2.children[0].click();
@@ -571,6 +585,9 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(attempts, 3, "the failed load was not kept");
   assert.equal(rendered2.hidden, false);
+  console.warn = warn2;
+  assert.equal(warnings, 2, "both sanitizer failures were logged");
+  assert.equal(section2.children.length, 3, "and none was shown");
   view2.dispose();
 
   // The first screen settles once none of its files waits: here when both are Rendered,

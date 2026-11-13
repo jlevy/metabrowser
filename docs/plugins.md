@@ -531,6 +531,12 @@ and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet 
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
 
+A control in a view that shows or hides content, such as a row with the `icons.toggle`
+chevron, a fold, or a section trigger, carries the host’s `disclosure-toggle` class, so
+clicking it never selects text; a native `summary` needs nothing.
+See
+[Disclosure Toggles Never Select Text](design-system.md#disclosure-toggles-never-select-text).
+
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,
 and resolves once its globals are present.
 Await it before touching the library: a loaded bundle resolves immediately, simultaneous
