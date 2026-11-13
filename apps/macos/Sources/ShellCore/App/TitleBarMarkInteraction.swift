@@ -4,7 +4,7 @@ import CoreGraphics
 /// opens the project's page or drags the window. `TitleBarMarkButton` feeds it AppKit's
 /// events and carries out the effects it returns.
 ///
-/// - A press that is released inside the mark's capsule opens the page, once.
+/// - A press that is released inside the mark's highlight opens the page, once.
 /// - A press that moves `dragDistance` points or more drags the window instead, as the
 ///   rest of the title bar does, and its release opens nothing.
 /// - A press is forgotten when its window resigns key or the app resigns active, so a
@@ -25,14 +25,14 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
     /// How far a press moves before it is a drag.
     public static let dragDistance: CGFloat = 3
 
-    /// Whether the capsule is lit for the pointer over it.
+    /// Whether the highlight is lit for the pointer over it.
     public private(set) var isHovered = false
     /// Where a press that may still open the page began, in window coordinates.
     private var press: CGPoint?
 
     public init() {}
 
-    /// Whether a press is held that would open the page on release; the capsule deepens.
+    /// Whether a press is held that would open the page on release; the highlight deepens.
     public var isPressed: Bool { press != nil }
 
     public mutating func pointerEntered() { isHovered = true }
@@ -44,7 +44,7 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
         press = nil
     }
 
-    /// A press began on the capsule at `point`.
+    /// A press began on the highlight at `point`.
     public mutating func pressed(at point: CGPoint) { press = point }
 
     /// The held press moved to `point`: `.drag`, once, when it has gone `dragDistance`.
@@ -54,7 +54,7 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
         return .drag
     }
 
-    /// The press ended, inside the capsule or not: `.open` for a press still held that
+    /// The press ended, inside the highlight or not: `.open` for a press still held that
     /// ends inside it.
     public mutating func released(inside: Bool) -> Effect? {
         defer { press = nil }
@@ -68,7 +68,7 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
         return opened()
     }
 
-    /// The page opens in another app, which takes the pointer's attention: the capsule
+    /// The page opens in another app, which takes the pointer's attention: the highlight
     /// goes out.
     private mutating func opened() -> Effect {
         isHovered = false
