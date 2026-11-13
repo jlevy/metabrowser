@@ -3941,18 +3941,26 @@ a.tab-btn {
   text-box: trim-both cap alphabetic;
 }
 /* A run's status badge changes its label in place (Running to Live, Live to Run
-   ended), so every status badge is as wide as the widest label: a sizer under
-   the label gives the width and nothing else, in any engine's font metrics. */
-:is(.badge-running, .badge-live, .badge-completed, .badge-failed) {
-  flex-direction: column;
-  gap: 0;
+   ended), so it sits in a slot as wide as the widest label from first paint: a
+   one-column grid of the badge, then a sizer of every label in a badge's box of no
+   height (renderBadges in app.js), so the column is the widest label's, in any
+   engine's font metrics, and the badge stretches to it. The sizers are outside the
+   badge, which centers its capitals by trimming its one line. As a pseudo-element of
+   the inline-block badge, the sizer was laid beside the label and the widths added:
+   Live was 104.6 px, and Run ended, arriving, made it 144.2 px and moved what followed
+   it in the header. */
+.file-header-badge-slot {
+  display: inline-grid;
+  flex-shrink: 0;
 }
-:is(.badge-running, .badge-live, .badge-completed, .badge-failed)::after {
-  /* The empty alternative keeps it out of the accessible name. An engine without
-     that syntax drops the declaration, and with it the sizer: the badge is then as
-     wide as its own label, as before. */
-  content: "Run ended" / "";
-  height: 0;
+.file-header-badge-slot > .file-header-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+.file-header-badge-slot > .file-header-badge-sizer {
+  block-size: 0;
+  padding-block: 0;
+  border-block-width: 0;
   overflow: hidden;
   visibility: hidden;
 }

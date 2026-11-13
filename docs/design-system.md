@@ -653,7 +653,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
-| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon, stack position |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -669,6 +669,13 @@ A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px p
 the row height and the name’s line height together.
 The header’s path fills the header’s content box and centers its own crumbs, so the
 header’s text stays where centering put it at any header height.
+
+A header badge whose label changes in place sits in a slot as wide as its widest label
+from first paint, so the change moves nothing after it: a one-column grid of the badge,
+then a sizer of each label at no height, outside the badge so its trim still centers the
+capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Run ended,
+and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
+checks both in Chrome.
 
 The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
 so they are set at the path’s own size: text of one size centers onto one baseline.

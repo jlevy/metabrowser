@@ -5717,18 +5717,18 @@ function renderBadges(data) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
     badges += `<span class="file-header-badge badge-adapter">${esc(adapterLabel)}</span>`;
   }
-  // Status badge for JSONL kinds
+  // Status badge for JSONL kinds. It changes its label in place, Running to Live and Live
+  // to Run ended, so it sits in a slot as wide as the widest label from first paint.
   if (data.type === "jsonl" && data.summary) {
     var statusSummary = data.summary;
-    if (statusSummary.is_done) {
-      badges += statusSummary.is_error
+    var statusBadge = statusSummary.is_done
+      ? statusSummary.is_error
         ? '<span class="file-header-badge badge-failed">Failed</span>'
-        : '<span class="file-header-badge badge-completed">Done</span>';
-    } else if (activeFiles.has(data.path)) {
-      badges += '<span class="file-header-badge badge-live">Live</span>';
-    } else {
-      badges += '<span class="file-header-badge badge-running">Running</span>';
-    }
+        : '<span class="file-header-badge badge-completed">Done</span>'
+      : activeFiles.has(data.path)
+        ? '<span class="file-header-badge badge-live">Live</span>'
+        : '<span class="file-header-badge badge-running">Running</span>';
+    badges += `<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>`;
   }
   // Frontmatter parse error — surfaced as a red warning badge with the
   // YAML parser's message in the tooltip. /api/file populates this on
@@ -6544,6 +6544,17 @@ function appendLiveEvents(path, batch) {
     },
   );
 }
+
+// Every label a run's status badge shows, Running, Live, Done, Failed, and Run ended, each a
+// badge's box of no height beside the badge in its slot: the slot is the widest label's
+// width, so a label that changes in place moves nothing (styles.css,
+// `.file-header-badge-slot`).
+const RUN_STATUS_SIZERS = ["Running", "Live", "Done", "Failed", "Run ended"]
+  .map(
+    (label) =>
+      `<span class="file-header-badge file-header-badge-sizer" aria-hidden="true">${label}</span>`,
+  )
+  .join("");
 
 function flagRunEndedBadge() {
   var badge = document.querySelector(".file-header-badge.badge-live");

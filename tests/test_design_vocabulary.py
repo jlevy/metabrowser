@@ -341,7 +341,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
             el(
                 "file-header",
                 text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
-                box("file-header-badge badge-live"),
+                box("file-header-badge-slot", el("file-header-badge badge-live")),
                 text("size file-header-size"),
                 box("icon-btn file-header-icon file-header-print"),
             ),

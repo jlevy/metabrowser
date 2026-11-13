@@ -168,19 +168,32 @@ def test_the_print_button_keeps_its_slot() -> None:
 
 
 def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:
-    """Live becomes Run ended in place; the badge sizes to the widest label from the start."""
+    """Live becomes Run ended in place; the badge's slot is the widest label's from the start.
+
+    A sizer of every label the badge can show sits beside it in a one-column grid, at no
+    height. As a pseudo-element of the inline-block badge the sizer was laid beside the
+    label, and Run ended arriving widened the badge and moved the header. The header Chrome
+    session checks that nothing moves (tests/dom/github-pull-header-chrome.mjs).
+    """
 
     css = _css()
-    selector = ":is(.badge-running, .badge-live, .badge-completed, .badge-failed)"
-    sizer = _rule(css, f"{selector}::after")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', app))
     labels |= set(re.findall(r'badge\.textContent = "([^"]+)"', app))
     assert labels == {"Running", "Live", "Done", "Failed", "Run ended"}, labels
-    widest = max(labels, key=len)
-    assert f'content: "{widest}" / "";' in sizer
-    assert "height: 0;" in sizer and "visibility: hidden;" in sizer
-    assert "flex-direction: column;" in _rule(css, selector)
+    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", app)
+    assert sizers is not None
+    assert set(re.findall(r'"([^"]+)"', sizers.group(1))) == labels
+    render = _function(app, "renderBadges")
+    assert (
+        '<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>' in render
+    )
+    slot = _rule(css, ".file-header-badge-slot")
+    assert "display: inline-grid;" in slot and "flex-shrink: 0;" in slot
+    assert "justify-self: stretch;" in _rule(css, ".file-header-badge-slot > .file-header-badge")
+    sizer = _rule(css, ".file-header-badge-slot > .file-header-badge-sizer")
+    assert "block-size: 0;" in sizer and "visibility: hidden;" in sizer
+    assert "::after" not in css.split(".badge-completed {")[0].split("/* A run's status badge")[-1]
 
 
 GITHUB = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "github"

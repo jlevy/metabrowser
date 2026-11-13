@@ -16,6 +16,9 @@
 // empty one. And no record's row may end past the header: an offer kept whole ran 262 px
 // past it in a 360 px pane, and the pane scrolled sideways. The row structure itself is
 // pinned browserless in github-pull-page-mount-behavior.js.
+//
+// The session also lays out Pulls rows as their stack positions arrive, and the file
+// header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -438,6 +441,69 @@ const PULLS = [
   },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
+// The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
+// are app.js's own, read from the served file and run here with the two names they use.
+// The header is the one renderFile draws around them: the path, the badges, the size, and
+// the print button's held slot. A live run ends, and a running one turns live, as app.js
+// changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
+// every box of the header is read before and after.
+const RUN_BADGE = `async (live, width) => {
+  // Read with XMLHttpRequest: the header's measurements stand in for window.fetch.
+  const source = await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("GET", "/static/app.js");
+    request.onload = () => resolve(request.responseText);
+    request.onerror = reject;
+    request.send();
+  });
+  const take = (start, end) => {
+    const at = source.indexOf(start);
+    if (at < 0) {
+      throw new Error("app.js has no " + start);
+    }
+    return source.slice(at, source.indexOf(end, at) + end.length);
+  };
+  const code = [
+    take("const RUN_STATUS_SIZERS = ", '.join("");'),
+    take("function renderBadges(data) {", "\\n}\\n"),
+    take("function flagRunEndedBadge() {", "\\n}\\n"),
+  ].join("\\n");
+  const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+  const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
+  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge };")(esc, activeFiles);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  pane.innerHTML =
+    '<div class="file-header" data-kbd-badge-anchor><span class="file-header-path folder-breadcrumb">logs/session.jsonl</span>' +
+    app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
+    '<span class="size file-header-size">1.2 MB</span><button class="icon-btn file-header-icon file-header-print" type="button" hidden></button></div>';
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
+  const header = pane.querySelector(".file-header");
+  const read = () =>
+    [header, ...header.querySelectorAll("*")].map((node) => {
+      const r = node.getBoundingClientRect();
+      return [node.className, ...[r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100)];
+    });
+  const before = read();
+  const badge = pane.querySelector(".badge-live, .badge-running");
+  const labelBefore = badge.textContent;
+  if (live) {
+    app.flagRunEndedBadge();
+  } else {
+    // _mirrorActiveFromFsEntry, as a running log turns live.
+    const running = document.querySelector(".file-header-badge.badge-running");
+    running.className = "file-header-badge badge-live";
+    running.textContent = "Live";
+  }
+  await frames();
+  const after = read();
+  const moved = before.flatMap((box, at) =>
+    JSON.stringify(box.slice(1)) === JSON.stringify(after[at].slice(1)) ? [] : [[box, after[at]]],
+  );
+  return { from: labelBefore, to: badge.textContent, width: Math.round(badge.getBoundingClientRect().width * 10) / 10, moved };
+}`;
 const TABS = ["", "files", "checks"];
 const WIDTHS = [980, 760, 560, 420, 360, 320];
 
@@ -524,6 +590,16 @@ async function main() {
               shape.tabBar === reference.tabBar &&
               JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
             JSON.stringify({ empty: reference, [key]: shape }),
+          );
+        }
+      }
+      for (const width of [980, 360]) {
+        for (const live of [true, false]) {
+          const run = await browser.evaluate(`(${RUN_BADGE})(${live}, ${width})`);
+          check(
+            `${width} px, a run's badge from ${run.from} to ${run.to}: nothing in the file header moves`,
+            run.moved.length === 0 && run.from !== run.to,
+            JSON.stringify(run),
           );
         }
       }

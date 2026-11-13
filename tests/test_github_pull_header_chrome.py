@@ -4,7 +4,9 @@ The header keeps one height from first paint whatever its record holds, and that
 layout: no browserless DOM computes it, and the stylesheet text passed while the state
 badge hung below its line. This mounts the production page module on
 recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
-compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs).
+compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs). The
+same session lays out Pulls rows as their stack positions arrive, and a file header as a
+run's status badge changes its label in place, and checks that nothing moves.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
