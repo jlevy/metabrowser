@@ -938,6 +938,8 @@ async function run() {
     isPreviewClaimCurrent: (token) => token === generation,
     disposeActivePluginViews() {},
     animatePreviewContentArrival() {},
+    // The keyboard infrastructure, which builds the shell keymap, is not part of this.
+    shellKeymap: null,
   };
   vm.runInNewContext(functions.join("\n"), shell);
   active = {

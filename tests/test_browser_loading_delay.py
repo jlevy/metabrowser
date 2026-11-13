@@ -220,7 +220,9 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
     assert node_mount.index("preview.replaceChildren(node)") < node_mount.index(
         "animatePreviewContentArrival(node)"
     )
-    file_render = app[app.index("async function renderFile(data") :][:12_000]
+    # The whole function, to its closing line: a fixed window measured where it ends.
+    render_start = app.index("async function renderFile(data")
+    file_render = app[render_start : app.index("\n}\n", render_start)]
     assert "createFilePreviewStage(preview)" in file_render
     assert "stagedPluginDisposers" in file_render
     assert "pendingFilePreviewStageCleanup = cleanupStage" in file_render

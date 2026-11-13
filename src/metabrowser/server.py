@@ -154,6 +154,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
+from metabrowser.keymap import check_view_keys, live_view_keys
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -1474,6 +1475,11 @@ async def index(
     keyboard_shortcuts_url = _static_asset_url("keyboard-shortcuts.js")
     overlay_layer_url = _static_asset_url("overlay-layer.js")
     keyboard_help_url = _static_asset_url("keyboard-help.js")
+    # The Shift key reveal and the shell's own keys: neither has work before the registry.
+    key_reveal_url = _static_asset_url("key-reveal.js")
+    shell_keymap_url = _static_asset_url("shell-keymap.js")
+    # The plugin shortcut facade, which takes the keys plugin-sdk.js queued before it.
+    plugin_shortcuts_url = _static_asset_url("plugin-shortcuts.js")
     tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
     search_palette_url = _static_asset_url("search-palette.js")
     git_graph_url = _static_asset_url("git-graph.js")
@@ -1667,6 +1673,9 @@ async def index(
             {"src": keyboard_shortcuts_url},
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
+            {"src": key_reveal_url},
+            {"src": shell_keymap_url},
+            {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
             {"src": search_palette_url},
             {"src": git_graph_url},
@@ -3918,6 +3927,10 @@ from metabrowser.plugin_loader.classify import (
 from metabrowser.plugin_loader.discovery import (
     discover_plugins,
 )
+from metabrowser.plugin_loader.manifest import (
+    merge_views,
+    view_entry,
+)
 from metabrowser.plugin_loader.static_assets import (
     build_plugin_routes,
     plugin_asset_prefix,
@@ -3966,18 +3979,7 @@ for _idx, _plugin in enumerate(_LOADED_PLUGINS):
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
-        bucket = _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, [])
-        bucket.append(
-            {
-                "id": _view.id,
-                "label": _view.label,
-                "default": _view.default,
-                "container_class": _view.container_class,
-                "printable": _view.printable,
-                "print_profile": _view.print_profile,
-                "render_runtime": _view.render_runtime,
-            }
-        )
+        _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
@@ -4112,37 +4114,25 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
 def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
-    Plugin views are appended after built-in views; an exact (kind, id)
-    collision means the plugin entry overrides the built-in (last write
-    wins; the plugin author intentionally chose to register an existing
-    id). The order in which they appear in the tab strip is built-ins
-    first, then plugin order.
+    :func:`merge_views` owns the merge order and the override rule, and
+    :func:`check_view_keys` the view key rule: a later view's duplicate or
+    reserved key is dropped here and reported by ``metab --doctor``, and the
+    view itself is still served. :func:`live_view_keys` runs last, so a list
+    left with one view serves no key; a caller that filters the list further,
+    as a Git folder does, applies it again.
 
     The html kind is the exception that still uses this merger: Preview is
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
     """
-    out: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for v in VIEW_REGISTRY.get(kind, []):
-        out.append(dict(v))
-        seen_ids.add(v["id"])
-    for v in _PLUGIN_VIEWS_BY_KIND.get(kind, []):
-        if v["id"] in seen_ids:
-            # Replace existing entry with plugin override.
-            for i, existing in enumerate(out):
-                if existing["id"] == v["id"]:
-                    out[i] = v
-                    break
-        else:
-            out.append(v)
-            seen_ids.add(v["id"])
+    merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
+    out = check_view_keys(kind, merged).views
     if kind == "html":
-        return _html_kind_views(out, target)
-    if out and not any(v.get("default") for v in out):
+        out = _html_kind_views(out, target)
+    elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
-    return out
+    return live_view_keys(out)
 
 
 def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
