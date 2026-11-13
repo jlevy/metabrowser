@@ -293,9 +293,13 @@ async function main() {
     [0, 1, 6, 7].map((n) => context(n).html).concat(["<p>flagged</p>", "<p>new</p>"]),
   );
   const flagged = fragment.children.at(-1);
-  assert.ok(flagged.classList.contains("diff-markdown-source-only"));
-  assert.ok(texts(flagged).includes("Source shows changes not shown here."));
   assert.ok(texts(flagged).includes("Added: "));
+  assert.equal(
+    flagged.children.length,
+    2,
+    "a block whose source says more draws its label and its content, and no note",
+  );
+  assert.ok(!texts(flagged).some((text) => /Source/.test(text)));
   assert.deepEqual(
     [...folds.keys()],
     [2, 3, 4, 5].map((n) => `user-content-x-${n}`),
@@ -483,8 +487,8 @@ async function main() {
   assert.equal(a.rendered.hidden, false);
   assert.equal(a.source.hidden, true);
   const [shown] = a.rendered.children;
-  assert.equal(shown.children.length, 2, "the notice and the one block");
-  assert.equal(shown.children[0].textContent, "Source shows additional changes.");
+  assert.equal(shown.children.length, 1, "the one block, with no note about Source above it");
+  assert.ok(shown.children[0].className.startsWith("diff-markdown-block"));
   assert.equal(assets, 1);
   await a.sourceChoice.click();
   assert.equal(a.source.hidden, false);
