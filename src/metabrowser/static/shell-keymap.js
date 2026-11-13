@@ -1,53 +1,26 @@
-// The shell's own keys: the main pane's view tabs, the header's Up and Copy, the
-// navigation pane's filters, and a pin's branch switcher.
+// The shell's own keys: the main pane's view tabs, the header's Up, a pin's branch
+// switcher, and the numbers of the navigation pane's filters.
 //
 // Each command runs the activation path its control's click runs, which the shell
-// injects, or for Copy the SDK's copy delegate, plus the focus a keyboard user needs
-// next; none synthesizes a click. Each is
+// injects, plus the focus a keyboard user needs next; none synthesizes a click. Each is
 // targeted, so it is live only while the control it badges is on screen, and the
-// registry reads that at dispatch. The main tabs' digits stay in static/main-tabs.js
-// and the pull keys in static/pulls-nav.js, which own those controls.
+// registry reads that at dispatch. The filters are situational, so they take numbers
+// through the registry's `attachNumbered()` rather than letters. The main tabs' letters
+// stay in static/main-tabs.js and the pull keys in static/pulls-nav.js, which own those
+// controls. Copying a path or a revision is ancillary and has no key.
 //
 // The registry arrives late, in the on-demand `shell-tools` bundle, and is rebuilt
 // after a real `pagehide`, so whatever rendered before this keymap exists is read when
-// it is created: the committed view tab bar, the header's controls, the filter
-// triggers, and the selector. Render sites report later changes through the sync
-// functions below, and only when a keymap exists.
-// See docs/design-system.md, "Keyboard Commands and Help".
+// it is created: the committed view tab bar, the header's Up, the filter triggers, and
+// the selector. Render sites report later changes through the sync functions below, and
+// only when a keymap exists.
+// See docs/design-system.md, "Keyboard Shortcuts".
 
 (() => {
   const VIEW_TAB_SELECTOR = ".tab-btn[data-view-key]";
   const BADGE_SELECTOR = ".kbd-badge";
 
   /** What the shell lends the keymap; see types.d.ts. @typedef {MetabrowserPublicShellKeymapShell} ShellKeymapShell */
-
-  // The commit view's Copy revision while that view lends it to `Y`, and the keymap of
-  // the live registry, which a lend and its return report to. Both live here, in the
-  // on-demand bundle, rather than in app.js: neither can act before a registry exists,
-  // and a lent Copy outlives the keymap a real `pagehide` disposes, so the keymap
-  // rebuilt on `pageshow` finds it.
-  /** @type {HTMLElement | null} */
-  let lentCopy = null;
-  /** @type {MetabrowserPublicShellKeymapApi | null} */
-  let liveKeymap = null;
-
-  /**
-   * Lend the header's Copy key the commit view's Copy revision, once its staged view has
-   * committed; the returned disposer gives it back when the view is replaced. The Git
-   * panel calls this.
-   *
-   * @param {HTMLElement} button
-   */
-  function attachHeaderCopy(button) {
-    lentCopy = button;
-    liveKeymap?.syncHeader();
-    return () => {
-      if (lentCopy === button) {
-        lentCopy = null;
-        liveKeymap?.syncHeader();
-      }
-    };
-  }
 
   /** The mounted branch and tag selector of a served mirror's pin, once its bundle has
    * mounted it; see static/source-ref-selector.js. */
@@ -113,9 +86,12 @@
     const { shortcuts, shell } = options;
     /** @type {Map<string, {label: string, order: number, release: () => void, target: MetabrowserPublicShortcutTarget}>} */
     const viewTabs = new Map();
-    /** Commands registered only while their control exists: `X`, `A`, and `W`.
+    /** Commands registered only while their control exists: `W`.
      * @type {Map<string, ShellCommandSlot>} */
     const conditional = new Map();
+    /** The filter triggers' numbers, each held while its trigger exists.
+     * @type {Map<string, MetabrowserPublicShortcutTarget>} */
+    const filterNumbers = new Map();
     let disposed = false;
 
     // The main pane and the navigation pane's filter bar, by the ids the server's shell
@@ -134,31 +110,25 @@
     }
 
     /**
-     * The committed header's controls for Up and Copy. Up is the folder header's Up
-     * button, which has no parent to open at the root, or for a file the crumb of its
-     * folder; Copy is the file header's Copy path, or the commit view's Copy revision,
-     * which the Git panel lends while that view is shown.
+     * The committed header's control for Up: the folder header's Up button, which has
+     * no parent to open at the root, or for a file the crumb of its folder.
      */
-    function headerControls() {
+    function headerParent() {
       const header = committed().find((child) => child.classList.contains("file-header"));
-      /** @type {HTMLElement | null} */
-      let parent = null;
-      /** @type {HTMLElement | null} */
-      let copy = null;
       if (header?.classList.contains("folder-header")) {
-        parent = header.querySelector(".folder-up[data-nav-dir]:not([disabled])");
-      } else if (header) {
-        parent =
-          Array.from(
-            header.querySelectorAll(".folder-breadcrumb [data-nav-dir]"),
-            (crumb) => /** @type {HTMLElement} */ (crumb),
-          ).at(-1) ?? null;
-        copy = header.querySelector(".file-header-copy");
+        return /** @type {HTMLElement | null} */ (
+          header.querySelector(".folder-up[data-nav-dir]:not([disabled])")
+        );
       }
-      if (!copy && lentCopy && pane()?.contains(lentCopy)) {
-        copy = lentCopy;
+      if (!header) {
+        return null;
       }
-      return { copy, parent };
+      return (
+        Array.from(
+          header.querySelectorAll(".folder-breadcrumb [data-nav-dir]"),
+          (crumb) => /** @type {HTMLElement} */ (crumb),
+        ).at(-1) ?? null
+      );
     }
 
     /** @param {string} key A filter dropdown, `types` or `recency`. */
@@ -198,8 +168,8 @@
       });
     }
 
-    // Up and Copy stay registered: Help lists them, and with no target, at the root
-    // for Up and on a folder for Copy, they do nothing and leave the key alone.
+    // Up stays registered: Help lists it, and with no target, at the root, it does
+    // nothing and leaves the key alone.
     const releaseParent = registerCommand({
       copy: {
         action: "Parent folder",
@@ -220,65 +190,33 @@
       order: 10,
       surfaces: { help: "always", reveal: "always" },
     });
-    const releaseCopy = registerCommand({
-      copy: {
-        action: "Copy",
-        description: "Copy the path of the current file, or the revision of the current commit.",
-        hint: "Copy",
-      },
-      group: "controls",
-      // The SDK's copy delegate, as the control's click reaches it; an owned control only.
-      handler: (target) => window.MetabrowserPluginHost?.copyFromControl(target) ?? false,
-      id: "header.copy",
-      key: "y",
-      order: 20,
-      surfaces: { help: "always", reveal: "always" },
-    });
     /** @type {MetabrowserPublicShortcutTarget | null} */
     let parentTarget = null;
-    /** @type {MetabrowserPublicShortcutTarget | null} */
-    let copyTarget = null;
-
-    /**
-     * Point one of the header's commands at its control, or at none.
-     *
-     * @param {MetabrowserPublicShortcutTarget | null} slot
-     * @param {string} commandId
-     * @param {HTMLElement | null} element
-     */
-    function place(slot, commandId, element) {
-      if (!element) {
-        slot?.detach();
-        return null;
-      }
-      if (slot) {
-        slot.retarget(element);
-        return slot;
-      }
-      // Up's and Copy's controls are icon buttons and crumbs in a clipping path row,
-      // so their badges sit beside them, in the header that anchors them.
-      return shortcuts.attachTarget(commandId, element, { placement: "beside" });
-    }
 
     /**
      * Read the main-pane header again: Up's target is the folder header's Up button or,
-     * for a file, the crumb of its folder, and none at the root; Copy's is the file
-     * header's Copy path or the commit view's Copy revision, and none on a folder.
+     * for a file, the crumb of its folder, and none at the root.
      */
     function syncHeader() {
       if (disposed) {
         return;
       }
-      const controls = headerControls();
-      shortcuts.batch(() => {
-        parentTarget = place(parentTarget, "header.parent", controls.parent);
-        copyTarget = place(copyTarget, "header.copy", controls.copy);
-      });
+      const parent = headerParent();
+      if (!parent) {
+        parentTarget?.detach();
+        parentTarget = null;
+      } else if (parentTarget) {
+        parentTarget.retarget(parent);
+      } else {
+        // Up's control is an icon button or a crumb in a clipping path row, so its badge
+        // sits beside it, in the header that anchors it.
+        parentTarget = shortcuts.attachTarget("header.parent", parent, { placement: "beside" });
+      }
     }
 
     /**
      * Hold a command while its control exists, and release it when the control goes:
-     * a Git pin has no modified-within filter, and only a mirror's pin a branch switcher.
+     * only a mirror's pin has a branch switcher.
      *
      * @param {string} id
      * @param {HTMLElement | null} element
@@ -303,7 +241,7 @@
     }
 
     /**
-     * A filter key's activation: open the dropdown through its trigger's own path, the
+     * A filter number's activation: open the dropdown through its trigger's own path, the
      * shell's, then focus its checked row, or else its first, so the menu's arrow keys
      * work next. The focus half lives here, on demand, rather than in app.js.
      *
@@ -323,42 +261,31 @@
       return true;
     }
 
-    /** Read the filter triggers again, after the filter bar rebuilds its markup. */
+    /**
+     * Read the filter triggers again, after the filter bar rebuilds its markup. Each is a
+     * situational control, numbered by its place on screen: a Git pin has no
+     * modified-within filter, so the type filter is first there.
+     */
     function syncFilters() {
       if (disposed) {
         return;
       }
       shortcuts.batch(() => {
-        holdWhilePresent("filter.type", filterTrigger("types"), () =>
-          registerCommand({
-            copy: {
-              action: "File type",
-              description: "Open the file type filter.",
-              hint: "File type",
-            },
-            group: "filters",
-            handler: () => openFilterMenu("types"),
-            id: "filter.type",
-            key: "x",
-            order: 10,
-            surfaces: { help: "always" },
-          }),
-        );
-        holdWhilePresent("filter.recency", filterTrigger("recency"), () =>
-          registerCommand({
-            copy: {
-              action: "Modified within",
-              description: "Open the modified-within filter.",
-              hint: "Modified",
-            },
-            group: "filters",
-            handler: () => openFilterMenu("recency"),
-            id: "filter.recency",
-            key: "a",
-            order: 20,
-            surfaces: { help: "always" },
-          }),
-        );
+        for (const key of ["recency", "types"]) {
+          const trigger = filterTrigger(key);
+          const held = filterNumbers.get(key);
+          if (!trigger) {
+            held?.detach();
+            filterNumbers.delete(key);
+          } else if (held) {
+            held.retarget(trigger);
+          } else {
+            filterNumbers.set(
+              key,
+              shortcuts.attachNumbered(trigger, { activate: () => openFilterMenu(key) }),
+            );
+          }
+        }
       });
     }
 
@@ -449,8 +376,8 @@
             },
             id,
             order,
-            // Below `global`, so the stack's P outranks a Preview tab's P only while a
-            // pull request in a stack is open, and falls through to it otherwise.
+            // Below `global`, so a shell letter always outranks a view tab's; the keymap
+            // check keeps the two apart (src/metabrowser/keymap.py).
             scope: "view-tabs",
             surfaces: { help: "always" },
             targeted: true,
@@ -496,17 +423,15 @@
           slot.release();
         }
         conditional.clear();
+        for (const held of filterNumbers.values()) {
+          held.detach();
+        }
+        filterNumbers.clear();
         parentTarget?.detach();
-        copyTarget?.detach();
         parentTarget = null;
-        copyTarget = null;
         releaseParent();
-        releaseCopy();
       });
       disposed = true;
-      if (liveKeymap === keymap) {
-        liveKeymap = null;
-      }
     }
 
     /**
@@ -526,7 +451,7 @@
       syncSource();
     });
 
-    const keymap = Object.freeze({
+    return Object.freeze({
       commitViewTabs,
       committedBar,
       dispose,
@@ -536,9 +461,7 @@
       syncSource,
       syncViewTabs,
     });
-    liveKeymap = keymap;
-    return keymap;
   }
 
-  window.MetabrowserShellKeymap = Object.freeze({ attachHeaderCopy, createShellKeymap });
+  window.MetabrowserShellKeymap = Object.freeze({ createShellKeymap });
 })();

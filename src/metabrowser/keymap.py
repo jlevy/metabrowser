@@ -17,6 +17,12 @@ The shell serves the reserved table to the browser through ``METABROWSER_SETTING
 (:func:`serialize_reserved_shell_keys`), so the plugin shortcut facade refuses the same
 letters the manifest loader does.
 
+``docs/design-system.md``, "Keyboard Shortcuts", is the one reference for the scheme:
+letters name known meanings and mean the same wherever they are pressed, the digits 1 to
+9 number the situational links and actions on a screen in reading order, and ancillary
+actions such as copying have no key. ``tests/test_keymap.py`` holds that section's
+table to this one and to the keys the registry registers.
+
 This module imports nothing beyond the standard library, so the manifest loader and
 ``metab --doctor`` can use it without loading content classification or the server.
 ``docs/plugins.md`` documents the manifest field for plugin authors.
@@ -30,8 +36,6 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final
 
-PULL_REQUEST_KIND: Final = "pull-request"
-
 
 @dataclass(frozen=True, slots=True)
 class ReservedKey:
@@ -44,23 +48,25 @@ class ReservedKey:
     kinds: frozenset[str] | None = None
 
 
-# The shell's own keys, which no view may take. The digits select the navigation
-# pane's tabs, one fixed digit per tab, reserved whether or not the tab is shown.
-# `n` and `p` walk a pull request stack and are live only on a pull request page, so
-# they are reserved only for that kind, and an HTML file's Preview tab keeps `p`.
+# The shell's own keys, which no view may take. Each letter is a known meaning that holds
+# wherever it is live, so it is reserved everywhere, even where it does nothing: `j` and
+# `k` move a row down and up, and `n` and `p` go to the next and previous item one
+# level up, such as the pull requests of a stack. The digits 1 to 9 are the situational
+# numbers, which the registry hands out by place on screen (static/keyboard-shortcuts.js,
+# `attachNumbered`), so no view or plugin names one.
 RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
     {
+        "f": ReservedKey("Files tab"),
+        "r": ReservedKey("Pulls tab"),
+        "h": ReservedKey("Commits tab"),
         "t": ReservedKey("Quick Search"),
         "j": ReservedKey("next row"),
         "k": ReservedKey("previous row"),
+        "n": ReservedKey("next item"),
+        "p": ReservedKey("previous item"),
         "u": ReservedKey("parent folder command"),
         "w": ReservedKey("branch or tag switcher"),
-        "x": ReservedKey("file type filter"),
-        "y": ReservedKey("copy command"),
-        "a": ReservedKey("modified-within filter"),
-        **{digit: ReservedKey("navigation pane tabs") for digit in string.digits},
-        "n": ReservedKey("next pull request in the stack", frozenset({PULL_REQUEST_KIND})),
-        "p": ReservedKey("previous pull request in the stack", frozenset({PULL_REQUEST_KIND})),
+        **{digit: ReservedKey("situational numbers") for digit in "123456789"},
     }
 )
 

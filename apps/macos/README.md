@@ -1163,11 +1163,15 @@ Measured on macOS 26.5:
   measure 10.0:1 (the citrine M, #ECC44B) and 7.4:1 (the amethyst B, #C896FF) in WCAG
   contrast. On the light one they measure 1.7:1 and 2.3:1, under the 3:1 that graphics
   need, so the light title bar alone draws deeper tints of the same hues: each OKLCH
-  lightness lowered at the same share of the chroma sRGB holds, to the first
-  half-percent step that reaches 4:1, past the 3:1 minimum, since the user asked for
-  them a little darker than the first, 3:1 tints.
-  That is #967B2C for the M, oklch(59.4% 0.1019 90.40), at 4.06:1, and #AD4AFF for the
-  B, oklch(62.5% 0.2547 304.96), at 4.04:1 (`AppIconMark.titleBarFills`).
+  lightness lowered at a set share of the chroma sRGB holds, to the first half-percent
+  step that reaches 4:1, past the 3:1 minimum, since the user asked for them a little
+  darker than the first, 3:1 tints.
+  The shares balance the two letters.
+  Keeping each fill’s own share (0.84 for the M, all of it for the B) gave the B 2.5
+  times the M’s chroma, and the purple outweighed the gold, so at the user’s request the
+  M takes all of its chroma and the B 0.65 of its own, 1.4 times the M’s. That is
+  #9A7B00 for the M, oklch(59.5% 0.1216 90.40), at 4.03:1, and #9C62D5 for the B,
+  oklch(61.0% 0.1735 304.96), at 4.10:1 (`AppIconMark.titleBarFills`).
 - **The mark is a link.** A click opens https://github.com/jlevy/metabrowser in the
   default browser (`ProjectLinks.repository`, which the Help menu’s README and the setup
   steps’ installation guide also derive from).

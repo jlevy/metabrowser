@@ -217,7 +217,7 @@
 
     /**
      * Give the list's roving row focus, the selected pull request's when it has one, as
-     * the Pulls tab's digit does after it switches to the tab. Reports whether a row took
+     * the Pulls tab's letter does after it switches to the tab. Reports whether a row took
      * focus; before the list has rows, the tab button keeps it.
      */
     function focusRow() {

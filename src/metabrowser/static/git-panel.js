@@ -107,9 +107,6 @@
   let state = emptyState();
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
-  /** Gives the commit view's Copy revision back to the shell; null while none is lent.
-   * @type {(() => void) | null} */
-  let releaseHeaderCopy = null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -145,11 +142,12 @@
   /** @type {{revision: string, claim: number} | null} */
   let lastSelection = null;
   // The neutral Commits entry waiting for history to name its newest commit: the landing
-  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `digitFocus` is
-  // where the Commits tab's digit put focus while it waited, if it did (focusCommitRow), and
-  // `rowReplaced` says a refresh removed a history row that held focus (refreshHistory).
+  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `keyFocus` is
+  // where the Commits tab's key, `H`, put focus while it waited, if it did
+  // (focusCommitRow), and `rowReplaced` says a refresh removed a history row that held
+  // focus (refreshHistory).
   /**
-   * @typedef {{landing: number, claim: number, digitFocus: "row" | "tab" | null,
+   * @typedef {{landing: number, claim: number, keyFocus: "row" | "tab" | null,
    *   rowReplaced: boolean}} NewestLanding
    */
   /** @type {NewestLanding | null} */
@@ -320,10 +318,7 @@
     const subjectTag = compact ? "div" : "h1";
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
-    // The commit view's heading anchors the badge beside its Copy revision.
-    html += compact
-      ? '<div class="git-commit-header">'
-      : '<div class="git-commit-header" data-kbd-badge-anchor>';
+    html += '<div class="git-commit-header">';
     html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
@@ -1341,12 +1336,12 @@
   }
 
   /**
-   * Give the history's roving row focus, as the Commits tab's digit does after it
+   * Give the history's roving row focus, as the Commits tab's key, `H`, does after it
    * switches to the tab, so `↓` walks the history next. Reports whether a row took
    * focus; before the first page there is none, and the tab button keeps it.
    *
    * A switch to Commits lands on the newest commit (landOnNewestCommit), so while that
-   * landing waits, the digit's row is the newest, not the row the reader left: now when
+   * landing waits, the key's row is the newest, not the row the reader left: now when
    * it is mounted, or once the landing reveals it (focusAwaitsNewest).
    */
   function focusCommitRow() {
@@ -1355,11 +1350,11 @@
     if (waiting && bridge && newestLandingHolds(waiting, bridge)) {
       // The landing began from the newest row (landOnNewestCommit), but the reader may have
       // focused another since, with Commits in front; that row, or a suspension that would
-      // hand it focus again when a render mounts it, is not the digit's.
+      // hand it focus again when a render mounts it, is not the key's.
       state.focusedOrdinal = 0;
       state.focusSuspended = false;
-      waiting.digitFocus = focusNewestRow() ? "row" : "tab";
-      return waiting.digitFocus === "row";
+      waiting.keyFocus = focusNewestRow() ? "row" : "tab";
+      return waiting.keyFocus === "row";
     }
     const list = panelElement()?.querySelector(".git-graph-list");
     const row =
@@ -1391,7 +1386,7 @@
   }
 
   /**
-   * Whether focus is still where the Commits digit left it while its landing waited, so the
+   * Whether focus is still where the Commits key left it while its landing waited, so the
    * landing may move it to the newest row: on the tab, on the newest row, or on the
    * scroller, where the panel parks focus when the reader scrolls the focused row away. A
    * refresh forgets that parking, so the render that mounts the new rows hands nothing
@@ -2466,15 +2461,6 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
-      // The committed view lends its Copy revision to the header's Copy key, through the
-      // shell keymap's module in this same bundle, and the view that replaces it gives
-      // the previous one back.
-      releaseHeaderCopy?.();
-      const revisionCopy = stage.querySelector(".git-commit-revision-copy");
-      releaseHeaderCopy =
-        revisionCopy instanceof HTMLElement
-          ? (window.MetabrowserShellKeymap?.attachHeaderCopy(revisionCopy) ?? null)
-          : null;
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
       const generation = refsReadIn.get(detail) ?? historyGeneration;
@@ -2913,8 +2899,6 @@
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeCommitDiff();
-    releaseHeaderCopy?.();
-    releaseHeaderCopy = null;
     // The focus-suspension path writes ``tabindex`` onto the shared
     // ``#tree-content`` node, which the shell owns and other panels keep
     // using after this panel is gone; renderer state written onto a
@@ -3013,7 +2997,7 @@
    * ready, so the switch paints neither a prompt nor a blank frame. The newest row becomes
    * the list's Tab stop, and the row the reader left gives up its claim on focus, so a
    * render that mounts it again does not hand it focus. A click or a history step leaves
-   * focus where it was, on the tab for a click; the tab's digit moves it to the newest row
+   * focus where it was, on the tab for a click; the tab's key moves it to the newest row
    * (focusCommitRow). An empty history selects nothing and the pane says so.
    *
    * @param {number} landing
@@ -3026,7 +3010,7 @@
     if (bridge.beginPreviewNavigation(claim)) {
       pendingPreviewClaim = claim;
     }
-    newestLanding = { landing, claim, digitFocus: null, rowReplaced: false };
+    newestLanding = { landing, claim, keyFocus: null, rowReplaced: false };
     // The selection moves the Tab stop when it lands, so a landing that loses the pane
     // leaves the row the reader left as the list's Tab stop.
     state.focusSuspended = false;
@@ -3083,8 +3067,8 @@
       return;
     }
     newestLanding = null;
-    // The digit asked for the newest row, and the reveal has mounted it.
-    if (waiting.digitFocus !== null && focusAwaitsNewest(waiting)) {
+    // The key asked for the newest row, and the reveal has mounted it.
+    if (waiting.keyFocus !== null && focusAwaitsNewest(waiting)) {
       focusNewestRow();
     }
     void selectCommit(newest);

@@ -1,7 +1,11 @@
 // The plugin shortcut facade: what `window.metabrowser.shortcuts.attach()` does with a key.
 //
-// A plugin view gives one of its controls a letter key and a badge (docs/plugins.md,
-// "Keyboard Shortcuts"). Plugin code can run before the shortcut registry exists: the
+// A plugin view gives one of its controls a letter key and a badge, or, for a
+// situational control such as a link or a one-off action, a number from its place on
+// screen (docs/design-system.md, "Keyboard Shortcuts"; docs/plugins.md, "Keyboard
+// Shortcuts"). A numbered control goes to the registry's `attachNumbered()`, the one
+// mechanism the shell's numbers use too, so no plugin picks a digit. Plugin code can
+// run before the shortcut registry exists: the
 // registry arrives with this module in the on-demand `shell-tools` bundle, and the shell
 // rebuilds it after a real `pagehide`. So the eager plugin-sdk.js queues each attachment
 // made before this module loads, this module takes that queue as it loads, and it keeps
@@ -26,7 +30,18 @@
   /** @type {ReadonlySet<string>} */
   const GROUPS = new Set(["controls", "view-tabs"]);
   /** @type {ReadonlySet<string>} */
-  const OPTIONS = new Set(["activate", "copy", "group", "id", "key", "order", "signal"]);
+  const OPTIONS = new Set([
+    "activate",
+    "copy",
+    "group",
+    "id",
+    "key",
+    "numbered",
+    "order",
+    "signal",
+  ]);
+  // What a letter key states and a numbered control does not: its number is its place.
+  const LETTER_ONLY = Object.freeze(["copy", "group", "key", "order"]);
   const DOTTED_ID = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/;
   const LETTER = /^[a-z]$/i;
 
@@ -41,7 +56,8 @@
    * @property {HTMLElement} element
    * @property {"controls" | "view-tabs"} group
    * @property {string} id
-   * @property {string} key Lowercase.
+   * @property {string} key Lowercase; empty for a numbered control.
+   * @property {boolean} numbered It takes a number from its place, not a letter.
    * @property {number} order
    * @property {number} rank When its command id was first attached: earlier wins a letter.
    * @property {boolean} refused The shell reserves its letter, so it is bound nowhere.
@@ -117,9 +133,41 @@
         throw malformed(`${name} is not an option; the facade decides it`);
       }
     }
-    const { activate, copy, group, id, key, order, signal } = spec;
+    const { activate, copy, group, id, key, numbered, order, signal } = spec;
     if (typeof id !== "string" || !DOTTED_ID.test(id)) {
       throw malformed(`id must be a dotted name such as "diff.layout", not ${String(id)}`);
+    }
+    if (numbered !== undefined && numbered !== true) {
+      throw malformed(`${id}: numbered must be true or left out`);
+    }
+    if (typeof activate !== "function") {
+      throw malformed(`${id}: activate must be a function`);
+    }
+    if (
+      signal !== undefined &&
+      (!signal ||
+        typeof signal !== "object" ||
+        typeof (/** @type {AbortSignal} */ (signal).addEventListener) !== "function")
+    ) {
+      throw malformed(`${id}: signal must be an AbortSignal`);
+    }
+    if (numbered) {
+      const stated = LETTER_ONLY.filter((name) => spec[name] !== undefined);
+      if (stated.length > 0) {
+        throw malformed(
+          `${id}: a numbered control takes no ${stated.join(", ")}; its place decides`,
+        );
+      }
+      return {
+        activate: /** @type {() => unknown} */ (activate),
+        copy: Object.freeze({ action: "", description: "", hint: "" }),
+        group: /** @type {"controls" | "view-tabs"} */ ("controls"),
+        id,
+        key: "",
+        numbered: true,
+        order: 0,
+        signal: /** @type {AbortSignal | undefined} */ (signal),
+      };
     }
     if (typeof key !== "string" || !LETTER.test(key)) {
       throw malformed(`${id}: key must be one letter a-z, not ${String(key)}`);
@@ -134,17 +182,6 @@
       throw malformed(`${id}: copy must be {action, description, hint}`);
     }
     const fields = /** @type {Record<string, unknown>} */ (copy);
-    if (typeof activate !== "function") {
-      throw malformed(`${id}: activate must be a function`);
-    }
-    if (
-      signal !== undefined &&
-      (!signal ||
-        typeof signal !== "object" ||
-        typeof (/** @type {AbortSignal} */ (signal).addEventListener) !== "function")
-    ) {
-      throw malformed(`${id}: signal must be an AbortSignal`);
-    }
     return {
       activate: /** @type {() => unknown} */ (activate),
       copy: Object.freeze({
@@ -155,6 +192,7 @@
       group: /** @type {"controls" | "view-tabs"} */ (group),
       id,
       key: key.toLowerCase(),
+      numbered: false,
       order,
       signal: /** @type {AbortSignal | undefined} */ (signal),
     };
@@ -175,8 +213,9 @@
   }
 
   /**
-   * Give `element` a letter key: what `metabrowser.shortcuts.attach()` does once this
-   * module has loaded, and what it does to each attachment it queued before.
+   * Give `element` a letter key, or a number for a situational control: what
+   * `metabrowser.shortcuts.attach()` does once this module has loaded, and what it does
+   * to each attachment it queued before.
    *
    * @param {unknown} element
    * @param {unknown} options
@@ -188,7 +227,8 @@
     const sibling = attachments.find((attachment) => attachment.id === spec.id);
     if (
       sibling &&
-      (sibling.key !== spec.key ||
+      (sibling.numbered !== spec.numbered ||
+        sibling.key !== spec.key ||
         sibling.group !== spec.group ||
         JSON.stringify(sibling.copy) !== JSON.stringify(spec.copy))
     ) {
@@ -197,7 +237,7 @@
     if (spec.signal?.aborted) {
       return INERT_HANDLE;
     }
-    const refused = isReserved(spec.key);
+    const refused = !spec.numbered && isReserved(spec.key);
     if (refused) {
       warnOnce(
         refusalsWarned,
@@ -220,6 +260,7 @@
       group: spec.group,
       id: spec.id,
       key: spec.key,
+      numbered: spec.numbered,
       order: spec.order,
       rank,
       refused,
@@ -232,8 +273,10 @@
       signal.addEventListener("abort", onAbort, { once: true });
       attachment.release = () => signal.removeEventListener("abort", onAbort);
     }
-    if (!refused) {
-      for (const connection of connections) {
+    for (const connection of connections) {
+      if (attachment.numbered) {
+        attachNumber(connection, attachment);
+      } else if (!refused) {
         syncLetter(connection, attachment.key);
       }
     }
@@ -290,11 +333,35 @@
       connection.registry.batch(() => {
         connection.targets.get(attachment)?.detach();
         connection.targets.delete(attachment);
-        if (!attachment.refused) {
+        if (!attachment.refused && !attachment.numbered) {
           syncLetter(connection, attachment.key);
         }
       });
     }
+  }
+
+  /**
+   * Number a situational control in one registry. The registry gives it its number,
+   * from its place among every numbered control on screen, the shell's included.
+   *
+   * @param {Connection} connection
+   * @param {Attachment} attachment
+   */
+  function attachNumber(connection, attachment) {
+    connection.targets.set(
+      attachment,
+      connection.registry.attachNumbered(attachment.element, {
+        activate: () => {
+          try {
+            attachment.activate();
+          } catch (error) {
+            // A plugin's failure stays its own: the registry still tells its observers.
+            console.error(`shortcuts.attach: ${attachment.id} failed to activate`, error);
+          }
+          return true;
+        },
+      }),
+    );
   }
 
   /**
@@ -481,10 +548,17 @@
     connections.add(connection);
     registry.batch(() => {
       const letters = new Set(
-        attachments.filter((attachment) => !attachment.refused).map((attachment) => attachment.key),
+        attachments
+          .filter((attachment) => !attachment.refused && !attachment.numbered)
+          .map((attachment) => attachment.key),
       );
       for (const letter of letters) {
         syncLetter(connection, letter);
+      }
+      for (const attachment of attachments) {
+        if (attachment.numbered) {
+          attachNumber(connection, attachment);
+        }
       }
     });
     const unsubscribe = registry.subscribe(() => noteRevealedLosses(connection));

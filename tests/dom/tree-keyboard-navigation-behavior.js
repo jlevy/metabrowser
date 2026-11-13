@@ -644,7 +644,7 @@ event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
 
-// The Files tab's digit hands focus to the row the reader left, the roving anchor.
+// The Files tab's letter, `F`, hands focus to the row the reader left, the roving anchor.
 check("focusCurrent focuses the roving anchor", navigator.focusCurrent() === true);
 check(
   "focusCurrent lands on the anchor row, not the first one",

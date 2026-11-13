@@ -536,12 +536,14 @@ A catalog refresh should start once, and subsequent queries should read the loca
 catalog. Reopen a cached result with `gh` unavailable.
 In a plain folder, the dialog should still say Quick Search and search only files.
 
-After Git discovery, check Files, Commits, and Pulls order and the fixed numbers in
-Help, with no `⌘` beside them.
-Check that `1`, `2`, and `3` open each tab with and without Shift, and that Command or
-Ctrl with a digit still switches browser tabs.
-In a plain folder, check that the Files shortcut still uses `1` and the other numbers
-leave the selection alone.
+After Git discovery, check Files, Pulls, and Commits order and their letters in Help,
+with no `⌘` beside them.
+Check that `F`, `R`, and `H` open each tab with and without Shift, and that Command or
+Ctrl with a letter or digit is left to the browser, so Command or Ctrl with a digit
+still switches browser tabs.
+In a plain folder, check that `F` still opens Files and that `R` and `H` leave the
+selection alone. [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the full
+scheme.
 
 ### Pulls Watch and Reconnect
 

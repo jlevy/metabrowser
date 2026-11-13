@@ -58,7 +58,7 @@ All notable changes to Metabrowser are documented here.
   time, by a click, its shortcut, or Back onto the tab, even after you read an older
   commit there. It used to show “Select a commit to preview” on the first visit and
   return to the last commit you read after that.
-  The shortcut, `2`, puts focus on the newest commit’s row, so `↓` reads the next one.
+  The shortcut, `H`, puts focus on the newest commit’s row, so `↓` reads the next one.
   A link or address that names a commit still opens that commit.
   The page you were reading stays on screen until the commit is ready, and a repository
   with no commits says “No commits yet.”
@@ -219,13 +219,31 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- Keyboard shortcuts follow one scheme, documented once in
+  [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts): letters for known
+  meanings, which mean the same wherever they work; the numbers `1` to `9` for the links
+  and actions a screen shows, in reading order; and no key for an ancillary action such
+  as copying. The main tabs are in the order Files, Pulls, Commits, and answer to `F`,
+  `R` (pull Requests), and `H` (commit History) instead of `1`, `3`, and `2`. `V` shows
+  a file’s rendered view and `S` its source, whatever the tabs are called: Document,
+  Preview, Tree, and Log moved from `D`, `P`, `R`, and `L` to `V`, and Raw JSON from `R`
+  to `S`. A pull request’s Checks moved from `H` to `E`, and `P` now only means
+  previous, as `N` means next.
+  The Files tab’s filters moved from `X` and `A` to their numbers, `1` for Modified
+  within and `2` for File type, and a pull request’s View on GitHub, Browse code,
+  Refresh, and its other header actions take the numbers after them.
+  Copying a path or a revision has no key any more: `Y` does nothing.
+  Help lists the numbers once, as `1`–`9` under “On this screen”, and says they are not
+  fixed. Holding Shift shows what each number reaches, and the keycaps now ease in on the
+  design system’s reveal motion, `--motion-reveal`.
+
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
   request’s Changes, exactly as its layout control does: where Split does not fit, `L`
   chooses it with its sideways scroll, and the choice is remembered.
   While Shift is held, the key shows on the layout it would choose.
   Help lists it under Controls.
 
-- A pull request’s page answers to `C` for Conversation, `G` for Changes, and `H` for
+- A pull request’s page answers to `C` for Conversation, `G` for Changes, and `E` for
   Checks, and shows those keys on its tabs while Shift is held.
   A key moves the address as a click on the tab does, so Back returns to the tab before.
 
@@ -236,57 +254,58 @@ All notable changes to Metabrowser are documented here.
   Malformed input throws an error starting with `shortcuts.attach:`; an attachment made
   before the keyboard support loads is checked when it loads, and a malformed one is
   logged to the console with that prefix instead.
-  A letter the shell reserves, `T`, `J`, `K`, `U`, `W`, `X`, `Y`, `A`, `N`, or `P`, is
+  A letter the shell reserves, `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, or `W`, is
   refused with one console warning, and a shell key or an earlier plugin’s key wins a
   letter two shown controls hold.
-  `METABROWSER_SETTINGS` serves the reserved keys as `RESERVED_SHELL_KEYS`.
-  `PLUGIN_SDK_VERSION` remains `0.7`.
+  With `numbered: true` instead of a letter, a situational control takes a number from
+  its place on screen, beside the shell’s. `METABROWSER_SETTINGS` serves the reserved
+  keys as `RESERVED_SHELL_KEYS`. `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - Hold Shift outside a text field to see the keys: a keycap appears on each control a
   key reaches now, and the shortcut strip lists the common keys that are live.
   Releasing Shift, a click, or a scroll hides them, and `?`, capitals, Shift+click, and
   Shift+wheel never show them.
-  A file’s view tabs answer to their letters, such as `D` and `S` for a Markdown file’s
+  A file’s view tabs answer to their letters, such as `V` and `S` for a Markdown file’s
   Document and Source, `O` and `M` for a folder’s Overview and Treemap; `U` opens the
-  parent folder; `Y` copies the file’s path, or a commit’s revision; `X` opens the file
-  type filter and `A` the modified-within filter; and `W` opens a pin’s branch and tag
-  switcher. A key does nothing while its control is not on screen.
-  `1`, `2`, and `3` now also move focus to the panel’s rows.
-  Help lists the new keys under View tabs, Controls, and Filters, and ends with a note
-  about Shift. The main pane’s view tabs are a tablist to assistive technology.
+  parent folder; the Files tab’s filters answer to their numbers; and `W` opens a pin’s
+  branch and tag switcher.
+  A key does nothing while its control is not on screen.
+  `F`, `R`, and `H` also move focus to the panel’s rows.
+  Help lists the new keys under View tabs, Controls, and On this screen, and ends with a
+  note about Shift. The main pane’s view tabs are a tablist to assistive technology.
 
 - The keys Shift reveals are drawn in the yellow that marks a newly arrived row.
   Each keycap sits over the end of its own tab, button, icon, or breadcrumb, never over
   the file name, note, or path after it, and is translucent, so the label under its edge
-  still reads; a copy button that otherwise shows only on hover shows while Shift is
-  held. The shortcut strip turns the same yellow and grows upward over the bottom of the
-  navigation pane, so the tree does not move.
+  still reads. The shortcut strip turns the same yellow and grows upward over the bottom
+  of the navigation pane, so the tree does not move.
   Text on the yellow keeps at least 4.5:1 contrast in both themes.
-  The keycaps fade in briefly, appear at once under reduced motion, and never print.
+  The keycaps ease in, fading and growing slightly, appear at once under reduced motion,
+  go at once when Shift is released, and never print.
 
 - Every keyboard shortcut is a single key, and Shift no longer changes what any of them
-  does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls; `1`, `2`, and `3`
-  still do, and the browser keeps Command and Ctrl with a digit for its own tabs.
+  does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls, and neither do
+  `1`, `2`, and `3`: `F`, `H`, and `R` do, and the browser keeps Command and Ctrl with a
+  digit for its own tabs.
   A pull request’s stack moves from `⇧J` and `⇧K` to `N`, toward the stack’s top, and
   `P`, toward its base, so `J` and `K` on a focused Pulls row always move the row.
   In the file tree, `⇧↑` and `⇧↓` move one row, as `↑` and `↓` do, and Home and End
   still jump to the first and last row.
-  Shift with `T`, `J`, `K`, an arrow, or a digit now acts as the key alone, even where
+  Shift with `T`, `J`, `K`, an arrow, or a number now acts as the key alone, even where
   Shift+`1` types `!`, and `/` opens Quick Search on layouts that type it with Shift.
   In a text field, Shift with an arrow still selects text.
   The removed keys shipped in 0.12.0 and have no aliases.
 
 - A plugin manifest’s `[[view]]` may declare a one-letter `key` for its tab, and every
-  view of a built-in kind with more than one view declares one: Markdown’s Document `D`
-  and Source `S`, structured data’s Tree `R` and Source `S`, HTML’s Preview `P` and
-  Source `S`, an agent log’s Log `L`, Charts `C`, and Raw JSON `R`, other JSONL’s Log
-  `L` and Raw JSON `R`, and a folder’s Overview `O` and Treemap `M`. `/api/file` serves
-  it, lowercase, as `views[].key`, and `metab --show` and `metab --plugin NAME` print
-  it. The manifest loader refuses a key that is not one letter or that the shell reserves
-  everywhere: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. When two views of one kind
-  share a key, the first keeps it; the later view, like a `pull-request` view that takes
-  the stack keys `N` or `P`, is served without a key, and `metab --doctor` reports it,
-  naming the plugin that holds a shared key.
+  view of a built-in kind with more than one view declares one: `V` for a rendered view,
+  Markdown’s Document, structured data’s Tree, HTML’s Preview, and a log’s Log; `S` for
+  a source view, Source and Raw JSON; an agent log’s Charts `C`; and a folder’s Overview
+  `O` and Treemap `M`. `/api/file` serves it, lowercase, as `views[].key`, and
+  `metab --show` and `metab --plugin NAME` print it.
+  The manifest loader refuses a key that is not one letter or that the shell reserves:
+  `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. When two views of one kind share
+  a key, the first keeps it; the later view is served without a key, and
+  `metab --doctor` reports it, naming the plugin that holds a shared key.
   A view left alone, as HTML’s Source is without active content, has no other tab to
   switch to and is served without its key.
   `PLUGIN_SDK_VERSION` remains `0.7`.

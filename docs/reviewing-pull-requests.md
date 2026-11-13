@@ -128,6 +128,7 @@ number.
 Press `N` for the next member toward the stack’s top and `P` for the previous one
 toward its base; Shift makes no difference.
 Help lists both shortcuts, and editors or open dialogs keep their normal keys.
+[Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the rest of the keys.
 Moving between members keeps the current PR tab selected and clears the previous PR’s
 file selection.
 Expanded trees retain their keyboard position; the current-file highlight

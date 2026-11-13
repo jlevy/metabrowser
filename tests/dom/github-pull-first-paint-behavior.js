@@ -162,7 +162,7 @@ function host() {
 }
 
 /**
- * The tabs' C, G, and H under a held first paint (review E2): a landing whose description's
+ * The tabs' C, G, and E under a held first paint (review E2): a landing whose description's
  * Markdown is on its way holds the conversation over the loading page, header included. The
  * header keeps its tab column from first paint, so the column shows, inert, and no tab key is
  * live; at release the header paints, the column wakes, and all three keys are. The registry
@@ -270,11 +270,7 @@ async function heldTabKeys(page) {
     document: globalThis.document,
     HTMLElement: LiveElement,
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: {
-        ...Object.fromEntries([..."tjkuwxya0123456789"].map((key) => [key, null])),
-        n: ["pull-request"],
-        p: ["pull-request"],
-      },
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;

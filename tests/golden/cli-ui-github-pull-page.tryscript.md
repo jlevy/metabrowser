@@ -1641,23 +1641,30 @@ Opening Changes beside a checkout starts an acquisition and offers Retry changes
 refusal. The header has the same rows in the same order for every pull request and tab,
 and while its record is on its way: the state row holds a chip’s height with a strut, a
 stack has its slot at the end of the labels row, and Refresh at the end of the status
-row. The tabs answer to `C`, `G`, and `H` through the production shortcut registry and
+row. The tabs answer to `C`, `G`, and `E` through the production shortcut registry and
 plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
 does not show opens through the route, as a click on its link does.
+`H` is the Commits tab’s, so it does nothing here.
 The header keeps the tab column unless its first read fails: while the record is on its
 way, and for an absent record nothing is fetching, such as a server with no GitHub
 repository. So the keys are live from first paint, as the links are, and a key asks for
 the route a click on its link asks for.
-They wait while the column is out of the page after a failed first read, and while a
-held first paint keeps the loading heading over the loading page, when the column shows
-but is inert; they return when the header puts it back or wakes it, badged at once while
-Shift is held, wait while the page is staged inert, and end with the page.
-The failed first read here is followed on Changes, which holds no first paint, so it is
-paintHeader’s own retarget that badges the returning links.
+The header’s links and actions are numbered by their place through the same facade, and
+each number runs what its control does in the paint on screen, recorded as what the page
+asked for: `1` opens the pull request on GitHub, `2` asks to serve the head for Browse
+code, and on Changes `3` asks for a refresh.
+A refresh that serves the head repaints Browse code as a link, and `2` then opens the
+code instead; one with no pin drops Browse code, Refresh moves up to `2`, and `3`
+reaches nothing. The tab keys wait while the column is out of the page after a failed
+first read, and while a held first paint keeps the loading heading over the loading
+page, when the column shows but is inert; they return when the header puts it back or
+wakes it, badged at once while Shift is held, wait while the page is staged inert, and
+end with the page. The failed first read here is followed on Changes, which holds no
+first paint, so it is paintHeader’s own retarget that badges the returning links.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks H; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks H","live: conversation files checks","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks H","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks H","live: conversation files checks","G: showed Changes","disposed: keys none"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","1: window.open https://github.com/octo/demo/pull/7 _blank noopener,noreferrer","2: POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh","2: navigation.open /view/","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","3: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"]}
 ? 0
 ```
 
@@ -1870,7 +1877,7 @@ $ node tests/dom/github-pull-first-paint-behavior.js
         "files",
         "checks"
       ],
-      "badges": "Conversation C, Changes G, Checks H",
+      "badges": "Conversation C, Changes G, Checks E",
       "focus": "Changes, preventScroll true",
       "g": "opened the files route"
     }

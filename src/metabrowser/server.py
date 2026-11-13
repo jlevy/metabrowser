@@ -1525,8 +1525,9 @@ async def index(
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     # Commits is drawn here when the served root is a repository's root, the one root Git
-    # discovery accepts (git/repo.py), so the Pulls tab beside it does not move when discovery
-    # registers it; discovery removes it in the rare case Git does not agree.
+    # discovery accepts (git/repo.py), so it does not appear when discovery registers it;
+    # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
+    # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
         lambda: (session_filesystem_root().resolve() / ".git").exists()
     )
@@ -2034,7 +2035,7 @@ async def index(
         </div>
       </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{commits_button}{pulls_button}
+        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also

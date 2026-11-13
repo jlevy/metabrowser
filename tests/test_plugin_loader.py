@@ -776,10 +776,7 @@ def test_view_spec_rejects_unknown_print_profile() -> None:
 
 def test_view_spec_key_is_optional_and_stored_lowercase() -> None:
     assert ViewSpec(kind="x", id="y", label="Y").key is None
-    assert ViewSpec(kind="x", id="y", label="Y", key="D").key == "d"
-    # N and P are reserved only for the pull-request kind, which one manifest
-    # cannot see; the merged-list check decides them.
-    assert ViewSpec(kind="x", id="y", label="Y", key="p").key == "p"
+    assert ViewSpec(kind="x", id="y", label="Y", key="V").key == "v"
 
 
 def test_view_spec_rejects_a_key_that_is_not_one_letter() -> None:
@@ -789,17 +786,18 @@ def test_view_spec_rejects_a_key_that_is_not_one_letter() -> None:
 
 
 def test_view_spec_rejects_an_always_reserved_shell_key() -> None:
-    for key in ("t", "J"):
+    # The main tabs' letters and next and previous are reserved in every kind.
+    for key in ("t", "J", "f", "R", "h", "n", "P"):
         with pytest.raises(ValidationError, match="reserved"):
             ViewSpec(kind="x", id="y", label="Y", key=key)
 
 
 def test_manifest_with_a_reserved_view_key_is_refused_at_discovery(make_plugin_dir) -> None:
     plugin_dir = make_plugin_dir(
-        "yank-view",
+        "files-view",
         """
 [plugin]
-name = "yank-view"
+name = "files-view"
 sdk_version = "0.7"
 
 [[kind]]
@@ -810,12 +808,12 @@ match = { ext = ".myk" }
 kind = "myk"
 id = "main"
 label = "Main"
-key = "y"
+key = "f"
 """,
     )
     result = _try_load_plugin(plugin_dir, source="local:test")
     assert isinstance(result, str)
-    assert "key 'y' is reserved for the shell's copy command" in result
+    assert "key 'f' is reserved for the shell's Files tab" in result
 
 
 # ── folder_marker + yaml matchers (Tier A of dataset-plugin spec) ───────

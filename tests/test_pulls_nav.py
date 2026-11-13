@@ -183,9 +183,9 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     try:
         with TestClient(app) as client:
             elsewhere = client.get("/view/").text
-            # A pin is a repository, so Commits is drawn at first paint with Pulls after it.
+            # A pin is a repository, so Commits is drawn at first paint, after Pulls.
             assert _tabs(elsewhere) == {"files": True, "git": False, "pulls": False}
-            assert list(_tabs(elsewhere)) == ["files", "git", "pulls"]
+            assert list(_tabs(elsewhere)) == ["files", "pulls", "git"]
             # Fetched with the shell's tools, after the first tree: no startup script.
             assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
             assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
@@ -272,9 +272,9 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
         elsewhere = client.get("/view/").text
         assert _tabs(elsewhere)["pulls"] is False
         # Commits is drawn at first paint at the repository's root only, the one root Git
-        # discovery accepts, and always before Pulls.
+        # discovery accepts, and always after Pulls.
         assert ("git" in _tabs(elsewhere)) is (served == "")
-        assert list(_tabs(elsewhere))[-1] == "pulls"
+        assert list(_tabs(elsewhere))[1] == "pulls"
         assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
         assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
         for route in ("/pull/7", "/pulls"):

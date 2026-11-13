@@ -487,16 +487,17 @@ function createShell(pathname, network, options = {}) {
     ["nav-filter-bar", fakeElement()],
   ]);
   const scroller = options.scroller ?? fakeElement({ scrollTop: 0 });
+  // In the shell's order: Files, Pulls, then Commits.
   const panelIds = ["files"];
+  if (options.pulls) {
+    panelIds.push("pulls");
+  }
   // `gitDrawn` is the Commits tab the server draws at a repository's root, which
   // discovery has not registered.
   if (!options.withoutGit || options.gitDrawn) {
     panelIds.push("git");
   }
-  if (options.pulls) {
-    panelIds.push("pulls");
-  }
-  // A tab button is its digit's target, which the registry reads as live: connected,
+  // A tab button is its letter's target, which the registry reads as live: connected,
   // outside any inert subtree, and visible.
   const tabButtons = panelIds.map((tab) =>
     fakeElement({
@@ -999,29 +1000,32 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  assert.equal(press("2", {}), false, "absent Git leaves 2 alone");
-  assert.equal(press("3", { code: "Digit3", metaKey: true }), false, "Command-3 is the browser's");
-  assert.equal(press("3", { code: "Digit3", ctrlKey: true }), false, "Ctrl-3 is the browser's");
-  assert.equal(press("3", { code: "Digit3" }), true, "Pulls keeps 3 while Git is absent");
+  // F for Files, R for pull Requests, H for commit History ("Keyboard Shortcuts" in
+  // docs/design-system.md). A digit no longer names a main tab.
+  assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
+  assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
+  assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
+  assert.equal(press("3", { code: "Digit3" }), false, "3 is no main tab's");
+  assert.equal(press("r", { code: "KeyR" }), true, "Pulls is R while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
-  assert.equal(press("3", { code: "Digit3", shiftKey: true }), true, "Shift does not change 3");
+  assert.equal(press("R", { code: "KeyR", shiftKey: true }), true, "Shift does not change R");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   assert.deepEqual(
     tabButtons.map((button) => button.dataset.tab),
-    ["files", "git", "pulls"],
+    ["files", "pulls", "git"],
+    "Commits arrives after Pulls: the order is Files, Pulls, Commits",
   );
-  assert.equal(press("2", { code: "Digit2", target: { tagName: "INPUT" } }), false);
-  assert.equal(press("2", { code: "Digit2", metaKey: true }), false, "Command-2 is the browser's");
+  assert.equal(press("h", { code: "KeyH", target: { tagName: "INPUT" } }), false);
+  assert.equal(press("h", { code: "KeyH", metaKey: true }), false, "Command-H is the browser's");
   const closeModal = shortcuts.activateScope("help", { exclusive: true });
-  assert.equal(press("2", { code: "Digit2" }), false, "modal scopes own their keys");
+  assert.equal(press("h", { code: "KeyH" }), false, "modal scopes own their keys");
   closeModal();
-  // US Shift+2 types @ and Shift+1 types !: the digit row still names the tab.
-  assert.equal(press("@", { code: "Digit2", shiftKey: true }), true, "Shift+2 opens Commits");
+  assert.equal(press("H", { code: "KeyH", shiftKey: true }), true, "Shift+H opens Commits");
   assert.equal(sandbox.mainTabs.active(), "git");
   await settle();
-  // The digit hands focus to the panel's roving row, the tree's for Files.
+  // The letter hands focus to the panel's roving row, the tree's for Files.
   const focusedRows = [];
   sandbox.treeKeyboard = {
     focusCurrent() {
@@ -1029,15 +1033,15 @@ async function mainTabShortcuts() {
       return true;
     },
   };
-  assert.equal(press("!", { code: "Digit1", shiftKey: true }), true, "Shift+1 opens Files");
+  assert.equal(press("F", { code: "KeyF", shiftKey: true }), true, "Shift+F opens Files");
   assert.equal(sandbox.mainTabs.active(), "files");
-  assert.deepEqual(focusedRows, ["files"], "the Files digit focuses the tree's roving row");
+  assert.deepEqual(focusedRows, ["files"], "the Files letter focuses the tree's roving row");
   sandbox.treeKeyboard = null;
   await settle();
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
   assert.equal(help.context, "Available outside text fields.");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["1", "2", "3"]);
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "R", "H"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),

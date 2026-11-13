@@ -917,12 +917,14 @@ line. Open that address with the browser’s developer tools open.
 
 13. **The Shift key reveal, and its three provisional numbers.** With focus on a tree
     row, hold Shift alone: after about a fifth of a second a keycap appears on the Files
-    and Commits tabs, the view tabs of the open file, the header’s Up and Copy, and the
-    two filters, and the strip lists Help, Quick Search, the tabs, Up, and Copy.
+    tab (`F`), the Commits tab (`H`), the view tabs of the open file, and the header’s
+    Up (`U`), and the two filters show `1` (Modified within) and `2` (File type).
+    The header’s Copy has no keycap.
+    The strip lists Help, Quick Search, the tabs, and Up.
     Release Shift: all of them go.
     Type `?`, a capital, and Shift+`↑` at your normal speed: no keycap flashes.
-    Hold Shift and press `2`: Commits opens with its first row focused, and the keycaps
-    follow; press `1`: the filters get theirs back.
+    Hold Shift and press `H`: Commits opens with its first row focused, and the keycaps
+    follow; press `F`: the filters get `1` and `2` back.
     Click while holding Shift, or scroll: the keycaps go.
     Check 14 looks at how they are drawn.
 
@@ -959,32 +961,33 @@ line. Open that address with the browser’s developer tools open.
     - Each keycap is a small yellow key with a deeper yellow border and dark text.
       A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
       label’s last letter, which still reads through it.
-      In the file header, the Up keycap sits over the end of the folder’s breadcrumb,
-      and the Copy keycap over the copy icon.
+      In the file header, the Up keycap sits over the end of the folder’s breadcrumb.
       Each covers no text outside its own control: the file name, the mirror note, and
       the size read in full.
       At the root, Up’s control is the `/` crumb, which is narrower than a keycap, so
       the keycap also reaches back over the last letter or two of the dimmed root name,
       the folder Up opens.
       No keycap is cut off, and nothing beside one moves.
-    - The Copy path button, which otherwise shows only on hover, shows while Shift is
-      held, with the pointer away from the header.
+    - The Copy path button, which shows only on hover and has no key, stays hidden while
+      Shift is held with the pointer away from the header.
+    - Each keycap fades in and grows slightly into place over about a fifth of a second
+      (`--motion-reveal`, 180 ms), and the strip fades in with them.
     - The strip at the bottom of the navigation pane turns the same yellow with dark
       text, its keycaps outlined in the deeper yellow, and grows upward over the tree.
       The tree neither moves nor scrolls.
-    - Release Shift: the keycaps and the yellow go at once, and Copy path fades out.
+    - Release Shift: the keycaps, the strip, and the yellow go at once, with no fade.
 
     Repeat in the dark theme, where the yellow is olive and the text light, and
     everything reads as clearly.
     Open a folder and hold Shift: the Up keycap sits over the Up button, and the path
     after it reads in full.
-    Open a commit from **Commits** and hold Shift: the Copy keycap sits over the copy
-    icon beside the short commit ID, and the author’s name after it reads in full.
+    Open a commit from **Commits** and hold Shift: the copy icon beside the short commit
+    ID has no keycap, and the author’s name after it reads in full.
     Repeat each theme at 200% zoom, with the navigation pane dragged to its narrowest,
     and in a window about 480 pixels wide, where a tab cut off by the window’s edge
     takes its keycap with it.
     Then turn on the system’s Reduce motion setting and hold Shift: the keycaps and the
-    strip appear at once rather than fading in over about a sixth of a second.
+    strip appear at once, with no fade or grow, and still go at once on release.
 
     Headless Chrome 152 ran this check on a Markdown file of a mirror’s pin in both
     themes, at 200% zoom, with the pane at its narrowest, and 480 pixels wide, and on a
@@ -992,9 +995,11 @@ line. Open that address with the browser’s developer tools open.
     No keycap was clipped except the one on the tab the window’s edge cut off, the
     tree’s box and scroll position did not change while the strip showed, and the
     keycaps and the strip were gone once Shift was released.
-    For the Up and Copy keycaps, it ran on a file at the root and a nested file, of a
-    folder and of a mirror’s pin, on a folder, and on a commit, in both themes, and on a
-    nested file and a folder right to left.
+    That run predates the numbered filters, the removal of the Copy keycap, and the
+    `--motion-reveal` fade, so it does not cover them.
+    For the Up keycap, and the Copy keycap it then had, it ran on a file at the root and
+    a nested file, of a folder and of a mirror’s pin, on a folder, and on a commit, in
+    both themes, and on a nested file and a folder right to left.
     Each keycap ended within half a pixel of its control’s inline end, and no glyph
     outside the control lay under one except the end of the dimmed root name at the
     root. Under emulated reduced motion the keycaps had no animation, and under print
