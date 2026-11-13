@@ -228,9 +228,10 @@ The list is kept by hand, so a test that asks for the floor from a module the li
 leaves out fails, wherever the helper it asked through lives.
 
 **macOS** covers what only that platform has: extended ACLs on the application home
-(`tests/test_cache_permissions.py`) and ref names that fold together on a
-case-insensitive file system (`tests/test_cache_update.py`,
-`tests/test_github_pulls.py`). CI runs on Ubuntu, so no CI job runs these tests.
+(`tests/test_cache_permissions.py`), ref names that fold together on a case-insensitive
+file system (`tests/test_cache_update.py`, `tests/test_github_pulls.py`), and Apple’s
+`/usr/bin/git`, a shim whose hand-over to the developer tools’ Git a stop has to follow
+(`tests/test_git_process_group.py`). CI runs on Ubuntu, so no CI job runs these tests.
 `make test-macos` sets `METABROWSER_REQUIRE_MACOS_TIER`, which turns a skip of one of
 them into a failure, so the target cannot pass on Linux or on a case-sensitive volume.
 
@@ -251,8 +252,8 @@ or the test fails:
 
 - macOS tier: a test with the `macos_tier` marker.
   Its reasons are `extended ACLs are inspected only on macOS`,
-  `the file system is case-sensitive`, and
-  `the store's filesystem tells letter case apart`;
+  `the file system is case-sensitive`, `the store's filesystem tells letter case apart`,
+  and `Apple's git shim is macOS's, and needs Xcode or its Command Line Tools`;
 - Live GitHub tier: a test with the `live_github` marker, with
   `set METABROWSER_LIVE_GITHUB=1 to run`;
 - Admitted-Git tier: `needs a Git the acquisition floor admits`, where the runner’s own
@@ -284,7 +285,10 @@ Strict mode is off on a developer machine, which can add these:
 - a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs, and
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
-  above.
+  above;
+- `Chrome is not installed`, for the transition recorder’s checks in
+  `tests/test_transitions_instrument.py`, which measure paint and the frame clock in a
+  real headless Chrome; the CI runners have Chrome, so CI runs them.
 
 ### Timeouts
 

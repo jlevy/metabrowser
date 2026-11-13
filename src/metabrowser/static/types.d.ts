@@ -665,6 +665,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
 }>;
 
 type MetabrowserSourceAppendRuntime = Readonly<{
+  TEXT_NODE_MAX_LENGTH: number;
   appendSourceText(root: ParentNode | null, text: string): boolean;
   commitChunkCache(options: {
     cached: Record<string, unknown>;
@@ -693,6 +694,7 @@ type MetabrowserSourceAppendRuntime = Readonly<{
   }): boolean;
   syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
   syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
+  textPieces(text: string, limit?: number): string[];
 }>;
 
 type MetabrowserViewStateRuntime = Readonly<{
@@ -952,6 +954,8 @@ type MetabrowserRollupEnvelope = {
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
   file_type_breakdown: MetabrowserFileTypeBreakdown | null;
+  /** File Overview's compact legend; null exactly when `file_type_breakdown` is. */
+  file_type_legend: MetabrowserFileTypeLegend | null;
   index_status: string;
   indexed_files: number;
   max_files: number;
@@ -994,6 +998,21 @@ type MetabrowserFileTypeBreakdown = {
       omitted_distinct_values: number;
     } | null;
   };
+};
+
+/** The legend for one measure in one population: named families, then the rest. */
+type MetabrowserFileTypeLegendView = {
+  total: number;
+  named: Array<{ family: string; value: number }>;
+  other: number;
+};
+
+type MetabrowserFileTypeLegend = {
+  schema: "file-type-legend-v1";
+  limit: number;
+  minimum_share_percent: number;
+  files: { all: MetabrowserFileTypeLegendView; unignored: MetabrowserFileTypeLegendView };
+  bytes: { all: MetabrowserFileTypeLegendView; unignored: MetabrowserFileTypeLegendView };
 };
 
 type MetabrowserRollupOptions = {

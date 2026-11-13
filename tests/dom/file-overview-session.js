@@ -15,7 +15,10 @@
 // cannot load without a document.
 //
 // Each step prints what is on screen: the totals, the distribution's text, starting with
-// its caption, and whether it offers Retry. Exits 1 on a failed invariant.
+// the legend, and whether it offers Retry. The distribution's table is behind Details,
+// closed on mount, so it is in the text only where a step opens it. The caption naming
+// the population the shares are of is for screen readers only, so it is not in the text;
+// a step with one prints it apart as `caption`. Exits 1 on a failed invariant.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -185,6 +188,20 @@ const COMPLETE_ROLLUP = {
     no_extension: { metrics: ZERO, filenames: [], others: null },
     remaining_types: { metrics: ZERO, extensions: [], others: null },
   },
+  // What the route's rule derives from that breakdown: Python is all of it.
+  file_type_legend: {
+    schema: "file-type-legend-v1",
+    limit: 5,
+    minimum_share_percent: 1,
+    files: {
+      all: { total: 3, named: [{ family: "python", value: 3 }], other: 0 },
+      unignored: { total: 2, named: [{ family: "python", value: 2 }], other: 0 },
+    },
+    bytes: {
+      all: { total: 3000, named: [{ family: "python", value: 3000 }], other: 0 },
+      unignored: { total: 2000, named: [{ family: "python", value: 2000 }], other: 0 },
+    },
+  },
 };
 
 const FILE_TYPES = {
@@ -193,10 +210,31 @@ const FILE_TYPES = {
   fingerprint: "session",
   groups: [
     { id: "code", label: "Code" },
+    { id: "docs", label: "Documentation" },
+    { id: "data", label: "Data" },
     { id: "other", label: "Other" },
   ],
-  families: [{ id: "python", label: "Python", groupId: "code", extensions: [".py"] }],
+  families: [
+    { id: "typescript", label: "TypeScript", groupId: "code", extensions: [".ts"] },
+    { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
+    { id: "javascript", label: "JavaScript", groupId: "code", extensions: [".js"] },
+    { id: "rust", label: "Rust", groupId: "code", extensions: [".rs"] },
+    { id: "markdown", label: "Markdown", groupId: "docs", extensions: [".md"] },
+    { id: "json", label: "JSON", groupId: "data", extensions: [".json"] },
+    { id: "yaml", label: "YAML", groupId: "data", extensions: [".yaml"] },
+    { id: "log", label: "Log files", groupId: "other", extensions: [".log"] },
+  ],
 };
+
+/**
+ * A folder of many types, shaped like a large repository's: eight families in four
+ * groups, files no family claims, and a JSON tree that is mostly ignored. By files Other
+ * types is the largest bucket of all, and by bytes the order is another one. Its legend
+ * is the route's: tests/test_file_type_legend.py checks the rule produced it.
+ */
+const MANY_TYPES_ROLLUP = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "fixtures/file-overview-many-types-rollup.json"), "utf8"),
+);
 
 const rollupError = (status) =>
   new window.MetabrowserRequestErrors.RequestError("Could not load folder totals.", {
@@ -280,6 +318,7 @@ const rollupError = (status) =>
         if (!shownTotals && !summary()) {
           return { totals: "nothing", distribution: container.textContent, retry: false };
         }
+        const caption = summary().querySelector(".file-type-summary-caption");
         return {
           totals: shownTotals.html.includes("folder-totals-loading")
             ? "skeleton"
@@ -289,11 +328,27 @@ const rollupError = (status) =>
           distribution: summary().querySelector(".file-type-summary-skeleton")
             ? "skeleton"
             : summary().textContent,
+          // What a screen reader names the legend and the table with.
+          ...(caption
+            ? {
+                caption: caption.classList.contains("sr-only")
+                  ? caption.textContent
+                  : `visible: ${caption.textContent}`,
+              }
+            : {}),
           retry: summary().html.includes("data-file-types-retry"),
         };
       },
       retry() {
         summary().querySelector("[data-file-types-retry]").listeners.click();
+      },
+      /** The Details toggle the compact summary offers. */
+      details() {
+        return summary().querySelector(".file-type-summary-details-toggle");
+      },
+      /** The summary's root, while it is mounted. */
+      summaryRoot() {
+        return container.querySelector(".file-type-summary");
       },
       /** The event the inventory stream sends, past the watch's debounce of zero. */
       async inventoryChanged() {
@@ -510,35 +565,35 @@ const rollupError = (status) =>
     view.panel.dispose();
   }
 
-  // The ordinary folder. The distribution's caption says which tally row its shares
-  // are of and how much that is, and follows Show ignored and the measure; the tally
-  // rows themselves do not move.
+  // The ordinary folder. The distribution's caption, for screen readers, says which
+  // tally row its shares are of and how much that is, and follows Show ignored and the
+  // measure; the tally rows themselves do not move.
   {
     const view = page(COMPLETE_DIR, COMPLETE_ROLLUP);
     await view.settle();
     const complete = view.read();
     assert(complete.distribution.includes("Python"), "the ordinary folder has no distribution");
     assert(
-      complete.distribution.startsWith("Share of Total (3 files)"),
-      `Show ignored on, by files: ${complete.distribution}`,
+      complete.caption === "Share of Total (3 files)" && !complete.distribution.includes("Share"),
+      `Show ignored on, by files: ${JSON.stringify(complete)}`,
     );
     view.controls.set({ includeIgnored: false });
     const filesOnly = view.read();
     assert(
-      filesOnly.distribution.startsWith("Share of Files (2 files)"),
-      `Show ignored off, by files: ${filesOnly.distribution}`,
+      filesOnly.caption === "Share of Files (2 files)",
+      `Show ignored off, by files: ${filesOnly.caption}`,
     );
     view.controls.set({ metric: "size" });
     const bytes = view.read();
     assert(
-      bytes.distribution.startsWith("Share of Files (2,000 B)"),
-      `Show ignored off, by bytes: ${bytes.distribution}`,
+      bytes.caption === "Share of Files (2,000 B)",
+      `Show ignored off, by bytes: ${bytes.caption}`,
     );
     view.controls.set({ includeIgnored: true });
     const allBytes = view.read();
     assert(
-      allBytes.distribution.startsWith("Share of Total (3,000 B)"),
-      `Show ignored on, by bytes: ${allBytes.distribution}`,
+      allBytes.caption === "Share of Total (3,000 B)",
+      `Show ignored on, by bytes: ${allBytes.caption}`,
     );
     assert(
       filesOnly.totals === complete.totals,
@@ -546,6 +601,111 @@ const rollupError = (status) =>
     );
     transcript["an ordinary folder"] = { complete, filesOnly, bytes, allBytes };
     view.panel.dispose();
+  }
+
+  // The compact summary and its Details. The legend is what File Overview shows of the
+  // breakdown; everything else waits behind Details, which
+  // starts closed, holds its state through every repaint of this mount, and goes with it.
+  {
+    const view = page(
+      {
+        total_files: 1000,
+        total_size: 1000,
+        unignored_files: 800,
+        unignored_size: 920,
+        state: "complete",
+      },
+      MANY_TYPES_ROLLUP,
+    );
+    await view.settle();
+    const toggle = () => view.details();
+    const state = (step) => {
+      const { caption, distribution } = view.read();
+      return { details: toggle().attributes["aria-expanded"], caption, distribution, step };
+    };
+    const closed = state("mounted");
+    assert(closed.details === "false", "Details starts open");
+    assert(
+      closed.distribution ===
+        "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details" &&
+        closed.caption === "Share of Total (1,000 files)",
+      `the compact summary: ${closed.distribution}`,
+    );
+    toggle().listeners.click();
+    const opened = state("Details opened");
+    assert(opened.details === "true", "Details did not open");
+    for (const shown of ["Code", "Documentation", "Data", "Other", "No extension", "Other types"]) {
+      assert(opened.distribution.includes(shown), `open Details does not show ${shown}`);
+    }
+    assert(
+      opened.distribution.includes("JavaScript 25 files 2.5%") &&
+        opened.distribution.includes("1 more 8 files 0.8%"),
+      `open Details lacks a type the legend leaves out: ${opened.distribution}`,
+    );
+    view.controls.set({ metric: "size" });
+    const bySize = state("measure changed to bytes");
+    view.controls.set({ includeIgnored: false });
+    const unignored = state("Show ignored turned off");
+    await view.inventoryChanged();
+    const refreshed = state("rollup refreshed");
+    for (const step of [bySize, unignored, refreshed]) {
+      assert(step.details === "true", `${step.step} closed Details`);
+    }
+    assert(
+      bySize.distribution.startsWith(
+        "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% Other 13% Details",
+      ) && bySize.caption === "Share of Total (1,000 B)",
+      `by bytes: ${bySize.distribution}`,
+    );
+    assert(
+      unignored.distribution.startsWith(
+        "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details",
+      ) && unignored.caption === "Share of Files (920 B)",
+      `Show ignored off: ${unignored.distribution}`,
+    );
+    view.answers.next = { path: "docs", index_status: "scanning", node: null };
+    await view.inventoryChanged();
+    const rescanning = view.read().distribution;
+    view.answers.next = MANY_TYPES_ROLLUP;
+    await view.inventoryChanged();
+    const rescanned = state("a rescan answered");
+    assert(rescanning === "skeleton", `a rescan: ${rescanning}`);
+    assert(rescanned.details === "true", "a rescan closed Details");
+    toggle().listeners.click();
+    const reclosed = state("Details closed");
+    assert(reclosed.details === "false", "Details did not close");
+    assert(
+      reclosed.distribution.endsWith("Other 10.9% Details"),
+      `a closed Details shows its table: ${reclosed.distribution}`,
+    );
+    toggle().listeners.click();
+    view.panel.dispose();
+    assert(view.summaryRoot() === null, "a disposed panel left its summary behind");
+    const remounted = page(
+      {
+        total_files: 1000,
+        total_size: 1000,
+        unignored_files: 800,
+        unignored_size: 920,
+        state: "complete",
+      },
+      MANY_TYPES_ROLLUP,
+    );
+    await remounted.settle();
+    const fresh = remounted.details().attributes["aria-expanded"];
+    assert(fresh === "false", "Details stayed open into the next mount");
+    transcript["the compact summary and its Details"] = {
+      closed,
+      opened,
+      bySize,
+      unignored,
+      refreshed,
+      rescanning,
+      rescanned,
+      reclosed,
+      "disposed, then mounted again": { details: fresh },
+    };
+    remounted.panel.dispose();
   }
 
   // The shell's folder header reads the same envelope: pending aggregates are a skeleton

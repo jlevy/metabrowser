@@ -642,7 +642,7 @@ function historyPage(page, commits, total, headRevision) {
     scope_fingerprint: "deep-scope",
     graph_checkpoint: {
       version: 1,
-      prior_swimlanes: page > 0 ? [{ id: commits[0].id, color: "var(--git-ref-local)" }] : [],
+      prior_swimlanes: page > 0 ? [{ id: commits[0].id, color: "var(--git-ref-remote)" }] : [],
       color_index: -1,
       head_revision: headRevision,
       scope_fingerprint: "deep-scope",
