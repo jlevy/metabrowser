@@ -108,6 +108,13 @@ route = "pulls-prefetch"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_prefetch_handler"
 methods = ["GET", "POST"]
 
+# Discard everything this plugin caches for the served repository, to be fetched again.
+# A same-origin POST with an empty JSON object; the source and its Git store stay.
+[[data_hook]]
+route = "cache-clear"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:cache_clear_handler"
+methods = ["POST"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]

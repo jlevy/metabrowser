@@ -27,14 +27,22 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     PullDataError,
     active_account,
     as_dict,
+    cache_unwritable,
     login_of,
+    newer_cache,
     readable_items,
+    unknown_cache,
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     PAGE_SIZE,
     CatalogState,
+    CatalogUnusableError,
+    NewerCatalogError,
+    UnknownCatalogError,
+    catalog_refusal,
+    failure_line,
     publish_page,
     read_catalog,
 )
@@ -290,6 +298,9 @@ def _next_scan(
     return "all" if not state.done["all"] else None
 
 
+_LIST: Final = "the pull-request list"
+
+
 async def _publish(
     repository: ListedRepository,
     previous: CatalogState | None,
@@ -298,11 +309,39 @@ async def _publish(
 ) -> bool:
     try:
         return await run_lock_section(partial(publish_page, repository, previous, proposed, rows))
-    except (PrivateStorageError, OSError, sqlite3.Error, ValueError) as exc:
-        raise PullDataError(
-            "cache_unwritable",
-            "the metadata catalog could not be written; clear the affected repository cache and retry",
+    except NewerCatalogError as exc:
+        raise newer_cache(
+            _LIST, str(exc), source=repository.source, checkout=repository.checkout
         ) from exc
+    except UnknownCatalogError as exc:
+        raise unknown_cache(
+            _LIST, str(exc), source=repository.source, checkout=repository.checkout
+        ) from exc
+    except (PrivateStorageError, OSError, sqlite3.Error, CatalogUnusableError) as exc:
+        # The job's own catch records only the message, so the cause is logged here.
+        log.warning(
+            "the pull-request catalog of %s could not be written: %s",
+            repository.source,
+            failure_line(exc),
+        )
+        raise cache_unwritable(
+            _LIST, exc, source=repository.source, checkout=repository.checkout
+        ) from exc
+
+
+async def _stop_at_kept_catalog(repository: ListedRepository) -> None:
+    """Stop before GitHub is asked for a page no publication could keep.
+
+    That is a catalog a newer release wrote, or one whose versions cannot be read, which
+    a writer leaves as it is.
+    """
+
+    refusal = await asyncio.to_thread(catalog_refusal, repository.home, repository.slug)
+    if refusal is None:
+        return
+    kind, why = refusal
+    refuse = newer_cache if kind == "newer" else unknown_cache
+    raise refuse(_LIST, why, source=repository.source, checkout=repository.checkout)
 
 
 def _rate_limit_retry_at(now: datetime, previous: PullRefreshStamp | None) -> str:
@@ -337,6 +376,7 @@ async def refresh_pull_list(
     try:
         repository = await claim_source(repository)
         source_claimed = True
+        await _stop_at_kept_catalog(repository)
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
