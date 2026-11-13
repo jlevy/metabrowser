@@ -132,26 +132,26 @@
   line-height: 16px;
 }
 /* A state's badge is as wide as the widest state's, so a stale record that turns out
-   merged does not widen it under the reader: sizers under the label give the width. The
-   label stays the first flex item, because an inline flex container takes its baseline
-   from its first item: a sizer first hung the badge 8.5 px below its line and made the
-   row 31 px (tests/dom/github-pull-header-chrome.mjs). */
-.github-pull-meta .github-pull-badge {
-  flex-direction: column;
-  gap: 0;
+   merged does not widen it under the reader. Its slot is a one-column grid: the badge,
+   then a sizer of every state's label in a badge's box of no height, so the column is the
+   widest label's and the badge stretches to it. The sizers are outside the badge, which
+   centers its capitals by trimming its one line (`.file-header-badge`). Inside it, as
+   pseudo-elements of an inline-block, they were laid beside the label, and the badge was
+   all three labels wide: 117.6 px for "Open", which pushed the merge out of a 320 px row. */
+.github-pull-state-slot {
+  display: inline-grid;
+  flex: none;
 }
-.github-pull-meta .github-pull-badge::before,
-.github-pull-meta .github-pull-badge::after {
-  order: 1;
-  height: 0;
+.github-pull-state-slot > .github-pull-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+.github-pull-state-slot > .github-pull-badge-sizer {
+  block-size: 0;
+  padding-block: 0;
+  border-block-width: 0;
   overflow: hidden;
   visibility: hidden;
-}
-.github-pull-meta .github-pull-badge::before {
-  content: "Merged" / "";
-}
-.github-pull-meta .github-pull-badge::after {
-  content: "Closed" / "";
 }
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
@@ -664,10 +664,17 @@
    engine. Before it, the stack position's column is as wide as its position and empty
    without a stack: a position that arrives cuts the title shorter and moves nothing, and
    the row keeps its height. On the muted line, which wraps, it moved the merge's arrow 34
-   to 54 px, or took a line of its own and moved every row below 18 px. */
+   to 54 px, or took a line of its own and moved every row below 18 px. The column takes
+   at most half of the room the title and it share, the row's width less the chevron's,
+   the icon's, and the age's columns and the four gaps: a position wider than that is cut
+   short, with all of it in its tooltip, rather than pushing the age out of the row. At
+   the 180 px pane, two stacks' "12/23 · 10/14" pushed the age 17.5 px right and the pane
+   scrolled sideways. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px 16px minmax(0, 1fr) auto 5ch;
+  grid-template-columns:
+    16px 16px minmax(0, 1fr) fit-content(calc((100% - 2 * 16px - 5ch - 4 * 6px) / 2))
+    5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   padding: 2px 12px 2px 10px;
@@ -789,12 +796,14 @@
   grid-row: 1;
   grid-column: 3;
 }
+/* Centred with the row's other boxes (`align-items: center`), not on the title's baseline:
+   its 18 px box hung from that baseline grew the row 3 px and moved the title and the
+   muted line down. */
 .github-pulls-row > .github-pulls-stack {
   grid-row: 1;
   grid-column: 4;
-  /* Centred, not on the title's baseline: its 18 px box hung from that baseline grew the
-     row 3 px and moved the title and the muted line down. */
-  align-self: center;
+  min-width: 0;
+  overflow: hidden;
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
    on the row turn it, as they turn a folder's. */
@@ -946,10 +955,11 @@
   outline-offset: 1px;
 }
 
-/* Optional membership has its slot at the end of the retained labels row, which has room
-   to spare: its chip, which arrives from its own /stacks answer, takes room only from the
-   labels, which are cut short and do not move. At the end of the state row it took its
-   width from the sentence and the merge, and the merge slid up to 35 px.
+/* Optional membership has its slot at the end of the retained labels row: its chip, which
+   arrives from its own /stacks answer, moves nothing. It takes its width from the labels,
+   which the row cuts shorter at the slot, a label that showed whole among them. At the end
+   of the state row it took its width from the sentence and the merge, and the merge slid
+   up to 35 px.
    The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
 .github-pull-stacks {
   display: flex;
@@ -1014,6 +1024,12 @@
   font-weight: var(--weight-bold);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
+}
+/* A Pulls row's position past its column's ceiling ends in an ellipsis (`.github-pulls-row`). */
+.github-pulls-row > .github-pulls-stack > .github-pull-stack-position {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .github-pull-stack-dot {
   color: var(--muted);

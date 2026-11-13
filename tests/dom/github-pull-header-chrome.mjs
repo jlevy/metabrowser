@@ -125,6 +125,7 @@ const MEASURE = `async (name, change, tab, width) => {
   if (change.longNames) {
     const pull = body.record.pull;
     pull.author = "a-thirty-nine-character-github-login-x";
+    pull.merged_by = "a-thirty-nine-character-github-login-y";
     pull.head = { ...pull.head, ref: "feature/a-rather-long-branch-name-for-the-header-row", repository: "someorganization/demo" };
     pull.base = { ...pull.base, ref: "release/2026-11-long-base-branch", repository: "octo/demo" };
   }
@@ -158,6 +159,19 @@ const MEASURE = `async (name, change, tab, width) => {
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
+  // The avatar slot authorLabel draws, without a request: no fixture names an avatar the
+  // page may load, and most authors have one.
+  if (change.avatar) {
+    for (const identity of container.querySelectorAll(".github-pull-meta .github-pull-identity")) {
+      const image = document.createElement("img");
+      image.className = "github-pull-avatar";
+      image.alt = "";
+      image.width = 18;
+      image.height = 18;
+      identity.prepend(image);
+    }
+    await frames();
+  }
   const header = container.querySelector(".github-pull-header");
   const box = (node) => node?.getBoundingClientRect();
   // How much of an element's width shows: what every box with an overflow between it and
@@ -274,6 +288,8 @@ const RECORDS = [
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
   ["current", { longNames: true }],
+  ["current", { longNames: true, avatar: true }],
+  ["merged", { longNames: true, avatar: true }],
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the stack
@@ -359,6 +375,12 @@ const PULLS_ROWS = `async (rows, width) => {
       number: row.number,
       moved,
       between: s.width > 0 && s.left >= title.getBoundingClientRect().right - 0.5 && s.right <= anchor.querySelector(".github-pulls-age").getBoundingClientRect().left + 0.5,
+      // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
+      inside:
+        [...anchor.querySelectorAll(".github-pulls-age, .github-pulls-stack")].every(
+          (node) => node.getBoundingClientRect().right <= anchor.getBoundingClientRect().right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5,
+        ) && nav.scrollWidth <= nav.clientWidth,
+      title: Math.round(title.getBoundingClientRect().width * 10) / 10,
     };
   });
 }`;
@@ -393,10 +415,31 @@ const PULLS = [
     base: "topic",
     stack: "1/2",
   },
+  // Wider than half of what the title and the position share in a 180 px pane: cut short.
+  {
+    number: 4242,
+    title: "Two stacks, two digits each",
+    author: "octo",
+    avatar: true,
+    head: "stack/part",
+    headLabel: "stack/part",
+    base: "main",
+    stack: "12/23 · 10/14",
+  },
+  {
+    number: 4243,
+    title: "Three stacks",
+    author: "octo",
+    avatar: false,
+    head: "x",
+    headLabel: "x",
+    base: "main",
+    stack: "3/3 · 1/2 · 4/7",
+  },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
 const TABS = ["", "files", "checks"];
-const WIDTHS = [980, 760, 560, 420, 360];
+const WIDTHS = [980, 760, 560, 420, 360, 320];
 
 async function main() {
   const bin = process.env.CHROME_BIN;
@@ -496,6 +539,16 @@ async function main() {
           check(
             `${where}: the stack position sits between the title and the age`,
             row.between,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the position and the age end inside the row, and nothing scrolls sideways`,
+            row.inside,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the title keeps a share of its line`,
+            row.title >= 20,
             JSON.stringify(row),
           );
         }

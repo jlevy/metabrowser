@@ -581,13 +581,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
             "a failed first read takes the column out: live none",
             "G: not handled",
-            "Shift held while it is out: badges none",
+            "on Changes, Shift held while it is out: badges none",
             "the next read answers, and the returning tabs are badged: "
             "Conversation C, Changes G, Checks H",
             "the next read answers and paintHeader puts the column back: "
             "Conversation C, Changes G, Checks H",
             "live: conversation files checks",
-            "G: opened the files route",
+            "G: showed Changes",
             "disposed: keys none",
         ],
     }
@@ -737,11 +737,19 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # No tab key is live while the header waits with the held body; all three at release
         # (review E2).
         "tabKeysWhileHeld": {
-            "whileHeld": {"holding": True, "tabColumn": "inert", "live": [], "g": "not handled"},
+            "whileHeld": {
+                "holding": True,
+                "tabColumn": "inert",
+                "live": [],
+                "badges": "none",
+                "g": "not handled",
+            },
             "released": {
                 "holding": False,
                 "tabColumn": "live",
                 "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks H",
+                "focus": "Changes, preventScroll true",
                 "g": "opened the files route",
             },
         },

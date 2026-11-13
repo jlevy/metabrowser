@@ -36,7 +36,13 @@
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
 import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
-import { displayState, listedState, pullStateIcon, withListedState } from "./pull-state.js";
+import {
+  displayState,
+  listedState,
+  PULL_STATES,
+  pullStateIcon,
+  withListedState,
+} from "./pull-state.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -3407,14 +3413,15 @@ export function mountPullPage(container, ctx, mb) {
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
-  // labels row, which has room to spare: arriving, it takes room only from labels the row
-  // already cuts short. At the end of the state row it took its width from the sentence and
-  // the merge, which slid up to 35 px. With no stack the slot holds a strut.
+  // labels row: arriving, it moves nothing, and takes its width from the labels, which the
+  // row cuts shorter, a label that showed whole among them. At the end of the state row it
+  // took its width from the sentence and the merge, which slid up to 35 px. With no stack
+  // the slot holds a strut.
   const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const labelList = h("div", { class: "github-pull-label-list" });
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
-  const stateBadge = h("span");
+  const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
   const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
   header.append(stateRow);
@@ -4011,6 +4018,8 @@ export function mountPullPage(container, ctx, mb) {
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
+  /** The tab link that had focus when a held header made the column inert. @type {HTMLElement | null} */
+  let focusedTab = null;
 
   /** Optional membership retains its labels-row disclosure while other header details repaint.
    * @param {PullModel} model
@@ -4090,7 +4099,22 @@ export function mountPullPage(container, ctx, mb) {
    */
   function paintStateRow(pull) {
     stateRow.hidden = false;
-    stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
+    // The badge, then a sizer of every state's label, each a badge's box of no height: the
+    // slot is as wide as the widest, so a stale record that turns out merged does not widen
+    // the badge under the reader (github/styles.css, `.github-pull-state-slot`).
+    stateBadge.replaceChildren(
+      badge(pull.state, pull.stateLabel),
+      ...Object.values(PULL_STATES).map(({ label }) =>
+        h(
+          "span",
+          {
+            class: "file-header-badge github-pull-badge github-pull-badge-sizer",
+            "aria-hidden": "true",
+          },
+          [label],
+        ),
+      ),
+    );
     // A narrow row gives way in its sentence first and its branches last: the action is
     // cut short before the merge's names are (styles.css, "One line").
     stateDetails.replaceChildren(
@@ -5384,7 +5408,8 @@ export function mountPullPage(container, ctx, mb) {
    * so the links stay on screen while the loading heading waits for the conversation
    * (`firstPaint.header`), but neither a click nor a key acts on them: the column is inert,
    * which the shortcut registry reads as not live. As it wakes, retargeting the keys badges
-   * the links at once if Shift is held.
+   * the links at once if Shift is held. A link that had focus loses it to the page while
+   * inert, as `paintStacks` keeps the stack's control's, so it gets it back on waking.
    *
    * @param {boolean} held
    */
@@ -5393,6 +5418,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     if (held) {
+      focusedTab = tabLinks.find(({ link }) => link === document.activeElement)?.link ?? null;
       tabColumn.setAttribute("inert", "");
       return;
     }
@@ -5400,6 +5426,11 @@ export function mountPullPage(container, ctx, mb) {
     tabKeys.forEach((handle, at) => {
       handle.retarget(tabLinks[at].link);
     });
+    const restore = focusedTab;
+    focusedTab = null;
+    if (restore?.isConnected) {
+      restore.focus({ preventScroll: true });
+    }
   }
 
   /**

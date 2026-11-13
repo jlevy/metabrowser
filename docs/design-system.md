@@ -1125,7 +1125,7 @@ A rename in a diff reads the same way, `old → new`.
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the chips’ `--ui-small-font-size`. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own, as a Pulls row does; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own, as a Pulls row does; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
 On the Pulls tab the muted line wraps rather than clips, so both chips and the arrow are
 always whole inside the row, down to the narrowest navigation pane (180px) with a
@@ -1313,10 +1313,11 @@ so the tab bar under it never moves between pull requests or tabs: the state row
 line, its sentence, then its author, then its branch names cut short rather than
 wrapping it, and the badge as wide as the widest state; the labels row is always there,
 a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
-takes room only from labels already cut short and moves nothing; the status row is one
-line that ends in Refresh’s slot, held hidden on a tab with nothing to refresh, its text
-and then its offers’ sentences cut short, never their controls, and a rate limit’s hold
-on the line too; and a cold page keeps every row, empty, at its height.
+moves nothing: it takes its width from the labels, which the row then cuts shorter at
+the slot, a label that showed whole among them; the status row is one line that ends in
+Refresh’s slot, held hidden on a tab with nothing to refresh, its text and then its
+offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
+too; and a cold page keeps every row, empty, at its height.
 Only a failure, which says what to do, wraps the status row.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
@@ -1357,8 +1358,9 @@ behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
-Membership has its slot at the end of the state row, so its chip, which arrives from its
-own answer after the page, moves nothing before it.
+Membership has its slot at the end of the labels row, so its chip, which arrives from
+its own answer after the page, moves nothing; it cuts the labels shorter, a label that
+showed whole among them.
 
 ### Text
 
@@ -1445,8 +1447,9 @@ The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
 text ink. Branch names use the remote [ref chip](#branch-chips) at its one size, head →
 base, as [Merge Direction](#merge-direction) sets them.
-Known native stack membership uses a small Layers icon and bold position on that line;
-the tooltip names the stack.
+Known native stack membership uses a small Layers icon and bold position in a column of
+the title line, before the age, at most half the room the title and it share and cut
+short with an ellipsis past that; the tooltip names the stack and every position.
 Their shared repository snapshot is indexed once by PR number; rows make no stack
 requests, and enrichment updates retain the row and any focused changed-file tree.
 
@@ -1509,10 +1512,10 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
-icon and the title with the age beside it, sharing a baseline, then the metadata line
-under them. It is one link, so a new tab and a copied address are the browser’s own, and
-all of its text is text: GitHub’s users write it, and none of it reaches markup or a
-style.
+icon and the title with the age beside it, sharing a baseline, and the stack position,
+if any, centred between them, then the metadata line under them.
+It is one link, so a new tab and a copied address are the browser’s own, and all of its
+text is text: GitHub’s users write it, and none of it reaches markup or a style.
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals).
 

@@ -793,17 +793,19 @@ async function tabKeys(page) {
   steps.push(`disposed: ${keyed().join(", ")}; keys ${attached() || "none"}; ${result("g")}`);
   container.remove();
   // A page whose first read fails has nothing to show, and takes the column out; the read
-  // that answers puts the same links back, keys and all.
+  // that answers puts the same links back, keys and all. The reader has gone to Changes
+  // meanwhile, so the record lands with no held first paint, and paintHeader's own retarget
+  // of the returning links is what badges them at once while Shift is held. A conversation's
+  // held header wakes its column instead (github-pull-first-paint-behavior.js).
   failing = true;
   ({ container, handle } = mountPage(undefined));
   await settle();
   assert.equal(container.querySelector(".tab-bar"), null, "a failed read, no tab column");
   steps.push(`a failed first read takes the column out: live ${live().join(" ") || "none"}`);
   steps.push(result("g"));
-  // Shift held while the column is out: nothing to badge. paintHeader retargets the links
-  // as it puts them back, which is what badges them at once.
+  arrive("files");
   registry.setRevealed(true);
-  steps.push(`Shift held while it is out: badges ${badged().join(", ") || "none"}`);
+  steps.push(`on Changes, Shift held while it is out: badges ${badged().join(", ") || "none"}`);
   failing = false;
   await elapse();
   assert.ok(container.querySelector(".tab-bar"), "the record put the tab column back");

@@ -1652,10 +1652,12 @@ They wait while the column is out of the page after a failed first read, and whi
 held first paint keeps the loading heading over the loading page, when the column shows
 but is inert; they return when the header puts it back or wakes it, badged at once while
 Shift is held, wait while the page is staged inert, and end with the page.
+The failed first read here is followed on Changes, which holds no first paint, so it is
+paintHeader’s own retarget that badges the returning links.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks H; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks H","live: conversation files checks","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks H","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks H","live: conversation files checks","G: opened the files route","disposed: keys none"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks H; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks H","live: conversation files checks","C: showed Conversation","G: opened the files route","the route arrives: Changes","Shift+H: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks H","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks H","live: conversation files checks","G: showed Changes","disposed: keys none"]}
 ? 0
 ```
 
@@ -1745,8 +1747,10 @@ screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while i
 keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
 are bounded by count and by characters, descriptions apart from other parts (`bounded`).
 Under a held first paint over the loading page no tab key is live: the header waits with
-the body, and its tab column, which shows from first paint, is inert; at release it
-wakes and all three keys are live (`tabKeysWhileHeld`).
+the body, and its tab column, which shows from first paint, is inert and badges nothing
+while Shift is held.
+At release it wakes, badged at once while Shift is held, all three keys are live, and a
+link that had focus has it again (`tabKeysWhileHeld`).
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1855,6 +1859,7 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "holding": true,
       "tabColumn": "inert",
       "live": [],
+      "badges": "none",
       "g": "not handled"
     },
     "released": {
@@ -1865,6 +1870,8 @@ $ node tests/dom/github-pull-first-paint-behavior.js
         "files",
         "checks"
       ],
+      "badges": "Conversation C, Changes G, Checks H",
+      "focus": "Changes, preventScroll true",
       "g": "opened the files route"
     }
   }

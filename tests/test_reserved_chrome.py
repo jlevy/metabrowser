@@ -238,30 +238,29 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
 
 
 def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
+    """Its slot is a grid whose column is the widest state's label (review F2 on #370)."""
+
     css = _github_css()
     states = (GITHUB / "pull-state.js").read_text(encoding="utf-8")
     labels = re.findall(r'label: "([A-Z][a-z]+)"', states)
     assert set(labels) == {"Open", "Draft", "Merged", "Closed"}, labels
-    longest = max(len(label) for label in labels)
-    sized = set(
-        re.findall(
-            r'\.github-pull-meta \.github-pull-badge::(?:before|after) \{\s*content: "([A-Za-z]+)" / "";',
-            css,
-        )
-    )
-    assert sized == {label for label in labels if len(label) == longest}, sized
-    assert "flex-direction: column;" in _rule(css, ".github-pull-meta .github-pull-badge")
-    # The label stays the first flex item, whose baseline the badge takes; what the rows
-    # lay out to is checked in Chrome (tests/test_github_pull_header_chrome.py).
-    sizers = _rule(
-        css,
-        ".github-pull-meta .github-pull-badge::before,\n.github-pull-meta .github-pull-badge::after",
-    )
-    assert "order: 1;" in sizers
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert 'const stateBadge = h("span", { class: "github-pull-state-slot" });' in page
+    # A sizer of every state's label, drawn beside the badge in its slot.
+    assert "...Object.values(PULL_STATES).map(({ label }) =>" in page
+    assert '"file-header-badge github-pull-badge github-pull-badge-sizer"' in page
+    slot = _rule(css, ".github-pull-state-slot")
+    assert "display: inline-grid;" in slot and "flex: none;" in slot
+    assert "justify-self: stretch;" in _rule(css, ".github-pull-state-slot > .github-pull-badge")
+    sizer = _rule(css, ".github-pull-state-slot > .github-pull-badge-sizer")
+    assert "block-size: 0;" in sizer and "visibility: hidden;" in sizer
+    # Pseudo-element sizers of the inline-block badge were laid beside the label, and made
+    # the badge all three labels wide.
+    assert ".github-pull-badge::before" not in css and ".github-pull-badge::after" not in css
 
 
 def test_labels_have_a_row_that_always_exists() -> None:
-    """It ends in the stack's slot, so a late chip takes room only from cut-short labels."""
+    """It ends in the stack's slot, so a late chip moves nothing and cuts the labels shorter."""
 
     css = _github_css()
     rule = _rule(css, ".github-pull-labels")
@@ -321,9 +320,13 @@ def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
 
 def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None:
     css = _github_css()
-    assert "grid-template-columns: 16px 16px minmax(0, 1fr) auto 5ch;" in _rule(
-        css, ".github-pulls-row"
+    columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
+    assert columns is not None
+    # The stack position's column takes at most half of what the title and it share.
+    assert " ".join(columns.group(1).split()) == (
+        "16px 16px minmax(0, 1fr) fit-content(calc((100% - 2 * 16px - 5ch - 4 * 6px) / 2)) 5ch"
     )
+    assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
     count = _rule(css, ".github-pulls-filters .count")
     assert "min-width: 3ch;" in count
     assert "font-variant-numeric: var(--tabular-numerals);" in count
@@ -345,6 +348,11 @@ def test_a_pulls_rows_stack_position_has_a_column_on_the_title_line() -> None:
     css = _github_css()
     stack = _rule(css, ".github-pulls-row > .github-pulls-stack")
     assert "grid-row: 1;" in stack and "grid-column: 4;" in stack
-    # On the title's baseline its taller box grew the row 3 px.
-    assert "align-self: center;" in stack
+    # It shrinks below its position and cuts it short (review F1 on #370). It is centred
+    # with the row's boxes: on the title's baseline its taller box grew the row 3 px.
+    assert "min-width: 0;" in stack and "overflow: hidden;" in stack
+    assert "align-self" not in stack
+    assert "align-items: center;" in _rule(css, ".github-pulls-row")
+    position = _rule(css, ".github-pulls-row > .github-pulls-stack > .github-pull-stack-position")
+    assert "min-width: 0;" in position and "text-overflow: ellipsis;" in position
     assert "grid-column: 5;" in _rule(css, ".github-pulls-row > .github-pulls-age")
