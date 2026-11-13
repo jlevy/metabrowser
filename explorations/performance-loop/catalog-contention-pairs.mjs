@@ -12,9 +12,13 @@
 // to `/api/plugin/github/pull-cores-prepare` naming that page's numbers under its
 // generation. Each iteration runs both builds, the leading build alternating, and both
 // cells on each, their order alternating; a 400 ms pause follows each cell, so a page's
-// work ends before the next cell starts. Every request reads its whole body, and each
-// sample records when it started (`at_ms`, from the run's start). One unrecorded warm-up
-// of each cell runs first on each server. exp-081 is the round that used it.
+// work ends before the next cell starts. Iteration i's concurrent cells use page
+// `pages[(i - 1) % pages.length]` on both builds, so each iteration compares the builds on
+// one page and both see every page in the same order (review E of #368, E1: one counter
+// shared by both builds gave them different pages). Every request reads its whole body,
+// and each sample records when it started (`at_ms`, from the run's start). An unrecorded
+// warm-up first runs, on each server, the alone cell and the concurrent cell once per
+// page. exp-081 is the round that uses it.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -81,16 +85,13 @@ async function catalogPage(base, after) {
   return { page, prepare, rows: numbers.length, generation: generation !== null };
 }
 
-let pageIndex = 0;
-async function cell(label, kind) {
+async function cell(label, kind, after) {
   const base = servers[label];
   if (kind === "alone") {
     const { text: _text, ...cmp } = await comparison(base);
     await sleep(400);
     return { comparison: cmp };
   }
-  const after = pages[pageIndex % pages.length];
-  pageIndex += 1;
   const cmpPromise = comparison(base);
   await sleep(offsetMs);
   const walk = catalogPage(base, after);
@@ -120,17 +121,24 @@ const result = {
   samples: [],
 };
 for (const label of Object.keys(servers)) {
-  result.warmup[label] = {
-    alone: await cell(label, "alone"),
-    concurrent: await cell(label, "concurrent"),
-  };
+  const concurrent = [];
+  for (const after of pages) {
+    concurrent.push(await cell(label, "concurrent", after));
+  }
+  result.warmup[label] = { alone: await cell(label, "alone"), concurrent };
 }
 for (let i = 1; i <= n; i += 1) {
   const builds = i % 2 === 1 ? ["control", "candidate"] : ["candidate", "control"];
   const kinds = i % 2 === 1 ? ["alone", "concurrent"] : ["concurrent", "alone"];
+  const after = pages[(i - 1) % pages.length];
   for (const label of builds) {
     for (const kind of kinds) {
-      result.samples.push({ iteration: i, build: label, cell: kind, ...(await cell(label, kind)) });
+      result.samples.push({
+        iteration: i,
+        build: label,
+        cell: kind,
+        ...(await cell(label, kind, after)),
+      });
     }
   }
 }
@@ -179,6 +187,22 @@ for (const label of Object.keys(servers)) {
   };
   console.log(label, JSON.stringify(summary[label]));
 }
+// The same increase page by page, each build's iterations on that page.
+summary.by_page = {};
+for (const after of pages) {
+  summary.by_page[after] = {};
+  for (const label of Object.keys(servers)) {
+    const onPage = (kind) =>
+      result.samples.filter(
+        (s) =>
+          s.build === label && s.cell === kind && pages[(s.iteration - 1) % pages.length] === after,
+      );
+    const alone = onPage("alone").map((s) => s.comparison.ms);
+    const concurrent = onPage("concurrent").map((s) => s.comparison.ms);
+    summary.by_page[after][label] = concurrent.map((c, i) => round(c - alone[i]));
+  }
+}
+console.log("by page (increase ms)", JSON.stringify(summary.by_page));
 result.summary = summary;
 if (values.out) {
   fs.writeFileSync(values.out, `${JSON.stringify(result, null, 2)}\n`);
