@@ -1095,9 +1095,12 @@ export function createFileTreeController(deps, options) {
   /**
    * Whether the list holds files the tree has none of yet, as a refresh's answer says when
    * another request already listed them: that answer carries no rows, so a read must follow.
+   * Not once a read has failed: its error and Retry stand, and the next read waits for the
+   * list's freshness window rather than asking again every second (review B1).
    */
   function rowsDue() {
     return (
+      error === null &&
       envelope !== null &&
       envelope.listed_from !== null &&
       envelope.fetched > 0 &&
@@ -1243,7 +1246,7 @@ export function createFileTreeController(deps, options) {
     }
     render();
     // An answer that says the list holds files the tree has none of is read at once.
-    scheduleNext(error === null && rowsDue());
+    scheduleNext(rowsDue());
   }
 
   /**

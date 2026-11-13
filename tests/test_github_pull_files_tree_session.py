@@ -271,10 +271,11 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
     while it was closed opens on its rows (``reopenedFilled``). A refresh that answers not
     due, since another request listed the files, carries none of its rows, so the tree reads
     them at once and shows its loading line meanwhile (``refreshNotDue``,
-    ``refreshNotDueLate``). Only a change to rows already drawn that comes ``LATE_ROWS_MS``
-    past the reader's last press or key waits for the reader (review A3): a list's further
-    pages wait on its line, and a complete list a refresh changes floats its offer over the
-    tree's top, so offering moves nothing.
+    ``refreshNotDueLate``); when those reads fail, the error and Retry stand and the tree
+    reads again once a freshness window (``refreshNotDueFailing``). Only a change to rows
+    already drawn that comes ``LATE_ROWS_MS`` past the reader's last press or key waits for
+    the reader (review A3): a list's further pages wait on its line, and a complete list a
+    refresh changes floats its offer over the tree's top, so offering moves nothing.
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
@@ -298,6 +299,23 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "drawnAt": 0,
         },
         "refreshNotDueLate": {"painted": ["closed", "loading line", "4 rows"], "drawnAt": 700},
+        # Every read after that answer fails: the error and Retry stand, and the tree reads
+        # again once a freshness window, then on Retry (review B1). Before, it read every
+        # second while it stayed open: 12 reads by 10 s and 123 by two windows.
+        "refreshNotDueFailing": {
+            "readsAt": [0, 0, 60_000, 120_000, 121_000],
+            "readsBy10s": 2,
+            "readsByTwoWindows": 4,
+            "notice": {"text": "The server did not answer.", "action": "retry"},
+            "painted": [
+                "closed",
+                "loading line",
+                "notice: The server did not answer.",
+                "loading line",
+                "4 rows",
+            ],
+            "drawnAt": 121_000,
+        },
         "promptRows": ["closed", "loading line", "4 rows"],
         "fill": {
             # Before review A3 the drawn tree grew to 203 and 256 rows with no input; before

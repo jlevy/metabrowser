@@ -588,6 +588,9 @@ a read emptied (`refreshEmptied`), a landing (`landing`), and a list’s first p
 (`fill`). A refresh that answers not due, because another request listed the files,
 carries none of its rows, so the tree reads them at once and shows its loading line in
 between (`refreshNotDue`, `refreshNotDueLate`, with when the rows were drawn).
+When every read after that answer fails, the error and its Retry stand, and the tree
+reads again once a freshness window rather than every second, until Retry draws the rows
+(`refreshNotDueFailing`, with when each read was asked for).
 Only a change to rows already drawn that comes `LATE_ROWS_MS` after the reader’s last
 press or key, or after the tree’s opening on a landing, is offered rather than drawn: a
 list’s further pages on its line (`fill`), and a refreshed complete list over the tree’s
@@ -668,6 +671,29 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "4 rows"
     ],
     "drawnAt": 700
+  },
+  "refreshNotDueFailing": {
+    "readsAt": [
+      0,
+      0,
+      60000,
+      120000,
+      121000
+    ],
+    "readsBy10s": 2,
+    "readsByTwoWindows": 4,
+    "notice": {
+      "text": "The server did not answer.",
+      "action": "retry"
+    },
+    "painted": [
+      "closed",
+      "loading line",
+      "notice: The server did not answer.",
+      "loading line",
+      "4 rows"
+    ],
+    "drawnAt": 121000
   },
   "promptRows": [
     "closed",

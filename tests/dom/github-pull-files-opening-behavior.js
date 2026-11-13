@@ -58,6 +58,8 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
   /** When rows were first drawn, by the session's clock. */
   let drawnAt = null;
   const reads = [];
+  /** When each read of the list was asked for, by the session's clock. */
+  const readTimes = [];
   const spans = [];
   const schedule = (callback, delayMs) => {
     const handle = next;
@@ -76,6 +78,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
           });
         }
         reads.push(route);
+        readTimes.push(now);
         const answer = answers.shift();
         if (answer === "fail") {
           return Promise.reject(new Error("the server did not answer"));
@@ -134,6 +137,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
     controller,
     painted,
     reads,
+    readTimes,
     spans,
     frame,
     last: () => lastModel,
@@ -342,6 +346,35 @@ async function run() {
     late.frame();
     await late.advance(horizon);
     facts.refreshNotDueLate = { painted: late.painted, drawnAt: late.drawnAt() };
+
+    // The same not-due answer, and every read of the rows after it fails (review B1): the
+    // error and its Retry stand, and the tree reads again once a freshness window, not every
+    // second. The reader's Retry, once the server answers again, draws the rows.
+    const window = recorded.comparison.fresh_for_s * 1000;
+    const answers = [recorded.absent, ...Array.from({ length: 200 }, () => "fail")];
+    const failing = story(tree, answers, { at: 0 }, REFRESH_NOT_DUE);
+    failing.controller.expand();
+    failing.frame();
+    await settle();
+    failing.frame();
+    await failing.advance(10_000);
+    const readsBy10s = failing.readTimes.length;
+    const shown = failing.last();
+    await failing.advance(2 * window + tree.FILES_POLL_MS);
+    const readsByTwoWindows = failing.readTimes.length;
+    answers.splice(0, answers.length, recorded.comparison);
+    await failing.controller.retry();
+    await settle();
+    failing.frame();
+    await failing.advance(2 * window + 2 * tree.FILES_POLL_MS);
+    facts.refreshNotDueFailing = {
+      readsAt: failing.readTimes.slice(0, 5),
+      readsBy10s,
+      readsByTwoWindows,
+      notice: { text: shown.notice?.text ?? null, action: shown.notice?.action ?? null },
+      painted: failing.painted,
+      drawnAt: failing.drawnAt(),
+    };
   }
 
   // The same job answering within the input's window draws its rows as the click's.
