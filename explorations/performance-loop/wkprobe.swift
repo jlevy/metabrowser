@@ -14,7 +14,7 @@
 //   load              load the path and wait for the exact subject to be ready
 //   reload            WKWebView.reload() and wait again
 //   hidden-load-show  load while hidden, record the hidden first view, then show the
-//                     window and time show-to-ready
+//                     window and time show to the first painted frame with ready content
 // Every step is bracketed by GET /__mark requests to the proxy, so the wrapper can
 // attribute each logged request to its step.
 import AppKit
@@ -23,6 +23,14 @@ import WebKit
 
 func nowMs() -> Double { ProcessInfo.processInfo.systemUptime * 1000 }
 let processStart = nowMs()
+
+// The host is an accessory app with no frontmost window, which makes it eligible for App
+// Nap, and a napped process coalesces the main-thread timers that poll the page. The real
+// app is frontmost at launch. The embedded Info.plist also sets LSAppNapIsDisabled; the
+// display-sleep option keeps the display lit, so a long series is not refused for it.
+let napGuard = ProcessInfo.processInfo.beginActivity(
+  options: [.userInitiated, .latencyCritical, .idleDisplaySleepDisabled],
+  reason: "wkprobe measurement")
 
 struct Job: Decodable {
   let base: String
@@ -39,6 +47,9 @@ struct Job: Decodable {
   let readyTimeoutMs: Double
   let settleMs: Double
   let hiddenWaitMs: Double
+  // Diagnostic: wait this long after writing the result before exiting, to test whether
+  // the relaunch depends on cache writes the first process had not flushed.
+  let exitDelayMs: Double?
 }
 
 /// Locked screen, a session that is not on the console, and a sleeping display all stop
@@ -55,6 +66,13 @@ func screenState() -> [String: Any] {
   return ["locked": locked, "onConsole": onConsole, "displayAsleep": asleep]
 }
 
+/// JSON-encode one string as a JavaScript string literal.
+func jsString(_ s: String) -> String {
+  let d = try? JSONSerialization.data(withJSONObject: [s], options: [])
+  let a = d.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+  return String(a.dropFirst().dropLast())
+}
+
 // Installed at document start in every page: visibility changes, uncaught errors, and a
 // Resource Timing buffer large enough for a cold landing.
 let instrument = """
@@ -68,6 +86,16 @@ let instrument = """
 })();
 """
 
+// Every load that would leave loopback is blocked, so a corpus with remote images or a
+// script that reaches out cannot add network time or requests the proxy never sees.
+// Content-blocker regexes have no alternation, hence one rule per allowed prefix.
+let offlineRules = """
+[{"trigger": {"url-filter": "^https?://"}, "action": {"type": "block"}},
+ {"trigger": {"url-filter": "^wss?://"}, "action": {"type": "block"}},
+ {"trigger": {"url-filter": "^https?://127\\\\.0\\\\.0\\\\.1[:/]"}, "action": {"type": "ignore-previous-rules"}},
+ {"trigger": {"url-filter": "^wss?://127\\\\.0\\\\.0\\\\.1[:/]"}, "action": {"type": "ignore-previous-rules"}}]
+"""
+
 @MainActor
 final class Probe: NSObject, WKNavigationDelegate {
   let job: Job
@@ -78,6 +106,8 @@ final class Probe: NSObject, WKNavigationDelegate {
   var terminations = 0
   var navigationErrors: [String] = []
   var steps: [[String: Any]] = []
+  var rules: WKContentRuleList?
+  var rulesState = "off"
 
   init(job: Job) { self.job = job }
 
@@ -92,6 +122,26 @@ final class Probe: NSObject, WKNavigationDelegate {
     navigationErrors.append("didFailProvisionalNavigation: \(error.localizedDescription)")
   }
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { terminations += 1 }
+
+  /// The page stays on the proxy's origin: a main-frame navigation anywhere else is
+  /// cancelled and recorded, which refuses the run (`navigation`).
+  func webView(
+    _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+    decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+  ) {
+    let url = action.request.url
+    let isMain = action.targetFrame?.isMainFrame ?? true
+    if !isMain || url?.scheme == "about" || sameOrigin(url) {
+      decisionHandler(.allow)
+      return
+    }
+    navigationErrors.append("blocked navigation to \(url?.absoluteString.prefix(120) ?? "nil")")
+    decisionHandler(.cancel)
+  }
+  func sameOrigin(_ url: URL?) -> Bool {
+    guard let url = url, let base = URL(string: job.base) else { return false }
+    return url.scheme == base.scheme && url.host == base.host && url.port == base.port
+  }
 
   func js(_ source: String) async -> Any? {
     await withCheckedContinuation { (c: CheckedContinuation<Any?, Never>) in
@@ -126,8 +176,9 @@ final class Probe: NSObject, WKNavigationDelegate {
     return nil
   }
   /// Polls several expressions in one evaluation per tick and records when each first
-  /// became true, until `stop` is true or the timeout passes. Times are from `t0`.
-  func watch(_ exprs: [(String, String)], from t0: Double, until stop: String, timeoutMs: Double)
+  /// became true, until every name in `until` has been seen or the timeout passes.
+  /// Times are from `t0`.
+  func watch(_ exprs: [(String, String)], from t0: Double, until: [String], timeoutMs: Double)
     async -> [String: Double]
   {
     var seen: [String: Double] = [:]
@@ -141,7 +192,7 @@ final class Probe: NSObject, WKNavigationDelegate {
           if b { seen[e.0] = nowMs() - t0 }
         }
       }
-      if seen[stop] != nil { break }
+      if until.allSatisfy({ seen[$0] != nil }) { break }
       try? await Task.sleep(nanoseconds: 10_000_000)
     }
     return seen
@@ -152,30 +203,49 @@ final class Probe: NSObject, WKNavigationDelegate {
     _ = try? await URLSession.shared.data(from: url)
   }
 
-  var subjectJS: String {
-    let d = try? JSONSerialization.data(withJSONObject: [job.subject], options: [])
-    let s = d.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
-    return String(s.dropFirst().dropLast())
-  }
-  // The exact subject shown with content, the shared pending modifier cleared, and no
-  // placeholder in the active view: the same subject test the transition scenario uses.
+  // A subset of the transition scenario's file-ready test: the route, the Files main tab,
+  // the exact subject rendered in a laid-out active view with child content, the shared
+  // pending modifier cleared, and no placeholder laid out in the active view. It does not
+  // look for useful visible content, and it is a DOM state, not a painted frame.
   var readyExpr: String {
     """
-    (() => { const p = document.getElementById("preview-pane"); if (!p || p.dataset.renderedPath !== \(subjectJS)) { return false; }
-      if (p.classList.contains("preview-navigation-pending")) { return false; }
+    (() => { if (decodeURIComponent(location.pathname) !== \(jsString(job.path))) { return false; }
+      const tab = document.querySelector(".nav-tab-bar .tab-btn.active"); if (!tab || tab.dataset.tab !== "files") { return false; }
+      const p = document.getElementById("preview-pane"); if (!p || p.dataset.renderedPath !== \(jsString(job.subject))) { return false; }
+      if (p.classList.contains("preview-navigation-pending") || p.getClientRects().length === 0) { return false; }
       const a = p.querySelector(':scope > [data-active-view="true"]');
-      return !!a && a.childElementCount > 0 && !a.querySelector(".loading, .mb-delayed-loading"); })()
+      if (!a || a.childElementCount === 0 || a.getClientRects().length === 0) { return false; }
+      return !Array.from(a.querySelectorAll(".loading, .mb-delayed-loading")).some((l) => l.getClientRects().length > 0); })()
     """
   }
   // Mounted does not depend on visibility: the subject rendered and the shell tools ready.
   var mountedExpr: String {
     """
     (() => { const p = document.getElementById("preview-pane");
-      return !!p && p.dataset.renderedPath === \(subjectJS) && document.documentElement.dataset.shellToolsReady === "true"; })()
+      return !!p && p.dataset.renderedPath === \(jsString(job.subject)) && document.documentElement.dataset.shellToolsReady === "true"; })()
     """
   }
   let settledExpr =
     "document.documentElement.dataset.shellToolsReady === 'true' && window.METABROWSER_OPTIONAL_ASSETS_SETTLED === true"
+
+  // Started just before the window is shown: an animation-frame chain that runs only once
+  // the page is visible (a frame callback that runs while hidden is counted and skipped),
+  // tests the ready predicate at the start of each frame, and stamps painted ready at the
+  // start of the frame after the first one that began ready: the double-animation-frame
+  // boundary of the transition scenarios. Times are on the page clock, from `t0`.
+  var showChainJS: String {
+    """
+    (() => { const ready = () => (\(readyExpr));
+      const S = (window.__wkShow = { t0: performance.now(), firstFrame: null, readyFrame: null, painted: null, frames: 0, hiddenFrames: 0 });
+      const f = () => { const now = performance.now();
+        if (document.visibilityState !== "visible") { S.hiddenFrames++; }
+        else { S.frames++; if (S.firstFrame === null) { S.firstFrame = now; }
+          if (S.readyFrame !== null) { S.painted = now; return; }
+          if (ready()) { S.readyFrame = now; } }
+        if (now - S.t0 < \(job.readyTimeoutMs)) { requestAnimationFrame(f); } };
+      requestAnimationFrame(f); return true; })()
+    """
+  }
 
   let factsExpr = """
     (() => {
@@ -187,7 +257,7 @@ final class Probe: NSObject, WKNavigationDelegate {
       return { href: location.href, navType: n.type || null, navTransferSize: Math.round(n.transferSize || 0),
         responseStart: Math.round(n.responseStart || 0), dcl: Math.round(n.domContentLoadedEventEnd || 0), load: Math.round(n.loadEventEnd || 0),
         fcp: fcp ? Math.round(fcp.startTime) : null, resources: res, vis: W.vis, errors: W.errors, alerts,
-        w: innerWidth, h: innerHeight, version: ((document.querySelector(".menu-version") || {}).textContent || "").trim() || null,
+        w: innerWidth, h: innerHeight, dpr: window.devicePixelRatio, version: ((document.querySelector(".menu-version") || {}).textContent || "").trim() || null,
         visibility: document.visibilityState, ua: navigator.userAgent };
     })()
     """
@@ -200,6 +270,16 @@ final class Probe: NSObject, WKNavigationDelegate {
     return await jsJSON("Math.round(window.__rafN * 1000 / 500)")
   }
 
+  func compileRules() async {
+    do {
+      rules = try await WKContentRuleListStore.default().compileContentRuleList(
+        forIdentifier: "wkprobe-offline", encodedContentRuleList: offlineRules)
+      rulesState = rules == nil ? "error: no rule list" : "on"
+    } catch {
+      rulesState = "error: \(error.localizedDescription)"
+    }
+  }
+
   func makeWebView() -> Double {
     let t0 = nowMs()
     let config = WKWebViewConfiguration()
@@ -210,6 +290,7 @@ final class Probe: NSObject, WKNavigationDelegate {
     }
     config.userContentController.addUserScript(
       WKUserScript(source: instrument, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    if let rules = rules { config.userContentController.add(rules) }
     let viewport = NSRect(x: 0, y: 0, width: job.viewportWidth, height: job.viewportHeight)
     webView = WKWebView(frame: viewport, configuration: config)
     webView.navigationDelegate = self
@@ -251,25 +332,35 @@ final class Probe: NSObject, WKNavigationDelegate {
     if name == "reload" { webView.reload() } else { load() }
     let exprs = [("mounted", mountedExpr), ("ready", readyExpr)]
     if name == "hidden-load-show" {
-      let hidden = await watch(exprs, from: t0, until: "mounted", timeoutMs: job.readyTimeoutMs)
+      let hidden = await watch(exprs, from: t0, until: ["mounted"], timeoutMs: job.readyTimeoutMs)
+      // Never mounting while hidden is an outcome, recorded as null, not a failure.
       row["hiddenMountedMs"] = hidden["mounted"].map { Int($0) } as Any
       // Whether the first view completes while hidden, given a fixed further wait.
       var readyHidden = hidden["ready"]
       if readyHidden == nil && hidden["mounted"] != nil {
-        readyHidden = (await watch(exprs, from: t0, until: "ready", timeoutMs: job.hiddenWaitMs))["ready"]
+        readyHidden = (await watch(exprs, from: t0, until: ["ready"], timeoutMs: job.hiddenWaitMs))[
+          "ready"]
       }
       row["hiddenReady"] = readyHidden != nil
       row["hiddenReadyMs"] = readyHidden.map { Int($0) } as Any
       row["visibilityHidden"] = await js("document.visibilityState") as Any
       row["rafHidden"] = await rafRate() as Any
+      _ = await js(showChainJS)
       let t1 = nowMs()
       window.orderFrontRegardless()
-      let shown = await watch(exprs, from: t1, until: "ready", timeoutMs: job.readyTimeoutMs)
-      row["showToReadyMs"] = shown["ready"].map { Int($0) } as Any
-      row["readyMs"] = shown["ready"].map { Int($0 + (t1 - t0)) } as Any
+      let shown = await watch(
+        [
+          ("visible", "document.visibilityState === 'visible'"), ("ready", readyExpr),
+          ("painted", "!!window.__wkShow && window.__wkShow.painted !== null"),
+        ], from: t1, until: ["visible", "painted"], timeoutMs: job.readyTimeoutMs)
+      // The native clock's view of the same events: when a poll first saw each one.
+      row["showToVisibleMs"] = shown["visible"].map { Int($0) } as Any
+      row["showToReadyDomMs"] = shown["ready"].map { Int($0) } as Any
+      row["showToPaintedReadyNativeMs"] = shown["painted"].map { Int($0) } as Any
       row["visibilityShown"] = await js("document.visibilityState") as Any
+      row["showChain"] = await jsJSON("window.__wkShow || null") as Any
     } else {
-      let seen = await watch(exprs, from: t0, until: "ready", timeoutMs: job.readyTimeoutMs)
+      let seen = await watch(exprs, from: t0, until: ["mounted", "ready"], timeoutMs: job.readyTimeoutMs)
       row["readyMs"] = seen["ready"].map { Int($0) } as Any
       row["mountedMs"] = seen["mounted"].map { Int($0) } as Any
     }
@@ -283,7 +374,8 @@ final class Probe: NSObject, WKNavigationDelegate {
     row["screenAfter"] = screenState()
     steps.append(row)
     FileHandle.standardError.write(
-      "wkprobe \(name): ready \(row["readyMs"] ?? "none") ms\n".data(using: .utf8)!)
+      "wkprobe \(name): ready \(row["readyMs"] ?? row["showToPaintedReadyNativeMs"] ?? "none") ms\n"
+        .data(using: .utf8)!)
   }
 
   func run() async {
@@ -305,8 +397,11 @@ final class Probe: NSObject, WKNavigationDelegate {
       "webkitShortVersion": wk["CFBundleShortVersionString"] as? String ?? "",
       "os": ProcessInfo.processInfo.operatingSystemVersionString,
       "bundleIdentifier": Bundle.main.bundleIdentifier ?? "",
+      "backingScale": Double(NSScreen.main?.backingScaleFactor ?? 0),
     ]
     out["screenAtStart"] = screenState()
+    if !job.steps.isEmpty { await compileRules() }
+    out["offlineRules"] = rulesState
     out["createWebViewMs"] = Int(makeWebView())
     out["launchToWebViewMs"] = Int(nowMs() - processStart)
     for s in job.steps { await step(s) }
@@ -334,6 +429,8 @@ else {
 Task { @MainActor in
   let probe = Probe(job: job)
   await probe.run()
+  if let delay = job.exitDelayMs, delay > 0 { await probe.sleepMs(delay) }
+  ProcessInfo.processInfo.endActivity(napGuard)
   exit(0)
 }
 app.run()
