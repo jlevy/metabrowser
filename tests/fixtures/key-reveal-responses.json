@@ -1,0 +1,285 @@
+{
+  "folder": {
+    "status": {
+      "status": 200,
+      "body": {
+        "pin": null,
+        "ref": null,
+        "ref_name": null
+      }
+    },
+    "repo": {
+      "status": 200,
+      "body": {
+        "is_repo": false
+      }
+    },
+    "files": {
+      "": {
+        "status": 200,
+        "body": {
+          "kind": "folder",
+          "path": "",
+          "views": [
+            {
+              "id": "overview",
+              "label": "Overview",
+              "key": "o",
+              "default": true,
+              "container_class": "content-body folder-overview-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "treemap",
+              "label": "Treemap",
+              "key": "m",
+              "default": false,
+              "container_class": "content-body folder-treemap-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            }
+          ]
+        }
+      },
+      "docs": {
+        "status": 200,
+        "body": {
+          "kind": "folder",
+          "path": "docs",
+          "views": [
+            {
+              "id": "overview",
+              "label": "Overview",
+              "key": "o",
+              "default": true,
+              "container_class": "content-body folder-overview-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "treemap",
+              "label": "Treemap",
+              "key": "m",
+              "default": false,
+              "container_class": "content-body folder-treemap-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            }
+          ]
+        }
+      },
+      "README.md": {
+        "status": 200,
+        "body": {
+          "kind": "markdown",
+          "path": "README.md",
+          "views": [
+            {
+              "id": "rendered",
+              "label": "Document",
+              "key": "d",
+              "default": true,
+              "container_class": "content-body metabrowser-kpress-host md-body",
+              "printable": true,
+              "print_profile": "document",
+              "render_runtime": "kpress"
+            },
+            {
+              "id": "source",
+              "label": "Source",
+              "key": "s",
+              "default": false,
+              "container_class": "content-body metabrowser-source-host",
+              "printable": true,
+              "print_profile": "source",
+              "render_runtime": "client"
+            }
+          ]
+        }
+      },
+      "data.json": {
+        "status": 200,
+        "body": {
+          "kind": "structured",
+          "path": "data.json",
+          "views": [
+            {
+              "id": "tree",
+              "label": "Tree",
+              "key": "r",
+              "default": true,
+              "container_class": "content-body",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "source",
+              "label": "Source",
+              "key": "s",
+              "default": false,
+              "container_class": "content-body",
+              "printable": true,
+              "print_profile": "source",
+              "render_runtime": "client"
+            }
+          ]
+        }
+      },
+      "session.jsonl": {
+        "status": 200,
+        "body": {
+          "kind": "agent-log",
+          "path": "session.jsonl",
+          "views": [
+            {
+              "id": "log",
+              "label": "Log",
+              "key": "l",
+              "default": true,
+              "container_class": "content-body",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "charts",
+              "label": "Charts",
+              "key": "c",
+              "default": false,
+              "container_class": "content-body",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "raw",
+              "label": "Raw JSON",
+              "key": "r",
+              "default": false,
+              "container_class": "content-body",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            }
+          ]
+        }
+      },
+      "page.html": {
+        "status": 200,
+        "body": {
+          "kind": "html",
+          "path": "page.html",
+          "views": [
+            {
+              "id": "preview",
+              "label": "Preview",
+              "key": "p",
+              "default": true,
+              "container_class": "content-body metabrowser-html-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": "client"
+            },
+            {
+              "id": "source",
+              "label": "Source",
+              "key": "s",
+              "default": false,
+              "container_class": "content-body metabrowser-source-host",
+              "printable": true,
+              "print_profile": "source",
+              "render_runtime": "client"
+            }
+          ]
+        }
+      }
+    },
+    "inactive_html": {
+      "status": 200,
+      "body": {
+        "kind": "html",
+        "path": "page.html",
+        "views": [
+          {
+            "id": "source",
+            "label": "Source",
+            "default": true,
+            "container_class": "content-body metabrowser-source-host",
+            "printable": true,
+            "print_profile": "source",
+            "render_runtime": "client"
+          }
+        ]
+      }
+    }
+  },
+  "repository": {
+    "status": {
+      "status": 200,
+      "body": {
+        "pin": null,
+        "ref": null,
+        "ref_name": null
+      }
+    },
+    "repo": {
+      "status": 200,
+      "body": {
+        "is_repo": true
+      }
+    }
+  },
+  "pin": {
+    "status": {
+      "status": 200,
+      "body": {
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic"
+      }
+    },
+    "repo": {
+      "status": 200,
+      "body": {
+        "is_repo": true
+      }
+    },
+    "files": {
+      "": {
+        "status": 200,
+        "body": {
+          "kind": "folder",
+          "path": "",
+          "views": [
+            {
+              "id": "overview",
+              "label": "Overview",
+              "key": "o",
+              "default": true,
+              "container_class": "content-body folder-overview-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
+              "id": "treemap",
+              "label": "Treemap",
+              "key": "m",
+              "default": false,
+              "container_class": "content-body folder-treemap-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            }
+          ]
+        }
+      }
+    }
+  }
+}

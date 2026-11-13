@@ -71,6 +71,78 @@ All notable changes to Metabrowser are documented here.
   `GET /api/rollup` adds `file_type_legend`, which names the legend’s families for each
   measure and population, so `metab --api` shows the same choice the page makes.
 
+- `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
+  request’s Changes, exactly as its layout control does: where Split does not fit, `L`
+  chooses it with its sideways scroll, and the choice is remembered.
+  While Shift is held, the key shows on the layout it would choose.
+  Help lists it under Controls.
+
+- A pull request’s page answers to `C` for Conversation, `G` for Changes, and `H` for
+  Checks, and shows those keys on its tabs while Shift is held.
+  A key moves the address as a click on the tab does, so Back returns to the tab before.
+
+- Plugin SDK: `metabrowser.shortcuts.attach(element, spec)` gives a control of a plugin
+  view a letter key, listed in Help and badged while Shift is held, and returns a handle
+  with `retarget()` and `detach()`; an `AbortSignal` in the spec detaches it too.
+  A view may attach before the shell’s keyboard support loads.
+  Malformed input throws an error starting with `shortcuts.attach:`; an attachment made
+  before the keyboard support loads is checked when it loads, and a malformed one is
+  logged to the console with that prefix instead.
+  A letter the shell reserves, `T`, `J`, `K`, `U`, `W`, `X`, `Y`, `A`, `N`, or `P`, is
+  refused with one console warning, and a shell key or an earlier plugin’s key wins a
+  letter two shown controls hold.
+  `METABROWSER_SETTINGS` serves the reserved keys as `RESERVED_SHELL_KEYS`.
+  `PLUGIN_SDK_VERSION` remains `0.7`.
+
+- Hold Shift outside a text field to see the keys: a keycap appears on each control a
+  key reaches now, and the shortcut strip lists the common keys that are live.
+  Releasing Shift, a click, or a scroll hides them, and `?`, capitals, Shift+click, and
+  Shift+wheel never show them.
+  A file’s view tabs answer to their letters, such as `D` and `S` for a Markdown file’s
+  Document and Source, `O` and `M` for a folder’s Overview and Treemap; `U` opens the
+  parent folder; `Y` copies the file’s path, or a commit’s revision; `X` opens the file
+  type filter and `A` the modified-within filter; and `W` opens a pin’s branch and tag
+  switcher. A key does nothing while its control is not on screen.
+  `1`, `2`, and `3` now also move focus to the panel’s rows.
+  Help lists the new keys under View tabs, Controls, and Filters, and ends with a note
+  about Shift. The main pane’s view tabs are a tablist to assistive technology.
+
+- The keys Shift reveals are drawn in the yellow that marks a newly arrived row.
+  Each keycap sits over the end of its own tab, button, icon, or breadcrumb, never over
+  the file name, note, or path after it, and is translucent, so the label under its edge
+  still reads; a copy button that otherwise shows only on hover shows while Shift is
+  held. The shortcut strip turns the same yellow and grows upward over the bottom of the
+  navigation pane, so the tree does not move.
+  Text on the yellow keeps at least 4.5:1 contrast in both themes.
+  The keycaps fade in briefly, appear at once under reduced motion, and never print.
+
+- Every keyboard shortcut is a single key, and Shift no longer changes what any of them
+  does. `⌘1`, `⌘2`, and `⌘3` no longer open Files, Commits, and Pulls; `1`, `2`, and `3`
+  still do, and the browser keeps Command and Ctrl with a digit for its own tabs.
+  A pull request’s stack moves from `⇧J` and `⇧K` to `N`, toward the stack’s top, and
+  `P`, toward its base, so `J` and `K` on a focused Pulls row always move the row.
+  In the file tree, `⇧↑` and `⇧↓` move one row, as `↑` and `↓` do, and Home and End
+  still jump to the first and last row.
+  Shift with `T`, `J`, `K`, an arrow, or a digit now acts as the key alone, even where
+  Shift+`1` types `!`, and `/` opens Quick Search on layouts that type it with Shift.
+  In a text field, Shift with an arrow still selects text.
+  The removed keys shipped in 0.12.0 and have no aliases.
+
+- A plugin manifest’s `[[view]]` may declare a one-letter `key` for its tab, and every
+  view of a built-in kind with more than one view declares one: Markdown’s Document `D`
+  and Source `S`, structured data’s Tree `R` and Source `S`, HTML’s Preview `P` and
+  Source `S`, an agent log’s Log `L`, Charts `C`, and Raw JSON `R`, other JSONL’s Log
+  `L` and Raw JSON `R`, and a folder’s Overview `O` and Treemap `M`. `/api/file` serves
+  it, lowercase, as `views[].key`, and `metab --show` and `metab --plugin NAME` print
+  it. The manifest loader refuses a key that is not one letter or that the shell reserves
+  everywhere: `T`, `J`, `K`, `U`, `W`, `X`, `Y`, and `A`. When two views of one kind
+  share a key, the first keeps it; the later view, like a `pull-request` view that takes
+  the stack keys `N` or `P`, is served without a key, and `metab --doctor` reports it,
+  naming the plugin that holds a shared key.
+  A view left alone, as HTML’s Source is without active content, has no tab and is
+  served without its key.
+  `PLUGIN_SDK_VERSION` remains `0.7`.
+
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
   refresh in the background; the line that says when it was fetched, the folder and file
