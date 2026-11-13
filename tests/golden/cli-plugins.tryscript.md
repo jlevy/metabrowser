@@ -260,8 +260,8 @@ kinds:
   - id=markdown priority=0 match={'ext': '.md'}
 
 views:
-  - markdown/rendered 'Document' (default)
-  - markdown/source 'Source'
+  - markdown/rendered 'Document' (default, key D)
+  - markdown/source 'Source' (key S)
 
 data hooks:
   (none)
@@ -319,6 +319,7 @@ $ metab --plugin markdown --json
         "kind": "markdown",
         "id": "rendered",
         "label": "Document",
+        "key": "d",
         "default": true,
         "container_class": "content-body metabrowser-kpress-host md-body",
         "printable": true,
@@ -329,6 +330,7 @@ $ metab --plugin markdown --json
         "kind": "markdown",
         "id": "source",
         "label": "Source",
+        "key": "s",
         "default": false,
         "container_class": "content-body metabrowser-source-host",
         "printable": true,

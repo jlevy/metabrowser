@@ -7,6 +7,11 @@
 // lays out at each width is measured in Chrome and recorded beside SPLIT_MIN_WIDTH_EM. Each
 // step prints the layout the root says it draws, the rows it holds of each layout, whether
 // it has ever built a Split row, the layout control, and what was written to the preference.
+//
+// The layout key `L` is attached through a stand-in of the SDK's shortcut surface, which
+// records the attachment and runs its `activate` as the registry would for the first live
+// target; tests/dom/plugin-shortcuts-session.js runs the production surface. Its steps print
+// where the key sits, the chip `L` would select, and how often a redraw retargeted it.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -21,13 +26,16 @@ function assert(condition, message) {
 }
 
 let splitRowsBuilt = 0;
+/** The chips the stand-in layout control drew last, for the element its markup lands in. */
+let drawnChips = [];
 
 class PageElement {
   constructor(tag) {
     this.tagName = tag.toUpperCase();
     this.classes = "";
     this.textContent = "";
-    this.innerHTML = "";
+    this.html = "";
+    this.chips = [];
     this.dataset = {};
     this.children = [];
     this.parentNode = null;
@@ -52,6 +60,22 @@ class PageElement {
 
   get className() {
     return this.classes;
+  }
+
+  get innerHTML() {
+    return this.html;
+  }
+
+  /** The layout control's markup: the chips its stand-in renderer drew with it. */
+  set innerHTML(value) {
+    this.html = value;
+    this.chips = value === "control" ? drawnChips : [];
+  }
+
+  /** Only what the diff asks of its layout control: a chip by its value. */
+  querySelector(selector) {
+    const value = /^\[data-chip-value="([^"]+)"\]$/.exec(selector)?.[1];
+    return this.chips.find((chip) => chip.getAttribute("data-chip-value") === value) ?? null;
   }
 
   set className(value) {
@@ -201,11 +225,15 @@ async function main() {
   );
   const document_ = corpus.cases.find((entry) => entry.name === "modified-with-heading").document;
 
-  /** A mount where the root would be this wide, under this preference, in this padding. */
-  function mount(contentWidth, preference, padding = 0) {
+  /**
+   * A mount where the root would be this wide, under this preference, in this padding; with
+   * `keys`, its api has a stand-in shortcut surface.
+   */
+  function mount(contentWidth, preference, padding = 0, keys = false) {
     const writes = [];
     let change = null;
     let spec = null;
+    const attachments = [];
     const api = {
       highlightSyntax: async () => null,
       isLargeTextPreview: () => true,
@@ -220,6 +248,13 @@ async function main() {
       filterControls: {
         groupHtml(next) {
           spec = next;
+          drawnChips = next.options.map((option) => {
+            const chip = new PageElement("button");
+            chip.setAttribute("data-chip-value", option.value);
+            chip.setAttribute("aria-checked", String(option.value === next.value));
+            chip.textContent = option.label;
+            return chip;
+          });
           return "control";
         },
         bind(_root, handlers) {
@@ -228,6 +263,23 @@ async function main() {
         },
       },
     };
+    if (keys) {
+      api.shortcuts = {
+        attach(element, options) {
+          const record = { detached: false, element, options, retargets: 0 };
+          attachments.push(record);
+          return {
+            retarget(next) {
+              record.element = next;
+              record.retargets += 1;
+            },
+            detach() {
+              record.detached = true;
+            },
+          };
+        },
+      };
+    }
     const host = new PageElement("div");
     host.contentWidth = contentWidth;
     host.clientWidth = contentWidth + padding;
@@ -244,6 +296,24 @@ async function main() {
       },
       choose(value) {
         change("diff-layout", value, "one");
+      },
+      /** `L`, as the registry runs it: the attachment's own activation. */
+      pressL() {
+        assert(attachments.length === 1, "the diff attached L more than once");
+        attachments[0].options.activate();
+      },
+      /** Where `L` sits now, and what it was attached as. */
+      key() {
+        assert(attachments.length === 1, "the diff attached L more than once");
+        const [record] = attachments;
+        const { id, key, group } = record.options;
+        return {
+          attached: `${key.toUpperCase()} ${id}, ${group}`,
+          on: record.detached
+            ? "detached"
+            : `${record.element.textContent} (aria-checked ${record.element.getAttribute("aria-checked")})`,
+          retargets: record.retargets,
+        };
       },
       line() {
         const root = host.find("diff-root")[0];
@@ -371,6 +441,22 @@ async function main() {
   unlaidGone.handle.dispose();
   await nextTask();
   assert(unlaidGone.observer.target === null, "dispose left the root to be watched again");
+
+  // `L`: the same path as a click, on the option it would select, moved after each draw.
+  await settle();
+  const keyed = mount(1049, undefined, 0, true);
+  const sayKey = (name) => steps.push({ step: name, ...keyed.line(), key: keyed.key() });
+  sayKey("a wide diff attaches L once, on the option it would select");
+  keyed.pressL();
+  sayKey("L chooses Unified, as clicking it does, and moves to Split");
+  keyed.pressL();
+  sayKey("L again: Split, and the choice is written");
+  await keyed.width(617);
+  sayKey("Split falls back where it does not fit: L moves to Split, which it would choose");
+  keyed.pressL();
+  sayKey("L there chooses Split and its sideways scroll, as clicking Split does");
+  keyed.handle.dispose();
+  assert(keyed.key().on === "detached", "dispose left L attached");
 
   // Height changes report too, and draw nothing: only a new width is looked at.
   const tall = mount(900);

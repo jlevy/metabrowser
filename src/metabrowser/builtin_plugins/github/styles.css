@@ -815,9 +815,12 @@
   border-radius: 50%;
 }
 
-/* The author never gets narrower than its separator and a little of the name (or its
-   avatar), so the separator never stands alone: past that, the author and its separator
-   move to the next line together. Above it the name ends in an ellipsis. */
+/* The author never gets narrower than its separator, its avatar if it has one, and a little
+   of the name, so neither the separator nor the avatar stands without a visible name: past
+   that, the author and its separator move to the next line together. Above it the name
+   ends in an ellipsis. The avatar's share is its 18px and the identity's 4px gap
+   (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
+   hidden, so the name's share is still there. */
 .github-pulls-by {
   display: flex;
   flex: 1 1 0;
@@ -825,6 +828,9 @@
   min-width: calc(var(--github-pulls-sep) + 1.75em);
   max-width: max-content;
   overflow: hidden;
+}
+.github-pulls-by:has(.github-pull-avatar) {
+  min-width: calc(var(--github-pulls-sep) + 18px + 4px + 1.75em);
 }
 .github-pulls-by > .github-pull-identity {
   min-width: 0;
