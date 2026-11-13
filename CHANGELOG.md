@@ -12,6 +12,24 @@ All notable changes to Metabrowser are documented here.
   left over from the opening window no longer repeat after the new ones, and a line
   anchor’s highlight stays on its line.
 
+- `metab ROOT --exit-on-eof` stops serving when its stdin closes, so a program that
+  starts the server and holds its stdin, such as the macOS app, leaves no server running
+  when it exits, even by crashing.
+  The watch begins before startup reads the disk or acquires a Git source, so a server
+  still starting stops too.
+  See
+  [Stopping When the Parent Exits](docs/command-line.md#stopping-when-the-parent-exits).
+
+- Stopping a server, by Ctrl-C, a hangup, or `--exit-on-eof`, no longer waits on a
+  stderr that is full because nothing reads it: the stop notice is dropped and the
+  process stops.
+
+- Stopping a server by Ctrl-C, a hangup, or `--exit-on-eof` now also kills a fetch’s or
+  clone’s Git, or a `gh`, whose start was under way at that moment, which used to keep
+  running and could keep holding the store’s fetch lock; no new one starts once the stop
+  has begun. The stop finds them from the system’s list of the server’s children, so it
+  ends promptly even when the server’s event loop is stuck.
+
 - The Pulls tab no longer stays stuck on “The metadata catalog could not be written”
   after a different Metabrowser build used the same cache.
   A list of pull requests this build cannot use, because it is damaged or from another
