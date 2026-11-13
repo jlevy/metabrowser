@@ -6,7 +6,8 @@ badge hung below its line. This mounts the production page module on
 recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
 compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs). The
 same session lays out Pulls rows as their stack positions arrive, and a file header as a
-run's status badge changes its label in place, and checks that nothing moves.
+run's status badge changes its label in place, and checks that nothing moves. It runs in
+parts, one case each, so each part has a bound of its own under the suite's.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -18,13 +19,20 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from metabrowser import kpress_adapter
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
-# The session took 9 to 12 s on a Mac at a load average of 10 to 27 (the whole test 11.8 s
-# at 9 to 13), so 45 s leaves it room on a loaded runner and fires before the suite's 60.
-SESSION_TIMEOUT_S = 45
+# The parts the session runs in, each in a browser of its own (--part in the session).
+PARTS = ("header-wide", "header-middle", "header-narrow", "pulls", "badges")
+# Whole, the session took about 18 s on a Mac and ran past 45 s on a CI runner. In parts,
+# on a Mac at a load average of 10 to 12, each header part took 9.8 to 10.0 s, the Pulls
+# rows 6.1 s, and the run badge 6.1 s: with 4 checks, the badge part is mostly Chrome's
+# launch and the page's load. 40 s gives a runner four times this machine's time for the
+# largest part, and fires before the suite's 60.
+SESSION_TIMEOUT_S = 40
 
 
 def _kpress_faces(into: Path) -> Path:
@@ -38,10 +46,11 @@ def _kpress_faces(into: Path) -> Path:
     return into
 
 
-def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path) -> None:
+@pytest.mark.parametrize("part", PARTS)
+def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path, part: str) -> None:
     chrome = require_chrome()
     result = subprocess.run(
-        [require_node(), str(SESSION)],
+        [require_node(), str(SESSION), "--part", part],
         capture_output=True,
         text=True,
         timeout=SESSION_TIMEOUT_S,
@@ -53,4 +62,5 @@ def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path) -> None:
         },
     )
     assert result.returncode == 0, result.stderr or result.stdout
-    assert re.fullmatch(r"pull header in Chrome: \d+ checks passed\n", result.stdout), result.stdout
+    passed = re.fullmatch(rf"pull header in Chrome, {part}: (\d+) checks passed\n", result.stdout)
+    assert passed is not None and int(passed.group(1)) > 0, result.stdout

@@ -2,7 +2,13 @@
 // and its stylesheets, mounted on recorded records in headless Chrome.
 //
 //   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
-//     node tests/dom/github-pull-header-chrome.mjs
+//     node tests/dom/github-pull-header-chrome.mjs [--part NAME]
+//
+// The session runs in parts, each its own browser and its own pytest case with its own
+// bound, since all of it ran past one test's 45 s on a CI runner: the header at its widest
+// two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
+// `header-narrow`), the Pulls rows (`pulls`), and the run badge (`badges`). With no part
+// it runs every one.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
 // tests/test_github_pull_header_chrome.py copies out of the installed package, so the
@@ -506,6 +512,23 @@ const RUN_BADGE = `async (live, width) => {
 }`;
 const TABS = ["", "files", "checks"];
 const WIDTHS = [980, 760, 560, 420, 360, 320];
+// Each part's header widths; together they are WIDTHS. The offers are counted in the part
+// that lays out the widest pane.
+const HEADER_PARTS = {
+  "header-wide": [980, 760],
+  "header-middle": [560, 420],
+  "header-narrow": [360, 320],
+};
+const PARTS = [...Object.keys(HEADER_PARTS), "pulls", "badges"];
+const PART = (() => {
+  const at = process.argv.indexOf("--part");
+  const name = at < 0 ? "all" : process.argv[at + 1];
+  if (name !== "all" && !PARTS.includes(name)) {
+    throw new Error(`--part takes one of ${PARTS.join(", ")}, not ${name}`);
+  }
+  return name;
+})();
+const runs = (part) => PART === "all" || PART === part;
 
 async function main() {
   const bin = process.env.CHROME_BIN;
@@ -525,7 +548,8 @@ async function main() {
         `document.readyState === "complete" && Boolean(window.metabrowser?.refChip)`,
       );
       const offersDrawn = new Set();
-      for (const width of WIDTHS) {
+      const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
+      for (const width of widths) {
         const seen = {};
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
@@ -593,7 +617,7 @@ async function main() {
           );
         }
       }
-      for (const width of [980, 360]) {
+      for (const width of runs("badges") ? [980, 360] : []) {
         for (const live of [true, false]) {
           const run = await browser.evaluate(`(${RUN_BADGE})(${live}, ${width})`);
           check(
@@ -603,7 +627,7 @@ async function main() {
           );
         }
       }
-      for (const width of PULLS_WIDTHS) {
+      for (const width of runs("pulls") ? PULLS_WIDTHS : []) {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
@@ -629,13 +653,15 @@ async function main() {
           );
         }
       }
-      check(
-        "both offers are drawn by the records that carry them",
-        offersDrawn.has("behind_head") &&
-          offersDrawn.has("current pinBehind") &&
-          offersDrawn.has("on_head checkoutAtHead"),
-        JSON.stringify([...offersDrawn]),
-      );
+      if (widths.includes(980)) {
+        check(
+          "both offers are drawn by the records that carry them",
+          offersDrawn.has("behind_head") &&
+            offersDrawn.has("current pinBehind") &&
+            offersDrawn.has("on_head checkoutAtHead"),
+          JSON.stringify([...offersDrawn]),
+        );
+      }
     } finally {
       await browser.close();
     }
@@ -653,6 +679,6 @@ main()
       console.error(failures.join("\n"));
       process.exitCode = 1;
     } else {
-      console.log(`pull header in Chrome: ${checks} checks passed`);
+      console.log(`pull header in Chrome, ${PART}: ${checks} checks passed`);
     }
   });
