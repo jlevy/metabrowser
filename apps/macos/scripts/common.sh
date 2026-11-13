@@ -15,39 +15,59 @@ note() {
   echo "note: $*" >&2
 }
 
+# Runs "$@" with its output held back, and stops with that output if it fails, so a
+# chatty tool stays quiet without hiding why it failed.
+quietly() {
+  local output
+  output="$("$@" 2>&1)" || die "$1 failed: $output"
+}
+
 # The variant decides the bundle's identity. Two copies with one bundle identifier share
 # user defaults, privacy (TCC) grants, and LaunchServices registration, and a URL scheme
 # claimed twice has no defined target, so a development build never takes the release
 # identity. Every local build is dev, with the canary (gold-rimmed) icon; only the
 # release targets build release, the identity and published icon of official builds.
+# Both are named Metabrowser, so each builds into a folder of its own, and their images
+# and artifacts keep the variant in their file names:
 #
-#   release  Metabrowser.app, io.github.jlevy.metabrowser, Resources/AppIcon.icns
-#   dev      Metabrowser Dev.app, io.github.jlevy.metabrowser.dev, Resources/AppIcon-Dev.icns,
-#            and every URL scheme the property list declares with a -dev suffix
+#   release  build/release/Metabrowser.app, io.github.jlevy.metabrowser,
+#            Resources/AppIcon.icns, build/Metabrowser-VERSION-ARCH.dmg
+#   dev      build/dev/Metabrowser.app, io.github.jlevy.metabrowser.dev,
+#            Resources/AppIcon-Dev.icns, build/Metabrowser-Dev-VERSION-ARCH.dmg, and
+#            every URL scheme the property list declares with a -dev suffix
 #
-# Sets variant, product, bundle_id, icon_source, scheme_suffix, version, arch_label, app,
-# and dmg.
+# Sets variant, product, bundle_id, icon_source, scheme_suffix, artifact_label, version,
+# arch_label, app, and dmg.
 variant_settings() {
   variant="$1"
+  product="Metabrowser"
   case "$variant" in
     release)
-      product="Metabrowser"
       bundle_id="io.github.jlevy.metabrowser"
       icon_source="Resources/AppIcon.icns"
       scheme_suffix=""
       ;;
     dev)
-      product="Metabrowser Dev"
       bundle_id="io.github.jlevy.metabrowser.dev"
       icon_source="Resources/AppIcon-Dev.icns"
       scheme_suffix="-dev"
       ;;
     *) die "VARIANT must be release or dev, not '$variant'" ;;
   esac
+  artifact_label="$(artifact_label_of_variant "$variant")"
   version="$(read_version)" || exit 1
   arch_label="$(arch_label_for "${ARCHES:-arm64}")"
-  app="build/$product.app"
-  dmg="$(dmg_path "$product" "$version" "$arch_label")"
+  app="build/$variant/$product.app"
+  dmg="$(dmg_path "$variant" "$version" "$arch_label")"
+}
+
+# The start of a variant's image and artifact names: Metabrowser, or Metabrowser-Dev.
+artifact_label_of_variant() {
+  case "$1" in
+    release) echo Metabrowser ;;
+    dev) echo Metabrowser-Dev ;;
+    *) die "VARIANT must be release or dev, not '$1'" ;;
+  esac
 }
 
 # Prints the variant whose bundle identifier is $1, or nothing.
@@ -109,8 +129,22 @@ arch_label_for() {
   esac
 }
 
+# A variant's image: dmg_path VARIANT VERSION ARCH_LABEL.
 dmg_path() {
-  echo "build/${1// /-}-$2-$3.dmg"
+  echo "build/$(artifact_label_of_variant "$1")-$2-$3.dmg"
+}
+
+# The commit the build comes from, for the About box: HEAD's short hash, with -dirty when
+# apps/macos has uncommitted changes. Prints nothing outside a Git checkout.
+source_commit() {
+  local commit changes
+  commit="$(git rev-parse --short=7 HEAD 2>/dev/null)" || return 0
+  changes="$(git status --porcelain -- . 2>&1)" || die "git status failed: $changes"
+  if [[ -n "$changes" ]]; then
+    echo "$commit-dirty"
+  else
+    echo "$commit"
+  fi
 }
 
 # Signs a bundle or disk image: ad hoc ("-") without a timestamp, or with the given
@@ -207,4 +241,59 @@ detach_image() {
     fi
     sleep 1
   done
+}
+
+# ── Manual checks ────────────────────────────────────────────
+# A check script records each failed check with check_fail and keeps going, so its
+# cleanup still runs, then exits with check_status, which is nonzero if any check failed.
+check_failures=0
+
+check_fail() {
+  echo "FAIL: $*" >&2
+  check_failures=$((check_failures + 1))
+}
+
+# The status to exit with, given the one the script was exiting with: that one if it is
+# not zero, else 1 if a check failed, else 0.
+check_status() {
+  if (($1 != 0)); then
+    echo "$1"
+  elif ((check_failures > 0)); then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+# Stops the processes that the command "$1" lists, one pid per line: SIGTERM, then up to
+# "$3" half-second waits (default 30), then SIGKILL. Needing SIGKILL, and anything it
+# leaves, is a failed check; "$2" names the processes in the message.
+stop_listed() {
+  local list="$1" what="$2" tries="${3:-30}" waits pid
+  [[ -n "$($list)" ]] || return 0
+  waits="$tries"
+  for pid in $($list); do kill -TERM "$pid" 2>/dev/null || true; done
+  while [[ -n "$($list)" ]] && ((tries > 0)); do
+    sleep 0.5
+    tries=$((tries - 1))
+  done
+  [[ -n "$($list)" ]] || return 0
+  check_fail "$what did not stop within $((waits / 2)) s of SIGTERM, killing: $($list | tr '\n' ' ')"
+  for pid in $($list); do kill -KILL "$pid" 2>/dev/null || true; done
+  sleep 0.5
+  [[ -z "$($list)" ]] || check_fail "$what still running after SIGKILL: $($list | tr '\n' ' ')"
+}
+
+# Stops a setup check where the app would find a metab, or, for "$1" no-metab, a uv, in
+# one of the directories "$2" lists, one per line. Each line is one directory, however
+# it is spelled: spaces and glob characters are part of its name.
+refuse_ambient() {
+  local scenario="$1" dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    [[ ! -e "$dir/metab" ]] || die "$dir/metab would be found before the scratch HOME's; these checks need a Mac without it"
+    if [[ "$scenario" == no-metab && -e "$dir/uv" ]]; then
+      die "$dir/uv would be found, so no-metab could not start without uv; run it on a Mac without uv outside ~/.local/bin, or run old-metab"
+    fi
+  done <<<"$2"
 }

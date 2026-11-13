@@ -28,20 +28,36 @@ stops() {
   ("$@") >"$work/out" 2>&1
 }
 
-# ── require_no_entitlements ────────────────────────────────────
+# quietly: silent when the command succeeds, and its output when it fails.
+if ! stops quietly sh -c 'echo chatter'; then
+  fail "quietly stopped on a command that succeeded: $(cat "$work/out")"
+elif [[ -s "$work/out" ]]; then
+  fail "quietly printed a successful command's output: $(cat "$work/out")"
+else
+  pass "quietly holds back a successful command's output"
+fi
+if stops quietly sh -c 'echo the reason; exit 3'; then
+  fail "quietly passed a command that failed"
+elif grep -q "sh failed: the reason" "$work/out"; then
+  pass "quietly stops with a failed command's output"
+else
+  fail "quietly stopped without the command's output: $(cat "$work/out")"
+fi
+
+# require_no_entitlements:
 # A failed read, a clean signature, and a signature with entitlements, on copies of a
 # system binary.
 cp /usr/bin/true "$work/unsigned"
 codesign --remove-signature "$work/unsigned"
 cp /usr/bin/true "$work/clean"
-codesign --force --sign - "$work/clean" 2>/dev/null
+quietly codesign --force --sign - "$work/clean"
 cp /usr/bin/true "$work/entitled"
 cat >"$work/entitlements.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>
 EOF
-codesign --force --sign - --entitlements "$work/entitlements.plist" "$work/entitled" 2>/dev/null
+quietly codesign --force --sign - --entitlements "$work/entitlements.plist" "$work/entitled"
 
 if stops require_no_entitlements "$work/unsigned"; then
   fail "an unreadable signature passed the entitlement check"
@@ -68,7 +84,7 @@ else
   fail "a signature with entitlements stopped the check for another reason: $(cat "$work/out")"
 fi
 
-# ── The app's minimum macOS ────────────────────────────────────
+# The app's minimum macOS:
 # Package.swift's deployment target and Info.plist's LSMinimumSystemVersion name one
 # release, the one every cask below must require.
 minimum="$(app_minimum_macos)"
@@ -86,13 +102,13 @@ else
   macos_name=""
 fi
 
-# ── write_cask ─────────────────────────────────────────────────
+# write_cask:
 # Each architecture label a build can produce: the cask must download the image whose
 # checksum it carries, declare the architecture the image runs on, and require the macOS
 # the app requires, so Homebrew refuses to install it where it cannot launch.
 check_cask() {
   local label="$1" dmg cask url
-  dmg="$work/$(basename "$(dmg_path Metabrowser 1.2.3 "$label")")"
+  dmg="$work/$(basename "$(dmg_path release 1.2.3 "$label")")"
   cask="$work/cask-$label.rb"
   printf 'image %s\n' "$label" >"$dmg"
   write_checksum "$dmg"
@@ -145,7 +161,7 @@ else
   fail "a stale macOS requirement stopped write_cask for another reason: $(cat "$work/out")"
 fi
 
-# ── build-icon.sh --check ──────────────────────────────────────
+# build-icon.sh --check:
 # On a copy of the reject fixtures with one more, sorted last, that the renderer accepts:
 # every real fixture is refused for its reason, the accepted one stops the check, and
 # nothing the check started outlives it. Each process it starts inherits descriptor 9,
@@ -172,6 +188,143 @@ if [[ -z "$left" ]]; then
   pass "the reject check leaves no process running"
 else
   fail "the reject check left processes running: $(ps -o pid=,command= -p "${left%,}" | tr '\n' ';')"
+fi
+
+# variant_settings: both variants are Metabrowser.app, each in a folder of its own, and
+# their images keep the variant in their names.
+dev_app="$(variant_settings dev && echo "$app|$dmg|$bundle_id")"
+release_app="$(variant_settings release && echo "$app|$dmg|$bundle_id")"
+version="$(read_version)"
+if [[ "$dev_app" == "build/dev/Metabrowser.app|build/Metabrowser-Dev-$version-arm64.dmg|io.github.jlevy.metabrowser.dev" &&
+  "$release_app" == "build/release/Metabrowser.app|build/Metabrowser-$version-arm64.dmg|io.github.jlevy.metabrowser" ]]; then
+  pass "each variant builds Metabrowser.app in its own folder, and its image names the variant"
+else
+  fail "the variants' paths: dev $dev_app, release $release_app"
+fi
+if [[ "$(variant_of_bundle_id io.github.jlevy.metabrowser.dev)" == dev &&
+  "$(variant_of_bundle_id io.github.jlevy.metabrowser)" == release &&
+  -z "$(variant_of_bundle_id io.github.jlevy.other)" ]]; then
+  pass "a bundle identifier names its variant, and an unknown one names none"
+else
+  fail "variant_of_bundle_id did not map the bundle identifiers"
+fi
+
+# source_commit: HEAD's short hash, marked -dirty when apps/macos has changes. A Git
+# hook exports GIT_DIR and friends, which would point these commands at this checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+repo="$work/repo"
+mkdir -p "$repo/apps/macos"
+git -C "$repo" init -q
+git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -q --allow-empty -m one
+head="$(git -C "$repo" rev-parse --short=7 HEAD)"
+clean="$(cd "$repo/apps/macos" && source_commit)"
+touch "$repo/apps/macos/changed"
+dirty="$(cd "$repo/apps/macos" && source_commit)"
+outside="$(cd "$work" && GIT_CEILING_DIRECTORIES="$work" source_commit)"
+if [[ "$clean" == "$head" && "$dirty" == "$head-dirty" && -z "$outside" ]]; then
+  pass "source_commit names HEAD, marks uncommitted changes, and is empty outside Git"
+else
+  fail "source_commit gave '$clean', '$dirty', and '$outside' (HEAD is $head)"
+fi
+
+# Manual checks: shebangs, failures, and stopping what they launched.
+# Each script that runs directly, all but the sourced common.sh, must name its
+# interpreter on its first line.
+for script in scripts/*.sh; do
+  [[ -x "$script" ]] || continue
+  if [[ "$(head -c 2 "$script")" == "#!" ]]; then
+    pass "$script starts with its interpreter line"
+  else
+    fail "$script does not start with #!, so it cannot run directly"
+  fi
+done
+
+# A live process this test started, or nothing: a zombie no longer counts.
+alive() {
+  [[ -n "$1" ]] && ps -o stat= -p "$1" 2>/dev/null | grep -qv Z && echo "$1" || true
+}
+
+sleep 30 &
+polite=$!
+disown "$polite"
+polite_pids() { alive "$polite"; }
+if [[ "$(stop_listed polite_pids "a process that stops on SIGTERM" 4 2>"$work/out"; echo "$check_failures")" == 0 ]] \
+  && [[ -z "$(polite_pids)" ]]; then
+  pass "a process that stops on SIGTERM is stopped without a failure"
+else
+  fail "stopping a process that honors SIGTERM: $(cat "$work/out")"
+fi
+
+# The stand-in says it is ready only once its trap is set, after a deliberate delay, and
+# the test waits for that, up to 10 s, rather than guessing how long it takes.
+rm -f "$work/stubborn-ready"
+bash -c 'sleep 0.5; trap "" TERM; : >"$1"; exec sleep 30' _ "$work/stubborn-ready" &
+stubborn=$!
+disown "$stubborn"  # so its SIGKILL is not reported as a job
+for _ in $(seq 100); do
+  [[ -e "$work/stubborn-ready" ]] && break
+  sleep 0.1
+done
+stubborn_pids() { alive "$stubborn"; }
+if [[ ! -e "$work/stubborn-ready" ]]; then
+  fail "the stand-in that ignores SIGTERM did not get ready within 10 s"
+elif [[ "$(stop_listed stubborn_pids "the stand-in app" 2 2>"$work/out"; echo "$check_failures")" == 1 ]] \
+  && [[ -z "$(stubborn_pids)" ]] && grep -q "FAIL: the stand-in app did not stop within 1 s of SIGTERM" "$work/out"; then
+  pass "a process that ignores SIGTERM is killed and counted as a failed check"
+else
+  fail "stopping a process that ignores SIGTERM: $(cat "$work/out")"
+fi
+
+# A failed check makes the script exit nonzero after its cleanup, and an earlier
+# nonzero status is kept.
+for case in "0 pass 0" "0 fail 1" "4 fail 4" "3 pass 3"; do
+  read -r code outcome expected <<<"$case"
+  cat >"$work/check.sh" <<FIXTURE
+#!/usr/bin/env bash
+set -euo pipefail
+source "$PWD/scripts/common.sh"
+cleanup() { local status=\$?; echo cleaned; exit "\$(check_status "\$status")"; }
+trap cleanup EXIT
+[[ "$outcome" == pass ]] || check_fail "an injected failure"
+exit $code
+FIXTURE
+  chmod 755 "$work/check.sh"
+  set +e
+  "$work/check.sh" >"$work/out" 2>&1
+  status=$?
+  set -e
+  if [[ "$status" == "$expected" ]] && grep -q cleaned "$work/out"; then
+    pass "a check script exiting $code after a $outcome exits $expected, after its cleanup"
+  else
+    fail "a check script exiting $code after a $outcome exited $status: $(cat "$work/out")"
+  fi
+done
+
+
+# ── refuse_ambient ─────────────────────────────────────────────
+# The setup check's preflight reads one directory per line, so a directory with a space
+# or a glob character in its name is looked in whole (mb-j2qo).
+mkdir -p "$work/ambient/Shared Tools/bin" "$work/ambient/g[l]ob*/bin" "$work/ambient/plain/bin"
+: >"$work/ambient/Shared Tools/bin/uv"
+: >"$work/ambient/g[l]ob*/bin/metab"
+spaced="$work/ambient/plain/bin
+$work/ambient/Shared Tools/bin"
+globbed="$work/ambient/plain/bin
+$work/ambient/g[l]ob*/bin"
+if ! stops refuse_ambient no-metab "$spaced" && grep -q "$work/ambient/Shared Tools/bin/uv would be found" "$work/out"; then
+  pass "a uv in a directory with a space in its name stops no-metab"
+else
+  fail "a uv in a directory with a space in its name: $(cat "$work/out")"
+fi
+if (refuse_ambient old-metab "$spaced") >"$work/out" 2>&1; then
+  pass "a uv elsewhere does not stop old-metab"
+else
+  fail "old-metab stopped for an ambient uv: $(cat "$work/out")"
+fi
+if ! stops refuse_ambient old-metab "$globbed" && grep -qF "$work/ambient/g[l]ob*/bin/metab would be found" "$work/out"; then
+  pass "a metab in a directory with glob characters in its name stops every case"
+else
+  fail "a metab in a directory with glob characters in its name: $(cat "$work/out")"
 fi
 
 if ((failures)); then

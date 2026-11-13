@@ -2,7 +2,8 @@ import ShellCore
 import SwiftUI
 
 /// What a folder window shows in place of the page: the server is starting, it failed
-/// and here is why, it waits for its tab to be selected, or a discarded tab reloads.
+/// and here is why, it waits for its tab to be selected or for a `metab` the app can run,
+/// or a discarded tab reloads.
 @Observable final class WindowStatus {
     enum Phase: Equatable {
         case starting
@@ -10,6 +11,8 @@ import SwiftUI
         /// A restored folder in a protected location, whose server starts only once its tab
         /// is selected, so that a launch raises no privacy prompt for it.
         case waitingForSelection
+        /// A start waiting for a `metab` the app accepts.
+        case waitingForRuntime
         /// A tab that gave up its page loads it again from the running server.
         case reloading
     }
@@ -42,6 +45,13 @@ struct StatusView: View {
                     Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(32)
+            case .waitingForRuntime:
+                VStack(spacing: 12) {
+                    Text("Metabrowser opens \(folderName) once it has a metab it can run.").font(.headline)
+                    Text("Settings says what it found and what to install.")
+                    Button("Open Settings…", action: showSettings)
+                }
+                .padding(32)
             case .reloading:
                 DelayedSpinner()
             }
@@ -65,13 +75,14 @@ private struct StartingView: View {
 
 /// A spinner that appears only after `delay`, so a quick start or reload never flashes one.
 private struct DelayedSpinner: View {
+    /// Below this, a delay reads as instant, and a spinner would only flash.
     static let delay = Duration.milliseconds(300)
     @State private var showsSpinner = false
 
     var body: some View {
         ProgressView().opacity(showsSpinner ? 1 : 0)
             .task {
-                try? await Task.sleep(for: Self.delay)
+                try? await Task.sleep(for: Self.delay)  // cancelled: the view went away
                 showsSpinner = true
             }
     }
@@ -84,8 +95,11 @@ private struct FailureView: View {
     let revealLogs: () -> Void
     let showSettings: () -> Void
 
+    /// The newest lines fit the view; Reveal Logs shows the rest.
+    private static let shownLines = 120
+
     private var output: String {
-        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(120).joined(separator: "\n")
+        failure.recentOutput.isEmpty ? "(no output)" : failure.recentOutput.suffix(Self.shownLines).joined(separator: "\n")
     }
 
     var body: some View {

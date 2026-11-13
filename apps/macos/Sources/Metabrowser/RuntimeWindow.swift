@@ -8,9 +8,15 @@ import SwiftUI
     var setup: RuntimeSetup?
     var tried: [CandidateOutcome] = []
     var isSearching = false
+    /// A file chosen with Choose metab… is being checked.
+    var isChoosing = false
+    /// A search found nothing, and the first-run steps are being worked out.
+    var isPreparingGuide = false
     var isRunningDoctor = false
     var doctorOutput: String?
     var notice: String?
+    /// The first-run steps, once a search found no usable `metab`.
+    var guide: SetupGuide?
 }
 
 struct RuntimeActions {
@@ -28,13 +34,12 @@ struct RuntimeView: View {
         VStack(alignment: .leading, spacing: 14) {
             if let setup = model.setup {
                 found(setup)
-            } else if model.isSearching {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Looking for the metab command-line tool…")
-                }
+            } else if let guide = model.guide {
+                missing(guide)
             } else {
-                missing
+                activity(RuntimeActivity(
+                    isSearching: model.isSearching, isChoosing: model.isChoosing,
+                    isPreparingSteps: model.isPreparingGuide))
             }
             if let notice = model.notice {
                 Text(notice).foregroundStyle(.orange).textSelection(.enabled)
@@ -107,24 +112,26 @@ struct RuntimeView: View {
         }
     }
 
-    private var missing: some View {
+    /// What is running while there is neither a runtime nor steps to show.
+    @ViewBuilder private func activity(_ activity: RuntimeActivity) -> some View {
+        switch activity {
+        case .searching: working("Looking for the metab command-line tool…")
+        case .checkingChoice: working("Checking the chosen metab…")
+        case .preparingSteps: working("Working out the steps to install metab…")
+        case .idle: Text("No metab is selected. Find Again looks for one, and Choose metab… picks one.")
+        }
+    }
+
+    private func working(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text)
+        }
+    }
+
+    private func missing(_ guide: SetupGuide) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Metabrowser needs the metab command-line tool").font(.headline)
-            Text("This app runs your own installation of Metabrowser and did not find one. Install it with uv, then click Find Again:")
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Text(RuntimeDiscovery.installCommand)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(RuntimeDiscovery.installCommand, forType: .string)
-                }
-            }
+            SetupGuideView(guide: guide)
             Link(
                 "Installation guide",
                 destination: URL(string: "https://github.com/jlevy/metabrowser/blob/main/docs/installation.md")!)
@@ -135,7 +142,10 @@ struct RuntimeView: View {
         switch result {
         case .valid(let version): "metab \(version)"
         case .missing: "not found"
+        case .tooOld(let version):
+            "metab \(version), \(MetabRequirement.flagShortfall(version) ?? "older than \(MetabRequirement.minimum)")"
         case .rejected(let reason): reason
+        case .untrusted(let reason): "not run: \(reason)"
         }
     }
 }
