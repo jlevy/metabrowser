@@ -35,13 +35,15 @@ const BANDS = ["narrow", "regular", "wide"];
 // Text positions are fractional; a difference under half a pixel is not a different edge.
 const TOLERANCE_PX = 0.5;
 
-const READY = `(() => {
+// The Overview mounts in three steps that wait on different work: both panels' headings,
+// the README's rendered prose, and File Overview's type breakdown, which waits for the
+// folder's rollup. Each is its own phase, so a slow run says which one it was waiting on.
+const PANELS = `(() => {
   const panels = [...document.querySelectorAll(".folder-overview-panel")].filter((p) => !p.hidden);
-  return panels.length === 2
-    && panels.every((p) => p.querySelector(".folder-overview-panel-toggle"))
-    && !!document.querySelector(".folder-overview-panel-document .kpress-prose p")
-    && !!document.querySelector(".file-type-summary-details-toggle");
+  return panels.length === 2 && panels.every((p) => p.querySelector(".folder-overview-panel-toggle"));
 })()`;
+const README = `!!document.querySelector(".folder-overview-panel-document .kpress-prose p")`;
+const ROLLUP = `!!document.querySelector(".file-type-summary-details-toggle")`;
 
 // The left edge of an element's first line of text, where a reader sees it start.
 const MEASURE = `(() => {
@@ -84,6 +86,15 @@ const MEASURE = `(() => {
   };
 })()`;
 
+// Each phase reports on stderr when it ends, with the milliseconds since this process
+// started. The caller stops the run at its deadline, so this is how a run that ran out
+// of time says which phase it was in and how long each one before it took.
+// tests/test_folder_overview_alignment.py lists the phases in the same order.
+function phase(name) {
+  process.stderr.write(`phase ${name} ${Math.round(performance.now())}\n`);
+}
+
+phase("imported");
 let checks = 0;
 const bands = new Set();
 const offsets = [];
@@ -93,9 +104,20 @@ const browser = await launchBrowser({
   height: 900,
   extraArgs: process.platform === "linux" ? ["--no-sandbox"] : [],
 });
+phase("chrome");
 const d = driver(browser);
+// The caller's deadline bounds the whole run, so a wait only has to outlast any phase
+// that works; when one does not, the caller names the phase from the lines above.
+async function reach(name, expression) {
+  assert.ok(await d.waitFor(expression, 120000), `${name} was not reached`);
+  phase(name);
+}
 try {
   await browser.page.send("Page.navigate", { url: `${base}/view/` });
+  phase("navigated");
+  await reach("panels", PANELS);
+  await reach("readme", README);
+  await reach("rollup", ROLLUP);
   for (const width of WIDTHS) {
     await browser.page.send("Emulation.setDeviceMetricsOverride", {
       width,
@@ -103,7 +125,6 @@ try {
       deviceScaleFactor: 1,
       mobile: false,
     });
-    assert.ok(await d.waitFor(READY, 20000), `${width}px: the Overview never finished mounting`);
     // Two frames, so layout reflects the new width before anything is read.
     assert.ok(await d.frames(2), `${width}px: two animation frames did not arrive`);
     const m = await d.evaluate(MEASURE);
@@ -128,6 +149,7 @@ try {
       checks += 1;
     }
     offsets.push({ at, offset: m.labels[0].x - m.paneX });
+    phase(`width ${width}`);
   }
   // The indent from the pane is one value at every width, not one per band.
   for (const band of BANDS) {
@@ -143,5 +165,8 @@ try {
 } finally {
   // Stops every Chrome process of the profile, then removes the profile.
   await browser.close();
+  phase("closed");
 }
-console.log(`folder overview alignment: ${checks} checks passed`);
+// Exit once the line is written: the shared launcher's close races Browser.close against a
+// 3 s timer it never clears, which would otherwise hold this process open for that long.
+process.stdout.write(`folder overview alignment: ${checks} checks passed\n`, () => process.exit(0));
