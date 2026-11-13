@@ -5849,12 +5849,18 @@ pre.code-block.metabrowser-source-lines > code {
    the room equally — a name that fits in its half keeps all of it, and
    the longer one ellipsizes first — and the arrow never gives way:
    grid's "maximize tracks" step grows both name tracks equally from
-   zero and freezes each at its full width. */
+   zero and freezes each at its full width.
+   The group never gets narrower than both chips' padding and copy slot
+   (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
+   in each, and the arrow with its spaces (about 1.3em): the equal growth
+   gives each name at least its chip's frame and an ellipsis, and what is
+   left is the arrow's. A line too short for that floor moves the merge
+   to a line of its own (the Pulls tab's `.github-pulls-line`). */
 .merge-refs {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);
   align-items: center;
-  min-width: 0;
+  min-width: calc(2 * (5px + 19px) + 3em);
   max-width: 100%;
   vertical-align: middle;
   font-size: var(--ui-small-font-size);
