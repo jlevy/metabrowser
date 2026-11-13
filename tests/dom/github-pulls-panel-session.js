@@ -921,6 +921,19 @@ async function paintStory(panel, selection = false) {
       !connection.hidden && message.textContent === "Fetching pull requests…",
       "one fetch line",
     );
+    // The status line is there before the list answers, holding its line, so the list and
+    // the connection line under it never move when it fills (they dropped 24 px).
+    const statusLine = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-status"),
+    );
+    assert(
+      !statusLine.hidden && statusLine.textContent.length > 0,
+      "the status line holds its line before the list answers",
+    );
+    assert(
+      container.childNodes.indexOf(statusLine) + 1 === container.childNodes.indexOf(connection),
+      "the connection line is under the status line",
+    );
     assert(
       !spinner.hidden &&
         spinner.firstElementChild.classList.contains("spinner") &&
@@ -1209,6 +1222,28 @@ async function paintStory(panel, selection = false) {
     const numberLabel = child(line, "github-pulls-number");
     const by = child(line, "github-pulls-by");
     const merge = child(line, "github-pulls-merge");
+    // The stack's position is on the title line, between the title and the age, and not on
+    // the muted line, which wraps: there its late arrival moved the merge or added a line.
+    // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    const order = row(hostile)
+      .childNodes.filter((node) => typeof node.className === "string")
+      .map((node) => node.className.split(" ").find((name) => name.startsWith("github-pull")));
+    assert(
+      JSON.stringify(order) ===
+        JSON.stringify([
+          "github-pulls-toggle",
+          "github-pull-state-icon",
+          "github-pulls-title",
+          "github-pulls-stack",
+          "github-pulls-age",
+          "github-pulls-meta",
+        ]),
+      `the row is the toggle, the state icon, the title, the stack position, the age, and the muted line: ${order}`,
+    );
+    assert(
+      !line.childNodes.some((node) => node.classList?.contains("github-pulls-stack")),
+      "the muted line holds no stack position",
+    );
     assert(
       metadata.textContent ===
         `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
@@ -1327,7 +1362,9 @@ async function paintStory(panel, selection = false) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () => row(shown).childNodes[3].textContent;
+    const age = () =>
+      row(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
+        .textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;
@@ -1417,6 +1454,43 @@ async function paintStory(panel, selection = false) {
     };
     mounted.dispose();
     story["disposed: what is left in the tab"] = container.childNodes.length;
+    // With the host's toolbar, the filters are the tab's toolbar in the navigation's slot,
+    // and the list starts with its status line; a disposed list leaves the slot.
+    const slot = new FakeElement("div");
+    const slotted = new FakeElement("div");
+    const inSlot = panel.mountPullsPanel(
+      slotted,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: slot,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    assert(
+      slot.childNodes.length === 1 && slot.childNodes[0].classList.contains("github-pulls-filters"),
+      "the filters fill the host's toolbar",
+    );
+    assert(
+      slotted.childNodes[0].classList.contains("github-pulls-status") &&
+        !slotted.childNodes.some((node) => node.classList?.contains("github-pulls-filters")),
+      "the list under the toolbar starts with its status line",
+    );
+    inSlot.dispose();
+    assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
     return story;
   } finally {
     Date.now = realNow;

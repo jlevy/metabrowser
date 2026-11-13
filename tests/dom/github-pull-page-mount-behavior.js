@@ -565,9 +565,13 @@ async function mountOn(page, body, tab, ageLabel) {
 // static/plugin-shortcuts.js) load whole into a realm of their own, as `shell-tools` loads
 // them, and the page's `mb.shortcuts.attach` is the facade's, as the SDK's is once it has
 // loaded. Each key runs the page handle's setTab: a tab the address does not show goes
-// through the route, as a click on its link does. The keys wait while the tab column is out
-// of the page, as it is before a record arrives, and return when paintHeader puts it back;
-// the inert stage of a retained navigation holds them; and disposal ends them.
+// through the route, as a click on its link does. The header keeps its tab column unless
+// its first read fails (headerShape): while the record is on its way, and for an absent
+// record nothing is fetching, such as a server with no GitHub repository. So the keys are
+// live from first paint, as the links are. They wait while the column is out of the page,
+// after a first read that failed, and return when paintHeader puts it back, badged at once
+// while Shift is held; the inert stage of a retained navigation holds them; and disposal
+// ends them.
 async function tabKeys(page) {
   const vm = require("node:vm");
   // What the registry reads of a target: connected, enabled, not inert, and visible.
@@ -624,6 +628,8 @@ async function tabKeys(page) {
     clearTimeout: (id) => timers.delete(id),
   };
   let answer = recorded.pending.body;
+  // A read of the record fails while this is set, as a server that cannot answer does.
+  let failing = false;
   /** What a header number asked for: a request the page sent, a tab it opened, a page it
    * navigated to. Read and emptied by `numberResult`. */
   const asked = [];
@@ -639,9 +645,12 @@ async function tabKeys(page) {
         json: async () => ({ refresh: "started", pull: answer }),
       };
     }
-    return route.startsWith("/api/plugin/github/pull?")
-      ? { status: 200, headers: { get: () => null }, json: async () => answer }
-      : { status: 304, headers: { get: () => null } };
+    if (!route.startsWith("/api/plugin/github/pull?")) {
+      return { status: 304, headers: { get: () => null } };
+    }
+    return failing
+      ? { status: 503, headers: { get: () => null } }
+      : { status: 200, headers: { get: () => null }, json: async () => answer };
   };
   globalThis.window.open = (url, target, features) => {
     asked.push(`window.open ${url} ${target} ${features}`);
@@ -666,37 +675,53 @@ async function tabKeys(page) {
   const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
   const detachRegistry = facade.attachShortcutRegistry(registry);
   const opened = [];
-  const container = new LiveElement("main");
-  body.append(container);
-  const handle = page.mountPullPage(
-    container,
-    {
-      number: 7,
-      tab: "",
-      open(route) {
-        opened.push(route.tab);
-      },
-      reader: { initial: { etag: null, body: answer }, fetchAfterMs: 0 },
-    },
-    {
-      perf,
-      ensureAsset: async () => {},
-      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
-      ensureKindAssets: async () => {},
-      ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
-      formatAge: () => ({ label: "now", className: "age" }),
-      formatTimestamp: () => "now",
-      navigation: {
-        href: () => "/view/",
-        async open(target) {
-          asked.push(`navigation.open /view/${target.path}`);
+  /** Mount #7 into a new container in the page; `reader` is the Pulls tab's, if any. */
+  const mountPage = (reader) => {
+    const target = new LiveElement("main");
+    body.append(target);
+    const mounted = page.mountPullPage(
+      target,
+      {
+        number: 7,
+        tab: "",
+        open(route) {
+          opened.push(route.tab);
         },
+        reader,
       },
-      sourceKind: () => "git_revision",
-      icons: { toggle: "" },
-      shortcuts: { attach: facade.attachShortcut },
-    },
-  );
+      {
+        perf,
+        ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {},
+        ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: {
+          href: () => "/view/",
+          async open(target) {
+            asked.push(`navigation.open /view/${target.path}`);
+          },
+        },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+        shortcuts: { attach: facade.attachShortcut },
+      },
+    );
+    return { container: target, handle: mounted };
+  };
+  /** Let every timer the page set run, as the time they wait for passing does. */
+  const elapse = async () => {
+    for (const callback of [...timers.values()]) {
+      callback();
+    }
+    timers.clear();
+    await settle();
+  };
+  let { container, handle } = mountPage({
+    initial: { etag: null, body: answer },
+    fetchAfterMs: 0,
+  });
   await settle();
   const press = (key, init = {}) => {
     const event = {
@@ -729,6 +754,13 @@ async function tabKeys(page) {
     container
       .querySelectorAll(".tab-btn")
       .map((tab) => `${tab.textContent} ${tab.getAttribute("aria-keyshortcuts") ?? "none"}`);
+  /** Each tab that carries a Shift badge now, as its label and its badge's key. */
+  const badged = () =>
+    container.querySelectorAll(".tab-btn").flatMap((tab) => {
+      const badge = tab.children.find((node) => String(node.className).includes("kbd-badge"));
+      const label = tab.children.filter((node) => node !== badge).join("");
+      return badge ? [`${label} ${badge.textContent}`] : [];
+    });
   const attached = () =>
     registry
       .snapshot("help", { includeInactive: true })
@@ -775,17 +807,27 @@ async function tabKeys(page) {
   };
 
   const steps = [];
-  assert.equal(container.querySelector(".tab-bar"), null, "no record, no tab column");
-  steps.push(`before the record, the tab column out of the page: keys ${attached()}, live none`);
+  assert.ok(container.querySelector(".tab-bar"), "the tab column is in from first paint");
+  steps.push(
+    `before the record, the tab column in the page: ${keyed().join(", ")}; ` +
+      `live ${live().join(" ") || "none"}`,
+  );
   steps.push(result("c"));
+  steps.push(result("g"));
+  // A click on Changes asks for the same route G does. The host shows the page there once
+  // it is ready (static/pull-route.js), for the click and the key alike.
+  opened.length = 0;
+  globalThis.MouseEvent = class MouseEvent {};
+  container
+    .querySelectorAll(".tab-btn")
+    .find((tab) => tab.textContent === "Changes")
+    .events.get("click")({ preventDefault() {} });
+  delete globalThis.MouseEvent;
+  assert.deepEqual(opened, ["files"], "a click on Changes asks for the route G asks for");
   answer = recorded.current.body;
-  for (const callback of [...timers.values()]) {
-    callback();
-  }
-  timers.clear();
-  await settle();
-  assert.ok(container.querySelector(".tab-bar"), "the record put the tab column in");
-  steps.push(`the record arrives and paintHeader puts the column in: ${keyed().join(", ")}`);
+  await elapse();
+  assert.ok(container.querySelector(".tab-bar"), "the record kept the tab column in");
+  steps.push(`the record arrives and paintHeader keeps the column: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
   // The header's links and actions are situational: numbered by their place, 1 to 9.
   steps.push(`numbered: ${numbered()}`);
@@ -834,6 +876,31 @@ async function tabKeys(page) {
   steps.push(`committed: ${result("g")}`);
   handle.dispose();
   steps.push(`disposed: ${keyed().join(", ")}; keys ${attached() || "none"}; ${result("g")}`);
+  container.remove();
+  // A page whose first read fails has nothing to show, and takes the column out; the read
+  // that answers puts the same links back, keys and all. The reader has gone to Changes
+  // meanwhile, so the record lands with no held first paint, and paintHeader's own retarget
+  // of the returning links is what badges them at once while Shift is held. A conversation's
+  // held header wakes its column instead (github-pull-first-paint-behavior.js).
+  failing = true;
+  ({ container, handle } = mountPage(undefined));
+  await settle();
+  assert.equal(container.querySelector(".tab-bar"), null, "a failed read, no tab column");
+  steps.push(`a failed first read takes the column out: live ${live().join(" ") || "none"}`);
+  steps.push(result("g"));
+  arrive("files");
+  registry.setRevealed(true);
+  steps.push(`on Changes, Shift held while it is out: badges ${badged().join(", ") || "none"}`);
+  failing = false;
+  await elapse();
+  assert.ok(container.querySelector(".tab-bar"), "the record put the tab column back");
+  steps.push(`the next read answers, and the returning tabs are badged: ${badged().join(", ")}`);
+  registry.setRevealed(false);
+  steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
+  steps.push(`live: ${live().join(" ")}`);
+  steps.push(result("g"));
+  handle.dispose();
+  steps.push(`disposed: keys ${attached() || "none"}`);
   assert.equal(
     registry.snapshot("help", { includeInactive: true }).flatMap((group) => group.commands).length,
     0,
@@ -1066,6 +1133,102 @@ async function headerAges(page) {
   });
 }
 
+// The header's box is decided at first paint: the same rows, in the same order, whatever
+// the pull request carries and whichever tab shows, and while its record is on its way.
+// Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
+// row is there. A stack's chip has its slot at the labels row's end, held by a strut until
+// one arrives; the state row holds a strut of its own; and Refresh has its slot at the
+// status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
+// late chip moves nothing.
+async function headerShape(page) {
+  const rows = (container) =>
+    container
+      .querySelector(".github-pull-header")
+      .children.map((node) =>
+        node.tag === "h1"
+          ? "title"
+          : [...node.classes].find((name) => name.startsWith("github-pull-")).slice(12),
+      );
+  const age = () => "now";
+  const shapes = {};
+  const variants = {
+    "one label": recorded.current.body,
+    "no labels, a title of three lines": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = [];
+      body.record.pull.title = "A title long enough to need three lines ".repeat(6).trim();
+      return body;
+    })(),
+    "three labels": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = ["bug", "enhancement", "needs review"];
+      return body;
+    })(),
+    merged: recorded.merged.body,
+    stale: recorded.stale.body,
+    "on its way": recorded.absent.body,
+  };
+  for (const [name, body] of Object.entries(variants)) {
+    for (const tab of ["", "files", "checks"]) {
+      const { container, handle } = await mountOn(page, body, tab, age);
+      const header = container.querySelector(".github-pull-header");
+      const meta = container.querySelector(".github-pull-meta");
+      const labels = container.querySelector(".github-pull-labels");
+      const stacks = container.querySelector(".github-pull-stacks");
+      const status = container.querySelector(".github-pull-status");
+      const end = status.children.at(-1);
+      const refresh = end.children.at(-1);
+      assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
+      assert.equal(
+        labels.children.at(-1),
+        stacks,
+        `${name} ${tab}: the stack slot ends the labels`,
+      );
+      assert.ok(
+        meta.children.at(-1).classes.has("github-pull-stack-strut"),
+        `${name} ${tab}: a strut holds the state row at a chip's height`,
+      );
+      assert.ok(
+        stacks.children.length > 0 && !stacks.hidden,
+        `${name} ${tab}: the stack slot is held while no stack is known`,
+      );
+      assert.ok(
+        refresh.classes.has("github-pull-refresh"),
+        `${name} ${tab}: Refresh's slot ends the status row`,
+      );
+      assert.ok(
+        container.querySelector(".tab-bar"),
+        `${name} ${tab}: the tab bar is under the header from first paint`,
+      );
+      assert.equal(header.parentNode.children.indexOf(header), 0);
+      shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
+      handle.dispose();
+    }
+  }
+  assert.deepEqual(
+    new Set(Object.values(shapes)),
+    new Set(["title meta quiet labels status"]),
+    JSON.stringify(shapes, null, 2),
+  );
+  // A title cut short at two lines carries the whole of it in its tooltip, and only then.
+  const { container, handle } = await mountOn(page, variants["three labels"], "", age);
+  const title = container.querySelector(".github-pull-title");
+  const text = title.children[1];
+  text.scrollHeight = 60;
+  text.clientHeight = 40;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, "Count to two in the app #7");
+  text.scrollHeight = 40;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, undefined);
+  // Two lines that fit overhang their box by a descender's pixels, and are not cut short.
+  text.scrollHeight = 62;
+  text.clientHeight = 60;
+  title.events.get("pointerenter")();
+  assert.equal(title.dataset.tipText, undefined, "a whole two-line title has no tooltip");
+  handle.dispose();
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -1187,25 +1350,37 @@ async function run() {
     assert.ok(title.parentNode.classes.has("page-reading-column"));
     assert.ok(container.querySelector(".tab-bar").parentNode.classes.has("page-reading-column"));
     assert.ok(!container.querySelector(".github-pull-body").classes.has("page-reading-column"));
-    const [icon, titleText] = title.children;
+    const [icon, titleText, , number] = title.children;
     assert.equal(icon.className, "github-pull-state-icon");
     assert.equal(icon.dataset.state, "open");
     assert.equal(icon.children[0].tag, "svg");
     assert.equal(icon.getAttribute("aria-hidden"), "true");
     assert.equal(icon.getAttribute("aria-label"), null);
-    assert.equal(titleText.textContent, "Count to two in the app #7");
+    // The number is outside the text a long title is clamped in, so it is never cut off.
+    assert.equal(titleText.textContent, "Count to two in the app");
+    assert.ok(number.classes.has("github-pull-number"));
+    assert.equal(title.textContent.endsWith("Count to two in the app #7"), true);
     const meta = container.querySelector(".github-pull-meta");
     assert.equal(
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    const [stateBadgeSlot, stackSlot] = meta.children;
+    // The state row is the badge, the details, and a strut; the stack's slot is not on it,
+    // so a late chip takes no room from the sentence or the merge.
+    const [stateBadgeSlot, details, stateStrut] = meta.children;
     const stateBadge = stateBadgeSlot.children[0];
-    assert.equal(stackSlot, container.querySelector(".github-pull-stacks"));
+    assert.ok(details.classes.has("github-pull-meta-details"));
+    assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
+    assert.equal(meta.children.length, 3);
+    assert.equal(
+      container.querySelector(".github-pull-labels").children.at(-1),
+      container.querySelector(".github-pull-stacks"),
+    );
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
-    // Merge Direction: the header names the branches head → base, through the shared group.
-    const details = container.querySelector(".github-pull-state-details");
+    // Merge Direction: the header names the branches head → base, through the shared group,
+    // after the action the row cuts short first.
+    assert.ok(details.children.at(-2).classes.has("github-pull-action"));
     assert.equal(
       details.textContent,
       "forker wants to merge 2 commits: forker:count-to-two → octo:topic",
@@ -1650,6 +1825,7 @@ async function run() {
   await markdownOwnership();
   await checkRows(page);
   await headerAges(page);
+  await headerShape(page);
   const tabKeySteps = await tabKeys(page);
   for (const label of [
     "githubPull:decode",
@@ -1672,6 +1848,7 @@ async function run() {
     markdownOwnership: true,
     checkRows: true,
     headerAges: true,
+    headerShape: true,
     tabKeys: tabKeySteps,
   };
 }

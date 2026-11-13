@@ -486,6 +486,10 @@
     2 *
     var(--chip-border)
   );
+  /* The navigation's toolbar slot: one chip, 6px above and below it, and the slot's
+     bottom border. Every main tab's toolbar is this tall, so what is under it starts
+     at one y on every tab. */
+  --nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -2281,6 +2285,9 @@ html.theme-anim .menu {
 .tree-content {
   flex: 1;
   overflow-y: auto;
+  /* Scrollbars here are classic (the *::-webkit-scrollbar rule), so a tree that
+     starts or stops overflowing would narrow or widen every row by the bar. */
+  scrollbar-gutter: stable;
   padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
 }
@@ -2300,8 +2307,14 @@ html.theme-anim .menu {
   /* The containing block of the revealed layer below. */
   position: relative;
 }
+/* The server ships the strip empty and hidden, and keyboard-help.js fills it once
+   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   height, so the tree above it is the same height before and after: its border,
+   padding, a hint's padding, and a keycap's border and 1.5 lines. */
 .nav-shortcut-hints[hidden] {
-  display: none;
+  display: flex;
+  visibility: hidden;
+  min-height: calc(1px + 12px + 6px + 2px + 1.5em);
 }
 .nav-shortcut-action,
 .nav-shortcut-hint,
@@ -2666,6 +2679,9 @@ html[data-prose-font="sans"] {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* A classic scrollbar: a file that overflows would otherwise be 11px narrower
+     than one that does not, and every line would rewrap on the switch. */
+  scrollbar-gutter: stable;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -3092,6 +3108,13 @@ a.tab-btn {
   text-align: center;
   text-decoration: none;
 }
+/* A file whose kind has no view still has the bar, holding a tab's height, so
+   content starts at one height in every file. */
+.tab-slot {
+  display: inline-block;
+  line-height: normal;
+  visibility: hidden;
+}
 .tab-btn:hover {
   color: var(--text);
 }
@@ -3124,7 +3147,8 @@ a.tab-btn {
   transition: box-shadow var(--transition-fast);
 }
 .tab-bar.nav-tab-bar.scrolled,
-.nav-filter-bar.scrolled {
+.nav-filter-bar.scrolled,
+.nav-toolbar.scrolled {
   box-shadow: var(--shadow-md);
 }
 
@@ -3431,7 +3455,7 @@ a.tab-btn {
      border: the same height a populated bar computes to, so nothing moves
      when the chips land. `box-sizing` is border-box, so the padding and
      border are inside this figure. */
-  min-height: calc(var(--chip-height) + 12px + 1px);
+  min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
   transition:
@@ -3440,6 +3464,37 @@ a.tab-btn {
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */
+/* The bar is the Files tab's toolbar. The navigation's toolbar slot holds one toolbar
+   per main tab, the one in front shown: the Commits tally and the Pulls filters stand
+   in the bar's place at its height (main-tabs.js#activateNavPanel), so the tree, the
+   history, and the list start at one y on every tab. Before, the bar hid on Commits
+   and Pulls, and what was under it moved 37 px on every switch. A toolbar wider than a
+   narrowed pane scrolls along its one line rather than being cut: a control past the
+   pane's edge is still reached, and focus brings it into view. */
+.nav-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: var(--nav-toolbar-height);
+  padding: 0 var(--pane-header-padding-x);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  transition: box-shadow var(--transition-fast);
+}
+.nav-toolbar::-webkit-scrollbar {
+  display: none;
+}
+.nav-filter-bar[hidden],
+.nav-toolbar[hidden] {
+  display: none;
+}
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
 }
@@ -3874,6 +3929,13 @@ a.tab-btn {
    entirely the .icon-btn primitive. It sits beside the copy icon and,
    across the header, the settings gear, so it must not grow chrome
    that those do not have. */
+/* A view that cannot print keeps the button's slot, so switching views never
+   moves the header's size label beside it. Hidden, it is out of the tab order
+   and the accessibility tree all the same. */
+.file-header-print[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}
 
 /* A badge is one word or two on one line, and centers its capitals, not
    the font's line box. Centered by its line box, 12px Source Sans 3
@@ -3899,6 +3961,30 @@ a.tab-btn {
   white-space: nowrap;
   align-content: center;
   text-box: trim-both cap alphabetic;
+}
+/* A run's status badge changes its label in place (Running to Live, Live to Run
+   ended), so it sits in a slot as wide as the widest label from first paint: a
+   one-column grid of the badge, then a sizer of every label in a badge's box of no
+   height (renderBadges in app.js), so the column is the widest label's, in any
+   engine's font metrics, and the badge stretches to it. The sizers are outside the
+   badge, which centers its capitals by trimming its one line. As a pseudo-element of
+   the inline-block badge, the sizer was laid beside the label and the widths added:
+   Live was 104.6 px, and Run ended, arriving, made it 144.2 px and moved what followed
+   it in the header. */
+.file-header-badge-slot {
+  display: inline-grid;
+  flex-shrink: 0;
+}
+.file-header-badge-slot > .file-header-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+.file-header-badge-slot > .file-header-badge-sizer {
+  block-size: 0;
+  padding-block: 0;
+  border-block-width: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 .badge-completed {
   background: oklch(92.2% 0.037 152.6);
@@ -4055,6 +4141,12 @@ a.tab-btn {
   font-weight: var(--weight-bold);
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+/* A commit's subject holds two lines from first paint, so the diff under a one-line
+   subject starts where it starts under a two-line one (it moved 30 px between commits).
+   The pull request's title does the same, and clamps there (github/styles.css). */
+.git-commit-subject.page-heading {
+  min-height: 2lh;
 }
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
@@ -5316,6 +5408,14 @@ pre.code-block.metabrowser-source-lines > code {
   height: 0;
   visibility: hidden;
 }
+/* A disclosure the reader did not ask for, such as navigation revealing a
+   deep path, lands in place: animated, it moved the rows below 43-131 px a
+   frame with no input (Chrome 152). tree-expansion.js sets this class in the
+   same task as the height, so the style change that sees the new height sees
+   no transition, and the reader's next toggle clears it. */
+.tree-children-instant {
+  transition: none;
+}
 
 /* Container rows: a file that is also folder-like. Its chevron sits in
    the same 16px alignment box a folder's does, so names line up at every
@@ -5764,6 +5864,19 @@ pre.code-block.metabrowser-source-lines > code {
 /* "begun 3mo ago": word gaps only — the age value inside carries the
    shared age primitive (hue, weight, size, numerals), the words keep
    the row's own type, and baseline alignment joins the two sizes. */
+/* In the toolbar slot, the slot is the row: its padding, border, and height. It fills
+   the slot's height, so the tally landing in it changes no box. */
+.nav-toolbar > .git-history-summary {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+.git-history-summary-failed {
+  color: var(--muted);
+}
 .git-history-summary-first {
   display: inline-flex;
   align-items: baseline;

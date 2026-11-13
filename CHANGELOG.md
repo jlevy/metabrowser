@@ -33,6 +33,49 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
+- Chrome keeps its place.
+  The top of the navigation is one toolbar row on every tab: the Files filters, the
+  Commits tally of commits, or the Pulls filters, at one height, so what is under it
+  starts at the same place on every tab.
+  The Commits tab is drawn at first paint in a repository, in front at a commit’s
+  address, every file has a view tab bar, and the tree and the preview keep a scrollbar
+  gutter. A pull request’s header is one size for every pull request and tab: the title
+  holds two lines and is cut short there with the whole of it in a tooltip, the state
+  row is one line, labels have a row of their own that ends in the stack chip, and
+  Refresh has its slot on every tab, so a stack chip that arrives late moves nothing.
+  A cold pull request page shows that header and its tab bar over a loading body until
+  the record arrives; a narrow pane cuts the state row’s sentence, then its author,
+  before its branch names, and a failure in the status row wraps to show its remedy.
+  In the Pulls list a pull request’s stack position is on its title line, before its
+  age, so its late arrival cuts the title shorter and moves nothing.
+  A toolbar wider than a narrowed sidebar scrolls along its row instead of being cut.
+  The Pulls tab’s status lines are always there, and its ages have a column of one
+  width. A folder’s Overview paints once its first file-type rollup has answered,
+  briefly.
+
+- Less moves on its own.
+  A document appears in its reading fonts instead of swapping them in after it is shown,
+  the first after a cold start and the first to use a bold or italic face alike.
+  A page that lands on a file deep in the tree paints with its folders already open and
+  its row in view, when the path’s folders are small enough to send with the page (200
+  entries each, 300 in all, 8 folders deep); a landing past that opens them after the
+  first paint, as before.
+  Navigation that opens folders to reveal a file opens them in place and shows the
+  file’s row at once, while a folder you toggle still slides open.
+  A held arrow key in the file tree moves the selection and the address on every repeat
+  and opens only the file it stops on.
+  In Quick Search, pull requests follow the file results as their own group, so their
+  later arrival never moves a file row or the selection.
+
+- A folder’s Overview keeps its section labels at one left edge at every window width.
+  **File Overview**, **README**, and File Overview’s controls and **Details** toggle
+  start under the Overview tab’s label.
+  On a desktop-width window they used to sit 4 rem or 2.5 rem in from the section rule,
+  depending on the width, and 0.75 rem on a narrow one.
+  The README’s text keeps its own margins inside its card.
+  See
+  [Folder Overview Is a Panel Stack](docs/design-system.md#folder-overview-is-a-panel-stack).
+
 - TypeScript is a saturated yellow, departing from GitHub’s colors on purpose.
   GitHub makes TypeScript and Python both blue, and wherever file types are colored —
   the tree’s file icons, the File Overview’s bars and legend, and the Treemap — the two
@@ -127,10 +170,13 @@ All notable changes to Metabrowser are documented here.
 
 - In the Pulls tab, a pull request’s changed files open in one step at their full height
   when Metabrowser holds the list.
-  A list GitHub takes a while to return is offered on the tree’s line as **Show N
-  files** instead of being drawn by itself, and so are its later pages (**Show N more
-  files**) and a refresh that changes a list already shown, which floats over the tree’s
-  top: the rows below never move while you are not interacting with the list.
+  Expanding a pull request whose list GitHub takes a while to return shows “Listing
+  changed files…” until the files arrive, and then shows them; it no longer offers
+  **Show N files** in their place.
+  Once files are shown, a change to them that arrives while you are not interacting with
+  the list waits for you: its later pages, and a refresh that changes it, are offered as
+  **Show N more files** or **Show the updated list of N files**, on the tree’s line or
+  floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
 
@@ -320,8 +366,8 @@ All notable changes to Metabrowser are documented here.
   `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. When two views of one kind share
   a key, the first keeps it; the later view is served without a key, and
   `metab --doctor` reports it, naming the plugin that holds a shared key.
-  A view left alone, as HTML’s Source is without active content, has no tab and is
-  served without its key.
+  A view left alone, as HTML’s Source is without active content, has no other tab to
+  switch to and is served without its key.
   `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.

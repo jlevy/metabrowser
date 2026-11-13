@@ -1048,6 +1048,14 @@ function renderInitialTreeRows() {
   // touched, which is what the repaint and render-span counts read.
   const painted = _perf.measure("renderTreeNodes:inline", () => renderFilesFromTree());
   _inlineTreeBaseline = painted ? rows : null;
+  // A landing whose folders the shell expanded: its row, selected and shown now.
+  var landed = painted && window.METABROWSER_INITIAL_TREE?.path;
+  if (landed) {
+    setSelectedPath(landed);
+    queryHtml(`.tree-item[data-path="${escapePathForSelector(landed)}"]`)?.scrollIntoView({
+      block: "nearest",
+    });
+  }
   // Not authoritative — the fetch that follows reconciles newer values into it.
   _lastTreeRender = null;
   return painted;
@@ -2868,7 +2876,7 @@ function setFolderExpanded(row, expanded, options) {
   ) {
     return;
   }
-  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded);
+  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded, !!options.instant);
   row.setAttribute("aria-expanded", String(expanded));
   if (options.synchronize !== false) {
     synchronizeTreeNow();
@@ -3984,16 +3992,18 @@ function initNavScrollShadow() {
     return;
   }
   const scrollContent = content;
+  const pane = content.parentElement ?? content;
   function update() {
-    // Resolved per call rather than once at startup: the filter bar is
-    // hidden on panels that are not Files, and a shadow on a hidden
-    // element is no cue at all. Whichever chrome is bottom-most *and
-    // visible* carries it, and the other is cleared so a tab switch
-    // cannot leave two shadows armed.
-    const target = filterBar && filterBar.offsetParent !== null ? filterBar : tabBar;
-    const other = target === filterBar ? tabBar : filterBar;
-    other?.classList.remove("scrolled");
-    target?.classList.toggle("scrolled", scrollContent.scrollTop > 0);
+    // Resolved per call rather than once at startup: each tab shows its own
+    // toolbar in the slot, and a shadow on a hidden one is no cue at all.
+    // Whichever chrome is bottom-most *and visible* carries it, and the
+    // others are cleared so a tab switch cannot leave two shadows armed.
+    // The chrome is the pane's own children, so a scroll visits those and not
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements).
+    const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
+    for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
+      chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
+    }
   }
   navScrollShadowUpdate = update;
   // Passive listener — we never preventDefault — so the browser
@@ -5703,18 +5713,18 @@ function renderBadges(data) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
     badges += `<span class="file-header-badge badge-adapter">${esc(adapterLabel)}</span>`;
   }
-  // Status badge for JSONL kinds
+  // Status badge for JSONL kinds. It changes its label in place, Running to Live and Live
+  // to Run ended, so it sits in a slot as wide as the widest label from first paint.
   if (data.type === "jsonl" && data.summary) {
     var statusSummary = data.summary;
-    if (statusSummary.is_done) {
-      badges += statusSummary.is_error
+    var statusBadge = statusSummary.is_done
+      ? statusSummary.is_error
         ? '<span class="file-header-badge badge-failed">Failed</span>'
-        : '<span class="file-header-badge badge-completed">Done</span>';
-    } else if (activeFiles.has(data.path)) {
-      badges += '<span class="file-header-badge badge-live">Live</span>';
-    } else {
-      badges += '<span class="file-header-badge badge-running">Running</span>';
-    }
+        : '<span class="file-header-badge badge-completed">Done</span>'
+      : activeFiles.has(data.path)
+        ? '<span class="file-header-badge badge-live">Live</span>'
+        : '<span class="file-header-badge badge-running">Running</span>';
+    badges += `<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>`;
   }
   // Frontmatter parse error — surfaced as a red warning badge with the
   // YAML parser's message in the tooltip. /api/file populates this on
@@ -6022,32 +6032,33 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var initialActiveView = composition.initialView;
         var pluginRenders = [];
         if (views && views.length > 0) {
-          if (views.length > 1) {
-            // A tablist, as the navigation and pull request tab bars are. A view's
-            // declared letter rides its button for the shell keymap, which reads it
-            // only once the bar is committed to the pane.
-            html += '<div class="tab-bar" role="tablist">';
-            for (let i = 0; i < views.length; i++) {
-              const view = views[i];
-              var isActive = view.id === initialActiveView?.id;
-              var viewKey =
-                typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
-              html +=
-                '<button class="tab-btn' +
-                (isActive ? " active" : "") +
-                '" type="button" role="tab" aria-selected="' +
-                (isActive ? "true" : "false") +
-                '" data-tab="' +
-                esc(view.id) +
-                '"' +
-                viewKey +
-                viewMetaAttrs(view) +
-                ">" +
-                esc(view.label) +
-                "</button>";
-            }
-            html += "</div>";
+          // One view gets the bar too, so content starts at one height in every file.
+          // A tablist, as the navigation and pull request tab bars are. A view's
+          // declared letter rides its button for the shell keymap, which reads it
+          // only once the bar is committed to the pane, and only a bar of two or more
+          // views carries one: a lone tab has no other view to switch to.
+          var keyedBar = views.length > 1;
+          html += '<div class="tab-bar" role="tablist">';
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var isActive = view.id === initialActiveView?.id;
+            var viewKey =
+              typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
+            html +=
+              '<button class="tab-btn' +
+              (isActive ? " active" : "") +
+              '" type="button" role="tab" aria-selected="' +
+              (isActive ? "true" : "false") +
+              '" data-tab="' +
+              esc(view.id) +
+              '"' +
+              (keyedBar ? viewKey : "") +
+              viewMetaAttrs(view) +
+              ">" +
+              esc(view.label) +
+              "</button>";
           }
+          html += "</div>";
           for (let i = 0; i < views.length; i++) {
             const view = views[i];
             var pluginView = preparedViews[i].renderer;
@@ -6094,10 +6105,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
             }
           }
-        } else if (data.type === "binary") {
-          html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-        } else if (data.type === "error") {
-          html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+        } else {
+          html +=
+            '<div class="tab-bar" aria-hidden="true"><span class="tab-btn tab-slot">&nbsp;</span></div>';
+          if (data.type === "binary") {
+            html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
+          } else if (data.type === "error") {
+            html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+          }
         }
 
         _perf.measure(
@@ -6161,6 +6176,11 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
+        // Shown once the faces its text is set in land (view-composition.js#settleFaces).
+        const facesSettled = viewComposition.composition.settleFaces(arrivalContent ?? stage);
+        if (facesSettled) {
+          await facesSettled;
+        }
         if (!renderIsCurrent()) {
           return false;
         }
@@ -6520,6 +6540,17 @@ function appendLiveEvents(path, batch) {
     },
   );
 }
+
+// Every label a run's status badge shows, Running, Live, Done, Failed, and Run ended, each a
+// badge's box of no height beside the badge in its slot: the slot is the widest label's
+// width, so a label that changes in place moves nothing (styles.css,
+// `.file-header-badge-slot`).
+const RUN_STATUS_SIZERS = ["Running", "Live", "Done", "Failed", "Run ended"]
+  .map(
+    (label) =>
+      `<span class="file-header-badge file-header-badge-sizer" aria-hidden="true">${label}</span>`,
+  )
+  .join("");
 
 function flagRunEndedBadge() {
   var badge = document.querySelector(".file-header-badge.badge-live");
@@ -8088,6 +8119,11 @@ async function applyNavigationTarget(target, context) {
     };
   }
   await revealInTree(path, { isCurrent: context.isCurrent, scroll: !keepFilesScroll });
+  // A held arrow key opens only the row its walk stops on.
+  var walk = treeKeyboard?.walking(path);
+  if (walk) {
+    await walk;
+  }
   var preferredView = anchorModule ? await addressedView(target, anchorModule) : null;
   if (!context.isCurrent()) {
     return { status: "cancelled" };
@@ -8104,8 +8140,8 @@ async function applyNavigationTarget(target, context) {
 // Pair with selectFile() for the body; init() kicks off both legs in
 // parallel so a deep-link doesn't pay tree-walk latency before its own
 // request leaves the client.
-/** @param {string} path @param {{isCurrent?: () => boolean, scroll?: boolean}} [options] */
-async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}) {
+/** @param {string} path @param {{isCurrent?: () => boolean, scroll?: boolean, instant?: boolean}} [options] */
+async function revealInTree(path, { isCurrent = () => true, scroll = true, instant = true } = {}) {
   if (!path) {
     return false;
   }
@@ -8131,7 +8167,11 @@ async function revealInTree(path, { isCurrent = () => true, scroll = true } = {}
           }
         }
         if (children.classList.contains("tree-children-collapsed")) {
-          await setFolderExpanded(folder, true);
+          // The reader asked for the row, not the disclosure: no travel. A landing's
+          // reveal has no input to answer, and its folders travelling moved the tree less
+          // than their opening at once (layout shift 0.11-0.39 against 0.36-0.83, two to
+          // eight folders of 152 rows, Chrome 152).
+          await setFolderExpanded(folder, true, { instant });
         }
       }
     }
@@ -8366,7 +8406,7 @@ function initQuickFileFinder() {
     describeOpenFailure: window.MetabrowserNavigationRoute.openFailureOutcome,
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
-    maxRows: QUICK_FILE_RESULT_LIMIT,
+    maxRows: QUICK_FILE_RESULT_LIMIT + window.MetabrowserSearch.PULL_RESULT_LIMIT,
     onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
@@ -8564,6 +8604,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (initialPath) {
     const target = navigationController.current();
     revealInTree(initialPath, {
+      instant: false,
       isCurrent: () =>
         navigationController.current() === target && (mainTabs?.active() ?? "files") === "files",
     });

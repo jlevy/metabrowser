@@ -20,31 +20,74 @@
   gap: 6px;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
+/* The header's box is decided at first paint: each row is one line, or the title's two,
+   in every state and on every tab, so the tab bar under it never moves between pull
+   requests or tabs. Heights are in line units and struts of the controls they hold, not
+   pixels measured in one engine. Measured in Chrome 152 before this: the header ranged
+   from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
+.github-pull-title {
+  min-height: 2lh;
+}
+/* The icon, the title cut short at two lines, and the number after the title's last line:
+   the number is outside the clamp, so a title cut short keeps it. */
 .github-pull-title-with-state {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, max-content) auto;
+  align-content: start;
   column-gap: 0.35em;
+}
+.github-pull-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 .github-pull-number {
   color: var(--text);
   font-weight: var(--weight-normal);
 }
+.github-pull-title-with-state > .github-pull-number {
+  align-self: end;
+  white-space: nowrap;
+}
+/* One line: a long branch name is cut short (its chip's tooltip has all of it) instead of
+   wrapping the row, which made it 21 to 67 px tall. A narrow row gives way in its sentence
+   first: the action is cut to nothing before the merge's names shrink, and they never
+   shrink past the merge group's floor (static/styles.css, `.merge-refs`). A chip keeps its one
+   size, smaller than the actor and action beside it: docs/design-system.md, "Branch Chips". */
 .github-pull-meta {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 8px;
+  white-space: nowrap;
 }
-/* The details may be narrower than the merge (`mb.mergeRefs`), so its chips ellipsize in a
-   narrow pane instead of running past the column. A chip keeps its one size, smaller than
-   the actor and action beside it: docs/design-system.md, "Branch Chips". */
-.github-pull-state-details {
+.github-pull-meta-details {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.3em;
   min-width: 0;
+  overflow: hidden;
+}
+.github-pull-meta-details > .github-pull-action {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .github-pull-quiet {
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+/* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. */
+.github-pull-header > .github-pull-quiet {
+  height: 1lh;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .github-pull-header a,
 .github-pull-card-head a,
@@ -88,6 +131,28 @@
   font-weight: var(--weight-medium);
   line-height: 16px;
 }
+/* A state's badge is as wide as the widest state's, so a stale record that turns out
+   merged does not widen it under the reader. Its slot is a one-column grid: the badge,
+   then a sizer of every state's label in a badge's box of no height, so the column is the
+   widest label's and the badge stretches to it. The sizers are outside the badge, which
+   centers its capitals by trimming its one line (`.file-header-badge`). Inside it, as
+   pseudo-elements of an inline-block, they were laid beside the label, and the badge was
+   all three labels wide: 117.6 px for "Open", which pushed the merge out of a 320 px row. */
+.github-pull-state-slot {
+  display: inline-grid;
+  flex: none;
+}
+.github-pull-state-slot > .github-pull-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+.github-pull-state-slot > .github-pull-badge-sizer {
+  block-size: 0;
+  padding-block: 0;
+  border-block-width: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success);
@@ -109,29 +174,103 @@
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
+/* Always present, one line of labels whether there are none or many, ending in the stack
+   slot (`.github-pull-stacks`), so the row is a chip's height. The labels are cut short at
+   the slot, never moved. The row positions the stack's menu, so it clips nothing itself. */
 .github-pull-labels {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: calc(1lh + 2px);
+  white-space: nowrap;
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-label-list {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
   gap: var(--chip-cluster-gap);
+  min-width: 0;
+  overflow: hidden;
 }
 /* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
 .github-pull-label {
+  flex: none;
   padding: 0 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-tag);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+/* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
+   cut short before it wraps; its controls never are. A failure is the exception: it says
+   what to do, so the row wraps to show all of it, the one state where the tab bar may move. */
+.github-pull-failure {
+  color: var(--status-warning-strong);
+}
 .github-pull-status {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 10px;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+  white-space: nowrap;
 }
-.github-pull-failure {
-  color: var(--status-warning-strong);
+.github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
+  /* The row's text gives way before the offers at its end, and they before their controls. */
+  flex-shrink: 100;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-status.github-pull-status-failed {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.github-pull-status.github-pull-status-failed > .github-pull-failure {
+  overflow: visible;
+}
+.github-pull-freshness {
+  font-variant-numeric: var(--tabular-numerals);
+}
+.github-pull-status > a {
+  flex: none;
+}
+/* The offers end the row with Refresh, so the freshness text changing width moves none of
+   them. An offer's sentence is cut short, with all of it in a tooltip, before its control
+   is: kept whole, the group ran 62 px past the header in a 560 px pane and 262 px past at
+   360, and the pane scrolled sideways. */
+.github-pull-status-end {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  margin-inline-start: auto;
+}
+.github-pull-status-end > .github-pull-offer {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  min-width: 0;
+}
+.github-pull-offer-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-offer > :is(button, a) {
+  flex: none;
+}
+.github-pull-refresh {
+  flex: none;
+}
+.github-pull-refresh[hidden] {
+  display: inline-block;
+  visibility: hidden;
 }
 /* Changes while its first screen's Markdown waits (CHANGES_FIRST_SCREEN_MS), and the
    conversation while its first screen's texts do (DESCRIPTION_HOLD_MS): laid out, so each
@@ -438,6 +577,17 @@
   overflow-wrap: anywhere;
   white-space: normal;
 }
+/* In the navigation's toolbar slot the slot is the row (static/styles.css, .nav-toolbar):
+   the filters take its height and keep to one line. */
+.github-pulls-filters:where(.nav-toolbar > *) {
+  position: static;
+  flex: 1 0 auto;
+  padding: 0;
+  background: none;
+}
+.github-pulls-filters:where(.nav-toolbar > *) .chip {
+  white-space: nowrap;
+}
 .github-pulls-status,
 .github-pulls-connection,
 .github-pulls-empty {
@@ -446,16 +596,24 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
-.github-pulls-status > span {
-  display: block;
+/* Each a line that is always there (pulls-panel.js). The status line is cut short rather
+   than wrapped; the connection line wraps only for a message longer than the pane. */
+.github-pulls-status,
+.github-pulls-connection {
+  min-height: calc(1lh + 6px);
 }
-.github-pulls-connection:not([hidden]),
+.github-pulls-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-connection,
 .github-pulls-connection-text {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.github-pulls-connection:not([hidden]) {
+.github-pulls-connection {
   flex-wrap: wrap;
 }
 .github-pulls-connection-spinner:not([hidden]) {
@@ -495,14 +653,28 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target: the chevron, the state icon, the title, and the age on the first,
-   and the muted line under the title. A row is a container, so its chevron leads in the 16px
+/* Two lines and one target: the chevron, the state icon, the title, the stack position, and
+   the age on the first, and the muted line under the title. A row is a container, so its chevron leads in the 16px
    box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's
    baseline (docs/design-system.md, "Row Text Shares a Baseline"); the muted line is alone on
    its own, with no baseline to share. */
+/* The age has a column of one width, so an age that grows a digit does not move the title's
+   cut. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
+   wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
+   engine. Before it, the stack position's column is as wide as its position and empty
+   without a stack: a position that arrives cuts the title shorter and moves nothing, and
+   the row keeps its height. On the muted line, which wraps, it moved the merge's arrow 34
+   to 54 px, or took a line of its own and moved every row below 18 px. The column takes
+   all of the room the title and it share, the row's width less the chevron's, the icon's,
+   and the age's columns and the four gaps, but 4ch the title keeps: a position wider than
+   that is cut short, with all of it in its tooltip, rather than pushing the age out of
+   the row. At the 180 px pane, two stacks' "12/23 · 10/14" pushed the age 17.5 px right
+   and the pane scrolled sideways; one stack's position still shows whole there. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px 16px minmax(0, 1fr) auto;
+  grid-template-columns:
+    16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch))
+    5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   padding: 2px 12px 2px 10px;
@@ -532,6 +704,24 @@
 .github-pulls-row > :is(.github-pulls-title, .github-pulls-age) {
   align-self: baseline;
 }
+.github-pulls-row > .github-pulls-age {
+  grid-row: 1;
+  grid-column: 5;
+  justify-self: end;
+  white-space: nowrap;
+}
+/* A count that arrives, or changes, keeps its chip's width up to three digits, and so
+   does its pending pulse: at the tally's own 22 px the chips moved 4 to 8 px when the
+   counts landed. */
+.github-pulls-filters .count {
+  display: inline-block;
+  min-width: 3ch;
+  font-variant-numeric: var(--tabular-numerals);
+  text-align: end;
+}
+.github-pulls-filters .count.tally-pending {
+  width: 3ch;
+}
 .github-pulls-title {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -544,7 +734,7 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line: the number, the stack badge, the author, and the branches
+/* The muted line: the number, the author, and the branches
    (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
    always whole inside the row: the author and the branches each start with their separator
    and may move to the next line, and the line is laid out as wide as the row plus one
@@ -594,12 +784,26 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-inline-start: 4px;
-  vertical-align: middle;
+  white-space: nowrap;
+  color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
 .github-pulls-stack[hidden] {
   display: none;
+}
+/* The title line's places: the title, the stack position's column, and the age (above). */
+.github-pulls-row > .github-pulls-title {
+  grid-row: 1;
+  grid-column: 3;
+}
+/* Centred with the row's other boxes (`align-items: center`), not on the title's baseline:
+   its 18 px box hung from that baseline grew the row 3 px and moved the title and the
+   muted line down. */
+.github-pulls-row > .github-pulls-stack {
+  grid-row: 1;
+  grid-column: 4;
+  min-width: 0;
+  overflow: hidden;
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
    on the row turn it, as they turn a folder's. */
@@ -751,18 +955,27 @@
   outline-offset: 1px;
 }
 
-/* Optional membership stays beside the state badge in a retained status row.
+/* Optional membership has its slot at the end of the retained labels row: its chip, which
+   arrives from its own /stacks answer, moves nothing. It takes its width from the labels,
+   which the row cuts shorter at the slot, a label that showed whole among them. At the end
+   of the state row it took its width from the sentence and the merge, and the merge slid
+   up to 35 px.
    The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
 .github-pull-stacks {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: var(--chip-cluster-gap);
+  margin-inline-start: auto;
   font-size: var(--ui-small-font-size);
 }
-.github-pull-stacks[hidden] {
-  display: none;
-}
-.github-pull-stacks:not([hidden]) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--chip-cluster-gap);
+/* With no stack, a chip of no width holds the row at a chip's height. */
+.github-pull-stack-strut {
+  width: 0;
+  padding-inline: 0;
+  border-inline-width: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 .github-pull-stack-disclosure {
   position: static;
@@ -812,6 +1025,12 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
+/* A Pulls row's position past its column's ceiling ends in an ellipsis (`.github-pulls-row`). */
+.github-pulls-row > .github-pulls-stack > .github-pull-stack-position {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .github-pull-stack-dot {
   color: var(--muted);
   font-size: var(--micro-font-size);
@@ -849,6 +1068,25 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+/* In the pull request's state row the author gives way after the action and before the
+   merge (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of
+   the name, which then ends in an ellipsis, as a Pulls row's author does
+   (`.github-pulls-by`). Without a floor of its own a long login kept its whole width and
+   pushed the merge out of the row. The avatar's share is its 18px and the identity's
+   4px gap. */
+.github-pull-meta-details > .github-pull-identity {
+  flex: 0 100 auto;
+  min-width: 1.75em;
+  overflow: hidden;
+}
+.github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar) {
+  min-width: calc(18px + 4px + 1.75em);
+}
+.github-pull-meta-details .github-pull-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The author never gets narrower than its separator, its avatar if it has one, and a little

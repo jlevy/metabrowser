@@ -200,7 +200,12 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
   const refreshing = warm.querySelector(".github-pull-status");
-  assert.match(refreshing.textContent, /^Fetched .+ via GitHub CLI$/);
+  assert.match(
+    refreshing.querySelector(".github-pull-freshness").textContent,
+    /^Fetched .+ via GitHub CLI$/,
+  );
+  // Refresh keeps its slot at the row's end, held hidden while a refresh runs.
+  assert.equal(refreshing.children.at(-1).children.at(-1).hidden, true);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
   const age = refreshing.querySelector(".github-pull-freshness");
   assert(
@@ -216,12 +221,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   });
   await settle();
   assert(warm.textContent.includes("2/3"));
-  const trigger = warm.querySelector(".github-pull-stack-trigger");
+  const trigger = warm
+    .querySelector(".github-pull-stacks")
+    .querySelector(".github-pull-stack-trigger");
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-meta").contains(trigger),
-    "stack control shares the state row",
+    warm.querySelector(".github-pull-labels").contains(trigger),
+    "stack control ends the labels row",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");
@@ -307,10 +314,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     json: async () => differentOwner,
   });
   await settle();
-  assert.equal(
-    warm.querySelector(".github-pull-stacks").hidden,
-    true,
-    "identical visible data under another source hides old badges",
+  assert.deepEqual(
+    warm.querySelector(".github-pull-stacks").children.map((node) => node.getAttribute("class")),
+    ["btn github-pull-stack-trigger github-pull-stack-strut"],
+    "identical visible data under another source hides old badges, and keeps their slot",
   );
   next.dispose();
   assert.equal(timers.size, 0);

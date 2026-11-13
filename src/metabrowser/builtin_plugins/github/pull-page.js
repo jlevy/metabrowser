@@ -36,7 +36,13 @@
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
 import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
-import { displayState, listedState, pullStateIcon, withListedState } from "./pull-state.js";
+import {
+  displayState,
+  listedState,
+  PULL_STATES,
+  pullStateIcon,
+  withListedState,
+} from "./pull-state.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -170,6 +176,8 @@ const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
+/** How far a title may overhang its two-line box and still be whole: its descenders. */
+const TITLE_OVERHANG_PX = 4;
 /**
  * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
  * default, keeps it, and the others take a free letter of their label: chan-*g*es, and
@@ -341,6 +349,7 @@ const TRUNCATED = Object.freeze({
  *   freshness: string | null,
  *   failure: string | null,
  *   failureHelp?: "install" | "update",
+ *   failureHold?: true,
  *   pull: null | {
  *     title: string, number: number, state: import("./pull-state.js").PullState, stateLabel: string, author: string,
  *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
@@ -1082,7 +1091,9 @@ export function describePull(envelope, page) {
   const heldUntil = rateLimitLifts(envelope);
   const held = heldUntil > page.nowMs;
   if (last?.outcome === "rate_limited" && !envelope.refreshing) {
-    // Held, not failed: the time named is the one the page next asks at.
+    // Held, not failed: the time named is the one the page next asks at. It begins and
+    // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
+    model.failureHold = true;
     model.failure = Number.isFinite(heldUntil)
       ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(new Date(heldUntil).toISOString().replace(".000Z", "Z"))}`
       : "GitHub rate limit · next check within a minute";
@@ -3447,10 +3458,28 @@ export function mountPullPage(container, ctx, mb) {
   container.classList.add("github-pull");
   const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
-  const stackColumn = h("div", { class: "github-pull-stacks", hidden: "" });
-  const stateBadge = h("span");
-  const stateDetails = h("span", { class: "github-pull-state-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stackColumn, stateDetails]);
+  // The header's box is decided at first paint: every row is there in every state, at one
+  // line each, so nothing that arrives later, a stack, a label, a Refresh, moves the tab
+  // bar or the rows below it. docs/design-system.md, "The Pull Request Page".
+  // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
+  const strut = () =>
+    h(
+      "span",
+      { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
+      [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
+    );
+  // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
+  // labels row: arriving, it moves nothing, and takes its width from the labels, which the
+  // row cuts shorter, a label that showed whole among them. At the end of the state row it
+  // took its width from the sentence and the merge, which slid up to 35 px. With no stack
+  // the slot holds a strut.
+  const stackStrut = strut();
+  const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
+  const labelList = h("div", { class: "github-pull-label-list" });
+  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
+  const stateBadge = h("span", { class: "github-pull-state-slot" });
+  const stateDetails = h("span", { class: "github-pull-meta-details" });
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4045,11 +4074,13 @@ export function mountPullPage(container, ctx, mb) {
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
+  /** The tab link that had focus when a held header made the column inert. @type {HTMLElement | null} */
+  let focusedTab = null;
   /** The header's numbered links and actions, by what each does; see `numberHeaderControls`.
    * @type {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} */
   const headerNumbers = new Map();
 
-  /** Optional membership retains its status-row disclosure while other header details repaint.
+  /** Optional membership retains its labels-row disclosure while other header details repaint.
    * @param {PullModel} model
    */
   function paintStacks(model) {
@@ -4092,14 +4123,14 @@ export function mountPullPage(container, ctx, mb) {
       stackMenus.set(stack.number, menu);
       return menu.element;
     });
-    stackColumn.hidden = nodes.length === 0;
+    const slot = nodes.length === 0 ? [stackStrut] : nodes;
     if (
-      nodes.length !== stackColumn.children.length ||
-      nodes.some((node, at) => node !== stackColumn.children[at])
+      slot.length !== stackColumn.children.length ||
+      slot.some((node, at) => node !== stackColumn.children[at])
     ) {
       const focused = document.activeElement;
       const restore = focused instanceof HTMLElement && stackColumn.contains(focused);
-      stackColumn.replaceChildren(...nodes);
+      stackColumn.replaceChildren(...slot);
       if (restore && focused.isConnected) {
         focused.focus({ preventScroll: true });
       }
@@ -4127,12 +4158,31 @@ export function mountPullPage(container, ctx, mb) {
    */
   function paintStateRow(pull) {
     stateRow.hidden = false;
-    stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
+    // The badge, then a sizer of every state's label, each a badge's box of no height: the
+    // slot is as wide as the widest, so a stale record that turns out merged does not widen
+    // the badge under the reader (github/styles.css, `.github-pull-state-slot`).
+    stateBadge.replaceChildren(
+      badge(pull.state, pull.stateLabel),
+      ...Object.values(PULL_STATES).map(({ label }) =>
+        h(
+          "span",
+          {
+            class: "file-header-badge github-pull-badge github-pull-badge-sizer",
+            "aria-hidden": "true",
+          },
+          [label],
+        ),
+      ),
+    );
+    // A narrow row gives way in its sentence first and its branches last: the action is
+    // cut short before the merge's names are (styles.css, "One line").
     stateDetails.replaceChildren(
       ...(pull.actor === null
         ? []
         : [authorLabel(pull.actor, pull.actorAvatar, "", { loading: "eager" })]),
-      `${pull.actor === null ? "" : " "}${pull.action}: `,
+      h("span", { class: "github-pull-action" }, [
+        `${pull.actor === null ? "" : " "}${pull.action}: `,
+      ]),
       mb.mergeRefs(
         { name: pull.headRef, label: pull.head },
         { name: pull.baseRef, label: pull.base },
@@ -4163,6 +4213,39 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  /**
+   * Give *node* its own text as a tooltip whenever it is cut short.
+   *
+   * @template {HTMLElement} T
+   * @param {T} node
+   * @returns {T}
+   */
+  function tipWhenCut(node) {
+    node.addEventListener("pointerenter", () => {
+      if (node.scrollWidth > node.clientWidth) {
+        node.dataset.tipText = node.textContent ?? "";
+      } else {
+        delete node.dataset.tipText;
+      }
+    });
+    return node;
+  }
+
+  /**
+   * An offer at the status row's end: its sentence is cut short before its control is,
+   * so a narrow pane still shows the control inside the header (styles.css, "The offers").
+   *
+   * @param {string} text
+   * @param {HTMLElement} control
+   */
+  function offer(text, control) {
+    return h("span", { class: "github-pull-offer" }, [
+      tipWhenCut(h("span", { class: "github-pull-offer-text" }, [text])),
+      " ",
+      control,
+    ]);
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     const children = [];
@@ -4179,6 +4262,28 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
+      const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
+      // The number is outside the clamped text, so a title cut short keeps it.
+      const title = h(
+        "h1",
+        { class: "page-heading github-pull-title github-pull-title-with-state" },
+        [
+          pullStateIcon(pull.state, { named: false }),
+          titleText,
+          " ",
+          h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+        ],
+      );
+      // Two lines at most: a title cut short there carries the whole of it in its tooltip.
+      // Cut short is a line or more hidden; a title of two lines that fit overhangs its box
+      // by a pixel or two of descender (62 against 60 px, Chrome 152).
+      title.addEventListener("pointerenter", () => {
+        if (titleText.scrollHeight - titleText.clientHeight > TITLE_OVERHANG_PX) {
+          title.dataset.tipText = `${pull.title} #${pull.number}`;
+        } else {
+          delete title.dataset.tipText;
+        }
+      });
       const onGitHub = mb.decorateExternalLink(
         outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
         {
@@ -4205,14 +4310,7 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       children.push(
-        h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
-          pullStateIcon(pull.state, { named: false }),
-          h("span", {}, [
-            pull.title,
-            " ",
-            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
-          ]),
-        ]),
+        title,
         paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
@@ -4227,21 +4325,32 @@ export function mountPullPage(container, ctx, mb) {
           browse,
         ]),
       );
-      if (pull.labels.length > 0) {
-        children.push(
-          h(
-            "div",
-            { class: "github-pull-labels" },
-            pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
-          ),
-        );
-      }
+      // A row that is always there, so a pull request with labels is as tall as one without.
+      labelList.replaceChildren(
+        ...pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
+      );
+      children.push(labelsRow);
     } else {
       children.push(
         h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
       );
+      // While the record is on its way the header keeps the rows it will have, empty, at
+      // their heights, so the record lands without moving the tab bar.
+      if (model.status !== "unavailable") {
+        stateBadge.replaceChildren();
+        stateDetails.replaceChildren();
+        labelList.replaceChildren();
+        children.push(stateRow, h("div", { class: "github-pull-quiet" }, ["\u00a0"]), labelsRow);
+      }
     }
     status.dataset.status = model.status;
+    // A failure is the one text the row lets wrap: it carries its remedy. A rate limit's
+    // hold carries none and lifts by itself, so it stays on the line, cut short with its
+    // whole text in a tooltip: wrapping it moved the tab bar 22 px as it began and lifted.
+    status.classList.toggle(
+      "github-pull-status-failed",
+      model.failure !== null && model.failureHold !== true,
+    );
     for (const node of [...status.childNodes]) {
       if (node !== freshnessLine) {
         node.remove();
@@ -4259,7 +4368,7 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }
     if (model.failure !== null) {
-      status.append(h("span", { class: "github-pull-failure" }, [model.failure]));
+      status.append(tipWhenCut(h("span", { class: "github-pull-failure" }, [model.failure])));
     }
     if (model.failureHelp !== undefined) {
       status.append(
@@ -4268,24 +4377,26 @@ export function mountPullPage(container, ctx, mb) {
         ]),
       );
     }
-    if (model.canRefresh) {
-      const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
-        model.status === "absent" ? "Fetch" : "Refresh",
-      ]);
-      const refreshNow = () => {
-        if (listening.signal.aborted || shown?.canRefresh !== true) {
-          return;
-        }
-        const displayed = shown.tab === "files" ? diffFor : null;
-        filesRefresh = displayed;
-        void controller.requestRefresh(
-          displayed === null ? undefined : { base: displayed.left, head: displayed.right },
-        );
-      };
-      refresh.addEventListener("click", refreshNow);
-      numbered.set("refresh", { element: refresh, run: refreshNow });
-      status.append(refresh);
-    }
+    // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
+    // to refresh: it came and went with the tab, moving the tab bar 8 px.
+    const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
+      model.status === "absent" ? "Fetch" : "Refresh",
+    ]);
+    refresh.hidden = !model.canRefresh;
+    // Offers sit at the row's end with Refresh, so the freshness text changing its width
+    // moves nothing after it: it moved an offer by 100 px.
+    const end = h("span", { class: "github-pull-status-end" }, [refresh]);
+    const refreshNow = () => {
+      if (listening.signal.aborted || shown?.canRefresh !== true) {
+        return;
+      }
+      const displayed = shown.tab === "files" ? diffFor : null;
+      filesRefresh = displayed;
+      void controller.requestRefresh(
+        displayed === null ? undefined : { base: displayed.left, head: displayed.right },
+      );
+    };
+    refresh.addEventListener("click", refreshNow);
     if (model.headOffer !== null) {
       const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
         "Switch to the head",
@@ -4293,13 +4404,18 @@ export function mountPullPage(container, ctx, mb) {
       const switchNow = () => void controller.switchToHead();
       button.addEventListener("click", switchNow);
       numbered.set("switch", { element: button, run: switchNow });
-      status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
+      end.insertBefore(offer(model.headOffer.text, button), refresh);
     }
     if (model.checkoutAtHead !== null) {
       const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
       numbered.set("checkout", { element: root, run: () => mb.navigation.open({ path: "" }) });
-      status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
+      end.insertBefore(offer(model.checkoutAtHead, root), refresh);
     }
+    // Only a Refresh that shows takes a number: its held slot has nothing to run.
+    if (!refresh.hidden) {
+      numbered.set("refresh", { element: refresh, run: refreshNow });
+    }
+    status.append(end);
     children.push(status);
     const visible = children.filter((child) => child !== null);
     /** @type {Set<Node>} */
@@ -4317,7 +4433,7 @@ export function mountPullPage(container, ctx, mb) {
         header.insertBefore(node, cursor);
       }
     }
-    if (model.pull === null) {
+    if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
       for (const { id, link } of tabLinks) {
@@ -5111,7 +5227,9 @@ export function mountPullPage(container, ctx, mb) {
             { key, recordRevision: model.recordRevision },
           );
     const hold = action === "repaint" ? holdFirstPaint(model) : null;
-    if (!(firstPaint?.mode === "hidden" && firstPaint.header)) {
+    const headerHeld = firstPaint?.mode === "hidden" && firstPaint.header;
+    holdTabColumn(headerHeld);
+    if (!headerHeld) {
       paintHeader(model);
       paintStacks(model);
     }
@@ -5369,6 +5487,36 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * The tab links wait with a held header. The header keeps its tab column from first paint,
+   * so the links stay on screen while the loading heading waits for the conversation
+   * (`firstPaint.header`), but neither a click nor a key acts on them: the column is inert,
+   * which the shortcut registry reads as not live. As it wakes, retargeting the keys badges
+   * the links at once if Shift is held. A link that had focus loses it to the page while
+   * inert, as `paintStacks` keeps the stack's control's, so it gets it back on waking.
+   *
+   * @param {boolean} held
+   */
+  function holdTabColumn(held) {
+    if (held === (tabColumn.getAttribute("inert") !== null)) {
+      return;
+    }
+    if (held) {
+      focusedTab = tabLinks.find(({ link }) => link === document.activeElement)?.link ?? null;
+      tabColumn.setAttribute("inert", "");
+      return;
+    }
+    tabColumn.removeAttribute("inert");
+    tabKeys.forEach((handle, at) => {
+      handle.retarget(tabLinks[at].link);
+    });
+    const restore = focusedTab;
+    focusedTab = null;
+    if (restore?.isConnected) {
+      restore.focus({ preventScroll: true });
+    }
+  }
+
+  /**
    * Show the held conversation now, as it is: its wait was met, its bound passed, or another
    * tab took the body. The span says how long it held and why it ended, so a round can count
    * holds that ran to their bound.
@@ -5391,6 +5539,7 @@ export function mountPullPage(container, ctx, mb) {
         paintHeader(shown);
         paintStacks(shown);
       }
+      holdTabColumn(false);
       body.classList.remove("github-pull-body-holding");
       held.cover?.remove();
     }

@@ -255,9 +255,9 @@ whose view holds it.
 A view that overrides another by id takes its place in tab order, and the report names
 the overriding plugin for it.
 A key is served only when the kind’s list has two or more views, since a single view has
-no tab: HTML served without active content keeps Source alone, and serves it without
-`S`. `metab --show PATH` prints each view’s key, and `src/metabrowser/keymap.py` holds
-the reserved keys and the rule.
+no other tab to switch to: HTML served without active content keeps Source alone, and
+serves it without `S`. `metab --show PATH` prints each view’s key, and
+`src/metabrowser/keymap.py` holds the reserved keys and the rule.
 
 `render_runtime` documents whether the view is rendered by the client or by KPress.
 Printable views should also declare a `print_profile` appropriate to documents or source

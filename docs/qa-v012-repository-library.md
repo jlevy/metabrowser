@@ -2190,7 +2190,8 @@ uv --config-file uv.toml run --frozen metab "${HTML_ROOT}" --untrusted --show pa
 **Pass:** `page.html` is `kind: html`, views `preview (default, key P), source (key S)`.
 `card.html` is `kind: html`, views `preview (key P), source (default, key S)`.
 `--untrusted` drops preview, leaving `source (default)` with no key, since one view has
-no tab. No `Serving` on `--show`.
+no other tab to switch to.
+No `Serving` on `--show`.
 
 **Fail:** Both files default to preview; `--untrusted` still offers preview; html files
 still classified as catch-all `text`.

@@ -31,6 +31,9 @@ def test_every_fast_renderer_uses_the_delayed_loading_utility() -> None:
         "folder Overview": PLUGIN_ROOT / "folder" / "overview.js",
         "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
         "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
+        # A pull request's changed files: the spinner on the loading line an expanded tree
+        # shows until its first rows come.
+        "Pulls changed-files tree": PLUGIN_ROOT / "github" / "pull-files-view.js",
     }
 
     for label, path in sources.items():

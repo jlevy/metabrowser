@@ -61,6 +61,23 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _toolbars(html: str) -> dict[str, bool]:
+    """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
+
+    toolbars: dict[str, bool] = {}
+    for opening, body in re.findall(
+        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
+    ):
+        name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
+        assert name is not None
+        toolbars[name.group(1)] = " hidden" not in opening
+        # Each ships the pending tally until its script fills it.
+        assert "tally-pending" in body, opening
+    assert list(toolbars.values()).count(True) == 1, toolbars
+    assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
+    return toolbars
+
+
 def _shell_tools(html: str) -> list[str]:
     bundles = re.search(r"window\.METABROWSER_ASSET_BUNDLES=(\{.*?\});</script>", html)
     assert bundles is not None
@@ -166,14 +183,16 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     try:
         with TestClient(app) as client:
             elsewhere = client.get("/view/").text
-            assert _tabs(elsewhere) == {"files": True, "pulls": False}
+            # A pin is a repository, so Commits is drawn at first paint, after Pulls.
+            assert _tabs(elsewhere) == {"files": True, "git": False, "pulls": False}
+            assert list(_tabs(elsewhere)) == ["files", "pulls", "git"]
             # Fetched with the shell's tools, after the first tree: no startup script.
             assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
             assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
             assert '<div id="tab-pulls" data-tab-content="pulls" style="display: none"></div>' in (
                 elsewhere
             )
-            assert 'id="nav-filter-bar"></div>' in elsewhere
+            assert _toolbars(elsewhere) == {"files": True, "git": False, "pulls": False}
 
             for route in (
                 "/pull/7",
@@ -183,10 +202,11 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 "/pulls?state=closed",
             ):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": False, "pulls": True}, route
-                # The Files tree and its filters are behind the Pulls tab from first paint.
+                assert _tabs(html) == {"files": False, "git": False, "pulls": True}, route
+                # The Files tree is behind the Pulls tab from first paint, and the toolbar
+                # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
-                assert 'id="nav-filter-bar" style="display: none"' in html
+                assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1
@@ -213,7 +233,7 @@ def test_a_mirror_of_anything_else_draws_no_tab(
         with TestClient(app) as client:
             for route in ("/view/", "/pull/7", "/pulls"):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": True}, route
+                assert _tabs(html) == {"files": True, "git": False}, route
                 assert "/static/pulls-nav.js" not in _shell_tools(html), route
     finally:
         serve_mirror(None)
@@ -251,10 +271,21 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     with TestClient(app) as client:
         elsewhere = client.get("/view/").text
         assert _tabs(elsewhere)["pulls"] is False
+        # Commits is drawn at first paint at the repository's root only, the one root Git
+        # discovery accepts, and always after Pulls.
+        assert ("git" in _tabs(elsewhere)) is (served == "")
+        assert list(_tabs(elsewhere))[1] == "pulls"
         assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
         assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
         for route in ("/pull/7", "/pulls"):
             assert _tabs(client.get(route).text)["pulls"] is True, route
+        # A cold page shows its own loading state, header rows and tab bar over a body
+        # skeleton, at once: the shell's placeholder is nothing to keep on screen while
+        # the page is staged, so the page is not staged behind it.
+        placeholder = re.search(
+            r'<div class="pull-request-placeholder[^>]*>', client.get("/pull/7").text
+        )
+        assert placeholder is not None and "data-preview-empty" in placeholder.group(0)
     reset_source_session()
 
 
@@ -273,7 +304,52 @@ def test_a_checkout_of_anything_else_draws_no_tab(tmp_path: Path, pull_origin: O
         for route in ("/view/", "/pull/7", "/pulls"):
             html = client.get(route).text
             assert "pulls" not in _tabs(html), route
+            # Any repository at the root has Commits from first paint, GitHub or not.
+            assert _tabs(html)["git"] is False, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
+    reset_source_session()
+
+
+@needs_git
+def test_a_commits_address_lands_on_commits_from_first_paint(
+    tmp_path: Path, pull_origin: Origin
+) -> None:
+    """A commit's address draws Commits in front: its tab, its toolbar, and its panel's
+    container, so the landing never shows the Files tree and toolbar and then swaps them."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    checkout = clone_checkout(
+        pull_origin, tmp_path / "checkout", remote="https://gitlab.example/octo/demo.git"
+    )
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": False, "git": True}
+        assert _toolbars(html) == {"files": False, "git": True}
+        assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
+        assert '<div id="tab-git" data-tab-content="git"><div class="loading' in html
+        # Elsewhere Files is in front, and the Commits panel's container is the page's to make.
+        elsewhere = client.get("/view/").text
+        assert _tabs(elsewhere) == {"files": True, "git": False}
+        assert _toolbars(elsewhere) == {"files": True, "git": False}
+        assert 'id="tab-git"' not in elsewhere
+    reset_source_session()
+
+
+def test_a_commits_address_in_a_folder_draws_no_commits(tmp_path: Path) -> None:
+    """With no repository there is no Commits tab to put in front: Files stays."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    (tmp_path / "README.md").write_text("# Local\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": True}
+        assert _toolbars(html) == {"files": True}
     reset_source_session()
 
 
