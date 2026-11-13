@@ -3658,6 +3658,32 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
   });
+  // The state chips and Reload are situational: through the SDK's shortcut surface each takes
+  // a number, 1 to 9, from its place among the screen's numbered controls, so the panel picks
+  // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
+  // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
+  // the group's arrow keys do, since the list it replaces may have held focus; a waiting
+  // Reload keeps its place and does nothing, as its click does. Each lasts until disposal
+  // aborts `signal`.
+  if (typeof mb.shortcuts?.attach === "function") {
+    for (const { chip, value } of tallies) {
+      mb.shortcuts.attach(chip, {
+        activate() {
+          controller.setFilter(value);
+          chip.focus();
+        },
+        id: `github.pulls.filter.${value}`,
+        numbered: true,
+        signal,
+      });
+    }
+    mb.shortcuts.attach(reloadButton, {
+      activate: () => void controller.reload(),
+      id: "github.pulls.reload",
+      numbered: true,
+      signal,
+    });
+  }
 
   /** @param {EventTarget | null} target */
   const rowOf = (target) =>

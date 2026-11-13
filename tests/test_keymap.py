@@ -224,15 +224,25 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     one of these letters later would leave the pull request page's tab key or the diff's
     layout toggle with no key and a console warning, while the browserless sessions,
     which serve a copy of the table, would keep passing. Every ``shortcuts.attach()``
-    call in a built-in plugin is one of the two read here, so a new one must join them.
+    call in a built-in plugin is counted here, so a new one must join them: a letter is
+    read here, and a numbered control takes none.
     """
     calls = sorted(
         str(path.relative_to(_BUILTIN_PLUGINS))
         for path in _BUILTIN_PLUGINS.rglob("*.js")
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
-    # The pull request page attaches its tabs' letters and numbers its header's controls.
-    assert calls == ["diff/diff-view.js", "github/pull-page.js", "github/pull-page.js"]
+    # The pull request page attaches its tabs' letters and numbers its header's controls,
+    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
+    assert calls == [
+        "diff/diff-view.js",
+        "github/pull-page.js",
+        "github/pull-page.js",
+        "github/pulls-panel.js",
+        "github/pulls-panel.js",
+    ]
+    panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
+    assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
     assert set(letters) == {"c", "g", "e", "l"}
     served = serialize_reserved_shell_keys()

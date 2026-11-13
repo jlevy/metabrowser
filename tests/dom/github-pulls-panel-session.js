@@ -561,6 +561,7 @@ async function run() {
     spelled,
     reader: await readerStory(),
     paint: await paintStory(panel),
+    numbers: await numberStory(panel),
   };
 }
 
@@ -1425,6 +1426,415 @@ async function paintStory(panel, selection = false) {
         delete globalThis[name];
       } else {
         Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  }
+}
+
+// ── The numbers ────────────────────────────────────────────────
+//
+// The state chips and Reload are situational, so each takes a number from its place on screen
+// through the SDK's shortcut surface (docs/design-system.md, "Keyboard Shortcuts"). The
+// shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
+// and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
+// them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
+// shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
+// the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
+// pull request header's View on GitHub. Switching tabs hides the other with `display: none`, as
+// main-tabs.js does. The elements answer what the registry reads of one in a browser:
+// connection, `hidden` and `display: none` up the tree, `inert`, and document order.
+
+async function numberStory(panel) {
+  const vm = require("node:vm");
+  let filterOptions = [];
+  class NumberedElement extends FakeElement {
+    get parentElement() {
+      return this.parentNode instanceof FakeElement ? this.parentNode : null;
+    }
+    get inert() {
+      return this.attributes.has("inert");
+    }
+    hasAttribute(name) {
+      return this.attributes.has(name);
+    }
+    checkVisibility() {
+      for (let node = this; node; node = node.parentNode) {
+        if (
+          node.hidden === true ||
+          node.attributes?.has("hidden") ||
+          node.style?.display === "none"
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    compareDocumentPosition(other) {
+      let root = this;
+      while (root.parentNode) {
+        root = root.parentNode;
+      }
+      const order = [];
+      const visit = (node) => {
+        order.push(node);
+        for (const child of node.childNodes) {
+          visit(child);
+        }
+      };
+      visit(root);
+      // Node.DOCUMENT_POSITION_FOLLOWING, or PRECEDING.
+      return order.indexOf(other) > order.indexOf(this) ? 4 : 2;
+    }
+    set innerHTML(markup) {
+      super.innerHTML = markup;
+      if (this.classList.contains("github-pulls-filters")) {
+        for (const option of filterOptions) {
+          const chip = new NumberedElement("button");
+          chip.dataset.chipValue = option.value;
+          chip.append(option.label);
+          this.append(chip);
+        }
+      }
+    }
+    querySelectorAll(selector) {
+      if (selector === "button" && this.classList.contains("github-pulls-filters")) {
+        return this.childNodes;
+      }
+      return super.querySelectorAll();
+    }
+  }
+  /** A control's own label: its first text, before a tally or a badge. */
+  const name = (node) => node.childNodes[0]?.textContent.trim();
+  const element = (tag, label) => {
+    const made = new NumberedElement(tag);
+    made.append(label);
+    return made;
+  };
+  const listeners = [];
+  const body = new NumberedElement("body");
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    body,
+    addEventListener(type, listener, options) {
+      const entry = { type, listener };
+      listeners.push(entry);
+      options?.signal?.addEventListener("abort", () => {
+        listeners.splice(listeners.indexOf(entry), 1);
+      });
+    },
+    removeEventListener(type, listener) {
+      const at = listeners.findIndex((entry) => entry.type === type && entry.listener === listener);
+      if (at >= 0) {
+        listeners.splice(at, 1);
+      }
+    },
+    createElement: (tag) => new NumberedElement(tag),
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new NumberedElement(node.localName),
+  };
+  // What the panel asked the server, and the answers it waits for.
+  const asked = [];
+  const answers = [];
+  const saved = {};
+  const globals = {
+    document,
+    window: {
+      addEventListener() {},
+      setTimeout: () => 0,
+      clearTimeout() {},
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+    HTMLElement: NumberedElement,
+    Element: NumberedElement,
+    MouseEvent: class {},
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new NumberedElement("svg") } };
+      }
+    },
+    fetch(route, init = {}) {
+      if (route === "/api/plugin/github/stacks") {
+        return Promise.resolve({
+          status: optionalStacks.missing.status,
+          headers: { get: () => optionalStacks.missing.etag },
+          json: async () => optionalStacks.missing.body,
+        });
+      }
+      if (route === PREFETCH_ROUTE) {
+        return Promise.resolve({
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({ prefetch: "not_due" }),
+        });
+      }
+      asked.push(`${init.method ?? "GET"} ${route}${init.body ? ` ${init.body}` : ""}`);
+      return new Promise((resolve) => {
+        answers.push({ route, resolve });
+      });
+    },
+  };
+  for (const [key, value] of Object.entries(globals)) {
+    saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const realNow = Date.now;
+  Date.now = () => Date.parse(recorded.more_done.body.fetched_at) + 30_000;
+  const shell = { console, document, HTMLElement: NumberedElement };
+  shell.window = shell;
+  vm.createContext(shell);
+  for (const file of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+    const source = path.join(repoRoot, "src/metabrowser/static", file);
+    vm.runInContext(fs.readFileSync(source, "utf8"), shell, { filename: source });
+  }
+  const registry = shell.MetabrowserKeyboardShortcuts.create({ document });
+  const facade = shell.MetabrowserPluginShortcuts;
+  const detachRegistry = facade.attachShortcutRegistry(registry);
+  try {
+    const recency = element("button", "Modified within");
+    const types = element("button", "File type");
+    const filterBar = new NumberedElement("div");
+    filterBar.append(recency, types);
+    const filesTab = new NumberedElement("div");
+    const pullsTab = new NumberedElement("div");
+    const navigation = new NumberedElement("div");
+    navigation.append(filterBar, filesTab, pullsTab);
+    const onGitHub = element("a", "View on GitHub");
+    const main = new NumberedElement("div");
+    main.append(onGitHub);
+    body.append(navigation, main);
+    const show = (tab) => {
+      filterBar.style.display = tab === "files" ? "" : "none";
+      filesTab.style.display = tab === "files" ? "" : "none";
+      pullsTab.style.display = tab === "pulls" ? "" : "none";
+    };
+    // What the shell's filter menus and the page's link were asked to do.
+    const ran = [];
+    // Attached before the panel mounts, and after it in the page: the place decides.
+    for (const trigger of [recency, types]) {
+      registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
+    }
+    facade.attachShortcut(onGitHub, {
+      activate: () => ran.push(name(onGitHub)),
+      id: "github.pull.header.github",
+      numbered: true,
+    });
+    const heard = [];
+    let chipChange = null;
+    const mb = {
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      filterControls: {
+        groupHtml({ options }) {
+          filterOptions = options;
+          return "<div></div>";
+        },
+        bind(_root, handlers) {
+          chipChange = handlers.onChange;
+          return () => {};
+        },
+      },
+      formatAge: () => ({ label: "1m", className: "age-min" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      shortcuts: { attach: facade.attachShortcut },
+    };
+    show("pulls");
+    const mounted = panel.mountPullsPanel(
+      pullsTab,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged: (state) => heard.push(state),
+        },
+      },
+      mb,
+    );
+    await settle();
+    const filters = pullsTab.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const chips = filters.childNodes.filter((node) => node.dataset.chipValue !== undefined);
+    const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
+    const reload = filters.childNodes.at(-1);
+    assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
+    const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
+    /** What one act asked of the server and the list, what else ran, and where it moved focus. */
+    async function acted(what, act) {
+      asked.length = 0;
+      heard.length = 0;
+      ran.length = 0;
+      const before = document.activeElement;
+      const handled = act();
+      await settle();
+      return present({
+        what,
+        handled,
+        asked: [...asked],
+        list: heard.length > 0 ? heard.join(", ") : null,
+        ran: [...ran],
+        focused: document.activeElement === before ? null : name(document.activeElement),
+      });
+    }
+    /** A digit typed outside a text field, through every document listener as a browser would. */
+    const press = (digit) =>
+      acted(`press ${digit}`, () => {
+        const event = {
+          type: "keydown",
+          key: digit,
+          code: "",
+          altKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+          repeat: false,
+          isComposing: false,
+          target: body,
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        for (const entry of listeners.filter((candidate) => candidate.type === "keydown")) {
+          entry.listener(event);
+        }
+        return event.defaultPrevented;
+      });
+    // A click on a segment, as static/filter-controls.js reports one: nothing for the chip
+    // already chosen, else the group's change. A click on Reload is its own listener.
+    const clickChip = (value) =>
+      acted(`click ${name(chip(value))}`, () => {
+        if (chip(value).getAttribute("aria-checked") !== "true") {
+          chipChange("github-pulls-filter", value, "one");
+        }
+      });
+    const clickReload = () => acted("click Reload", () => reload.listeners.get("click")());
+    /** Answer the oldest request waiting on *route* with a recorded answer. */
+    async function answer(route, recording) {
+      const at = answers.findIndex((waiting) => waiting.route.split("?")[0] === route);
+      assert(at >= 0, `no request waits on ${route}`);
+      const [{ resolve }] = answers.splice(at, 1);
+      resolve({
+        status: recording.status,
+        headers: { get: () => recording.etag },
+        json: async () => recording.body,
+      });
+      await settle();
+    }
+
+    const story = {};
+    // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
+    story["the Pulls tab, loading"] = numbers();
+    assert(
+      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
+      "the chips and Reload take 1 to 4 in reading order, before the page's link",
+    );
+    assert(
+      reload.getAttribute("aria-disabled") === "true",
+      "positive control: Reload waits while the list loads",
+    );
+    story["Reload waits"] = [await press("4"), await clickReload()];
+    await answer("/api/plugin/github/pulls", recorded.more_done);
+    assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
+    story["the Pulls tab, settled"] = numbers();
+    const byKey = await press("4");
+    await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
+    const byClick = await clickReload();
+    story.Reload = [byKey, byClick];
+    assert(
+      byKey.asked.length === 1 && JSON.stringify(byKey.asked) === JSON.stringify(byClick.asked),
+      "Reload's number asks for what its click asks for",
+    );
+    // Each chip's number, then each chip's click, from the same list: the same asks in the
+    // same order. Then the chip already chosen: its number, like its click, asks for nothing.
+    const chosen = [];
+    for (const act of [
+      () => press("1"),
+      () => press("2"),
+      () => press("3"),
+      () => clickChip("open"),
+      () => clickChip("closed"),
+      () => clickChip("all"),
+      () => press("3"),
+      () => clickChip("all"),
+    ]) {
+      chosen.push(await act());
+    }
+    story["the state chips"] = chosen;
+    const asks = (step) => JSON.stringify([step.asked, step.list]);
+    assert(
+      [0, 1, 2].every((at) => chosen[at].asked && asks(chosen[at]) === asks(chosen[at + 3])),
+      "a chip's number asks for the list its click asks for",
+    );
+    assert(
+      chosen
+        .slice(0, 3)
+        .map((step) => step.list)
+        .join() === "open,closed,all",
+      "1, 2, and 3 are Open, Closed, and All",
+    );
+    assert(
+      asks(chosen[6]) === asks({}) && asks(chosen[7]) === asks({}),
+      "the chosen chip's number asks for nothing, as its click does",
+    );
+    assert(
+      chosen
+        .slice(0, 3)
+        .map((step) => step.focused)
+        .join() === "Open,Closed,All",
+      "a chip's number moves focus to the chip",
+    );
+    // Holding Shift shows each live number on its control.
+    registry.setRevealed(true);
+    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+      .map((node) => {
+        const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
+        return `${name(node)} ${badge?.textContent ?? "none"}`;
+      })
+      .join(", ");
+    registry.setRevealed(false);
+    // The Files tab shows: the hidden panel's controls give up their numbers.
+    show("files");
+    story["the Files tab"] = numbers();
+    assert(
+      numbers().join() === "1 Modified within,2 File type,3 View on GitHub",
+      "the hidden panel's controls hold no number",
+    );
+    story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
+    show("pulls");
+    assert(numbers().length === 5, "the Pulls tab shows its numbers again");
+    // Disposal ends the panel's numbers, and the page's link moves up to 1. Put back in the
+    // page, the disposed panel's controls still hold none: their numbers were let go.
+    mounted.dispose();
+    story["the Pulls tab, disposed"] = numbers();
+    pullsTab.append(filters);
+    assert(
+      numbers().join() === "1 View on GitHub",
+      "a disposed panel's chips and Reload hold no number",
+    );
+    filters.remove();
+    story["after disposal"] = [await press("1"), await press("2")];
+    show("files");
+    story["the Files tab, after disposal"] = numbers();
+    return story;
+  } finally {
+    detachRegistry();
+    registry.dispose();
+    Date.now = realNow;
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[key];
+      } else {
+        Object.defineProperty(globalThis, key, descriptor);
       }
     }
   }

@@ -525,6 +525,10 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `reader` follows a selected PR through its cache-only read and explicit detail fetch.
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
+`numbers` runs the production shortcut registry and plugin facade around the panel: the
+Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
+page’s numbered link, and each number asks for what its control’s click asks for.
+A hidden or disposed panel’s controls give up their numbers.
 
 ```console
 $ node tests/dom/github-pulls-panel-second-session.js
@@ -921,6 +925,150 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "afterClosingAll": 9
     },
     "disposed: what is left in the tab": 0
+  },
+  "numbers": {
+    "the Pulls tab, loading": [
+      "1 Open",
+      "2 Closed",
+      "3 All",
+      "4 Reload",
+      "5 View on GitHub"
+    ],
+    "Reload waits": [
+      {
+        "what": "press 4",
+        "handled": true
+      },
+      {
+        "what": "click Reload"
+      }
+    ],
+    "the Pulls tab, settled": [
+      "1 Open",
+      "2 Closed",
+      "3 All",
+      "4 Reload",
+      "5 View on GitHub"
+    ],
+    "Reload": [
+      {
+        "what": "press 4",
+        "handled": true,
+        "asked": [
+          "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+        ]
+      },
+      {
+        "what": "click Reload",
+        "asked": [
+          "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+        ]
+      }
+    ],
+    "the state chips": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=open&limit=100"
+        ],
+        "list": "open",
+        "focused": "Open"
+      },
+      {
+        "what": "press 2",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=closed&limit=100"
+        ],
+        "list": "closed",
+        "focused": "Closed"
+      },
+      {
+        "what": "press 3",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=all&limit=100"
+        ],
+        "list": "all",
+        "focused": "All"
+      },
+      {
+        "what": "click Open",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=open&limit=100"
+        ],
+        "list": "open"
+      },
+      {
+        "what": "click Closed",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=closed&limit=100"
+        ],
+        "list": "closed"
+      },
+      {
+        "what": "click All",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=all&limit=100"
+        ],
+        "list": "all"
+      },
+      {
+        "what": "press 3",
+        "handled": true
+      },
+      {
+        "what": "click All"
+      }
+    ],
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
+    "the Files tab": [
+      "1 Modified within",
+      "2 File type",
+      "3 View on GitHub"
+    ],
+    "on the Files tab": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "ran": [
+          "Modified within"
+        ]
+      },
+      {
+        "what": "press 3",
+        "handled": true,
+        "ran": [
+          "View on GitHub"
+        ]
+      },
+      {
+        "what": "press 4",
+        "handled": false
+      }
+    ],
+    "the Pulls tab, disposed": [
+      "1 View on GitHub"
+    ],
+    "after disposal": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "ran": [
+          "View on GitHub"
+        ]
+      },
+      {
+        "what": "press 2",
+        "handled": false
+      }
+    ],
+    "the Files tab, after disposal": [
+      "1 Modified within",
+      "2 File type",
+      "3 View on GitHub"
+    ]
   }
 }
 ? 0

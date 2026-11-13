@@ -231,6 +231,13 @@ All notable changes to Metabrowser are documented here.
   fixed. Holding Shift shows what each number reaches, and the keycaps now ease in on the
   design system’s reveal motion, `--motion-reveal`.
 
+- The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
+  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
+  does nothing while it waits, as a click does.
+  The navigation pane’s numbers come first, so beside the Pulls tab a pull request
+  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
+  each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
+
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull
   request’s Changes, exactly as its layout control does: where Split does not fit, `L`
   chooses it with its sideways scroll, and the choice is remembered.

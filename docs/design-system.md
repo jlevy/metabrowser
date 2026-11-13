@@ -1617,12 +1617,15 @@ What is numbered, in reading order, each only while it is shown:
 | Screen | Numbered controls |
 | --- | --- |
 | The Files tab | Modified within (Any age), then File type (Any type); a Git pin has only File type |
+| The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
+
+The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
+beside the Pulls tab and at `3` beside the Files tab’s two filters.
 
 The keys and buttons that have no key, and why: every copy control, ancillary; a changed
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
-Metabrowser menu, print, retry, and reload, rare; the Pulls panel’s Open, Closed, and
-All chips and its Reload, not yet numbered.
+Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
 
 ### Help and the Reveal
 
