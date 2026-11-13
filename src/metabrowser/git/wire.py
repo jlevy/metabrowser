@@ -318,6 +318,9 @@ def validate_git_ref(ref: Mapping[str, Any], *, _where: str = "") -> None:
     )
     if "is_head" in ref:
         assert isinstance(ref["is_head"], bool), f"ref.is_head not bool at {_where!r}"
+    if "is_trunk" in ref:
+        assert isinstance(ref["is_trunk"], bool), f"ref.is_trunk not bool at {_where!r}"
+        assert ref["kind"] != "tag", f"a tag is never trunk, at {_where!r}"
     if "remote" in ref:
         assert ref["kind"] == "remote", (
             f"ref.remote present on kind={ref['kind']!r} at {_where!r} — "
