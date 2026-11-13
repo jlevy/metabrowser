@@ -21,7 +21,7 @@ public nonisolated enum RuntimeSource: String, Codable, Sendable {
     }
 }
 
-/// The `metab` the app runs: a CLI install, validated with `metab --version`.
+/// The `metab` the app runs: a CLI install, validated with `metab --exit-on-eof --version`.
 public nonisolated struct Runtime: Codable, Equatable, Sendable {
     public var executable: String
     public var version: String
@@ -87,13 +87,16 @@ public final class RuntimeSettings {
         self.defaults = defaults
     }
 
+    /// The saved setup. One this build cannot decode counts as none, so the next launch
+    /// runs setup again and saves what it finds: the saved setup is only what setup found.
     public func load() -> RuntimeSetup? {
         guard let data = defaults.data(forKey: Self.key) else { return nil }
         return try? JSONDecoder().decode(RuntimeSetup.self, from: data)
     }
 
     public func save(_ setup: RuntimeSetup) {
-        guard let data = try? JSONEncoder().encode(setup) else { return }
+        // Strings and string-backed enums, which JSONEncoder always encodes.
+        let data = try! JSONEncoder().encode(setup)
         defaults.set(data, forKey: Self.key)
     }
 
@@ -101,10 +104,17 @@ public final class RuntimeSettings {
         defaults.removeObject(forKey: Self.key)
     }
 
-    /// The saved setup if its `metab` is still an executable file at an absolute path.
-    /// A launch checks only that, so it costs no subprocess; Settings re-runs `--version`.
-    public func usable(isExecutable: (String) -> Bool = FileChecks.isExecutableFile) -> RuntimeSetup? {
-        guard let setup = load(), setup.runtime.executable.hasPrefix("/"), isExecutable(setup.runtime.executable)
+    /// The saved setup if its `metab` is still an executable file at an absolute path and,
+    /// unless the user chose it, one no other account can change (`ExecutableTrust`), as
+    /// discovery requires. A launch checks only that, so it costs no subprocess; Settings
+    /// re-runs `--version`. Without a usable one, the launch searches, and the search says
+    /// why it passes over the saved one.
+    public func usable(
+        isExecutable: (String) -> Bool = FileChecks.isExecutableFile,
+        refusal: (String) -> String? = { ExecutableTrust.refusal($0) }
+    ) -> RuntimeSetup? {
+        guard let setup = load(), setup.runtime.executable.hasPrefix("/"), isExecutable(setup.runtime.executable),
+              setup.runtime.source == .chosen || refusal(setup.runtime.executable) == nil
         else { return nil }
         return setup
     }

@@ -42,6 +42,9 @@ public nonisolated struct StagedDownload: Equatable, Sendable {
     }
 
     /// Removes the staging directory and whatever part of the download reached it.
+    ///
+    /// A removal that fails leaves no user file behind: the directory is in the volume's
+    /// temporary items, which macOS empties itself.
     public func discard() {
         try? FileManager.default.removeItem(at: directory)
     }

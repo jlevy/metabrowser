@@ -2,9 +2,11 @@ import Foundation
 
 /// What a folder's server serves.
 public nonisolated enum FolderKind: String, Codable, Equatable, Sendable {
-    /// A folder on this Mac: its window has a proxy icon and a path menu.
+    /// A folder on this Mac: its window's title opens the folder's path menu, on a
+    /// Command-click, a right-click, or VoiceOver's Show Menu.
     case folder
-    /// A cached Git mirror: its cache path means nothing to the user, so it has neither.
+    /// A cached Git mirror: its cache path means nothing to the user, so its title has no
+    /// path menu.
     case mirror
 }
 
@@ -94,6 +96,11 @@ public nonisolated enum IdentityClient {
     public static let path = "api/identity"
     /// An identity is a few hundred bytes; a body past this is not one.
     public static let byteLimit = 64 * 1024
+    /// Seconds without a byte, then for the whole request, before the window keeps the
+    /// name it derived from the folder's path. A ready loopback server answers in
+    /// milliseconds.
+    static let requestTimeout: TimeInterval = 2
+    static let resourceTimeout: TimeInterval = 5
 
     /// Sends a request and returns the status and body.
     public typealias Transport = @Sendable (URLRequest) async throws -> (status: Int, body: Data)
@@ -143,8 +150,8 @@ public nonisolated enum IdentityClient {
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [:]
-        configuration.timeoutIntervalForRequest = 2
-        configuration.timeoutIntervalForResource = 5
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = resourceTimeout
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpShouldSetCookies = false
         return URLSession(configuration: configuration)

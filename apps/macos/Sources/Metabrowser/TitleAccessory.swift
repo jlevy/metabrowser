@@ -1,17 +1,17 @@
 import AppKit
 import ShellCore
 
-/// The window title, drawn in two weights: the folder's short name bold, then a bullet
-/// and "Metabrowser" in a secondary style.
+/// The window title: the folder's short name, bold.
 ///
 /// AppKit draws a system title in one style, so the window hides it
 /// (`titleVisibility = .hidden`) and shows this leading title-bar accessory instead,
 /// which AppKit places beside the window buttons, where macOS 26 puts the system title.
-/// The insets and fonts below reproduce that title as measured on macOS 26.5.
+/// The inset and font below reproduce that title as measured on macOS 26.5. The app
+/// icon's mark stands at the other end of the title bar (`TitleBarMarkController`).
 ///
 /// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5),
-/// so the accessory draws one: drag it to use the folder elsewhere, and Command-click
-/// or right-click it, or the title, for the path menu.
+/// so a folder's window has none to drag; Command-click or right-click on the title
+/// opens the folder's path menu.
 final class TitleAccessoryController: NSTitlebarAccessoryViewController {
     private let titleView = TitleBarTitleView()
 
@@ -25,7 +25,8 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 
     override func loadView() { view = titleView }
 
-    /// `url` is the folder the proxy icon stands for, or nil for no icon.
+    /// `url` is the folder whose path menu the title opens, or nil when the window shows
+    /// no local folder.
     func show(_ title: WindowTitle, representing url: URL?) {
         loadViewIfNeeded()
         titleView.show(title, representing: url)
@@ -33,24 +34,27 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 }
 
 final class TitleBarTitleView: NSView {
-    /// Where AppKit draws a plain window's proxy icon and title, from the accessory's
-    /// leading edge (78 points from the window's, after the window buttons).
-    private static let iconInset: CGFloat = 4
-    private static let iconSize: CGFloat = 16
-    private static let textInsetWithIcon: CGFloat = 22
-    private static let textInsetWithoutIcon: CGFloat = 4
-    /// Space kept between the end of the title and the window's trailing edge.
-    private static let windowMargin: CGFloat = 12
+    /// Where AppKit draws a plain window's title without a proxy icon, from the
+    /// accessory's leading edge, x 78, a button gap after the zoom button: the label at
+    /// x 82, and its first ink at x 84 (measured on macOS 26.5).
+    private static let textInset: CGFloat = 4
+    /// Space kept between the end of the title and what stands at the title bar's trailing
+    /// end: the window's edge, or the mark's accessory.
+    private static let trailingMargin: CGFloat = 12
+    /// The path menu's folder icons, as the system title's path menu draws them.
+    private static let menuIconSize: CGFloat = 16
 
-    private static let primaryFont = NSFont.titleBarFont(ofSize: 0)
-    private static let secondaryFont = NSFont.systemFont(ofSize: primaryFont.pointSize)
+    private static let font = NSFont.titleBarFont(ofSize: 0)
 
     private let label = NSTextField(labelWithString: "")
-    private let proxyIcon = ProxyIconView()
-    /// Measures runs of segments as `label` would draw them.
+    /// Measures the title as `label` would draw it.
     private let scratch = NSTextField(labelWithString: "")
     private var title: WindowTitle?
     private var url: URL?
+    /// Shows the path menu: pops it up under the title.
+    var presentPathMenu: (NSMenu, NSPoint, NSView) -> Void = { menu, point, view in
+        menu.popUp(positioning: menu.items.first, at: point, in: view)
+    }
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
@@ -60,10 +64,14 @@ final class TitleBarTitleView: NSView {
             field.maximumNumberOfLines = 1
         }
         label.cell?.truncatesLastVisibleLine = true
-        proxyIcon.onPathMenu = { [weak self] in self?.showPathMenu() }
-        proxyIcon.isHidden = true
-        addSubview(proxyIcon)
         addSubview(label)
+        // This view is the title's accessibility element, static text that reads the
+        // title, so it can offer the path menu as VoiceOver's Show Menu; the label, and
+        // the cell that would stand for it, are not elements.
+        label.setAccessibilityElement(false)
+        label.cell?.setAccessibilityElement(false)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
     }
 
     @available(*, unavailable)
@@ -72,40 +80,52 @@ final class TitleBarTitleView: NSView {
     func show(_ title: WindowTitle, representing url: URL?) {
         self.title = title
         self.url = url
-        proxyIcon.url = url
         toolTip = title.subtitle
-        proxyIcon.toolTip = title.subtitle
+        setAccessibilityValue(title.text)
+        setAccessibilityHelp(title.subtitle)
         updateWidth()
         needsLayout = true
     }
 
+    // MARK: - Accessibility
+
+    /// VoiceOver's Show Menu opens a local folder's path menu, as Command-click does.
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard url != nil else { return false }
+        showPathMenu()
+        return true
+    }
+
+    /// Only a local folder's title offers Show Menu: a cached mirror's has no path menu.
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(accessibilityPerformShowMenu) { return url != nil }
+        return super.isAccessibilitySelectorAllowed(selector)
+    }
+
     // MARK: - Layout
 
-    private var textInset: CGFloat { url == nil ? Self.textInsetWithoutIcon : Self.textInsetWithIcon }
     private var isRightToLeft: Bool { userInterfaceLayoutDirection == .rightToLeft }
 
     override func layout() {
         super.layout()
-        let height = ceil(measure(title?.segments ?? []).height)
+        let height = ceil(measure(title?.text ?? "").height)
         let y = ((bounds.height - height) / 2).rounded()
-        var text = NSRect(x: textInset, y: y, width: max(0, bounds.width - textInset), height: height)
-        var icon = NSRect(x: Self.iconInset, y: y + 1, width: Self.iconSize, height: Self.iconSize)
-        if isRightToLeft {
-            text.origin.x = bounds.width - text.maxX
-            icon.origin.x = bounds.width - icon.maxX
-        }
+        var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
+        if isRightToLeft { text.origin.x = bounds.width - text.maxX }
         label.frame = text
-        proxyIcon.frame = icon
         render()
     }
 
-    /// As wide as the whole title, but never past the window's trailing margin, so a
-    /// narrow window truncates it.
+    /// As wide as the title, but never into the trailing accessories or past the window's
+    /// trailing margin, so a narrow window truncates it.
     private func updateWidth() {
         guard let window, let title else { return }
-        let ideal = textInset + measure(title.segments).width
-        let available = window.frame.width - leadingDistance(in: window) - Self.windowMargin
-        let width = ceil(max(textInset + Self.iconSize, min(ideal, available)))
+        let ideal = Self.textInset + measure(title.text).width
+        let trailing = window.titlebarAccessoryViewControllers
+            .filter { $0.layoutAttribute == .trailing }
+            .reduce(0) { $0 + $1.view.frame.width }
+        let available = window.frame.width - leadingDistance(in: window) - trailing - Self.trailingMargin
+        let width = ceil(max(Self.textInset, min(ideal, available)))
         if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
     }
 
@@ -131,30 +151,23 @@ final class TitleBarTitleView: NSView {
 
     private func render() {
         guard let title else { return }
-        let shown = title.segments(fitting: Double(label.frame.width)) { Double(measure($0).width) }
-        label.attributedStringValue = attributed(shown, active: isActive)
+        label.attributedStringValue = attributed(title.text, active: isActive)
         label.alignment = isRightToLeft ? .right : .left
     }
 
-    private func measure(_ segments: [WindowTitle.Segment]) -> NSSize {
-        scratch.attributedStringValue = attributed(segments, active: true)
+    private func measure(_ text: String) -> NSSize {
+        scratch.attributedStringValue = attributed(text, active: true)
         return scratch.cell?.cellSize ?? .zero
     }
 
-    private func attributed(_ segments: [WindowTitle.Segment], active: Bool) -> NSAttributedString {
+    private func attributed(_ text: String, active: Bool) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
-        let result = NSMutableAttributedString()
-        for segment in segments {
-            let primary = segment.style == .primary
-            let color: NSColor = !active ? .tertiaryLabelColor : primary ? .labelColor : .secondaryLabelColor
-            result.append(NSAttributedString(string: segment.text, attributes: [
-                .font: primary ? Self.primaryFont : Self.secondaryFont,
-                .foregroundColor: color,
-                .paragraphStyle: paragraph,
-            ]))
-        }
-        return result
+        return NSAttributedString(string: text, attributes: [
+            .font: Self.font,
+            .foregroundColor: active ? NSColor.labelColor : NSColor.tertiaryLabelColor,
+            .paragraphStyle: paragraph,
+        ])
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -192,13 +205,11 @@ final class TitleBarTitleView: NSView {
 
     // MARK: - Mouse
 
-    /// The title moves the window like the system title; only the proxy icon keeps its
-    /// clicks, for dragging.
+    /// The title moves the window like the system title.
     override var mouseDownCanMoveWindow: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let hit = super.hitTest(point) else { return nil }
-        return hit === proxyIcon ? proxyIcon : self
+        super.hitTest(point) == nil ? nil : self
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -227,11 +238,11 @@ final class TitleBarTitleView: NSView {
             item.target = self
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
             item.image = NSWorkspace.shared.icon(forFile: path)
-            item.image?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
+            item.image?.size = NSSize(width: Self.menuIconSize, height: Self.menuIconSize)
             menu.addItem(item)
         }
-        let anchor = NSPoint(x: proxyIcon.frame.minX - 10, y: label.frame.maxY + 4)
-        menu.popUp(positioning: menu.items.first, at: anchor, in: self)
+        let anchor = NSPoint(x: label.frame.minX - 10, y: label.frame.maxY + 4)
+        presentPathMenu(menu, anchor, self)
     }
 
     @objc private func openPathMenuItem(_ item: NSMenuItem) {
@@ -241,62 +252,5 @@ final class TitleBarTitleView: NSView {
         } else {
             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder)
         }
-    }
-}
-
-/// The folder's icon at the start of the title, standing in for the proxy icon AppKit
-/// drops beside a leading accessory.
-final class ProxyIconView: NSImageView, NSDraggingSource {
-    var onPathMenu: (() -> Void)?
-    private var pressed: NSEvent?
-
-    var url: URL? {
-        didSet {
-            image = url.map { NSWorkspace.shared.icon(forFile: $0.path(percentEncoded: false)) }
-            isHidden = url == nil
-        }
-    }
-
-    init() {
-        super.init(frame: .zero)
-        imageScaling = .scaleProportionallyUpOrDown
-        isEditable = false
-        unregisterDraggedTypes()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("unused") }
-
-    override var mouseDownCanMoveWindow: Bool { false }
-
-    override func mouseDown(with event: NSEvent) {
-        if !event.modifierFlags.isDisjoint(with: [.command, .control]) {
-            onPathMenu?()
-        } else {
-            pressed = event
-        }
-    }
-
-    override func rightMouseDown(with event: NSEvent) { onPathMenu?() }
-    override func mouseUp(with event: NSEvent) { pressed = nil }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let start = pressed, let url else { return }
-        let dx = event.locationInWindow.x - start.locationInWindow.x
-        let dy = event.locationInWindow.y - start.locationInWindow.y
-        guard dx * dx + dy * dy >= 9 else { return }
-        pressed = nil
-        let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        item.setDraggingFrame(bounds, contents: image)
-        beginDraggingSession(with: [item], event: start, source: self)
-    }
-
-    /// Copy or alias only, and only to other apps. A move (Finder's default for a drag
-    /// within a volume) would pull the folder out from under its server, and a drop on
-    /// this app's own windows would only reopen the folder.
-    func draggingSession(
-        _ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext
-    ) -> NSDragOperation {
-        context == .outsideApplication ? [.copy, .link] : []
     }
 }

@@ -36,8 +36,9 @@ public final class FolderServer {
     public private(set) var startedRuntime: Runtime?
     /// What waits for an accepted runtime.
     public private(set) var held: Request?
-    /// For a restored background folder, its root admitted again at the moment of
-    /// spawning; nil once one of its tabs is selected, which starts it as the user's choice.
+    /// For a restored folder, the check at the moment of spawning (`RestoreRun`): a
+    /// background one's root admitted again, and, once one of its tabs is selected, which
+    /// starts it as the user's choice, that its saved path still names its own folder.
     public var rootCheck: (() -> Bool)?
     private let accepted: () -> RuntimeSetup?
     private let spec: (RuntimeSetup) -> LaunchSpec

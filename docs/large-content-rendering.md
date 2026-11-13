@@ -35,6 +35,8 @@ Both looked reasonable.
 
 Measured against Chromium 141 with software raster, so absolute numbers are pessimistic.
 The shape is the part that transfers.
+In WebKit the shapes held but text layout cost more, as
+[Measured in WebKit](#measured-in-webkit) records.
 
 ### Reading is not the bottleneck
 
@@ -172,8 +174,10 @@ heap, with scrolling still between 22 ms and 107 ms.
 That memory, not any server limit, is what its ceiling protects.
 
 Chrome clamps element height at a measured 33,554,428 px; Firefox is lower.
-Any design whose scroll height grows with content meets that wall eventually and needs a
-downscaled scrollbar past it.
+On a 2x display Chrome laid out half that, 16,777,214 CSS px, so its limit appears to be
+in device pixels; WebKit laid out 33,554,428 CSS px there (see
+[Measured in WebKit](#measured-in-webkit)). Any design whose scroll height grows with
+content meets that wall eventually and needs a downscaled scrollbar past it.
 
 ## The Strategy Ladder
 
@@ -493,6 +497,261 @@ Counting is a pass over bytes with no string building, so deciding costs far les
 rendering does, and the re-render happens at most once per view.
 This is the general shape: **decide a degradation against everything the reader can see,
 not against the unit you happen to be processing.**
+
+## Measured in WebKit
+
+**Status:** gate run 2026-11-11 for the macOS app (`mb-gvtw`). It **failed**: from
+response to laid out, WebKit took 1.6 to 5.8 times Chrome’s time in the source view and
+1.4 to 2.7 times in the binary view, and up to 1.5 times for highlighting and the diff
+layout switch. It used much less memory, scrolled the source view faster, and held the
+diff mount and intraline budgets.
+The decision a failure calls for is open.
+
+Every number above this section is Chrome’s. The
+[macOS app research brief](project/research/research-2026-11-08-macos-app-packaging.md)
+keeps the app’s Swift shell, a `WKWebView`, only if WebKit holds these bounds: each
+bound’s representative case runs in back-to-back pairs against Chrome on one machine,
+and WebKit passes when every pair is within 1.3 times Chrome.
+
+### How It Was Measured
+
+- **Harness:** `make macos-webkit-gate` runs
+  [`apps/macos/webkit-gate/run.mjs`](../apps/macos/webkit-gate/run.mjs), whose header
+  lists its cases and options.
+  The original Chrome measurements were scratch harnesses with no committed corpora, so
+  the gate measures Chrome again beside WebKit rather than comparing with the numbers
+  above.
+- **The two engines:** the app’s own web view class (`DropAwareWebView` inside
+  `WebContainerView`), built from the app’s `WebConfiguration.make()`, in a window of
+  1,200 × 820 points, the app’s default content size; and Google Chrome over the
+  DevTools protocol with its viewport set to the same size.
+  Both ran at device pixel ratio 2. Each sample is a fresh browser with an empty cache:
+  a scratch profile in Chrome, and in WebKit a nonpersistent data store, the one change
+  from the app’s configuration.
+- **The same inputs:** one `metab` server from the checkout served both engines the same
+  generated corpora, whose SHA-256 each run records in its `meta.json`. The diff cases
+  are the committed benchmark pages in [explorations](../explorations/README.md), served
+  from the same checkout.
+- **The same code:** both engines run `probe.js`, injected at document start, which
+  opens the view, presses Load more until the file is loaded, scrolls, and times each
+  step with `performance.now()` in the page.
+- **Pairs:** a warm-up pair, then five pairs per case, alternating which engine goes
+  first, so machine load falls on both.
+- **The rule:** a pair passes when WebKit’s value is under 1.3 times Chrome’s, and a
+  metric passes when every pair does.
+  WebKit rounds `performance.now()` to 1 ms (Chrome to 0.1 ms), so a pair of times both
+  under 5 ms is reported and not judged.
+  A metric that either engine left unmeasured in any pair the run asked for, by a failed
+  sample or a pair that never ran, is incomplete rather than judged
+  ([`summary.mjs`](../apps/macos/webkit-gate/summary.mjs)). A run whose record gives no
+  valid pair count is not judged at all, since a missing pair could not be told from one
+  never asked for. Both measurement runs recorded here asked for five pairs and measured
+  every metric in every pair.
+
+The metrics:
+
+- **Response end to laid out:** from the end of the view’s request (Resource Timing) to
+  a forced layout after the content is in the DOM. It leaves out the server and keeps
+  the engine’s work: JSON parsing, building the DOM, style, and layout.
+- **Navigation to laid out** and **to next frame:** from navigation start, and the
+  second waits for the next rendering update after the forced layout.
+- **Click to next frame:** from a Load more click to the rendering update after the
+  appended content is laid out.
+- **Scroll frame work:** a scroll set at the start of an animation frame, timed to a
+  task queued from that frame, so it is the rendering update the scroll caused.
+- **Renderer footprint:** the physical footprint of Chrome’s renderer process or
+  WebKit’s web content process, from `footprint`, without the graphics memory WebKit
+  attributes to the web process and Chrome keeps in its GPU process.
+
+The run behind every number below, on 2026-11-11:
+
+- **Machine:** MacBook Pro (MacBookPro18,1), Apple M1 Pro with 8 performance and 2
+  efficiency cores, 32 GB, macOS 26.5.2 (25F84).
+- **Engines:** WebKit 21624.2.5.11.8, the build Safari 26.5.2 runs, and Google Chrome
+  152.0.7977.83.
+- **Server and harness:** `metab` 0.12.1.dev214 from commit `8b0603f7`, and the harness
+  as committed in `1c028e84`.
+- **Conditions:** a load average of 9 to 15 from other work on the machine; Low Power
+  Mode on; the screen locked throughout, so the driver turned off WebKit’s window
+  occlusion detection, as Chrome’s `--disable-backgrounding-occluded-windows` does for
+  Chrome. Both processes were at scheduling priority 47 when their memory was read.
+
+An earlier complete run that evening, before the driver held off App Nap, failed and
+passed the same cases.
+Its verdicts differed only on metrics near the line: the diff layout’s slowest switch
+passed there (1.12 to 1.21), one binary Load more failed its next frame at 1.30, and
+three small scroll and intraline times crossed the 5 ms floor.
+
+### Results
+
+Times are medians of five pairs; a ratio is WebKit’s value over Chrome’s in one pair.
+
+| Bound | Case and metric | Chrome | WebKit | Pair ratios | Verdict |
+| --- | --- | ---: | ---: | --- | --- |
+| `TEXT_PREVIEW_CHUNK_BYTES` | Source, 16 MiB file: open, response end to laid out | 337 ms | 564 ms | 1.58–1.72 | **fail** |
+|  | Open, navigation to next frame | 952 ms | 1,362 ms | 1.31–1.45 | **fail** |
+| `TEXT_PREVIEW_MAX_CHUNK_BYTES` | Load more to 4 MiB, response end to laid out | 419 ms | 2,383 ms | 5.63–5.83 | **fail** |
+|  | Load more to 8 MiB | 803 ms | 4,004 ms | 4.84–5.06 | **fail** |
+|  | Load more to 16 MiB (an 8 MiB click) | 1,664 ms | 7,848 ms | 4.50–4.88 | **fail** |
+|  | The same click, to next frame | 2,662 ms | 8,256 ms | 3.05–3.20 | **fail** |
+|  | Scrolling 16 MiB, frame work | 85–164 ms | 0–3 ms | 0.00–0.07 | pass |
+| One 2 MiB line | Open, response end to laid out | 193 ms | 270 ms | 1.37–1.42 | **fail** |
+|  | Open, navigation to next frame | 561 ms | 1,054 ms | 1.84–2.04 | **fail** |
+| `SYNTAX_HIGHLIGHT_MAX_BYTES` | YAML, 512 KiB, 27,854 spans | 285 ms | 347 ms | 1.13–1.24 | pass |
+|  | Markdown, 4,603 spans | 114 ms | 162 ms | 1.37–1.48 | **fail** |
+|  | JSON, 20,307 spans | 212 ms | 251 ms | 1.15–1.22 | pass |
+|  | Dense JSON, 307,591 spans | 1,371 ms | 1,699 ms | 1.19–1.25 | pass |
+|  | TypeScript, 22,494 spans | 336 ms | 471 ms | 1.27–1.45 | **fail** |
+| `BINARY_PREVIEW_CHUNK_BYTES` | Binary, 32 MiB file: open, response end to laid out | 220 ms | 424 ms | 1.86–1.99 | **fail** |
+| `BINARY_PREVIEW_MAX_BYTES` | Six Load more clicks to 32 MiB, each response end to laid out | 100–419 ms | 159–960 ms | 1.39–2.46 | **fail** |
+|  | Last click (8 MiB), to next frame | 775 ms | 1,335 ms | 1.66–1.77 | **fail** |
+|  | Scrolling 32 MiB, frame work | 5.5–6.3 ms | 12–13 ms | 1.76–2.91 | **fail** |
+|  | Renderer footprint, without graphics | 1,029 MiB | 238 MiB | 0.23–0.26 | pass |
+| `LINES_PER_BLOCK` | Binary, 8 MiB loaded: scroll to the middle, frame work | 2.1 ms | 4.0 ms | 1.25–4.76 | **fail** |
+| `DEFAULT_ACCENT_RUN_BUDGET` | Accented binary, 8 MiB, 247,322 elements: open | 88 ms | 197 ms | 2.15–2.36 | **fail** |
+|  | Load more clicks, response end to laid out | 77–338 ms | 168–820 ms | 2.13–2.70 | **fail** |
+| `LAYOUT_PROJECTION_BATCH_FILES` | Diff layout benchmark, 1,000 files: mount | 59 ms | 26 ms | 0.42–1.08 | pass |
+|  | Median blocking layout switch | 22 ms | 31 ms | 1.38–1.47 | **fail** |
+|  | Slowest blocking layout switch | 68 ms | 89 ms | 1.21–1.32 | **fail** |
+| Intraline work budget | Unrelated long lines, over budget | 36 ms | 21 ms | 0.56–0.58 | pass |
+|  | 8 MiB similar line, refined | 24 ms | 26 ms | 1.07–1.11 | pass |
+|  | 8 MiB unrelated lines, over budget | 37 ms | 20 ms | 0.51–0.57 | pass |
+| Element height | Height laid out for a 100,000,000 px element | 16,777,214 px | 33,554,428 px |  | reported |
+
+The three small intraline cases ran under 5 ms in both engines and are reported, not
+judged. The 8 MiB binary’s other scroll positions fell under the floor too; at the
+middle, one pair read 10 ms against 2.1 ms.
+Every view rendered the same number of elements in both engines but one: the 2 MiB
+one-line file’s count varied by one or two elements from sample to sample in each
+engine, 401 to 402 in Chrome and 401 to 403 in WebKit (medians 401 and 402). The tallest
+scroll height, 11,772,035 px for the 32 MiB binary, was the same in both.
+
+Renderer footprints without graphics memory were 0.14 to 0.48 of Chrome’s in every view.
+With the lightest page, a 2 MiB one-line file, WebKit’s web content process came to 149
+to 166 MiB in all, graphics included.
+That fits the app’s own measurement of lighter pages, 111 to 143 MB per view
+(`apps/macos/scripts/measure-web-views.swift`), and the 155 to 210 MB the
+server-topology brief measured with real pages.
+
+### Not Measured
+
+- **Server-side bounds:** the reading and Git blob tables,
+  `TEXT_PREVIEW_REQUEST_MAX_BYTES`, `MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`,
+  `MAX_MANIFEST_FILES`, and the server’s half of `MAX_FILE_PATCH_BYTES` bound work in
+  `metab`, which is the same whichever engine asks.
+- **Rungs no view ships:** CSS wrapping one long run and the strategy ladder’s other
+  rows. Contract tests keep every surface off the wrapping path.
+- **The diff fold and the first-screen mount:** `FOLD_MATERIALIZATION_BATCH_ROWS` and
+  the mount figures came from a 19,654-line comparison and from astral-sh/ruff #29817,
+  measured live with no committed fixture.
+  The diff layout benchmark’s 1,000-file mount is the nearest committed case, and it is
+  in the results.
+- **The Pulls panel:** `WINDOW_ROWS`, `DISPLAY_ROWS`, and `PULL_ROWS_OVERSCAN` need a
+  pull-request catalog fetched by a signed-in `gh`, which is part of the owner
+  acceptance `mb-etqi` keeps.
+- **Timers:** `JUMP_QUIET_MS` and the binary view’s resize debounce are delays, not
+  costs.
+
+None of these was estimated.
+
+### What the Gate Found
+
+- **Layout is where WebKit falls behind.** In the source and binary views the request,
+  JSON parsing, and DOM building took about as long in both engines, and the forced
+  style and layout after them took the difference.
+  (Highlighting and the diff switch time script and layout together, so they do not
+  separate.) JavaScriptCore was faster on pure computation: the intraline edit-distance
+  cases ran in 0.51 to 0.58 of Chrome’s time.
+
+- **The source view’s Load more pays most, for its mechanism.** Each click appends the
+  chunk as one text node, and WebKit lays out a text node of millions of characters
+  three to five times slower than Chrome.
+  Its cost grows with all the text loaded, about 0.5 ms per KiB against Chrome’s 0.1, so
+  the 8 MiB click into a 16 MiB file took 7.8 s. Three diagnostic cases on a bare page,
+  the same corpus in the same 2, 2, 4, and 8 MiB steps, isolate it:
+
+| Appending 16 MiB of source as | Chrome, last step | WebKit, last step | Pair ratios |
+| --- | ---: | ---: | --- |
+| One text node per chunk, as the source view does | 1,024 ms | 3,297 ms | 3.20–3.35 |
+| Text nodes of at most 65,536 characters, as the HTML parser makes | 960 ms | 537 ms | 0.53–0.56 |
+| `content-visibility` blocks of 128 lines, as the binary view does | 34 ms | 169 ms | 4.87–5.03 |
+
+Split into parser-sized nodes, the same text lays out faster in WebKit than in Chrome.
+Blocks are cheapest in both, but still over 1.3x in WebKit.
+
+- **WebKit does not defer the binary view’s new blocks as Chrome does.** After a chunk
+  of `content-visibility` blocks went in, Chrome’s forced layout took under 10 ms and
+  WebKit’s 70 to 525 ms on the 32 MiB file, so the binary view, plain or accented, ran
+  1.4 to 2.7 times Chrome.
+  Highlighting ran 1.1 to 1.5 times and the diff layout switch 1.2 to 1.5: the general
+  cost of style and layout in WebKit under these conditions, not one mechanism.
+
+- **Memory and scrolling favor WebKit.** Its web content process used a seventh to a
+  half of Chrome’s renderer footprint, and scrolling the 16 MiB source view cost a few
+  milliseconds a frame against Chrome’s 85 to 164.
+
+- **The height clamp differs by display scale.** On this 2x display Chrome laid out at
+  most 16,777,214 CSS px and WebKit 33,554,428. Neither view came near either limit: the
+  tallest scroll height measured was 11,772,035 px.
+
+- **WebKit drew at 30 frames a second throughout**, Chrome at 120, which adds up to 33
+  ms to every metric that waits for a frame.
+  WebKit throttles animation frames in Low Power Mode, which was on; the machine’s
+  settings were not changed to confirm that this was the cause.
+
+- **WebKit’s clock is coarse.** `performance.now()` advanced in 1 ms steps in WebKit and
+  0.1 ms in Chrome, which is why pairs under 5 ms are not judged.
+
+The brief’s answer to a failed bound is one of three: make the bound engine-specific,
+make a core change that also helps Safari users of the command-line install, or ship
+Option F, Electron. The diagnostics suggest the source view’s failure has a small core
+fix, splitting appended text at parser size; the binary view, highlighting, and the diff
+switch show none. The choice is the owner’s, and this gate leaves it open.
+
+### `window.print()` and Drag and Drop
+
+`run.mjs --checks` scripts both in the app’s web view class and configuration, with the
+app’s navigation policy deciding every navigation.
+The screen was locked for both runs below, so no drag could be made by hand: the drags
+were delivered to the web view’s own drop methods with a file URL on a private
+pasteboard, which is what AppKit delivers for a drag from Finder.
+
+The first run, on the same machine and versions as the measurements and before
+jlevy/metabrowser#359, found:
+
+- **`window.print()` did nothing.** The Print button in a file’s header calls it.
+  WebKit hands it to two private `WKUIDelegate` methods, `_webView:printFrame:` and
+  `_webView:printFrame:pdfFirstPageSize:completionHandler:`, which it asked the delegate
+  for; the app implemented neither, and no public method exists, so no panel, sheet, or
+  modal window opened.
+- **File > Print worked.** The app prints through `printOperation(with:)` run modally
+  for its window. A Markdown document printed as 8 pages of the document alone (Chrome’s
+  print of the same page: 9). Run synchronously with `run()` instead, the same operation
+  printed blank pages until it was stopped at 865 MB, so it has to stay modal.
+  Both engines printed a numbered item’s wrapped lines one word to a line, a defect of
+  the print styles rather than of WebKit.
+- **A dropped folder opened.** `DropAwareWebView` took a folder before WebKit saw it and
+  handed it to the app, which opened it in a window; the page saw no drag events.
+- **A dropped file did nothing.** The page saw `dragenter` and `dragover` carrying
+  `Files` and handled neither, so WebKit’s default was to load the file: it asked to
+  navigate to its `file://` URL, the policy cancelled that, and the page stayed put.
+
+Both failures are fixed in jlevy/metabrowser#359: a user script hands the main frame’s
+`window.print()` to the same print path as File > Print (`mb-j3eu`), and a dragged file
+opens at its page through the app’s open path (`mb-3h2m`). The driver now installs that
+print bridge, `PagePrintRequests`, as the app does, and answers each request with the
+app’s policy. A second run, on the same machine and versions after those fixes, found:
+
+- **The Print button reaches the print path.** Its click sent one request from the main
+  frame of the server’s own page, the policy allowed it, and File > Print’s path printed
+  the document as 8 pages.
+- **A dropped file and a dropped folder both go to the app.** `DropAwareWebView` handed
+  each to `onFileDrop`, where the app opens it, before WebKit saw it; no navigation was
+  asked for, and the page stayed put.
+
+The same check by hand on the built app is
+[Checking Print and Drops by Hand](../apps/macos/README.md#checking-print-and-drops-by-hand)
+in the app’s README.
 
 ## References
 

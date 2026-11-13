@@ -1,6 +1,6 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-11)
+**Date:** 2026-11-10 (last updated 2026-11-12)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -74,9 +74,11 @@ folder. And there is no way yet to build something a user can download.
   ordering, persisted state) live in routes reached through `metab`; the app renders
   them and adds platform behavior (windows, tabs, menus, the Dock, LaunchServices,
   signing).
-- **Modern and native.** Swift 6 with strict concurrency, AppKit, `WKWebView`, SwiftPM,
-  and Apple’s own tools (`codesign`, `notarytool`, `stapler`, `hdiutil`); no third-party
-  runtime dependencies; macOS 15 and later on arm64.
+- **Modern and native.** Swift 6.3 with strict concurrency, AppKit, `WKWebView`,
+  SwiftPM, and Apple’s own tools (`codesign`, `notarytool`, `stapler`, `hdiutil`); no
+  third-party runtime dependencies; macOS 26 and later on arm64. The user set the floor
+  at the newest release on 2026-11-11, so the app can use current APIs without fallbacks
+  for older systems.
 - **Effortlessly fast.** Prefetch what the user plausibly needs next; never show a
   spinner within about 50 ms.
 - **Adapt the sister app, don’t copy Electron.** Keep its release discipline, variants,
@@ -110,15 +112,24 @@ through `metab --api`:
 
 ### Window and Tab Titles
 
-- The visible title shows the short name prominent and bold, then a small bullet and
-  “Metabrowser” in a lighter secondary style.
-  AppKit cannot style part of a system title, so the app hides the system title and
-  draws a native-looking attributed title in the title bar.
-- The window’s plain title is the same text, for the Window menu, Mission Control, the
-  Dock, and accessibility.
+- The visible title shows the folder’s short name alone, bold; the app icon’s mark at
+  the title bar’s trailing end carries the app’s name (`mb-9xbp`). AppKit draws a system
+  title in one style, so the app hides it and draws its own in the title bar.
+- The window’s title is the short name too, for the Window menu, Mission Control, the
+  window switcher, and accessibility, or the full name while another open folder shares
+  the short name. The served page keeps “short name • Metabrowser” as its `<title>`, for
+  a browser’s tab.
 - A native tab shows only the short name; its tooltip shows the full name.
+- The title bar’s trailing end holds the app’s logo, in every window: the app icon’s
+  mark alone, the colored M and B without the icon’s squircle, drawn from the icon
+  masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper tints
+  of the mark’s two hues, so each reads at 4:1 or more.
+  The mark is 13 points tall (`mb-6bfu`), centered on the window buttons’ row, about 9
+  points from the window’s trailing edge, and a link: a click opens the project on
+  GitHub, under a gentle hover (`mb-j441`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
-  window’s represented URL, so the proxy icon and Command-click path menu work.
+  window’s represented URL, so Command-click, right-click, or VoiceOver’s Show Menu on
+  the title opens the path menu.
 
 ### Icon and Brand
 
@@ -168,14 +179,28 @@ One command produces a downloadable release, adapted from the sister app’s pip
   `macos-v<VERSION>` (checked against the file in CI), and the build number is the
   commit count, so shallow clones are refused.
 - **Variants:** every pure development build, local or from a CI run on a branch, pull
-  request, or `main`, is the dev variant (`Metabrowser Dev.app`,
+  request, or `main`, is the dev variant (`build/dev/Metabrowser.app`,
   `io.github.jlevy.metabrowser.dev`, the canary icon, and a `-dev` suffix on any URL
   scheme). Only the release path (`make release`, `make notarize`, or an explicit
   `VARIANT=release` on the command line; a stray environment variable is ignored)
-  produces the release variant (`Metabrowser.app`, `io.github.jlevy.metabrowser`, the
-  regular dark icon). The DMG check refuses a release image with the canary icon or
-  without the published one.
-  Two installed copies therefore never share defaults or a scheme, and a development
+  produces the release variant (`build/release/Metabrowser.app`,
+  `io.github.jlevy.metabrowser`, the regular dark icon).
+  Amended 2026-11-11 at the user’s request: both are named Metabrowser, and the canary
+  icon and the About box’s first line (“Development build” or “Release”, then the
+  version, build, and commit) tell them apart.
+  Amended 2026-11-12 at the user’s request (`mb-d71s`): both keep their files in folders
+  named Metabrowser, server logs in `~/Library/Logs/Metabrowser/`, Apple’s place for
+  them, which Console.app lists, and the saved session in
+  `~/Library/Application Support/Metabrowser/` instead of a folder named by the bundle
+  identifier, so a development build and a release restore the same windows.
+  Their settings and recent folders stay apart by bundle identifier.
+  Files saved by earlier, unreleased builds in `Metabrowser Dev/` or the bundle
+  identifier’s folder are not moved.
+  One name has a cost: the two bundles cannot both sit in `/Applications` under it, so a
+  development build normally runs from `build/dev/`. The app’s README
+  ([Variants](../../../../apps/macos/README.md#variants)) has the details.
+  The DMG check refuses a release image with the canary icon or without the published
+  one. Two installed copies therefore never share defaults or a scheme, and a development
   build is never mistaken for a release.
 - **Signing:** Developer ID with the hardened runtime and a secure timestamp, inside
   out, never `--deep`; the build fails if any entitlement appears, since a `WKWebView`
@@ -241,8 +266,12 @@ user decides to merge it.
 On 2026-11-11 the user asked for the spike to become a full, usable app that meets the
 tbd coding guidelines.
 `mb-s4y1` tracks that milestone.
-It draws its items from Phases 1, 2, and 5 and lands on the spike branch
-(jlevy/metabrowser#341), which merges only on the user’s word.
+It draws its items from Phases 1, 2, and 5. Its work lands as a native GitHub stack on
+the spike, each layer a pull request whose base is the layer below:
+jlevy/metabrowser#341 (the spike, with CI and the review fixes), jlevy/metabrowser#359
+(everyday use), jlevy/metabrowser#361 (setup), jlevy/metabrowser#362 (guidelines and
+robustness), and jlevy/metabrowser#363 (the engine gate’s record).
+None of it merges until the user says.
 
 The steps run in this order, which the beads record as dependencies:
 
@@ -250,15 +279,25 @@ The steps run in this order, which the beads record as dependencies:
    rehearses an ad hoc release with the DMG check, and a gate that keeps `publish.yml`
    to the Python package’s `v<version>` release tags.
    The user approved both for this milestone.
+
 2. **Review fixes** (`mb-o2kn`): every finding of the first review round on #341.
+
 3. **Coding guidelines** (`mb-nns2`): tbd has no Swift guideline, so its
    language-neutral rules apply: general coding and comments, error handling, testing
    and TDD (decision logic in `ShellCore`, with tests), filesystem, release engineering,
    supply chain, and backward compatibility.
+
 4. **Robustness:** health checks before attaching and server stderr written to the log
-   (`mb-1poj`); servers left by a crashed app reaped at the next launch, until host
-   mode’s stdin-EOF exit (`mb-qzny`) replaces that (`mb-hwa9`); and the variant gaps in
-   the sources (`mb-9xl0`).
+   (`mb-1poj`); no server outliving a crashed app (`mb-hwa9`); and the variant gaps in
+   the sources (`mb-9xl0`). The first plan reaped those servers at the next launch until
+   host mode’s stdin-EOF exit (`mb-qzny`) replaced that.
+   Review on jlevy/metabrowser#362 showed that a reaper cannot tie a recorded process id
+   to the process it later signals, so the stdin-EOF exit came first:
+   `metab --exit-on-eof`, a serve-mode flag, stops the server when its stdin closes, and
+   the app starts every server with it and holds the pipe, so the kernel ends each
+   server however the app ends.
+   Host mode keeps its other parts in Phase 3.
+
 5. **Engine gate** (`mb-gvtw`): the WebKit measurement gate the packaging brief sets
    before the Swift shell grows further.
    The large-content cases measured in Chrome (see
@@ -266,17 +305,31 @@ The steps run in this order, which the beads record as dependencies:
    `WKWebView` and recorded beside the Chrome numbers with their method, and
    `window.print()` and drag and drop are checked by hand.
    A failure goes back to the brief’s fallback, Electron, before steps 6 and 7.
+
+   The gate ran on 2026-11-11 and failed; the numbers and method are in
+   [rendering large content](../../../large-content-rendering.md#measured-in-webkit).
+   Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
+   measured cause and a core fix (`mb-551q`, its own pull request to `main`), and the
+   gate reruns under normal conditions after that fix (`mb-76nv`). The binary view’s
+   forced layout is tracked separately (`mb-pzy2`). The gate’s checks also found that
+   the page’s Print button and a dropped file did nothing; jlevy/metabrowser#359 fixed
+   both (`mb-j3eu`, `mb-3h2m`). Steps 6 and 7 went ahead meanwhile; whether the failures
+   that remain after the rerun call for the fallback is the owner’s decision.
+
 6. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
    and the disk-image notice (`mb-3n79`), as Phase 5 describes, and both flows in the
    installation guide (`mb-2hqz`).
+
 7. **Everyday use:** opening a file (`mb-tssz`), recents (`mb-cqxd`), native tabs
    (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents are the list macOS keeps
    through `NSDocumentController`, behind the Dock menu and File > Open Recent; it
    replaces the app’s own list in `UserDefaults`, so the app owns no membership or
    order. Recent roots persisted in `metab` and the switcher over them stay in Phase 4.
+
 8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
    until a round finds nothing new.
+
 9. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and,
    with fresh app settings on the build Mac, run through both setup flows, an old
    `metab`, a launch from the disk image, and every manual check the earlier steps
@@ -295,9 +348,9 @@ Outside the milestone, each for a stated reason:
 
 ### Phase 1: Identity, Titles, Icon, and a Downloadable Build
 
-- [ ] Folder identity model and `GET /api/identity`, with goldens (`mb-n9p6`), reviewed
-  and ready to merge in jlevy/metabrowser#353.
-- [ ] The page title is `<short name> • Metabrowser` (`mb-2agt`), in the same pull
+- [x] Folder identity model and `GET /api/identity`, with goldens (`mb-n9p6`), merged in
+  jlevy/metabrowser#353.
+- [x] The page title is `<short name> • Metabrowser` (`mb-2agt`), in the same pull
   request.
 - [ ] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`).
 - [ ] App icon in the sister app’s style, from its vector originals (`mb-mpm3`).
@@ -384,7 +437,7 @@ The two standard setup flows come first; see the
   (`mb-gvtw`); the broader owner acceptance stays `mb-etqi`.
 - [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`). Each
   installed copy has one updater, and an update replaces the bundle whole.
-- [ ] A clean-account matrix for both flows, on macOS 15 and 26, admin and standard
+- [ ] A clean-account matrix for both flows, on macOS 26 and later, admin and standard
   accounts, with and without the Command Line Tools (`mb-5fp7`).
 - [ ] Optional: a separate bundle id for release-rehearsal builds (`mb-nneo`).
 - [ ] The project-plugin trust spec (`mb-m1mw`).
@@ -448,7 +501,9 @@ The two standard setup flows come first; see the
 - tbd guidelines: `macos-webview-shell-patterns`, `desktop-python-runtime-patterns`,
   `electron-app-development-patterns`
 - Pull requests: jlevy/metabrowser#341 (spike), jlevy/metabrowser#352 (research and this
-  plan), jlevy/metabrowser#353 (folder identity)
+  plan), jlevy/metabrowser#353 (folder identity), jlevy/metabrowser#357 (the v1
+  milestone), and the v1 stack above the spike: jlevy/metabrowser#359,
+  jlevy/metabrowser#361, jlevy/metabrowser#362, and jlevy/metabrowser#363
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
