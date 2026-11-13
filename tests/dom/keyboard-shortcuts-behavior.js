@@ -906,26 +906,27 @@ batched.dispose();
 
   // Beside placement: the badge sits in the nearest anchor, measured from it.
   const header = element(tree, "div", { class: "file-header", "data-kbd-badge-anchor": true });
-  const copy = element(tree, "button", { class: "icon-btn file-header-copy" });
-  const clip = element(tree, "span", { class: "file-header-path" }, copy);
+  // A crumb in the clipping path row, as Up's target for a file is.
+  const crumb = element(tree, "button", { class: "folder-crumb", "data-nav-dir": "" });
+  const clip = element(tree, "span", { class: "file-header-path" }, crumb);
   header.append(clip);
   tree.body.append(header);
   header.rect = { left: 100, top: 40, width: 600, height: 32 };
-  copy.rect = { left: 300, top: 44, width: 24, height: 24 };
+  crumb.rect = { left: 300, top: 44, width: 24, height: 24 };
   targetRegistry.register(
     command({
-      bindings: [{ key: "y" }],
-      copy: { action: "Copy", description: "Copy the path.", hint: "Copy" },
+      bindings: [{ key: "u" }],
+      copy: { action: "Parent folder", description: "Open the parent folder.", hint: "Up" },
       group: "controls",
-      id: "header.copy",
+      id: "header.parent",
       targeted: true,
     }),
   );
-  targetRegistry.attachTarget("header.copy", copy, { placement: "beside" });
+  targetRegistry.attachTarget("header.parent", crumb, { placement: "beside" });
   const besideBadge = header.querySelector(".kbd-badge");
   check(
     "a beside badge mounts in the anchor, outside the clipping row",
-    besideBadge?.parentNode === header && copy.querySelector(".kbd-badge") === null,
+    besideBadge?.parentNode === header && crumb.querySelector(".kbd-badge") === null,
   );
   equal(
     "a beside badge is placed at the target's inline end and center",
@@ -936,11 +937,14 @@ batched.dispose();
     ],
     ["beside", "224px", "16px"],
   );
-  check("a beside target does not become a badge host", !copy.classList.contains("kbd-badge-host"));
-  rejects("an unknown placement is refused", () =>
-    targetRegistry.attachTarget("header.copy", copy, { placement: "over" }),
+  check(
+    "a beside target does not become a badge host",
+    !crumb.classList.contains("kbd-badge-host"),
   );
-  rejects("a target must be an element", () => targetRegistry.attachTarget("header.copy", null));
+  rejects("an unknown placement is refused", () =>
+    targetRegistry.attachTarget("header.parent", crumb, { placement: "over" }),
+  );
+  rejects("a target must be an element", () => targetRegistry.attachTarget("header.parent", null));
   rejects("targeted must be a boolean", () =>
     targetRegistry.register(command({ bindings: [{ key: "q" }], id: "q", targeted: "yes" })),
   );
@@ -1078,6 +1082,101 @@ batched.dispose();
   );
   ranked.detach();
   laterInDocument.remove();
+
+  // ── Situational numbers: 1 to 9 by place on screen, and no more ─────────
+  // One mechanism numbers every situational control: its number is its place among the
+  // live numbered controls in document order, read when a number is pressed or shown, so
+  // the attach order does not matter, a hidden control gives its number up, and a tenth
+  // control has none. No 0, no letter, and no wrap-around.
+  const numberedRan = [];
+  const numberedControls = Array.from({ length: 11 }, (_, index) =>
+    tab(`n${index + 1}`, `Numbered ${index + 1}`),
+  );
+  tree.body.append(...numberedControls);
+  const numberedHandles = [...numberedControls].reverse().map((control) =>
+    targetRegistry.attachNumbered(control, {
+      activate: () => numberedRan.push(control.dataset.tab),
+    }),
+  );
+  const numberedNow = () => targetRegistry.liveNumbers().map((control) => control.dataset.tab);
+  equal("the numbers reach the first nine live controls in document order", numberedNow(), [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+  ]);
+  equal("the cap is nine", shortcuts.NUMBERED_LIMIT, 9);
+  check("9 runs the ninth control", press("9"));
+  check("0 is no number", !press("0"));
+  check("Shift+1, typing !, still means 1", press("!", { code: "Digit1", shiftKey: true }));
+  equal("each number ran its place's control", numberedRan.splice(0), ["n9", "n1"]);
+  numberedControls[1].hidden = true;
+  equal("a hidden control gives its number up, and the tenth moves into 9", numberedNow(), [
+    "n1",
+    "n3",
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8",
+    "n9",
+    "n10",
+  ]);
+  check("2 now reaches the third control", press("2"));
+  equal("the number follows the place", numberedRan.splice(0), ["n3"]);
+  const run = targetRegistry.present("numbered")?.bindings;
+  equal(
+    "the numbers are presented as one positional run",
+    [run?.visible, run?.range, run?.spoken, run?.ariaKeyshortcuts],
+    [["1", "9"], true, "1 to 9", ""],
+  );
+  const onThisScreen = targetRegistry
+    .snapshot("help", { includeInactive: true })
+    .find((group) => group.id === "numbered");
+  equal(
+    "Help gives the numbers one row and says they are not fixed",
+    [onThisScreen?.label, onThisScreen?.context, onThisScreen?.commands.length],
+    [
+      "On this screen",
+      "The numbers are not fixed: each screen numbers its own links and actions.",
+      1,
+    ],
+  );
+  const runHost = element(tree, "span");
+  targetRegistry.appendBinding(runHost, run);
+  equal(
+    "a run renders its two ends joined by a dash, spoken as one phrase",
+    runHost.childNodes.map((node) => node.textContent),
+    ["1 to 9", "1", "–", "9"],
+  );
+  check(
+    "a numbered control carries no aria-keyshortcuts: its number is not its own",
+    numberedControls.every((control) => !control.hasAttribute("aria-keyshortcuts")),
+  );
+  targetRegistry.setRevealed(true);
+  equal(
+    "while revealed the first nine live controls carry their numbers, and no other",
+    numberedControls.map((control) => control.querySelector(".kbd-badge")?.textContent ?? null),
+    ["1", null, "2", "3", "4", "5", "6", "7", "8", "9", null],
+  );
+  targetRegistry.setRevealed(false);
+  rejects("a numbered control needs an activation", () =>
+    targetRegistry.attachNumbered(numberedControls[0], {}),
+  );
+  for (const handle of numberedHandles) {
+    handle.detach();
+    handle.detach();
+  }
+  check("with none numbered, the numbers leave Help", targetRegistry.present("numbered") === null);
+  check("and 1 is left to the browser", !press("1"));
+  for (const control of numberedControls) {
+    control.remove();
+  }
 
   stagedHandle.detach();
   targetRegistry.dispose();

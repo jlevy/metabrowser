@@ -28,7 +28,7 @@
   // only while Shift is held, so the cap targets 100% zoom. Safari's rows are not yet
   // measured.
   const REVEAL_STRIP_MAX_ITEMS = 7;
-  /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
+  /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, range?: boolean, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
    * @typedef {object} HelpCommandPresentation
