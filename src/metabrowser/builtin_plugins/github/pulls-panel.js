@@ -237,7 +237,8 @@ export function describeRow(row, repository) {
   const headLabel = rowHead(row, repository);
   const baseRef = text(row.base_ref);
   const headRef = text(row.head_ref);
-  const refs = `${baseRef} ← ${headLabel}`;
+  // Source → target, as `mb.mergeRefs` draws it (docs/design-system.md, "Merge Direction").
+  const refs = `${headLabel} → ${baseRef}`;
   return {
     number: row.number,
     href: `/pull/${row.number}`,
@@ -2881,11 +2882,11 @@ export function mountPullsPanel(container, ctx, mb) {
       " · ",
       authorLabel(row.author, row.avatar, "github-pulls-author"),
       " · ",
-      h("span", { class: "github-pulls-refs" }, [
-        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
-        " ← ",
-        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
-      ]),
+      mb.mergeRefs(
+        { name: row.headRef, label: row.headLabel },
+        { name: row.baseRef },
+        { kind: "remote", copy: "sibling" },
+      ),
     ]);
   }
 

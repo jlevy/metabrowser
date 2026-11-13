@@ -1482,6 +1482,83 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert "font-weight" not in github[number], number
 
 
+# A string literal on one line of code: double-quoted, single-quoted, or a template.
+_JS_LITERAL = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\\n]|\\.)*`""")
+# A literal that is, or ends or begins with, a bare "into" or "from": the joint of
+# "into <base> from <head>" around a chip.
+_MERGE_JOINT = re.compile(r"(?:^|\s|})(?:into|from)\s*$|^\s*(?:into|from)(?:\s|\$|$)")
+
+
+def _code_literals(source: str) -> list[str]:
+    """The string literals of *source*'s code lines, with comment lines left out."""
+
+    code = (line for line in source.splitlines() if not line.lstrip().startswith(("//", "*", "/*")))
+    return [literal[1:-1] for line in code for literal in _JS_LITERAL.findall(line)]
+
+
+def test_merges_read_source_to_target_in_one_notation() -> None:
+    """Every merge reads source → target, through `mergeRefs` ("Merge Direction")."""
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Merge Direction" in doc
+    assert "test_merges_read_source_to_target_in_one_notation" in doc
+    # One writer: the arrow, its accessible name, and the left-to-right island are the SDK's.
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    assert 'const MERGE_ARROW_NAME = "merges into";' in views
+    assert 'arrow.setAttribute("role", "img");' in views
+    assert 'arrow.setAttribute("aria-label", MERGE_ARROW_NAME);' in views
+    assert 'arrow.textContent = " → ";' in views
+    assert 'group.setAttribute("dir", "ltr");' in views
+    assert re.search(
+        r"group\.append\(\s*chip\(source, \"merge-refs-source\"\),\s*arrow,\s*"
+        r"chip\(target, \"merge-refs-target\"\),?\s*\)",
+        views,
+    ), "the group is the source, the arrow, then the target"
+    # Both pages draw their merge with it, head first, and place no branch chip of their own.
+    for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
+        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
+        assert re.search(
+            rf"mb\.mergeRefs\(\s*\{{\s*name:\s*{side}\.headRef\b[^}}]*\}},\s*"
+            rf"\{{\s*name:\s*{side}\.baseRef\b",
+            source,
+        ), f"{name} does not draw its merge head → base through mergeRefs"
+        assert "mb.refChip(" not in source, f"{name} places a branch chip outside its merge"
+        assert "←" not in source, f"{name} writes a merge target ← source"
+    # Nothing a page says joins chips with "into … from …", nor writes the left arrow.
+    scripts = [
+        path
+        for root in (STATIC, REPO_ROOT / BUILTIN_PLUGINS)
+        for path in root.rglob("*.js")
+        if "vendor" not in path.parts
+    ]
+    joints = [
+        f"{path.name}: {literal!r}"
+        for path in scripts
+        for literal in _code_literals(path.read_text(encoding="utf-8"))
+        # The arrow's own accessible name ends in "into" and joins nothing.
+        if literal != "merges into"
+        and (_MERGE_JOINT.search(literal) or re.search(r"\binto\b.*\bfrom\b", literal))
+    ]
+    assert not joints, joints
+    # The arrow is a connector, in muted ink at the chips' size; the names give way first.
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    group = shell[".merge-refs"]
+    assert group["display"] == "inline-grid"
+    assert group["grid-template-columns"] == (
+        "minmax(0, max-content) max-content minmax(0, max-content)"
+    ), "each name may shrink to nothing and the arrow never shrinks"
+    assert group["font-size"] == "var(--ui-small-font-size)"
+    assert shell[".merge-refs > .git-ref"]["font-size"] == "var(--ui-small-font-size)"
+    assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
+    # The Pulls tab's muted line gives the merge the room it has left, as a flex line; a line
+    # of text with an ellipsis loses the arrow in Chrome when it overflows.
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    meta = github[".github-pulls-meta"]
+    assert (meta["display"], meta["white-space"]) == ("flex", "pre")
+    assert "text-overflow" not in meta
+    assert github[".github-pull-state-details"]["min-width"] == "0"
+
+
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     """What "The Pull Request Page" says it reuses is what its markup says."""
 
@@ -1491,7 +1568,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "test_the_pull_request_page_carries_the_shells_primitives" in doc
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
-    assert "mb.refChip(" in page and 'kind: "remote"' in page
+    assert "mb.mergeRefs(" in page and 'kind: "remote"' in page
     # One age, not a timestamp at each call site.
     assert "mb.formatAge(" in page
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"

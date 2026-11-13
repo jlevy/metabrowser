@@ -36,10 +36,14 @@
   align-items: center;
   gap: 4px 8px;
 }
-/* A branch takes the remote ref chip, smaller than the actor and action beside it. */
+/* A branch takes the remote ref chip, smaller than the actor and action beside it: the
+   merge group (`mb.mergeRefs`) sets that size. The details may be narrower than the merge,
+   so its chips ellipsize in a narrow pane instead of running past the column. */
 .github-pull-meta .git-ref {
-  font-size: var(--ui-small-font-size);
   line-height: 20px;
+}
+.github-pull-state-details {
+  min-width: 0;
 }
 .github-pull-quiet {
   color: var(--muted);
@@ -512,8 +516,7 @@
 .github-pulls-row > :is(.github-pulls-title, .github-pulls-age) {
   align-self: baseline;
 }
-.github-pulls-title,
-.github-pulls-meta {
+.github-pulls-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -525,20 +528,24 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
+/* The muted line is a flex line so the branches take the room left after the number, the
+   stack, and the author, and their chips ellipsize inside it with the arrow kept
+   (docs/design-system.md, "Merge Direction"). A line of text with `text-overflow: ellipsis`
+   would not do: when it overflows, Chrome hides the merge's arrow and clips the last chip
+   at the edge. `pre` keeps the spaces around each `·`, which a flex line trims from its
+   text. */
 .github-pulls-meta {
+  display: flex;
+  align-items: baseline;
   grid-column: 3 / -1;
+  overflow: hidden;
+  white-space: pre;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
 .github-pulls-number {
   color: var(--text);
   font-size: var(--nav-font-size);
-}
-.github-pulls-refs {
-  color: var(--git-ref-remote);
-}
-.github-pulls-refs {
-  font-size: var(--ui-small-font-size);
 }
 .github-pulls-stack {
   display: inline-flex;
@@ -782,15 +789,4 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-}
-.github-pulls-refs {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  vertical-align: middle;
-}
-.github-pulls-refs .git-ref {
-  flex-shrink: 1;
-  font-size: var(--ui-small-font-size);
 }

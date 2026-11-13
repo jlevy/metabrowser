@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A merge between two branches reads source → target, left to right, everywhere it
+  appears. The Pulls list shows `claude/x → main` instead of `main ← claude/x`, and a
+  pull request’s header reads “octo wants to merge 1 commit: wip → topic” instead of
+  “wants to merge 1 commit into topic from wip”.
+  The arrow is named “merges into” for screen readers, stays left to right in a
+  right-to-left page, and stays in a narrow Pulls row, whose branch names now shorten
+  with an ellipsis; the arrow used to disappear from a row too narrow for its line.
+  Plugins draw the same notation with the new SDK helper
+  `mergeRefs(source, target, options)`; see
+  [Merge Direction](docs/design-system.md#merge-direction).
+
 - Branch chips are blue.
   A pull request’s base and head, the branches in the Pulls list, a mirror’s branches,
   and the branch selector no longer share the purple of a merged pull request.

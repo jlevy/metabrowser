@@ -1209,25 +1209,44 @@ async function paintStory(panel, selection = false) {
     const authorLabel = identity.childNodes.find((node) =>
       node.classList?.contains("github-pulls-author"),
     );
-    const branches = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-refs"),
-    );
+    const branches = metadata.childNodes.find((node) => node.classList?.contains("merge-refs"));
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-    assert(branches.textContent.includes(" ← "), "branches keep their own smaller semantic span");
-    const chips = branches.childNodes.filter((node) => node.classList?.contains("git-ref"));
-    assert(chips.length === 2, "exactly two structured chips, including literal arrow refs");
-    assert(chips[0].dataset.refCopy === "release/←base", "raw base ref remains intact");
+    // Merge Direction: the shared group, source → target, left to right, whatever the refs say.
+    const [source, arrow, target] = branches.childNodes;
+    assert(branches.getAttribute("dir") === "ltr", "the merge reads left to right in any page");
     assert(
-      chips[1].dataset.refCopy === "feature/←<literal>",
+      branches.textContent === "fork:feature/←<literal> → release/←base",
+      "the head, the shared arrow, then the base",
+    );
+    assert(
+      arrow.classList.contains("merge-refs-arrow") &&
+        arrow.getAttribute("role") === "img" &&
+        arrow.getAttribute("aria-label") === "merges into",
+      "the arrow is named, so a reader hears the head merge into the base",
+    );
+    assert(
+      arrow.dataset.tipText === "fork:feature/←<literal> merges into release/←base",
+      "the arrow's tooltip states the whole merge a narrow row may cut short",
+    );
+    const chips = [source, target];
+    assert(
+      chips.every((chip) => chip.classList.contains("git-ref")) &&
+        source.classList.contains("merge-refs-source") &&
+        target.classList.contains("merge-refs-target"),
+      "exactly two structured chips, including literal arrow refs",
+    );
+    assert(target.dataset.refCopy === "release/←base", "raw base ref remains intact");
+    assert(
+      source.dataset.refCopy === "feature/←<literal>",
       "copy omits fork display qualification",
     );
     assert(
-      chips[1].textContent === "fork:feature/←<literal>",
+      source.textContent === "fork:feature/←<literal>",
       "head label is literal and owner-qualified",
     );
 

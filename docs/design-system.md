@@ -964,6 +964,48 @@ focus before a pane drag can clip its focused button.
 Place copy controls beside a primary link or button rather than nesting interactive
 controls. Keep local, remote, tag, trunk and HEAD semantics when rendering a chip.
 
+### Merge Direction
+
+A merge between two branches always reads **source → target**, left to right: the branch
+whose commits merge, an arrow, and the branch they merge into.
+For a pull request that is its head, then its base: `claude/x → main`.
+
+Reading order is the direction of change, so the eye follows the commits.
+Never write “into … from …”, which names the target first and makes the reader reverse
+the sentence, and never `target ← source`. A sentence keeps its verbs and gives the
+branches as the notation: “octo wants to merge 1 commit: wip → topic”, “octo merged 1
+commit: guide-more → topic”.
+A rename in a diff reads the same way, `old → new`.
+
+| Part | Rule |
+| --- | --- |
+| Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
+| Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the chips’ `--ui-small-font-size`. The spaces around it are text, so a copied selection reads `wip → topic` |
+| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
+| Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
+| Narrow places | The group is a three-column grid in which a name may shrink to nothing and the arrow never shrinks. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip |
+
+The Pulls tab’s muted line is a flex line so the merge gets the room the number and the
+author leave. Set as a line of text with `text-overflow: ellipsis`, an overflowing line
+would lose the arrow in Chrome.
+
+The rendered group, for a pull request from `wip` into `topic`:
+
+```html
+<span class="merge-refs" dir="ltr">
+  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
+  <span class="merge-refs-arrow" role="img" aria-label="merges into"
+        data-tip-text="wip merges into topic"> → </span>
+  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
+</span>
+```
+
+It appears in the header of [the pull request page](#the-pull-request-page) and on each
+row of [the Pulls tab](#the-pulls-tab); a new surface that shows a merge calls
+`mergeRefs`. `test_merges_read_source_to_target_in_one_notation` in
+`tests/test_design_vocabulary.py` holds that both call it head first, that no “into …
+from …” phrasing or `←` remains in them, and the arrow’s name, direction, and tokens.
+
 ### File Change Status
 
 File-summary letters share one muted semantic palette across Git history, commit
@@ -1174,7 +1216,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
-| Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
+| Head and base branch | `mb.mergeRefs`, head → base after the verb: “forker wants to merge 2 commits: forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): the [ref chip](#branch-chips) at `--ui-small-font-size`, smaller than the actor and action, and the one arrow the list uses too |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
@@ -1227,7 +1269,8 @@ hover, focus, selected, or current state changes them.
 The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
-text ink. Branch names use the small shared remote-ref chip.
+text ink. Branch names use the small shared remote-ref chip, head → base, as
+[Merge Direction](#merge-direction) sets them.
 Known native stack membership uses a small Layers icon and bold position on that line;
 the tooltip names the stack.
 Their shared repository snapshot is indexed once by PR number; rows make no stack
@@ -1284,7 +1327,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink |
 | Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
-| Base and head | `--ui-small-font-size`, remote-ref ink | Compact contextual chips below the title’s primary size |
+| Head and base | `mb.mergeRefs`, head → base, last on the muted line | Compact contextual chips below the title’s primary size; the line gives them the room left and they ellipsize there, keeping the arrow ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
 | Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
