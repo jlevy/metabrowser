@@ -23,22 +23,31 @@ final class TitleBarMarkController: NSTitlebarAccessoryViewController {
 /// hand, and a click that opens the project's page. A press that moves a few points
 /// becomes a window drag instead, as on the rest of the title bar, so a click never
 /// moves the window and a drag never opens the page.
+///
+/// What each event means is `TitleBarMarkInteraction`'s, tested in `ShellCore`; this view
+/// feeds it AppKit's events and carries out the effects it returns, through `openPage`
+/// and `dragWindow`.
 final class TitleBarMarkButton: NSView {
-    /// How far a press moves before it is a drag: 3 points, as the title view counted for
-    /// its folder drag.
-    private static let dragDistance: CGFloat = 3
-
     private let mark = TitleBarMarkImageView()
     private var trackingArea: NSTrackingArea?
-    private var press: NSEvent?
+    private var interaction = TitleBarMarkInteraction() {
+        didSet {
+            if interaction.isHovered != oldValue.isHovered || interaction.isPressed != oldValue.isPressed {
+                needsDisplay = true
+            }
+        }
+    }
+    /// The press a drag starts from.
+    private var pressEvent: NSEvent?
+    /// Opens the project's page in the default browser.
+    var openPage: () -> Void = { NSWorkspace.shared.open(ProjectLinks.repository) }
+    /// Drags the window from a mouse-down event, as the title bar does.
+    var dragWindow: (NSEvent) -> Void = { $0.window?.performDrag(with: $0) }
+
     /// While the pointer is over the highlight's area, in a key window.
-    private(set) var isHovered = false {
-        didSet { if isHovered != oldValue { needsDisplay = true } }
-    }
-    /// While a press that began on the mark is held.
-    private var isPressed = false {
-        didSet { if isPressed != oldValue { needsDisplay = true } }
-    }
+    var isHovered: Bool { interaction.isHovered }
+    /// While a press that may still open the page is held.
+    var isPressed: Bool { interaction.isPressed }
 
     init() {
         let layout = TitleBarMarkLayout(markAspectRatio: TitleBarMarkImageView.aspectRatio, barHeight: 32)
@@ -97,16 +106,16 @@ final class TitleBarMarkButton: NSView {
         trackingArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseEntered(with event: NSEvent) { interaction.pointerEntered() }
+    override func mouseExited(with event: NSEvent) { interaction.pointerExited() }
     override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     /// The tracking area stops reporting when the window resigns key, so the highlight
-    /// would stay lit; it goes out then, and when the app resigns active.
+    /// would stay lit; it goes out then, and when the app resigns active, and a press held
+    /// meanwhile opens nothing.
     @objc private func deactivated(_ notification: Notification) {
-        isHovered = false
-        isPressed = false
-        press = nil
+        interaction.deactivated()
+        pressEvent = nil
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -136,37 +145,25 @@ final class TitleBarMarkButton: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        press = event
-        isPressed = true
+        pressEvent = event
+        interaction.pressed(at: event.locationInWindow)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let start = press else { return }
-        let dx = event.locationInWindow.x - start.locationInWindow.x
-        let dy = event.locationInWindow.y - start.locationInWindow.y
-        guard dx * dx + dy * dy >= Self.dragDistance * Self.dragDistance else { return }
-        press = nil
-        isPressed = false
-        window?.performDrag(with: start)
+        guard let start = pressEvent, interaction.moved(to: event.locationInWindow) == .drag else { return }
+        pressEvent = nil
+        dragWindow(start)
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer {
-            press = nil
-            isPressed = false
-        }
-        guard press != nil, placement.highlight.contains(convert(event.locationInWindow, from: nil)) else { return }
-        open()
+        pressEvent = nil
+        let inside = placement.highlight.contains(convert(event.locationInWindow, from: nil))
+        if interaction.released(inside: inside) == .open { openPage() }
     }
 
     override func accessibilityPerformPress() -> Bool {
-        open()
+        if interaction.accessibilityPressed() == .open { openPage() }
         return true
-    }
-
-    private func open() {
-        isHovered = false
-        NSWorkspace.shared.open(ProjectLinks.repository)
     }
 }
 

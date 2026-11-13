@@ -128,8 +128,8 @@ through `metab --api`:
   points from the window’s trailing edge, and a link: a click opens the project on
   GitHub, under a gentle hover (`mb-j441`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
-  window’s represented URL, so Command-click or right-click on the title opens the path
-  menu.
+  window’s represented URL, so Command-click, right-click, or VoiceOver’s Show Menu on
+  the title opens the path menu.
 
 ### Icon and Brand
 

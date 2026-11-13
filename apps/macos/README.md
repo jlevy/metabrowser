@@ -919,7 +919,8 @@ Terminal launch.
   give the full name and kind (`~/wrk/github/fdu · Local folder`). The page’s `<title>`,
   `fdu • Metabrowser`, names the page in a browser’s tab, where nothing else says
   Metabrowser; the app does not use it.
-  Command-click or right-click on a local folder’s title opens its path menu.
+  Command-click, right-click, or VoiceOver’s Show Menu on a local folder’s title opens
+  its path menu.
 - **Mark:** the app icon’s mark alone, the colored M and B without the icon’s dark
   squircle, stands at the title bar’s trailing end in every folder window, whether it
   shows a page or the status view.
@@ -1179,12 +1180,18 @@ Measured on macOS 26.5:
   key or the app resigns active.
   To assistive apps the mark is a button labeled “Metabrowser on GitHub”, whose help
   names the page and whose press opens it; its image is not an element.
+  What each pointer event means, a click, a drag, a release outside, a deactivation, is
+  `TitleBarMarkInteraction` in `ShellCore`, tested event by event; the button feeds it
+  AppKit’s events and carries out the effects it returns.
 - **No proxy icon.** AppKit drops the proxy icon when a leading accessory is present, so
   a folder’s window has none, and the folder can no longer be dragged from the title
   bar: the mark, which stood in for the proxy icon until it moved to the trailing end,
   now links to the project instead.
   Command-click or right-click on the title opens the folder’s path menu, from
-  `representedURL`; a cached mirror’s title has none.
+  `representedURL`, and so does VoiceOver’s Show Menu: the title view is the title’s
+  accessibility element, static text reading the short name with the full name as help,
+  and offers Show Menu only for a local folder.
+  A cached mirror’s title has no path menu.
 - **It behaves like a system title.** The title dims when its window is not the main
   window of the active app (the tertiary label color, which an inactive system title
   measured close to), and AppKit dims the mark with it.

@@ -57,3 +57,75 @@ import Testing
         #expect(rtl.mark.minY == ltr.mark.minY)
     }
 }
+
+@Suite struct TitleBarMarkInteractionTests {
+    private let inside = CGPoint(x: 680, y: 16)
+
+    @Test func aPressReleasedInsideOpensThePageOnce() {
+        var mark = TitleBarMarkInteraction()
+        mark.pointerEntered()
+        mark.pressed(at: inside)
+        #expect(mark.isPressed)
+        #expect(mark.moved(to: CGPoint(x: inside.x + 1, y: inside.y + 1)) == nil)  // a tremor is still a click
+        #expect(mark.released(inside: true) == .open)
+        #expect(!mark.isPressed && !mark.isHovered)
+        // A second release, with no press, opens nothing more.
+        #expect(mark.released(inside: true) == nil)
+    }
+
+    @Test func anAccessibilityPressOpensThePageOnce() {
+        var mark = TitleBarMarkInteraction()
+        #expect(mark.accessibilityPressed() == .open)
+        #expect(mark.released(inside: true) == nil)
+    }
+
+    @Test func aReleaseOutsideTheCapsuleOpensNothing() {
+        var mark = TitleBarMarkInteraction()
+        mark.pressed(at: inside)
+        #expect(mark.released(inside: false) == nil)
+        #expect(!mark.isPressed)
+    }
+
+    @Test func aPressThatMovesThreePointsDragsAndNeverOpens() {
+        var mark = TitleBarMarkInteraction()
+        mark.pressed(at: inside)
+        #expect(mark.moved(to: CGPoint(x: inside.x + 2.9, y: inside.y)) == nil)
+        #expect(mark.moved(to: CGPoint(x: inside.x + 3, y: inside.y)) == .drag)
+        // The drag is reported once, and its release opens nothing, back inside or not.
+        #expect(mark.moved(to: CGPoint(x: inside.x + 20, y: inside.y)) == nil)
+        #expect(mark.released(inside: true) == nil)
+        // Diagonally, the distance counts, not either axis alone.
+        mark.pressed(at: inside)
+        #expect(mark.moved(to: CGPoint(x: inside.x + 2.2, y: inside.y - 2.2)) == .drag)
+    }
+
+    @Test func deactivationMidPressOpensNothing() {
+        var mark = TitleBarMarkInteraction()
+        mark.pointerEntered()
+        mark.pressed(at: inside)
+        mark.deactivated()
+        #expect(!mark.isPressed && !mark.isHovered)
+        #expect(mark.released(inside: true) == nil)
+    }
+
+    @Test func aFirstClickInAWindowThatIsNotKeyOpensOnce() {
+        // The key-window tracking area reports no hover there: the press comes unlit.
+        var mark = TitleBarMarkInteraction()
+        #expect(!mark.isHovered)
+        mark.pressed(at: inside)
+        #expect(mark.released(inside: true) == .open)
+        #expect(mark.released(inside: true) == nil)
+    }
+
+    @Test func theHoverGoesOutOnExitAndOnDeactivation() {
+        var mark = TitleBarMarkInteraction()
+        mark.pointerEntered()
+        #expect(mark.isHovered)
+        mark.pointerExited()
+        #expect(!mark.isHovered)
+        // Resigning key and resigning active both reach `deactivated`.
+        mark.pointerEntered()
+        mark.deactivated()
+        #expect(!mark.isHovered)
+    }
+}

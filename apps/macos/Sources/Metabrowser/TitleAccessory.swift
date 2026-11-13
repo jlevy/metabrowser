@@ -51,6 +51,10 @@ final class TitleBarTitleView: NSView {
     private let scratch = NSTextField(labelWithString: "")
     private var title: WindowTitle?
     private var url: URL?
+    /// Shows the path menu: pops it up under the title.
+    var presentPathMenu: (NSMenu, NSPoint, NSView) -> Void = { menu, point, view in
+        menu.popUp(positioning: menu.items.first, at: point, in: view)
+    }
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
@@ -61,6 +65,13 @@ final class TitleBarTitleView: NSView {
         }
         label.cell?.truncatesLastVisibleLine = true
         addSubview(label)
+        // This view is the title's accessibility element, static text that reads the
+        // title, so it can offer the path menu as VoiceOver's Show Menu; the label, and
+        // the cell that would stand for it, are not elements.
+        label.setAccessibilityElement(false)
+        label.cell?.setAccessibilityElement(false)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
     }
 
     @available(*, unavailable)
@@ -70,8 +81,25 @@ final class TitleBarTitleView: NSView {
         self.title = title
         self.url = url
         toolTip = title.subtitle
+        setAccessibilityValue(title.text)
+        setAccessibilityHelp(title.subtitle)
         updateWidth()
         needsLayout = true
+    }
+
+    // MARK: - Accessibility
+
+    /// VoiceOver's Show Menu opens a local folder's path menu, as Command-click does.
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard url != nil else { return false }
+        showPathMenu()
+        return true
+    }
+
+    /// Only a local folder's title offers Show Menu: a cached mirror's has no path menu.
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(accessibilityPerformShowMenu) { return url != nil }
+        return super.isAccessibilitySelectorAllowed(selector)
     }
 
     // MARK: - Layout
@@ -214,7 +242,7 @@ final class TitleBarTitleView: NSView {
             menu.addItem(item)
         }
         let anchor = NSPoint(x: label.frame.minX - 10, y: label.frame.maxY + 4)
-        menu.popUp(positioning: menu.items.first, at: anchor, in: self)
+        presentPathMenu(menu, anchor, self)
     }
 
     @objc private func openPathMenuItem(_ item: NSMenuItem) {
