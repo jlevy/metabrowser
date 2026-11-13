@@ -907,10 +907,17 @@ def test_branch_chips_scale_with_their_text() -> None:
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     section = doc.split("#### One Ratio", 1)[1].split("\n#### ", 1)[0]
     assert "test_branch_chips_scale_with_their_text" in section
-    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    # One ratio, defined once for both themes, and a size that is that ratio in em.
-    assert styles.count("--git-ref-font-scale:") == 1
-    assert styles.count("--git-ref-font-size:") == 1
+    # One ratio, defined once for both themes, and a size that is that ratio in em. Only the
+    # core :root defines either token: a rule anywhere else, a plugin's included, that set
+    # `--git-ref-font-size: 12px` would put back one size for every chip inside it.
+    for token in ("--git-ref-font-scale", "--git-ref-font-size"):
+        defined = [
+            (_sheet_name(sheet), selector)
+            for sheet in _stylesheets()
+            for selector, declarations in _rules_of(sheet)
+            if token in declarations
+        ]
+        assert defined == [("styles.css", ":root")], f"{token} is defined at {defined}"
     root = dict(_rules_of(STATIC / "styles.css"))[":root"]
     scale = float(root["--git-ref-font-scale"])
     assert 0.8 <= scale < 1, "a chip is slightly smaller than its text, not larger or equal"
@@ -927,10 +934,9 @@ def test_branch_chips_scale_with_their_text() -> None:
     assert chip["padding"] == "0 5px"
     assert chip["border-radius"] == "var(--radius-tag)"
     assert chip["max-width"] == "22em", "the width bound scales with the chip"
-    sheets = [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/styles.css"))]
     restyled = []
     sized = []
-    for sheet in sheets:
+    for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
             classes = set(re.findall(r"\.([\w-]+)", _compounds(selector)[-1]))
             where = f"{sheet.parent.name}/{sheet.name}: {selector}"
@@ -1080,7 +1086,8 @@ def test_git_commit_summary_is_one_component() -> None:
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
-    # Its ref chips keep their one size: test_branch_chips_have_one_size.
+    # Its ref chips take their size from this text, by the chip ratio, and no rule here
+    # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
     # The revision is the documented exception: monospace at body size
     # renders optically larger than the sans beside it, so the sha sits
@@ -2032,7 +2039,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         ), f"{name} does not draw its merge head → base through mergeRefs"
         assert not re.search(r"\brefChip(?:Html)?\(", source), f"{name} draws a ref chip itself"
         assert "←" not in source, f"{name} writes a merge target ← source"
-    # The arrow is a connector, in muted ink at the chips' size; the names give way first,
+    # The arrow is a connector, in muted ink at the size of the sentence it sits in, which
+    # the group inherits (each chip is slightly smaller); the names give way first,
     # and never past both chips' frames, an ellipsis in each, and the arrow.
     shell = dict(_rules_of(STATIC / "styles.css"))
     group = shell[".merge-refs"]
