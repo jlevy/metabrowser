@@ -154,6 +154,22 @@ the metric it named:
 A round that improves its own metric and quietly costs a paint or twenty pixels is not
 an improvement, and exp-010 is the worked example of finding that out six rounds late.
 
+### Where a round’s files live
+
+Nothing a round depends on lives in a transient location, other than what rerunning a
+command recreates, such as the `/tmp/mb-at-*` worktrees and `$ENVS` in the recipes
+below. [Durable Storage](../../docs/development.md#durable-storage) says where each kind
+of file and the series lock belong, and `tests/test_experiment_storage.py` checks the
+records. For a round, that means:
+
+- **The protocol is committed** beside the record as `exp-NNN-protocol.txt` before the
+  first timed run, and each amendment, with its timestamp, before the measurement it
+  governs.
+- **The record names it** in `method.protocol` with its sha256. The file is not edited
+  after the round is recorded; a later correction goes in the record.
+- **Samples and analysis scripts are committed** beside the record, named in
+  `method.record` or linked from the body.
+
 ## Running a round
 
 ```shell

@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Commits tab loads in a large repository that keeps changing.
+  Each change asked every open page to recount the whole tree for the tally above the
+  Files tree, one request per change, and in the macOS app those requests took every
+  connection, so Commits waited behind them: 7.6 s with one page open, more than 90 s
+  with four. A page now asks one count at a time, waits longer between counts the longer
+  the last one took, and asks none while it is hidden or while another tab is in front
+  of Files. The count itself is about four times faster.
+  A failed check for a repository is retried instead of leaving the page without a
+  Commits tab, and no longer removes a Commits tab already shown.
+
 - The pull requests you scroll to in the Pulls tab are prepared at once, even while the
   list is preparing others in the background.
   The server prepared one batch at a time per repository, so a batch you were looking at
@@ -230,7 +240,9 @@ All notable changes to Metabrowser are documented here.
   tree’s notices and **Retry** stay while something is offered.
   A refresh that finds no changed files is offered as **Show the updated list (no
   files)**; the files shown no longer stay, with nothing to press, under “No changed
-  files.”
+  files.” A list Metabrowser no longer holds is offered as **Show the updated list (not
+  listed)**, while the files shown stay as they were last listed and are not covered by
+  “Listing changed files…”.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

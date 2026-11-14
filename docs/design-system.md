@@ -1513,8 +1513,15 @@ tree’s line, or floating over its top when the line is hidden, so drawn rows n
 without input. A refresh that lists no files is offered as **Show the updated list (no
 files)**, and the rows drawn meanwhile keep no line saying there are none; once the
 reader asks for the empty list, the tree says “No changed files.”
-**An offer stands in only for a change to drawn rows.** An expanded tree with none drawn
-never shows one. `test_a_tree_opens_once_and_never_grows_without_input` holds both.
+A read or a refresh that answers that the server no longer holds the list is offered as
+**Show the updated list (not listed)**: the drawn rows stay as the files last listed,
+breathing while the list is listed again rather than sitting under the loading line.
+The offer says what the tree holds, not what the latest answer says, so it stands across
+a refresh’s answer that carries no rows, and it is withdrawn once a read brings back the
+same files.
+**An offer stands in only for a change to drawn rows.** An expanded tree with
+none drawn never shows one.
+`test_a_tree_opens_once_and_never_grows_without_input` holds both.
 
 The tree draws a viewport window, keeping its focused anchor mounted.
 Counts name the files fetched and say when the list is partial or capped; the rows do

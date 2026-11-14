@@ -127,6 +127,12 @@
   // Released when that view is relinquished or disposed. `token` names the mount without
   // holding its DOM, which is all a confirmation still on its way keeps.
   /** @typedef {{token: number, revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
+  /**
+   * What the repository gate answered: a repository, an answer that the root is not
+   * one, or no answer at all.
+   *
+   * @typedef {{status: "repo", info: MetabrowserGitRepoInfo} | {status: "not-repo"} | {status: "failed"}} RepoRead
+   */
   /** @type {MountedSummary | null} */
   let mountedSummary = null;
   let summaryMounts = 0;
@@ -187,6 +193,17 @@
   let landingGeneration = 0;
   /** @type {{generation: number, pending: ReturnType<typeof readRepoInfo>} | null} */
   let repoInfoRead = null;
+  // Discovery asks again when the repository read fails, starting here and doubling to
+  // the cap: a refused or timed-out answer is not "no repository", and a page that
+  // gave up on it never showed Commits.
+  const REPO_RETRY_FIRST_MS = 1000;
+  const REPO_RETRY_MAX_MS = 30000;
+  let repoRetryMs = REPO_RETRY_FIRST_MS;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let repoRetryTimer = null;
+  // Which discovery a scheduled retry belongs to. Teardown retires it, so a retry that
+  // fires anyway cannot register a panel the page has given up.
+  let discoveryGeneration = 0;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -414,10 +431,11 @@
   // ── Data ───────────────────────────────────────────────────
 
   /**
-   * Fetch the repository gate. A failed request returns null so init or
-   * the visible panel can retry without registering a broken surface.
+   * Fetch the repository gate. `failed` is a request that got no answer (a refused or
+   * timed-out connection, an error status, an unreadable body), which init and the
+   * visible panel retry; only an answer that says so is `not-repo`.
    *
-   * @returns {Promise<MetabrowserGitRepoInfo | null>}
+   * @returns {Promise<RepoRead>}
    */
   function fetchRepoInfo() {
     const generation = historyGeneration;
@@ -433,16 +451,18 @@
     return pending;
   }
 
+  /** @returns {Promise<RepoRead>} */
   async function readRepoInfo() {
     try {
       const response = await apiFetch("/api/git/repo");
       if (!response.ok) {
-        return null;
+        return { status: "failed" };
       }
+      /** @type {MetabrowserGitRepoInfo | null} */
       const info = await response.json();
-      return info?.is_repo ? info : null;
+      return info?.is_repo ? { status: "repo", info } : { status: "not-repo" };
     } catch {
-      return null;
+      return { status: "failed" };
     }
   }
 
@@ -2806,13 +2826,14 @@
     state.loading = true;
     renderPanel();
     try {
-      const info = await fetchRepoInfo();
-      if (!info) {
+      const read = await fetchRepoInfo();
+      if (read.status !== "repo") {
         state.loading = false;
         state.failed = true;
         renderPanel();
         return;
       }
+      const info = read.info;
       state.headRevision = info.head?.revision ?? null;
       state.headRef = info.head?.ref ?? null;
 
@@ -2862,15 +2883,23 @@
     // cannot be repainted, only recomputed. Re-reading identity on every
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
-    const info = await fetchRepoInfo();
+    const read = await fetchRepoInfo();
     if (generation !== historyGeneration) {
       return;
     }
-    if (!info) {
+    if (read.status === "not-repo") {
       // The served root stopped being a repository under us.
       teardown();
       return;
     }
+    if (read.status === "failed") {
+      // No answer is not "no repository": keep the tab and the rows already read, and
+      // check again the next time it shows. Tearing down here removed Commits from the
+      // page for good on one refused or timed-out request.
+      renderVirtualRows(true);
+      return;
+    }
+    const info = read.info;
     if (
       (info.head?.revision ?? null) !== state.headRevision ||
       (info.head?.ref ?? null) !== state.headRef
@@ -2893,6 +2922,7 @@
   }
 
   function teardown() {
+    cancelDiscoveryRetry();
     resetHistoryRequests();
     clearPendingState();
     cancelHover();
@@ -3121,6 +3151,33 @@
     renderVirtualRows(true);
   }
 
+  /** Ask whether the served root is a repository again, after a read that got no answer. */
+  function retryDiscovery() {
+    if (repoRetryTimer !== null) {
+      return;
+    }
+    const generation = discoveryGeneration;
+    const delay = repoRetryMs;
+    repoRetryMs = Math.min(repoRetryMs * 2, REPO_RETRY_MAX_MS);
+    repoRetryTimer = setTimeout(() => {
+      if (generation !== discoveryGeneration) {
+        return;
+      }
+      repoRetryTimer = null;
+      void init();
+    }, delay);
+  }
+
+  /** Cancel a scheduled discovery retry and retire any that fires anyway. */
+  function cancelDiscoveryRetry() {
+    discoveryGeneration += 1;
+    if (repoRetryTimer !== null) {
+      clearTimeout(repoRetryTimer);
+      repoRetryTimer = null;
+    }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
+  }
+
   /**
    * Register the Commits tab if the served root is a repository.
    *
@@ -3138,10 +3195,13 @@
     started = true;
     const generation = historyGeneration;
 
-    const info = await fetchRepoInfo();
-    if (!info) {
+    const read = await fetchRepoInfo();
+    if (read.status !== "repo") {
       if (generation === historyGeneration) {
         started = false;
+        if (read.status === "failed") {
+          retryDiscovery();
+        }
       }
       return;
     }
@@ -3149,6 +3209,8 @@
     if (!started || generation !== historyGeneration) {
       return;
     }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
+    const info = read.info;
     state.headRevision = info.head?.revision ?? null;
     state.headRef = info.head?.ref ?? null;
 

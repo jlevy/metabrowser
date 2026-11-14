@@ -2801,10 +2801,93 @@ async function run() {
     viewAssets.push(name);
     return new Promise((resolve, reject) => assetWaits.push({ resolve, reject }));
   };
+  // Discovery's retries, held here so the test fires them rather than waiting them out.
+  const discoveryRetries = [];
+  let nextRetryId = 0;
+  const realSetTimeout = sandbox.setTimeout;
+  const realClearTimeout = sandbox.clearTimeout;
+  sandbox.setTimeout = (callback, ms) => {
+    nextRetryId += 1;
+    discoveryRetries.push({ id: nextRetryId, callback, ms });
+    return nextRetryId;
+  };
+  sandbox.clearTimeout = (id) => {
+    const index = discoveryRetries.findIndex((retry) => retry.id === id);
+    if (index >= 0) {
+      discoveryRetries.splice(index, 1);
+    }
+  };
+  const repositoryReads = () =>
+    fetchRequests.filter(({ url }) => String(url).startsWith("/api/git/repo")).length;
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
   assertEqual("gate: a plain folder never asks for view helpers", viewAssets, []);
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
+  assertEqual("gate: an answer that the root is no repository is final", discoveryRetries, []);
+
+  // A gate that gets no answer is asked again, at a doubling interval, until one comes.
+  // A page that gave up on its first refused or timed-out read never showed Commits.
+  responses.set("/api/git/repo", { httpStatus: 503, body: { error: "unavailable" } });
+  await panel.init();
+  assertEqual("gate: a failed read registers nothing", registeredPanel, null);
+  assertEqual(
+    "gate: a failed read is asked again",
+    discoveryRetries.map(({ ms }) => ms),
+    [1000],
+  );
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  assertEqual(
+    "gate: each failure in a row waits twice as long",
+    discoveryRetries.map(({ ms }) => ms),
+    [2000],
+  );
+
+  // A teardown while a retry waits cancels it, and a retry that fires anyway belongs to
+  // a discovery the teardown retired: it asks nothing and registers nothing, though the
+  // repository would now answer. The next failure starts the backoff over.
+  {
+    const waiting = discoveryRetries[0];
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    const readsBefore = repositoryReads();
+    internals.teardown();
+    assertEqual("teardown: a waiting discovery retry is cancelled", discoveryRetries, []);
+    // Time passes: every timer still scheduled fires, and so does the one torn down.
+    for (const retry of [...discoveryRetries.splice(0), waiting]) {
+      retry?.callback();
+    }
+    await new Promise(setImmediate);
+    assertEqual("teardown: a retired retry reads nothing", repositoryReads(), readsBefore);
+    assertEqual("teardown: a retired retry registers nothing", registeredPanel, null);
+    responses.set("/api/git/repo", { httpStatus: 503, body: { error: "unavailable" } });
+    await panel.init();
+    assertEqual(
+      "teardown: the next failure starts the backoff over",
+      discoveryRetries.map(({ ms }) => ms),
+      [1000],
+    );
+  }
+
+  responses.set("/api/git/repo", {
+    is_repo: true,
+    root: "",
+    head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+  });
+  responses.set("/api/git/refs", { is_repo: true, refs: [] });
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  sandbox.setTimeout = realSetTimeout;
+  sandbox.clearTimeout = realClearTimeout;
+  assertTrue("gate: the retry that gets an answer registers Commits", registeredPanel !== null);
+  assertEqual("gate: an answer ends the retries", discoveryRetries, []);
+  internals.teardown();
+  registeredPanel = null;
+  responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
 
   responses.set("/api/git/repo", {
     is_repo: true,
