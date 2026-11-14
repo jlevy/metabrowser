@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.process_group import run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,18 +38,31 @@ def test_transition_instrument_logic() -> None:
     assert result.stdout == "transitions instrument: 44 checks passed\n"
 
 
+# The longest a group has taken: 20 s for content in CI. A run cut off at this bound has
+# its whole process group stopped and its profile removed, so a hang leaves nothing
+# running; the bound and the stops stay under the suite's 60 s per-test timeout.
+RECORDER_TIMEOUT_S = 45
+
+
 @pytest.mark.parametrize(
     ("group", "count"), [("frames", 5), ("frames2", 3), ("content", 10), ("network", 2)]
 )
-def test_transition_recorder_in_chrome(group: str, count: int) -> None:
+def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:
     chrome = require_chrome()
-    result = subprocess.run(
-        [require_node(), str(DOM / "transitions-recorder-chrome.mjs"), group],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=50,
+    result = run_in_own_group(
+        [
+            require_node(),
+            str(DOM / "transitions-recorder-chrome.mjs"),
+            group,
+            str(chrome_profile),
+        ],
+        timeout_s=RECORDER_TIMEOUT_S,
         env={**os.environ, "CHROME_BIN": chrome},
+    )
+    # The script names each check on stderr as it starts, so a run stopped at the bound
+    # says which check it was in.
+    assert not result.timed_out, (
+        f"the {group} checks were stopped after {RECORDER_TIMEOUT_S} s: {result.stderr}"
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"transitions recorder {group}: {count} checks passed\n"

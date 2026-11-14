@@ -288,6 +288,9 @@ Strict mode is off on a developer machine, which can add these:
   the Folder Overview’s labels start at several window widths; and the layout checks in
   `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`. The
   CI runners have Chrome, so CI runs them.
+  The recorder and alignment checks run their Node script in a process group of its own,
+  stop that whole group however the run ends, Chrome included, and remove the profile
+  they gave it (`tests/process_group.py`, held by `tests/test_process_group.py`).
 
 ### Timeouts
 

@@ -4,14 +4,16 @@
 // the DOM but not on screen, blank and placeholder frames after ready, region movement,
 // input fidelity, and cache disposition against a server that logs its 304s.
 //
-//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network
+//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network <profile dir>
+//
+// The profile directory is the caller's: tests/test_transitions_instrument.py creates it,
+// runs this in a process group of its own, stops that whole group however the run ends,
+// Chrome included, and removes the profile.
 //
 // Paint and the frame clock are the behavior under test, so this needs a browser; the
 // pure accounting is tested browserless in transitions-instrument-behavior.mjs.
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 
 const HERE = import.meta.dirname;
@@ -19,7 +21,10 @@ const { launchBrowser, driver, sleep } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
 
-const group = process.argv[2];
+const [group, profileDir] = process.argv.slice(2);
+if (!profileDir) {
+  throw new Error("usage: transitions-recorder-chrome.mjs <group> <profile dir>");
+}
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>recorder probe</title>
 <style>
@@ -153,7 +158,6 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
-const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "transitions-chrome-"));
 const browser = await launchBrowser({
   profileDir,
   extraArgs: process.platform === "linux" ? ["--no-sandbox"] : [],
@@ -575,9 +579,9 @@ try {
     throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
   }
 } finally {
+  // Stops every Chrome process of the profile, then removes the profile.
   await browser.close();
   server.close();
-  fs.rmSync(profileDir, { recursive: true, force: true });
 }
 if (failures.length) {
   console.log(failures.map((f) => `FAILED ${f}`).join("\n"));
