@@ -960,12 +960,12 @@ that verifies green can still push a commit that fails CI.
 
 ## Durable Storage
 
-Agents are told to put temporary files in a session scratchpad, and that scratchpad
-lives under `/private/tmp`. So do `/tmp`, `$TMPDIR`, and `/var/folders`, which the
-operating system empties on restart and at other times without warning.
-On 2026-11-14 one restart took a performance campaign’s series lock, its coordination
-scripts, and the protocol files that committed experiment records cite by sha256, and
-they had to be rebuilt from session transcripts.
+Agents are told to put temporary files in a session scratchpad, which lives under
+`/private/tmp`. The operating system empties it, `/tmp`, and the temporary directories
+under `/var/folders` that `$TMPDIR` names, on restart and at other times without
+warning. On 2026-11-14 one restart took a performance campaign’s series lock, its
+coordination scripts, and the protocol files that committed experiment records cite by
+sha256, and they had to be rebuilt from session transcripts.
 Every running subagent and background loop ended with it.
 
 **The rule: a transient location holds only output that rerunning a command recreates.**
@@ -975,12 +975,12 @@ durable:
 | What | Where |
 | --- | --- |
 | An experiment’s protocol, criteria, and amendments | Committed beside its record as `exp-NNN-protocol.txt`, named in the record’s `method.protocol` |
-| Samples, analysis and figure scripts a record cites | Committed beside the record |
+| Samples, analysis and figure scripts a record cites | Committed beside the record, and linked from it or named in `method.record` |
 | Logs, drivers, and probe output that hold local paths | The worktree’s gitignored `attic/` |
 | Raw bench output and corpora | The gitignored `.bench/` |
-| A lock that serializes timed rounds across worktrees | `$(git rev-parse --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
+| A lock that serializes timed rounds across worktrees | `$(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
 | Coordination scripts a campaign reuses | A worktree’s gitignored `attic/` |
-| Rebuilt intermediates, such as a filtered sample file in a “Reproducing” recipe | A transient location is fine |
+| Rebuilt intermediates, such as a filtered sample file or a scratch worktree in a “Reproducing” recipe | `/tmp/` or `$TMPDIR`, inside the recipe’s fenced block |
 
 **Write a protocol so it can be committed.** Name builds by their version line and
 commit, and machine paths by placeholders such as `$CONTROL` and `$CORPUS`, so the
@@ -989,22 +989,30 @@ It is plain text (`.txt`), not Markdown, so `make format` never rewrites it and 
 sha256 holds, and so the records’ `exp-*.md` glob does not read it as a record.
 Commit it before the first timed run, and commit each amendment, with its timestamp,
 before the measurement it governs; the history then shows which version governed what.
+Four records from before this rule (exp-060, exp-062, exp-083, and exp-087) cite a local
+file by sha256; each now names a committed copy with the worktree parent directory
+written as `$WORKTREES`, and writing it back reproduces the cited hash.
 
-**A lock outlives a crash.** A lock is a directory made with one atomic `mkdir`, with an
-`owner` file naming the process and the start time.
-A lock whose owner is no longer running is reported as stale and left for a person or
-the coordinating agent to remove; it is never removed automatically.
+**A lock outlives a crash.** The series lock is taken by a campaign’s driver, not by the
+transition harness, which takes none.
+It is a directory made with one atomic `mkdir`, with an `owner` file naming the process
+and the start time, as `explorations/performance-loop/wkprobe-lock.mjs` makes the
+WKWebView probe’s. A lock whose owner is no longer running is reported as stale and left
+for a person or the coordinating agent to remove; it is never removed automatically,
+because a process id can be reused after a restart and an owner file can be written some
+other way.
 
 **After a restart,** expect every subagent, background loop, and timed series to have
 ended. Check what a timed series recorded before it stopped, resume agents by message,
 and re-arm any watcher from its durable copy.
 
 `tests/test_experiment_storage.py` holds the rule for experiment records:
-- no record points its evidence at a session scratchpad or an operating system temporary
-  directory;
-- every file a record names in `method.protocol` and `method.record` is committed, and
-  the protocol’s sha256 matches;
-- a record dated after the rule names its protocol.
+- no record points its evidence at a session scratchpad, or, outside a fenced recipe, at
+  an operating system temporary directory;
+- every file a record names is in the repository: its protocol, with the sha256 the
+  record cites, the sample files `method.record` names, and every relative link;
+- a record that cites a pre-registration by sha256, or is dated from the rule on, names
+  its committed protocol.
 
 ## Pull Requests
 

@@ -1,0 +1,67 @@
+Pre-registration for exp-083 (H87 alone), written 2026-11-13T07:25Z, before any exp-083 measurement.
+
+Why: exp-060 left H87 unresolved. Its metric and guard passed, but the head it measured also
+carried H89 and mb-rldd, and one wrong-way result there was not accounted for: on
+files.revisit.source_large the longest task went from 121 (109-137) to 147 (147-149) ms. PR
+#372 has since reverted H89 (c30ee25c, add7edac, 8ce4a224; docs 372cbcec; goldens 10d659ae).
+This round measures H87 with mb-rldd and without H89.
+
+Id: exp-083. exp-079 to exp-082 are reserved. On 2026-11-13 no experiment file or mention of
+exp-083 was found on origin/main, claude/perf-delivery, claude/perf-layout,
+claude/perf-prpage, claude/perf-caches, or claude/perf-wkprobe.
+
+Candidate: $WORKTREES/metabrowser-perf-delivery/.venv/bin/metab, editable,
+           claude/perf-delivery at 10d659ae, "metab 0.12.1.dev165+9903292 (+181 commits,
+           10d659aee)", clean at the start and end of every run. Nothing is edited or committed
+           in that worktree while a timed run is in progress.
+Control:   $WORKTREES/metabrowser-perf-control/.venv/bin/metab, 09903292,
+           "metab 0.12.1.dev165+9903292 (+165 commits, 099032928)", clean. The same control as
+           exp-060.
+Corpus:    $WORKTREES/metabrowser-perf-corpus-v2 (7a02fed4), clean.
+Harness:   $WORKTREES/metabrowser-perf-harness-v4 (5031dc16), scenario revision 4.
+
+Series: transitions.mjs run --exp exp-083 --runs 1 --journeys landing,files
+        --out .bench/transitions/exp-083/landing-files.jsonl, one back-to-back pair per
+        invocation, the leading condition alternating (control leads odd attempts). Fresh state
+        directories for exp-083, so the first warm-up fetches the pull request catalog.
+        There is no levels probe: H89 is gone.
+Target: 4 judged pairs, at least 3. At most 10 attempts.
+Load rule (unchanged from exp-060): exp-060-062-load-filter.mjs. A pair is excluded when any
+        of its runs saw a one-minute load above 12 at its start or at any measured transition's
+        start. A pair is excluded when it is incomplete. A pair starts only after the load has
+        been under 12 for 120 s. Excluded rows stay in the samples, unjudged. The abort
+        watcher stops a pair whose run starts above 12.
+Lock:   series.lock.d, by atomic mkdir, with an owner file. Taken only on the coordinator's
+        "start r083", and only after the load gate. Held through every timed run; released when
+        the last one ends, or if the run stops or fails.
+Driver: replace-driver-v3.sh's transition loop (the probe loop is dropped), with --exp exp-083,
+        its own rows file and series log, and a deadline set when the coordinator starts the
+        round.
+
+Decides (H87's metric, as in exp-060):
+  Revalidated (conditional) requests on landing.reload, all route families summed (static,
+  plugin_static, kpress_static, data, document), as the harness's cache disposition counts
+  them. Predicted lower. Judged on its ranges (a count). Computed by exp-060-062-figures.mjs.
+Guard: painted_ready_ms on landing.reload, by compare's back-to-back pair rule at tolerance 1.3.
+Declared check for exp-060's open clause:
+  long_task_max_ms on files.revisit.source_large, by the pair rule at 1.3. If compare marks it
+  WRONG WAY again (ranges apart with 2 or more pairs beyond 1.3x, or overlapping ranges with 2
+  or more pairs beyond in the wrong direction), a diagnostic trace splits it between H87 and
+  mb-rldd. The trace is one unjudged Chrome DevTools performance trace (devtools.timeline plus
+  a V8 CPU profile) of the files journey's large-source revisit per build, outside the judged
+  rows and under the same load gate. It names the functions inside the longest task, and the
+  record gives the code the candidate's extra time falls in as the mechanism.
+Predicted for the cold Markdown landing, with H89 gone: back to the control's level.
+  painted_ready_ms on landing.cold_markdown shows no detected difference, and its blank_frames,
+  blank_ms, and placeholder_visible_frames are not wrong-way results. If any of them moves the
+  wrong way, the record says so; it would be the head's, now H87 and mb-rldd.
+Everything else: the accept rule's third clause covers every wrong-way result compare lists for
+  landing and files.
+Verdict: the runbook's accept rule (the median moved in the predicted direction; ranges apart at
+  n of 3 or more; nothing else moved the wrong way unaccounted; the complexity judgment).
+  Labels: accepted, rejected, or unresolved, as exp-060, exp-061, and exp-063 used them.
+Known side effects, to record and not to judge: /raw revalidates, so a revisited image costs
+  one 304 (these journeys do not revisit an image). raf_frame_gaps is off in Chrome and is not
+  comparable with 640e008d's readings. The WKWebView relaunch reading is not taken.
+Record: explorations/performance-loop/experiments/exp-083-<slug>.md on claude/perf-delivery,
+  with the samples and the filter output. report.md is not touched.

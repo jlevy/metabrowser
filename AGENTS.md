@@ -131,15 +131,9 @@ transient location**: `/tmp`, `/private/tmp`, `$TMPDIR`, `/var/folders`, or an a
 session scratchpad. The operating system empties them on restart, and on 2026-11-14 one
 restart took a measurement campaign’s series lock, its coordination scripts, and
 protocol files that committed experiment records cite by hash.
-
-- Commit what the repository should keep: an experiment’s protocol and its amendments
-  beside the record, its samples, and its analysis scripts.
-- Keep local material that cannot be committed (logs, drivers, raw bench output) in a
-  worktree’s gitignored `attic/` or `.bench/`.
-- A transient location is only for output that rerunning a command recreates.
-- `tests/test_experiment_storage.py` enforces this for experiment records.
-  See [Durable Storage](docs/development.md#durable-storage) for where each kind of file
-  and lock belongs.
+A transient location is only for output that rerunning a command recreates.
+[Durable Storage](docs/development.md#durable-storage) says where each kind of file and
+lock belongs instead, and `tests/test_experiment_storage.py` checks experiment records.
 
 ## Changing This Guidance
 

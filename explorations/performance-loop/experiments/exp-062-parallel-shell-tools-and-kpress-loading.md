@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean.
     candidate: metab 0.12.1.dev165+9903292 (+175 commits, d0fe9618e), the editable checkout of claude/perf-delivery at d0fe9618, clean. It carries H87, H89, and mb-rldd together.
+    protocol:
+      path: exp-060-062-protocol.txt
+      sha256: 76cc3393fd428174f4d55069a8adffa5bf3c94921dedd1f550b6536ba28c4761
     record: exp-062-levels-samples.jsonl
   results:
     - metric: levels_shell_tools.levels_probe
@@ -112,6 +115,12 @@ The same head also holds `640e008d`, which moved KPress document loading from th
 SDK to the `sdk-views` tier to restore startup headroom.
 
 ## Protocol
+
+> Correction, 2026-11-14: the pre-registration file below was kept only in a local
+> worktree. It is now committed as [exp-060-062-protocol.txt](exp-060-062-protocol.txt)
+> and named in `method.protocol`, with the worktree parent directory written as
+> `$WORKTREES`. Its first 32 lines are the file before the amendment, and writing that
+> directory back reproduces both sha256 values cited here.
 
 Declared before any measurement, at 2026-11-12T15:36:54Z, in a local pre-registration
 file (sha256 `3d5afd678b01bc7d389cdecdb1d7ee5430a3d4ef994a0866bec0690772b8a6f0`). It was

@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run; the control of exp-060.
     candidate: metab 0.12.1.dev165+9903292 (+181 commits, 10d659aee), the editable checkout of claude/perf-delivery at 10d659ae, clean at the start and end of every run. It carries H87 and mb-rldd, with H89 reverted.
+    protocol:
+      path: exp-083-protocol.txt
+      sha256: 374edf90d2998c82d8836fd293438751b89fd34c5d32a7d952524a51cfa5bdf9
     record: exp-083-landing-files-samples.jsonl
   results:
     - metric: revalidated_total.landing.reload
@@ -107,6 +110,11 @@ reverted it (`c30ee25c`, `add7edac`, `8ce4a224`, with docs in `372cbcec` and gol
 `10d659ae`). This round measures H87, with mb-rldd, against the same control.
 
 ## Protocol
+
+> Correction, 2026-11-14: the pre-registration file below was kept only in a local
+> worktree. It is now committed as [exp-083-protocol.txt](exp-083-protocol.txt) and named
+> in `method.protocol`, with the worktree parent directory written as `$WORKTREES`;
+> writing that directory back reproduces the sha256 cited here.
 
 Declared before any exp-083 measurement, at 2026-11-13T07:25Z, in a local
 pre-registration file (sha256
