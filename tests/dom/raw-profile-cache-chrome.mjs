@@ -11,7 +11,11 @@
 // its inert render and followed. Prints what each answer was: whether it came from the
 // cache, its Cache-Control and Content-Security-Policy, and how often the SVG's script ran.
 //
-// Usage: node raw-profile-cache-chrome.mjs METAB ROOT PORT STATE_DIR (CHROME_BIN is set).
+// Usage: node raw-profile-cache-chrome.mjs METAB ROOT PORT STATE_DIR, with CHROME_BIN set,
+// and CHROME_PROFILES naming where Chrome's profile goes (tests/dom/chrome-session.mjs).
+// tests/test_raw_profile_cache_chrome.py owns that directory and removes it, and runs this
+// in a process group of its own, which Chrome and both servers join, stopped however the
+// session ends.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -91,7 +95,11 @@ async function serve(flags) {
   };
 }
 
-const chrome = await launchChrome(process.env.CHROME_BIN);
+const profiles = process.env.CHROME_PROFILES;
+if (!process.env.CHROME_BIN || !profiles) {
+  throw new Error("CHROME_BIN and CHROME_PROFILES are required");
+}
+const chrome = await launchChrome(process.env.CHROME_BIN, { profiles });
 /** @type {Map<string, any>} */
 const responses = new Map();
 chrome.on("Network.responseReceived", ({ response }) => {

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,18 @@ def test_transition_instrument_logic() -> None:
     assert result.stdout == "transitions instrument: 49 checks passed\n"
 
 
+# The longest group is landing: 28.4 to 28.6 s in CI, and 29 to 38 s on a loaded 10-core
+# Mac; content takes 20 s in CI, and a check taken again for its frame clock adds a few
+# seconds. A run cut off at this bound has its whole process group stopped and its
+# profile removed, so a hang leaves nothing running.
+RECORDER_TIMEOUT_S = 50
+# The longest a recorder test can take: its bound, the group's stop, and the profile's
+# teardown. That is more than the suite's 60 s, so the module carries its own limit, with
+# 10 s for the rest of the setup; tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = RECORDER_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
+
+
 @pytest.mark.parametrize(
     ("group", "count"),
     [
@@ -48,15 +61,22 @@ def test_transition_instrument_logic() -> None:
         ("landing", 11),
     ],
 )
-def test_transition_recorder_in_chrome(group: str, count: int) -> None:
+def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:
     chrome = require_chrome()
-    result = subprocess.run(
-        [require_node(), str(DOM / "transitions-recorder-chrome.mjs"), group],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=50,
+    result = run_in_own_group(
+        [
+            require_node(),
+            str(DOM / "transitions-recorder-chrome.mjs"),
+            group,
+            str(chrome_profile),
+        ],
+        timeout_s=RECORDER_TIMEOUT_S,
         env={**os.environ, "CHROME_BIN": chrome},
+    )
+    # The script names each check on stderr as it starts, so a run stopped at the bound
+    # says which check it was in.
+    assert not result.timed_out, (
+        f"the {group} checks were stopped after {RECORDER_TIMEOUT_S} s: {result.stderr}"
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"transitions recorder {group}: {count} checks passed\n"

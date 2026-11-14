@@ -14,6 +14,7 @@ import pytest
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import suite_gates
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
+from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
@@ -81,6 +82,19 @@ def git_on_path() -> str:
     """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
 
     return require_git()
+
+
+@pytest.fixture
+def chrome_profile() -> Generator[Path, None, None]:
+    """A headless Chrome's profile directory, owned by the test that drives the browser.
+
+    It is removed after the test. A process still naming it then escaped the test's
+    process group: it is reported, failing the test, and left running; see
+    ``tests/process_group.py``.
+    """
+
+    with owned_profile("metab-test-chrome-") as profile:
+        yield profile
 
 
 @pytest.fixture(scope="session")

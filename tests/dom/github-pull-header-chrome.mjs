@@ -2,7 +2,11 @@
 // and its stylesheets, mounted on recorded records in headless Chrome.
 //
 //   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
+//     CHROME_PROFILES=/dir/the/caller/removes \
 //     node tests/dom/github-pull-header-chrome.mjs [--part NAME]
+//
+// CHROME_PROFILES is where Chrome's profile goes (tests/dom/chrome-session.mjs);
+// tests/test_github_pull_header_chrome.py owns it and removes it.
 //
 // The session runs in parts, each its own browser and its own pytest case with its own
 // bound, since all of it ran past one test's 45 s on a CI runner. `launch` starts Chrome,
@@ -558,9 +562,13 @@ async function main() {
   if (!KPRESS || !fs.existsSync(path.join(KPRESS, "css/style-tokens.css"))) {
     throw new Error("KPRESS_STATIC holds no css/style-tokens.css");
   }
+  const profiles = process.env.CHROME_PROFILES;
+  if (!profiles) {
+    throw new Error("CHROME_PROFILES names no directory for Chrome's profile");
+  }
   const server = await serve();
   try {
-    const browser = await launchChrome(bin);
+    const browser = await launchChrome(bin, { profiles });
     lap("Chrome started");
     try {
       await browser.send("Page.enable");
