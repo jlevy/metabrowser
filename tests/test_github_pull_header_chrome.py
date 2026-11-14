@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from metabrowser import kpress_adapter
+from tests.process_group import run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
@@ -48,7 +48,9 @@ PARTS = (
 # about as long as this machine once its first Chrome had started. 40 s leaves the
 # largest part six times that, and fires before the suite's 60.
 SESSION_TIMEOUT_S = 40
-# The first start's own bound, as long as the suite's gates allow an inner one.
+# The first start's own bound, as long as the suite's gates allow an inner one. Stopping
+# the session's process group after either bound takes at most 7 s more
+# (tests/process_group.py), which still ends before the suite's 60.
 LAUNCH_TIMEOUT_S = 48
 
 
@@ -64,25 +66,27 @@ def _kpress_faces(into: Path) -> Path:
 
 
 @pytest.mark.parametrize("part", PARTS)
-def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path, part: str) -> None:
+def test_the_pull_header_keeps_its_box_in_chrome(
+    tmp_path: Path, part: str, chrome_profile: Path
+) -> None:
     chrome = require_chrome()
     bound = LAUNCH_TIMEOUT_S if part == "launch" else SESSION_TIMEOUT_S
-    try:
-        result = subprocess.run(
-            [require_node(), str(SESSION), "--part", part],
-            capture_output=True,
-            text=True,
-            timeout=bound,
-            check=False,
-            env={
-                **os.environ,
-                "CHROME_BIN": chrome,
-                "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
-            },
-        )
-    except subprocess.TimeoutExpired as expired:
+    # The session leads a process group of its own, which Chrome joins, and the whole
+    # group is stopped however it ends; its profile is the fixture's to remove
+    # (tests/process_group.py).
+    result = run_in_own_group(
+        [require_node(), str(SESSION), "--part", part],
+        timeout_s=bound,
+        env={
+            **os.environ,
+            "CHROME_BIN": chrome,
+            "CHROME_PROFILES": str(chrome_profile),
+            "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
+        },
+    )
+    if result.timed_out:
         # The steps it finished, each with its time, say where the bound went.
-        pytest.fail(f"{part} ran past {bound} s; its steps:\n{expired.stderr or ''}")
+        pytest.fail(f"{part} ran past {bound} s; its steps:\n{result.stderr}")
     # Each step's time, shown with the case's output when it fails.
     print(result.stderr)
     assert result.returncode == 0, result.stderr or result.stdout

@@ -3,14 +3,18 @@
 // `close` that waits for Chrome to exit before removing its profile, since removing it
 // while Chrome still writes there failed with ENOTEMPTY under load and left the process
 // open.
+//
+// `profiles` is a directory the caller owns, under which each launch makes a profile of
+// its own. The caller runs the session in a process group of its own, stops that group
+// however the session ends, Chrome included, and then removes the directory
+// (tests/process_group.py), so a session cut off by its bound leaves nothing running.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
-/** @param {string} bin @param {{width?: number, height?: number}} [options] */
-export async function launchChrome(bin, { width = 1280, height = 900 } = {}) {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "mb-chrome-"));
+/** @param {string} bin @param {{profiles: string, width?: number, height?: number}} options */
+export async function launchChrome(bin, { profiles, width = 1280, height = 900 }) {
+  const profile = fs.mkdtempSync(path.join(profiles, "chrome-"));
   const chrome = spawn(
     bin,
     [

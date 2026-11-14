@@ -20,14 +20,16 @@ import threading
 import time
 from pathlib import Path
 
+from tests.process_group import run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "staged-fonts-chrome.mjs"
 # The whole test, the server's start and the session together, took 11.2 s on a Mac at a
-# load average of 9 to 13. Each bound fires before the suite's 60 s, and the two together
-# do too.
+# load average of 9 to 13, and 5.2 s in CI. Each bound fires before the
+# suite's 60 s, and so do the two together with the session's process group stopped after
+# its bound, which takes at most 7 s more (tests/process_group.py).
 SERVER_START_TIMEOUT_S = 20
-SESSION_TIMEOUT_S = 35
+SESSION_TIMEOUT_S = 30
 _METAB = Path(sys.executable).with_name("metab")
 _TEXT = (
     "A reserved box keeps its place when the content that fills it arrives, and a face "
@@ -49,7 +51,7 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def test_no_document_moves_when_its_faces_land(tmp_path: Path) -> None:
+def test_no_document_moves_when_its_faces_land(tmp_path: Path, chrome_profile: Path) -> None:
     chrome = require_chrome()
     served = tmp_path / "served"
     served.mkdir()
@@ -87,13 +89,16 @@ def test_no_document_moves_when_its_faces_land(tmp_path: Path) -> None:
         while not found and time.monotonic() < deadline and server.poll() is None:
             time.sleep(0.05)
         assert found, "the server did not say where it serves"
-        result = subprocess.run(
+        # The session leads a process group of its own, which Chrome joins, and the whole
+        # group is stopped however it ends; its profile is the fixture's to remove
+        # (tests/process_group.py).
+        result = run_in_own_group(
             [require_node(), str(SESSION), found[0]],
-            capture_output=True,
-            text=True,
-            timeout=SESSION_TIMEOUT_S,
-            check=False,
-            env={**os.environ, "CHROME_BIN": chrome},
+            timeout_s=SESSION_TIMEOUT_S,
+            env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
+        )
+        assert not result.timed_out, (
+            f"the session ran past {SESSION_TIMEOUT_S} s: {result.stderr or result.stdout}"
         )
         assert result.returncode == 0, result.stderr or result.stdout
         assert re.fullmatch(r"staged fonts in Chrome: \d+ checks passed\n", result.stdout), (

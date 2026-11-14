@@ -1,7 +1,8 @@
 """A run in its own process group leaves nothing running, however it ends.
 
-The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``)
-run a Node script that starts Chrome and its helpers. Here a Node parent starts a
+The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
+``test_github_pull_header_chrome.py``, ``test_staged_fonts_chrome.py``) run a Node script
+that starts Chrome and its helpers. Here a Node parent starts a
 long-lived child that stands in for Chrome, naming the profile on its command line as
 Chrome does, so the cleanup in ``tests/process_group.py`` is held without a browser: a
 run stopped at its deadline, a run whose parent exits and leaves its child behind, and a
