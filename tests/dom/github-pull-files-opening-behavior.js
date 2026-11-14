@@ -31,6 +31,14 @@ async function settle() {
 const rendered = [];
 
 /**
+ * Whether the tree held back a change to its drawn rows when it rendered each of `rendered`,
+ * from its controller's snapshot.
+ *
+ * @type {boolean[]}
+ */
+const heldBack = [];
+
+/**
  * What a refresh POST answers, as `pull-files-refresh` does, its list with no rows (`limit=0`):
  * a job started on a list not yet there, or not due, because another request already listed
  * the whole list, as `tests/golden/cli-github-pull-files-refresh.txt` records it.
@@ -67,6 +75,8 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
     timers.set(handle, { callback, at: now + delayMs });
     return handle;
   };
+  /** The controller, once made, for its snapshot as it renders. @type {any} */
+  let made = null;
   const controller = tree.createFileTreeController(
     {
       request(method, route) {
@@ -100,6 +110,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
       render(model) {
         lastModel = model;
         rendered.push(model);
+        heldBack.push(made?.snapshot().withheld === true);
         if (drawnAt === null && model.expanded && model.rows.length > 0) {
           drawnAt = now;
         }
@@ -128,6 +139,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
     },
     { number: 7, autoExpandFiles: 3000 },
   );
+  made = controller;
   const frame = () => {
     if (painted.at(-1) !== shown) {
       painted.push(shown);
@@ -527,6 +539,89 @@ async function run() {
     };
   }
 
+  // A drawn list whose read, with no input since, answers that the server no longer holds it
+  // (`listed_from` null), as when its cached record went away: the tree keeps the rows drawn,
+  // breathing while the list is listed again, and offers that change as any other, so the
+  // reader is told the rows are no longer the list (mb-uc1s). When GitHub lists the same files
+  // again the offer is withdrawn; when the list stays unavailable, its notice and Retry join
+  // the offer, and the reader's press draws the tree with no rows.
+  {
+    const window = recorded.comparison.fresh_for_s * 1000;
+    const offeredShape = (model) => ({
+      rows: model.rows.length,
+      line: model.line,
+      loading: model.loading,
+      refreshing: model.refreshing,
+      notice: model.notice?.text ?? null,
+      offer: model.offer,
+      floats: model.offerFloats,
+    });
+    const again = { ...structuredClone(recorded.comparison), generation: `${"0".repeat(31)}8` };
+    const relisted = story(
+      tree,
+      [
+        structuredClone(recorded.comparison),
+        structuredClone(recorded.absent),
+        structuredClone(recorded.pending),
+        again,
+      ],
+      { at: 0 },
+    );
+    relisted.controller.expand();
+    relisted.frame();
+    await settle();
+    relisted.frame();
+    await relisted.advance(window);
+    const whileListing = offeredShape(relisted.last());
+    await relisted.advance(window + 2 * tree.FILES_POLL_MS);
+    facts.listGone = {
+      painted: relisted.painted,
+      whileListing,
+      spans: relisted.spans,
+    };
+
+    const input = { at: 0 };
+    const unavailable = story(
+      tree,
+      [structuredClone(recorded.comparison), ...Array.from({ length: 5 }, () => recorded.absent)],
+      input,
+      { status: 200, body: { refresh: "not_due", files: recorded.absent } },
+    );
+    unavailable.controller.expand();
+    unavailable.frame();
+    await settle();
+    unavailable.frame();
+    await unavailable.advance(window);
+    const offered = offeredShape(unavailable.last());
+    input.at = window + 400;
+    await unavailable.advance(input.at);
+    unavailable.controller.reveal();
+    unavailable.frame();
+    facts.listGoneUnavailable = {
+      painted: unavailable.painted,
+      offered,
+      shown: offeredShape(unavailable.last()),
+    };
+
+    // A stale list drawn at the click, whose refresh the tree asked for at once, and whose
+    // read a second later answers that the list went away: the ask is recent, so the tree
+    // waits for the list rather than asking again, and the rows drawn breathe meanwhile
+    // rather than sitting under the loading line.
+    const stale = { ...structuredClone(recorded.comparison), state: "stale" };
+    const asked = story(
+      tree,
+      [stale, ...Array.from({ length: 5 }, () => recorded.absent)],
+      { at: 0 },
+      { status: 202, body: { refresh: "started", files: { ...stale, refreshing: true } } },
+    );
+    asked.controller.expand();
+    asked.frame();
+    await settle();
+    asked.frame();
+    await asked.advance(tree.FILES_POLL_MS);
+    facts.listGoneWhileAsked = { painted: asked.painted, offered: offeredShape(asked.last()) };
+  }
+
   // A cached list that is stale, drawn at the click, whose refresh answers a second later with
   // the same files, as after a rebase that leaves the diff as it was: it would draw the same
   // rows, so it is drawn in place, and nothing is offered.
@@ -624,6 +719,12 @@ async function run() {
     "rows drawn never stand under the line of a list with no files": rendered
       .filter((model) => model.expanded && model.rows.length > 0)
       .every((model) => model.line !== "No changed files."),
+    "a change held back from rows drawn is always offered": rendered
+      .filter((model, at) => heldBack[at] && model.expanded && model.rows.length > 0)
+      .every((model) => model.offer !== null),
+    "rows drawn never sit under progress": rendered
+      .filter((model) => model.expanded && model.rows.length > 0)
+      .every((model) => !model.loading),
   };
   return facts;
 }

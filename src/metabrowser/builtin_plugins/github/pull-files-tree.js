@@ -616,7 +616,7 @@ export function fileListFailure(envelope, formatTime) {
  * `withheld` is how many files the rows held and not drawn list, and `drawn` how many the
  * drawn tree lists. An offer stands in only for a change to drawn rows, so it needs `drawn`:
  * the controller never holds rows from a tree with none drawn. `withheld` is 0, not absent,
- * when what is held is a list of no files, which is offered too.
+ * when what is held is a list of no files, or no list at all, which are offered too.
  *
  * @param {FilesEnvelope | null} envelope
  * @param {{
@@ -639,14 +639,20 @@ export function describeFileTree(envelope, held) {
   const model = describeDrawnTree(envelope, held);
   const withheld = held.withheld ?? 0;
   const drawn = held.drawn ?? 0;
-  // A refresh that lists no files at all replaces every drawn row as well.
-  const emptied =
-    held.withheld === 0 &&
-    drawn > 0 &&
-    envelope !== null &&
-    envelope.listed_from !== null &&
-    envelope.fetched === 0;
-  if (emptied) {
+  // With no rows held, the list either lists no files at all or is no longer held by the
+  // server; either replaces every drawn row as well.
+  const none = held.withheld === 0 && drawn > 0 && envelope !== null;
+  if (none && envelope.listed_from === null) {
+    // The rows drawn stay as the files last listed, while the list is listed again or its
+    // notice says why not; they breathe rather than sit under the loading line, as rows
+    // drawn always do, and the offer tells the reader they are no longer the list.
+    if (model.loading) {
+      model.loading = false;
+      model.refreshing = true;
+    }
+    model.offer = "Show the updated list (not listed)";
+    model.offerFloats = held.floats === true;
+  } else if (none && envelope.fetched === 0) {
     // The rows drawn stay until the reader asks for the empty list, so the line does not say
     // there are none while they show; it says so once they are gone.
     if (envelope.complete) {

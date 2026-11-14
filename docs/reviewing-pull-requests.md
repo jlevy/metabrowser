@@ -81,7 +81,9 @@ the list waits for you: its later pages, and a refresh that changes it, are offe
 **Show N more files** or **Show the updated list of N files**, on the tree’s line or
 floating over its top, so the rows you are reading never move under you.
 A refresh that finds no changed files is offered the same way, as **Show the updated
-list (no files)**. Selecting a file opens **Changes** at that file.
+list (no files)**, and a list Metabrowser no longer holds as **Show the updated list
+(not listed)**, while the files you see stay as they were last listed.
+Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows without changing which trees are
 expanded. Enter opens the focused PR. Space expands or collapses its changed files in
 place. Keyboard walks keep focus in the tree and replace one browser history entry, so

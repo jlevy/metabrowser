@@ -1507,6 +1507,10 @@ tree’s line, or floating over its top when the line is hidden, so drawn rows n
 without input. A refresh that lists no files is offered as **Show the updated list (no
 files)**, and the rows drawn meanwhile keep no line saying there are none; once the
 reader asks for the empty list, the tree says “No changed files.”
+A read that answers that the server no longer holds the list is offered as **Show the
+updated list (not listed)**: the drawn rows stay as the files last listed, breathing
+while the list is listed again rather than sitting under the loading line, and the offer
+is withdrawn if the same files come back.
 **An offer stands in only for a change to drawn rows.** An expanded tree with none drawn
 never shows one. `test_a_tree_opens_once_and_never_grows_without_input` holds both.
 

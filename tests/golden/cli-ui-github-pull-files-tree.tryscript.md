@@ -601,12 +601,17 @@ an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An of
 later answer makes empty, by bringing back the rows drawn, is withdrawn
 (`offerWithdrawn`). A refresh that lists no files at all is offered as well, and the
 drawn rows keep no line that says there are none until the reader asks for the empty
-list (`refreshListsNone`). Each hold’s span says how long it held and why it ended, an
-offer included when the reader presses it or the tree closes on it, and a first read
-that fails as failed (`spans`). `invariants` holds, across every model the stories
-rendered, their refresh answering started or not due, that an expanded tree with no rows
-drawn never offers, that once open it shows progress, a notice, or its line, and that
-drawn rows never stand under the line of a list with no files.
+list (`refreshListsNone`). A read that answers that the server no longer holds the list
+is offered as well, while the drawn rows breathe as the list is listed again
+(`listGone`, `listGoneWhileAsked`), and its notice and Retry join the offer when the
+list stays unavailable (`listGoneUnavailable`). Each hold’s span says how long it held
+and why it ended, an offer included when the reader presses it or the tree closes on it,
+and a first read that fails as failed (`spans`). `invariants` holds, across every model
+the stories rendered, their refresh answering started or not due, that an expanded tree
+with no rows drawn never offers, that once open it shows progress, a notice, or its
+line, that drawn rows never stand under the line of a list with no files, that a change
+held back from drawn rows is always offered, and that drawn rows never sit under
+progress.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -765,6 +770,69 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "lateRows reader 400 ms"
     ]
   },
+  "listGone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "whileListing": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneUnavailable": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "notice: The list of changed files is unavailable."
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": null,
+      "floats": false
+    }
+  },
+  "listGoneWhileAsked": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
   "unchangedRefresh": {
     "painted": [
       "closed",
@@ -821,7 +889,9 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   "invariants": {
     "an expanded tree with no rows drawn never offers": true,
     "an open tree with no rows drawn shows progress, a notice, or its line": true,
-    "rows drawn never stand under the line of a list with no files": true
+    "rows drawn never stand under the line of a list with no files": true,
+    "a change held back from rows drawn is always offered": true,
+    "rows drawn never sit under progress": true
   }
 }
 ? 0
