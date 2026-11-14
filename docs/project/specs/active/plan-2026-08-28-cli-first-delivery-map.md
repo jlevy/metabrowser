@@ -1,13 +1,13 @@
 # Plan: CLI-First Delivery — v0.10 Parity and the v0.12 Repository/Hosted-Review Slice
 
-**Date:** 2026-08-28 (refreshed 2026-09-22)
+**Date:** 2026-08-28 (refreshed 2026-09-22; status updated 2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Superseded in part (2026-09-23):** the v0.12 sequence in rows 7 and 9 through 12 of
 the [ordering table](#ordering) follows
-[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
-replaces this plan wherever they disagree.
+[Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md),
+which replaces this plan wherever they disagree.
 The parity mechanism and the rule it rests on stand.
 Three parts below record the earlier design: the cache module table in Part 2, the
 GitHub rows of the golden table, and the sequence under “What lands for the v0.12.0
@@ -16,11 +16,12 @@ PR-first slice”. The modules as built are in
 and the goldens as built are in the
 [parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
 
-**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation,
-[stack #218](https://github.com/jlevy/metabrowser/stack/218), has landed on `main` and
-is not yet tagged. The #209 content-trust foundation is on `main` too.
-The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before the release.
+**Status:** v0.11.0 released after the parity foundation, with the #209 content-trust
+foundation; the v0.12.0 implementation,
+[stack #218](https://github.com/jlevy/metabrowser/stack/218), landed on `main` and
+shipped in v0.12.0, tagged 2026-11-08. Of the rows below, only Git status (rows 3 and 4)
+remains planned, under its own plan; row 12 is deferred, and `mb-n9xg` continues under
+the [functional parity plan](plan-2026-09-10-functional-ui-cli-parity.md).
 
 ## Overview
 
@@ -593,8 +594,8 @@ candidate:
 ### What lands for the v0.12.0 PR-first slice
 
 **Addendum (2026-09-30):** steps 2 through 6 below record the earlier sequence.
-The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md#delivery) names what was
-delivered in their place and what is deferred.
+The [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md#delivery) names what
+was delivered in their place and what is deferred.
 
 `mb-i57d` and `mb-xxhi` closed on 2026-09-15 after v0.10.0 was released and the intended
 `main` baseline was verified.

@@ -4,7 +4,11 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Approved
+**Status:** Approved and in progress.
+Phase 1 landed in #373, #378, #370, #369, #372, and #368, except H89 (rejected) and H90
+(unresolved, not on `main`), and its closing round, exp-079, landed in #431. Phases 2
+and 3 have not started.
+Epic `mb-mpo0` tracks every item as a bead.
 
 ## Overview
 
@@ -34,11 +38,11 @@ measurements, and ranking this plan implements are in
 ## Non-Goals
 
 - Native shell code. Web view prewarming, hidden load with reveal on ready, a spare web
-  view, one host spelling, and a persistent data store belong to `apps/macos`, which
-  stays unmerged until the owner says otherwise.
-  This plan does the server and browser half those depend on and records the shell half
-  as deferred beads. The sticky port is not shell code: it is `metab` host mode
-  (`mb-qzny`), core work that lands on `main` under the
+  view, one host spelling, and a persistent data store belong to `apps/macos`, on `main`
+  since #341. This plan does the server and browser half those depend on and records the
+  shell half as beads.
+  The sticky port is not shell code: it is `metab` host mode (`mb-qzny`), core work that
+  lands on `main` under the
   [native app plan](plan-2026-11-10-native-macos-app.md#milestone-v1-a-usable-app).
   This plan depends on it for H87’s relaunch metric rather than doing it.
 - A persisted index or first-rows snapshot across restarts (`mb-54k9`); that is the
@@ -105,8 +109,8 @@ current. Each tier takes its invalidation from a source that already exists:
   file: keyed by path, envelope ETag, and active view.
   They are flagged by the same sources that flag `fileCache` today: a change event marks
   the path in `fileNeedsRevalidate`, and a snapshot replacement flags every cached path
-  (`app.js:6452-6454`). A flagged surface is revalidated with `If-None-Match` before it
-  is shown, as a flagged `fileCache` entry is (`app.js:5310-5325`): a `304` re-attaches
+  (`app.js:6681-6683`). A flagged surface is revalidated with `If-None-Match` before it
+  is shown, as a flagged `fileCache` entry is (`app.js:5486-5501`): a `304` re-attaches
   it and a `200` renders the new envelope.
   Active, appending files are never retained, as `fileCache` already excludes them.
 - **The Commits surface:** a comparison named by a full commit ID cannot change, so a
@@ -129,12 +133,12 @@ Two lanes govern background work, and they govern different things:
 - **Admission control** (H93) governs the HTTP requests the page sends in the
   background: prefetches of envelopes, renders, and kind assets; the Pulls walk’s steps
   (`pulls?…&after=N` and `pull-cores-prepare`, `CORE_PREPARE_ROUTE` at
-  `pulls-panel.js:52`); and `pulls-prefetch` requests (`PREFETCH_ROUTE`,
-  `pulls-panel.js:53`). Each counts against the cap while it is in flight, because each
+  `pulls-panel.js:54`); and `pulls-prefetch` requests (`PREFETCH_ROUTE`,
+  `pulls-panel.js:55`). Each counts against the cap while it is in flight, because each
   holds one of the six connections and server time.
   Foreground requests never wait for the cap.
 - **The provider prefetch lane**
-  ([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md#the-prefetch-lane))
+  ([PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md#the-prefetch-lane))
   governs work that spends GitHub budget: one job at a time per repository, caps per
   catalog publication and per hour, the rate-limit governor, and preemption and
   promotion by a reader.
@@ -182,58 +186,77 @@ items share a pull request when they touch the same files.
 
 ### Phase 1: Measurement and Quick Wins
 
-- [ ] A transition scenario (`mb-4z4u`) that records painted-ready, blank frames, region
+- [x] A transition scenario (`mb-4z4u`) that records painted-ready, blank frames, region
   movement, layout-shift entries, and requests per transition, and a baseline round
-  (exp-058). It sits beside the committed `file-views` and `git-revisions` scenarios,
-  which keep their own gates.
+  (exp-058), in #373. It sits beside the committed `file-views` and `git-revisions`
+  scenarios, which keep their own gates.
   Its painted ready ends one frame after the first frame that shows the subject, as the
   research’s inventory did, while theirs waits two animation frames after ready, so
   values are not compared across the scenarios.
-- [ ] A committed `WKWebView` measurement probe under `explorations/` (`mb-fevz`): an
-  instrument, not app code, for the rows that must be read in WebKit
-- [ ] `Server-Timing` spans through the end of the body, and a WebKit-aware recorder
-  (idle and frame-gap shims)
-- [ ] Reserve every toggling chrome slot, and fix each PR page header section’s box at
-  first paint (the per-section layout spec in the research)
-- [ ] Caching headers: immutable stamped assets, content-keyed plugin and KPress
-  prefixes, working `/raw` conditionals
-- [ ] Git: comparison cache by commit ID in the browser, route memo by a refs
-  fingerprint read without running Git on the server
-- [ ] Parallel `shell-tools` and KPress asset loading
-- [ ] Render payload cache and a long-lived Markdown worker
-- [ ] Prose faces loaded before the first document’s swap, no animation on programmatic
-  tree reveals, held-key coalescing, fixed palette group order
-- [ ] PR page: one read of the selected record per selection (an answer the selection
+- [x] A committed `WKWebView` measurement probe under `explorations/` (`mb-fevz`, #378):
+  an instrument, not app code, for the rows that must be read in WebKit
+- [x] `Server-Timing` spans through the end of the body, and a WebKit-aware recorder
+  (idle and frame-gap shims) (`mb-rldd`, #372)
+- [x] Reserve every toggling chrome slot, and fix each PR page header section’s box at
+  first paint (the per-section layout spec in the research) (`mb-4z69`, H86, #370)
+- [x] Caching headers: immutable stamped assets, content-keyed plugin and KPress
+  prefixes, working `/raw` conditionals (`mb-3m3l`, H87, #372)
+- [x] Git: comparison cache by commit ID in the browser, route memo by a refs
+  fingerprint read without running Git on the server (`mb-8a8g`, H88, #368)
+- [x] Parallel `shell-tools` and KPress asset loading (`mb-pdul`, H89): rejected in
+  exp-062 and reverted before #372 merged; the follow-up is `mb-mjc0`
+- [ ] Render payload cache and a long-lived Markdown worker (`mb-mbd3`, H90): unresolved
+  in exp-086 and taken out of #368, so not on `main`; its code is kept at `6b876c54` for
+  a re-test
+- [x] Prose faces loaded before the first document’s swap, no animation on programmatic
+  tree reveals, held-key coalescing, fixed palette group order (`mb-n3r5`, H91, #370)
+- [x] PR page: one read of the selected record per selection (an answer the selection
   just read is the page’s first read, the hover timer does not re-read the clicked row,
   and the row already shown reads nothing), a row’s file tree opened once at its full
-  height, and Changes’ first paint held for diffs in flight
-- [ ] PR page body final at first paint: Markdown cached by record revision, the body
+  height, and Changes’ first paint held for diffs in flight (`mb-6chh`, H92, #369)
+- [x] PR page body final at first paint: Markdown cached by record revision, the body
   patched in place when the full record lands, commits delivered with the record
+  (`mb-gsa0`, H106, #369)
+
+The closing round,
+[exp-079](../../../../explorations/performance-loop/experiments/exp-079-every-accepted-change-at-final-main.md)
+(#431), judged every landed item together at `main` c74d0ef3 against the campaign
+control, in Chrome. It accepted H86 (a), H91 (a), (b), and (d), and H92 (a) and (c). It
+left H86 (b), H87, H88 (a), and H106 unresolved on wrong-way results their records do
+not account for (`mb-0t7d`), and rejected H91 (c) on its guard (`mb-f8g9`). It did not
+measure H88 (b), H92 (b), or WebKit (`mb-o3hr`). Preparing Changes’ first screen before
+the click, to win back the time H92 (c)’s hold costs, is `mb-nitp`. The transition
+recorder needs `mb-86b9` and `mb-5xzz` fixed before a round measures a windowed,
+chunked, or retained surface.
 
 ### Phase 2: Instant Transitions
 
-- [ ] Admission control for background work
+- [ ] Admission control for background work (`mb-16d7`, H93)
 - [ ] One prepare unit per subject, with the addressable render GET and prediction
-- [ ] Per-main-tab retained surfaces
-- [ ] Collapse the cold landing chain
-- [ ] First-view readiness that does not depend on visibility
+  (`mb-fejb`, H94)
+- [ ] Per-main-tab retained surfaces (`mb-88mp`, H95)
+- [ ] Collapse the cold landing chain (`mb-a1nu`, H96)
+- [ ] First-view readiness that does not depend on visibility (`mb-touu`, H97)
 
 ### Phase 3: Deeper Retention and Render Cost
 
 - [ ] Detached LRU of file surfaces with the `suspend()` and `resume()` contract
-- [ ] Keep hidden view tabs laid out; chunk long source views
-- [ ] One layout per Markdown mount
-- [ ] Syntax highlighting in a worker
-- [ ] Persistent render cache and retained encoded bodies
-- [ ] An opt-in uncompressed mode for the app’s loopback client
-- [ ] Bulk Pulls metadata warming when steps are cache reads
-- [ ] Pre-mount non-default view tabs at idle
+  (`mb-d1uo`, H98)
+- [ ] Keep hidden view tabs laid out; chunk long source views (`mb-1bh1`, H99)
+- [ ] One layout per Markdown mount (`mb-jak8`, H100)
+- [ ] Syntax highlighting in a worker (`mb-y04k`, H101)
+- [ ] Persistent render cache and retained encoded bodies (`mb-4ufj`, H102)
+- [ ] An opt-in uncompressed mode for the app’s loopback client (`mb-e500`, H103)
+- [ ] Bulk Pulls metadata warming when steps are cache reads (`mb-b7ru`, H104)
+- [ ] Pre-mount non-default view tabs at idle (`mb-yyja`, H105)
 
 ### Deferred to the Native Shell
 
-- [ ] One host spelling and a persistent data store, using the sticky port of `metab`
-  host mode (`mb-w4kd`, blocked by `mb-qzny`)
-- [ ] Prewarm at launch, hidden load, reveal on ready, one spare web view (`mb-25nv`)
+- [ ] Each root’s window on the sticky port of `metab` host mode, so a relaunch keeps
+  its origin (`mb-w4kd`, blocked by `mb-qzny`). The app already serves on one host
+  spelling, `127.0.0.1`, with a persistent data store.
+- [ ] Prewarm at launch, hidden load, reveal on ready, one spare web view (`mb-25nv`,
+  after `mb-touu`)
 
 ## Testing Strategy
 
@@ -252,10 +275,11 @@ items share a pull request when they touch the same files.
   commits, against its candidate on the same corpus, with the accept rule and tolerances
   of [the runbook](../../../../explorations/performance-loop/README.md#the-accept-rule).
 - exp-058 is the campaign’s reference, not a round’s control: it measured the product at
-  `main` 09903292 on the corpus checkout frozen at 7a02fed4. The final round (exp-079)
-  re-measures every accepted item together against it in Chrome, and counts requests in
-  `WKWebView` once the probe (`mb-fevz`) is committed; until then the summary says
-  WebKit was not measured.
+  `main` 09903292 on the corpus checkout frozen at 7a02fed4. The closing round, exp-079
+  (#431), re-measured every landed item together against that build in Chrome.
+  It did not run the `WKWebView` probe (`mb-fevz`, #378), which needs a visible window
+  and the user present, so its summary says WebKit was not measured; that reading is
+  `mb-o3hr`.
 
 ## Rollout Plan
 
@@ -265,7 +289,7 @@ final round.
 ## Open Questions
 
 - Whether the tree-first startup order still pays for itself once assets are cached
-  (`app.js:8374-8378`); Phase 2 re-measures it before changing it.
+  (`app.js:8646-8650`); Phase 2 re-measures it before changing it.
 - How many laid-out surfaces the memory budget allows inside one web view; the
   retained-surface rounds measure it.
 - Whether the render `GET` from the server’s cache meets the cold-landing budget, or
@@ -275,7 +299,7 @@ final round.
 
 - [Apparent UI performance for the native app](../../research/research-2026-11-11-ui-apparent-performance.md)
 - [Load-time performance plan](plan-2026-08-21-load-time-performance.md)
-- [PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)
+- [PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md)
 - [Performance-loop runbook](../../../../explorations/performance-loop/README.md)
 - [Native macOS app plan](plan-2026-11-10-native-macos-app.md)
 - [Design system](../../../design-system.md)

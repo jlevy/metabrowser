@@ -2,7 +2,7 @@
 
 **Retired (2026-09-30):** this design is not on the v0.12 path.
 Pull-request data is stored as plain validated JSON records per
-[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md),
+[Thin Mirror for Git and GitHub Browsing](../specs/done/plan-2026-09-23-v012-thin-mirror.md),
 and the provider boundary and snapshot store below are not built.
 The Hosted Review Format code this document describes, with its contracts, corpora,
 browser models, and GitHub coverage oracle, was removed from the v0.12 stack and is

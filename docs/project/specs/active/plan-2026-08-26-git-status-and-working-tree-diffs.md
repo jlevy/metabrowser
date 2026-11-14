@@ -1,10 +1,12 @@
 # Feature: Git Status and Working-Tree Diffs
 
-**Date:** 2026-08-26
+**Date:** 2026-08-26 (last updated 2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Status:** Draft; no phase started.
+Epic `mb-097x`: Phase 0 `mb-r5gn`, Phase 1 `mb-u4mf`, Phase 2 `mb-vibn`, and the status
+goldens `mb-y06t` are open.
 
 ## Vision
 
@@ -64,8 +66,8 @@ and may change together as internal contracts.
 - Refresh on demand and after relevant working-tree or Git-control-file changes without
   starting an automatic request storm.
 - Give a status selection a canonical, reloadable browser URL.
-- Reuse the status service’s clean-tree predicate for repository-cache integrity when
-  the cache phase is implemented.
+- Provide one clean-tree predicate for an attached user working tree, so no second
+  porcelain parser defines “clean”.
 - Document every new route, wire model, component, state, and design-system rule beside
   its implementation.
 
@@ -83,8 +85,8 @@ and may change together as internal contracts.
 - Opening a served subdirectory as a repository.
   The current exact repository-root gate remains.
 - Hosted-provider state such as pull requests, issues, checks, or reviews.
-- Making cached repository checkouts editable.
-  Cache entries remain read-only and normally clean.
+- Making cached repositories editable.
+  Repository stores are worktree-free and read-only.
 - Changing File Diff Format v1. The existing schema already has commit, index, worktree,
   and empty snapshots.
 - A public plugin SDK for source-control panels or comparison sources.
@@ -133,29 +135,22 @@ Deduping it would be a correctness bug.
 
 ### Relationship to repository caching
 
-The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) publishes a
-pinned, read-only `gitroot`. Browsing and ref refresh should leave its working tree
-clean. The status feature remains independent:
+The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) serves an
+opened repository URL from a worktree-free store as an immutable `GitRevisionSubject`.
+That store has no checkout or index, so its acquisition, serving, repair, and purge
+verify records, private refs, object reachability, and leases rather than calling this
+plan’s `is_clean` predicate; Phase 1B-a landed on that basis (`mb-h51g`). The status
+feature remains independent:
 
 - an ordinary local repository may be dirty and shows its entries;
-- a healthy cached repository reports clean and shows the compact clean state;
-- a dirty cached repository is a cache-integrity failure, not permission to browse and
-  normalize the mutation silently; and
-- cache integrity calls the status service’s `is_clean` predicate so the definition of
-  clean cannot drift between two parsers.
-
-That last point is a real ordering constraint, not just a shared helper.
-`is_clean` ships in Git-status Phase 1 (`mb-u4mf`), so repository-library Phase 1B
-depends on it and is tracked that way in both the
-[repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) and the bead graph.
-Landing Phase 1B first would leave cache integrity either unchecked or served by the
-second porcelain parser both plans exist to prevent.
+- a clean one shows the compact clean state; and
+- `is_clean` applies only to an attached user working tree, so the definition of clean
+  cannot drift between two parsers.
 
 The predicate is also gated: below Git 2.36 the status service returns
 `unsupported_git_version` and there is no predicate to call.
-Cache integrity then reports its check as **unavailable**. It must not infer clean from
-the absence of a result — an unverified entry and a verified-clean entry are different
-states, and only one of them justifies serving the cached root without a warning.
+A caller then reports the check as **unavailable**. It must not infer clean from the
+absence of a result — an unverified tree and a verified-clean tree are different states.
 
 The status API contains no cache-entry ID, source URL, GitHub identity, or provider
 metadata.
@@ -873,8 +868,9 @@ into the new root.
   invalidation, debounce, SSE event, and disposal.
 - `metabrowser/git/process.py` — already provides `spawn_git_process` and
   `terminate_git_process`; status adds record framing above them, not a new primitive.
-- `metabrowser/git/capabilities.py` — cached Git-version parsing and the status safety
-  gate.
+- `metabrowser/git/capabilities.py` — the status safety gate, over the cached
+  Git-version parsing `git/process.py` already provides (`parse_git_version`,
+  `detect_git_version`).
 - `metabrowser/data/no-hooks/README.md` — a shipped directory with no recognized Git
   hook names, used as the safe `core.hooksPath` target and checked in wheel inspection.
 - `metabrowser/git/wire.py` — status snapshot/group/entry shapes and validators.
@@ -908,8 +904,8 @@ into the new root.
 - `docs/architecture.md` — status browser route in the URL grammar.
 - `docs/project/architecture/arch-views-models-routes.md` — status model, browser route,
   and data routes.
-- `docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md` —
-  cross-reference the shared clean predicate without merging the features.
+- `docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md` — keep its
+  statement of the clean predicate’s scope accurate without merging the features.
 - `CHANGELOG.md` — user-visible Git panel and status route.
 
 Adding the new data hook does not change the public plugin SDK and does not require a
@@ -1026,16 +1022,15 @@ outcome and the reason the gate is separable at all.
 ### Phase 1: Measured status and comparison backend (`mb-u4mf`)
 
 Starts from the constants Phase 0 chose; it does not produce them.
-It also starts after `metab --api` (`mb-ian3`), so `/api/git/status` is proved by a
-golden transcript on the day it exists rather than by a test harness written here and
-discarded when parity lands.
+`metab --api` (`mb-ian3`) is on `main`, so `/api/git/status` is proved by a golden
+transcript (`mb-y06t`) on the day it exists rather than by a test harness written here.
 Fixture repositories are built with pinned identity and dates, which makes commit
 revisions identical across runs and machines, so the goldens assert real revisions
 instead of placeholders.
 See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
-- [ ] Add cached Git-version parsing and the Git 2.36 status-safety gate; keep
-  repository discovery and History usable below it.
+- [ ] Add the Git 2.36 status-safety gate over the existing `parse_git_version` and
+  `detect_git_version`; keep repository discovery and History usable below it.
 - [ ] Frame porcelain records over the existing `spawn_git_process` seam without
   weakening its environment, timeout, output, cancellation, stderr, or reaping rules.
 - [ ] Implement strict incremental porcelain-v2 parsing for header, ordinary, rename,
@@ -1096,7 +1091,7 @@ operation changes `git status --porcelain` or index metadata.
 **Acceptance boundary:** Opening the Commits tab in a dirty repository presents correct
 groups above intact history; every navigable row opens the right single-file diff and
 survives reload; external edits and Git operations refresh without races or request
-storms; a clean cached checkout stays clean; and the automated plus manual gates pass.
+storms; a clean attached checkout stays clean; and the automated plus manual gates pass.
 
 ## Testing Strategy
 
@@ -1196,7 +1191,6 @@ On release:
 - non-repositories behave exactly as today;
 - clean repositories gain only a compact Changes state;
 - dirty repositories gain grouped, read-only rows;
-- cached repositories normally display clean and use the same service for integrity;
 - status failure leaves History usable; and
 - no mutation control appears.
 
@@ -1241,6 +1235,10 @@ If measurement cannot support a complete `--untracked-files=all` status within a
 bound, the phase must return to design review.
 It may add an explicit partial/untracked policy, but it must not silently switch to
 directory placeholders or hide untracked files while claiming complete status.
+
+One product question arrived after this plan, when repository stores became
+worktree-free: what the Commits tab’s Changes section shows on a pinned
+`GitRevisionSubject`, which has no working tree or index to report.
 
 ## References
 

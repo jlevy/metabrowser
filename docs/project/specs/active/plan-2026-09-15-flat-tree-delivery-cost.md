@@ -4,12 +4,13 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Per-page catalog hashing implemented; broader flat-tree delivery debt
-remains open.
+**Status:** Per-page catalog hashing and the flat-stress drift check are implemented;
+broader flat-tree delivery debt remains open.
 
 The walker still emits batches of 256. The larger batch and the attached-walk, catalog,
 and Long Task acceptance targets below remain unfinished; historical timing results do
 not establish their current performance.
+None of the tier 2 work has landed; v0.11.0 and v0.12.0 shipped without it.
 
 ## Overview
 
@@ -124,13 +125,16 @@ complexity.
 ## Implementation Plan
 
 1. Land the catalog content hash immediately after the v0.10.0 tag, with its three
-   tests.
+   tests. Done in #129.
 2. Browser-check the emit batch for first-row delay and transient heap; take it or
-   reject it on that evidence, with the measurement recorded beside the constant.
+   reject it on that evidence, with the measurement recorded beside the constant
+   (`mb-nuhb`).
 3. Add the check that keeps `performance-budgets-flat-stress.toml` from drifting off the
-   release gate (`mb-ma3x`).
+   release gate (`mb-ma3x`). Done: `tests/test_performance_loop_gate.py` fails when the
+   two files differ anywhere a divergence is not declared.
 4. Re-measure the 300k corpus, five back-to-back pairs, and lower the ratchet.
-5. Prototype the object-free delivery path and price it before designing it.
+5. Prototype the object-free delivery path and price it before designing it (`mb-kicj`;
+   its measured symptoms are `mb-qvw4`, `mb-qtgj`, and `mb-zc3p`).
 
 ## Testing Strategy
 
@@ -148,7 +152,7 @@ Tier 1 is patch-safe.
 It was planned for 0.10.1 and in the event ships with 0.11.0: the catalog content hash
 landed in #129 and rides out with the content-trust work rather than on a patch of its
 own. Tier 2 changes no contract but is large enough that it ships on its own measured
-round, as 0.12.0 or later depending on what the prototype costs.
+round, in a release after 0.12.0, which shipped without it.
 The flat-stress ratchet is lowered in the same change that earns it, never separately.
 
 Shipping tier 1 inside a feature release carries a cost this plan should name.
@@ -159,6 +163,8 @@ not only to the tier-1 work, and it remains outstanding.
 [exp-036](../../../../explorations/performance-loop/experiments/exp-036-backend-only-partial-does-not-clear-v0110.md)
 is the record of shipping without it: a backend-only comparison that found the candidate
 equivalent and explicitly did not clear the release.
+[exp-038](../../../../explorations/performance-loop/experiments/exp-038-v012-rehearsal-under-load-does-not-clear-the-candidate.md),
+the v0.12 rehearsal, did not measure the 300,000-file flat corpus either.
 
 ## Open Questions
 

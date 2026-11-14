@@ -1,6 +1,11 @@
 # Metabrowser 0.12.0 Release Preparation
 
-**Status:** In progress; updated November 8, 2026. Earlier product stacks are merged.
+**Status:** Complete.
+0.12.0 was tagged at `87b8ec81` (#344) and published on November 9, 2026; the owner
+deferred the quiet performance comparison and the remaining owner acceptance to open
+beads under `mb-425f`. The record below is as of November 8.
+
+Earlier product stacks are merged.
 The corrective runtime layer [#337](https://github.com/jlevy/metabrowser/pull/337) is
 independently reviewed, passes its full gate and all nine CI jobs, and is installed as
 `0.11.1.dev1290+c3d093d2d`. Its affected filesystem checks pass, and PR views pass in

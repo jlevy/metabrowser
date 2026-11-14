@@ -1,24 +1,28 @@
 # Plan: Markdown Navigation Extensions
 
-**Date:** 2026-08-13
+**Date:** 2026-08-13 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
 **Status:** Partly delivered.
-Configured static-site adapters, verified GitHub URL localization, and bounded Obsidian
-transclusion are implemented.
+Configured static-site adapters, verified GitHub URL localization, bounded Obsidian
+transclusion, and source-view line locations are implemented.
+Line locations shipped as GitHub-style `#L` fragments (#235 and #239, on `main` through
+#260) rather than through the reserved `_mb_` query namespace this plan first specified.
 The earlier browser graph-analysis API was retired when Markdown parsing ownership moved
 to KPress; it is not a current SDK surface.
 Each section below distinguishes its delivered history from remaining work.
 
 Remaining work includes:
 
-- **Source-view line locations** — blocked on implementing the reserved `_mb_` query
-  namespace in the URL codec, which the baseline pinned by test but left uninterpreted.
-- **Frontmatter alias lookup** — still an evaluation, not a commitment.
-- **Explicit mounted roots** — multi-repository and cross-vault navigation.
-- **Graph analysis** — a bounded server route backed by a KPress-owned intent manifest,
-  as described in [functional UI parity](plan-2026-09-10-functional-ui-cli-parity.md).
+- **Frontmatter alias lookup** (`mb-vjes`) — still an evaluation, not a commitment.
+- **Explicit mounted roots** (`mb-hvze`) — multi-repository and cross-vault navigation.
+- **Graph analysis** (`mb-614c`) — a bounded server route backed by a KPress-owned
+  intent manifest, as described in
+  [functional UI parity](plan-2026-09-10-functional-ui-cli-parity.md).
+
+The reserved `_mb_` namespace is still carried verbatim with no key interpreted;
+`mb-npkt` implements the codec split when a feature first needs a reserved key.
 
 ## Context
 
@@ -51,8 +55,9 @@ Verify with the
 
 ## Public Contracts
 
-The mounted-root and source-line extensions below are proposed contracts, not fields
-already supported by the current SDK.
+The mounted-root extension below is a proposed contract, not a field already supported
+by the current SDK. Source-line locations shipped without a target field: the fragment
+carries them.
 
 ### Project Context
 
@@ -82,10 +87,8 @@ Invalid configuration produces diagnostics and no mounts.
 
 ### Navigation Targets
 
-`NavigationTarget` gains two explicit dimensions:
-
-- `root`, an optional configured mounted-root identity;
-- `sourceLines`, an optional `{start, end}` location for source views.
+`NavigationTarget` gains one explicit dimension: `root`, an optional configured
+mounted-root identity.
 
 Primary-root links retain `/view/<path>`. Mounted targets use `/view/@/<root>/<path>`.
 Identity stays in the path, so a mounted root is a path sigil rather than a parameter.
@@ -93,16 +96,17 @@ Identity stays in the path, so a mounted root is a path sigil rather than a para
 Presentation uses the reserved query namespace defined in the
 [browser URL grammar](../../../architecture.md#browser-url-grammar): Metabrowser owns
 keys beginning with `_mb_`, and every other key remains the document’s and is passed
-through untouched. Source locations therefore use `_mb_view=source` and
-`_mb_lines=<start>-<end>` rather than rendered heading fragments, and rather than the
-unprefixed `view` and `line` keys an earlier draft of this plan specified.
-Unprefixed keys are not available: an authored `?view=` belongs to the document, and a
-repository whose own links carry one must not be read as issuing Metabrowser directives.
+through untouched.
+Unprefixed keys are not available: an authored `?view=` belongs to the
+document, and a repository whose own links carry one must not be read as issuing
+Metabrowser directives.
 
-Line ranges stay in the query rather than the fragment so the fragment keeps a single
-grammar, a range survives a view switch, and a Markdown heading whose id is `L14` stays
-unambiguous. Inbound GitHub `#L14-L20` permalinks are translated by the existing
-localizer at the boundary instead.
+Source line locations are not query keys.
+They are GitHub’s own fragments, `#L14`, `#L14-L20`, and `#L14C5-L20C8`, so a GitHub
+permalink’s fragment works unchanged.
+As on github.com, a fragment spelled as a line anchor is always one: it opens the Source
+view at that line, and a document element whose id is exactly `L14` is not reached by
+`#L14` (see the browser URL grammar).
 
 The URL codec, browser history, public SDK, raw resources, complete-source reads, and
 renderers all use the same target type.
@@ -191,13 +195,15 @@ Acceptance criteria:
 
 ### Source-View Line Locations (`mb-281d`)
 
-GitHub-style `#L14` and `#L14-L20` locations on non-Markdown source files map to the
-explicit `sourceLines` target.
+**Status:** Implemented in #235 and #239 (on `main` through #260) as fragment anchors in
+the shared Source view: a line gutter, `#L` highlight and scroll, click and shift-click
+anchoring, and a keyboard slider, in `static/plugin-sdk-views.js`
+(`MetabrowserSourceLineAnchors`), pinned by `tests/dom/source-line-anchors-session.js`
+and `cli-ui-source-line-anchors.tryscript.md`. The fragment is the only state, so it
+does not use the reserved query namespace or a `sourceLines` target, and a heading whose
+id is `L14` yields to the line anchor.
 
-This is the first feature to use the reserved query namespace, so it also establishes
-the codec’s reserved-key split rather than parsing parameters at each call site.
-
-Acceptance criteria:
+Original acceptance criteria, retained as design history:
 
 - line ranges validate positive, ordered, bounded integers;
 - canonical URLs use `_mb_view=source` and `_mb_lines=<start>-<end>` and round-trip

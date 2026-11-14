@@ -1,12 +1,10 @@
 # Plan for Watching GitHub Pull Requests
 
-**Status.** Implemented on `main`; implementation and verification are closed in
-`mb-bzhx`. The
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
-The design is `mb-lz7e`, catalog refresh and recovery are `mb-ad70`, the Pulls UI is
-`mb-81f2`, and session verification is `mb-khc4`. Shared row arrivals are tracked in
-`mb-x9v7`.
+**Status.** Implemented on `main` through
+[#312](https://github.com/jlevy/metabrowser/pull/312) and shipped in 0.12.0 (tag
+`v0.12.0`); implementation and verification are closed in `mb-bzhx`. The design is
+`mb-lz7e`, catalog refresh and recovery are `mb-ad70`, the Pulls UI is `mb-81f2`, and
+session verification is `mb-khc4`. Shared row arrivals are `mb-x9v7`.
 
 ## Reader Behavior
 
@@ -27,13 +25,13 @@ lightweight-description pass after the first tree work is idle.
 This one-pass preparation is separate from the recurring foreground watch.
 Eligibility uses the same served-repository discovery as the Pulls tab.
 See
-[Progressive Metadata Preparation](plan-2026-10-01-github-pulls-tab.md#progressive-metadata-preparation).
+[Progressive Metadata Preparation](../active/plan-2026-10-01-github-pulls-tab.md#progressive-metadata-preparation).
 
 The watch covers the repository’s PR catalog.
 The selected PR’s description, conversation, checks, and comparison continue through
 their existing routes.
 GitHub Issues belong to a separate catalog design.
-See the [Pulls plan](plan-2026-10-01-github-pulls-tab.md#catalog-revision).
+See the [Pulls plan](../active/plan-2026-10-01-github-pulls-tab.md#catalog-revision).
 
 ## Catalog and Request Ownership
 
@@ -100,7 +98,9 @@ the filter.
 ## Status and Recovery
 
 Keep one status row in Pulls chrome beside the persistent **Reload** action.
-The repository total and current display window keep their own labels.
+The repository total keeps its own label, and the list’s scan indicator shows below the
+rows while pages are read or fetched (see
+[Extend Pulls on Scroll](../active/plan-2026-10-01-github-pulls-tab.md#extend-pulls-on-scroll)).
 Show the last successful update age when idle and the shared spinner while work is
 active. A retry keeps the last failure visible and keeps its announcement steady until
 the result changes. Announce meaningful status changes through the existing live region.

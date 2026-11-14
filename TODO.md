@@ -18,11 +18,11 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Startup capability gate implemented; rename, move, and trash workflows planned |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Scan status, counts, and pending directory aggregates implemented; recent-directory items remain |
 | Git surfaces | [Git graph nav panel](docs/project/specs/done/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 released. v0.12 has landed on `main` and first ships in 0.12.0, not yet tagged: an owner-only cache of stores acquired from `file://` and `https://` origins or borrowing from an admitted checkout and served as immutable pins under the forced untrusted profile, with background refresh and pin switching, per the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md). SSH, a general repository catalog and chooser, and measured very-large-repository acquisition remain |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. GitHub URLs, pull-request records, the resumable PR catalog, Pulls navigation, checkout-backed comparisons, and optional native-stack membership are implemented. The [GitHub Pulls tab plan](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) records that delivery; inline review anchors and broader hosted-review projections remain separate work. [Alpha testing](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what remains before the release |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | 0.12.0, released 2026-11-09, ships an owner-only cache of stores acquired from `file://` and `https://` origins or borrowing from an admitted checkout and served as immutable pins under the forced untrusted profile, with background refresh and pin switching, per the [thin-mirror plan](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md). SSH, a general repository catalog and chooser, and measured very-large-repository acquisition remain |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. GitHub URLs, pull-request records, the resumable PR catalog, Pulls navigation, checkout-backed comparisons, and optional native-stack membership are implemented. The [GitHub Pulls tab plan](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) records that delivery; inline review anchors and broader hosted-review projections remain separate work. [Alpha testing](docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md#landing-status) records the 0.12.0 acceptance and its deferred checks |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | On-demand assets, progressive inventory delivery, and startup-script budget implemented; broader performance goals remain |
-| Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
+| Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; the asset-loading work it waited on has landed |
 | CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
@@ -35,15 +35,16 @@ flat `metab` CLI, and the v0.1.0 package.
 v0.12.0 lets a user paste a GitHub repository, file, commit, or pull-request URL and
 browse it from a local mirror: instant once seen, usable offline, and refreshed in the
 background.
-[Thin Mirror for Git and GitHub Browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md)
+[Thin Mirror for Git and GitHub Browsing](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md)
 is the design, and its Delivery section maps each step to its pull request (epic
 `mb-hall`).
 
-The work has landed on `main`, and 0.12.0 is not yet tagged; v0.11.0 is the latest
-release. The 2026-09-24 acceptance run on an installed wheel is recorded in
+0.12.0 was tagged and published on 2026-11-09. The 2026-09-24 acceptance run on an
+installed wheel is recorded in
 [QA: v0.12 alpha acceptance](docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md).
-[Landing status](docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
-lists what remains before the release, which waits for the user’s approval (`mb-4bd2`).
+[Landing status](docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md#landing-status)
+records the release and the owner-deferred checks, which remain open beads under
+`mb-425f`.
 
 The owner expanded the scope after the original thin-mirror design.
 The [Pulls tab](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) and
@@ -73,12 +74,11 @@ Remaining work from the
 [extensions plan](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 includes:
 
-- [ ] Interpret the reserved `_mb_` query namespace in the URL codec.
-  The baseline reserved the namespace and pinned it with codec tests but interprets no
-  key, so query stays verbatim passthrough.
-  This blocks the next item.
-- [ ] Add source-view line-location targets (`_mb_view`, `_mb_lines`), so a link can
-  address a line range inside a rendered or source view.
+- [x] Address a line range inside a source view: shipped as GitHub-style `#L` fragments
+  (#235, #239), without the reserved `_mb_` keys.
+- [ ] Interpret the reserved `_mb_` query namespace in the URL codec (`mb-npkt`). The
+  baseline reserved the namespace and pinned it with codec tests but interprets no key,
+  so query stays verbatim passthrough; nothing consumes it yet.
 - [ ] Evaluate frontmatter alias target lookup.
   Still a question, not a commitment.
 - [ ] Add explicit mounted roots for multi-repository and cross-vault navigation.
@@ -136,7 +136,7 @@ is no longer outstanding.
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
 - [x] Implement the v0.12.0
-  [repository mirror and GitHub browsing](docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md):
+  [repository mirror and GitHub browsing](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md):
   a versioned local cache that opens or reuses Git and GitHub URLs at a selected branch,
   tag, or commit, with pull-request pages, catalog navigation, checkout-backed
   comparisons, and native-stack metadata.

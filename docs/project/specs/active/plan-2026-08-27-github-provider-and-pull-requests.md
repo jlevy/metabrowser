@@ -5,8 +5,8 @@
 **Author:** Joshua Levy (with LLM assistance)
 
 **Superseded in part (2026-09-23):** the remaining v0.12 phases follow
-[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
-replaces this plan wherever they disagree.
+[Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md),
+which replaces this plan wherever they disagree.
 The built foundation and its record below stay as background.
 
 **Addendum (2026-09-30):** the Phase 0 through 0D hosted-review foundation this plan
@@ -21,21 +21,19 @@ It is kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
 The Phase 0 through 0D foundation was built on stack
 [#218](https://github.com/jlevy/metabrowser/stack/218) and then removed, as the addendum
 above records. Phases 2 through 4A are superseded: the thin-mirror plan’s
-[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
-that open GitHub URLs, read pull-request records with `gh`, and render the pull-request
-page in their place, so the unchecked items in those phases will not be done as written.
-The pull-request index and panel (Phases 3C and 4B) are implemented by the later
-[Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), without this plan’s retired
-provider-neutral model.
+[Delivery](../done/plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull
+requests that open GitHub URLs, read pull-request records with `gh`, and render the
+pull-request page in their place, so the unchecked items in those phases will not be
+done as written. The pull-request index and panel (Phases 3C and 4B) are implemented by
+the later [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), without this plan’s
+retired provider-neutral model.
 Anchored review threads (Phase 4C) remain deferred.
 Optional native GitHub membership is implemented separately; it does not complete Phase
 6’s stack derivation, aggregate state, or comparison projections.
 Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
 against the thin mirror before they start.
-The v0.12 stack has landed; the release is `mb-4bd2` and requires the user’s explicit
-approval, and the
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before it.
+The v0.12 stack has landed, and 0.12.0 was released on 2026-11-08 (tag `v0.12.0`,
+`mb-4bd2`).
 
 ## Vision
 
@@ -1062,8 +1060,9 @@ and the remaining `mb-dg00` goldens are not done.
 ### Phase 2: GitHub URLs, selected refs, and branches (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-jlon`, `mb-bf94`, `mb-2xq7`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose GitHub URL open step
-(#231, `mb-bgs7`) delivers it; the unchecked items below will not be done as written.
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md), whose GitHub URL open
+step (#231, `mb-bgs7`) delivers it; the unchecked items below will not be done as
+written.
 
 The GitHub implementation after Phase 0 also uses one formal stacked pull request per
 phase. Every publication bead requires independent review, the review shortcut,
@@ -1123,7 +1122,7 @@ recorded base silently.
 #### Phase 3A: Transport, auth, binding, and snapshot kernel (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 Its PR data step (#232, `mb-nkmq`) runs `gh` with fixed arguments and uses it as Git’s
 credential helper.
 The credential lease bridge, provider binding, and snapshot kernel are
@@ -1208,9 +1207,9 @@ below will not be done as written.
 #### Phase 3B: Directly addressed PR bundle (`mb-h64t`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR data step (#232)
-stores one validated JSON record per pull request and fetches `refs/pull/<n>/head`; the
-unchecked items below will not be done as written.
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md), whose PR data step
+(#232) stores one validated JSON record per pull request and fetches
+`refs/pull/<n>/head`; the unchecked items below will not be done as written.
 
 - [ ] Fetch a selected `ChangeRequest/v1` frontmatter artifact and its bounded review,
   top-level conversation comment, thread, review-comment, check, and status companions,
@@ -1238,6 +1237,9 @@ unchecked items below will not be done as written.
 
 **Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-lnkl`), and
 to be re-planned against the thin mirror before work starts.
+The re-planned list landed through the
+[Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) as a lightweight catalog, so the
+unchecked items below will not be done as written.
 
 - [ ] Publish a bounded `ChangeRequestIndex/v1` with explicit query, pages, cursors,
   stable sort/tie-breaker, per-page provenance, first/last observation times, remote
@@ -1254,8 +1256,8 @@ to be re-planned against the thin mirror before work starts.
 #### Phase 4A: Direct PR document and comparison (`mb-xzj3`, `mb-6mle`, `mb-83w0`, `mb-81p5`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), whose PR view step (#233,
-`mb-vrl7`) renders the pull-request page inside the GitHub plugin, with no public
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md), whose PR view step
+(#233, `mb-vrl7`) renders the pull-request page inside the GitHub plugin, with no public
 router, address-space, or resource-kind SDK; the unchecked items below will not be done
 as written.
 
@@ -1278,6 +1280,9 @@ as written.
 
 **Addendum (2026-09-30):** deferred by the user’s 2026-09-23 decision (`mb-iw1v`). The
 public nav-panel SDK (`mb-uh6p`) is retired.
+The [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) implements the panel inside
+the GitHub plugin, without this SDK or `RepositoryActivity/v1`, so the unchecked items
+below will not be done as written.
 
 - [ ] Add the repository-scoped plugin SDK surface (`mb-uh6p`) for virtual nav
   collections, including loading, error, replacement, restoration, and disposal.
@@ -1314,6 +1319,12 @@ pull-request page lists each review comment with its file and line.
 
 ### Phase 6: Stacked change requests and cross-object projections (`mb-glxc`)
 
+**Addendum (2026-11-14):** native GitHub stack membership and navigation landed
+separately, in the Pulls tab plan’s
+[Optional Stacks](plan-2026-10-01-github-pulls-tab.md#optional-stacks-and-presentation-revision)
+revision. At the owner’s request it reads GitHub’s native membership and never infers a
+stack from base branches.
+
 - [ ] Implement stack derivation against the common contract with explicit evidence,
   algorithm version, conflicts, and cycles.
 - [ ] Add adapter points for explicit stack metadata without hard-coding a third-party
@@ -1324,6 +1335,13 @@ pull-request page lists each review comment with its file and line.
   to store derived order.
 
 ### Later sibling: Hosted releases (`mb-7srn`)
+
+**Addendum (2026-11-14):** not implementation-ready.
+The phases below build on the contract, resource-profile, and provider-store registries
+that [#246](https://github.com/jlevy/metabrowser/pull/246) removed, which survive only
+on the `reference/v012-hosted-review` branch (draft
+[#247](https://github.com/jlevy/metabrowser/pull/247)). Re-plan release browsing against
+the thin mirror before work starts; `mb-7srn` holds the feature until then.
 
 Releases are the next proof that the framework is a general external-resource system,
 not a PR-only stack.
@@ -1358,7 +1376,7 @@ Asset bytes remain an explicit on-demand content workflow.
 The direct release path lands before its list and nav panel, matching the direct-PR
 sequence.
 
-The release phases are implementation-ready at these file and function seams:
+The release phases were planned at these file and function seams:
 
 | Phase | Files and functions | Required evidence |
 | --- | --- | --- |
