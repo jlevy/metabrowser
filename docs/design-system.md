@@ -1504,9 +1504,11 @@ Once rows are drawn, a change to them — a list’s further pages, or a refresh
 changes it — that comes `LATE_ROWS_MS` after the reader’s last press or key is offered
 rather than drawn: **Show N more files** or **Show the updated list of N files**, on the
 tree’s line, or floating over its top when the line is hidden, so drawn rows never move
-without input. **An offer stands in only for a change to drawn rows.** An expanded tree
-with none drawn never shows one.
-`test_a_tree_opens_once_and_never_grows_without_input` holds both.
+without input. A refresh that lists no files is offered as **Show the updated list (no
+files)**, and the rows drawn meanwhile keep no line saying there are none; once the
+reader asks for the empty list, the tree says “No changed files.”
+**An offer stands in only for a change to drawn rows.** An expanded tree with none drawn
+never shows one. `test_a_tree_opens_once_and_never_grows_without_input` holds both.
 
 The tree draws a viewport window, keeping its focused anchor mounted.
 Counts name the files fetched and say when the list is partial or capped; the rows do
