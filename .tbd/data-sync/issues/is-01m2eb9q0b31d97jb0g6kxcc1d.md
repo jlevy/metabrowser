@@ -5,14 +5,14 @@ title: "Parity checker: require behavior-function owners and verify function ran
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels:
   - parity
 dependencies: []
 parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 created_at: 2026-09-13T21:38:13.642Z
-updated_at: 2026-09-14T23:28:11.873Z
+updated_at: 2026-11-14T18:43:21.021Z
 ---
 From the release senior review (shell/parity lane). Deferred from the v0.9.2 release because each needs a checker redesign, not a local fix.
 
@@ -23,3 +23,5 @@ From the release senior review (shell/parity lane). Deferred from the v0.9.2 rel
 ## Notes
 
 Deferred from the 2026-09-13 PR round to keep that round short; not started. It rewrites owner entries across the parity table, so start it after the preview-states (mb-8t24/mb-pwt8) and Markdown (mb-k8os) PRs merge, since both add or edit parity rows.
+
+2026-11-14 audit: still valid. mb-8t24 and mb-pwt8 are closed; mb-k8os is still open.

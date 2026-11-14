@@ -5,35 +5,18 @@ title: "R5: make the recency filter cacheable via sorted mtimes and binary searc
 kind: feature
 status: open
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
-parent_id: is-01m0jt1hr4r6yqhgxkv0bpyayj
+parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T18:42:31.600Z
-updated_at: 2026-08-21T19:03:45.048Z
+updated_at: 2026-11-14T18:43:35.073Z
 ---
-PR #60 review finding R5 (medium; opportunity rather than defect).
+PR #60 review R5 (an opportunity, not a defect), restated against the provider code on main.
 
-cached_rollups skips the cache entirely when recency_seconds is set, because "its verdicts
-move with the clock". The reasoning is right and the escape hatch is honest. The
-consequence is that the full O(index) pass runs on every request precisely when a recency
-filter is on -- and by #60's own account, one filter change fans out into the tree request
-plus a subtree request per lazy stub the prefetch sweep warms.
+A filtered navigation tree (FilteredTreeQuery, answered by _filtered_tree_projection in src/metabrowser/inventory_engine/providers/python_inventory.py) is a full pass over the index on every request. Only its continuation pages are memoized (_FilteredTreePageMemo), and that memo matches on the whole filter. A recency filter's cutoff carries as_of_ns, so no two requests with a recency filter can share an answer. One filter change fans out into the tree request plus a subtree request per lazy stub the prefetch sweep warms.
 
-#59 hit the same problem and the fix is already in the tree. The navigation tallies had the
-same clock dependency. An early version keyed the memo on a rounded second; it never hit at
-400k entries, because the pass took longer than the bucket, so every request landed in a
-later bucket than the one before it. Measured before that was understood: six consecutive
-root requests at 400k cost 1970, 2052, 1967ms, with no reuse at all.
-
-What worked: keep a per-revision sorted array("q") of mtimes, split tracked from ignored,
-and answer each window with a binary search -- everything at or after the cutoff's
-insertion point is inside the window. The memoized half then depends on the entries alone
-and the key carries no clock term. See _with_recency and _NavigationTallyBase in
-inventory.py on main.
-
-Applying the same shape here would make the recency filter cacheable like every other
-dimension. Not a merge blocker; worth doing before the prefetch sweep meets a large tree.
+The navigation tallies solved the same clock dependency. _NavigationTallyBase keeps sorted tracked and ignored mtimes per revision, and _with_recency answers each window by binary search, so the memoized half carries no clock term (arch-state-and-delivery.md, What Is Not Solved). Apply the same shape here: memoize the clock-independent filtered result per revision and filter, and answer the recency cutoff from sorted mtimes. Measure the pass on a large tree first.
 
 ## Notes
 

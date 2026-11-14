@@ -3,9 +3,9 @@ type: is
 id: is-01m6f39t9zax1nbajkkasya6st
 title: "Spec: GitHub Pulls tab for mirrors and local checkouts"
 kind: epic
-status: in_progress
-priority: 1
-version: 20
+status: open
+priority: 2
+version: 22
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -23,7 +23,7 @@ child_order_hints:
   - is-01m6hp3w66pyvqttk9w3hbmj70
   - is-01m6hx4w87z6r8ndnbt57avr53
 created_at: 2026-11-02T21:40:30.142Z
-updated_at: 2026-11-04T17:18:15.705Z
+updated_at: 2026-11-14T18:43:28.798Z
 ---
 Every pull request of a GitHub repository in a Pulls tab beside Files and Git, newest first, with GitHub-style state icons. Each row expands in place to its changed files as a tree, like a folder. The pane shows this tab at a pull request's address. Works on a mirror and on an existing checkout, with nothing written to the user's repository. Delivered as a native stack above the v0.12 stack. See the plan's Delivery.
 
@@ -44,3 +44,5 @@ Earlier chronological notes (superseded where they describe pending final gates)
 2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
 
 The implemented Pulls list, direct opening, changed-file tree, checkout support and overlay integration are reviewed and merged. The old step-4/step-5 WIP and owed strong-review statements are historical. Keep this parent open for the unimplemented expected-count mb-egnj and shared-manifest mb-w5rc descendants through mb-ywt7/mb-q3jt.
+
+2026-11-14 audit: all delivery layers are merged and shipped in 0.12.0. Partial-scope parents mb-q3jt, mb-ywt7 and mb-m13a are proposed closed, with their follow-ups mb-egnj, mb-w5rc and mb-xl14 reparented here. Open follow-ups: mb-egnj, mb-w5rc, mb-0cr3, mb-dpvu, mb-xl14. Nothing is in progress, so status is open.

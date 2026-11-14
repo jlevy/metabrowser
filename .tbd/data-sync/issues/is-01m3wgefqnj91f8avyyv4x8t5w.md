@@ -3,19 +3,15 @@ type: is
 id: is-01m3wgefqnj91f8avyyv4x8t5w
 title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except documented fixes"
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 29
+version: 33
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
   - release:v0.12.0
-dependencies:
-  - type: blocks
-    target: is-01m2k713pxra1ns2fk3pcwrpb6
-  - type: blocks
-    target: is-01m5wdbsy6z6d95sgg03kwmm76
-parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+dependencies: []
+parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 child_order_hints:
   - is-01m3xdkv8pgb8q69mvem8svn27
   - is-01m3zcr18c7gmtctd4g8d8sfc1
@@ -25,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-11-08T17:51:17.690Z
+updated_at: 2026-11-14T18:42:21.619Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
@@ -125,3 +121,5 @@ CHECK 3, BROWSER: running at the time of writing.
 2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
 
 The feature stack, including the regular-folder changes, is now landed and accepted for its reviewed scope. Preserve the complete earlier diagnostic as NONFINAL at its own pin; it is not a new final-head differential. The three v0.11.0 differentials and behavior-change sign-off required on the eventual release head remain separate release work. Keep this release-gate task open; no new differential execution or owner release sign-off is claimed.
+
+2026-11-14 audit: 0.12.0 shipped on 2026-11-09 from main 87b8ec81 (tree cdb95f00) with the final data and browser differentials incomplete; the owner deferred them and kept this bead open (mb-4bd2 notes). Parts A/B/C were accepted at 426ce7b6, an earlier tree. What remains, if still wanted: the data and browser differentials on the tagged head against v0.11.0 (browser blocked by mb-cz5s). A difference found now is a 0.12.x fix. The /api/stream sign-off gap is closed (CHANGELOG.md, review-2026-10-01-v012-changes-to-existing-behavior.md). Status set back to open: no activity since 2026-11-08.

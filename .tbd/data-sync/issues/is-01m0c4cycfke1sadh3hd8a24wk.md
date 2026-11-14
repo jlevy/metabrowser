@@ -3,9 +3,9 @@ type: is
 id: is-01m0c4cycfke1sadh3hd8a24wk
 title: "diff/wire.py + diff/routes.py: browser contract and the /api/diff/ collection"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies:
@@ -13,7 +13,11 @@ dependencies:
     target: is-01m0c4czd01fxz2rv1na9s3b5q
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-08-19T04:27:46.958Z
-updated_at: 2026-08-19T16:19:42.755Z
+updated_at: 2026-11-14T18:42:17.104Z
+closed_at: 2026-11-14T18:42:17.103Z
+close_reason: Superseded by the diff plugin's document, children, and comparison data hooks and diff/format.py validation; no core /api/diff/ collection is planned by any current document.
+resolution: canceled
+duplicate_of: null
 ---
 wire.py mirrors git/wire.py: TypedDicts for every emitted shape plus validate_manifest, validate_file_patch, validate_resolved_comparison, invoked from tests on everything the routes emit. routes.py exposes DIFF_ROUTES registered the way GIT_ROUTES is: POST /api/diff/comparisons, GET the comparison, GET files/{file_id}/patch, GET files/{file_id}/content/{side}. Opaque file IDs, ETags from comparison + content identity + options + producer version, cancellation terminates queued work.
 

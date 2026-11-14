@@ -5,15 +5,17 @@ title: Modularize the browser shell and reader assets
 kind: epic
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: TODO.md
 labels:
   - browser
   - architecture
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
+child_order_hints:
+  - is-01kxshfx0fhzyccg1wwtdv7c6b
 created_at: 2026-07-16T16:49:04.842Z
-updated_at: 2026-08-16T08:05:56.704Z
+updated_at: 2026-11-14T18:43:15.003Z
 extensions:
   linear:
     id: fb70400d-cf16-4be7-b0c6-8ff45c3730da

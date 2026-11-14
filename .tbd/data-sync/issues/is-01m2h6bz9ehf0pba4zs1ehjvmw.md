@@ -5,11 +5,12 @@ title: Settled navigation tally is 1.2-1.3x slower than v0.9.1 on a 300k tree
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T00:09:48.077Z
-updated_at: 2026-09-15T00:09:48.077Z
+updated_at: 2026-11-14T18:42:26.562Z
 ---
 devtools.compare_builds on the 300,000-file synthetic corpus, quiet 4-CPU host, v0.9.1 wheel against main 03fd7997, five interleaved pairs. The tally measured after the index settles (a depth-0 /api/tree read, with a second tally competing) is consistently slower:
 
@@ -21,3 +22,7 @@ Neither is in the set the v0.10.0 release comparison judges (that set has the pr
 On the repository-shaped project-10 corpus the same metric is 1.01-1.08x, so the cost scales with entry count rather than with directory count.
 
 Same family as mb-wpqq: whole-index passes on this provider now build and validate contract objects per row where v0.9.1 read its own retained tuples. Measure the tally pass the way the catalog read was measured there before choosing a fix.
+
+## Notes
+
+2026-11-14 audit: measured on the v0.10.0 candidate; re-measure on main before choosing a fix.

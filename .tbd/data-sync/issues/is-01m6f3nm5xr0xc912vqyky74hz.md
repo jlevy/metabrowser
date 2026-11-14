@@ -3,9 +3,9 @@ type: is
 id: is-01m6f3nm5xr0xc912vqyky74hz
 title: Re-run the folder comparison after this branch merges
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 12
+version: 13
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -16,8 +16,12 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-09T01:24:52.767Z
+updated_at: 2026-11-14T18:43:27.068Z
 started_at: 2026-11-03T09:32:28.834Z
+closed_at: 2026-11-14T18:43:27.067Z
+close_reason: The more-than-50-file plain-folder comparison against v0.11.0 passed on the tree that was tagged 0.12.0, and the sign-off record names the change.
+resolution: null
+duplicate_of: null
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 

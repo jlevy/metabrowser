@@ -5,11 +5,13 @@ title: Root /api/tree server time is 3-44x v0.9.1 during a walk on a repository-
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-09-15T00:40:34.677Z
-updated_at: 2026-09-15T00:40:34.677Z
+updated_at: 2026-11-14T18:42:38.019Z
 ---
 exp-034, quiet 4-CPU host, project-10 (118,860 walker-visible files), five back-to-back headed browser pairs, v0.9.1 wheel against main 03fd7997. The root /api/tree fetch's Server-Timing (tree_fetch_srv_ms) is 1, 1, 3, 3, 1 ms on the control and 10, 44, 9, 42, 39 ms on the candidate: every pair exceeds the release's 1.3x rule. load_tree_ms, the same fetch plus its render, follows: 16-28 ms against 22-69 ms.
 
@@ -18,3 +20,7 @@ exp-033 saw the same shape under load (1-9 ms -> 12-68 ms) and attributed it to 
 Absolute cost is small and inside every gate: the candidate still reaches first rows in 198-317 ms against the control's 1,189-1,392 ms, so this is a ratio regression on a metric whose absolute value the release improves overall. Recorded in exp-034 as an explained, accepted difference rather than a silent one.
 
 Fix direction: fewer loop hops per read, or a read path that does not cross the coordinator once per hop while a walk is running. Measure with run.py probe-server, which samples the route across the scan rather than drawing one sample.
+
+## Notes
+
+2026-11-14 audit: measured on the v0.10.0 candidate; re-measure on main with run.py probe-server before changing the read path.

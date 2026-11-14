@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 104
+version: 107
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -86,10 +86,13 @@ child_order_hints:
   - is-01m6wpacpj9wtx02rt1g8kx49m
   - is-01m6yf7sfcwhqr17xdzy45r7tr
   - is-01m6yvdd0vjh112keerpr3gpc7
+  - is-01m75fzpspek15x7d5dqhnc2yw
+  - is-01m734yq0xac22pqms8am9sy50
+  - is-01m6g1zdwbrnjm5cfvg0dyqqyf
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-09T00:30:29.914Z
+updated_at: 2026-11-14T18:43:05.029Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.

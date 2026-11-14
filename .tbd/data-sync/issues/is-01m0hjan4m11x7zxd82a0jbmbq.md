@@ -3,14 +3,18 @@ type: is
 id: is-01m0hjan4m11x7zxd82a0jbmbq
 title: Maintain navigation tallies per write so the first root request is bounded
 kind: feature
-status: open
+status: closed
 priority: 3
-version: 3
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-21T07:07:24.179Z
-updated_at: 2026-08-21T18:31:17.929Z
+updated_at: 2026-11-14T18:43:02.721Z
+closed_at: 2026-11-14T18:43:02.720Z
+close_reason: "Duplicate of mb-0cmt (H34): both maintain the navigation tallies per write in _replace_index_entry and _pop_index_entry; this bead's notes move to mb-0cmt."
+resolution: duplicate
+duplicate_of: is-01m0nw7vg2kzh80g7vvvk1h28q
 ---
 The root /api/tree request needs index-wide navigation tallies: extension, canonical
 extension, family, preset, and recency counts over every file entry. That pass is

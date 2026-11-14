@@ -5,13 +5,15 @@ title: Support safe archive and container browsing
 kind: feature
 status: open
 priority: 3
-version: 4
+version: 5
 spec_path: TODO.md
 labels: []
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
+child_order_hints:
+  - is-01m0dkj0xzgg9b6kc7ge0fm2ne
 created_at: 2026-07-15T06:15:21.716Z
-updated_at: 2026-08-16T08:05:49.261Z
+updated_at: 2026-11-14T18:42:32.475Z
 extensions:
   linear:
     id: 48e8dd27-0205-4ace-ba06-3973c5d3c94c

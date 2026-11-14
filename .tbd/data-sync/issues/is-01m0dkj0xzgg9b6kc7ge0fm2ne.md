@@ -5,14 +5,16 @@ title: "Archive containers: browse .zip through the container contract"
 kind: feature
 status: open
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/architecture/arch-nav-containers.md
 delegate: null
 labels: []
 dependencies: []
+parent_id: is-01kxj6mrvpkqnkn274rhy3mg2j
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.478Z
-updated_at: 2026-09-16T21:15:13.107Z
+updated_at: 2026-11-14T18:42:32.457Z
 started_at: 2026-09-16T21:12:28.653Z
 ---
 The generality proof for nav containers: a .zip is folder-like (children = members via bounded listing, outer = archive summary/listing view), members are ordinary item-like entries whose kinds are detected as usual, and extraction goes through the shared container materialization cache. No new tree or rendering machinery — if this needs any, the container contract is wrong. Bounded: listing caps, per-member size caps, zip-bomb guards per SUPPLY-CHAIN thinking.

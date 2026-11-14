@@ -5,7 +5,7 @@ title: "Repository library follow-up: generic Git catalog, refresh, and cache ma
 kind: feature
 status: open
 priority: 2
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-27T05:36:40.448Z
-updated_at: 2026-09-23T00:40:58.311Z
+updated_at: 2026-11-14T18:42:01.684Z
 started_at: 2026-09-16T21:10:44.853Z
 ---
-Complete the generic source/store catalog, refresh, and cache-management phase after the initial provider-facing slice. Scan validated source aliases and repository-store state; add list, inspect, Git-only refresh, repair diagnostics, recoverable alias/store purge, size accounting, attachment visibility, and measured retention. Publish verified Metabrowser-owned refs without changing live subjects, preserve objects reachable from any alias, provider, or lease, and report progress, cancellation, coalescing, and partial failure. Provider refresh remains separate.
+Generic Git catalog, refresh, and cache management for the shared repository store, after v0.12. The read-only /api/cache/layout, /api/cache/sources, /api/cache/source, and /api/cache/stores routes already report layout, sources, and stores. Remaining: one catalog over validated source and store records; list, inspect, and Git-only refresh operations; repair diagnostics; recoverable purge; size accounting; attachment visibility; and measured retention, with progress, cancellation, coalescing, and partial-failure reporting. The original design assumed Phase 2B provider jobs and store leases, which the thin-mirror plan superseded or removed (#228); re-plan against the thin-mirror plan before starting (open-repo plan, 'Later: Generic catalog, refresh, and cache management').

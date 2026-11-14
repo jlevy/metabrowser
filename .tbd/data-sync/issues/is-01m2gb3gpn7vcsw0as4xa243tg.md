@@ -1,20 +1,20 @@
 ---
 type: is
 id: is-01m2gb3gpn7vcsw0as4xa243tg
-title: Stabilize the test suite under machine load before v0.10.0
+title: Stabilize the test suite under machine load
 kind: bug
 status: open
-priority: 1
-version: 5
+priority: 2
+version: 6
 labels:
   - testing
 dependencies: []
 child_order_hints:
   - is-01m2gb3pfd368gdf1ragzqezbg
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-04T17:18:22.691Z
+updated_at: 2026-11-14T18:42:10.880Z
 ---
-Sweep the full pytest suite and tryscript goldens under heavy machine load (load average 7-50 from an unrelated workload, plus CPU burners where quiet). Classify each failure as load/timing flake, real bug, or order dependence, and fix flakes by asserting the product guarantee with deterministic coordination rather than wall-clock thresholds. Starts from the known flake in tests/test_serve_open_race.py (failed once in make verify at load ~40).
+Sweep the full pytest suite and tryscript goldens under heavy machine load (load average 7-50 from an unrelated workload, or CPU burners on a quiet host). Classify each failure as a load or timing flake, a real bug, or an order dependence, and fix flakes by asserting the product guarantee with deterministic coordination rather than wall-clock thresholds. The starting flake, tests/test_serve_open_race.py (mb-0mu9), is fixed. CI flakes found since are tracked as children of this bead.
 
 ## Notes
 

@@ -5,7 +5,7 @@ title: "[epic] Minor cleanups for the next minor release"
 kind: epic
 status: open
 priority: 2
-version: 16
+version: 17
 labels: []
 dependencies: []
 child_order_hints:
@@ -23,8 +23,9 @@ child_order_hints:
   - is-01m041tjpb6dxha8h5yfjs9jqw
   - is-01m2zpxyf1qczg3r6cadfhh7sy
   - is-01m30z0wqpd8hcg5hskb23n96c
+  - is-01kzn46nh5ezzj2re7rcc0gx8n
 created_at: 2026-08-15T23:04:54.515Z
-updated_at: 2026-10-01T00:13:06.689Z
+updated_at: 2026-11-14T18:43:30.270Z
 extensions:
   linear:
     id: da29ec9a-dfad-45c8-96a5-c5866a6ac816

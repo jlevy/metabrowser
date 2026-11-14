@@ -3,9 +3,9 @@ type: is
 id: is-01m6mp811vf52jmazawykb3bw6
 title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
-status: in_progress
+status: open
 priority: 1
-version: 34
+version: 35
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -33,10 +33,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T23:39:30.547Z
+updated_at: 2026-11-14T18:42:47.763Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
-Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
+Parent for the November 4 PR and Git navigation iteration in the load-time plan (section PR and Git Navigation, H73-H85). Target: useful exact content painted within 100 ms for prepared or cached navigation, with the framework's correctness and responsiveness gates unchanged.
+
+Delivered and merged: #299, #300, #301, #303 and #334, with H76-H84 recorded in exp-045 to exp-055. Open: H74 cold-asset attribution (mb-5rm1), H75 natural intent timing (mb-97ex), and the large Source continuation stall (mb-06p9). The November 11 campaign (mb-mpo0) revisits several of these rows: H92 measured H75's join clause for the Pulls selection, and H94 covers file navigation.
+
+Measure on current main with the performance-loop accept rule: at least three admissible runs per condition, five or more interleaved pairs for effects below 2x, and frozen corpus, cache and build identities. Record rejected hypotheses as well as accepted ones.
 
 ## Notes
 

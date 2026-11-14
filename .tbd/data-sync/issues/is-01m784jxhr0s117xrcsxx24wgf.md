@@ -5,12 +5,14 @@ title: Measure an idle Markdown worker's memory before keeping it 60 s
 kind: task
 status: open
 priority: 3
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m774r5n7h5t75ydr0b6m5z00
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 created_at: 2026-11-12T15:03:57.751Z
-updated_at: 2026-11-12T15:03:57.751Z
+updated_at: 2026-11-14T18:42:27.634Z
 ---
-Deferred from review B (B5, remainder) on jlevy/metabrowser#368. MARKDOWN_WORKER_IDLE_MS keeps the Markdown worker 60 s after leaving Markdown; its idle memory cost is not recorded. Measure an idle worker's memory in Chrome and WKWebView and record it beside the constant (AGENTS.md: measure before bounding); shorten the idle time if the cost says so.
+Deferred from review B (B5, remainder) on #368. H90's kept Markdown worker (MARKDOWN_WORKER_IDLE_MS, 60 s, markdown-worker-client.js at 6b876c54) keeps the worker after the reader leaves Markdown, and its idle memory is not recorded. The constant is not on main: #368 took H90 out (bd971661), and mb-mbd3 holds its re-test. Before H90 lands, measure an idle worker's memory in Chrome and WKWebView and record it beside the constant (AGENTS.md: measure before bounding); shorten the idle time if the cost says so.

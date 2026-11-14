@@ -5,7 +5,7 @@ title: "Address design review: delivery order for status, cache, and providers"
 kind: task
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md
 labels: []
 dependencies: []
@@ -18,6 +18,10 @@ child_order_hints:
   - is-01m12w4y6ts23xezp2ht8kdk4k
   - is-01m12w4ys8cxhvkz2jqd44dyem
 created_at: 2026-08-28T00:26:04.631Z
-updated_at: 2026-08-28T00:26:08.551Z
+updated_at: 2026-11-14T18:42:24.343Z
 ---
 Umbrella for the 2026-08-27 design review findings R1-R7.
+
+## Notes
+
+2026-11-14 audit: R1 to R5 and R7 are closed; close this umbrella once R6 (mb-0l4q) is decided.

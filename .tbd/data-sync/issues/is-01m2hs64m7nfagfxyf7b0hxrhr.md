@@ -5,7 +5,7 @@ title: "[epic] v0.10.1: pay down the flat-tree delivery cost"
 kind: epic
 status: open
 priority: 1
-version: 8
+version: 9
 labels:
   - performance
   - release
@@ -17,8 +17,9 @@ child_order_hints:
   - is-01m2hrcwzqe7r4pyd7bdfq474x
   - is-01m2hrcxgbcrrte71dn2abqyxx
   - is-01m2hrcxyxvjz4qr0bg13kzdqt
+  - is-01m2h6bz9ehf0pba4zs1ehjvmw
 created_at: 2026-09-15T05:38:39.879Z
-updated_at: 2026-09-15T05:51:25.015Z
+updated_at: 2026-11-14T18:42:26.572Z
 ---
 v0.10.0 shipped a known regression on flat mega-trees, accepted deliberately in exp-035
 and recorded in CHANGELOG.md's known-limitations entry and the load-time plan's "Debt

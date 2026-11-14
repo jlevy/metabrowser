@@ -5,12 +5,17 @@ title: Run revision-page Markdown renders in the projection child with a deadlin
 kind: task
 status: open
 priority: 2
-version: 2
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 created_at: 2026-11-11T14:25:27.861Z
-updated_at: 2026-11-11T15:18:52.200Z
+updated_at: 2026-11-14T18:42:16.368Z
 ---
-Follow-up from stack #350 (PR #348 reviews C1/F1-F3, #347 review D2). The revision page's full-file Markdown render runs in a thread under a measured whole-document work estimate (_DOCUMENT_WORK_MS, 400 ms; worst admitted measured ~451 ms under load). An estimate is not a deadline: an unmeasured construct can still hold the GIL longer, and the estimator reads private Pygments prompt-regex attributes with a conservative fallback. PR #349 adds an isolated projection child process that can be killed on overrun. Route the revision page's document render through that child (or an equivalent stoppable renderer), keep the estimate as the first check, and measure first-render latency against the thread path. Waits on stack #350 landing.
+Follow-up from stack #350 (PR #348 reviews C1/F1-F3, #347 review D2), merged 2026-11-11. The revision page's full-file Markdown render (builtin_plugins/github/pull_snapshot.py) runs in a thread under a whole-document work estimate (_DOCUMENT_WORK_MS = 400). An estimate is not a deadline. Review G on #348 found that Pygments has no text-size bound: a 1.6 KB console line took 12 s in the shell session prompt pattern, and 15 of 594 lexers are quadratic in a line's length (48 KB of devicetree took 79 s), some of it inside one re match that holds the GIL. So neither a thread nor asyncio.to_thread with a timeout can stop such a render or keep the event loop running. Meanwhile the page renders fenced code unhighlighted (render_kpress_view(plain_code=True)), and the estimate charges code as text.
 
-Update from review G on #348 (round 3): Pygments costs no text estimate bounds. A 1.6 KB `console` line took 12 s in the shell session prompt pattern, and 15 of 594 lexers are quadratic in a line's length (48 KB of `devicetree` took 79 s), some of it inside one `re` match that holds the GIL. So the stoppable renderer has to be a separate process: a thread, or `asyncio.to_thread` with a timeout, can neither stop these renders nor keep the event loop running. Meanwhile the revision page renders fenced code unhighlighted, escaped as KPress shows a fence with no language (`kpress_adapter.render_kpress_view(plain_code=True)`), and the estimate charges code as text and no longer reads Pygments. Once renders run in a killable child with a deadline, this bead can restore highlighting there.
+Route the document render through a killable child process with a deadline, as metabrowser.diff.markdown_projection_worker already does for Markdown redlines. Keep the estimate as the first check, restore highlighting in the child, and measure first-render latency against the thread path.
+
+## Notes
+
+If mb-a9ek is closed, reparent to mb-2iok.

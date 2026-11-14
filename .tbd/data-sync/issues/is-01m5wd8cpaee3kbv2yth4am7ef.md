@@ -5,12 +5,12 @@ title: "Dependency refresh after 0.12.0: serving stack, TypeScript 7, vendored h
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 created_at: 2026-10-26T15:28:54.985Z
-updated_at: 2026-10-26T15:28:54.985Z
+updated_at: 2026-11-14T18:42:08.937Z
 ---
 Deliberately deferred out of the 0.12.0 release on 2026-10-26 so the release carries the security fix and nothing else. Nothing here is security-driven: `uv audit --frozen` reports no known vulnerabilities in all 66 Python packages, and `npm audit` is clean once tryscript is 0.3.1.
 
@@ -25,3 +25,7 @@ What is waiting, from `uv lock --upgrade --dry-run` and `npm outdated` on 2026-1
 - @biomejs/biome 2.5.2 to 2.5.15, and lefthook 2.1.9 to 2.2.2. The biome bump was ATTEMPTED on 2026-10-26 and reverted: it needs `biome migrate` because biome.json pins the 2.5.2 schema, and it raises the new `noDescendingSpecificity` rule against existing CSS, which `--error-on-warnings` turns into a lint-check failure. First flagged file: src/metabrowser/builtin_plugins/folder/file_type_summary.css:105 against :101. It also rewraps a selector in builtin_plugins/diff/styles.css, cosmetic and semantically identical.
 
 Keep the 14-day cool-off: uv.toml's exclude-newer and .npmrc's min-release-age=14 enforce it. First-party jlevy packages are exempt by the owner's standing decision.
+
+## Notes
+
+2026-11-14 audit: 0.12.0 is tagged and published (2026-11-09), so the precondition in the description is met; all listed packages are still at their 2026-10-26 versions. Re-list targets with uv lock --upgrade --dry-run and npm outdated before starting.

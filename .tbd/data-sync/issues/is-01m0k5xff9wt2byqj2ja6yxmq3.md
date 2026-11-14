@@ -5,16 +5,16 @@ title: Move /api/catalog to the on-demand tier, fetched when the finder first op
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:58.345Z
-updated_at: 2026-08-21T22:48:27.648Z
+updated_at: 2026-11-14T18:42:18.495Z
 ---
-Deferring the first /api/catalog fetch until the Quick File finder opens takes 4,580,060 bytes (at 100k files) off the load path.
+Defer the first /api/catalog fetch on a directory page until Quick Search first opens, taking the bulk catalog off the load path.
 
-Not a moved call. catalog_feed.js buffers catalog.change deltas into pendingChanges whenever !fetchedOnce, and that array is unbounded and only drains when the bulk payload lands. Deferring the first fetch indefinitely grows it for the life of the session. The fix needs a buffering policy: either do not subscribe until started, or bound the buffer and treat overflow as the resync the module already handles.
+The buffering policy this needs exists. catalog-feed.js hold() and release() (commit b8d03f0e) journal nothing while held and start one authoritative fetch on release, and app.js holds the feed on a pull-request page until its palette or a file releases it. What remains is holding it on a directory page, releasing it when the palette opens, and measuring the trade: bytes and main-thread time off the load path against a first palette open that waits for the catalog.
 
-The module already supports a late first start: its start() path for 'later opens refetch to cover deltas lost while disconnected' is the same code path, and the bulk payload is authoritative as of fetch. Called today from the EventSource onopen handler in app.js (~line 6515) and from startInventoryEventStream's no-EventSource fallback.
+H4 could not price this on build_corpus, whose catalog was 62 bytes. exp-034 measured a 15.9 MB /api/catalog body at 300,000 rows on the flat shape-2 corpus (mb-qtgj), so that corpus can. The feed starts today from the EventSource onopen handler in _createInventoryEventSource (app.js) and from startInventoryEventStream's no-EventSource path.

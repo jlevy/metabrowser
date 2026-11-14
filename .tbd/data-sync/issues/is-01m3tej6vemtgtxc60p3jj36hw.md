@@ -5,7 +5,7 @@ title: "Tests: one Node runner for tests/dom, and let the session goldens own wh
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
     target: is-01m3tekwar2fhzsmfyyby736pg
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:41:52.748Z
-updated_at: 2026-10-01T00:42:47.504Z
+updated_at: 2026-11-14T18:42:00.635Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. The Node-absent gate itself is in the skips-and-tiers bead; the shared DOM shim is the sibling bead.
 
@@ -73,3 +73,7 @@ Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. T
 - `tests/test_catalog_unicode_order_js.py`'s 100k gate; `tests/dom/tree-filter-model-behavior.js:39-130` and `tests/dom/markdown-mount-behavior.js:199-253` (localization the goldens lack).
 
 No release label: the wrappers pre-date the stack. Finding 5 is the exception worth doing early, because those blocks are parity evidence that cannot fail.
+
+## Notes
+
+2026-11-14 audit: finding 5 and step 3 are done on main (031da624, aa3ac533): catalog-feed and navigation-route now print observed values that cli-ui-navigation.tryscript.md pins. Steps 1, 2 and 4 remain; there are now 56 tests/test_*_js.py wrappers and 174 tests/dom entries.
