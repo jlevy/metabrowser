@@ -1,5 +1,6 @@
 // Built-in Markdown view registration.
 
+import { forgetHeldImages } from "./link-enhancer.js";
 import { mountRenderedMarkdown } from "./rendered.js";
 import { renderMarkdownSource } from "./source.js";
 
@@ -15,3 +16,6 @@ const renderSource = (container, ctx) => renderMarkdownSource(container, ctx, mb
 mb.builtins.markdown = { mountRendered, renderSource };
 mb.registerView("markdown", "rendered", { render: mountRendered });
 mb.registerView("markdown", "source", { render: renderSource });
+// A document entered again takes the images the page holds; any filesystem change
+// forgets them all. For the page's lifetime, as the held images are.
+mb.onInventoryChange(forgetHeldImages);
