@@ -291,10 +291,11 @@ Strict mode is off on a developer machine, which can add these:
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
   then so the group ID cannot pass to another process.
-  Afterwards it kills any Chrome process that escaped the group, one running the
-  launched browser with a `--user-data-dir` inside the test’s profile, and its helpers;
-  waits for those to exit; and removes the profile, even if that sweep failed.
-  A process that only mentions the profile is not signalled.
+  Chrome keeps every process it starts for a session in that group, which
+  `tests/test_process_group.py` measures for both ways the tests launch it, so stopping
+  the group is the whole mechanism: nothing outside it is signalled.
+  Afterwards a process still naming the profile is reported, failing the test, and left
+  running; the profile is removed even if that look failed.
   Each test’s bounds, stops, and teardown together fit under its timeout.
   `tests/process_group.py` does this, and `tests/test_process_group.py` holds it.
 

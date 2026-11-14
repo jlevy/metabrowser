@@ -39,13 +39,16 @@ def test_transition_instrument_logic() -> None:
     assert result.stdout == "transitions instrument: 49 checks passed\n"
 
 
-# The longest a group has taken: 20 s for content in CI, which a check taken again for its
-# frame clock lengthens by a few seconds. A run cut off at this bound has its whole
-# process group stopped and its profile removed, so a hang leaves nothing running.
-RECORDER_TIMEOUT_S = 40
+# The longest group is landing: 28.4 to 28.6 s in CI, and 29 to 38 s on a loaded 10-core
+# Mac; content takes 20 s in CI, and a check taken again for its frame clock adds a few
+# seconds. A run cut off at this bound has its whole process group stopped and its
+# profile removed, so a hang leaves nothing running.
+RECORDER_TIMEOUT_S = 50
 # The longest a recorder test can take: its bound, the group's stop, and the profile's
-# teardown. tests/test_process_group.py holds it under the suite's per-test timeout.
+# teardown. That is more than the suite's 60 s, so the module carries its own limit, with
+# 10 s for the rest of the setup; tests/test_process_group.py holds the sum under it.
 LIFECYCLE_S = RECORDER_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
 @pytest.mark.parametrize(

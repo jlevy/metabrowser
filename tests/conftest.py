@@ -15,7 +15,7 @@ from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import suite_gates
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
-from tests.required_tools import require_chrome, require_git, require_node
+from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
@@ -88,12 +88,12 @@ def git_on_path() -> str:
 def chrome_profile() -> Generator[Path, None, None]:
     """A headless Chrome's profile directory, owned by the test that drives the browser.
 
-    It is removed after the test. A Chrome process still on it escaped the test's process
-    group: it is killed, waited for, and fails the test; see ``tests/process_group.py``.
-    Without Chrome the test skips.
+    It is removed after the test. A process still naming it then escaped the test's
+    process group: it is reported, failing the test, and left running; see
+    ``tests/process_group.py``.
     """
 
-    with owned_profile("metab-test-chrome-", browser=Path(require_chrome())) as profile:
+    with owned_profile("metab-test-chrome-") as profile:
         yield profile
 
 
