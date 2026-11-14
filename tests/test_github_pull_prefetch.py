@@ -372,6 +372,55 @@ def test_files_are_listed_within_their_own_cap(
     assert _report(host)["files"]["hour_used"] == FILES_PER_HOUR  # pyright: ignore[reportArgumentType]
 
 
+def test_the_kinds_take_turns_and_a_records_cap_leaves_the_files_to_run(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record and then a list, each in its own order, so a cold server's missing records
+    do not hold back every list behind them; a records cap drops only the records."""
+
+    host, verdicts, _revision = stand
+    listed: list[int] = []
+
+    def files_view(_app: object, number: int) -> Any:
+        return SimpleNamespace(
+            number=number,
+            repository=host.pulls.published,
+            coordinator=host.coordinator,
+            refreshing=False,
+        )
+
+    def start_files_refresh(
+        _view: Any, ask: Any, *, wanted: bool, local: Any, background: bool
+    ) -> str:
+        assert wanted and background and local is None
+
+        async def work() -> None:
+            listed.append(ask.number)
+            host.started.append(-ask.number)
+
+        return host.coordinator.start(f"files/{ask.number}", work, network=False)
+
+    monkeypatch.setattr(pull_files_route, "files_view", files_view)
+    monkeypatch.setattr(pull_files_route, "start_files_refresh", start_files_refresh)
+    monkeypatch.setattr(pull_files_route, "files_job_key", lambda _repo, number: f"files/{number}")
+    monkeypatch.setattr(pull_files_route, "files_refresh_wanted", lambda _view, _ask: (True, None))
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_list.read_files_refresh",
+        lambda _home, _slug, _number: SimpleNamespace(outcome="succeeded", at=_stamp(NOW)),
+    )
+    records = tuple(range(300, 300 + RECORDS_PER_SCAN + 2))
+    verdicts.update(dict.fromkeys(records, "changed"))
+    files = tuple(range(1, 6))
+    _run(host, PrefetchRequest(records=records[:3], files=files[:2]))
+    # A list is a negative number here, so one order holds both kinds.
+    assert host.started == [300, -1, 301, -2, 302]
+
+    _run(host, PrefetchRequest(records=records[3:], files=files[2:]))
+    assert listed == list(files)
+    assert ("record", records[RECORDS_PER_SCAN], "deferred:scan_cap") in _recent(host)
+    assert len([number for number in host.started if number > 0]) == RECORDS_PER_SCAN
+
+
 @pytest.mark.parametrize(
     "body",
     [

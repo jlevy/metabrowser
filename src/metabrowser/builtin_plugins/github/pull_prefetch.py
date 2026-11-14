@@ -16,11 +16,14 @@ Nothing on the server starts this by itself, so it runs only while a page is vis
 online, and a hidden or offline page asks for nothing. The request replaces the lane's
 queue, so a walk that moved on drops what it no longer needs.
 
-Each served repository has one lane, a coordinator job that runs one item at a time.
-Before each item it reads again, off the event loop, whether the item is still due, which
-another process's refresh may have made it not, then whether the rate-limit governor
-admits it (:mod:`.gh_budget`) and the caps have room. It stops, dropping the rest, when
-the governor refuses or a cap is reached; the page asks again later. A job is started under
+Each served repository has one lane, a coordinator job that runs one item at a time. The
+two kinds take turns, a record and then a files list, each in its own order, so neither
+waits for the whole of the other: a cold server's missing records would otherwise hold
+every list back for as long as they take. Before each item it reads again, off the event
+loop, whether the item is still due, which another process's refresh may have made it
+not, then whether the rate-limit governor admits it (:mod:`.gh_budget`) and the caps have
+room. It stops, dropping the rest, when the governor refuses; a cap that is reached drops
+the rest of its own kind, and the other goes on. The page asks again later. A job is started under
 the pull request's own key, so a reader's request for it joins and promotes it, and as a
 background job it takes no network slot, waits at a store turn behind a reader's job, and
 is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`).
@@ -54,6 +57,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import partial
+from itertools import zip_longest
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
@@ -210,15 +214,17 @@ def _key(served: ServedPulls) -> str:
 
 
 def _items(lane: Lane, ask: PrefetchRequest) -> list[Item]:
-    items = [Item("record", number) for number in ask.records]
+    records = [Item("record", number) for number in ask.records]
     if ask.changed:
         named = set(ask.records)
-        items += [
+        records += [
             Item("record", number, named=False)
             for number in reversed(lane.viewed)
             if number not in named
         ]
-    return items + [Item("files", number) for number in ask.files]
+    files = [Item("files", number) for number in ask.files]
+    # The kinds take turns, each in its own order.
+    return [item for pair in zip_longest(records, files) for item in pair if item is not None]
 
 
 def _repository_hold(served: ServedPulls, now: datetime) -> bool:
@@ -259,16 +265,16 @@ async def request_prefetch(
 
 _STOPS: Final = frozenset(
     {
-        *(
-            f"deferred:{reason}"
-            for reason in ("below_floor", "rate_hold", "hourly_cap", "scan_cap")
-        ),
+        "deferred:below_floor",
+        "deferred:rate_hold",
         "failed:rate_limited",
         "failed:network_error",
         "failed:unexpected",
         "preempted",
     }
 )
+# A cap is one kind's: reaching it drops the rest of that kind, and the other goes on.
+_KIND_STOPS: Final = frozenset({"deferred:hourly_cap", "deferred:scan_cap"})
 
 
 async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
@@ -291,6 +297,8 @@ async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
         lane.note(item, outcome)
         if outcome in _STOPS:
             lane.queue.clear()
+        elif outcome in _KIND_STOPS:
+            lane.queue = deque(other for other in lane.queue if other.kind != item.kind)
 
 
 def _refund(starts: deque[datetime], at: datetime) -> None:
