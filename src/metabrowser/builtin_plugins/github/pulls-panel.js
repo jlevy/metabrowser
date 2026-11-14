@@ -733,11 +733,13 @@ export function createPullsController(deps, options = {}) {
   // Background prefetch (`PREFETCH_ROUTE`): the scan it last asked after, by the list's
   // `fetched_at`, and whether a request is on its way. An ask made meanwhile waits as the
   // one pending ask, sent when that request answers and built from the panel as it is then,
-  // `changed` when any ask that waited had it; null when none waits.
+  // `changed` when any ask that waited had it; null when none waits. A pending ask that only
+  // files asks made goes through their checks again when it is sent (`sendFiles`): the
+  // answer on its way may have held them, or a walk or a read of the rows in view begun.
   /** @type {string | null} */
   let prefetchedScan = null;
   let prefetching = false;
-  /** @type {boolean | null} */
+  /** @type {{changed: boolean, files: boolean} | null} */
   let prefetchPending = null;
   // The lane's report is followed while it works: its next read, and the row it is reading.
   /** @type {unknown} */
@@ -1938,14 +1940,15 @@ export function createPullsController(deps, options = {}) {
    * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
    * *changed* adds what the server answered most recently that the scan just found changed.
    * Only while shown, visible, and online; the server reads each again, admits what is due
-   * within its caps and the budget's floor, and waits behind any reader's work. *onlyNew*
-   * sends nothing when the ask would repeat the last one sent.
+   * within its caps and the budget's floor, and waits behind any reader's work. A
+   * *filesAsk* is `sendFiles`'s: it sends nothing when it would repeat the last ask sent,
+   * and, waiting behind the one on its way, it is checked again when that one answers.
    *
    * @param {boolean} changed
-   * @param {boolean} [onlyNew]
+   * @param {boolean} [filesAsk]
    * @returns {boolean} Whether a request was sent, or waits behind the one on its way.
    */
-  function prefetch(changed, onlyNew = false) {
+  function prefetch(changed, filesAsk = false) {
     const list = held();
     if (
       !live() ||
@@ -1959,7 +1962,11 @@ export function createPullsController(deps, options = {}) {
       return false;
     }
     if (prefetching) {
-      prefetchPending = prefetchPending === true || changed;
+      prefetchPending = {
+        changed: (prefetchPending?.changed ?? false) || changed,
+        // A scan's or a landing's ask that waits goes as it is; only files asks are checked.
+        files: (prefetchPending?.files ?? true) && filesAsk,
+      };
       return true;
     }
     const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
@@ -1979,7 +1986,7 @@ export function createPullsController(deps, options = {}) {
       ]),
     ].slice(0, PREFETCH_FILES);
     const key = JSON.stringify([records, files, changed]);
-    if (onlyNew && key === lastAsk) {
+    if (filesAsk && key === lastAsk) {
       return false;
     }
     lastAsk = key;
@@ -2007,7 +2014,12 @@ export function createPullsController(deps, options = {}) {
         const pending = prefetchPending;
         prefetchPending = null;
         if (pending !== null && !disposed) {
-          prefetch(pending);
+          if (pending.files) {
+            // After this answer's own hold, if it set one, and as the reader is now.
+            sendFiles();
+          } else {
+            prefetch(pending.changed);
+          }
         }
       });
     return true;
@@ -2102,19 +2114,27 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Whether GitHub is being read for the rows in view: a batch of them whose titles breathe,
-   * or, after one, the next batch the queue holds. That is what the reader sees and waits
-   * for, and a files ask waits behind it. Batches the cache answers hold nothing up.
+   * Whether GitHub is, or may be, being read for the rows in view: a batch of them whose
+   * answer is still on its way, since the server may have started reading GitHub before it
+   * answers; one it admitted, whose titles breathe; or, after one, the next batch the queue
+   * holds. That is what the reader sees and waits for, and a files ask waits behind it. A
+   * batch the cache answered holds nothing up once its answer is in.
    */
   function viewBeingRead() {
+    if (
+      coreWanted === null ||
+      coreWanted.lane !== "visible" ||
+      !coreWanted.canRetry ||
+      !coreLive() ||
+      warmPaused
+    ) {
+      return false;
+    }
+    if (coreRequest !== null && coreRequest.demand === coreWanted) {
+      return true;
+    }
     return (
-      coreWanted !== null &&
-      coreWanted.lane === "visible" &&
-      coreWanted.admitted === true &&
-      coreWanted.canRetry &&
-      coreLive() &&
-      !warmPaused &&
-      (!coreWanted.done || visibleCoreAt < visibleCores.length)
+      coreWanted.admitted === true && (!coreWanted.done || visibleCoreAt < visibleCores.length)
     );
   }
 

@@ -138,8 +138,12 @@ later draws its files from the cache at its first read, with no refresh asked an
 GitHub request, while a row out of view is still the reader’s own first read.
 Below the budget’s floor the server refuses the first ask from memory and the panel asks
 nothing more for a slow poll.
-No list is asked for while GitHub reads the metadata of the rows in view, nor during a
-walk, and a prefetch the server has not answered holds up none of the reader’s reads.
+No list is asked for while GitHub reads the metadata of the rows in view, or while the
+answer that says whether it does is still on its way, nor during a walk, and a prefetch
+the server has not answered holds up none of the reader’s reads.
+A files ask made while another prefetch is on its way waits for its answer and is
+checked again when that answer comes, so a walk, a metadata read, or a hold that began
+meanwhile keeps it from being sent.
 
 This browserless session runs the production panel and file-tree controllers on a
 virtual clock against a stand-in server whose GitHub list takes 1.5 s.
@@ -223,7 +227,26 @@ $ node tests/dom/github-pulls-files-prefetch-behavior.js
   "readerReadsWhileAskHeld": [
     "pull-files +0 ms",
     "pull +0 ms"
-  ]
+  ],
+  "pendingThenWalk": {
+    "sentWhile": 0,
+    "sentAfter": 1
+  },
+  "pendingThenMetadata": {
+    "sentWhile": 0,
+    "sentAfter": 1
+  },
+  "pendingThenDeferred": {
+    "sentWhile": 0,
+    "sentAfter": 0
+  },
+  "admissionHeld": {
+    "asks": 0
+  },
+  "admissionAnswered": {
+    "askedAfterMs": 3000,
+    "first": 104
+  }
 }
 ? 0
 ```

@@ -79,6 +79,9 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
     requests: [],
     /** Prefetch POSTs left unanswered while `holdPrefetch` is set. */
     held: [],
+    /** Whether a metadata admission's answer is held, and the answers held. */
+    holdCores: false,
+    heldCores: [],
   };
 
   /** Start GitHub's read of *number*'s list; *done* runs when it is cached. */
@@ -126,14 +129,15 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
     server.requests.push({ at: now, method, route, body: options.body ?? null });
     const url = new URL(route, "http://localhost");
     if (url.pathname === PREFETCH && method === "POST") {
-      if (server.belowFloor) {
-        return {
-          status: 200,
-          etag: null,
-          body: { prefetch: "deferred", queued: 0, reason: "below_floor" },
-        };
-      }
+      // A held ask is answered as the budget stands when it is released.
       const answer = () => {
+        if (server.belowFloor) {
+          return {
+            status: 200,
+            etag: null,
+            body: { prefetch: "deferred", queued: 0, reason: "below_floor" },
+          };
+        }
         server.lane.queue = [...options.body.files];
         const started = server.lane.running === null ? "started" : "joined";
         runLane();
@@ -180,7 +184,12 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
           server.coreJobs.delete(key);
         }, CORE_MS);
       }
-      return { status: 202, etag: null, body: { preparation: "joined" } };
+      const admitted = { status: 202, etag: null, body: { preparation: "joined" } };
+      if (server.holdCores) {
+        // GitHub is read from now on, but the answer that says so is held.
+        return new Promise((resolve) => server.heldCores.push(() => resolve(admitted)));
+      }
+      return admitted;
     }
     if (url.pathname === FILES && method === "GET") {
       const envelope = filesEnvelope(Number(url.searchParams.get("number")));
@@ -305,6 +314,13 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
     },
     async release() {
       for (const answer of server.held.splice(0)) {
+        answer();
+      }
+      await settle();
+    },
+    async releaseCores() {
+      server.holdCores = false;
+      for (const answer of server.heldCores.splice(0)) {
         answer();
       }
       await settle();
@@ -525,6 +541,89 @@ const stories = {
     tree.controller.dispose();
     await walked.release();
     walker.dispose();
+  },
+
+  // ── A files ask that waits keeps its checks ──────────────────
+  // A files ask made while another prefetch is on its way waits for that one's answer, and
+  // goes through the files ask's checks again when it comes: a walk begun meanwhile, a read
+  // of the rows in view the server admitted meanwhile, and a hold the answer itself sets
+  // each keep it from being sent.
+  async pending({ panel, inView }, facts) {
+    async function waiting(change) {
+      const held = rig({ holdPrefetch: true });
+      const controller = panel.createPullsController(held.deps, { filter: "open" });
+      await controller.start({ shown: true });
+      await held.advance(0);
+      // The scan's ask is on its way, unanswered, and a rested row's ask waits behind it.
+      assert.equal(held.server.held.length, 1);
+      const mark = held.mark();
+      controller.prepareVisible(inView.slice(0, 12));
+      controller.peek(inView[3]);
+      await held.advance(0);
+      assert.equal(held.asks(mark).length, 0, "the rested row's ask waits");
+      const until = await change(held, controller);
+      held.server.holdPrefetch = false;
+      await held.release();
+      const sentWhile = held.asks(mark).filter((ask) => ask.at < until).length;
+      await held.advance(Math.max(0, until - held.now()));
+      const after = held.asks(mark).filter((ask) => ask.at >= until).length;
+      controller.dispose();
+      return { sentWhile, sentAfter: after };
+    }
+    facts.pendingThenWalk = await waiting(async (held, controller) => {
+      controller.setCurrent(inView[0]);
+      controller.move(1, { repeat: true });
+      // The walk ends WALK_SETTLE_MS after its last key, with the landing's own ask.
+      return held.now() + panel.WALK_SETTLE_MS;
+    });
+    assert.deepEqual(facts.pendingThenWalk, { sentWhile: 0, sentAfter: 1 });
+    facts.pendingThenMetadata = await waiting(async (held, controller) => {
+      for (const number of inView.slice(0, 12)) {
+        held.server.coresCached.delete(number);
+      }
+      controller.prepareVisible(inView.slice(0, 8));
+      await held.advance(0);
+      // GitHub reads the rows' metadata for CORE_MS from here.
+      return held.now() + CORE_MS;
+    });
+    assert.equal(facts.pendingThenMetadata.sentWhile, 0, "no files ask while the rows breathe");
+    assert.equal(facts.pendingThenMetadata.sentAfter, 1, "the files ask goes once they settle");
+    facts.pendingThenDeferred = await waiting(async (held) => {
+      held.server.belowFloor = true;
+      return held.now() + 20_000;
+    });
+    assert.deepEqual(facts.pendingThenDeferred, { sentWhile: 0, sentAfter: 0 });
+  },
+
+  // ── A metadata admission still unanswered counts as reader work ──
+  // The rows in view lack their metadata; the server starts reading it from GitHub, but its
+  // answer that says so is held. Neither a rested row's ask nor the rows' own dwell sends
+  // files meanwhile; once the answer is in and the read settles, they are asked for.
+  async admission({ panel, inView }, facts) {
+    const slow = rig({ coldCores: true });
+    const controller = panel.createPullsController(slow.deps, { filter: "open" });
+    await controller.start({ shown: true });
+    await slow.advance(0);
+    const from = slow.now();
+    const mark = slow.mark();
+    slow.server.holdCores = true;
+    controller.prepareVisible(inView.slice(0, 8));
+    controller.peek(inView[2]);
+    await slow.advance(panel.FILES_DWELL_MS + 1000);
+    assert.equal(slow.server.heldCores.length, 1, "the admission's answer is held");
+    facts.admissionHeld = { asks: slow.asks(mark).length };
+    await slow.releaseCores();
+    await slow.advance(2 * CORE_MS);
+    const first = slow.asks(mark)[0];
+    facts.admissionAnswered = {
+      askedAfterMs: first === undefined ? null : first.at - from,
+      first: first?.files[0] ?? null,
+    };
+    assert.deepEqual(facts.admissionHeld, { asks: 0 });
+    assert(first !== undefined, "the files are asked for once the read settles");
+    assert(facts.admissionAnswered.askedAfterMs >= CORE_MS);
+    assert.equal(facts.admissionAnswered.first, inView[2]);
+    controller.dispose();
   },
 };
 

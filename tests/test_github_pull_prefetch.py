@@ -372,13 +372,10 @@ def test_files_are_listed_within_their_own_cap(
     assert _report(host)["files"]["hour_used"] == FILES_PER_HOUR  # pyright: ignore[reportArgumentType]
 
 
-def test_the_kinds_take_turns_and_a_records_cap_leaves_the_files_to_run(
-    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A record and then a list, each in its own order, so a cold server's missing records
-    do not hold back every list behind them; a records cap drops only the records."""
+def _stub_files(host: _Host, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Lists that are always due and end at once; each one listed is also ``-number`` in
+    ``host.started``, so one order holds both kinds."""
 
-    host, verdicts, _revision = stand
     listed: list[int] = []
 
     def files_view(_app: object, number: int) -> Any:
@@ -408,17 +405,55 @@ def test_the_kinds_take_turns_and_a_records_cap_leaves_the_files_to_run(
         "metabrowser.builtin_plugins.github.pull_list.read_files_refresh",
         lambda _home, _slug, _number: SimpleNamespace(outcome="succeeded", at=_stamp(NOW)),
     )
-    records = tuple(range(300, 300 + RECORDS_PER_SCAN + 2))
-    verdicts.update(dict.fromkeys(records, "changed"))
-    files = tuple(range(1, 6))
-    _run(host, PrefetchRequest(records=records[:3], files=files[:2]))
-    # A list is a negative number here, so one order holds both kinds.
+    return listed
+
+
+def test_the_kinds_take_turns_each_in_its_own_order(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record and then a list, so a cold server's missing records do not hold back every
+    list behind them; the longer kind runs on alone once the other is done."""
+
+    host, verdicts, _revision = stand
+    _stub_files(host, monkeypatch)
+    verdicts.update(dict.fromkeys((300, 301, 302), "changed"))
+    _run(host, PrefetchRequest(records=(300, 301, 302), files=(1, 2)))
     assert host.started == [300, -1, 301, -2, 302]
 
-    _run(host, PrefetchRequest(records=records[3:], files=files[2:]))
-    assert listed == list(files)
-    assert ("record", records[RECORDS_PER_SCAN], "deferred:scan_cap") in _recent(host)
-    assert len([number for number in host.started if number > 0]) == RECORDS_PER_SCAN
+
+def test_a_records_cap_drops_the_records_and_the_lists_queued_behind_it_still_run(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host, verdicts, _revision = stand
+    listed = _stub_files(host, monkeypatch)
+    earlier = tuple(range(400, 400 + RECORDS_PER_SCAN - 1))
+    verdicts.update(dict.fromkeys((*earlier, 500, 501, 502), "changed"))
+    _run(host, PrefetchRequest(records=earlier))
+    # One record of this scan is left: 500 takes it, and 501 meets the cap with two lists
+    # still queued behind it.
+    _run(host, PrefetchRequest(records=(500, 501, 502), files=(1, 2, 3)))
+    assert host.started[len(earlier) :] == [500, -1, -2, -3]
+    assert listed == [1, 2, 3]
+    recent = _recent(host)
+    capped = recent.index(("record", 501, "deferred:scan_cap"))
+    assert recent[capped + 1 :] == [("files", 2, "refreshed"), ("files", 3, "refreshed")]
+
+
+def test_a_files_cap_drops_the_lists_and_the_records_queued_behind_it_still_run(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host, verdicts, _revision = stand
+    listed = _stub_files(host, monkeypatch)
+    # One list of this hour is left: 1 takes it, and 2 meets the cap with two records still
+    # queued behind it.
+    lane_of(host.pulls).file_starts.extend([NOW] * (FILES_PER_HOUR - 1))  # pyright: ignore[reportArgumentType]
+    verdicts.update(dict.fromkeys((600, 601, 602), "changed"))
+    _run(host, PrefetchRequest(records=(600, 601, 602), files=(1, 2, 3)))
+    assert listed == [1]
+    assert host.started == [600, -1, 601, 602]
+    recent = _recent(host)
+    capped = recent.index(("files", 2, "deferred:hourly_cap"))
+    assert recent[capped + 1 :] == [("record", 602, "refreshed")]
 
 
 @pytest.mark.parametrize(

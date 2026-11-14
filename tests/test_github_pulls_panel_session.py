@@ -887,7 +887,8 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
 def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() -> None:
     """The rows in view and a row rested on are listed first; a later expansion reads the
     cache. Nothing is asked below the floor, during a walk, or while the rows' own metadata
-    is read; an unanswered ask holds up none of the reader's reads."""
+    is read or its admission unanswered, including by a files ask that waited behind
+    another; an unanswered ask holds up none of the reader's reads."""
 
     facts = run_session("github-pulls-files-prefetch-behavior.js")
     assert facts["asksBeforeDwell"] == 0
@@ -914,6 +915,13 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
     assert behind["listsBeforeSettled"] == 0
     assert (facts["asksDuringWalk"], facts["asksOnceStopped"]) == (0, 1)
     assert facts["readerReadsWhileAskHeld"] == ["pull-files +0 ms", "pull +0 ms"]
+    # Review A1: a files ask that waited behind another is checked again when sent.
+    assert facts["pendingThenWalk"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenMetadata"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenDeferred"] == {"sentWhile": 0, "sentAfter": 0}
+    # Review A2: a metadata admission whose answer is on its way is reader work.
+    assert facts["admissionHeld"] == {"asks": 0}
+    assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
 
 
 def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:

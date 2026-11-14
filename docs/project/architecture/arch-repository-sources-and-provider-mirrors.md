@@ -1184,11 +1184,13 @@ The Pulls panel names the records of the anchored row’s neighbours and the top
 the changed files of the rows the pointer or focus last rested on, the open row, its
 neighbours, and the rows in view, up to 16 (`pulls-panel.js`). It asks for a row rested
 on at once, and for the rows in view once they stay put for `FILES_DWELL_MS`; it asks
-for no files during a walk, while GitHub reads the metadata of the rows in view, or for
-a slow poll after the server said the governor admits nothing or the hour’s lists are
-spent. Each served repository has one lane, a coordinator job that runs one item at a
-time, a record and then a files list in turn, and reads each again from disk before it
-runs, so a record or list another process refreshed meanwhile is skipped.
+for no files during a walk, while GitHub reads the metadata of the rows in view or that
+read’s admission is unanswered, or for a slow poll after the server said the governor
+admits nothing or the hour’s lists are spent.
+A files ask that waits behind another prefetch is checked again when that one answers.
+Each served repository has one lane, a coordinator job that runs one item at a time, a
+record and then a files list in turn, and reads each again from disk before it runs, so
+a record or list another process refreshed meanwhile is skipped.
 Taking turns keeps the missing records of a server that just started, about 2 s each,
 from holding back every list.
 Its caps are 8 record refreshes per catalog publication, however many pages its scan
