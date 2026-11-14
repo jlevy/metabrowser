@@ -37,15 +37,35 @@ const BANDS = ["narrow", "regular", "wide"];
 // Text positions are fractional; a difference under half a pixel is not a different edge.
 const TOLERANCE_PX = 0.5;
 
+// The Overview the reader sees. The shell lays a page out in a hidden, inert stage inside
+// the pane, and moves it into the pane only once its faces have loaded (app.js,
+// renderFile, and view-composition.js#settleFaces). So the panels can be in the DOM, in
+// the stage, while the pane still shows the page before: on a CI runner whose fonts were
+// slow, the measurement found the panels and then no committed tab bar. Every wait and
+// every measurement reads the committed pane: no stage pending, the tab bar a child of
+// the pane, and its active tab naming the view that is shown.
+const COMMITTED = `(() => {
+  const pane = document.querySelector(".preview-pane");
+  if (!pane || pane.querySelector(":scope > .preview-file-stage")) {
+    return null;
+  }
+  const tab = pane.querySelector(":scope > .tab-bar > .tab-btn.active");
+  const view = pane.querySelector(':scope > [data-active-view="true"]');
+  return tab && view && tab.dataset.tab === view.dataset.tabContent ? { pane, tab, view } : null;
+})()`;
+
 // The Overview mounts in three steps that wait on different work: both panels' headings,
 // the README's rendered prose, and File Overview's type breakdown, which waits for the
 // folder's rollup. Each is its own phase, so a slow run says which one it was waiting on.
 const PANELS = `(() => {
-  const panels = [...document.querySelectorAll(".folder-overview-panel")].filter((p) => !p.hidden);
+  const shown = ${COMMITTED};
+  const panels = shown
+    ? [...shown.view.querySelectorAll(".folder-overview-panel")].filter((p) => !p.hidden)
+    : [];
   return panels.length === 2 && panels.every((p) => p.querySelector(".folder-overview-panel-toggle"));
 })()`;
-const README = `!!document.querySelector(".folder-overview-panel-document .kpress-prose p")`;
-const ROLLUP = `!!document.querySelector(".file-type-summary-details-toggle")`;
+const README = `!!${COMMITTED}?.view.querySelector(".folder-overview-panel-document .kpress-prose p")`;
+const ROLLUP = `!!${COMMITTED}?.view.querySelector(".file-type-summary-details-toggle")`;
 
 // The left edge of an element's first line of text, where a reader sees it start.
 const MEASURE = `(() => {
@@ -61,27 +81,30 @@ const MEASURE = `(() => {
     range.selectNodeContents(text);
     return range.getClientRects()[0]?.x ?? null;
   };
-  const pane = document.querySelector(".preview-pane");
+  const shown = ${COMMITTED};
+  if (!shown) {
+    return null;
+  }
+  const { pane, tab, view } = shown;
   const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
   const paneRem = pane.clientWidth / rem;
-  const tab = document.querySelector(".preview-pane > .tab-bar .tab-btn.active");
   const labels = [
-    ...[...document.querySelectorAll(".folder-overview-panel")]
+    ...[...view.querySelectorAll(".folder-overview-panel")]
       .filter((panel) => !panel.hidden)
       .map((panel) => {
         const toggle = panel.querySelector(".folder-overview-panel-toggle");
         return { name: toggle.textContent.trim(), x: textX(toggle) };
       }),
-    { name: "Details", x: textX(document.querySelector(".file-type-summary-details-toggle")) },
+    { name: "Details", x: textX(view.querySelector(".file-type-summary-details-toggle")) },
   ];
-  const headings = [...document.querySelectorAll(".folder-overview-panel-heading")].map(
+  const headings = [...view.querySelectorAll(".folder-overview-panel-heading")].map(
     (heading) => heading.getBoundingClientRect().x,
   );
-  const card = document.querySelector(".folder-overview-panel-document .kpress-doc");
+  const card = view.querySelector(".folder-overview-panel-document .kpress-doc");
   return {
     paneX: pane.getBoundingClientRect().x,
     band: paneRem < 48 ? "narrow" : paneRem < 75 ? "regular" : "wide",
-    tab: tab ? { name: tab.textContent.trim(), x: textX(tab) } : null,
+    tab: { name: tab.textContent.trim(), x: textX(tab) },
     labels,
     headings,
     cardX: card.getBoundingClientRect().x,
@@ -148,9 +171,19 @@ try {
         deviceScaleFactor: 1,
         mobile: false,
       });
-      // Two frames, so layout reflects the new width before anything is read.
-      assert.ok(await d.frames(2), `${width}px: two animation frames did not arrive`);
-      const m = await d.evaluate(MEASURE);
+      // The shown page can be laid out again in a stage, as when a live update renders
+      // the folder again, so each width waits for the committed Overview, lets two frames
+      // lay it out at the new width, and reads it in one evaluation, which returns null
+      // when a stage took the pane in between. The width's budget bounds the loop.
+      let m = null;
+      while (m === null) {
+        assert.ok(
+          await d.waitFor(`!!${COMMITTED}`, budgets.width * 1000),
+          `${width}px: the committed Overview`,
+        );
+        assert.ok(await d.frames(2), `${width}px: two animation frames did not arrive`);
+        m = await d.evaluate(MEASURE);
+      }
       bands.add(m.band);
       assert.equal(m.tab?.name, "Overview", `${width}px: the active preview tab`);
       const at = `${width}px (${m.band} band)`;
