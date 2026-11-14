@@ -265,7 +265,9 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     come back as another test's home. The ignore cache outlives its test by its TTL, keyed
     by a root path a test can reuse. The catalog revision counts distinct catalogs for the
     process, so a test would read a value set by whichever tests ran before it, and the
-    catalog caches are left filled.
+    catalog caches are left filled. Held private directories keep their descriptors open,
+    and a test that stages a race against the first open of a directory needs that open
+    to happen.
 
     Left alone because a stale value cannot reach another test: ``tree_source._POOLS`` and
     ``dotenv._reported``, keyed by a path under the ``tmp_path`` of the test that made
@@ -273,9 +275,10 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     list already holds.
     """
     yield
-    from metabrowser import events_route, tree
+    from metabrowser import events_route, home, tree
     from metabrowser.cache import probe
 
+    home._HELD_DIRECTORIES.clear()  # pyright: ignore[reportPrivateUsage]
     probe._RESULTS.clear()  # pyright: ignore[reportPrivateUsage]
     tree._IGNORE_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]

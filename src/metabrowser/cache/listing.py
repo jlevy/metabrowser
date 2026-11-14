@@ -4,8 +4,8 @@ The read routes enumerate sources, stores, and reclamation areas without a lock 
 without changing anything, so they cannot use :func:`metabrowser.home.ensure_private_directory`,
 which creates a missing directory and repairs a shared one. This walks the same
 descriptor-relative, no-follow path that a record read does: the home's ancestors and the
-home are verified, each directory below it is opened without following a link and held to
-the owner-only rules, and the names are read from the verified descriptor itself, so a
+home are verified, each directory below it is reached without following a link and held to
+the owner-only rules, and the names are read through the verified directory itself, so a
 directory swapped for a link after verification is never listed. A shared directory is
 refused rather than tightened, because answering a request is no reason to change the
 user's entries, and a missing one raises :class:`FileNotFoundError`.
@@ -18,10 +18,8 @@ from pathlib import Path
 from typing import Literal
 
 from metabrowser.home import (
-    _open_directory_entry,
-    _open_home,
     _require_home_argument,
-    _verify_home_ancestors,
+    _verified_directory,
     _without_file_names,
 )
 from metabrowser.inventory_engine.contract import require_canonical_inventory_path
@@ -61,24 +59,20 @@ def list_private_directory(
 
     _require_home_argument(home)
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=False)
-    _verify_home_ancestors(home)
-    path = home
-    fd = _open_home(home)
-    try:
-        for name in relative_path.split("/"):
-            path = path / name
-            child = _open_directory_entry(fd, name, path, create=False, shared=shared)
+    names: list[str] = []
+    with _verified_directory(home, relative_path, shared=shared, create=False) as (held, _path):
+        # The verified descriptor may be held for later calls and used by other threads,
+        # and reading a directory moves an offset every duplicate shares, so the names are
+        # read through a descriptor of its own on the same directory.
+        fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=held)
+        try:
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    if len(names) == max_entries:
+                        raise ListingLimitError(max_entries)
+                    names.append(entry.name)
+        finally:
             os.close(fd)
-            fd = child
-        names: list[str] = []
-        # scandir reads a duplicate of the verified descriptor and closes only that.
-        with os.scandir(fd) as entries:
-            for entry in entries:
-                if len(names) == max_entries:
-                    raise ListingLimitError(max_entries)
-                names.append(entry.name)
-    finally:
-        os.close(fd)
     return tuple(sorted(names))
 
 

@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Reading Metabrowser’s private cache costs less on a busy server.
+  Every read checks that no other user can read or replace what it reads, and it used to
+  open each directory on the way again to check it.
+  Each of those system calls waits for any busy thread in the server, so the Pulls tab’s
+  background answers could take seconds.
+  A directory that passed the check now stays open, and a later read checks it again,
+  its mount included, without reopening it.
+  The pull-request catalog and its three journal files are checked under one look at
+  their directory instead of four.
+  Every check is still made on every read, so a cache directory that becomes shared,
+  linked, replaced, or foreign-owned is refused exactly as before.
+  On a stand-in repository, one background preparation answer now makes 1,510 of these
+  system calls instead of 2,204.
+
 - Expanding a pull request’s files in the Pulls tab usually draws them at once, from the
   cache, instead of waiting a second or more on GitHub.
   The panel now asks Metabrowser to list, behind you, the changed files of the rows in
