@@ -149,7 +149,13 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
 def _style_rules(path: Path = STYLES_CSS) -> dict[str, str]:
     """Each selector and its declarations, comments stripped."""
 
-    css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+    return _rules_of(path.read_text(encoding="utf-8"))
+
+
+def _rules_of(text: str) -> dict[str, str]:
+    """Each selector in the stylesheet *text* and its declarations, comments stripped."""
+
+    css = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
     rules: dict[str, str] = {}
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
         # A comma inside `:is(a, b)` is no separator.
@@ -315,6 +321,51 @@ def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
     assert "margin-block-end: 0" in rules[".github-pull-text .kpress-prose > :last-child"]
     for selector in rules:
         assert ".kpress" not in selector.replace(".github-pull-text .kpress-prose > ", "")
+
+
+def _rem(length: str) -> float:
+    assert length == "0" or length.endswith("rem"), length
+    return 0.0 if length == "0" else float(length.removesuffix("rem"))
+
+
+def test_a_heading_is_nearer_its_section_than_what_precedes_it() -> None:
+    """A heading belongs to the section it opens, so it has more space above it than below.
+
+    Inside a text the space is KPress's, as in a file: a heading's top margin collapses with
+    the block before it, so after any block each level has at least its own top margin
+    above it, and KPress sets that above what is below it, the larger of its bottom margin
+    and a paragraph's top. At the top of a text the page trims the heading's margin, so the
+    card's padding is the space above it and must be at least any level's space below.
+    It was a header row's 8 px under an h2 keeping 16 px below. KPress's lengths are rem,
+    and the app leaves the root at the browser's 16 px. Measured in Chrome by
+    ``tests/test_github_pull_text_chrome.py``.
+    """
+
+    root_px = 16
+    kpress = _rules_of(kpress_adapter.get_kpress_static_asset("css/document.css").content.decode())
+    found = re.findall(r"margin-block:\s*([^;]+);", kpress[".kpress-prose p"])
+    paragraph_top = _rem(found[-1].split()[0])
+    below: dict[int, float] = {}
+    for level in range(1, 7):
+        top, bottom = (_rem(side) for side in _vertical_margins(kpress[f".kpress-prose h{level}"]))
+        # KPress takes a paragraph's top margin away under h4 to h6: read what that rule
+        # declares, so a changed value is checked rather than assumed to be zero.
+        after = paragraph_top
+        adjacent = kpress.get(f".kpress-prose h{level} + p")
+        if adjacent is not None:
+            declared = re.findall(r"margin-(?:top|block-start):\s*([^;]+);", adjacent)
+            assert declared, adjacent
+            after = _rem(declared[-1].strip())
+        below[level] = max(bottom, after) * root_px
+        assert top * root_px > 0
+        assert top * root_px >= below[level], f"h{level}"
+    padding = _style_rules()[".github-pull-text"]
+    inset = re.search(r"padding:\s*var\((--[\w-]+)\)", padding)
+    assert inset is not None, padding
+    shell = (PAGE_JS.parents[2] / "static" / "styles.css").read_text(encoding="utf-8")
+    token = re.findall(rf"{inset.group(1)}:\s*(\d+)px;", shell)
+    assert len(token) == 1
+    assert int(token[0]) >= max(below.values())
 
 
 def test_a_wide_table_and_a_long_word_stay_reachable_in_a_card() -> None:

@@ -1405,6 +1405,28 @@ Nothing restates a ratio.
 The one rule the page adds removes the first and last block’s outer margin, because the
 card’s padding is the space around a text.
 
+A heading belongs to the section it opens, so it sits nearer what follows it than what
+precedes it. Inside a text that space is KPress’s, exactly as in a document in either
+reading font: 2 rem above an h1 or h2 and 1 rem below, 1.4 rem above an h3 and a
+paragraph’s 0.75 rem below.
+A heading’s top margin collapses with the block before it, so the space after a
+paragraph, list, code block, or blockquote is the heading’s own, or the block’s when
+that is larger, as a blockquote’s 1.5 rem is above an h3. The page adds no heading rule.
+
+The top of a text is where a message departs from a document.
+A document’s card has 2.5 rem of top padding in KPress’s bands from 48 rem up, and only
+an opening h1 gives up its margin to it (`static/styles.css`); any other first block’s
+top margin adds to that padding.
+A message card is denser, like the comment body on GitHub, which pads 16 px and trims
+the first and last margins.
+The text’s padding is `--content-padding-y` above and below, and the card head’s inset
+at the sides. Since the trim leaves a heading that opens a text only that padding above
+it, the padding is at least any heading’s space below.
+A header row’s 8 px put an opening h2 nearer the card head than its own paragraph.
+`test_a_heading_is_nearer_its_section_than_what_precedes_it` holds the rule, and
+`tests/test_github_pull_text_chrome.py` measures it in Chrome against a document’s
+frame.
+
 The fallback `md-body` path is not used, because it is a different ramp: one flat code
 size and its own heading steps, which would make the same text read differently from a
 file.
