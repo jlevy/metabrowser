@@ -770,6 +770,11 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "live": [],
                 "badges": "none",
                 "g": "not handled",
+                # The stack keys and menu wait with the header, as the tab keys do.
+                "stackMenus": 0,
+                "stackKeys": "none",
+                "strip": "none",
+                "n": "not handled",
             },
             "released": {
                 "holding": False,
@@ -778,6 +783,11 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "badges": "Conversation C, Changes G, Checks E",
                 "focus": "Changes, preventScroll true",
                 "g": "opened the files route",
+                "stackMenus": 1,
+                "stackKeys": "pulls.stack.top, pulls.stack.base",
+                "strip": "pulls.stack.top, pulls.stack.base",
+                "n": "opened #8",
+                "p": "opened #6",
             },
         },
     }
