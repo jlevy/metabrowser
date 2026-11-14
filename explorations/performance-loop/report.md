@@ -30,6 +30,7 @@ fast -- only that it moved.
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
 | `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round; measured without compiled bytecode) | exp-037 |
+| `Conversation transitions per run whose description showed before its final form` | 5 | **1** | exp-080 |
 | `first_row_ms_loopback_220kb` | 92 | **99** (accepted on other grounds; see the round) | exp-084 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
@@ -93,7 +94,22 @@ against one that did.
 | exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | - | `description_observed_driver_ms` | accepted |
 | exp-056 | [Previous-Release Rehearsal](experiments/exp-056-previous-release-rehearsal.md) | H85 | `first_row_ms` | unresolved |
 | exp-058 | [Transition Navigation Baseline](experiments/exp-058-transition-baseline.md) | H86, H88, H90, H92, H94, H95, H98, H101, H105 | `painted_ready_ms` | baseline |
+| exp-059 | [Every Region’s Box at First Paint](experiments/exp-059-every-region-box-at-first-paint.md) | H86 | `region_movement_px` | accepted |
+| exp-060 | [Immutable Stamped Assets on Reload](experiments/exp-060-immutable-stamped-assets-on-reload.md) | H87 | `revalidated requests on landing.reload, all route families summed` | unresolved |
+| exp-061 | [Commit Comparison Cache and Git Route Memo](experiments/exp-061-commit-comparison-cache-and-git-route-memo.md) | H88 | `H88(a): requests_data and painted_ready_ms on commits.revisit.1 and .2; H88(b): client ms of /api/git/log?limit=250, /api/git/summary, and /api/git/refs` | unresolved |
+| exp-062 | [Parallel Shell Tools and KPress Loading](experiments/exp-062-parallel-shell-tools-and-kpress-loading.md) | H89 | `dependent request levels to shell tools and to KPress, and shell_tools_ready_ms on landing.cold_markdown, all three lower with ranges apart` | rejected |
+| exp-063 | [Markdown Render Cache and Kept Worker](experiments/exp-063-markdown-render-cache-and-kept-worker.md) | H90 | `requests_kpress and post_body_bytes on files.revisit.markdown_small and .markdown_large and files.history_back and .history_forward, and requests_plugin on files.revisit.markdown_small` | unresolved |
+| exp-064 | [Four Movements Nobody Asked For](experiments/exp-064-four-movements-nobody-asked-for.md) | H91 | `shift_sum_no_input` | unresolved |
+| exp-065 | [One Read per Click, Trees That Open Once, and a Held Changes Paint](experiments/exp-065-one-read-per-click-trees-that-open-once-and-a-held-changes-paint.md) | H92 | `(a) subject_duplicates on the pull request clicks; (b) no-input Pulls panel shift with a late file list; (c) body layout shift after painted ready on Changes` | accepted |
+| exp-079 | [The Campaign’s Closing Round: Every Accepted Change at Final Main](experiments/exp-079-every-accepted-change-at-final-main.md) | H86, H87, H88, H91, H92, H106 | `Per hypothesis, the deciding metrics of the record that accepted it: region movement (H86), revalidated requests per reload (H87), commit revisit requests and painted ready (H88 (a)), no-input shift, file envelopes, and row replacements (H91), duplicate reads and the Changes body shift (H92), and plain-first Conversation transitions (H106)` | unresolved |
+| exp-080 | [The Pull Request Conversation Final at First Paint](experiments/exp-080-pull-request-conversation-final-at-first-paint.md) | H106 | `Conversation transitions per run whose description showed before its final form` | accepted |
+| exp-081 | [Commit Comparison Cache and Git Route Memo, Confirmation](experiments/exp-081-commit-comparison-cache-and-git-route-memo-confirmation.md) | H88 | `H88(a): requests_data and painted_ready_ms on commits.revisit.1 and .2; H88(b): client ms of /api/git/log?limit=250, /api/git/summary, and /api/git/refs` | rejected |
+| exp-082 | [Markdown Render Cache and Kept Worker, Confirmation](experiments/exp-082-markdown-render-cache-and-kept-worker-confirmation.md) | H90 | `requests_kpress and post_body_bytes on files.revisit.markdown_small and .markdown_large and files.history_back and .history_forward, and requests_plugin on files.revisit.markdown_small` | unresolved |
+| exp-083 | [Immutable Stamped Assets Without H89](experiments/exp-083-immutable-stamped-assets-without-h89.md) | H87 | `revalidated requests on landing.reload, all route families summed` | unresolved |
 | exp-084 | [The 220 KB eager-script ceiling holds as a rough cut](experiments/exp-084-eager-startup-script-cost.md) | H107 | `first_row_ms_loopback_220kb` | accepted |
+| exp-085 | [The Held Key’s Guard, Confirmed](experiments/exp-085-held-key-guard-confirmed.md) | H91 | `file_envelope_requests` | accepted |
+| exp-086 | [Comparison Cache, Route Memo, and Markdown Render Cache, Confirmation on Revision 5](experiments/exp-086-comparison-cache-route-memo-and-markdown-render-cache-confirmation.md) | H88, H90 | `H88(a): requests_data and painted_ready_ms on commits.revisit.1 and .2; H88(b): client ms of /api/git/log?limit=250, /api/git/summary, and /api/git/refs; H90: requests_kpress and post_body_bytes on four Markdown transitions, and requests_plugin on one` | unresolved |
+| exp-087 | [Frame Quantization Accounts for exp-083’s Wrong-Way Frames](experiments/exp-087-frame-quantization-confirms-h87.md) | H87 | `share of runs on the later frame (frames to ready above the pooled modal count) for files.cold.json, files.cold.image, and files.revisit.markdown_large, by a two-sided Fisher exact test` | accepted |
 
 ## Absolute numbers, per condition
 
