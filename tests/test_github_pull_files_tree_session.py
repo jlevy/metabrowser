@@ -275,7 +275,10 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
     reads again once a freshness window (``refreshNotDueFailing``). Only a change to rows
     already drawn that comes ``LATE_ROWS_MS`` past the reader's last press or key waits for
     the reader (review A3): a list's further pages wait on its line, and a complete list a
-    refresh changes floats its offer over the tree's top, so offering moves nothing.
+    refresh changes floats its offer over the tree's top, so offering moves nothing. A
+    refresh that lists no files is offered too, and the rows drawn meanwhile keep no line
+    that says there are none (``refreshListsNone``, mb-aw30), whether a read past the
+    rows held or a refresh answering not due brings it (``refreshNotDueListsNone``).
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
@@ -346,6 +349,47 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "painted": ["closed", "4 rows", "4 rows, offer: Show 1 more file", "4 rows"],
             "spans": ["opening met 0 ms", "lateRows withdrawn 60000 ms"],
         },
+        # A late refresh that lists no files is offered, and the drawn rows lose the line
+        # that says there are none (mb-aw30); before, they stood under "No changed files."
+        # with no offer, until the reader's next press or key. Its answer keeps the offset
+        # read, and the tree takes it there rather than reading the list again from its start
+        # (review A1); at 3d5db77, it read again and showed the contradiction until then.
+        "refreshListsNone": {
+            "painted": [
+                "closed",
+                "4 rows",
+                "4 rows, offer: Show the updated list (no files)",
+                "empty",
+            ],
+            "offered": {
+                "rows": 4,
+                "line": None,
+                "offer": "Show the updated list (no files)",
+                "floats": True,
+            },
+            "shown": {"rows": 0, "line": "No changed files.", "offer": None},
+            "reads": [
+                "/api/plugin/github/pull-files?number=7&offset=0",
+                "/api/plugin/github/pull-files?number=7&offset=2",
+            ],
+            "spans": ["opening met 0 ms", "lateRows reader 400 ms"],
+        },
+        # The same list of no files, answered by the tree's refresh as not due: offered at
+        # once (review A1); at 3d5db77, the rows stood under "No changed files." with no offer
+        # until the next read, a freshness window later.
+        "refreshNotDueListsNone": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show the updated list (no files)"],
+            "offered": {
+                "rows": 4,
+                "line": None,
+                "offer": "Show the updated list (no files)",
+                "floats": True,
+            },
+            "reads": [
+                "/api/plugin/github/pull-files?number=7&offset=0",
+                "/api/plugin/github/pull-files?number=7&offset=2",
+            ],
+        },
         # A refresh that changes nothing draws the same rows, so it is drawn in place and
         # offers nothing (review C3); before, "Show the updated list of 2 files".
         "unchangedRefresh": {"painted": ["closed", "4 rows"], "reads": 3, "offer": None},
@@ -380,10 +424,12 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
             "slowRead": ["opening bound 150 ms"],
         },
         # Across every story, its refresh answering started or not due. The second was false
-        # before review A1: a not-due answer left the open tree with nothing to show.
+        # before review A1: a not-due answer left the open tree with nothing to show. The
+        # third was false before mb-aw30, in `refreshListsNone`.
         "invariants": {
             "an expanded tree with no rows drawn never offers": True,
             "an open tree with no rows drawn shows progress, a notice, or its line": True,
+            "rows drawn never stand under the line of a list with no files": True,
         },
     }
 
