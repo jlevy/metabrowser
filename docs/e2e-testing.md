@@ -282,6 +282,21 @@ Strict mode is off on a developer machine, which can add these:
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
   above;
+- `bind mounts are a Linux mount namespace's`, off Linux, and
+  `no private mount namespace could be made`, on Linux, for
+  `test_a_read_only_bind_mount_over_a_held_directory_is_honored` in
+  `tests/test_cache_permissions.py`, which bind-mounts a directory read-only in a mount
+  namespace of its own.
+  It runs there as root of an unprivileged user namespace where the kernel lets one
+  mount. Otherwise it runs as host root through `sudo -n unshare --mount`, and that runs
+  this project’s interpreter, its startup hooks, and everything it imports as root: a
+  private mount namespace confines mounts, not root.
+  So it takes that route only on a machine thrown away after the run: a GitHub-hosted
+  runner, which GitHub marks with `GITHUB_ACTIONS=true` and
+  `RUNNER_ENVIRONMENT=github-hosted`, or one whose owner sets
+  `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. `sudo -n` never asks for a password.
+  CI’s Ubuntu runners cannot mount from an unprivileged user namespace, so CI runs it as
+  root, and a self-hosted runner without the variable fails it under strict mode;
 - `Chrome is not installed`, for the checks that need a real headless Chrome: the
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where

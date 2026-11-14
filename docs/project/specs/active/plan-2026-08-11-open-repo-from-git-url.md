@@ -368,10 +368,14 @@ later call reuses its descriptor only when all of this holds on that call:
 - The name reaches that directory through the mount the held descriptor was opened
   through. Device and inode name a directory, not the mount: a Linux bind mount shows the
   same directory, same device and inode, under its own flags, such as read-only.
-  On Linux the mount is `statx(2)`’s `STATX_MNT_ID`; on macOS it is the file system ID
-  of the vnode’s mount, from `getattrlistat(2)` `ATTR_CMN_FSID`, which every mount has
-  its own of. macOS has no bind mount that shows one directory through two mounts; were
-  one added, its own file system ID would still tell them apart.
+  On Linux the mount is `statx(2)`’s `STATX_MNT_ID`. On macOS it is the file system ID
+  of the vnode’s volume, from `getattrlistat(2)` `ATTR_CMN_FSID` with
+  `FSOPT_RETURN_REALDEV`; without that option the volumes of a volume group, such as the
+  sealed system volume at `/` and the data volume beside it, all report the group’s one
+  logical ID, as `st_dev` does.
+  With it every mounted volume has its own.
+  macOS has no bind mount that shows one directory through two mounts; were one added,
+  its own file system ID would still tell them apart.
   Where a platform cannot tell the mount, or the lookup fails, nothing is held for
   reuse.
 - That stat shows a directory the current user owns and may read, with no group or other
@@ -398,8 +402,13 @@ held. What each check defends against stays where it was:
 has left every directory held, and requires the same answer, the same logged repairs,
 and the same tree afterwards as a call that holds nothing.
 `test_a_read_only_bind_mount_over_a_held_directory_is_honored` does the same for a
-read-only bind mount in a private Linux mount namespace; it runs on Linux, as root of a
-user namespace or through `sudo -n`, which is how CI runs it.
+read-only bind mount in a private Linux mount namespace.
+It runs as root of a user namespace where the kernel lets one mount.
+Otherwise it runs as host root through `sudo -n unshare --mount`, which runs this
+project’s interpreter and every module it imports as root, so it takes that route only
+on a disposable machine: a GitHub-hosted runner, which is how CI runs it, or one whose
+owner sets `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. Elsewhere it skips;
+[the test tiers](../../../e2e-testing.md#skips) say when.
 
 Nothing about privacy is remembered between calls, only descriptors.
 `_HELD_DIRECTORY_LIMIT` (`home.py` records the measurement behind it) bounds the
@@ -414,9 +423,18 @@ A held directory also keeps its volume in use until it is evicted or the process
 
 A forked child closes every descriptor its parent owned, those held for reuse and those
 still borrowed alike, and starts a new generation.
+No descriptor of the cache is ever outside that set at a fork: one is opened and
+registered while a fork from another thread waits, and one is dropped and closed in a
+single step under the lock a fork takes.
 A lease or a `PrivateDirectory` from before the fork is void there: using it is refused,
 and releasing it closes nothing, so neither can reach a descriptor number the child has
 reused for something else.
+These rules run in `os.register_at_fork` hooks, so they hold for a fork made through
+Python’s `os.fork`, or by native code that calls `PyOS_BeforeFork` and
+`PyOS_AfterFork_Child` around it; a native extension that forks without those calls
+bypasses them. Nothing in Metabrowser forks that way.
+`subprocess` forks and runs a new program at once, and every held descriptor is
+close-on-exec.
 
 `private_directory(home, relative_path, shared=…)` verifies a directory once for several
 files opened together, such as the pull-request catalog and its three journal files.

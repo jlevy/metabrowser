@@ -20,7 +20,7 @@ import stat
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -2246,6 +2246,57 @@ def test_without_a_mount_identity_nothing_is_held(
     assert _open_descriptors() == before
 
 
+@darwin_only
+def test_darwin_mount_lookups_ask_for_each_volumes_own_file_system_id(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both attribute calls pass FSOPT_RETURN_REALDEV, and the name lookup FSOPT_NOFOLLOW."""
+
+    ensure_private_directory(home, "cache")
+    real = home_module._mount_functions()  # pyright: ignore[reportPrivateUsage]
+    assert real is not None
+    options: dict[str, list[int]] = {"named": [], "held": []}
+
+    def named(*arguments: Any) -> int:
+        options["named"].append(arguments[-1])
+        return real[0](*arguments)
+
+    def held(*arguments: Any) -> int:
+        options["held"].append(arguments[-1])
+        return real[1](*arguments)
+
+    monkeypatch.setattr(home_module, "_mount_functions", lambda: (named, held))
+    _forget_held_directories()
+    for _ in range(2):
+        ensure_private_directory(home, "cache")
+    realdev = home_module._FSOPT_RETURN_REALDEV  # pyright: ignore[reportPrivateUsage]
+    nofollow = home_module._FSOPT_NOFOLLOW  # pyright: ignore[reportPrivateUsage]
+    assert options["held"] and all(option == realdev for option in options["held"])
+    assert options["named"] and all(option == realdev | nofollow for option in options["named"])
+
+
+@darwin_only
+def test_the_volumes_of_a_volume_group_have_different_mount_identities() -> None:
+    """The system and data volumes of the startup disk share one logical file system ID."""
+
+    system, data = Path("/"), Path("/System/Volumes/Data")
+    # Since macOS 11 the startup disk is such a group, so this tier always has one.
+    assert os.lstat(system).st_dev == os.lstat(data).st_dev, "no APFS volume group at /"
+    named = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
+    held = home_module._descriptor_mount_identity  # pyright: ignore[reportPrivateUsage]
+    # The mount half alone tells the volumes apart, whatever the inode numbers.
+    system_identity, data_identity = named(None, system), named(None, data)
+    assert system_identity is not None and data_identity is not None
+    assert system_identity[1] != data_identity[1]
+    descriptors = [os.open(path, os.O_RDONLY | os.O_DIRECTORY) for path in (system, data)]
+    try:
+        assert held(descriptors[0]) == named(None, system)
+        assert held(descriptors[1]) == named(None, data)
+    finally:
+        for fd in descriptors:
+            os.close(fd)
+
+
 # Run as root, or as root of a new user namespace, in a private mount namespace: build a
 # home, leave its directories held (or not), bind-mount cache/staging over itself and
 # make that mount read-only, then ask whether cache/staging is writable and create a file
@@ -2313,6 +2364,49 @@ finally:
 """
 
 
+# The privileged route runs this project's interpreter, its startup hooks, and every
+# module it imports as host root: a private mount namespace confines mounts, not root. So
+# it is taken only on a machine that is thrown away after the run: a GitHub-hosted runner,
+# which GitHub itself marks with GITHUB_ACTIONS=true and RUNNER_ENVIRONMENT=github-hosted,
+# or a machine whose owner sets METABROWSER_TEST_PRIVILEGED_MOUNT=1 to say it is one.
+# ``sudo -n`` never asks for a password. Everywhere else the test uses an unprivileged
+# user namespace or skips, which strict mode turns into a failure only in CI.
+PRIVILEGED_MOUNT_ENV = "METABROWSER_TEST_PRIVILEGED_MOUNT"
+
+
+def _privileged_mount_allowed(environ: Mapping[str, str]) -> bool:
+    """Whether this run may take the bind-mount test's route through ``sudo -n``."""
+
+    if environ.get(PRIVILEGED_MOUNT_ENV) == "1":
+        return True
+    return (
+        sys.platform.startswith("linux")
+        and environ.get("GITHUB_ACTIONS") == "true"
+        and environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+    )
+
+
+@pytest.mark.parametrize(
+    ("environ", "allowed"),
+    [
+        ({}, False),
+        ({"CI": "true"}, False),
+        ({"GITHUB_ACTIONS": "true"}, False),
+        ({"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "self-hosted"}, False),
+        ({"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted"}, None),
+        ({PRIVILEGED_MOUNT_ENV: "0"}, False),
+        ({PRIVILEGED_MOUNT_ENV: "1"}, True),
+    ],
+)
+def test_only_a_disposable_runner_runs_the_bind_mount_test_as_root(
+    environ: dict[str, str], allowed: bool | None
+) -> None:
+    """A developer machine never runs project code as host root unless its owner opts in."""
+
+    expected = sys.platform.startswith("linux") if allowed is None else allowed
+    assert _privileged_mount_allowed(environ) is expected
+
+
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="bind mounts are a Linux mount namespace's"
 )
@@ -2322,15 +2416,23 @@ def test_a_read_only_bind_mount_over_a_held_directory_is_honored(
     """A cold walk reaches the read-only bind mount; a warm one must too.
 
     It needs a private mount namespace: as root of a new user namespace where the kernel
-    allows one, or as root through ``sudo -n`` where it does not, as on GitHub's Ubuntu
-    runners. With neither it skips, which the strict skip gate turns into a failure in CI.
+    allows one, or, on a disposable runner only, as host root through ``sudo -n``, which
+    is how CI runs it on GitHub's Ubuntu runners. With neither it skips, which the strict
+    skip gate turns into a failure in CI.
     """
 
-    routes = (
-        ("userns", ["unshare", "--user", "--map-root-user", "--mount", "--propagation", "private"]),
-        ("root", ["sudo", "-n", "unshare", "--mount", "--propagation", "private"]),
-    )
+    routes = [
+        ("userns", ["unshare", "--user", "--map-root-user", "--mount", "--propagation", "private"])
+    ]
     tried: list[str] = []
+    if _privileged_mount_allowed(os.environ):
+        routes.append(("root", ["sudo", "-n", "unshare", "--mount", "--propagation", "private"]))
+    else:
+        tried.append(
+            "root: not taken, since it runs this project's interpreter as host root; a "
+            f"GitHub-hosted runner takes it, and {PRIVILEGED_MOUNT_ENV}=1 opts a disposable "
+            "machine in"
+        )
     for route, launcher in routes:
         done = subprocess.run(
             [*launcher, sys.executable, "-B", "-c", _BIND_MOUNT_SCRIPT, route],
@@ -2664,3 +2766,90 @@ def test_a_forked_child_cannot_reach_its_parents_descriptors(home: Path, tmp_pat
         "inner": refused,
         "after_blocks": {"inner": "open", "outer": "open"},
     }
+
+
+# A fork from one thread while another is between two steps that must look like one to a
+# fork: a directory opened but not yet registered as the cache's, and one dropped from the
+# cache but not yet closed. Each step is paused at that point, the fork comes from the
+# main thread, and the pause is lifted a moment later; the child reports whether the
+# descriptor in flight is still open.
+_FORK_TRANSITIONS_SCRIPT = r"""
+import errno, json, os, sys, threading
+from pathlib import Path
+from metabrowser import home as H
+
+home = Path(sys.argv[1])
+H.ensure_private_directory(home, "retired")
+H._HELD_DIRECTORIES.clear()
+
+def state(fd):
+    try:
+        os.fstat(fd)
+        return "open"
+    except OSError as error:
+        return errno.errorcode[error.errno]
+
+def fork_during(install, work):
+    paused, release, seen = threading.Event(), threading.Event(), {}
+    restore = install(paused, release, seen)
+    worker = threading.Thread(target=work)
+    worker.start()
+    try:
+        if not paused.wait(10):
+            raise SystemExit("the worker never reached its pause")
+        threading.Timer(0.5, release.set).start()
+        read, write = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(read)
+            os.write(write, json.dumps(state(seen["fd"])).encode())
+            os._exit(0)
+        os.close(write)
+        os.waitpid(pid, 0)
+        with os.fdopen(read) as pipe:
+            return json.loads(pipe.read())
+    finally:
+        release.set()
+        worker.join(10)
+        restore()
+
+def before_registration(paused, release, seen):
+    real = H._descriptor_mount_identity
+
+    def pausing(fd):
+        if "fd" not in seen:
+            seen["fd"] = fd
+            paused.set()
+            release.wait(10)
+        return real(fd)
+
+    H._descriptor_mount_identity = pausing
+    return lambda: setattr(H, "_descriptor_mount_identity", real)
+
+def before_close(paused, release, seen):
+    real = os.close
+    target = H._HELD_DIRECTORIES._held[(str(home), "retired")].fd
+
+    def pausing(fd):
+        if fd == target and "fd" not in seen:
+            seen["fd"] = fd
+            paused.set()
+            release.wait(10)
+        return real(fd)
+
+    os.close = pausing
+    return lambda: setattr(os, "close", real)
+
+results = {"registering": fork_during(before_registration, lambda: H.ensure_private_directory(home, "opened"))}
+H.ensure_private_directory(home, "retired")
+results["closing"] = fork_during(before_close, H._HELD_DIRECTORIES.clear)
+print(json.dumps(results))
+"""
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="the platform cannot fork")
+def test_a_fork_waits_out_a_directory_being_registered_or_closed(home: Path) -> None:
+    """No descriptor of the cache is ever outside what a forked child closes."""
+
+    results = _run_script(_FORK_TRANSITIONS_SCRIPT, home)
+    assert results == {"registering": "EBADF", "closing": "EBADF"}

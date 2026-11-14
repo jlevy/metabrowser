@@ -1111,7 +1111,13 @@ def _refuse_shared_home_mode(status: os.stat_result, home: Path) -> None:
 # Leases belong to the process that took them. A forked child closes every descriptor its
 # parent owned, held or still borrowed, and starts a new generation: a lease or a
 # PrivateDirectory from before the fork can then neither use nor close a descriptor
-# number the child may already have reused for something else.
+# number the child may already have reused for something else. No descriptor of the
+# cache is outside what the child closes at the moment of a fork: opening one and
+# registering it happen inside _HeldDirectories.opening, which a fork from another thread
+# waits out, and dropping one and closing it happen together under the lock a fork takes.
+# These rules run in os.register_at_fork hooks, so they cover os.fork and native code
+# that brackets its fork with PyOS_BeforeFork and PyOS_AfterFork_*; a native fork without
+# them bypasses them, and nothing in Metabrowser forks that way.
 
 # Directories held open for reuse per process; descriptors that calls in progress are
 # borrowing come on top, at most two per call. Serving one pull request of the stand-in
@@ -1143,16 +1149,39 @@ class _HeldDirectories:
     """A bounded, thread-safe set of held directory descriptors keyed by home and path.
 
     Every descriptor it has not yet closed is in ``_owned``, held for reuse or retired
-    and still borrowed, so a forked child can close all of them. A lease is valid only in
+    and still borrowed, so a forked child can close all of them. No descriptor of the
+    cache is ever anywhere else at a fork: one is opened and registered inside
+    :meth:`opening`, which a fork waits out, and one is dropped from ``_owned`` and
+    closed in a single step under the lock, which a fork takes. A lease is valid only in
     the generation it was taken in, which a fork advances in the child.
     """
 
     def __init__(self, limit: int) -> None:
         self._limit = limit
         self._lock = threading.Lock()
+        self._settled = threading.Condition(self._lock)
+        self._opening: dict[int, int] = {}
         self._held: OrderedDict[tuple[str, str], _HeldDirectory] = OrderedDict()
         self._owned: set[_HeldDirectory] = set()
         self.generation = 0
+
+    @contextlib.contextmanager
+    def opening(self) -> Generator[None]:
+        """Keep a fork from another thread out while a directory is opened and kept."""
+
+        me = threading.get_ident()
+        with self._lock:
+            self._opening[me] = self._opening.get(me, 0) + 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                left = self._opening.get(me, 0) - 1
+                if left > 0:
+                    self._opening[me] = left
+                else:
+                    self._opening.pop(me, None)
+                    self._settled.notify_all()
 
     def acquire(self, key: tuple[str, str]) -> _HeldDirectory | None:
         """Borrow the held directory for *key* until :meth:`release`, or return ``None``."""
@@ -1171,18 +1200,15 @@ class _HeldDirectories:
             if generation != self.generation:
                 return
             held.users -= 1
-            close = held.retired and held.users == 0
-            if close:
-                self._owned.discard(held)
-        if close:
-            os.close(held.fd)
+            if held.retired and held.users == 0:
+                self._close(held)
 
     def keep(self, key: tuple[str, str], fd: int) -> _HeldDirectory:
         """Own *fd*, a directory just opened and verified, borrowed until :meth:`release`.
 
-        It is held for reuse only where this platform can tell the mount it was opened
-        through; otherwise it is closed when released. The descriptor is the caller's to
-        close if this raises.
+        Call it inside :meth:`opening`, which also covered the open. It is held for reuse
+        only where this platform can tell the mount it was opened through; otherwise it
+        is closed when released. The descriptor is the caller's to close if this raises.
         """
 
         status = os.fstat(fd)
@@ -1190,7 +1216,6 @@ class _HeldDirectories:
         held = _HeldDirectory(
             fd, status.st_dev, status.st_ino, mount or (-1, -1), users=1, retired=mount is None
         )
-        closing: list[int] = []
         with self._lock:
             self._owned.add(held)
             if mount is not None:
@@ -1198,9 +1223,8 @@ class _HeldDirectories:
                 self._held[key] = held
                 while len(self._held) > self._limit:
                     replaced.append(self._held.popitem(last=False)[1])
-                closing = [old.fd for old in replaced if self._retire(old)]
-        for old_fd in closing:
-            os.close(old_fd)
+                for old in replaced:
+                    self._retire(old)
         return held
 
     def forget(self, key: tuple[str, str], held: _HeldDirectory) -> None:
@@ -1217,14 +1241,21 @@ class _HeldDirectories:
         with self._lock:
             retired = list(self._held.values())
             self._held.clear()
-            closing = [held.fd for held in retired if self._retire(held)]
-        for fd in closing:
-            os.close(fd)
+            for held in retired:
+                self._retire(held)
 
     def before_fork(self) -> None:
-        """Keep every other thread out until the fork, so the child copies a settled state."""
+        """Wait out every other thread's open, then hold the lock across the fork.
+
+        The child then copies a state in which every descriptor of the cache is owned.
+        A fork from a thread that is itself opening, such as from a signal handler, does
+        not wait for its own open, whose descriptor the child may then keep until exit.
+        """
 
         self._lock.acquire()
+        me = threading.get_ident()
+        while any(thread != me for thread in self._opening):
+            self._settled.wait()
 
     def after_fork_in_parent(self) -> None:
         self._lock.release()
@@ -1239,18 +1270,24 @@ class _HeldDirectories:
         owned, self._owned, self._held = self._owned, set(), OrderedDict()
         self.generation += 1
         self._lock = threading.Lock()
+        self._settled = threading.Condition(self._lock)
+        self._opening = {}
         for held in owned:
             with contextlib.suppress(OSError):
                 os.close(held.fd)
 
-    def _retire(self, held: _HeldDirectory) -> bool:
-        """Mark *held* retired; return whether it can be closed now. Call under the lock."""
+    def _retire(self, held: _HeldDirectory) -> None:
+        """Mark *held* retired and close it if nobody borrows it. Call under the lock."""
 
         held.retired = True
-        if held.users:
-            return False
+        if not held.users:
+            self._close(held)
+
+    def _close(self, held: _HeldDirectory) -> None:
+        """Close *held* and stop owning it in one step. Call under the lock."""
+
         self._owned.discard(held)
-        return True
+        os.close(held.fd)
 
 
 _HELD_DIRECTORIES: Final = _HeldDirectories(_HELD_DIRECTORY_LIMIT)
@@ -1282,16 +1319,20 @@ def _verified_directory(
     path, prefix = home, ""
     current = _confirm_held((root, prefix), None, home, generation)
     if current is None:
-        if create:
-            _create_home_if_missing(home)
-        current = _hold((root, prefix), _open_home(home))
+        with _HELD_DIRECTORIES.opening():
+            if create:
+                _create_home_if_missing(home)
+            current = _hold((root, prefix), _open_home(home))
     try:
         for name in relative_path.split("/") if relative_path else ():
             path, prefix = path / name, f"{prefix}/{name}" if prefix else name
             child = _confirm_held((root, prefix), current.fd, name, generation)
             if child is None:
-                opened = _open_directory_entry(current.fd, name, path, create=create, shared=shared)
-                child = _hold((root, prefix), opened)
+                with _HELD_DIRECTORIES.opening():
+                    opened = _open_directory_entry(
+                        current.fd, name, path, create=create, shared=shared
+                    )
+                    child = _hold((root, prefix), opened)
             parent, current = current, child
             _HELD_DIRECTORIES.release(parent, generation)
         yield current.fd, path
@@ -1359,9 +1400,12 @@ def _confirm_held(
 # - Linux: statx(2) STATX_MNT_ID, the mount ID /proc/self/mountinfo shows. Bind mounts
 #   of one directory share its device and inode but each has its own mount ID, and a held
 #   descriptor keeps its mount, and so its ID, from being freed and reused.
-# - macOS: getattrlistat(2) ATTR_CMN_FSID, the file system ID of the mount the vnode
-#   belongs to (fstatfs reports the same for a descriptor). Every mount has its own, and
-#   macOS has no bind mount that shows one directory through two of them.
+# - macOS: getattrlistat(2) ATTR_CMN_FSID with FSOPT_RETURN_REALDEV, the file system ID
+#   of the volume the vnode belongs to. Without that option a volume group answers one
+#   logical ID for all its volumes: on a current Mac the sealed system volume at / and
+#   the data volume at /System/Volumes/Data both report it, and so does st_dev. With it,
+#   every mounted volume has its own, and macOS has no bind mount that shows one
+#   directory through two of them.
 #
 # Anywhere else, and wherever the call fails or omits the answer, there is no mount
 # identity, and nothing is held for reuse.
@@ -1385,6 +1429,8 @@ _ATTR_CMN_RETURNED_ATTRS: Final = 0x80000000
 _ATTR_CMN_FSID: Final = 0x00000004
 _ATTR_CMN_FILEID: Final = 0x02000000
 _FSOPT_NOFOLLOW: Final = 0x00000001
+# Report the volume's own file system ID rather than its volume group's.
+_FSOPT_RETURN_REALDEV: Final = 0x00000200
 # The returned buffer: its length, the attribute_set_t of what was returned (common set
 # first), then the fsid_t and the 64-bit file ID, each at a 4-byte boundary.
 _MOUNT_ATTRIBUTES: Final = struct.Struct("=II16xiiQ")
@@ -1423,7 +1469,7 @@ def _mount_identity(dir_fd: int | None, name: str | Path) -> tuple[int, int] | N
         ctypes.byref(_mount_attribute_list()),
         buffer,
         _MOUNT_ATTRIBUTES.size,
-        _FSOPT_NOFOLLOW,
+        _FSOPT_NOFOLLOW | _FSOPT_RETURN_REALDEV,
     )
     return None if result != 0 else _attribute_identity(buffer.raw)
 
@@ -1439,7 +1485,11 @@ def _descriptor_mount_identity(fd: int) -> tuple[int, int] | None:
     buffer = ctypes.create_string_buffer(_MOUNT_ATTRIBUTES.size)
     ctypes.set_errno(0)
     result = functions[1](
-        fd, ctypes.byref(_mount_attribute_list()), buffer, _MOUNT_ATTRIBUTES.size, 0
+        fd,
+        ctypes.byref(_mount_attribute_list()),
+        buffer,
+        _MOUNT_ATTRIBUTES.size,
+        _FSOPT_RETURN_REALDEV,
     )
     return None if result != 0 else _attribute_identity(buffer.raw)
 
