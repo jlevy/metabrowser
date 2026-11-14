@@ -8,15 +8,18 @@ status line's age. Then four polls each change one of the header's inputs: a lab
 head branch, the author's avatar, and the state, merged by another actor. It asserts that
 every avatar the page creates has its placement's loading, eager in the header and lazy in
 the conversation, decodes asynchronously, keeps its 18 px slot, and hides itself on an
-error; this pins the steps it went through, which of the header's parts each found new,
-and how many header elements each built.
+error; that the header's avatar is the one its actor has at each step; and this pins the
+steps it went through, which of the header's parts each found new, how many header
+elements each built, and how many it kept but took out of their parents and put back.
 
-A repaint that changes none of the header's inputs builds none of its nodes. Before, it
-built every part again, about 30 elements on each tab switch and poll, and a node replaced
-under the reader lost its focus, as a focused branch chip's copy button did in headless
-Chrome. A changed input builds its part again and only that part. This checks node
-lifecycle and attributes, not paint; docs/design-system.md, "A Repaint Keeps Its Images",
-has the measurements.
+A repaint that changes none of the header's inputs builds none of its nodes and moves
+none. Before, it built every part again, about 30 elements on each tab switch and poll,
+and a node replaced under the reader lost its focus, as a focused branch chip's copy
+button did in headless Chrome. A kept node put back in the same task loses its focus too,
+so `detached` counts them: placing the header's parts with `replaceChildren` built
+nothing and detached all 42. A changed input builds its part again and only that part,
+and moves no other. This checks node lifecycle and attributes, not paint;
+docs/design-system.md, "A Repaint Keeps Its Images", has the measurements.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from __future__ import annotations
 from tests.golden_harness import run_session
 
 # A repaint that changes none of the header's inputs.
-UNCHANGED = {"header": "kept", "rebuilt": [], "built": 0}
+UNCHANGED = {"header": "kept", "rebuilt": [], "built": 0, "detached": 0}
 
 
 def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> None:
@@ -37,6 +40,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "first",
                 "rebuilt": "first",
                 "built": 42,
+                "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
             },
@@ -79,6 +83,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "kept",
                 "rebuilt": ["labels"],
                 "built": 2,
+                "detached": 0,
                 "created": {"header": 0, "conversation": 0},
                 "shown": 7,
             },
@@ -87,6 +92,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "kept",
                 "rebuilt": ["branches", "copy buttons"],
                 "built": 8,
+                "detached": 0,
                 "created": {"header": 0, "conversation": 0},
                 "shown": 7,
             },
@@ -96,6 +102,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "header": "new",
                 "rebuilt": ["identity"],
                 "built": 3,
+                "detached": 0,
                 "created": {"header": 1, "conversation": 1},
                 "shown": 7,
             },
@@ -115,6 +122,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                     "GitHub link",
                 ],
                 "built": 16,
+                "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
             },

@@ -3431,10 +3431,11 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
  * SDK's shortcut surface: each takes 1 to 9 from its place on screen, as the shell's
  * numbered controls do, so nothing here picks a digit (docs/design-system.md, "Keyboard
  * Shortcuts"). *held* maps what a control does, such as `refresh`, to its handle and the
- * action it runs now; the header is rebuilt on each paint, so a control that is drawn
- * again moves its number to its new element and runs its new action, one no longer drawn
- * lets its number go, and one drawn for the first time takes one. Each lasts until
- * *signal* aborts, as the page's disposal aborts it.
+ * action it runs now. Each paint passes every control it shows, and each runs the action
+ * that paint gave it: a control the header kept is the same element, which keeps its
+ * number; one the header built again because what it shows changed moves its number to
+ * the new element; one no longer shown lets its number go, and one shown for the first
+ * time takes one. Each lasts until *signal* aborts, as the page's disposal aborts it.
  *
  * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
  * @param {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} held

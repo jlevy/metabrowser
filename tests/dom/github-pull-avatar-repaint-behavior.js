@@ -10,9 +10,11 @@
 //
 // The header keeps a part while what it shows is unchanged and builds only a part whose
 // inputs changed, so a repaint does not replace the node under a reader's pointer or
-// focus. Each step names the parts it found new and counts every header element it had
-// not seen in the step before; a repaint that changes nothing builds none. The header's
-// avatar is eager: it is above the fold, and it is a new image whenever its actor or
+// focus. Each step names the parts it found new, counts every header element it had not
+// seen in the step before, and counts every one it had seen that was taken out of its
+// parent and put back (`detached`), which loses focus as a new node does; a repaint that
+// changes nothing builds none and detaches none. The header's avatar is the actor's at
+// every step, and eager: it is above the fold, and it is a new image whenever its actor or
 // avatar changes. The conversation keeps its sections, avatars and all, across tabs and
 // polls, so its avatars stay lazy, and one far down a long conversation is not asked for
 // until the reader nears it. This is a check of attributes and of which nodes a repaint
@@ -27,13 +29,50 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
 const AVATAR = "https://avatars.githubusercontent.com/u/1242887?s=40";
 const OTHER_AVATAR = "https://avatars.githubusercontent.com/u/9919?s=40";
 
-/** An element whose `className` is its class attribute, as the SDK's chips set it. */
+/** Every element taken out of its parent since the last step, whether moved or removed. */
+const detached = new Set();
+
+/**
+ * An element whose `className` is its class attribute, as the SDK's chips set it, and
+ * which records being taken out of its parent: a browser takes focus from an element that
+ * leaves the document, even one put back in the same task.
+ */
 class Node extends Element {
   get className() {
     return this.getAttribute("class") ?? "";
   }
   set className(value) {
     this.setAttribute("class", value);
+  }
+  get textContent() {
+    return super.textContent;
+  }
+  set textContent(value) {
+    this.detachChildren();
+    super.textContent = value;
+  }
+  detachChildren() {
+    for (const child of this.children) {
+      if (typeof child !== "string") {
+        detached.add(child);
+      }
+    }
+  }
+  remove() {
+    if (this.parentNode) {
+      detached.add(this);
+    }
+    super.remove();
+  }
+  replaceChildren(...children) {
+    this.detachChildren();
+    super.replaceChildren(...children);
+  }
+  replaceWith(...nodes) {
+    if (this.parentNode) {
+      detached.add(this);
+    }
+    super.replaceWith(...nodes);
   }
 }
 
@@ -58,7 +97,6 @@ function avatarFacts(image) {
     alt: image.getAttribute("alt"),
     crossorigin: image.getAttribute("crossorigin"),
     referrerpolicy: image.getAttribute("referrerpolicy"),
-    src: image.getAttribute("src"),
   };
 }
 
@@ -73,7 +111,6 @@ const EXPECTED = {
   alt: "",
   crossorigin: "anonymous",
   referrerpolicy: "no-referrer",
-  src: AVATAR,
 };
 
 /** The header's parts, each by the class that names it. */
@@ -189,26 +226,39 @@ async function run() {
   /** The header's elements as the step before left them. @type {Set<Element> | null} */
   let before = null;
   let seen = 0;
-  /** @param {string} name @param {string} [expected] the avatar's src */
+  /** @param {string} name @param {string} [expected] the header avatar's src */
   const step = (name, expected = AVATAR) => {
     const avatar = headerAvatar();
     assert.ok(avatar, `${name}: the header shows the actor's avatar`);
     assert.ok(avatar.parentNode.classes.has("github-pull-identity"), `${name}: in its identity`);
+    assert.equal(avatar.getAttribute("src"), expected, `${name}: the header's avatar`);
     const created = { header: 0, conversation: 0 };
     for (const image of images.slice(seen)) {
       const where = placement(image);
       assert.ok(where in POLICY, `${name}: every avatar created is shown in a placement`);
       assert.equal(image.getAttribute("loading"), POLICY[where], `${name}: ${where} loading`);
-      const facts = avatarFacts(image);
-      assert.deepEqual(
-        facts,
-        { ...EXPECTED, src: facts.src === AVATAR ? AVATAR : expected },
-        `${name}: ${where} avatar`,
-      );
+      assert.deepEqual(avatarFacts(image), EXPECTED, `${name}: ${where} avatar`);
+      // A header avatar is the actor's the step expects; the conversation's are its authors',
+      // of whom only the pull request's author changes avatar.
+      const src = image.getAttribute("src");
+      if (where === "header") {
+        assert.equal(src, expected, `${name}: a header avatar created`);
+      } else {
+        assert.ok([AVATAR, OTHER_AVATAR].includes(src), `${name}: a conversation avatar`);
+      }
       created[where] += 1;
     }
     seen = images.length;
     const now = new Set(header().descendants());
+    // Kept, but taken out and put back: it, or a node it sits in, left its parent.
+    const left = (node) => {
+      for (let up = node; up && up !== header(); up = up.parentNode) {
+        if (detached.has(up)) {
+          return true;
+        }
+      }
+      return false;
+    };
     // A part is new where any node of it was not in the header the step before.
     const rebuilt =
       before === null
@@ -225,11 +275,14 @@ async function run() {
       header: previous === null ? "first" : avatar === previous ? "kept" : "new",
       rebuilt,
       built: before === null ? now.size : [...now].filter((node) => !before.has(node)).length,
+      detached:
+        before === null ? 0 : [...now].filter((node) => before.has(node) && left(node)).length,
       created,
       shown: container.querySelectorAll(".github-pull-avatar").length,
     });
     previous = avatar;
     before = now;
+    detached.clear();
   };
   /** Let the page's timers come due, its poll among them, which reads *next*. */
   const poll = async (next) => {
