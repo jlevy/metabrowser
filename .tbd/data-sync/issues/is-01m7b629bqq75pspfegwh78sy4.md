@@ -3,16 +3,20 @@ type: is
 id: is-01m7b629bqq75pspfegwh78sy4
 title: Commits landing answered from the old walk when HEAD moves during its read
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-13T19:27:33.238Z
-updated_at: 2026-11-14T01:20:07.183Z
+updated_at: 2026-11-14T17:52:25.506Z
 started_at: 2026-11-14T01:20:07.182Z
+closed_at: 2026-11-14T17:52:25.504Z
+close_reason: "Fixed in #423 (merged as c098e6a8)"
+resolution: null
+duplicate_of: null
 ---
 Found in the round 2 review of #400; also on main. A history page that settles during the newest landing's HEAD read calls selectNewestWhenReady from loadNextPage's finally (git-panel.js ~650) and answers the landing from the old walk. If HEAD then moved, ensureHistory calls refreshHistory() with no selectedId, so the list ends with no selection while the pane shows the previous newest commit. Repro: the round 2 reviewer's harness probe; the 'in front' case in tests/dom/git-panel-behavior.js holds page reads to avoid it. Fix: have the landing wait for the HEAD read, or re-answer after the refresh.
