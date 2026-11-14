@@ -593,6 +593,25 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
+- A commit opened again in the Commits tab shows its diff without asking the server: the
+  page keeps a comparison named by a full commit ID until Refresh.
+  In a served folder, an edit to `.gitattributes` or Git configuration, or a new replace
+  ref or graft, shows only after Refresh.
+  `/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer a repeat from memory
+  while the repository’s refs, `HEAD`, and `packed-refs` have not changed, and a later
+  log page no longer runs Git to prove its scope still holds.
+  Each sends an ETag and answers `If-None-Match` with 304. `/api/git/summary?scope=all`
+  now counts the commits the `scope=all` log walks, which leaves out the `HEAD` of
+  another worktree of the repository.
+  The repository’s identity, which used to be discovered again by the first Git request
+  after five quiet seconds, is now kept while the same refs, `HEAD`, configuration, and
+  `.git` entry are unchanged, so a hover or a first commit no longer waits for it.
+  This applies only to a repository you own.
+  In one, uninstalling or replacing Git, or editing your global or system Git
+  configuration, can take about a minute to show in the Git tab, where it took five
+  seconds. A repository someone else owns, opened through `safe.directory`, is still
+  checked every five seconds.
+
 ## 0.12.0
 
 - Configuration and repository-cache contract names use `metabrowser.config` and

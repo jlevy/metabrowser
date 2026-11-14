@@ -339,6 +339,20 @@ GIT_COMMIT_MAX_FILES = 1_000
 # cache so the first commit appears immediately.
 GIT_REPO_INFO_TTL_S = 5.0
 
+# Past the TTL an identity is kept while the refs' state (``git/ref_state.py``) is
+# unchanged, which covers HEAD, the refs, the repository's configuration files, the
+# ``.git`` entry, and the owners of the served root, ``.git`` and the Git directory. It
+# is kept this way only for a repository the reader owns; any other keeps the TTL. The
+# state does not cover the Git installation or the reader's global and system
+# configuration, so an identity this old is rediscovered in the background, off the
+# request that found it. Requests keep the old identity until that discovery ends, so
+# such a change shows within this age plus one TTL plus one discovery, about 65 s. A
+# correctness bound rather than a cost bound: the rediscovery is three Git processes,
+# which cost a request about 55 ms at the server when it paid them inline (exp-081 and
+# the contention sweep after it). It is also how long a repository past the state's
+# entry bound is not walked again (``MAX_REF_ENTRIES``).
+GIT_REPO_INFO_MAX_AGE_S = 60.0
+
 # Client-side pacing for the hover card. The card is backed by the same
 # commit-detail request the detail view uses, so a slow drag across the
 # graph must not issue one request per row.
@@ -347,6 +361,16 @@ GIT_HOVER_DEBOUNCE_MS = 300
 # Bounded client-side commit-detail cache, shared by the hover card and
 # the detail view so hovering then selecting a row is one request.
 GIT_DETAIL_CACHE_SIZE = 200
+
+# Characters of comparison JSON the Commits panel keeps, so a revisited
+# commit's diff mounts with no request. Measured 2026-11-11 over this
+# repository's last 200 commits, merges included: 28 KB at the median,
+# 203 KB at the 90th percentile, and 3.3 MB at the largest, 28 MB in all.
+# The parsed answer holds 0.97 to 1.66 times its JSON length in V8's heap
+# (five answers from 28 KB to 3.3 MB, here and in review B of #368), so the
+# heap this bounds is up to about 27 MiB. It keeps about eighty
+# 90th-percentile commits, and one answer may take a quarter of it.
+GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 
 
 # ── Client settings export ───────────────────────────────────
@@ -387,6 +411,7 @@ def client_settings_dict(
         "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
+        "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
@@ -415,6 +440,7 @@ __all__ = [
     "DOC_MAX_CHARS_DEFAULT",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
+    "GIT_COMPARISON_CACHE_BYTES",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",
@@ -428,6 +454,7 @@ __all__ = [
     "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
+    "GIT_REPO_INFO_MAX_AGE_S",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

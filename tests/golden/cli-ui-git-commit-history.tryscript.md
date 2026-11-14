@@ -17,7 +17,8 @@ Only an answer that the root is no longer a repository removes the panel: a repo
 read that gets no answer keeps it, and the landing shows its commit.
 An address with a short commit ID says it needs the full lowercase one, a panel that
 went away and came back starts over, and a folder that is not a repository has no Git
-panel listening.
+panel listening. A commit opened again, from its row or by Back, shows its diff from the
+comparison kept for its commit ID, so each commit’s comparison is asked for once.
 
 Switching to Commits names no commit, so it lands on the newest one, the top row.
 While the first page of history is on its way the pane keeps what it showed, busy
@@ -283,6 +284,29 @@ $ node tests/dom/git-commit-history-session.js
     "owner": "file",
     "navPanel": "files",
     "requests": []
+  },
+  "a commit opened again": {
+    "reselected": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    },
+    "back": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    },
+    "comparisons": [
+      "comparison aaaaaaa",
+      "comparison bbbbbbb"
+    ]
   },
   "switching to Commits": {
     "the page opens on a file": {

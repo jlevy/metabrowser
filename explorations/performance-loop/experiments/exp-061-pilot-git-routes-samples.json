@@ -1,0 +1,765 @@
+{
+  "started_at": "2026-11-12T09:04:20.862Z",
+  "loadavg_start": [7.44921875, 8.0751953125, 8.72802734375],
+  "n": 15,
+  "routes": {
+    "/api/git/log?limit=250": {
+      "warmup": {
+        "control": {
+          "ms": 249.97,
+          "status": 200,
+          "bytes": 90487,
+          "etag": false,
+          "server_timing": "srv;dur=219.8"
+        },
+        "candidate": {
+          "ms": 235.77,
+          "status": 200,
+          "bytes": 90487,
+          "etag": true,
+          "server_timing": "srv;dur=232.2"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "ms": 176.94,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=172.6"
+          },
+          {
+            "ms": 170.6,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=167.2"
+          },
+          {
+            "ms": 169.09,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=165.8"
+          },
+          {
+            "ms": 171.39,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=168.9"
+          },
+          {
+            "ms": 175.48,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=171.7"
+          },
+          {
+            "ms": 167.16,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=163.8"
+          },
+          {
+            "ms": 173.91,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=171.1"
+          },
+          {
+            "ms": 174.23,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=171.3"
+          },
+          {
+            "ms": 173.23,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=170.1"
+          },
+          {
+            "ms": 173.6,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=170.7"
+          },
+          {
+            "ms": 178.23,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=175.4"
+          },
+          {
+            "ms": 172.35,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=169.0"
+          },
+          {
+            "ms": 176.48,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=173.6"
+          },
+          {
+            "ms": 182.34,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=179.5"
+          },
+          {
+            "ms": 178.13,
+            "status": 200,
+            "bytes": 90487,
+            "etag": false,
+            "server_timing": "srv;dur=174.9"
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 9.2,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.5"
+          },
+          {
+            "ms": 8.4,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.4"
+          },
+          {
+            "ms": 8.75,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.4"
+          },
+          {
+            "ms": 8.57,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.4"
+          },
+          {
+            "ms": 7.97,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.2"
+          },
+          {
+            "ms": 8.74,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.6"
+          },
+          {
+            "ms": 8.48,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.5"
+          },
+          {
+            "ms": 7.95,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.4"
+          },
+          {
+            "ms": 8.59,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.7"
+          },
+          {
+            "ms": 8.29,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.4"
+          },
+          {
+            "ms": 8.08,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.5"
+          },
+          {
+            "ms": 7.89,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.3"
+          },
+          {
+            "ms": 8.04,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.6"
+          },
+          {
+            "ms": 7.96,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.3"
+          },
+          {
+            "ms": 7.91,
+            "status": 200,
+            "bytes": 90487,
+            "etag": true,
+            "server_timing": "srv;dur=5.2"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 173.9,
+          "min": 167.16,
+          "max": 182.34,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 8.3,
+          "min": 7.89,
+          "max": 9.2,
+          "statuses": [200],
+          "etag": true
+        },
+        "ratio": 20.95,
+        "apart": true
+      }
+    },
+    "/api/git/summary": {
+      "warmup": {
+        "control": {
+          "ms": 175.52,
+          "status": 200,
+          "bytes": 67,
+          "etag": false,
+          "server_timing": "srv;dur=173.0"
+        },
+        "candidate": {
+          "ms": 43.76,
+          "status": 200,
+          "bytes": 67,
+          "etag": true,
+          "server_timing": "srv;dur=41.3"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "ms": 168.85,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=166.2"
+          },
+          {
+            "ms": 166.69,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=165.6"
+          },
+          {
+            "ms": 166.46,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=164.9"
+          },
+          {
+            "ms": 181.81,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=179.4"
+          },
+          {
+            "ms": 179.91,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=177.3"
+          },
+          {
+            "ms": 170.2,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=167.2"
+          },
+          {
+            "ms": 166.74,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=164.4"
+          },
+          {
+            "ms": 165.71,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=163.3"
+          },
+          {
+            "ms": 167.83,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=165.4"
+          },
+          {
+            "ms": 172.43,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=170.0"
+          },
+          {
+            "ms": 244.96,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=242.5"
+          },
+          {
+            "ms": 262.17,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=259.5"
+          },
+          {
+            "ms": 241.65,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=239.1"
+          },
+          {
+            "ms": 190,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=187.4"
+          },
+          {
+            "ms": 176.25,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=173.6"
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 5.02,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.6"
+          },
+          {
+            "ms": 3.18,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.1"
+          },
+          {
+            "ms": 4.38,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.4"
+          },
+          {
+            "ms": 3.95,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.9"
+          },
+          {
+            "ms": 4.87,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.6"
+          },
+          {
+            "ms": 4.25,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.3"
+          },
+          {
+            "ms": 4.34,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.2"
+          },
+          {
+            "ms": 4.13,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.1"
+          },
+          {
+            "ms": 4.72,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.6"
+          },
+          {
+            "ms": 3.92,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.0"
+          },
+          {
+            "ms": 68.23,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=65.9"
+          },
+          {
+            "ms": 5.83,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=3.5"
+          },
+          {
+            "ms": 6.34,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=4.1"
+          },
+          {
+            "ms": 4.98,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.6"
+          },
+          {
+            "ms": 4.43,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=2.4"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 172.4,
+          "min": 165.71,
+          "max": 262.17,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 4.4,
+          "min": 3.18,
+          "max": 68.23,
+          "statuses": [200],
+          "etag": true
+        },
+        "ratio": 39.18,
+        "apart": true
+      }
+    },
+    "/api/git/refs": {
+      "warmup": {
+        "control": {
+          "ms": 33.54,
+          "status": 200,
+          "bytes": 80805,
+          "etag": false,
+          "server_timing": "srv;dur=30.6"
+        },
+        "candidate": {
+          "ms": 34.42,
+          "status": 200,
+          "bytes": 80805,
+          "etag": true,
+          "server_timing": "srv;dur=31.5"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "ms": 32.04,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.1"
+          },
+          {
+            "ms": 32.32,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.3"
+          },
+          {
+            "ms": 31.8,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=28.9"
+          },
+          {
+            "ms": 31.46,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.5"
+          },
+          {
+            "ms": 32.83,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.9"
+          },
+          {
+            "ms": 32.32,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.4"
+          },
+          {
+            "ms": 31.22,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.6"
+          },
+          {
+            "ms": 30.68,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=29.0"
+          },
+          {
+            "ms": 34.11,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=31.1"
+          },
+          {
+            "ms": 31.87,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=30.0"
+          },
+          {
+            "ms": 31.36,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=28.4"
+          },
+          {
+            "ms": 33.72,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=30.8"
+          },
+          {
+            "ms": 33.52,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=30.6"
+          },
+          {
+            "ms": 37.85,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=33.7"
+          },
+          {
+            "ms": 31.37,
+            "status": 200,
+            "bytes": 80805,
+            "etag": false,
+            "server_timing": "srv;dur=28.4"
+          }
+        ],
+        "candidate": [
+          {
+            "ms": 7.05,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=4.0"
+          },
+          {
+            "ms": 5.7,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.4"
+          },
+          {
+            "ms": 6.47,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.7"
+          },
+          {
+            "ms": 7.03,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.8"
+          },
+          {
+            "ms": 6.6,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=4.1"
+          },
+          {
+            "ms": 5.74,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.4"
+          },
+          {
+            "ms": 6.89,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=4.1"
+          },
+          {
+            "ms": 5.83,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "ms": 6.78,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.9"
+          },
+          {
+            "ms": 6.41,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.8"
+          },
+          {
+            "ms": 6.43,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.9"
+          },
+          {
+            "ms": 5.85,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.5"
+          },
+          {
+            "ms": 6.42,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.8"
+          },
+          {
+            "ms": 5.96,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.5"
+          },
+          {
+            "ms": 6.37,
+            "status": 200,
+            "bytes": 80805,
+            "etag": true,
+            "server_timing": "srv;dur=3.7"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 32,
+          "min": 30.68,
+          "max": 37.85,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 6.4,
+          "min": 5.7,
+          "max": 7.05,
+          "statuses": [200],
+          "etag": true
+        },
+        "ratio": 5,
+        "apart": true
+      }
+    }
+  },
+  "loadavg_end": [7.0927734375, 7.99072265625, 8.6943359375],
+  "ended_at": "2026-11-12T09:04:27.915Z"
+}

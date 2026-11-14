@@ -201,6 +201,78 @@ requests means owning its whole lifecycle.** Bound the count, bound the storage,
 on idle, release on shutdown, and give the client a typed way to learn its handle went
 away — the client must be able to recover, not just fail.
 
+### Answers kept under the refs’ state
+
+`/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer from refs, and resolving
+a scope runs up to eight Git processes.
+`git/ref_state.py` names the refs’ state without running Git: one `stat` per entry under
+`refs/` and `reftable/`, plus `HEAD`, `packed-refs`, `config`, `config.worktree`,
+`shallow`, and `info/grafts`, in the common Git directory and, for a linked worktree, in
+its own, where a reftable repository keeps that worktree’s `HEAD`. A ref update renames
+a lock file over the ref, so its inode moves even when its time and size do not.
+The Git directories are asked of Git once and remembered with the served root’s `.git`
+entry, so a folder replaced in place is asked about again.
+
+Under one state, a scope is resolved once, the refs and summary bodies are kept in
+`git/route_memo.py`, a later log page skips the proof that its scope still holds, and a
+first page asked for again replays the live session that answered it.
+The state covers every ref rather than only the scope’s, because a page’s decorations
+name every ref that points into it.
+It does not cover another worktree’s `HEAD`, so no answer reads one: the summary counts
+the commits its scope’s log walks rather than `rev-list --all`. Each answer carries an
+entity tag, and a client holding one that this process made is answered 304. The memo is
+bounded by entries and bytes and the kept scopes by entries and ref targets.
+The kept scopes hold only the latest state’s; the memo keeps an earlier state’s answers,
+which no request names again, until its bounds push them out.
+A repository with more ref entries than `MAX_REF_ENTRIES` gets no state, is answered as
+before, and is not walked again for `GIT_REPO_INFO_MAX_AGE_S`. The constants record the
+walk’s measured cost beside them.
+The state does not cover Git configuration outside the repository or an object lost from
+under a ref, neither of which changes which commits the refs name.
+`tests/test_git_route_memo.py` moves every covered input once, served from a main and
+from a linked worktree, with the files backend and with reftable, and writes the common
+files from the main worktree; `packed-refs` is moved with the files backend only, the
+one that has it. It also holds a repeat running no Git and a pin’s store moving its
+answers.
+
+The repository identity (`git/repo.py`: whether the served root is a repository’s top
+level, and its `HEAD`) is checked against the same state once its five-second TTL has
+passed. The state also names the `.git` entry and the owners of the served root, `.git`,
+and the Git directory, which Git’s ownership check reads.
+It is kept only for a repository whose three owners are the reader:
+
+- an unchanged state keeps the identity for another TTL without running Git;
+- a changed state, or one that cannot be named, discovers it again inline;
+- an identity `GIT_REPO_INFO_MAX_AGE_S` old is discovered again in the background, for
+  what the state does not cover: the Git installation and the reader’s global and system
+  configuration. Requests keep the old identity until that discovery ends, so such a
+  change shows within about the maximum age plus one TTL plus one discovery, about 65 s.
+
+A repository someone else owns, which Git opens only through the reader’s
+`safe.directory`, keeps the plain five-second TTL, as do a pin, a negative answer, and a
+repository past `MAX_REF_ENTRIES`.
+
+Before, the first Git request after five quiet seconds paid three Git processes, about
+55 ms at the server.
+A page that kept its answers, and so asked less often, moved that cost onto a hover or a
+first commit (exp-081). `tests/test_git_repo_identity.py` holds the check and the
+background discovery.
+
+### Comparisons the page keeps
+
+The Commits panel keeps each answered comparison in the page, keyed by the request’s own
+query and only when its revision is a full commit ID, so a revisited commit’s diff
+mounts with no request (`static/git-panel.js`). It is bounded at
+`GIT_COMPARISON_CACHE_BYTES`, 16 MiB of JSON characters, with a quarter for one answer,
+least recently used first, and sized in a task after the one that hands the answer to
+the diff. It is cleared by Refresh, by the panel’s teardown, and by a history walk found
+stale, and an answer requested before a clear is not kept when it lands.
+A store’s answer for a commit ID is the same later.
+A served folder’s is not always: its working tree’s `.gitattributes`, `.git/config`, the
+reader’s Git configuration, and a replace ref or graft can each change it, and the page
+does not notice them until one of those clears happens.
+The server keeps no folder comparison (`builtin_plugins/diff/comparison_cache.py`).
+
 ## Paths are bytes
 
 A POSIX path is an arbitrary byte sequence excluding NUL and `/`. It need not be valid
