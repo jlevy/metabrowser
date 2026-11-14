@@ -679,6 +679,15 @@ Folder aggregate views can use these bounded inventory helpers:
   Supply `active` to gate hidden views and `onError` for a local failure state.
   Always call the returned handle’s `dispose()`; when `stale()` is true after
   activation, call `refresh()`.
+- `onInventoryChange(listener)` calls *listener* with each filesystem change the shell
+  observes, and returns an unsubscribe function to call when the view is disposed.
+  The listener receives the change’s inventory paths: each changed entry with every
+  ancestor whose totals it moved, down to the depth the shell watches, so a deeper
+  change arrives as its deepest watched ancestor.
+  It receives `null` when anything may have changed: the event stream reconnected,
+  whether or not its snapshot changed, or resynchronized, or the first crawl finished.
+  In a host with no event target, which has no inventory stream, the listener is never
+  called.
 - Each `ext_tallies` row is
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
