@@ -277,7 +277,8 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
     the reader (review A3): a list's further pages wait on its line, and a complete list a
     refresh changes floats its offer over the tree's top, so offering moves nothing. A
     refresh that lists no files is offered too, and the rows drawn meanwhile keep no line
-    that says there are none (``refreshListsNone``, mb-aw30).
+    that says there are none (``refreshListsNone``, mb-aw30), whether a read past the
+    rows held or a refresh answering not due brings it (``refreshNotDueListsNone``).
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
@@ -350,7 +351,9 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
         },
         # A late refresh that lists no files is offered, and the drawn rows lose the line
         # that says there are none (mb-aw30); before, they stood under "No changed files."
-        # with no offer, until the reader's next press or key.
+        # with no offer, until the reader's next press or key. Its answer keeps the offset
+        # read, and the tree takes it there rather than reading the list again from its start
+        # (review A1); at 3d5db77, it read again and showed the contradiction until then.
         "refreshListsNone": {
             "painted": [
                 "closed",
@@ -365,7 +368,27 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
                 "floats": True,
             },
             "shown": {"rows": 0, "line": "No changed files.", "offer": None},
+            "reads": [
+                "/api/plugin/github/pull-files?number=7&offset=0",
+                "/api/plugin/github/pull-files?number=7&offset=2",
+            ],
             "spans": ["opening met 0 ms", "lateRows reader 400 ms"],
+        },
+        # The same list of no files, answered by the tree's refresh as not due: offered at
+        # once (review A1); at 3d5db77, the rows stood under "No changed files." with no offer
+        # until the next read, a freshness window later.
+        "refreshNotDueListsNone": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show the updated list (no files)"],
+            "offered": {
+                "rows": 4,
+                "line": None,
+                "offer": "Show the updated list (no files)",
+                "floats": True,
+            },
+            "reads": [
+                "/api/plugin/github/pull-files?number=7&offset=0",
+                "/api/plugin/github/pull-files?number=7&offset=2",
+            ],
         },
         # A refresh that changes nothing draws the same rows, so it is drawn in place and
         # offers nothing (review C3); before, "Show the updated list of 2 files".
