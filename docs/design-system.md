@@ -1342,6 +1342,12 @@ Refresh’s slot, held hidden on a tab with nothing to refresh, its text and the
 offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
 too; and a cold page keeps every row, empty, at its height.
 Only a failure, which says what to do, wraps the status row.
+A tab switch or a poll builds again only the header’s parts whose inputs changed: the
+title, the badge, the author, the branch chips, the row of ages, the labels, and each
+status control are kept while what they show is the same, so a repaint that leaves a
+control as it was does not take its focus, hover, or tooltip from the reader.
+`test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement` counts what
+each repaint builds.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
@@ -1439,9 +1445,9 @@ Author avatars are decorative circles beside the visible username, with fixed di
 so image arrival or failure does not move the text.
 Images load at low priority and decode asynchronously, and when they load depends on
 where they are ([A Repaint Keeps Its Images](#a-repaint-keeps-its-images)). The header’s
-avatar is eager, because every repaint builds it again.
-A Pulls row’s is eager, because only mounted catalog rows can create images, which
-bounds what the Pulls tab asks for.
+avatar is eager: it is at the top of the page, and it is a new image whenever its actor
+changes. A Pulls row’s is eager, because only mounted catalog rows can create images,
+which bounds what the Pulls tab asks for.
 The conversation’s are lazy: its sections are kept across tabs and polls, and an avatar
 far down a long conversation waits until the reader nears it.
 Missing or unsupported image URLs leave the username readable.
@@ -3254,33 +3260,47 @@ utility, its tokens, and its contrast, and
 **A repaint never blanks an image whose address did not change.** Where it can, a view
 keeps the image’s node: the Pulls tab patches a row in place and builds its metadata
 line, avatar and all, again only when the author, the avatar, or a branch changed, and
-the pull request page keeps its conversation’s sections across tabs and polls.
-Where a repaint builds an image again, as the pull request page builds its header’s
-actor on every tab switch and poll, the image is created with `loading="eager"`. So is
-an image that only the visible window creates, such as a Pulls row’s avatar, which the
-list mounts again as it scrolls back.
+the pull request page keeps its conversation’s sections and its header’s parts across
+tabs and polls. Where a repaint builds an image again, as the pull request page builds
+its header’s actor when the actor or the avatar changes, the image is created with
+`loading="eager"`. So is an image that only the visible window creates, such as a Pulls
+row’s avatar, which the list mounts again as it scrolls back.
 The conversation’s avatars stay `loading="lazy"`, as a long document’s figures do, so
 neither is asked for until the reader nears it.
 
 A lazy image waits for layout before it asks for its bytes, and WebKit, the macOS app’s
 engine, then asks the network again rather than use the copy it holds.
-Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, with the
-avatar served locally after 80 ms, by reading the header’s avatar at each animation
-frame and counting requests at the server: on each of 9 tab switches the rebuilt lazy
-avatar was requested again, and its `complete` was false and its `naturalWidth` 0 for 3
-frames, 100 ms at that window’s 30 frames a second.
-Eager, it made no request, and `complete` and `naturalWidth` were set in its first frame
-on all 9. That the eager avatar then paints in that frame is an inference: a page cannot
-read WebKit’s decoding or paint.
+Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, when the
+header built its actor on every tab switch, with the avatar served locally after 80 ms,
+by reading the header’s avatar at each animation frame and counting requests at the
+server: on each of 9 tab switches the rebuilt lazy avatar was requested again, and its
+`complete` was false and its `naturalWidth` 0 for 3 frames, 100 ms at that window’s 30
+frames a second.
+Eager, it made no request, and `complete` and `naturalWidth` were set in
+its first frame on all 9. That the eager avatar then paints in that frame is an
+inference: a page cannot read WebKit’s decoding or paint.
 Pixels were read only in headless Chrome 152, whose screencast showed no blank avatar
 frame in 9 switches either way; Chrome had the lazy image complete in its first frame
 too, so the blank was WebKit’s.
 
 An image whose address does change is a new image, and its slot keeps its size, so its
 arrival moves nothing.
-`test_each_avatar_loads_by_its_placement_across_repaints` checks, in a browserless DOM,
-each avatar’s loading by placement and which avatars a repaint keeps or builds: its
-attributes and node lifecycle, not its paint.
+`test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement` checks, in a
+browserless DOM, each avatar’s loading by placement and which of the header’s nodes a
+repaint keeps or builds: their attributes and node lifecycle, not their paint.
+
+A node replaced under a still pointer is also a new target for hover and focus.
+Measured in headless Chrome 152 on 2026-11-13, with the pointer resting on the header’s
+head branch chip while the page switched tabs: when the header built its parts again,
+the new chip was not hovered and its copy button was hidden in the task that replaced
+it, and read at the next animation frame Chrome had hovered it again and fired
+`mouseenter` on it again.
+That no frame painted the button hidden is an inference from those readings.
+That `mouseenter` gives the shell’s tooltip a new anchor and restarts its delay
+(`showTooltip` in `static/app.js`). Keyboard focus on the chip’s copy button went to the
+document body on each tab switch.
+With the header keeping its parts, the chip is the same node, no `mouseenter` fires, and
+the focus stays. WebKit’s hover after such a replacement was not measured.
 
 A Markdown document is built again each time its file is entered; switching between its
 Document and Source views keeps it.
