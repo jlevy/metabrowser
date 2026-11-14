@@ -348,8 +348,14 @@ def test_a_heading_is_nearer_its_section_than_what_precedes_it() -> None:
     below: dict[int, float] = {}
     for level in range(1, 7):
         top, bottom = (_rem(side) for side in _vertical_margins(kpress[f".kpress-prose h{level}"]))
-        # KPress takes a paragraph's top margin away under h4 to h6.
-        after = 0.0 if f".kpress-prose h{level} + p" in kpress else paragraph_top
+        # KPress takes a paragraph's top margin away under h4 to h6: read what that rule
+        # declares, so a changed value is checked rather than assumed to be zero.
+        after = paragraph_top
+        adjacent = kpress.get(f".kpress-prose h{level} + p")
+        if adjacent is not None:
+            declared = re.findall(r"margin-(?:top|block-start):\s*([^;]+);", adjacent)
+            assert declared, adjacent
+            after = _rem(declared[-1].strip())
         below[level] = max(bottom, after) * root_px
         assert top * root_px > 0
         assert top * root_px >= below[level], f"h{level}"

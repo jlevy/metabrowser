@@ -1414,7 +1414,9 @@ paragraph, list, code block, or blockquote is the heading’s own, or the block�
 that is larger, as a blockquote’s 1.5 rem is above an h3. The page adds no heading rule.
 
 The top of a text is where a message departs from a document.
-A document’s card leaves 2.5 rem above its first block in KPress’s bands from 48 rem up.
+A document’s card has 2.5 rem of top padding in KPress’s bands from 48 rem up, and only
+an opening h1 gives up its margin to it (`static/styles.css`); any other first block’s
+top margin adds to that padding.
 A message card is denser, like the comment body on GitHub, which pads 16 px and trims
 the first and last margins.
 The text’s padding is `--content-padding-y` above and below, and the card head’s inset
