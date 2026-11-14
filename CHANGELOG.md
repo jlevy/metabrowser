@@ -579,13 +579,6 @@ All notable changes to Metabrowser are documented here.
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
 
-- A Markdown document shown again, by Back, a main tab, or a click on a file still in
-  the page’s cache, places its kept render with no preprocessing and no request; a
-  changed file is rendered afresh.
-  The Markdown preprocessing Worker outlives the last open document by a minute, so a
-  document opened after a file of another kind does not start it again, and it stops
-  when that minute ends or the page is hidden.
-
 - A commit opened again in the Commits tab shows its diff without asking the server: the
   page keeps a comparison named by a full commit ID until Refresh.
   In a served folder, an edit to `.gitattributes` or Git configuration, or a new replace
