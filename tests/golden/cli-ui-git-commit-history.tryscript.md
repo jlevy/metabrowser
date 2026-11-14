@@ -29,6 +29,12 @@ An entry the reader left before history arrived takes nothing when it does, and 
 the newest when Back reaches it, as a reload onto it does.
 An empty history selects nothing and says so; a failed one says so, and the retry that
 loads it lands on the newest.
+A page of history that settles while the panel checks whether HEAD moved leaves the
+landing to that check: an unmoved HEAD lands as the check ends, and a moved one on the
+newest commit of the walk the refresh lays out, not on the old walk’s, even with a page
+of the old walk still on its way.
+A walk that recovery rebuilt meanwhile read HEAD itself and lands at once, and the older
+check changes nothing when it ends.
 The busy state ends when the commit shows, when a failure is shown, or when the reader
 moves on.
 

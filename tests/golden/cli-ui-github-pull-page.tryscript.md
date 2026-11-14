@@ -1757,7 +1757,10 @@ Under a held first paint over the loading page no tab key is live: the header wa
 the body, and its tab column, which shows from first paint, is inert and badges nothing
 while Shift is held.
 At release it wakes, badged at once while Shift is held, all three keys are live, and a
-link that had focus has it again (`tabKeysWhileHeld`).
+link that had focus has it again (`tabKeysWhileHeld`). The stack keys wait with the
+header too: a stack that arrives during the hold paints its menu at release, and until
+then `N` and `P` are neither live nor in the Shift strip; at release the strip shows
+them and they walk the stack.
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1867,7 +1870,11 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "tabColumn": "inert",
       "live": [],
       "badges": "none",
-      "g": "not handled"
+      "g": "not handled",
+      "stackMenus": 0,
+      "stackKeys": "none",
+      "strip": "none",
+      "n": "not handled"
     },
     "released": {
       "holding": false,
@@ -1879,7 +1886,12 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       ],
       "badges": "Conversation C, Changes G, Checks E",
       "focus": "Changes, preventScroll true",
-      "g": "opened the files route"
+      "g": "opened the files route",
+      "stackMenus": 1,
+      "stackKeys": "pulls.stack.top, pulls.stack.base",
+      "strip": "pulls.stack.top, pulls.stack.base",
+      "n": "opened #8",
+      "p": "opened #6"
     }
   }
 }
