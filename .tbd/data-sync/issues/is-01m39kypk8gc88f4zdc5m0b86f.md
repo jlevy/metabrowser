@@ -5,8 +5,8 @@ title: Heading anchors under the untrusted profile (GitHub-style user-content- i
 kind: task
 status: closed
 priority: 3
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T11:48:59.623Z
-updated_at: 2026-09-24T20:31:04.435Z
+updated_at: 2026-11-14T18:49:51.452Z
 started_at: 2026-09-24T19:15:06.761Z
 closed_at: 2026-09-24T20:31:04.434Z
 close_reason: "PR #240: user-content- heading anchors, fragment mapping, inert TOC; security review fixed; CI green"

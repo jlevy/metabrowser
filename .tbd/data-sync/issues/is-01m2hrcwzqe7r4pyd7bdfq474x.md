@@ -5,14 +5,15 @@ title: "Flat mega-tree: walk under an attached browser is 1.6-1.8x v0.9.1"
 kind: bug
 status: open
 priority: 1
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
   - inventory-engine
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T05:24:52.854Z
-updated_at: 2026-09-15T05:38:49.255Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
 exp-034 measured five back-to-back pairs on the 300k flat corpus (`build_corpus` shape
 2, 300,000 files in 1,104 directories). The walk with a browser attached is 1.62-1.78x

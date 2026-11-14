@@ -5,11 +5,13 @@ title: Watcher can silently miss kernel event-queue overflow (watchfiles drops n
 kind: bug
 status: open
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
+parent_id: is-01m0r7eg6f4a4xee33ryv8sjfs
 created_at: 2026-08-07T01:15:39.743Z
-updated_at: 2026-08-16T08:05:43.375Z
+updated_at: 2026-11-14T18:46:23.123Z
 extensions:
   linear:
     id: 3bbdd03f-269a-484a-bdf2-784a5d7a9290

@@ -5,7 +5,7 @@ title: Quick file finder and search providers
 kind: feature
 status: open
 priority: 2
-version: 13
+version: 15
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels:
   - search
@@ -16,14 +16,17 @@ child_order_hints:
   - is-01kyxyb67v18br7jm7w8mrwss5
   - is-01kyxybpctnfvcbj8eh629hab0
   - is-01kyxybvqnw3fmmzhs3hnqhtxr
+  - is-01kzmnyznydb254wv11evz3r79
 created_at: 2026-07-16T16:49:05.366Z
-updated_at: 2026-08-16T08:05:59.413Z
+updated_at: 2026-11-14T18:46:41.609Z
 extensions:
   linear:
     id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
     linked_at: 2026-08-16T08:05:59.413Z
 ---
-Build a provider-based search surface in phases. Phase 1 opens a slash-key quick file finder and fuzzy-matches a minimal catalog of every file already observed by the browser, without a search request. Phase 2 adds complete server filename fallback over InventoryIndex. Phase 3 adds explicit bounded server full-text search with location-aware results. Quick file and content queries stay separate from persisted FilterState and from hierarchical hide-mode filtering.
+Provider-based search surface, in phases (plan-2026-07-17-scalable-file-search.md). Phase 1, a T or / Quick Search palette that fuzzy-matches a client file catalog without a search request, and Phase 2, a client-complete catalog over non-gitignored filenames (/api/catalog plus catalog.change, decision mb-ci04), shipped in v0.3.0. Repository PR completions joined it with #309 and #314.
+
+Remaining: bounded full-text search (mb-wzy6), and the deferred server filename fallback for roots whose non-ignored file count makes client-complete unreasonable (mb-3arq). Quick Search and content queries stay separate from persisted FilterState and from hierarchical hide-mode filtering.
 
 ## Notes
 

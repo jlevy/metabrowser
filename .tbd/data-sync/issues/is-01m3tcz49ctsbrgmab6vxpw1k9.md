@@ -5,8 +5,8 @@ title: Remove the unused Hosted Review Format and provider_resources code from t
 kind: task
 status: closed
 priority: 2
-version: 7
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -19,7 +19,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:13:58.954Z
-updated_at: 2026-10-01T02:36:41.681Z
+updated_at: 2026-11-14T18:49:36.720Z
 started_at: 2026-10-01T00:20:13.544Z
 closed_at: 2026-10-01T02:36:41.678Z
 close_reason: "PR #246: removed the unused Hosted Review Format, provider resource profiles, browser-parser evidence and the whole public capability SDK (nine exports, the metabrowser.capabilities.v1 group, doctor counts); contract registry kept internal to the cache. Preserved on reference/v012-hosted-review (draft PR #247, do not merge; tag reference/v012-hosted-review-2026-09-30). Independent review: no P0/P1; findings fixed; CI green."

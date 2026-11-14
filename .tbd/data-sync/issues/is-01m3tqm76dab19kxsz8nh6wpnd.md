@@ -5,14 +5,14 @@ title: Help text for --untrusted and --no-active-content describes only the /raw
 kind: bug
 status: closed
 priority: 3
-version: 2
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-10-01T03:20:15.820Z
-updated_at: 2026-10-01T04:37:42.433Z
+updated_at: 2026-11-14T18:49:57.799Z
 closed_at: 2026-10-01T04:37:42.432Z
 close_reason: "PR #249 (f1a85ba6): help text, docs/command-line.md and the cli-surface golden say both flags render Markdown inert and apply the strict CSP."
 resolution: null

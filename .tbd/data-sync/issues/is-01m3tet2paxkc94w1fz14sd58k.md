@@ -5,8 +5,8 @@ title: "Tests: record the baseline and make lines, durations and skips reportabl
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:46:10.625Z
-updated_at: 2026-10-01T12:49:20.910Z
+updated_at: 2026-11-14T18:49:44.163Z
 started_at: 2026-10-01T10:32:08.749Z
 closed_at: 2026-10-01T12:49:20.908Z
 close_reason: "PR #255: devtools/suite_report.py and make test-report print test files, lines, AST-counted test functions, dom/golden/fixture lines and tryscript commands for any commits, and per-file times and skip reasons from a CI job log; make test prints --durations and -rs. Baseline record: docs/project/reviews/review-2026-10-01-test-suite-baseline.md. Coverage tool: not added; the cost note for the user is in the PR body."

@@ -5,14 +5,15 @@ title: "PR #101 R4: host-side debts behind the inventory boundary"
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 labels: []
 dependencies: []
-parent_id: is-01m1mv8fds3d80zj3qmg1cct9b
+parent_id: is-01m0r7eg6f4a4xee33ryv8sjfs
 created_at: 2026-09-03T23:57:45.894Z
-updated_at: 2026-09-20T15:42:22.008Z
+updated_at: 2026-11-14T18:47:10.342Z
 ---
-DEFER (post-merge). (a) read_session holds the coordinator lock across every provider await of a multi-page assembly while change publication needs the same lock; reset -> SSE disconnect -> reconnect storms re-run full snapshots under it. (b) SSE reconnects never resume deltas though a 4,096-deep history exists. (c) /api/tree's UNKNOWN-path loop re-runs full assemblies every 5ms; the rollup route's ETag keys on the global engine sequence. (d) Per-connection scope filtering happens after events enter the bounded queue. (e) coordinator._history worst case is ~4.2M retained strings.
+DEFER (post-merge). Host-side debts behind the inventory boundary, from the PR #101 review (docs/project/reviews/review-2026-09-07-inventory-stack-merge-readiness.md). That review fixed read_session holding the coordinator lock across provider awaits. Remaining: (b) SSE reconnects start from a fresh snapshot rather than resuming deltas (src/metabrowser/events_route.py:714-716), so reset, disconnect, and reconnect storms re-run full snapshots; (c) /api/tree's UNKNOWN-path loop retries full assemblies every 5 ms (src/metabrowser/server.py:2384-2396), and the rollup route's ETag keys on the global engine sequence; (d) per-connection scope filtering happens after events enter the bounded queue; (e) coordinator._history's worst case retains about 4.2M strings.
 
 ## Notes
 

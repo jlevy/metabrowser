@@ -3,16 +3,20 @@ type: is
 id: is-01kxry31b7bpyxphe66g7gr64t
 title: "Platform A3: expose file-change event subscription/emission to installed plugins via plugin_api"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 4
+version: 5
 labels: []
 dependencies:
   - type: blocks
     target: is-01kxse0wddy6je24t1dm5caber
 parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
 created_at: 2026-07-17T21:00:32.999Z
-updated_at: 2026-08-16T08:06:14.969Z
+updated_at: 2026-11-14T18:46:45.270Z
+closed_at: 2026-11-14T18:46:45.269Z
+close_reason: "Superseded: the diff plugin is built-in, comparison caches are commit-keyed, and uncommitted-comparison staleness is core work in mb-tcdy; browser views already have onInventoryChange. Reopen under mb-xbw3 if an out-of-process plugin needs server-side change events."
+resolution: canceled
+duplicate_of: null
 extensions:
   linear:
     id: 33bb512a-82cb-4713-8dc5-74f8d677d894

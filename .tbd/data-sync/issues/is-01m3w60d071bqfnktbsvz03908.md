@@ -5,8 +5,8 @@ title: "First clone prints no destination and no progress: a large repository lo
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T16:50:49.469Z
-updated_at: 2026-10-01T20:24:36.128Z
+updated_at: 2026-11-14T18:49:46.003Z
 started_at: 2026-10-01T16:50:55.203Z
 closed_at: 2026-10-01T20:24:36.126Z
 close_reason: "PR #261: a first clone names its destination (the cache directory, with ~), shows progress while it runs (redrawn in place on a terminal; a line at most every 10 s otherwise), says when it is done, and a cache hit prints one line in serve and --no-serve modes; --show, --api and --check-api stay silent on a hit; all on stderr. Only Git's exact progress shape passes, as a stage name and numbers. Independent review: no P0/P1; four P2s fixed (exit status with a closed stderr, debug logging of Git's text escaped, a loosened no-leak test restored, wiring pinned) and the P3s (remote-spoofed size, blocking writes, lazy import). All mutations caught. CI green. Not done: the first gh read for a pull-request URL is still silent until the banner."

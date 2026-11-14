@@ -5,14 +5,14 @@ title: Move the app's inline onclick handlers to addEventListener so the untrust
 kind: task
 status: closed
 priority: 3
-version: 2
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-24T11:49:00.002Z
-updated_at: 2026-09-24T13:21:28.188Z
+updated_at: 2026-11-14T18:49:51.838Z
 closed_at: 2026-09-24T13:21:28.187Z
 close_reason: "Done in PR #234 (8e0dad63): all inline handlers were replaced by delegated listeners, and 'unsafe-hashes' plus the handler hashes were removed from the untrusted CSP."
 resolution: null

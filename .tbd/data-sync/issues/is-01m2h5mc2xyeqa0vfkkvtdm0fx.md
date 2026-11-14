@@ -5,19 +5,17 @@ title: Serving waits for watcher registration, so the socket opens late on a dee
 kind: bug
 status: open
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-09-14T23:56:54.749Z
-updated_at: 2026-09-15T00:04:50.337Z
+updated_at: 2026-11-14T18:45:35.896Z
 ---
-devtools.compare_builds on the repository-shaped project-10 corpus (118,860 walker-visible files), quiet 4-CPU host, v0.9.1 wheel against main 03fd7997, five interleaved pairs: candidate spawn_to_serving 3.805-3.929 s against control 0.559-0.610 s, a pair ratio of about 6.5x, repeatable in every pair. spawn_to_serving is one of the metrics the v0.10.0 release comparison judges at 1.3x per pair, so this blocks the release as measured.
+Startup binds late on a deep tree. The lifespan (events_route.py:199-201) awaits runtime.open(root), and the Python provider's open waits for the native watcher to start (python_inventory.py:4137-4140), so uvicorn accepts nothing until watcher registration finishes: about 4 s after process start on project-10 (31,481 directories, quiet 4-CPU host, 2026-09-15). v0.9.1 bound first and did that work afterwards, so it could answer at 0.58 s; the v0.10.0 candidate never did (spawn_to_serving 3.7-3.9 s in every pair), while both had the same worst case. Measured at 03fd7997 against v0.9.1 (exp-034); re-measure on main before fixing.
 
-Cause: cli/serve.py calls kpress_adapter.prepare_browser_assets() before find_available_local_port and uvicorn.run, so the KPress renderer import and asset resolution run before the socket answers anything. The comment records the reason -- a render-blocking request must not own the deferred KPress import while the initial walk competes for the CPU -- but the prewarm does not have to block serving to achieve that.
-
-On the 300,000-file synthetic corpus the same metric was 1.03x and 2.40x in the two recon pairs, so the effect is not purely corpus-independent and needs measuring on both.
-
-Fix direction: start the prewarm without holding the bind, so the socket answers immediately and the import overlaps startup. Keep the guarantee that a first render request never pays the import alone. Needs a deterministic test that the server answers before the prewarm completes.
+Fix direction: let the lifespan yield before corpus-proportional watcher registration, so the socket accepts immediately. That changes what a client can miss between bind and watcher readiness, which is the state-and-delivery contract's subject, so it needs a written design and a deterministic test that the server answers before registration completes.
 
 ## Notes
 

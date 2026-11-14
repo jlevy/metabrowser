@@ -5,15 +5,15 @@ title: "Native app v1: a usable app that meets the tbd coding guidelines"
 kind: feature
 status: open
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T22:42:03.958Z
-updated_at: 2026-11-12T01:05:15.513Z
+updated_at: 2026-11-14T18:46:37.972Z
 ---
-Milestone for apps/macos on claude/macos-app-spike (jlevy/metabrowser#341, merged only when the user says so). Done when every bead this depends on is closed, an independent review of the upgraded app is addressed, and the app is rebuilt and checked end to end. Out of scope here, with reasons: warm folders (mb-e7im, blocked on mb-z46o), host mode and the agent front door (Phase 3), roots and MCP (Phase 4), the optional app-private runtime (mb-lrcd), and a Developer ID release (needs the owner's certificate).
+Milestone for apps/macos, now on main: the spike (jlevy/metabrowser#341) and the v1 stack (#359, #361, #362, #363, #377) merged on 2026-11-13. Done when every bead this depends on is closed, an independent review of the upgraded app is addressed (done in #377, mb-niod), and the app is rebuilt and checked end to end (mb-hwxu). Out of scope here, with reasons: warm folders (mb-e7im, blocked on mb-z46o), host mode and the agent front door (Phase 3), roots and MCP (Phase 4), the optional app-private runtime (mb-lrcd), and a Developer ID release (mb-e9fm, needs the owner's certificate).
 
 ## Notes
 

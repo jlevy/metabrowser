@@ -3,16 +3,16 @@ type: is
 id: is-01m6yegqhks6y5wfr2vp9g7fg8
 title: "Review PR #338 research corrections and standing-policy readiness"
 kind: task
-status: in_progress
+status: open
 priority: 2
-version: 7
+version: 9
 delegate: codex-beads_reconcile_review
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:45:07.506Z
-updated_at: 2026-11-08T23:44:46.500Z
+updated_at: 2026-11-14T18:46:59.701Z
 started_at: 2026-11-08T20:46:05.791Z
 ---
 Review and qualify https://github.com/jlevy/metabrowser/pull/338 independently from release QA/runtime work. Pinned head 48fec15957eedea77dfdd51f76d91972d1cca775 on main e1cfca1a66277aa86887f031f9b28b250d4a4928 changes five research/index/agent-policy/cache files, no product code.
@@ -46,3 +46,5 @@ November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, 
 A1 and A2 are delivered in merged #342. The original #338 follow-up publishes both factual dispositions, preserving complete owner acceptance and accurately qualifying same-UID socket authentication. https://github.com/jlevy/metabrowser/pull/338#issuecomment-6728719172
 
 A3 remains open for owner disposition of the effective standing grant and outside the current runtime release. Task delegation remains explicitly authorized. Native-app implementation is separate under #341 and belongs to another agent.
+
+2026-11-14 audit: status back to open; no activity since 2026-11-08. Only A3 (owner disposition of the subagents grant) remains; A1/A2 landed in #342.

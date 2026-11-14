@@ -5,8 +5,8 @@ title: Fix a reproduced PR-to-Commits loading placeholder race
 kind: bug
 status: closed
 priority: 1
-version: 9
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -16,7 +16,7 @@ parent_id: is-01m5wdbsy6z6d95sgg03kwmm76
 hold: null
 hold_until: null
 created_at: 2026-11-08T04:26:35.547Z
-updated_at: 2026-11-08T09:27:08.131Z
+updated_at: 2026-11-14T18:49:07.811Z
 started_at: 2026-11-08T07:10:33.064Z
 closed_at: 2026-11-08T09:27:08.130Z
 close_reason: Reviewed fixes merged in PR333; exact-head full gate and all PR/main CI jobs passed. Gated build installed, both source modes and original Markdown preview verified; separate release/performance gates remain open.

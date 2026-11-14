@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m402f29k2s68xxshwwa26c4v
-title: Execute the full v0.12 QA runbook on a pinned post-landing candidate
+title: Run the full v0.12 QA runbook on an installed 0.12.x wheel
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 9
+version: 11
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -15,10 +15,10 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:05:53.458Z
-updated_at: 2026-11-09T01:24:52.220Z
+updated_at: 2026-11-14T18:45:40.605Z
 started_at: 2026-11-08T03:02:07.630Z
 ---
-Run setup/doctor including negative controls, full make verify, admitted Git/macOS/live-GitHub tiers, refusal checks, plain-folder features in real browsers, acquisition/cache/pins/trust, GitHub URLs and PR pages, refresh/ref switching/offline reopening, and regression comparisons. Record step-level pass/fail/blocked/untested. Keep caches and temporary outputs on external scratch and durable evidence outside scratch.
+Deferred by the owner when 0.12.0 was published on 2026-11-09 (mb-4bd2). Run the full QA runbook, docs/qa-v012-repository-library.md, on an installed wheel at the commit its Pins section selects: setup/doctor including negative controls, full make verify, admitted Git/macOS/live-GitHub tiers, refusal checks, plain-folder features in real browsers, acquisition/cache/pins/trust, GitHub URLs and PR pages, refresh/ref switching/offline reopening, and regression comparisons. Record step-level pass/fail/blocked/untested and file findings as 0.12.x beads. Keep caches and temporary outputs on external scratch and durable evidence outside scratch. The human-only matrix is mb-etqi. The notes hold the scoped installed checks of 2026-11-08 and 2026-11-09 on pre-release candidates.
 
 ## Notes
 
@@ -55,3 +55,5 @@ The installed in-app browser confirmed Space disclosure false → true → false
 This is the scoped installed check. Complete installed and owner QA are still open.
 
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
+
+2026-11-14 audit: 0.12.0 was published 2026-11-09 with this QA deferred (mb-4bd2 notes); no activity since 2026-11-09, so back to open. Whether to still run it is a question for the owner.

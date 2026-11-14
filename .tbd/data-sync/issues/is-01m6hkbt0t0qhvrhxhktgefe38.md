@@ -3,9 +3,9 @@ type: is
 id: is-01m6hkbt0t0qhvrhxhktgefe38
 title: Load PR catalog progressively with accurate repository totals and lazy details
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -34,8 +34,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-06T22:33:52.899Z
+updated_at: 2026-11-14T18:45:38.074Z
 started_at: 2026-11-03T21:00:05.436Z
+closed_at: 2026-11-14T18:45:38.073Z
+close_reason: "The progressive catalog with exact totals, Open/Closed/All with Open default, lazy details and aligned PR tabs merged in #289, #291 and #292 on 2026-11-04 (Fetch more later replaced by scroll paging, #311 and #410); follow-up mb-xl14 moves to mb-8rpp."
+resolution: null
+duplicate_of: null
 ---
 Owner requests incremental/resumable automatic prefetch of the lightweight catalog for all repository PRs, with exact repository/filter totals. Initially show up to500 and expand the display with Fetch more. Fetch full PR description/conversation/reviews/checks only on demand or a small nearby prefetch window; derive diffs from fetched Git objects, audit actual payload sizes and avoid repeated full diff transfers. Filters Open | Closed | All, defaultOpen. Bold numeric status with repository name and Showing last500 when partial. Align Conversation/Files changed tabs with the content column at wide and narrow widths. Preserve cache-only GETs, account/rate/fair scheduling, keyboard/history/visibility ownership and main/linked checkout vsmanaged URL workflows. No compatibility aliases; forward-only childPR above288; no merge.
 

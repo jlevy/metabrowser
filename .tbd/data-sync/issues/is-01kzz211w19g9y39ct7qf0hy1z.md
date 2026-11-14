@@ -5,7 +5,7 @@ title: Evaluate post-baseline Markdown navigation adapters and knowledge feature
 kind: epic
 status: open
 priority: 3
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md
 labels: []
 dependencies: []
@@ -18,7 +18,7 @@ child_order_hints:
   - is-01kzz4ekfzfqz35v7rwrx3esfk
   - is-01kzz4eksmrezrggyrjefynntk
 created_at: 2026-08-14T02:36:12.525Z
-updated_at: 2026-09-20T15:42:05.743Z
+updated_at: 2026-11-14T18:44:41.609Z
 extensions:
   linear:
     id: 76946bce-e1af-4297-80b0-836175cbb954
@@ -31,3 +31,5 @@ After the required GitHub and Obsidian navigation baseline is complete and measu
 2026-09-20: status returned to open (was in_progress). This is a P3 evaluation epic whose
 last recorded activity is updated_at 2026-08-16T08:05:43Z; no evaluation is in flight, so
 in_progress overstated it.
+
+2026-11-14 audit: delivered children mb-d01n, mb-v5cz, mb-55ll, and mb-281d (source-line #L fragments, #235/#239 via #260). Graph analysis was retired and is tracked as mb-614c. Open: mb-vjes, mb-hvze.

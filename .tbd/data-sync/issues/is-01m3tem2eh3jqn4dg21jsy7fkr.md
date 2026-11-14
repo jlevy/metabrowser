@@ -5,13 +5,13 @@ title: "Tests: replace Python CLI tests that a tryscript golden already covers, 
 kind: task
 status: open
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:42:53.774Z
-updated_at: 2026-10-01T12:02:49.521Z
+updated_at: 2026-11-14T18:49:42.602Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Every test in the seven files below was read and classified.
 
@@ -83,3 +83,5 @@ No release label: five of the seven files pre-date the stack, and the duplicatio
 ## Notes
 
 2026-10-01, from the PR #255 review: tryscript matches merged stdout and stderr unless a block uses the '!' stderr lines (node_modules/tryscript/docs/tryscript-reference.md:95-108), and no golden in the repo uses them. So a CLI test moved into a golden loses the stdout-versus-stderr contract unless the command redirects (for example '2>/dev/null') or the block separates the streams. Apply this to every Python CLI test replaced here, and show it with a mutation that moves a line between streams.
+
+2026-11-14 audit: re-survey before starting; the files grew since a896d8fe (test_cli_main.py 1,255 to 1,428 lines, test_cli_api_mode.py 101 to 284, test_plugins_cli.py 202 to 335).

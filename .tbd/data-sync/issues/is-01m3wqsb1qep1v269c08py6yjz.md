@@ -5,8 +5,8 @@ title: "Landing-gate fixes: restore two regular-folder behaviors, pin two lost a
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T22:01:32.470Z
-updated_at: 2026-10-02T00:55:46.607Z
+updated_at: 2026-11-14T18:49:04.925Z
 started_at: 2026-10-01T22:01:33.487Z
 closed_at: 2026-10-02T00:55:46.605Z
 close_reason: "PR #264: three regular-folder behaviors restored to v0.11.0 (hover prefetch of compound .jsonl names; size in /api/plugin/structured/parsed; non-UTF-8, CR and corrupt-compressed structured files), each with a test that fails without it; the route is identical to v0.11.0 on 125 of 126 compared paths (the one difference is a fix: an unreadable file no longer answers with an absolute host path). Two lost assertions re-pinned; CHANGELOG gaps and three errors corrected; frame_missing_px probe fixed (harness version 23); startup_pairs.py refuses mixed bytecode states and appended runs. Independent review; 47 of 47 mutations killed. CI green on the head merged above #263."

@@ -5,8 +5,8 @@ title: "Final landing docs for the v0.12 stack: QA playbook refresh, review ledg
 kind: task
 status: closed
 priority: 2
-version: 6
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T15:49:36.040Z
-updated_at: 2026-10-26T15:27:24.262Z
+updated_at: 2026-11-14T18:49:45.264Z
 started_at: 2026-10-01T15:51:06.955Z
 closed_at: 2026-10-26T15:27:24.261Z
 close_reason: "The landing docs landed on main in #260: the QA runbook refresh, review-2026-10-01-v012-stack-review-ledger.md, review-2026-10-01-v012-changes-to-existing-behavior.md, and the alpha plan's Landing status section. Superseded follow-up: those documents describe the state BEFORE the merge (they speak of a stack to land, gates owed on a tip, #267 and #260 to be appended), and #268 landed above them. Bringing them up to date for a merged, unreleased main is a new task under mb-425f, not a reopening of this one."

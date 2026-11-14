@@ -5,14 +5,16 @@ title: Stabilize the test suite under machine load
 kind: bug
 status: open
 priority: 2
-version: 6
+version: 8
 labels:
   - testing
 dependencies: []
 child_order_hints:
   - is-01m2gb3pfd368gdf1ragzqezbg
+  - is-01m78t1gnwvycrdyscb1zz7tt0
+  - is-01m79263has7e8xgs52tw6k12v
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-14T18:42:10.880Z
+updated_at: 2026-11-14T18:46:13.106Z
 ---
 Sweep the full pytest suite and tryscript goldens under heavy machine load (load average 7-50 from an unrelated workload, or CPU burners on a quiet host). Classify each failure as a load or timing flake, a real bug, or an order dependence, and fix flakes by asserting the product guarantee with deterministic coordination rather than wall-clock thresholds. The starting flake, tests/test_serve_open_race.py (mb-0mu9), is fixed. CI flakes found since are tracked as children of this bead.
 

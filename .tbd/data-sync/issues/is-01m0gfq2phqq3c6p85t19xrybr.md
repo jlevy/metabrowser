@@ -3,15 +3,15 @@ type: is
 id: is-01m0gfq2phqq3c6p85t19xrybr
 title: Push aggregate deltas over SSE instead of client rollup polling
 kind: feature
-status: open
+status: deferred
 priority: 3
-version: 5
+version: 6
 labels:
   - deferred
 dependencies: []
 parent_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
 created_at: 2026-08-20T21:02:31.121Z
-updated_at: 2026-08-20T21:18:52.979Z
+updated_at: 2026-11-14T18:44:55.960Z
 ---
 The client refetches the whole rollup envelope on every inventory change, on a
 trailing debounce bounded by one window. Entries already work the other way:

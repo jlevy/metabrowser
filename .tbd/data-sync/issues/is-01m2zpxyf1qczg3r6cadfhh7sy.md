@@ -5,8 +5,8 @@ title: "WS-1: workspace hygiene: gh stack metadata, unpushed feat/git-graph-view
 kind: chore
 status: open
 priority: 3
-version: 7
-spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
+version: 8
+spec_path: null
 delegate: null
 labels: []
 dependencies: []
@@ -14,10 +14,10 @@ parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 hold: null
 hold_until: null
 created_at: 2026-09-20T15:28:36.309Z
-updated_at: 2026-10-01T00:13:07.182Z
+updated_at: 2026-11-14T18:44:09.082Z
 started_at: 2026-09-23T00:40:31.081Z
 ---
-Finding WS-1 from the v0.11 stabilization review. Owning layer: PR #216. Full evidence, path:line, and suggested fix are in the notes of mb-gacf under WS-1.
+Workspace hygiene from the v0.11 stabilization review (finding WS-1; evidence in the notes of closed bead mb-gacf). The .pnpm-store ignore landed in PR #226. Remaining in the primary checkout: local branches feat/git-graph-view and pr13-folder-treemap carry unpushed commits (decide whether to push or drop them); the local stab/* and restack/* branches were contained upstream as of 2026-09-20 and can be deleted; and the gh stack metadata noted on 2026-09-22.
 
 ## Notes
 

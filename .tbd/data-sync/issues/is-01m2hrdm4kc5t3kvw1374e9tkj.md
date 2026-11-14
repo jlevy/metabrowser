@@ -5,13 +5,14 @@ title: "Walker emit batch: 1,024 measured 1.2 s faster than 256 on a 300k attach
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T05:25:16.562Z
-updated_at: 2026-09-15T05:38:47.207Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
 `INVENTORY_WALKER_EMIT_BATCH` is 256 (`settings.py`). Raising it to 1,024 measured an
 attached 300k walk at 17.49/17.47/17.67 s against 18.77/18.70/18.47 s at 256 --

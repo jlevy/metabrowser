@@ -5,13 +5,13 @@ title: "Tests: inventory and route suites — move envelope assertions to --api 
 kind: task
 status: open
 priority: 3
-version: 1
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:43:51.860Z
-updated_at: 2026-10-01T00:43:51.860Z
+updated_at: 2026-11-14T18:49:55.801Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. These suites pre-date the stack; the three largest inventory files were read in full, the rest sampled. Wall-clock gates and leaked process state in these files are in the isolation bead.
 

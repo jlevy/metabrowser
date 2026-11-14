@@ -5,7 +5,7 @@ title: Remove scoped Biome legacy rule exceptions
 kind: chore
 status: open
 priority: 3
-version: 6
+version: 7
 spec_path: TODO.md
 labels:
   - tooling
@@ -14,13 +14,13 @@ labels:
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-07-16T16:41:33.178Z
-updated_at: 2026-08-16T08:05:55.601Z
+updated_at: 2026-11-14T18:46:25.143Z
 extensions:
   linear:
     id: 548aa569-c8d3-4796-9230-906592cb0796
     linked_at: 2026-08-16T08:05:55.601Z
 ---
-Eliminate the file-scoped Biome compatibility exceptions while preserving the recommended global rule floor. The 2026-07-16 baseline is 244 noInnerDeclarations findings across app.js (165), charts.js (27), structured/preview.js (20), structured/tree.js (17), and perf.js (15), plus 24 noDescendingSpecificity findings confined to styles.css. Acceptance: refactor findings, shrink the exact override file lists as files become clean, and delete each override when its count reaches zero.
+Eliminate the file-scoped Biome exceptions in biome.json's overrides while keeping the recommended global rule floor. Two remain: noDescendingSpecificity off for src/metabrowser/static/styles.css, and noInnerDeclarations off for static/app.js, charts.js and perf.js and builtin_plugins/structured/preview.js and tree.js. Refactor the findings, shrink each override's file list as files become clean, and delete an override when its list is empty. The Biome upgrade in mb-1jq3 raises noDescendingSpecificity outside styles.css as well (builtin_plugins/folder/file_type_summary.css), so take the two together or in order.
 
 ## Notes
 

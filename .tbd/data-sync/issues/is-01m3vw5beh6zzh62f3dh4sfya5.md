@@ -5,8 +5,8 @@ title: "v0.12 landing: two verifications owed on a quiet machine (wall-clock sta
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m2k713pxra1ns2fk3pcwrpb6
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-10-01T13:58:45.967Z
-updated_at: 2026-10-01T22:01:12.087Z
+updated_at: 2026-11-14T18:49:44.900Z
 closed_at: 2026-10-01T22:01:12.085Z
 close_reason: "Both verifications taken: make golden-update is a no-op on the stack tip, and wall-clock startup pairs against v0.11.0 on a quiet machine with bytecode cached in both builds: instructions within 1.04x with no pair over 1.1x; wall-clock medians 0.98-1.07x; --doctor 1.5-1.8x by design, for the user to accept. To be repeated on the final tip by the release rehearsal (mb-cf6y)."
 resolution: null

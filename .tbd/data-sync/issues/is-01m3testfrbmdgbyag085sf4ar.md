@@ -5,8 +5,8 @@ title: "Tests: make absent tests loud — require Node and git, name the tiers, 
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:46:02.227Z
-updated_at: 2026-10-01T08:48:56.196Z
+updated_at: 2026-11-14T18:49:43.792Z
 started_at: 2026-10-01T04:49:35.282Z
 closed_at: 2026-10-01T08:48:56.191Z
 close_reason: "PR #251: a missing Node or Git fails (one message, explicit opt-out); strict skips in CI; macos_tier and live_github tiers with make targets; run-time admitted-Git list gate; inner bounds at most 50 s with a ratchet; raised budgets carry measurements. Review: one P1 and six P2s fixed. CI green on the head merged above #252. Decisions left for the user (in the PR body): a macOS CI job, and the admitted-Git duplication across the test matrix."

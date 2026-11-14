@@ -1,13 +1,12 @@
 ---
 type: is
 id: is-01m402dbhn3zsc1h896f3xnrsq
-title: v0.12 release stability and manual acceptance
+title: "v0.12 follow-ups: deferred QA, dependency refresh, and defects found in stabilization"
 kind: epic
 status: open
 priority: 1
-version: 46
-labels:
-  - release:v0.12.0
+version: 49
+labels: []
 dependencies: []
 child_order_hints:
   - is-01m402f17fzfw3tac1d4vfxxe4
@@ -55,7 +54,9 @@ child_order_hints:
   - is-01m6f9zfnk0v9j69463ezd8znq
   - is-01m3wgefqnj91f8avyyv4x8t5w
   - is-01m6f2my0bz2mvdrn5d0j9wqhj
+  - is-01m3zcr4trbfndm6fp8jr10q8d
+  - is-01m3wjge2pn6nf3cvcvpbbdx2z
 created_at: 2026-10-03T05:04:57.396Z
-updated_at: 2026-11-14T18:42:45.180Z
+updated_at: 2026-11-14T18:48:19.107Z
 ---
-Track all post-landing stability work after PR #260: dependency audit, main CI, PR #262 review remediation and merge decision, mirror heading layout, remaining review evidence, runbook corrections, complete automated verification and manual QA. A green merge or CI run alone does not establish release acceptance. Preserve explicit pass/fail/untested results and human-only checks.
+0.12.0 was tagged at main 87b8ec81 and published on GitHub and PyPI on 2026-11-09 (mb-4bd2, closed). This epic holds what the v0.12 stabilization left open after the release: the deferred full QA runbook (mb-m20f), the post-release dependency refresh (mb-1jq3), and small defects that the reviews and browser checks of stack 278 (PRs #272-#277) and PR #279 found on main. Fixes ship in 0.12.x or later. A green merge or CI run alone does not establish QA acceptance: keep explicit pass/fail/untested results, and the human-only checks in mb-etqi.

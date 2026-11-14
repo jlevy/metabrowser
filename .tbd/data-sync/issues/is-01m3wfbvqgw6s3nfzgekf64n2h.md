@@ -5,8 +5,8 @@ title: A mirrored repository shows a commit hash as its folder name and hides wh
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:34:22.189Z
-updated_at: 2026-10-02T00:39:22.764Z
+updated_at: 2026-11-14T18:49:47.585Z
 started_at: 2026-10-01T19:34:25.682Z
 closed_at: 2026-10-02T00:39:22.755Z
 close_reason: "PR #263: a mirrored repository shows its name in the main heading, nav header, tree root and tab title, with the short commit beside the ref and a copy control for the full commit; the heading shows 'mirror in <location>' (the bare store directory, with ~) and a tooltip saying it is a bare repository with no checked-out files. One display location in /api/source/status and the heading; a file:// origin under the home is shown with ~; every other route, header and error still names no cache path (sweep widened; five leak mutations fail it). Regular folders: three null fields added to /api/source/status, +82 bytes of app.js, tooltip geometry identical to base. Independent review: P1 tooltip regression and three P2s fixed; 76 of 76 mutations killed; CI green. Decision recorded in the thin-mirror plan."

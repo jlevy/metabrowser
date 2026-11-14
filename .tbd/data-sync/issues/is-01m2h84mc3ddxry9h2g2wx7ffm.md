@@ -5,11 +5,13 @@ title: Transient JS heap is 2.5-3.2x v0.9.1 on a repository-shaped tree
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-09-15T00:40:44.675Z
-updated_at: 2026-09-15T00:40:44.675Z
+updated_at: 2026-11-14T18:45:27.693Z
 ---
 exp-034, quiet 4-CPU host, project-10, five back-to-back headed browser pairs. Transient js_heap_mb is 8.0-9.6 MB on the control and 21.4-26.6 MB on the candidate, every pair over the release's 1.3x rule. The retained heap after a forced collection is unchanged: 6.1-6.2 MB against 6.4 MB, so nothing is leaking.
 

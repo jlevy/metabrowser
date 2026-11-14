@@ -5,8 +5,8 @@ title: "After about five full page loads in one tab, the next page waits for a c
 kind: bug
 status: closed
 priority: 2
-version: 12
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 13
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10.local
 labels: []
 dependencies:
@@ -16,7 +16,7 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-01T17:01:14.875Z
-updated_at: 2026-11-01T16:21:25.934Z
+updated_at: 2026-11-14T18:49:46.385Z
 started_at: 2026-10-01T17:25:22.341Z
 closed_at: 2026-11-01T16:21:25.933Z
 close_reason: "Fix landed in #268. Real Chrome, three pairs on 2026-10-26: the sixth load took about 53 s on v0.11.0 and 0.1-0.3 s on the candidate, with 0 requests waiting (mb-2g6f notes). Safari and Firefox Back behaviour is checked under mb-etqi."

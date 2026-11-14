@@ -5,13 +5,13 @@ title: "Tests: one shared harness and DOM shim for tests/dom, with injected time
 kind: task
 status: open
 priority: 3
-version: 1
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:42:47.504Z
-updated_at: 2026-10-01T00:42:47.504Z
+updated_at: 2026-11-14T18:49:55.417Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Do this after the Node runner bead so launchers are stable first.
 

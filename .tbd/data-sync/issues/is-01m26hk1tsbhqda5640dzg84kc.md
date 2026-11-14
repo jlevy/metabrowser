@@ -5,13 +5,15 @@ title: Golden-pin navigation controls and live inventory composition
 kind: task
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels: []
 dependencies: []
 parent_id: is-01m26hjjvhpcf49p2x1c3390kk
+child_order_hints:
+  - is-01m2644a8c2pn05pyqf326v49a
 created_at: 2026-09-10T20:54:15.640Z
-updated_at: 2026-11-14T18:42:41.775Z
+updated_at: 2026-11-14T18:47:04.148Z
 ---
 Extract the smallest production controller seam for filter control/clear -> request identity -> authoritative response -> mounted tree and EventSource snapshot/change/remove/resync -> FileStore/subtree/deferred rows -> focus, selection, and tallies. Run that exact seam in deterministic CLI goldens, including abort/stale-response and collapsed/deferred-tree cases. Retire source-regex assertions where the production session supersedes them.
 

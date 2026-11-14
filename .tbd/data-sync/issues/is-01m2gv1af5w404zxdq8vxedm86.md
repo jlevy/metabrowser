@@ -1,23 +1,24 @@
 ---
 type: is
 id: is-01m2gv1af5w404zxdq8vxedm86
-title: Catalog sort and Recent pass hold the GIL without cooperative yields during a walk
+title: Recent pass holds the GIL without cooperative yields during a walk
 kind: task
 status: open
 priority: 2
-version: 8
+version: 10
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-14T20:51:44.740Z
-updated_at: 2026-09-15T16:41:42.538Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
-Two whole-index passes that overlap the inventory walk still hold the GIL without a cooperative yield.
+The Recent pass (_recent_projection in python_inventory.py) filters every index entry and sorts the matches with no cooperative yield, so a /api/recent read during a walk holds the GIL for the whole pass. Nothing has measured it yet.
 
-Found in the PR #122 review (R4): the catalog read's filtering loop now yields every 1,024 entries, but the sort that follows it does not; for the browser's `/api/catalog` read on a 300,000-file tree the sort took 81-169 ms of CPU. The Recent pass (`_recent_projection`) has no yields either. Neither is new in #122.
+Measure first (engine performance model: counts before times), then bound or yield, for example a bounded top-N selection, with a deterministic work-between-yields test like tests/test_inventory_walk_work.py.
 
-Measure first (engine performance model: counts before times), then bound or yield: e.g. sort keys precomputed and a chunked merge with cooperative yields, or a bounded top-N selection for Recent, with a deterministic work-between-yields test like tests/test_inventory_walk_work.py.
+The catalog half of the original bead, found in the PR #122 review (R4), is settled: the sort key was measured and rejected, and the content hash landed in PR #129. The notes carry both measurements.
 
 ## Notes
 

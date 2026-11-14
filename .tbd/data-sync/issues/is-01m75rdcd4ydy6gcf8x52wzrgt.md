@@ -5,8 +5,8 @@ title: "PR 2: event-based PR freshness, budgeted prefetch, rate-limit governor"
 kind: feature
 status: closed
 priority: 1
-version: 13
-spec_path: docs/project/specs/active/plan-2026-11-11-pr-freshness-and-prefetch.md
+version: 14
+spec_path: docs/project/specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T16:52:44.579Z
-updated_at: 2026-11-11T21:51:26.297Z
+updated_at: 2026-11-14T18:49:09.766Z
 started_at: 2026-11-11T16:54:12.366Z
 closed_at: 2026-11-11T21:51:26.296Z
 close_reason: "Merged to main in 93badac9 via native stack #356 (2026-11-11): PR #355, event-based freshness with checks-only revalidation, budgeted prefetch lane, rate-limit governor. Reviews A and B addressed (issuecomment-6807804640, -6807805016)."

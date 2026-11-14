@@ -5,12 +5,13 @@ title: Settled navigation tally is 1.2-1.3x slower than v0.9.1 on a 300k tree
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels: []
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T00:09:48.077Z
-updated_at: 2026-11-14T18:42:26.562Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
 devtools.compare_builds on the 300,000-file synthetic corpus, quiet 4-CPU host, v0.9.1 wheel against main 03fd7997, five interleaved pairs. The tally measured after the index settles (a depth-0 /api/tree read, with a second tally competing) is consistently slower:
 

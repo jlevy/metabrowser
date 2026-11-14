@@ -5,8 +5,8 @@ title: "Tests: GitHub pull-request suite — one copy of each record, no grep sl
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:38:53.293Z
-updated_at: 2026-10-01T14:41:41.496Z
+updated_at: 2026-11-14T18:49:40.604Z
 started_at: 2026-10-01T10:30:12.343Z
 closed_at: 2026-10-01T14:41:41.495Z
 close_reason: "PR #258: pull-request recording 2,203 -> 1,370 lines (off the oversized allowlist), four goldens 3,114 -> 2,185, tryscript commands 66 -> 45; a repeated identical record prints as a back-reference, compared by exact serialized text. Independent review restored six lost detections and added security evidence: a hostile-link corpus fed to both inert layers, record validation on read, a 401 typed not_logged_in, Git's text kept out of messages. 111 of 117 mutations fail a test; the rest are mb-3ulm and one equivalent. CI green on the head merged above #256; full local make test passed."

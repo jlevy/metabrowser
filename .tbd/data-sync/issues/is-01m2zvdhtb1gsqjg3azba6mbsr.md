@@ -5,19 +5,19 @@ title: Optional cleanup of local PR-sizing shortcut copies
 kind: task
 status: open
 priority: 4
-version: 6
+version: 7
 spec_path: null
 delegate: null
 labels: []
 dependencies: []
-parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 hold: null
 hold_until: null
 created_at: 2026-09-20T16:47:01.961Z
-updated_at: 2026-09-23T01:32:14.324Z
+updated_at: 2026-11-14T18:44:17.722Z
 started_at: 2026-09-23T00:38:14.508Z
 ---
-Independent process-document maintenance for PR #219. Keep the local shortcut guidance while useful and remove duplicate copies opportunistically when the available upstream text is equivalent. Do not wait for a tbd release, block #219 on an upstream publication, or make this cleanup a dependency of Metabrowser feature work, testing, stack landing, or release.
+Optional maintenance. PR #219 (merged 2026-10-26) added local PR-sizing shortcut guidance as doc forks under .tbd/doc-forks/base/shortcut/ and docs/tbd/shortcuts/. tbd v0.10.0 (2026-10-02) and v0.11.0 (2026-11-09) were released after upstream tbd PR #316 merged (2026-09-20): compare the shipped shortcuts with the local copies and remove duplicates where the text is equivalent. Not a prerequisite for any feature work, testing, landing, or release.
 
 ## Notes
 

@@ -5,15 +5,15 @@ title: Share the diff plugin's kept manifest with the changed-files list
 kind: task
 status: open
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
-parent_id: is-01m6f3a9djmnfvp42fmnwhwtr7
+parent_id: is-01m6f39t9zax1nbajkkasya6st
 created_at: 2026-11-03T03:59:22.118Z
-updated_at: 2026-11-03T07:19:04.338Z
+updated_at: 2026-11-14T18:47:17.384Z
 ---
-The file-list job computes a local comparison's manifest itself through GitDiffSource.manifest (0.26 s on django/django#15387 at 2,000 files; exp-040 measured 1.16 s on its 1,183-file stress case), once per head, then caches it in <n>.files.json. When Files changed has already asked /api/plugin/diff/comparison for the same endpoints, the diff plugin has computed that manifest too (and on claude/v012-large-pr-perf keeps it in _COMPARISONS). Needed from the diff plugin's owner: a way to read the kept manifest without patches, either a Python function (location, left, right, policy) -> ResolvedManifest that goes through _COMPARISONS, or a manifest-only form of the comparison route. Then the job reads that and Git runs once per comparison. Also: MAX_MANIFEST_FILES (2,000) is below GitHub's 3,000, so pull requests of 2,001-3,000 files fall back to GitHub's list.
+The changed-files job computes a local comparison's manifest itself: _from_comparison in builtin_plugins/github/pull_files_refresh.py calls GitDiffSource.manifest directly (0.26 s on django/django#15387 at 2,000 files; exp-040 measured 1.16 s on a 1,183-file PR), then caches the list in <n>.files.json. Changes keeps the same manifest: since #348 the comparison route and pull_rendered_diff.py read it through shared_pull_manifest in pull_manifest.py, which goes through the diff plugin's shared_comparison_manifest (_COMPARISONS, keyed by comparison_cache_key with the store tag) and the on-disk manifest bank. Route _from_comparison through shared_pull_manifest so Git lists each comparison once, and test both directions: the list hits an entry Changes kept, and Changes hits an entry the list computed. The list resolves base_policy direct on the record's merge base while shared_pull_manifest asks merge_base, so check that keys and resolved endpoints agree before sharing. MAX_MANIFEST_FILES (2,000, diff/adapters/git.py) stays below GitHub's 3,000, so lists of 2,001 to 3,000 files fall back to GitHub's (mb-ivvw holds raising it).
 
 ## Notes
 

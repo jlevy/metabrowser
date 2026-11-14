@@ -5,14 +5,13 @@ title: "Tooling tests and explorations: drop live-repo re-runs of lint, table-dr
 kind: task
 status: open
 priority: 3
-version: 1
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
-labels:
-  - release:v0.12.0
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
+labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:43:55.589Z
-updated_at: 2026-10-01T00:43:55.589Z
+updated_at: 2026-11-14T18:49:56.179Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Two related clean-ups outside the product's own tests: tests of gate tooling and experiment harnesses, and the experiment records shipped in the repository.
 
@@ -61,3 +60,7 @@ Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. T
 - The evidence-admission tests for `cmd_compare` and `cmd_record` in `tests/test_performance_loop_gate.py`, while the harness remains a release step.
 
 P3. Labelled `release:v0.12.0` for steps 4 and 5 only: the repository-cache record is new in the stack and its status line is wrong on the day it lands. Steps 1–3 can follow the release.
+
+## Notes
+
+2026-11-14 audit: steps 4 and 5 did not land before 0.12.0 (repository-cache README status line and the sdist exclude are unchanged). The thin-mirror spec's Retired From Earlier Plans table has moved; cite the section, not lines 261-263.

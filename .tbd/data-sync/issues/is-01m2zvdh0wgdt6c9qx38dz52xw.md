@@ -5,7 +5,7 @@ title: Acquire SSH Git URLs into the shared mirror
 kind: task
 status: deferred
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies: []
@@ -13,9 +13,9 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 child_order_hints:
   - is-01m3617625k6h6qq4dq2hyxytb
 created_at: 2026-09-20T16:47:01.143Z
-updated_at: 2026-10-01T00:13:17.958Z
+updated_at: 2026-11-14T18:44:05.220Z
 ---
-Track complete HTTPS and SSH acquisition into the shared worktree-free Git store. Current #217 supports file:// only and remote transports remain refused. Child mb-s1lt owns HTTPS acquisition within the Phase 2A PR and gates repository URL opening/publication. This parent retains SSH transport, prompt suppression, safe diagnostics, identity/credential isolation and its separate live/automated acceptance; it stays open after HTTPS is complete until SSH is also accepted. No implementation started in the planning handoff.
+Acquire SSH Git URLs into the shared worktree-free Git store, with prompt suppression, safe diagnostics, identity and credential isolation, and separate live and automated acceptance. file:// and https:// already acquire and serve (HTTPS in mb-bgs7, PR #231); ssh stays refused (src/metabrowser/cache/acquire.py:6). Deferred by the user's 2026-09-23 decision (thin-mirror plan, Decisions). This design predates the thin mirror, so re-plan against it before starting.
 
 ## Notes
 

@@ -5,16 +5,17 @@ title: "PR #101 R3.5: metab --walk bypasses the coordinator in both modes"
 kind: bug
 status: open
 priority: 1
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0r8xt95921dabcddjjm7csf
-parent_id: is-01m1mv8fds3d80zj3qmg1cct9b
+parent_id: is-01m0r7eg6f4a4xee33ryv8sjfs
 created_at: 2026-09-03T23:57:45.177Z
-updated_at: 2026-09-08T00:02:50.407Z
+updated_at: 2026-11-14T18:45:18.457Z
 ---
-Both walk.py:133 text mode and walk.py:562 --stream bypass the coordinator, not just --stream as #99 recorded; walk.py:401 constructs InventoryRuntime(config=config) ignoring METABROWSER_INVENTORY_PROVIDER entirely. walk_collect also omits hidden_allowlist, agreeing with the provider only by coincidence of defaults. With a second provider these surfaces would describe an engine that is not running.
+Text-mode metab --walk (walk_collect, src/metabrowser/walk.py:110) and metab --walk --stream (stream_entries, walk.py:556) drive walk_tree directly and bypass the coordinator, so with a second provider they would describe an engine that is not running. walk_collect also omits hidden_allowlist, agreeing with the provider only by coincidence of defaults. JSON and YAML walk already select the configured provider through inventory_provider_from_environment (walk.py:411). Settle the text and stream provider semantics before native adoption, and do not describe the whole CLI as provider-selectable until then.
 
 ## Notes
 

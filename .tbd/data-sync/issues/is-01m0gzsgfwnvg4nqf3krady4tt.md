@@ -5,11 +5,13 @@ title: Surface and retry a failed filesystem watch
 kind: task
 status: open
 priority: 2
-version: 2
+version: 4
+spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
+parent_id: is-01m0r7eg6f4a4xee33ryv8sjfs
 created_at: 2026-08-21T01:43:27.996Z
-updated_at: 2026-08-21T01:43:44.189Z
+updated_at: 2026-11-14T18:44:24.058Z
 ---
 The watcher now announces a failed watch on the event stream as a
 capability.update with backends[].state = "failed", and logs it. Nothing
@@ -39,3 +41,7 @@ state still has to be visible.
 
 Context: docs/project/architecture/arch-state-and-delivery.md, "Why a conditional
 response is safe" and "What Is Not Solved".
+
+## Notes
+
+2026-11-14 audit: since this was written, the provider marks freshness stale and records a typed watcher-gap issue on a failed watch (arch-state-and-delivery.md, What Is Not Solved). The shell still does not show it, and nothing retries. Related: mb-6o0l (provider restart is unrecoverable).

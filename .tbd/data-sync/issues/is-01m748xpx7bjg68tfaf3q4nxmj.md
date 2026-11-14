@@ -5,7 +5,7 @@ title: "Native macOS app: thin AppKit shell over metab"
 kind: epic
 status: open
 priority: 1
-version: 118
+version: 119
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
@@ -126,7 +126,8 @@ child_order_hints:
   - is-01m79xpvh8vj5q955y9czfwz37
   - is-01m79xstsdj4dkefydj2kj25h1
   - is-01m7b1dkb51yg93bvh8bdx6trv
+  - is-01m78t1rx3tqb97bqmekmd49kg
 created_at: 2026-11-11T03:02:47.974Z
-updated_at: 2026-11-14T18:42:06.743Z
+updated_at: 2026-11-14T18:46:49.367Z
 ---
 Plan: docs/project/specs/active/plan-2026-11-10-native-macos-app.md. Research: research-2026-11-08-macos-app-packaging.md, research-2026-11-10-native-app-server-topology.md, and research-2026-11-11-uv-and-macos-app-install.md. The app is apps/macos on main: the spike (jlevy/metabrowser#341) and the v1 stack (#359, #361, #362, #363, #377) merged on 2026-11-13, with title-bar follow-ups in #384, #388, #391, #398, and #403. Core metab changes and native app changes land on main through their own pull requests.

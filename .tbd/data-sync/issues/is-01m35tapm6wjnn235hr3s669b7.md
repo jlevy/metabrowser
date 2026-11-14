@@ -5,8 +5,8 @@ title: Execute v0.12 direct-PR alpha acceptance on installed artifacts and a rea
 kind: task
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-23T00:23:26.596Z
-updated_at: 2026-10-01T05:38:00.627Z
+updated_at: 2026-11-14T18:48:54.503Z
 started_at: 2026-09-23T01:37:28.312Z
 closed_at: 2026-10-01T05:38:00.626Z
 close_reason: "v0.12 alpha acceptance executed (T0-T2, thin-mirror scope) on installed wheels and a real browser: run 2026-09-24, rerun on #243, rerun on #250 (M03b and M08b pass with View file; #249 changes pass). Record: docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md. M10 private and revoked are recorded as blocked (no operator-owned private fixture) and listed in the landing status as a check only the user can make; M10b, M12, M13 are deferred by the user's 2026-09-23 decision. Not run: symlink or submodule entries inside a PR (no public fixture; same code as the commit diff, which passed). Nothing merged or released."

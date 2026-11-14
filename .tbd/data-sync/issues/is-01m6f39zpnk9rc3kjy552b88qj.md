@@ -3,9 +3,9 @@ type: is
 id: is-01m6f39zpnk9rc3kjy552b88qj
 title: "Step 4: changed files in a row, expandable like a folder"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -22,8 +22,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:35.668Z
-updated_at: 2026-11-04T17:18:17.254Z
+updated_at: 2026-11-14T18:46:25.914Z
 started_at: 2026-11-03T06:46:31.128Z
+closed_at: 2026-11-14T18:46:25.913Z
+close_reason: "Step 4 merged in #287 (with #297) on 2026-11-04: changed-file trees, /pull/<n>/files/<path>, and the keyboard file walk are on main; follow-ups mb-egnj and mb-w5rc move to mb-8rpp."
+resolution: null
+duplicate_of: null
 ---
 Delivery step 4, added 2026-11-02. A row is a container: it expands to its changed files as a tree using the Files tree's row contract, from one gh request per 100 files with no Git. File rows open /pull/<n>/files/<path>. See the plan's Changed Files in a Row.
 

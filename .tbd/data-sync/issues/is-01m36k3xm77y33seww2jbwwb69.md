@@ -5,8 +5,8 @@ title: "GitHub URL open: reducer plugin, HTTPS with gh helper, ref/path split, l
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m36k3y0t6fvtqhskx3cqxx95
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-23T07:36:38.789Z
-updated_at: 2026-09-24T10:21:04.830Z
+updated_at: 2026-11-14T18:49:00.148Z
 closed_at: 2026-09-24T10:21:04.815Z
 close_reason: "GitHub URL open: PR #231 (codex/v012-github-url-open, head b605dd9f, above #230). Reducer plugin, HTTPS with the scoped gh helper, unified origin args and resolver, serve mode for GitHub URLs, pending selections, case-fold detection and restore, prune-and-retry, measured stall bound (closes mb-rati), SIGHUP/SIGTERM handling (closes mb-163x). Four independent review rounds; every finding fixed. CI green on all nine checks. Known limit: a decomposed-Unicode branch name on macOS hits a Git-internal prune and fetch disagreement after the first refresh (documented)."
 resolution: null

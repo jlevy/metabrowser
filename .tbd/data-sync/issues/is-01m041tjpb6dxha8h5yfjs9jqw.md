@@ -3,14 +3,18 @@ type: is
 id: is-01m041tjpb6dxha8h5yfjs9jqw
 title: Files section lacks the pending skeleton that File Breakdown shows
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-08-16T01:08:52.554Z
-updated_at: 2026-08-16T08:05:43.547Z
+updated_at: 2026-11-14T18:45:06.158Z
+closed_at: 2026-11-14T18:45:06.157Z
+close_reason: "Fixed: pending totals no longer read as a zero table (801b8d99, PR #59), and the Files totals show their skeleton beside File Breakdown's throughout a scan (e758292b), pinned by cli-ui-file-overview.tryscript.md."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 77699871-6531-4807-bf2b-7ab3f8625ff0

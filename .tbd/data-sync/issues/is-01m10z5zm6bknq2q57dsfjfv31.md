@@ -5,12 +5,16 @@ title: "Git status Phase 2: Git panel, live invalidation, and delivery"
 kind: feature
 status: open
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md
 labels: []
 dependencies: []
 parent_id: is-01m10z5hmf2m2tndf00k0jznx8
 created_at: 2026-08-27T06:40:39.044Z
-updated_at: 2026-08-27T06:40:39.044Z
+updated_at: 2026-11-14T18:47:07.709Z
 ---
 Implement the status URL, grouped Git-panel changes, one-file diff navigation, refresh/invalidation lifecycle, design-system integration, and delivery gates defined in Phase 2.
+
+## Notes
+
+2026-11-14 audit: absorbs mb-tcdy (watcher-driven stale for uncommitted comparisons), proposed closed as its duplicate; the spec's 'Invalidation and refresh' section is that work.

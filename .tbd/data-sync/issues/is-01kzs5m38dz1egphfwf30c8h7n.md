@@ -4,18 +4,12 @@ id: is-01kzs5m38dz1egphfwf30c8h7n
 title: Repository library and hosted-review roadmap
 kind: epic
 status: open
-priority: 1
-version: 90
+priority: 2
+version: 96
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels: []
-dependencies:
-  - type: blocks
-    target: is-01m0b71xgqp0jgz007h0wtzr3z
-  - type: blocks
-    target: is-01m0c1by1cmexbqhx6xeb3b10p
-  - type: blocks
-    target: is-01m0c4dfbfnqg3q53y7xzbgc0a
+dependencies: []
 child_order_hints:
   - is-01m10wbv02twkf4z2t3szd5835
   - is-01m10vgc38hk6pm0rkgzw2hsk0
@@ -78,17 +72,18 @@ child_order_hints:
   - is-01m3wfpjbz1ktepk7e8a5c9yte
   - is-01m5wd9jf0zw7bwh0f8qk5eqw5
   - is-01m3w3xzvv8g0y0hrjrs4npp8x
+  - is-01m3w465p1fgn0da5w3cgxknpj
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-11-14T18:42:30.079Z
+updated_at: 2026-11-14T18:48:32.117Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
     linked_at: 2026-08-16T08:05:43.412Z
 ---
-Deliver the GitHub-first v0.12 vertical slice on three independent layers: session RepositorySubjects, one shared worktree-free Git object store, and one stable-repository/auth-scoped provider mirror. Open managed URLs and attached user checkouts; serve branches and PR content by full OID without checkouts, indexes, or detached worktrees; define transparent SoftSchema records and trusted plugin registries; use bounded gh api acquisition; cache direct PR bundles before the bounded index; and render shared PR, diff, revision, release, and virtual-navigation views. Local checkouts are never cache authority or mutation targets. Later work retains chooser, issues, GitLab, stacks, and measured large-repository support.
+Long-range repository library roadmap after v0.12. v0.12 shipped through the thin-mirror plan (epic mb-hall, docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md), which replaced the provider store, the hosted-review format, and Phases 2A to 2C of this epic's plan. Open here: the generic Git catalog and cache management (mb-0ybg), Windows owner-only storage (mb-pyqf), measured large-repository acquisition (mb-dqvj), hosted releases (mb-7srn), and untracked GitHub capability gaps (mb-1wk1). Deferred here: SSH acquisition (mb-bi2c), anchored review threads (mb-rldc), issues and timelines (mb-9rrc), stacked change requests (mb-glxc), and GitLab (mb-51uj). Items that assume the retired provider store or hosted-review format need re-planning against the thin-mirror plan first.
 
 ## Notes
 
@@ -124,3 +119,5 @@ Superseded crumb PRs are closed. Landing is mb-n2ro only, after explicit approva
 Spec status refreshed on #216 (repo library + hosted review) and #209 (HTML).
 
 2026-09-22 completed review/publication: https://github.com/jlevy/metabrowser/pull/225 is the ready-for-review eighth layer of Stack 218, head ff94e3676bf0f7caab7a8bdfdbb18eb8b1f8e1c9 over #216 b3c001a96eed64eb77961c2b7165b103af98b77c. The original seven heads and exact chain are unchanged. All seven CI checks passed: https://github.com/jlevy/metabrowser/actions/runs/35803858717 . Local make verify passed (3112 pytest tests, two skips, 147 CLI transcript checks, dependency audits and installed-wheel/distribution checks); pre-push gate passed. Real unmodified Git 2.50.1 CLI T0 smoke passed for cold/warm acquisition, nested Markdown/JSON/tree/progress, origin-absent reuse, and local filesystem inspection. Independent Astra plan review found no actionable plan blocker: https://github.com/jlevy/metabrowser/pull/225#issuecomment-5787107670 . Full top-level review: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 . #136/#139 later functional deltas received independent technical review; #217/#216 acceptance remains open. New finding mb-sumg and future installed/browser acceptance mb-gnr9 remain open. Specs, QA procedure, roadmap, active release labels, PR descriptions and dependency graph are reconciled. mb-xada historical handoff is closed; #219/mb-dbue remain open awaiting a released tbd replacement. All future work extends Stack 218 and the whole stack stays held for stabilization and explicit landing approval. No GitHub URL/PR end-to-end pass, merge or release is claimed.
+
+2026-11-14 audit: v0.12.0 tagged 2026-11-08. The 2026-09 handoff notes above are historical. mb-cbak, mb-lnkl, and mb-iw1v shipped under mb-8rpp; the chooser mb-vmzy moved to mb-1apq.

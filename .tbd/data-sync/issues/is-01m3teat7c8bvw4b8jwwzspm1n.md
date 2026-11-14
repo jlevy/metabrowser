@@ -5,8 +5,8 @@ title: "Tests: delete the orphaned Hosted Review and oracle tests, and trim the 
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:37:50.382Z
-updated_at: 2026-10-01T12:49:20.316Z
+updated_at: 2026-11-14T18:49:39.794Z
 started_at: 2026-10-01T10:30:19.352Z
 closed_at: 2026-10-01T12:49:20.314Z
 close_reason: "PR #246 deleted the hosted-review, oracle and capability tests; PR #255 trims the surviving contract-layer tests 948 -> 676 lines with 40 -> 60 cases, and moves two doctor tests into the golden with stdout and stderr pinned separately. 116 source mutations: 71 caught before and now, 13 only now, 0 only before, 32 by neither (unreachable validation, mb-5e9n). Independent review found three lost detections; all restored. CI green."

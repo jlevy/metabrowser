@@ -5,8 +5,8 @@ title: "Displayed Git paths and refs: replace Unicode spaces and separators, res
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T16:18:53.138Z
-updated_at: 2026-10-01T18:11:43.019Z
+updated_at: 2026-11-14T18:49:45.635Z
 started_at: 2026-10-01T16:19:10.060Z
 closed_at: 2026-10-01T18:11:43.018Z
 close_reason: "PR #259: the 18 Unicode space and line-separator characters are replaced with U+FFFD in displayed paths (golden lines for %C2%A0, %E2%80%8A, %E2%80%A8); display_segment uses set lookups (non-ASCII names about 50x faster than the tip and faster than before the invisible-character work; output identical for every code point in 14 contexts on Python 3.12, 3.13, 3.14 and 3.14t); the serve banner's ref goes through the display path. Each fix has a test that fails without it. CI green. Unassigned and private-use code points stay displayed, with the reason in the module docstring. Not independently reviewed: the coordinator read the diff; the equivalence check is exhaustive."

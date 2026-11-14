@@ -5,8 +5,8 @@ title: Materialize linked dependency roots in the release benchmark corpus
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m3wjge2pn6nf3cvcvpbbdx2z
 hold: null
 hold_until: null
 created_at: 2026-11-08T02:21:10.027Z
-updated_at: 2026-11-08T05:15:33.741Z
+updated_at: 2026-11-14T18:49:07.439Z
 started_at: 2026-11-08T02:50:40.349Z
 closed_at: 2026-11-08T05:15:33.741Z
 close_reason: Merged through native stack331 (#328–#330) at d33550455d1a44bb275d5e71492f9bdbc682f0c5. The landed tree exactly equals reviewed/gated519c33239. Independent senior review is complete for each layer; UI also has dedicated security/performance passes. All nine checks passed on every exact PR head; full local make verify passed4917 tests/9 expected skips and385 goldens, audits/types/distribution. The exact gated wheel is installed under both aliases, all11 plugins and30 served assets verified, with both repository-mode PR tabs, positional menus, narrow fit, typography and Reload keyboard acceptance. Corpus linked-root regression also passes; separate release gates and final documentation wording remain open.

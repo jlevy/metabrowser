@@ -5,13 +5,13 @@ title: "JSON view: render (12–14 ms) and layout (about 25 ms) put its first pa
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 created_at: 2026-11-13T19:40:38.230Z
-updated_at: 2026-11-13T19:40:38.230Z
+updated_at: 2026-11-14T18:45:52.411Z
 ---
 In the cold JSON view (`package-lock.json` in the transition scenario), the task that
 renders the view after its data arrives takes 12.0–14.3 ms: a microtask checkpoint with
@@ -30,3 +30,7 @@ Fix: cut the render or layout cost, for example by rendering the tree's first sc
 or deferring off-screen rows, so the first paint is clear of the boundary. Then measure
 painted ready and its frame count on a cold JSON view, interleaved, with the share of
 runs that land on the later frame.
+
+## Notes
+
+2026-11-14: exp-087 re-tested exp-083's later cold JSON frame as frame quantization (Fisher p=1.0 over 9 judged pairs) and accepted H87; this bead's render and layout cut is still open.

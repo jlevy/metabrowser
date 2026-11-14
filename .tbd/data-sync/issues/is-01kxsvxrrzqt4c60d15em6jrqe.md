@@ -4,13 +4,17 @@ id: is-01kxsvxrrzqt4c60d15em6jrqe
 title: Plan a standard browser contributor toolchain migration
 kind: feature
 status: open
-priority: 1
-version: 4
+priority: 2
+version: 6
+spec_path: TODO.md
 labels:
   - build
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kxshfx0fhzyccg1wwtdv7c6b
+parent_id: is-01kxnx9vtb13p6z8mewgsm2t75
 created_at: 2026-07-18T05:41:57.651Z
-updated_at: 2026-08-27T05:35:00.976Z
+updated_at: 2026-11-14T18:45:03.663Z
 extensions:
   linear:
     id: 848e45cb-da5f-42e2-a71a-be8cc27389f4

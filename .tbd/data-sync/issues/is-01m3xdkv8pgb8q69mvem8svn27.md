@@ -5,8 +5,8 @@ title: "Landing gate: restore STRUCTURED_CACHE_SIZE=0 and the diff document hook
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m3wgefqnj91f8avyyv4x8t5w
 hold: null
 hold_until: null
 created_at: 2026-10-02T04:23:01.128Z
-updated_at: 2026-11-01T18:00:00.011Z
+updated_at: 2026-11-14T18:49:05.314Z
 started_at: 2026-11-01T16:06:25.762Z
 closed_at: 2026-11-01T18:00:00.010Z
 close_reason: "Fixed in #267. Reviewed independently on main on 2026-11-01 (mb-cwdr); its changelog entry exists, and the gate re-run is recorded on mb-2g6f."

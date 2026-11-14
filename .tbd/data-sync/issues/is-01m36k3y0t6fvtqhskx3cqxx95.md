@@ -5,8 +5,8 @@ title: "PR data: gh runner, PR records, refs/pull fetch, merge-base comparison, 
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m36k3ydz3tgxmycjj8wknzq5
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-23T07:36:39.193Z
-updated_at: 2026-09-24T10:21:05.736Z
+updated_at: 2026-11-14T18:49:00.527Z
 closed_at: 2026-09-24T10:21:05.735Z
 close_reason: "PR data: PR #232 (codex/v012-pr-data, head ffda89a7, above #231). gh runner with account checks, Pydantic PR records with measured bounds, refs/pull fetch under the fetch side lock, merge-base comparison, serve and one-shot integration with the refresh coordinator, and a refresh sidecar. Three independent review rounds; every finding fixed. CI green on all nine checks."
 resolution: null

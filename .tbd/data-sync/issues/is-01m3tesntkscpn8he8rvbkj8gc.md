@@ -5,13 +5,13 @@ title: "Tests: one shared git and request fixture module, and immutable reposito
 kind: task
 status: open
 priority: 2
-version: 1
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:45:57.409Z
-updated_at: 2026-10-01T00:45:57.409Z
+updated_at: 2026-11-14T18:49:43.420Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. Cross-cutting: test helpers copied between modules, and repositories rebuilt for every test. Do this after the isolation bead so shared fixtures rest on reliable resets.
 
@@ -53,3 +53,7 @@ Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. C
 - The real-signal tests themselves.
 
 No release label: a refactor with medium risk that does not change what is tested; it should not sit on the landing path.
+
+## Notes
+
+2026-11-14 audit: on main c098e6a8 there are 78 imports from tests.test_* modules (survey 49) and 16 files define _git (survey 15).

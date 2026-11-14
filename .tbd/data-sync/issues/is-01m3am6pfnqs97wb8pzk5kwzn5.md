@@ -5,8 +5,8 @@ title: Pull-request header says 'wants to merge' for merged and closed PRs; skip
 kind: bug
 status: closed
 priority: 3
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-09-24T21:12:36.084Z
-updated_at: 2026-09-24T23:10:44.798Z
+updated_at: 2026-11-14T18:49:54.250Z
 started_at: 2026-09-24T21:28:20.791Z
 closed_at: 2026-09-24T23:10:44.796Z
 close_reason: "PR #243: merged header names merger and 'merged N commits'; skipped, cancelled, stale, unknown counted separately; closed keeps github.com's 'wants to merge'; CI green"

@@ -5,13 +5,13 @@ title: Untracked GitHub capability gaps from the thin-mirror Capability Map
 kind: task
 status: open
 priority: 3
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-10-26T15:29:33.663Z
-updated_at: 2026-11-14T18:42:11.921Z
+updated_at: 2026-11-14T18:50:07.094Z
 ---
 The thin-mirror plan's Capability Map marks these GitHub-web capabilities as Later. They have no bead of their own, so they are recorded here rather than only in a table in a document.
 

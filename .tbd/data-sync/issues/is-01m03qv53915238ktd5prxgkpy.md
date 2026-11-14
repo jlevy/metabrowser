@@ -4,28 +4,20 @@ id: is-01m03qv53915238ktd5prxgkpy
 title: Implement the reserved _mb_ query namespace in the URL codec
 kind: feature
 status: open
-priority: 2
-version: 6
+priority: 3
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md
 labels: []
-dependencies:
-  - type: blocks
-    target: is-01kzz4ejm8kxev59qawa3a9yqd
+dependencies: []
 created_at: 2026-08-15T22:14:25.639Z
-updated_at: 2026-08-16T21:19:19.823Z
+updated_at: 2026-11-14T18:46:04.978Z
 extensions:
   linear:
     id: 04c8ca32-f221-440d-b4cc-8b2ca23ea4be
     linked_at: 2026-08-16T08:05:43.510Z
 ---
-The browser URL grammar (docs/architecture.md#browser-url-grammar) reserves query keys beginning with *mb* for Metabrowser presentation parameters, leaving every other key to the document. Reserved keys are snake_case, matching this server's existing query parameters such as include_ignored and every key on the JSON wire. The grammar is documented and the seam is pinned by codec tests, but nothing is implemented: query is still carried verbatim and uninterpreted.
+The browser URL grammar (docs/architecture.md#browser-url-grammar) reserves query keys beginning with _mb_ for Metabrowser presentation parameters, leaving every other key to the document. Reserved keys are snake_case, matching this server's existing query parameters such as include_ignored and every key on the JSON wire. The grammar is documented and the seam is pinned by codec tests (tests/dom/navigation-route-behavior.js, cli-ui-navigation.tryscript.md), but query is still carried verbatim and uninterpreted.
 
-Implement the split in the URL codec rather than at call sites, so no consumer has to remember to filter:
+When the first feature needs a sender-decided parameter, implement the split in the URL codec rather than at call sites: parse reserved keys from passthrough keys once; sort reserved keys for one canonical spelling; keep a pinned key that matches the current default, because defaults are viewer-dependent and an omitted key means 'viewer's choice'; report an unrecognized _mb_ key as a visible diagnostic, never passing it through as document metadata; preserve the invariant that removing every _mb_ key yields that content's canonical URL.
 
-* parse reserved keys from passthrough keys once;
-* sort reserved keys for one canonical spelling;
-* keep a pinned key that matches the current default, because defaults are viewer-dependent and an omitted key means 'viewer's choice';
-* report an unrecognized *mb* key as a visible diagnostic, never passing it through as document metadata;
-* preserve the invariant that removing every *mb* key yields that content's canonical URL.
-
-mb-281d (source-view line locations) is the first consumer and should land the codec split with it, using _mb_view and _mb_lines. Classification rule for future entries: a key is reserved only when the sender should decide it for the recipient; viewer-owned settings such as theme and font stay in host-only cookies.
+Source-view line locations shipped as GitHub-style #L fragments (#235/#239) and do not use this namespace, so no consumer is scheduled. A key is reserved only when the sender should decide it for the recipient; viewer-owned settings such as theme and font stay in host-only cookies.

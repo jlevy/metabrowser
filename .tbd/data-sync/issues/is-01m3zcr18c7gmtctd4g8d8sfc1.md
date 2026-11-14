@@ -5,8 +5,8 @@ title: "Independent review of PR #267 (gate fixes 2) is owed"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m3wgefqnj91f8avyyv4x8t5w
 hold: null
 hold_until: null
 created_at: 2026-10-02T22:46:18.635Z
-updated_at: 2026-11-01T16:56:05.385Z
+updated_at: 2026-11-14T18:49:05.822Z
 started_at: 2026-11-01T16:05:51.103Z
 closed_at: 2026-11-01T16:56:05.383Z
 close_reason: "Independent review recorded on PR #267 on 2026-11-01: no P0, P1 or P2; 34 of 37 mutations caught, with the three gaps closed in #276. The ledger row is updated in #272."

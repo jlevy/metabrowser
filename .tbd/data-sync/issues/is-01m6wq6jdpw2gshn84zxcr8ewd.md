@@ -5,8 +5,8 @@ title: Reconcile superseded presentation claims in the unreleased changelog
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m5wdbsy6z6d95sgg03kwmm76
 hold: null
 hold_until: null
 created_at: 2026-11-08T04:38:22.901Z
-updated_at: 2026-11-08T06:38:44.635Z
+updated_at: 2026-11-14T18:49:08.279Z
 started_at: 2026-11-08T05:21:36.599Z
 closed_at: 2026-11-08T06:38:44.626Z
 close_reason: Documentation PR332 merged at240da85cbb45b72defed0084aadc99ee0be234ed after pinned independent senior review, exacthead fullmakeverify4917 tests/9expectedskips/385goldenchecks, audits/distribution/installedsmokes and all9PRCIjobs. Landed fulltree equals gatede204ce9b5 and retains it asancestor. Current userguides/design/plans/QA/behaviorrecord reconciled; publishinginstructions targetapprovedfullSHA with existingtagpreflight. Separate release acceptance/publication remainsopen.

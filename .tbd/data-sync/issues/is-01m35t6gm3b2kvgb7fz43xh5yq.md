@@ -5,8 +5,8 @@ title: Normalize acquisition failures for Git pin show and API modes
 kind: bug
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md
 delegate: claude-code@spud10
 labels:
   - release:v0.12.0
@@ -20,7 +20,7 @@ parent_id: is-01m2yxd3tnr1s2zf0h0jat1ey2
 hold: null
 hold_until: null
 created_at: 2026-09-23T00:21:09.378Z
-updated_at: 2026-09-23T03:55:19.502Z
+updated_at: 2026-11-14T18:49:33.618Z
 started_at: 2026-09-23T03:31:06.683Z
 closed_at: 2026-09-23T03:55:19.498Z
 close_reason: Fixed on codex/v012-foundation-stabilization d06e4b58 (above stack tip 7a3bd1de). --show and non-cache --api acquire through the same async mapper (acquire_cli.acquire_for_cli) as --no-serve and cache --api. Failures while opening the pin after acquisition use an allowlist of path-free messages and log the original at debug. tests/test_cli_acquire_error_modes.py drives all four modes over timeout/too-large/unavailable/command, asserts one shared message per kind, runs below-floor refusal in every mode with the home absent or left empty, and checks a path-bearing lease-stage GitUnavailableError. 9 of 15 failed before the fix; all pass after.

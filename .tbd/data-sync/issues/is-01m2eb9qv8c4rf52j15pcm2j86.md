@@ -5,12 +5,14 @@ title: Simplify catalog, feed, file preview, and Markdown engines per release re
 kind: epic
 status: open
 priority: 3
-version: 1
+version: 3
 labels:
   - simplification
 dependencies: []
+child_order_hints:
+  - is-01m2h3tmn24f6ghdrzd28ywjs3
 created_at: 2026-09-13T21:38:14.503Z
-updated_at: 2026-09-13T21:38:14.503Z
+updated_at: 2026-11-14T18:48:40.080Z
 ---
 Simplifications proposed by the release senior reviews. Each would remove a class of bugs found in release review, but each is a refactor that needs its own measured change and should not ride on a release:
 
@@ -24,3 +26,7 @@ Markdown (Markdown lane):
 5. Parse wiki syntax inside KPress's markdown-it pipeline (inline rule, heading ids from tokens) instead of the hand-written CommonMark approximation: removes the literal mask, line cursor, output budget, the three Worker files, and the transformed-source POST; roughly 1,300 lines. KPress is first-party.
 6. Drop the provider-long identity machinery (stepped membership, per-code-unit charging, reverse-segment trie, suffix state machines): cap catalog path length at core admission and resolve suffixes with endsWith over basename buckets; wiki-resolver.js from about 1,500 lines to about 350.
 7. Remove duplicated helpers: isPossiblePublishedRoute/isPublishedRoute, two rawResourceHref variants, media-extension tables, and source-path preparation in links.js vs wiki-resolver.js.
+
+## Notes
+
+2026-11-14 audit: all seven items still apply on main. mb-e22r (wiki resolver suffix-query keys) is proposed as a child, since item 6 removes the suffix state machines it concerns.

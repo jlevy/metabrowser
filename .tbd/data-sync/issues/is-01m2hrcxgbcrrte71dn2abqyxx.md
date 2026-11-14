@@ -5,13 +5,14 @@ title: Catalog read at 300k rows is 3.9x v0.9.1 (663 ms -> 2,575 ms)
 kind: bug
 status: open
 priority: 1
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T05:24:53.387Z
-updated_at: 2026-09-15T05:38:50.242Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
 exp-034 priced `/api/catalog` on the settled 300k index at 2,575 ms against v0.9.1's
 663 ms, with an unrelated request's worst wait going 475 ms -> 883 ms.

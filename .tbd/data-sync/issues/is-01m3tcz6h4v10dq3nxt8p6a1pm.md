@@ -5,8 +5,8 @@ title: Reconcile v0.12 specs, TODO, arch docs and CHANGELOG with the delivered s
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:14:01.250Z
-updated_at: 2026-10-01T05:37:59.218Z
+updated_at: 2026-11-14T18:49:37.553Z
 started_at: 2026-10-01T02:52:47.167Z
 closed_at: 2026-10-01T05:37:59.217Z
 close_reason: "PR #250: thin-mirror plan (status, delivered column, follow-ups), alpha-testing plan (status, coverage, delivery, milestones, landing status), superseded-phase addenda in the repository, GitHub and CLI-first plans, TODO.md, docs/project/README.md, QA addendum and rerun, architecture docs, runbook, CHANGELOG gaps. CI green on ea7fd9ba."

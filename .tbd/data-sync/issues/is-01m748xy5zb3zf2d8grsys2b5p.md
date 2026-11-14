@@ -5,7 +5,7 @@ title: Persist recent and added roots in metab, served by a roots route
 kind: feature
 status: open
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
@@ -13,9 +13,9 @@ dependencies:
     target: is-01m748xsest94amc9cyx26j1zk
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T03:02:55.422Z
-updated_at: 2026-11-11T22:28:38.601Z
+updated_at: 2026-11-14T18:43:50.358Z
 ---
-Phase 4. Recent and added roots move from the app's defaults into metab state with provenance; a route serves them so a browser tab gets the same switcher; list, add, and remove commands with goldens; the security policy for adding roots applies (see the security models in the 2026-11-08 brief).
+Phase 4. Recent and added roots are persisted in metab state with provenance (the app's own recents are macOS's list through NSDocumentController, mb-cqxd, so the app keeps none in its defaults); a route serves them so a browser tab gets the same switcher; list, add, and remove commands with goldens; the security policy for adding roots applies (see the security models in the 2026-11-08 brief).
 
 ## Notes
 

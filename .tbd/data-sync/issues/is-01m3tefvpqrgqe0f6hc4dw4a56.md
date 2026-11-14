@@ -5,15 +5,15 @@ title: "Tests: delete redundant and dead source-shape tests, and move the lint-l
 kind: task
 status: open
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m3tej64v1fg6k1xkw5qd51pd
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:40:35.786Z
-updated_at: 2026-10-01T00:41:52.024Z
+updated_at: 2026-11-14T18:49:41.412Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. This bead removes source-shape tests that are redundant or dead and moves the lint-like ones into a check. Converting the uncovered ones to sessions is the sibling bead and must come after the deletions here.
 
@@ -63,3 +63,7 @@ Python tests that read JS, CSS or HTML source text and assert substrings: 36 fil
 - Every text test of `app.js` wiring that no DOM test executes yet: those are converted in the sibling bead, not deleted here.
 
 No release label: almost all of these tests are on `main` already, so this does not gate the v0.12 landing.
+
+## Notes
+
+2026-11-14 audit: re-survey line numbers before starting. On main c098e6a8, tests/test_design_vocabulary.py is 2,820 lines and 54 tests (survey: 857 and 22), tests/test_plugin_sdk_helpers.py has 23 tests (survey: 16), tests/test_browser_client_filestore.py is 1,296 lines and 70 tests.

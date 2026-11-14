@@ -5,13 +5,14 @@ title: "Flat mega-tree: Long Tasks appear where v0.9.1 had none"
 kind: bug
 status: open
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T05:24:53.853Z
-updated_at: 2026-09-15T05:38:51.236Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
 On the 300k flat corpus, two of five candidate runs record Long Tasks of 98 ms and 75 ms;
 all five v0.9.1 runs record zero. Total blocking time follows, 0 ms against up to 83 ms.

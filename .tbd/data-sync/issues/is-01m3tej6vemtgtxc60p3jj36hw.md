@@ -5,15 +5,15 @@ title: "Tests: one Node runner for tests/dom, and let the session goldens own wh
 kind: task
 status: open
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m3tekwar2fhzsmfyyby736pg
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:41:52.748Z
-updated_at: 2026-11-14T18:42:00.635Z
+updated_at: 2026-11-14T18:49:41.816Z
 ---
 Part of the test-suite review epic. Survey of a896d8fe, 2026-09-30, read-only. The Node-absent gate itself is in the skips-and-tiers bead; the shared DOM shim is the sibling bead.
 

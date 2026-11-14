@@ -5,8 +5,8 @@ title: Show one PR watch status and resume from reconnect
 kind: task
 status: closed
 priority: 2
-version: 7
-spec_path: docs/project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-11-06-pr-watch-and-reconnect.md
 delegate: codex@spud10.local
 labels: []
 dependencies:
@@ -16,7 +16,7 @@ parent_id: is-01m6shhkwxasd5rpv91y17qc4w
 hold: null
 hold_until: null
 created_at: 2026-11-06T23:01:52.110Z
-updated_at: 2026-11-07T04:26:48.944Z
+updated_at: 2026-11-14T18:49:49.927Z
 started_at: 2026-11-06T23:03:25.387Z
 closed_at: 2026-11-07T04:26:48.943Z
 close_reason: "PR #312 at reviewed 67c27fdb has green exact-head CI and no unresolved threads. Steady retry status, disabled Reload, visible-filter priority and normalized auth help passed focused and browser sessions."

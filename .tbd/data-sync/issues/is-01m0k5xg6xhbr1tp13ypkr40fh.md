@@ -5,13 +5,13 @@ title: Attribute CLI start-to-serving and remove the part that scales with the t
 kind: task
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:59.101Z
-updated_at: 2026-08-22T06:10:44.439Z
+updated_at: 2026-11-14T18:45:31.808Z
 ---
 Attribute CLI start-to-serving before changing it. First numbers are in (H17, plan Backlog):
 
@@ -20,3 +20,7 @@ python -X importtime -c "import metabrowser.server" costs 390-770 ms on this mac
 The plan's earlier "113 ms module import" undercounts here by 3-6x. Remaining work: separate interpreter start / import / discovery / bind in bench_serving's start-to-serving phase, then defer what only serving needs (kpress, plugin discovery) as its own experiment through the explorations loop.
 
 Ordered after H8 (mb-vki5): a client that waits ~1.5 s on the nav-tally pass makes every server cost look like scan cost.
+
+## Notes
+
+2026-11-14 audit: discover_plugins still runs at import (server.py _DISCOVERY). #254 and exp-037 deferred the Git, GitHub and cache imports from a plain folder's start; the part that scales with the tree (H14) is still unattributed. mb-vki5 (H8) is closed, so the ordering note in the description is met.

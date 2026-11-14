@@ -5,10 +5,15 @@ title: Remote mode's --ssh-options passes raw SSH flags, so metab cannot be blan
 kind: task
 status: open
 priority: 2
-version: 1
-labels: []
-dependencies: []
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
+labels:
+  - security
+dependencies:
+  - type: blocks
+    target: is-01m748xxr130p68h0zbjbb6k9f
+parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-12T21:19:04.609Z
-updated_at: 2026-11-12T21:19:04.609Z
+updated_at: 2026-11-14T18:46:49.748Z
 ---
 metab --remote HOST --ssh-options '<flags>' passes the string to ssh unparsed (cli/main.py --ssh-options; cli/ssh_utils.py build_ssh_tunnel_command), so an option such as -o ProxyCommand=... runs a local command. The native app's topology brief recommends exempting metab * from agent sandboxes so metab TARGET --present works; with this flag that exemption lets a sandboxed agent run arbitrary commands outside its sandbox (inferred from reading; not executed). Options: an allowlist of SSH options, moving --remote's raw options to the separate plugin-code executable the plugin-sources plan proposes, or narrowing the documented exemption to the front-door mode.

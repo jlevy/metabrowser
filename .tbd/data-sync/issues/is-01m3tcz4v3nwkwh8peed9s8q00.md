@@ -5,8 +5,8 @@ title: Local folders whose names look like URLs (file:notes, a::b, me@host:dir, 
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:13:59.522Z
-updated_at: 2026-10-01T04:37:41.354Z
+updated_at: 2026-11-14T18:49:37.121Z
 started_at: 2026-10-01T00:14:25.455Z
 closed_at: 2026-10-01T04:37:41.352Z
 close_reason: "PR #249: an argument naming an existing filesystem entry is that path, as on main; scheme:// is always a source; unreadable path exits 2 as on main. Verified against main across 72 spellings. CI green."

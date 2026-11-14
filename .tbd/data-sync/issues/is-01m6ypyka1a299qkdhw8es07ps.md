@@ -5,8 +5,8 @@ title: Simplify contract namespaces and safely upgrade the owner configuration
 kind: task
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -16,7 +16,7 @@ parent_id: is-01m5wdbsy6z6d95sgg03kwmm76
 hold: null
 hold_until: null
 created_at: 2026-11-08T23:12:30.527Z
-updated_at: 2026-11-09T01:34:47.269Z
+updated_at: 2026-11-14T18:49:09.397Z
 started_at: 2026-11-08T23:12:31.097Z
 closed_at: 2026-11-09T01:34:47.261Z
 close_reason: "Reviewed and verified in PRs #343 and #344. Owner-approved stack #345 merged into main at 87b8ec812774bb12a4d9f5f29901719b8b66d323 with the same tree as the qualified installed wheel. All 18 PR CI jobs passed. Merged-main CI and release gates remain on the release tracker."

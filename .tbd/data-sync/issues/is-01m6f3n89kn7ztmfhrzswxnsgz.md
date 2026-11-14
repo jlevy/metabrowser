@@ -3,12 +3,11 @@ type: is
 id: is-01m6f3n89kn7ztmfhrzswxnsgz
 title: "Review pull requests well on large repositories: fresh mirror and existing checkout"
 kind: epic
-status: in_progress
+status: open
 priority: 1
-version: 107
+version: 110
 delegate: codex@spud10
-labels:
-  - release:v0.12.0
+labels: []
 dependencies: []
 child_order_hints:
   - is-01m6f3n8s7enn9mcye32ks6jrd
@@ -89,13 +88,14 @@ child_order_hints:
   - is-01m75fzpspek15x7d5dqhnc2yw
   - is-01m734yq0xac22pqms8am9sy50
   - is-01m6g1zdwbrnjm5cfvg0dyqqyf
+  - is-01m758dtc7p78btkjrhc1xfkqv
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-14T18:43:05.029Z
+updated_at: 2026-11-14T18:48:18.401Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
-The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
+The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. The delivered layers, native stacks #302 and #339, are merged and shipped in 0.12.0. The open children hold the rest: large-PR performance (mb-9n12, mb-4ifm, mb-jwfx, mb-ivvw), the folder comparison re-run (mb-8pyc), the owner's walkthrough (mb-i9ll), and the paused working-tree workflow design (mb-itzy).
 
 ## Notes
 
@@ -196,3 +196,5 @@ November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, 
 The installed b2fb browser showed Open 2, Closed 325 and All 327 without Reload, fresh foreground #336 Merged with 18 successful checks from two nine-context CI runs, then restored Files. The prior a177 593 ms background prepare-receipt warning remains under mb-4ifm and supplies no CPU attribution or timing qualification.
 
 Scoped Unicode, reconnect, Treemap, QA document and SDK fixes delivered. PR/Git performance and broader release work remain on their respective beads. The user keeps mb-itzy paused and #341 separate. Draft #247 is reference only.
+
+2026-11-14 audit: stacks #302 and #339 are in v0.12.0; no activity on this epic or its open children since 2026-11-09, so back to open.

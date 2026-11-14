@@ -5,8 +5,8 @@ title: "Refresh and pin switching: coordinator, status/refresh/pin routes, brows
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m36k3xm77y33seww2jbwwb69
 parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 created_at: 2026-09-23T07:57:31.409Z
-updated_at: 2026-09-24T05:36:33.965Z
+updated_at: 2026-11-14T18:49:01.650Z
 closed_at: 2026-09-24T05:36:33.962Z
 close_reason: "Refresh and pin switching: PR #230 (codex/v012-refresh-pin, head c50caa2f, above Serve a pin #229). Two independent reviews; every finding fixed (D/F-rename wedge, unlocked orphan fetch on Ctrl-C, generation guard, typed persisted outcomes, races). CI green on all nine checks."
 resolution: null

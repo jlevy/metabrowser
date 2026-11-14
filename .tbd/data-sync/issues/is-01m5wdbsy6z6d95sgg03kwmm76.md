@@ -5,8 +5,8 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: closed
 priority: 1
-version: 28
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 29
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-09T16:37:43.286Z
+updated_at: 2026-11-14T18:49:06.224Z
 started_at: 2026-11-08T01:58:21.485Z
 closed_at: 2026-11-09T16:37:43.285Z
 close_reason: null

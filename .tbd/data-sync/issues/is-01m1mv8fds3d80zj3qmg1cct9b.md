@@ -3,9 +3,9 @@ type: is
 id: is-01m1mv8fds3d80zj3qmg1cct9b
 title: "Address review: PR #101 — holistic pluggable-inventory-engine review"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 21
+version: 23
 labels: []
 dependencies: []
 child_order_hints:
@@ -30,5 +30,13 @@ child_order_hints:
   - is-01m1n2q0b5nz9a0s6y1wx3vf67
   - is-01m1ngbxwyfaxdsmvtc83axs1e
 created_at: 2026-09-03T23:56:55.096Z
-updated_at: 2026-09-04T06:05:48.318Z
+updated_at: 2026-11-14T18:44:36.657Z
+closed_at: 2026-11-14T18:44:36.656Z
+close_reason: "PR #101 merged on 2026-09-09 with 15 of 20 findings closed; the five deferred findings move under mb-8127 (pluggable inventory engine)."
+resolution: null
+duplicate_of: null
 ---
+
+## Notes
+
+Before closing: reparent the five open children (mb-6o0l, mb-ed9h, mb-iyu7, mb-l2eh, mb-vknc; shard E2) to mb-8127.

@@ -3,25 +3,21 @@ type: is
 id: is-01m3wjge2pn6nf3cvcvpbbdx2z
 title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 19
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 24
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
   - release:v0.12.0
-dependencies:
-  - type: blocks
-    target: is-01m2k713pxra1ns2fk3pcwrpb6
-  - type: blocks
-    target: is-01m5wdbsy6z6d95sgg03kwmm76
-parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+dependencies: []
+parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 child_order_hints:
   - is-01m6wfbagcaxwx9x9p2f7mnzqn
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-09T06:46:58.609Z
+updated_at: 2026-11-14T18:49:03.684Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
@@ -80,3 +76,5 @@ The 30-second quiet-host preflight deferred after sustained 21.65–55.49 MB/s d
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
 
 Post-merge: stack #345 merged into main at 87b8ec812774bb12a4d9f5f29901719b8b66d323 with the exact qualified a53907948 source tree. A fresh 30-second host sample again showed sustained disk I/O and Spotlight at 72.3% CPU at the end. Exp-057 was held before capture. Evidence: performance-final-stabilization-preparation-20261108/binding-a53907948-20261109/host-after-merge-20261109T013425Z.txt.
+
+2026-11-14 audit: 0.12.0 shipped on 2026-11-09 from 87b8ec81 without this comparison; the owner deferred it and kept this bead open (mb-4bd2 notes). Exp-057 was never captured (no exp-057 in explorations/performance-loop/experiments/); exp-056's valid 444 ms first_row miss against the 350 ms gate stands. The candidate is now the published 0.12.0 wheel against 0.11.0, still on a quiet host. Status set back to open: no capture since 2026-11-09.

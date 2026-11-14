@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m74919frspvn3y341jcfg5cf
-title: "App icon: an MB mark in the sister app's style"
+title: "App icon: hand-tuned 16 and 32 px masters, if review shows they are needed"
 kind: feature
-status: in_progress
-priority: 1
-version: 11
+status: open
+priority: 3
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -16,10 +16,10 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T03:04:45.303Z
-updated_at: 2026-11-11T20:26:14.786Z
+updated_at: 2026-11-14T18:45:45.190Z
 started_at: 2026-11-11T03:18:43.016Z
 ---
-Phase 1. A full, modern icon matching the sister app's Figma-designed v6 icon: its squircle, rim bevel, panel sheen, and inset letter shadows, copied from its SVG masters. The mark is a hand-drawn half-M (|\/) followed by a clean B whose stem completes the M, built on Reddit Mono Bold's construction, in light shades of Metabrowser's JavaScript yellow-green and Markdown purple. Release and canary variants, SVG masters, every icns size, a reproducible build script, and inline review with the user.
+Phase 1. The icon merged with jlevy/metabrowser#341: the sym-drop19-gap34 mark in the sister app's v6 style, release and canary variants, SVG masters from a parameterized generator, and both .icns files (apps/macos/AppIcon/, apps/macos/Resources/, scripts/build-icon.sh). Remaining: review the 16 and 32 px renders and, if they need it, add hand-tuned small-size masters (apps/macos/AppIcon/README.md, Status).
 
 ## Notes
 

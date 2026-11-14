@@ -5,48 +5,21 @@ title: "Residual: inventory walk still 28% slower than main after the perf fixes
 kind: bug
 status: open
 priority: 1
-version: 10
+version: 13
+spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels: []
-dependencies:
-  - type: blocks
-    target: is-01m2fafd1v8d5pakt6r7zxw5n8
+dependencies: []
+parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 child_order_hints:
   - is-01m2gwtgp8rs2e4x0e77f64y8f
 created_at: 2026-09-01T06:22:19.315Z
-updated_at: 2026-09-20T15:42:04.605Z
+updated_at: 2026-11-14T18:48:38.695Z
 ---
-After the two fixes in mb-0y68, the 60,000-file A/B still shows a gap:
+After mb-0y68's fixes, the 60,000-file A/B on 2026-09-01 still showed the walk 28% slower than main before the provider refactor (2,652 ms against 2,071 ms median). The profile pointed at the double representation: each entry is built as a validated contract InventoryEntry, converted to the provider's retained FsEntry (_internal_entry, python_inventory.py:515), adjusted with dataclasses.replace on several walker and aggregate paths, and converted back on read. That is still the shape on main.
 
-  main    2,071 ms median
-  stack   2,652 ms median   (+581 ms, +28%)
+Since v0.10.0 this is carried debt, not a release blocker (exp-035; CHANGELOG.md 0.10.0 Known limitations). It is the structural fix the flat-tree epic mb-odrb names: stop building a per-entry contract object for entries the store already admitted. Its measured symptoms are mb-qvw4, mb-qtgj and mb-zc3p; the load-time plan's H72 row names this bead.
 
-cProfile of the walk to settled on that corpus, top frames by tottime:
-
-  0.283  0.534    64,420  dataclasses.py:1781 _replace
-  0.260  0.260 1,953,529  dict.get
-  0.254  0.254   125,525  <string>:2 __init__      (generated dataclass __init__)
-  0.208  0.208    60,000  posix.DirEntry.stat
-  0.146  0.237   248,826  contract.py require_canonical_inventory_path
-  0.111  0.111 1,282,847  builtins.getattr
-
-The shape of the residual is the double representation. Each entry is built as a
-contract InventoryEntry (validated), converted to the provider's retained FsEntry
-via _internal_entry, mutated one to three times with dataclasses.replace in the
-walker path (python_inventory.py:3129, 3312, 3395), and converted back to
-InventoryEntry on read. dataclasses.replace is generically slow: a getattr per
-field plus a full __init__, which is where the 1.28M getattr and 125k generated
-__init__ calls come from.
-
-This is the same duplication the design review names as F1/mb-gwlw, showing up as
-a measurable cost rather than an argument. Options, cheapest first: avoid replace
-in the walker where only aggregate fields change and the path fields are already
-validated; or let the provider retain one representation instead of two.
-
-Do not attempt this without re-running the A/B: the measurement harness is
-/tmp/ab.py style timing of 'metab CORPUS --api /api/index/meta' over
-bench_serving's 60k synthetic corpus, three runs, median.
-
-Related: the release revalidation in mb-afdb measures walk completion with a browser attached on a quiet machine and should settle whether this residual still holds on the final release commit.
+Measure before and after with interleaved build comparisons (devtools/compare_builds.py) on the 300k flat corpus, and lower the performance-budgets-flat-stress.toml ratchet when it lands.
 
 ## Notes
 

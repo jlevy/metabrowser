@@ -5,13 +5,13 @@ title: "Guidance: ratchet checks against source-shape tests and cross-test impor
 kind: task
 status: open
 priority: 3
-version: 1
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels: []
 dependencies: []
 parent_id: is-01m3te95dfdnc80j5xywqje9ke
 created_at: 2026-10-01T00:46:15.892Z
-updated_at: 2026-10-01T00:46:15.892Z
+updated_at: 2026-11-14T18:49:56.553Z
 ---
 Part of the test-suite review epic. AGENTS.md ("Changing This Guidance") says to prefer a check to a sentence, so this bead proposes checks, and one short rule only where a check cannot reach.
 

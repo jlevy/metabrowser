@@ -5,8 +5,8 @@ title: "v0.12 startup and eager-load cost: measure tiers, trim imports, and conf
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -17,7 +17,7 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T02:29:04.473Z
-updated_at: 2026-10-01T13:58:47.287Z
+updated_at: 2026-11-14T18:49:44.535Z
 started_at: 2026-10-01T04:48:09.070Z
 closed_at: 2026-10-01T13:58:47.285Z
 close_reason: "PR #254 (exp-037): Git, GitHub and cache imports deferred off the plain-folder start and pinned by a fresh-interpreter import-boundary test (CLI modes, eleven API routes, and the page routes); startup in instructions against main: --show 1.038x, --api 1.034x, --version 0.996x, server 1.026x, no pair above 1.05x. Folder shell startup scripts 173 KB against the 175 KB gate (main 171, stack before 187), with devtools/check_startup_scripts.py in lint-check reproducing the gate metric. View helpers and line gutter are one on-demand file; cold pull and commit pages have fewer sequential requests than before the stack. --doctor is 1.54x by design. Independent review: three P1s fixed. Wall-clock pairs are owed on a quiet machine: mb-67s1."

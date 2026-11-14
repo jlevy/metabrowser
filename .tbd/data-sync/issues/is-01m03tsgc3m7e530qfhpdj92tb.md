@@ -4,12 +4,12 @@ id: is-01m03tsgc3m7e530qfhpdj92tb
 title: "Content typing: record sniff results during the inventory crawl"
 kind: feature
 status: open
-priority: 2
-version: 2
+priority: 3
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-08-15T23:05:57.359Z
-updated_at: 2026-08-16T08:05:43.520Z
+updated_at: 2026-11-14T18:45:09.010Z
 extensions:
   linear:
     id: d108e0bd-8e3e-4a4a-beb2-41e2cad50ed2

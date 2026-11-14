@@ -5,8 +5,8 @@ title: "Tests: git pin and source suite — shard the 2,434-line pin golden and 
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01m3te95dfdnc80j5xywqje9ke
 hold: null
 hold_until: null
 created_at: 2026-10-01T00:40:32.184Z
-updated_at: 2026-10-01T15:52:20.606Z
+updated_at: 2026-11-14T18:49:41.018Z
 started_at: 2026-10-01T10:30:09.267Z
 closed_at: 2026-10-01T15:52:20.594Z
 close_reason: "PR #257: the 2,434-line pin golden is six shards (largest 622 lines; 32 of 35 old blocks byte-identical, 3 after expanding one repeat marker), the oversized allowlist is empty, and the area's tests went 8,674 -> 7,913 lines. Independent review restored three READ_POLICY assertions and 17 safety-boundary checks no test caught before (hook-exported GIT_DIR, SSH_ASKPASS, stdin, umask, symlink target and hop budget, size gate boundary, /raw no-store). On the merged tip 373b59a9: 83 of 83 of the author's mutants and 57 of 61 of the reviewer's are caught (C01, C02, R04 equivalent; T11 is the uncalled method, mb-snpr); full local gate and CI green; make golden-update is a no-op."

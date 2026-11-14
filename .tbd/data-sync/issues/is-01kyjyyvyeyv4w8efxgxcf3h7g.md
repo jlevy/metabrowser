@@ -5,12 +5,12 @@ title: Upstream tryscript fixes from the metabrowser golden migration
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 labels:
   - tryscript
 dependencies: []
 created_at: 2026-07-27T23:36:00.205Z
-updated_at: 2026-08-16T08:06:40.704Z
+updated_at: 2026-11-14T18:46:53.152Z
 extensions:
   linear:
     id: 1434375c-de30-4a72-8d68-dbb68115ba2b
@@ -35,3 +35,7 @@ Findings from migrating metabrowser's CLI goldens to tryscript 0.1.7, for upstre
 8. Cosmetic: a successful `--expand` run still ends with "N unknown wildcard(s) found ... Use --expand to fill them in", describing the pre-expansion state.
 
 What worked well: markdown test files read as documentation; sandbox + `before:` fixture setup; trailing-whitespace-tolerant matching; `path:` frontmatter for venv binaries; custom regex patterns.
+
+## Notes
+
+2026-11-14 audit against tryscript 0.3.1: item 5 fixed upstream (jlevy/tryscript#46, v0.2.0). Item 7 filed as jlevy/tryscript#49, still open. Items 1, 3, and 4 are still present in 0.3.1's dist: [ROOT] is substituted unconditionally, and FORCE_COLOR is set to "0" after user env. Items 2, 6, and 8 were not rechecked and have no upstream issue.

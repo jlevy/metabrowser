@@ -1,22 +1,23 @@
 ---
 type: is
 id: is-01m0f16xdmkw9m7765cstdrhpp
-title: "Diff: one tree materializer, batched blob reads"
+title: "Diff --diff-check: read blobs through one batched cat-file, not one process per blob"
 kind: task
-status: in_progress
+status: open
 priority: 3
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
-parent_id: is-01m0f02zaw865q3swdc9xvmdb9
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 hold: null
 hold_until: null
 created_at: 2026-08-20T07:29:46.931Z
-updated_at: 2026-11-04T17:18:24.241Z
+updated_at: 2026-11-14T18:45:01.756Z
 started_at: 2026-11-01T16:21:30.331Z
 ---
-PR #58 review S3 (deferred): diff_cli._materialize and tests/diff_fixture_repo.materialize_tree are near-duplicate ls-tree parsers (async vs sync transport); share one prod implementation and consider git cat-file --batch so --diff-check stops spawning one subprocess per blob.
+PR #58 review S3 (deferred). The shared-parser half landed in PR #276 (b73f5a62): cli/diff_cli._materialize and tests/diff_fixture_repo.materialize_tree both read ls-tree through git/tree_source.iter_ls_tree_records. Remaining: --diff-check still spawns one `git cat-file blob` per blob, both when it materializes each tree (src/metabrowser/cli/diff_cli.py:200) and when it prefetches content refs (:241). Read them through one `git cat-file --batch` process. git/tree_source.py already has a batch reader pooled per store (_BatchObjectReader, read_store_blob), and a local checkout would need a way to use it.
 
 ## Notes
 

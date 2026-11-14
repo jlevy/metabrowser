@@ -5,15 +5,14 @@ title: Re-run large-PR wall-clock claims on a quiet machine
 kind: task
 status: open
 priority: 2
-version: 5
-labels:
-  - release:v0.12.0
+version: 6
+labels: []
 dependencies:
   - type: blocks
     target: is-01m6g1zdwbrnjm5cfvg0dyqqyf
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 created_at: 2026-11-02T21:46:51.453Z
-updated_at: 2026-11-14T18:43:05.414Z
+updated_at: 2026-11-14T18:48:22.735Z
 ---
 The study runs alongside other agents, so its wall-clock claims need a quiet re-run, with the rest of the release's quiet work in mb-cf6y.
 

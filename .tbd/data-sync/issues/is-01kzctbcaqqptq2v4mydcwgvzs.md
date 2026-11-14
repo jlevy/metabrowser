@@ -5,17 +5,17 @@ title: "Menu and overlay primitives: anchored placement, action menu, action reg
 kind: feature
 status: open
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzctbjy7z530930gzmvakxws
 created_at: 2026-08-07T00:35:42.550Z
-updated_at: 2026-08-16T08:06:46.758Z
+updated_at: 2026-11-14T18:46:16.370Z
 extensions:
   linear:
     id: 01ac05ee-899f-410e-9948-efa3e2753f08
     linked_at: 2026-08-16T08:06:46.758Z
 ---
-Phase 1 of the menu-primitives plan. Implement the shared anchored/modal overlay layer, action menu, contextual action registry, and inline editor; port Quick File, tooltip placement, and settings onto the shared overlay; register disabled rename/trash actions as the first context-menu consumers; and add strict DOM tests and design-system documentation. Coordinate the modal foundation with keyboard-help bead mb-zxi0. Reuse the complete tree focus/navigation contract from mb-67ru and do not add a competing minimal roving-tabindex handler.
+Phase 1 of the menu-primitives plan (docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md). Already on main: the modal half of static/overlay-layer.js (createModal) with Quick File and keyboard help on it (#35), the shortcut registry (mb-zxi0), and the tree focus contract (mb-67ru). Remaining: point and element anchoring with flip-and-clamp and the anchored dismissal contract in overlay-layer.js; positionTooltip's clamping on the shared placement helper; action-menu.js, action-registry.js, and inline-edit.js; the nav-tree context menu with rename and trash descriptors rendered disabled; porting the settings gear onto the overlay; Node DOM tests; and the design-system review. Reuse the tree focus contract; add no second tree-navigation handler.

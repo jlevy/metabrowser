@@ -3,10 +3,10 @@ type: is
 id: is-01m36k3w9vgwy97c9hcj2sqrs5
 title: "v0.12 thin mirror: GitHub-web-like browsing from a local git/gh mirror"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 56
-spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
+version: 58
+spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies:
@@ -67,7 +67,11 @@ child_order_hints:
   - is-01m3zcr48ne1mv1emvqf5rg3mq
   - is-01m3zcr4trbfndm6fp8jr10q8d
 created_at: 2026-09-23T07:36:37.434Z
-updated_at: 2026-11-04T17:18:28.139Z
+updated_at: 2026-11-14T18:48:57.977Z
+closed_at: 2026-11-14T18:45:05.119Z
+close_reason: "The thin-mirror plan is delivered (#227 to #268) and shipped in 0.12.0 on 2026-11-09; its open follow-ups are reparented to mb-425f, mb-k7zy, or detached."
+resolution: null
+duplicate_of: null
 ---
 Epic for the 2026-09-23 thin-mirror plan (PR #227). Metabrowser is a thin wrapper: full bare mirrors updated with git fetch, no invented refs, gc off, views pinned by commit ID, gh as credential helper and API client, PR data as validated JSON records, seamless background refresh. Delivery: Design, Simplify, URL open, PR data, PR view; each a stacked PR with independent review and green CI.
 

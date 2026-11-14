@@ -5,8 +5,8 @@ title: Verify whole-stack mergeability and publish the feature/testing walkthrou
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-09-22-v012-alpha-testing.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -15,7 +15,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-23T01:29:50.880Z
-updated_at: 2026-09-23T02:04:05.975Z
+updated_at: 2026-11-14T18:48:55.663Z
 started_at: 2026-09-23T01:30:26.431Z
 closed_at: 2026-09-23T02:04:05.973Z
 close_reason: "Published full feature/test walkthrough on #225 ef334432; all eight PRs are ready, contiguous, mergeable/clean and green on fresh CI. No tbd gate. Local verify and pre-push passed; ongoing product acceptance remains tracked separately."

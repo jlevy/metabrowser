@@ -5,7 +5,7 @@ title: Complete functional UI parity inventory and golden migration
 kind: epic
 status: open
 priority: 2
-version: 9
+version: 11
 spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels: []
 dependencies: []
@@ -17,7 +17,12 @@ child_order_hints:
   - is-01m26hk32t3ke05ttrpvn7xwy8
   - is-01m27nw4m7ygtadwf6mm3d6qtz
   - is-01m2eb9q0b31d97jb0g6kxcc1d
+  - is-01m188e19j8gqnzdvhcrrn93qc
 created_at: 2026-09-10T20:54:00.303Z
-updated_at: 2026-09-14T23:28:08.909Z
+updated_at: 2026-11-14T18:48:36.197Z
 ---
 Migrate the existing UI from broad DOM/source checks to the parity principle introduced by the release-hardening work: every observable data decision is reachable through metab and golden-pinned; every browser-owned interaction state machine executes exact production code in a deterministic CLI golden; only paint/platform behavior has a narrow documented exemption with focused browser evidence. The initial release mechanism is an enforced seed, not a claim that all legacy UI has already migrated. Group rows by user-observable contracts rather than helper files, and keep runtime paths, persisted state, errors, cancellation, disposal, and stale-response behavior explicit.
+
+## Notes
+
+2026-11-14 audit: Phase 4 remains open; the spec now notes which surfaces feature work has already registered.
