@@ -533,10 +533,13 @@ store.
 
 `POST github/pull-cores-prepare` takes `state`, `window` with its `id` and catalog
 `generation`, and at most eight `numbers` per transport batch.
-A started or joined preparation returns `202` with a cache-only `status_route`. Other
-outcomes return `200`: `ready`, `partial`, `busy`, `not_owner`, `released`, `failed`, or
-`held`. A ready response lists `ready_numbers` and `skipped_numbers`, covering the batch
-with validated cores or readable full records.
+An optional `lane`, `visible` or `background` (the default), says whose batch it is: a
+visible batch preempts a running background one that reads none of its uncovered
+members, where it would otherwise answer `busy`. A started or joined preparation returns
+`202` with a cache-only `status_route`. Other outcomes return `200`: `ready`, `partial`,
+`busy`, `not_owner`, `released`, `failed`, or `held`. A ready response lists
+`ready_numbers` and `skipped_numbers`, covering the batch with validated cores or
+readable full records.
 A partial response adds `retry_numbers` and `retry_at`; its three disjoint member lists
 cover the batch while callers continue later cohorts and defer unfinished members.
 A failed owner batch and later source holds carry `failure` with `outcome`, `message`,

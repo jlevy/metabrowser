@@ -525,7 +525,7 @@ function pinChanged(response) {
 }
 
 /**
- * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
+ * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[], lane: "visible" | "background"}} CoreWindowRequest
  * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean, admitted?: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullsResponse
  * A row's record as one read answered it, and when that answer landed, by `now()`.
@@ -1257,12 +1257,13 @@ export function createPullsController(deps, options = {}) {
       pass: corePass,
       canRetry: true,
       retryDelay: CORE_BUSY_RETRY_MS,
-      body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
+      body: { state, window: { id, generation }, numbers: rows.map((row) => row.number), lane },
     };
     if (lane === "visible") {
       // The batch on its way is no longer wanted, so what the reader sees does not wait for
       // it. The server stops it at its next step; its ownership is settled as for any
-      // request that went unanswered.
+      // request that went unanswered. Its lane tells the server to preempt a background
+      // job that request started, unless that job reads rows this batch needs.
       coreRequest?.controller.abort();
     }
     noteCoreRefreshing();
