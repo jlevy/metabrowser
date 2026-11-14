@@ -161,12 +161,37 @@ const browser = await launchBrowser({
 const d = driver(browser);
 let checks = 0;
 
+// The recorder refuses a window whose median frame step is over 50 ms (`frame_clock`): a
+// machine too busy to draw at the display rate, which says nothing about whether the
+// recorder measures right. A CI runner has been that busy for one measurement while every
+// other check in the job took its usual time: the heavy page's frames stepped 366.6 and
+// 416.6 ms there. On a 10-core Mac it passed 15 runs of 15 with ten busy loops beside
+// it, and stepped 16.7 to 33.3 ms with Chrome's CPU throttled up to sevenfold. Throttled
+// eightfold, its first measurement was refused in 10 runs of 10 and its second passed in
+// 6 of 6; twelvefold, all three attempts were refused in 2 runs of 3.
+// So `check` takes an attempt again when it failed while a measurement in it was refused
+// for its frame clock alone, up to FRAME_CLOCK_ATTEMPTS in all, and says so on stderr in a
+// `retry:` line, which tests/test_transitions_instrument.py surfaces. An attempt that
+// failed any other way, and the last attempt, fail the check as before, so a wrong
+// measurement fails and a machine that cannot measure at all still fails.
+const FRAME_CLOCK_ATTEMPTS = 3;
+let frameClockRefusals = [];
+// Every measurement goes through here, so a check knows which of its attempts' windows the
+// recorder refused for the frame clock alone.
+async function take(spec) {
+  const r = await d.measure(spec);
+  if (r.refusals.length > 0 && r.refusals.every(([guard]) => guard === "frame_clock")) {
+    frameClockRefusals.push(`${spec.id}: ${r.refusals[0][1]}`);
+  }
+  return r;
+}
+
 const subjectReady = (name) =>
   `() => document.getElementById("view").dataset.subject === ${JSON.stringify(name)} && window.__tr.hasUseful(document.getElementById("view"))`;
 async function measure(name, extra = {}) {
   await d.click("#go-reset");
   await sleep(300);
-  const r = await d.measure({
+  const r = await take({
     id: name,
     subject: name,
     input: { kind: "click", selector: `#go-${name}` },
@@ -238,17 +263,31 @@ function assertPaintedByPresentation(r) {
 // TRANSITIONS_PROBE_ALL=1 runs every check and lists each failure, to show a recorder
 // failing them all; by default the first failure ends the run.
 const failures = [];
-async function check(name, fn) {
+// `retryable: false` is for a check whose second attempt cannot repeat its first, as when
+// it counts what the server answered.
+async function check(name, fn, { retryable = true } = {}) {
   // Progress on stderr, so a run cut off by its timeout says where it was.
   process.stderr.write(`check: ${name}\n`);
-  try {
-    await fn();
-  } catch (error) {
-    if (process.env.TRANSITIONS_PROBE_ALL !== "1") {
-      throw new Error(`${name}: ${error.message}`, { cause: error });
+  for (let attempt = 1; ; attempt++) {
+    frameClockRefusals = [];
+    try {
+      await fn();
+      break;
+    } catch (error) {
+      if (retryable && frameClockRefusals.length > 0 && attempt < FRAME_CLOCK_ATTEMPTS) {
+        process.stderr.write(
+          `retry: ${name}: attempt ${attempt} of ${FRAME_CLOCK_ATTEMPTS} was refused for its ` +
+            `frame clock alone (${frameClockRefusals.join("; ")})\n`,
+        );
+        await sleep(1000);
+        continue;
+      }
+      if (process.env.TRANSITIONS_PROBE_ALL !== "1") {
+        throw new Error(`${name}: ${error.message}`, { cause: error });
+      }
+      failures.push(`${name}: ${error.message.split("\n")[0]}`);
+      return;
     }
-    failures.push(`${name}: ${error.message.split("\n")[0]}`);
-    return;
   }
   checks += 1;
 }
@@ -262,7 +301,7 @@ try {
     await check("a subject shown during the hover, before the press, refuses", async () => {
       await d.click("#go-reset");
       await sleep(200);
-      const r = await d.measure({
+      const r = await take({
         id: "hoverShow",
         subject: "hoverShow",
         input: { kind: "hover-click", selector: "#go-hoverShow", hoverMs: 200 },
@@ -281,7 +320,7 @@ try {
       await d.click("#go-reset");
       await sleep(200);
       await d.evaluate(`document.getElementById("view").textContent = "already here"`);
-      const r = await d.measure({
+      const r = await take({
         id: "late",
         subject: "late",
         input: { kind: "click", selector: "#go-late" },
@@ -402,7 +441,7 @@ try {
       await sleep(200);
       await d.click("#go-prA");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "prRetain",
         subject: "#351",
         input: { kind: "click", selector: "#go-prRetain" },
@@ -421,7 +460,7 @@ try {
       await sleep(200);
       await d.click("#go-prA");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "prB",
         subject: "#351",
         input: { kind: "click", selector: "#go-prB" },
@@ -440,7 +479,7 @@ try {
     await check("an untrusted start event refuses", async () => {
       await d.click("#go-reset");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "forged",
         subject: "forged",
         input: { kind: "hover-click", selector: "#go-forged", hoverMs: 150 },
@@ -457,7 +496,7 @@ try {
       await d.click("#go-reset");
       await sleep(300);
       await d.evaluate("window.keys = []");
-      const r = await d.measure({
+      const r = await take({
         id: "held",
         subject: "held",
         input: { kind: "key-repeat", key: "ArrowDown", count: 4, intervalMs: 40 },
@@ -473,55 +512,65 @@ try {
       assert.ok(r.inputSpanMs >= 100, `input span ${r.inputSpanMs}`);
     });
   } else if (group === "network") {
-    await check("cache disposition matches what the server answered", async () => {
-      const spec = (n) => ({
-        input: { kind: "click", selector: "#go-fetch" },
-        ready: subjectReady(`fetch${n}`),
-      });
-      const first = await d.measure({ id: "f1", subject: "f", converged: `() => ""`, ...spec(1) });
-      assert.equal(first.ok, true, JSON.stringify(first.refusals));
-      await sleep(300);
-      const second = await d.measure({ id: "f2", subject: "f", converged: `() => ""`, ...spec(2) });
-      assert.equal(second.ok, true, JSON.stringify(second.refusals));
-      const by = Object.fromEntries(second.requests.list.map((x) => [x.u, x.d]));
-      // The server answered 200 then 304 to both conditional routes and once to the
-      // max-age file, which the browser then served from its own cache.
-      assert.deepEqual(hits["/static/revalidate.js"], [200, 304]);
-      assert.deepEqual(hits["/api/data"], [200, 304]);
-      assert.deepEqual(hits["/static/fresh.js"], [200]);
-      assert.deepEqual(by, {
-        "/static/revalidate.js": "revalidated",
-        "/static/fresh.js": "cache",
-        "/api/data": "revalidated",
-      });
-      assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
-    });
-    await check("a worker's requests answered by a 304 are revalidated", async () => {
-      const spec = (n) => ({
-        id: `w${n}`,
-        subject: "w",
-        input: { kind: "click", selector: "#go-worker" },
-        ready: subjectReady(`worker${n}`),
-        converged: `() => ""`,
-        timeoutMs: 10000,
-      });
-      const first = await d.measure(spec(1));
-      assert.equal(first.ok, true, JSON.stringify(first.refusals));
-      await sleep(300);
-      const second = await d.measure(spec(2));
-      assert.equal(second.ok, true, JSON.stringify(second.refusals));
-      for (const p of ["/worker.js", "/worker-dep.js", "/static/worker-data.js"]) {
-        assert.deepEqual(hits[p], [200, 304], `${p} answered ${hits[p]}`);
-      }
-      const by = Object.fromEntries(
-        second.requests.list.map((x) => [x.u, `${x.k ?? "page"} ${x.d}`]),
-      );
-      assert.deepEqual(by, {
-        "/worker.js": "page revalidated",
-        "/worker-dep.js": "w revalidated",
-        "/static/worker-data.js": "w revalidated",
-      });
-    });
+    // Both count what the server answered over two measurements in a fresh browser cache,
+    // so a second attempt could not repeat the first and they are not taken again.
+    await check(
+      "cache disposition matches what the server answered",
+      async () => {
+        const spec = (n) => ({
+          input: { kind: "click", selector: "#go-fetch" },
+          ready: subjectReady(`fetch${n}`),
+        });
+        const first = await take({ id: "f1", subject: "f", converged: `() => ""`, ...spec(1) });
+        assert.equal(first.ok, true, JSON.stringify(first.refusals));
+        await sleep(300);
+        const second = await take({ id: "f2", subject: "f", converged: `() => ""`, ...spec(2) });
+        assert.equal(second.ok, true, JSON.stringify(second.refusals));
+        const by = Object.fromEntries(second.requests.list.map((x) => [x.u, x.d]));
+        // The server answered 200 then 304 to both conditional routes and once to the
+        // max-age file, which the browser then served from its own cache.
+        assert.deepEqual(hits["/static/revalidate.js"], [200, 304]);
+        assert.deepEqual(hits["/api/data"], [200, 304]);
+        assert.deepEqual(hits["/static/fresh.js"], [200]);
+        assert.deepEqual(by, {
+          "/static/revalidate.js": "revalidated",
+          "/static/fresh.js": "cache",
+          "/api/data": "revalidated",
+        });
+        assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
+      },
+      { retryable: false },
+    );
+    await check(
+      "a worker's requests answered by a 304 are revalidated",
+      async () => {
+        const spec = (n) => ({
+          id: `w${n}`,
+          subject: "w",
+          input: { kind: "click", selector: "#go-worker" },
+          ready: subjectReady(`worker${n}`),
+          converged: `() => ""`,
+          timeoutMs: 10000,
+        });
+        const first = await take(spec(1));
+        assert.equal(first.ok, true, JSON.stringify(first.refusals));
+        await sleep(300);
+        const second = await take(spec(2));
+        assert.equal(second.ok, true, JSON.stringify(second.refusals));
+        for (const p of ["/worker.js", "/worker-dep.js", "/static/worker-data.js"]) {
+          assert.deepEqual(hits[p], [200, 304], `${p} answered ${hits[p]}`);
+        }
+        const by = Object.fromEntries(
+          second.requests.list.map((x) => [x.u, `${x.k ?? "page"} ${x.d}`]),
+        );
+        assert.deepEqual(by, {
+          "/worker.js": "page revalidated",
+          "/worker-dep.js": "w revalidated",
+          "/static/worker-data.js": "w revalidated",
+        });
+      },
+      { retryable: false },
+    );
   } else {
     throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
   }
