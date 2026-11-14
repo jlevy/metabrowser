@@ -3611,6 +3611,7 @@ async function run() {
       const page = internals.loadNextPage(false);
       filesRow.focus();
       const routesBefore = replacedRoutes.length;
+      const removedBefore = removedPanels.length;
       const landing = clickCommitsTab();
       releasePage();
       assertTrue("no answer: the next page loads", await page);
@@ -3634,7 +3635,9 @@ async function run() {
         "no answer: its address replaces the entry",
         added.length > 0 && added.every((route) => route === `/commit/${SHA_D}`),
       );
-      assertTrue("no answer: the panel keeps its tab", registeredPanel !== null);
+      // The shell stub records a removed tab and keeps the registration, so the record is
+      // what tells.
+      assertEqual("no answer: the panel keeps its tab", removedPanels.length, removedBefore);
       responses.set("/api/git/repo", repoAt(SHA_D));
     }
 
