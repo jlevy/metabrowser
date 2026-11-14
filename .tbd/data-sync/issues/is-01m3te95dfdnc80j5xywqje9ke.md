@@ -5,12 +5,11 @@ title: "v0.12 test-suite review: maximum coverage, minimum test complexity"
 kind: epic
 status: open
 priority: 2
-version: 27
+version: 29
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
-labels:
-  - release:v0.12.0
+labels: []
 dependencies: []
-parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
+parent_id: null
 child_order_hints:
   - is-01m3tet2paxkc94w1fz14sd58k
   - is-01m3teat7c8bvw4b8jwwzspm1n
@@ -36,7 +35,7 @@ child_order_hints:
   - is-01m3vtwjtsaxwyck7jkwr8m4av
   - is-01m3vxs7p2jb26ezpn8fez74e0
 created_at: 2026-10-01T00:36:56.339Z
-updated_at: 2026-10-01T14:27:06.050Z
+updated_at: 2026-11-14T18:41:46.629Z
 ---
 ## Goal
 
@@ -115,3 +114,5 @@ Rough total if all land: about 15k to 17k of the 85.7k lines of Python tests and
 
 - Survey of 2026-09-30 was read-only at a896d8fe. Two PRs above #244 were in progress and are not covered.
 - Local `pytest --durations` was not run (machine load stayed above 40); the timings come from CI log timestamps at per-file resolution.
+
+2026-11-14 audit: 0.12.0 shipped on 2026-11-09; the release work of this review is #251 to #258, and the 12 open children follow the release.
