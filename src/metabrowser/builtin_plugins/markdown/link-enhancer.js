@@ -18,6 +18,111 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
   Object.freeze({ selector: "object[data]", attribute: "data" }),
 ]);
 
+/**
+ * The served images this page has loaded since the last filesystem change, by address,
+ * least recently loaded first.
+ *
+ * KPress writes `loading="lazy"` on a document's images, and entering a file again builds
+ * its document again. WebKit, the macOS app's engine, does not give a new lazy image the
+ * copy the page holds: once layout shows the image it asks the network again, so the
+ * images at the top of a document entered again had none for the round trip. An image
+ * made eager before its address is set takes the held copy, as a lazy one does in Chrome.
+ * An image the page has not loaded since the last change stays lazy, and is fetched
+ * again. docs/design-system.md, "A Repaint Keeps Its Images", has the measurements.
+ *
+ * @type {Set<string>}
+ */
+const heldImages = new Set();
+/**
+ * How many held images the page remembers; past it, the least recently loaded is
+ * forgotten and loads lazily again. A document's first images load first, so one with
+ * more images than this loses its first ones first.
+ *
+ * Measured 2026-11-13 through this module in the app's WKWebView (WebKit 21624) and
+ * headless Chrome 152, with 60-character paths. An entry is 140 bytes of V8 heap after a
+ * GC, 143 KB at this bound, and 321 bytes of JavaScriptCore heap capacity in the system
+ * `jsc`, 329 KB. Remembering a load took 1 to 2.5 µs, and as long past the bound, where
+ * each evicts one. Entering again a document of 1,024 held images asked for none of them
+ * and showed it in 67 to 87 ms in WebKit and 50 to 66 ms in Chrome, against 58 to 62 and
+ * 38 to 40 ms on main, with no frame over 50 ms; main's WebKit asked for 224 images
+ * again. Both costs grow with the bound, and one re-entry makes at most this many eager.
+ */
+export const MAX_HELD_IMAGES = 1024;
+/** How many times the held images have been forgotten (`forgetHeldImages`). */
+let invalidations = 0;
+/**
+ * The images whose served address the enhancer set, each with `invalidations` as it was
+ * then. A load that finishes after a later change may carry the bytes from before it.
+ *
+ * @type {WeakMap<Element, number>}
+ */
+const servedImages = new WeakMap();
+
+/**
+ * Make *image* eager if the page holds the image at *href*, before its address is set.
+ *
+ * The authored address goes first. An eager image asks for its address at once, and the
+ * authored one, relative to the document, is not where the image is served.
+ *
+ * @param {Element} image
+ * @param {string} href
+ */
+function loadHeldImageEagerly(image, href) {
+  if (heldImages.has(href)) {
+    image.removeAttribute("src");
+    image.setAttribute("loading", "eager");
+  }
+}
+
+/**
+ * Record that the enhancer set *image*'s served address, unless no change to its file
+ * would be heard: the shell's watcher reports nothing inside a hidden folder or file, one
+ * whose name starts with a dot, so such an image is never held.
+ *
+ * @param {Element} image
+ * @param {string} path
+ */
+function serveImage(image, path) {
+  if (!path.split("/").some((segment) => segment.startsWith("."))) {
+    servedImages.set(image, invalidations);
+  }
+}
+
+/** @param {Event} event */
+function rememberHeldImage(event) {
+  const image = /** @type {Element | null} */ (event.target);
+  // A load from before the last change may hold what the change replaced.
+  if (!image || servedImages.get(image) !== invalidations) {
+    return;
+  }
+  const href = image.getAttribute("src");
+  if (!href) {
+    return;
+  }
+  heldImages.delete(href);
+  heldImages.add(href);
+  if (heldImages.size > MAX_HELD_IMAGES) {
+    const oldest = heldImages.values().next();
+    if (!oldest.done) {
+      heldImages.delete(oldest.value);
+    }
+  }
+}
+
+/**
+ * Forget every held image: a filesystem change, any change, may have replaced one.
+ *
+ * The plugin calls this for each change `onInventoryChange` reports, whatever its paths.
+ * The paths cannot say which images a change touched: an image can be a link to a file
+ * elsewhere, and a change deeper than the shell watches arrives as a folder. So reuse
+ * lasts only while nothing changes, which is when a reader moves between files. A load
+ * still in flight when this runs is not remembered when it finishes.
+ */
+export function forgetHeldImages() {
+  heldImages.clear();
+  invalidations += 1;
+}
+
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
 
 /**
@@ -182,7 +287,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         },
         (resolved) => {
           if (resolved.status === "internal") {
-            resource.setAttribute(descriptor.attribute, rawResourceHref(resolved));
+            const href = rawResourceHref(resolved);
+            if (tagName === "img") {
+              loadHeldImageEagerly(resource, href);
+              serveImage(resource, normalizedFilePath(resolved.path));
+            }
+            resource.setAttribute(descriptor.attribute, href);
           } else if (resolved.status !== "external") {
             disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
           }
@@ -289,6 +399,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   }
 
   container.addEventListener("click", handleClick);
+  // A load does not bubble, so the container hears its images' in the capture phase.
+  container.addEventListener("load", rememberHeldImage, true);
   eventTarget.addEventListener("metabrowser:navigation-fragment", handleFragment);
   scheduleFragment(mb.navigation.current());
 
@@ -309,6 +421,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         workerClient.dispose();
       }
       container.removeEventListener("click", handleClick);
+      container.removeEventListener("load", rememberHeldImage, true);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
       if (fragmentFrame) {
         cancel(fragmentFrame);

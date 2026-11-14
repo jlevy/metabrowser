@@ -4,6 +4,25 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Markdown document’s images no longer blink when you come back to its file in the
+  macOS app. Opening another file and returning built the document again with lazy
+  images, which WebKit fetched again before drawing them, so the images at the top were
+  blank for a moment. An image already loaded in the page now loads at once from that
+  copy; one you have not reached yet still waits until you scroll to it.
+  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
+  the page forget every copy it holds, so in the macOS app the next return fetches the
+  images again, a replaced image or the file behind a link to one included.
+  In Chrome, before this change and after it, a replaced image can show its old copy,
+  even after a reload, until Chrome no longer treats its cached copy as fresh.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
+  shell observes: the changed inventory paths with their ancestors, or `null` when
+  anything may have changed, as on every reconnect.
+  A reconnect whose snapshot equals the last one now tells listeners too, as one whose
+  snapshot changed does, so folder rollups also refresh after it.
+  See [the plugin guide](docs/plugins.md).
+
 - Shutting down no longer logs a file watcher traceback.
   A change the watcher picked up just as the server stopped used to be refused by the
   already-closed inventory, and the log showed an `InventoryClosedError` twice: as
