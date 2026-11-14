@@ -1245,15 +1245,16 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     """
 
     js = _read_app_js()
-    start = js.index("function scheduleRootSummaryRefresh()")
-    block = js[start : js.index("\nfunction ", start + 1)]
-    guard = block[: block.index("_summaryRefreshHandle = setTimeout")]
+    start = js.index("function rootSummaryWanted()")
+    guard = js[start : js.index("\nfunction ", start + 1)]
     assert '.querySelector(".tree-summary")' in guard, (
         "the refresh must run for either summary row, not only the split one"
     )
     assert '.querySelector(".tree-summary-split")' not in guard, (
         "gating on the split row makes the refresh unreachable from the fallback row"
     )
+    start = js.index("async function fetchRootSummary()")
+    block = js[start : js.index("\nfunction ", start + 1)]
     # The cached chrome is rewritten by regex; if it only matches the split
     # spelling, the cache keeps a stale summary after the live row is replaced.
     assert "tree-summary(?: tree-summary-split)?" in block, (

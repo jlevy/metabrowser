@@ -48,7 +48,12 @@ from metabrowser.cache.paths import (
     PullListName,
     source_pulls_directory,
 )
-from metabrowser.home import PrivateStorageError, open_private_file, write_private_file_atomic
+from metabrowser.home import (
+    PrivateStorageError,
+    open_private_file,
+    private_directory,
+    write_private_file_atomic,
+)
 
 log = logging.getLogger(__name__)
 
@@ -247,15 +252,20 @@ def _relative(slug: str) -> str:
 
 def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_result]:
     flags = os.O_RDWR if write else os.O_RDONLY
-    fd = open_private_file(home, relative, flags, shared="refuse")
+    directory, _, name = relative.rpartition("/")
+    # One verification of the directory covers the catalog and its journal files.
+    with private_directory(home, directory, shared="refuse") as entries:
+        fd = entries.open(name, flags)
+        try:
+            for suffix in _SIDECARS:
+                try:
+                    os.close(entries.open(name + suffix, flags))
+                except FileNotFoundError:
+                    continue
+        except BaseException:
+            os.close(fd)
+            raise
     try:
-        for suffix in _SIDECARS:
-            try:
-                side = open_private_file(home, relative + suffix, flags, shared="refuse")
-            except FileNotFoundError:
-                continue
-            else:
-                os.close(side)
         header = os.pread(fd, 100, 0)
         if header and (not header.startswith(b"SQLite format 3\x00") or len(header) < 100):
             raise CatalogUnusableError("the catalog is not an SQLite database")

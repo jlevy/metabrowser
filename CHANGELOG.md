@@ -4,17 +4,84 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A Markdown document’s images no longer blink when you come back to its file in the
-  macOS app. Opening another file and returning built the document again with lazy
-  images, which WebKit fetched again before drawing them, so the images at the top were
-  blank for a moment. An image already loaded in the page now loads at once from that
-  copy; one you have not reached yet still waits until you scroll to it.
-  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
-  the page forget every copy it holds, so in the macOS app the next return fetches the
-  images again, a replaced image or the file behind a link to one included.
-  In Chrome, before this change and after it, a replaced image can show its old copy,
-  even after a reload, until Chrome no longer treats its cached copy as fresh.
+- Reading Metabrowser’s private cache costs less on a busy server.
+  Every read checks that no other user can read or replace what it reads, and it used to
+  open each directory on the way again to check it.
+  Each of those system calls waits for any busy thread in the server, so the Pulls tab’s
+  background answers could take seconds.
+  A directory that passed the check now stays open, and a later read checks it again,
+  its mount included, without reopening it.
+  The pull-request catalog and its three journal files are checked under one look at
+  their directory instead of four.
+  Every check is still made on every read, so a cache directory that becomes shared,
+  linked, replaced, or foreign-owned is refused exactly as before.
+  On a stand-in repository, one background preparation answer now makes 1,510 of these
+  system calls instead of 2,204.
+
+- Expanding a pull request’s files in the Pulls tab usually draws them at once, from the
+  cache, instead of waiting a second or more on GitHub.
+  The panel now asks Metabrowser to list, behind you, the changed files of the rows in
+  view once they stay put, and of a row as soon as the pointer or focus rests on it.
+  It asks nothing while you walk the list with a held key, while GitHub reads the rows’
+  own details, or while less than a quarter of the account’s GitHub rate limit remains.
+  `/api/plugin/github/pulls-prefetch` now reads a record and a file list in turn, so a
+  newly started server’s missing records no longer hold back every list, and a cap stops
+  only its own kind; it lists at most 100 pull requests’ files an hour, up from 20.
+
+- The Commits tab loads in a large repository that keeps changing.
+  Each change asked every open page to recount the whole tree for the tally above the
+  Files tree, one request per change, and in the macOS app those requests took every
+  connection, so Commits waited behind them: 7.6 s with one page open, more than 90 s
+  with four. A page now asks one count at a time, waits longer between counts the longer
+  the last one took, and asks none while it is hidden or while another tab is in front
+  of Files. The count itself is about four times faster.
+  A failed check for a repository is retried instead of leaving the page without a
+  Commits tab, and no longer removes a Commits tab already shown.
+
+- The pull requests you scroll to in the Pulls tab are prepared at once, even while the
+  list is preparing others in the background.
+  The server prepared one batch at a time per repository, so a batch you were looking at
+  was refused as busy until the background batch’s GitHub read ended, and the list asked
+  again 1 s, then 2 s, later.
+  Now the batch you are looking at stops the background batch, unless that one is
+  reading some of the same pull requests, and starts its own read.
+  Measured with a simulated one-second GitHub read, your rows used to wait about a
+  second to be admitted and two to be prepared; now they are admitted in about 10 ms and
+  prepared in about one second.
+  The stopped batch’s pull requests are asked for again later, no sooner than a minute
+  after its read began, as for any batch whose read did not finish.
+
+- A pull request page’s header no longer loses your keyboard focus when you switch tabs
+  or a refresh repaints it.
+  Every repaint built the whole header again, so a focused branch chip’s copy button, or
+  any other header control, was replaced and focus went to the page.
+  The header now keeps each part, from the title and badge to the branch chips, labels,
+  and Refresh, and builds again only a part whose content changed.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A Markdown document’s images no longer blink when you come back to its file in the
+  macOS app, images from other sites such as badges included.
+  Opening another file and returning built the document again with lazy images, which
+  WebKit fetched again before drawing them, so the images at the top were blank for a
+  moment. An image already loaded in the page now loads at once from that copy; one you
+  have not reached yet still waits until you scroll to it.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A replaced image in a Markdown document shows its new content when you come back to
+  the document or reload it, in Chrome as in the macOS app; Chrome used to keep showing
+  the old one. Each image of a served file is now addressed with a version of the file,
+  which `/api/kpress/render` answers as `raw_versions`, so a replaced file has a new
+  address, and a hidden file, a file behind a link, or one replaced with the same size
+  and time is no exception.
+  Editing the document no longer makes the macOS app fetch its images again.
+  A PNG, JPEG, GIF, WebP, or AVIF image at its file’s current version is kept by the
+  browser without asking, so a reload in Chrome asks for nothing; its sandbox no longer
+  allows scripts, which an image never runs, so it is the same under `--untrusted`.
+  Every other `/raw` answer, an SVG’s or an HTML document’s included, is revalidated as
+  before, so no copy a browser keeps under the trusted profile answers, allowing
+  scripts, after the folder is served `--untrusted` (see `SECURITY.md`). A link to an
+  image that links to itself no longer fails the document’s render, or `/raw`, on Python
+  3.12.
 
 - Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
   shell observes: the changed inventory paths with their ancestors, or `null` when
@@ -208,6 +275,11 @@ All notable changes to Metabrowser are documented here.
   floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
+  A refresh that finds no changed files is offered as **Show the updated list (no
+  files)**; the files shown no longer stay, with nothing to press, under “No changed
+  files.” A list Metabrowser no longer holds is offered as **Show the updated list (not
+  listed)**, while the files shown stay as they were last listed and are not covered by
+  “Listing changed files…”.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle
@@ -521,6 +593,25 @@ All notable changes to Metabrowser are documented here.
   sending the file again, under a tag that names the profile, so a copy stored while one
   profile served the folder is never reused by a new load under another (see
   `SECURITY.md`).
+
+- A commit opened again in the Commits tab shows its diff without asking the server: the
+  page keeps a comparison named by a full commit ID until Refresh.
+  In a served folder, an edit to `.gitattributes` or Git configuration, or a new replace
+  ref or graft, shows only after Refresh.
+  `/api/git/refs`, `/api/git/summary`, and `/api/git/log` answer a repeat from memory
+  while the repository’s refs, `HEAD`, and `packed-refs` have not changed, and a later
+  log page no longer runs Git to prove its scope still holds.
+  Each sends an ETag and answers `If-None-Match` with 304. `/api/git/summary?scope=all`
+  now counts the commits the `scope=all` log walks, which leaves out the `HEAD` of
+  another worktree of the repository.
+  The repository’s identity, which used to be discovered again by the first Git request
+  after five quiet seconds, is now kept while the same refs, `HEAD`, configuration, and
+  `.git` entry are unchanged, so a hover or a first commit no longer waits for it.
+  This applies only to a repository you own.
+  In one, uninstalling or replacing Git, or editing your global or system Git
+  configuration, can take about a minute to show in the Git tab, where it took five
+  seconds. A repository someone else owns, opened through `safe.directory`, is still
+  checked every five seconds.
 
 ## 0.12.0
 

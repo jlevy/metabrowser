@@ -1813,6 +1813,31 @@ def test_catalog_sidecars_follow_private_path_admission(
     assert _fingerprint(repository.home) == before
 
 
+def test_catalog_and_its_journal_files_share_one_directory_verification(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each catalog open verifies the path to its directory once, not once per file.
+
+    A read checks the catalog and three journal files. When each was opened on its own,
+    every open verified the home's ancestors and directories again, and a busy server
+    spent seconds giving up and retaking the GIL for those system calls.
+    """
+    from metabrowser import home as home_module
+
+    _seed(repository, [generated_item(1)])
+    walks: list[Path] = []
+    real_walk = home_module._verify_home_ancestors  # pyright: ignore[reportPrivateUsage]
+
+    def counting_walk(home: Path) -> None:
+        walks.append(home)
+        real_walk(home)
+
+    monkeypatch.setattr(home_module, "_verify_home_ancestors", counting_walk)
+    state = read_catalog(repository.home, repository.slug)
+    assert state is not None
+    assert walks == [repository.home]
+
+
 def test_missing_source_is_not_created_by_catalog_publication(repository: ListedRepository) -> None:
     missing = ListedRepository(repository.home, "missing-source", "octo", "demo")
     state = CatalogState(

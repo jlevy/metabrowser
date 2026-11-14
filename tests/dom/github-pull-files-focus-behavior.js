@@ -254,7 +254,10 @@ async function run() {
     assert.ok(selected, "the anchor is retained outside the visible row window");
     (scenario.endsWith("other focus") ? elsewhere : selected).focus();
     generation = 1;
-    for (const delay of [60000, 0]) {
+    // A replacement read past the rows held is read again from its start, except a list of
+    // no files: it is the whole list from any offset, so it is taken where it was read
+    // (review A1).
+    for (const delay of scenario === "empty" ? [60000] : [60000, 0]) {
       const entry = [...timers].find(([, timer]) => timer.delay === delay);
       assert.ok(entry, "the replacement is read from its start");
       timers.delete(entry[0]);

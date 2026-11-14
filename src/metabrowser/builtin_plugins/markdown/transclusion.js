@@ -300,7 +300,7 @@ function createCycleTaskYielder() {
  * @param {Element} sourceElement
  * @param {Readonly<{path: string, fragment?: string}>} resolved
  * @param {MetabrowserPublicSdk} mb
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal, rawVersions?: unknown}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  */
 export function mountWikiTransclusion(container, sourceElement, resolved, mb, options = {}) {
   const document = container.ownerDocument || globalThis.document;
@@ -447,6 +447,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
           options.enhanceNested?.(root, resolved.path, {
             budget,
             chain: claim.chain,
+            rawVersions: rendered.raw_versions,
             signal: controller.signal,
           }),
       );

@@ -191,6 +191,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         path
           ? (root) =>
               enhanceRenderedLinks(root, path, mb, {
+                rawVersions: rendered.raw_versions,
                 signal: controller.signal,
                 workerClient,
                 // The rendered document is its own ancestor, so a note that embeds

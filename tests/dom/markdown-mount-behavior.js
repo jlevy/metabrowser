@@ -13,6 +13,9 @@ function check(name, condition, detail = "failed") {
 function makeContainer() {
   return {
     innerHTML: "",
+    get ownerDocument() {
+      return globalThis.document;
+    },
     prepended: [],
     classList: { add() {} },
     querySelector() {
@@ -20,6 +23,10 @@ function makeContainer() {
     },
     prepend(node) {
       this.prepended.push(node);
+    },
+    // A trusted render arrives parsed in a template (place-rendered.js).
+    replaceChildren(fragment) {
+      this.innerHTML = fragment.html;
     },
   };
 }
@@ -98,9 +105,12 @@ class FakeWorker {
   globalThis.document = {
     createElement() {
       return {
+        content: null,
         firstElementChild: null,
         set innerHTML(value) {
           this.firstElementChild = { html: value };
+          // A template's parsed content: the render holds no image the page holds.
+          this.content = { html: value, querySelectorAll: () => [] };
         },
       };
     },

@@ -163,7 +163,7 @@ Nothing on the server starts background work by itself.
 | T0 | Catalog delta scan | the Pulls panel on start, show, visibility, focus, online, page show, and at `fetched_at` + 60 s; a PR page whose record the catalog vouched for, when that check is a window old, before it reads | the window passed | one per window: at most 60 an hour | 1 account check, plus 1 GraphQL point per page |
 | T1 | Changed records this server recently served | the panel, after a scan publishes | catalog says changed | shares T2’s caps | at most 8 |
 | T2 | The anchored row, its J/K neighbours, the top open PRs, the visible rows | the panel, after a walk settles | missing, or changed | 8 per catalog publication, 40 an hour, T1 and T2 together | at most 8 |
-| T3 | Changed-files lists of the selected row and its neighbours | the panel, with T1 and T2 | missing, incomplete, or head or base moved | 20 an hour | 1 account check, then a page and an account check per page: 3 for one page |
+| T3 | Changed-files lists of the rows the pointer or focus rested on, the selected row and its neighbours, and the rows in view | the panel, with T1 and T2, at once for a row rested on, and once the rows in view stay put | missing, incomplete, or head or base moved | 100 an hour | 1 account check, then a page and an account check per page: 3 for one page |
 | T4 | Changes | the existing idle prefetch only | — | — | — |
 | T5 | Checks of an open pull request | the visible PR page | read longer ago than the window | foreground: visible page only, once a window | 2 account checks, then the pull, its check runs, and its status, each free on a `304` |
 
@@ -171,8 +171,8 @@ A record refresh costs at most 8 core points when each part fits on one page: tw
 account checks, the pull, and five parts; a `304` is free, an account check is not.
 A part of more than 100 comments, reviews, or check runs costs a point a page more.
 The lanes and their caps are in memory, one per repository a server process serves, so
-at the caps, at one page a part, T1 to T3 spend at most 40 × 8 + 20 × 3 = 380 core
-points an hour for each repository in each process, 7.6% of a 5,000-point limit, and T0
+at the caps, at one page a part, T1 to T3 spend at most 40 × 8 + 100 × 3 = 620 core
+points an hour for each repository in each process, 12.4% of a 5,000-point limit, and T0
 at most 60 core and 60 GraphQL points.
 The account as a whole is bounded by the governor’s floor, which is read from GitHub’s
 own count of what remains.
@@ -194,15 +194,17 @@ one pending ask, sent when that request answers and built from the panel as it i
 with `changed` when any ask that waited had it.
 
 Each server keeps one lane per repository, a coordinator job that runs one item at a
-time. Before each item, off the event loop, it reads again whether the item is due, then
+time, a record and then a files item in turn, each in its order, so a cold server’s
+missing records do not hold back every list.
+Before each item, off the event loop, it reads again whether the item is due, then
 whether the governor admits it and the caps have room.
 A record item is due when it is missing (a named number only) or changed; a files item
 when the files route would start an automatic refresh.
 An item another process has refreshed meanwhile is no longer due, because the record and
 the list on disk are what is read.
 
-The lane stops, dropping the rest of its queue, when the governor refuses, a cap is
-reached, or a reader’s job preempts its job.
+The lane stops, dropping the rest of its queue, when the governor refuses or a reader’s
+job preempts its job; a cap that is reached drops the rest of its own kind.
 The page asks again later.
 A job is started under the item’s ordinary key, so a reader’s request for the same pull
 request joins it.

@@ -47,7 +47,20 @@ $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
   "profile": "document",
   "printable": true,
   "toc": false,
-  "inert": true
+  "inert": true,
+? 0
+```
+
+The render also names the version of the one repository image it embeds, by the `/raw`
+identity the page resolves it to, and the page puts it in that image’s address, so a
+replaced image is a new address.
+The outside images, links here, get none.
+
+```console
+$ grep -A2 '^  "raw_versions":' inert.txt
+  "raw_versions": {
+    "docs/diagram.png": "[..]"
+  }
 ? 0
 ```
 

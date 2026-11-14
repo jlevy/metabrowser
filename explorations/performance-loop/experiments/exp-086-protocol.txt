@@ -1,0 +1,217 @@
+exp-086 (registration 2): #368's targeted confirmation round, at the head that carries the
+repository-identity fix. This registration replaces registration 1 (sha256 7f04b174...,
+2026-11-13T18:29:25Z), which never ran. Pre-registered before any exp-086 measurement;
+nothing below may change after a result is read. It cites exp-061, exp-063, exp-081 and
+exp-082, whose verdicts stand, and the contention sweep of 2026-11-13 (contention not
+shown; its slow cells were exactly the identity-refresh ones).
+
+BUILDS AND INPUTS
+- Candidate: abe3f41e, the head of claude/perf-caches: #368's changes, including 36d3e325
+  (the identity is kept while the refs' state is unchanged), merged with main at bfca78d4.
+  An editable checkout detached at abe3f41e
+  (metab 0.12.1.dev734+dfe7dfaf (+741 commits, abe3f41ed)), clean at every run's start
+  and end.
+- Control: bfca78d4, main as merged into the candidate, so the two differ by #368 alone
+  (13 product files). An editable checkout detached at bfca78d4
+  (metab 0.12.1.dev705+67dbbe6e (+710 commits, bfca78d44)), clean. The control moves from
+  09903292 because the head now carries main's later merges; measured against 09903292
+  those would count as #368's.
+- Harness v4 at 5031dc16 (scenario revision 4), frozen; corpus v2 at 7a02fed4, clean.
+- Both builds' servers run with METABROWSER_REQUEST_LOG=verbose (set in the harness's
+  environment, which it passes to every server): every request's arrival and completion
+  time is in each run's server log. It applies to both builds.
+
+LOCK, LOAD, POWER, PACING
+- Take the series lock behind whoever holds it, after the one-minute load has been under
+  12 for two minutes and no `transitions.mjs run` process exists; hold it across every
+  paced pair and the server half; release it when the last ends, however it ends.
+- Paced pairs: one `transitions.mjs run --runs 1` invocation per pair, the two runs back
+  to back; the control's --condition first in odd-numbered paced pairs and the
+  candidate's first in even ones; each pair starts only once the one-minute load has
+  stayed under 12 for 60 s, sampled every 10 s.
+- Load rule, from load fields only and before any metric is read: a pair is excluded if
+  either run's one-minute load is above 12 at its start or at the start of any measured
+  transition.
+- Power rule: Low Power Mode is sampled every 15 s with timestamps. A pair is excluded if
+  the mode changes during either run or differs between its runs. If lowpowermode reads 0
+  when the first paced pair starts, the round runs in that mode, otherwise in 1; judged
+  pairs never mix modes, and pairs in the other mode are reported, not judged.
+- Target 6 judged pairs; at most 20 paced pairs attempted. Fewer than 6 judged after 20:
+  judged as they are if at least 3, said so; fewer than 3: no verdict.
+- Excluded rows are kept and recorded with their reason.
+
+SERIES (per paced pair)
+  METABROWSER_REQUEST_LOG=verbose node explorations/performance-loop/transitions.mjs run \
+    --exp exp-086 --corpus <corpus-v2> --runs 1 --journeys files,maintabs,commits \
+    --out .bench/transitions/exp-086/runs.jsonl \
+    --condition <first>=<metab> --condition <second>=<metab>
+  compare runs on the judged pairs with --control control --candidate candidate and the 13
+  --expect flags of exp-081.
+
+SERVER HALF (H88(b)), right after the last paced pair, behind the lock: exp-081's,
+unchanged: git-route-pairs.mjs with per-sample at_ms, 15 pairs per route, B8 checks
+between pairs, control on 8910 and candidate on 8911 serving the corpus, the B8 clone
+(corpus v2, 1,000 loose branches) on 8912 and 8913, and exp-081's identity-refresh
+classification and overlap rule.
+
+ACCEPT RULE: the runbook's standard rule. Times: ranges apart with two or more pairs
+beyond 1.3x is a result. Counts: ranges apart is a result. Two or more pairs beyond under
+overlapping ranges must be explained with evidence before accepting; inference alone does
+not count. A guard flag is resolved the same way. Every guard is judged on all judged
+pairs. One complexity judgment per verdict.
+
+PER HYPOTHESIS
+- H88(a), deciding (all four, standard rule): commits.revisit.1 and .2, requests_data and
+  painted_ready_ms, lower. Guards: no unexplained wrong-way result on any commits.* or
+  main_subject.*commits* transition (commits.hover_click and commits.cold.1 among them);
+  all runs valid.
+- H88(b), on its own. Deciding: the server half's three routes, lower, refs judged with
+  exp-081's identity-refresh rule. Guards: B8 correct; and no unexplained wrong-way result
+  on any transition whose measured request list includes /api/git/refs, /api/git/summary
+  or /api/git/log. A wrong-way result on a transition whose requests include none of them
+  does not count against H88(b).
+- H90, deciding (all nine, standard rule): requests_kpress and post_body_bytes lower on
+  files.revisit.markdown_small, files.revisit.markdown_large, files.history_back and
+  files.history_forward; requests_plugin lower on files.revisit.markdown_small. Painted
+  ready on those four predicted not worse. Guards: no unexplained wrong-way
+  long_task_max_ms on files.revisit.markdown_large and files.history_forward; none on any
+  other files.* or main.*_to_files transition; main.files_to_pulls.first and .again,
+  settled_ms among their metrics, judged on the judged pairs by the standard rule. The
+  keyboard.* and views.markdown.* guards are not re-run; exp-082 recorded them without a
+  recurring flag.
+
+IDENTITY-PERIOD EXPLANATION CHECK (declared now; not accounting: no guard is judged on a
+subset because of it, and it decides no verdict)
+- From each judged run's server log, the git-backed requests are those whose path starts
+  with /api/git/ or /api/plugin/diff/. In arrival order on that server, the first is a
+  TTL boundary, and so is each later one arriving at least 5,000 ms after the previous
+  boundary's arrival. Every other git-backed request is within the TTL.
+- For /api/plugin/diff/comparison and /api/git/commit/, pooled over the judged runs of
+  each build (warm-up and measured passes), the median server duration (the log's ms) of
+  boundary requests is divided by the median of within-TTL requests of the same route.
+- The check FITS the identity account if that ratio is at least 1.3 on the control for
+  both routes and below 1.3 on the candidate for both routes; it does NOT FIT otherwise,
+  and is reported either way, with the counts.
+- Also recorded per judged run: for commits.hover_click and commits.cold.1, whether the
+  transition's comparison request (exp-086 registration 1's rule: hover, the last GET of
+  .../comparison?revision=dbfd82b9...; cold.1, the last GET of ...revision=3669a358...
+  that arrived before the last GET of ...revision=083af6f8...) is a TTL boundary, and
+  its server duration.
+
+RECORDS
+exp-086 is one record for all three verdicts, citing exp-061, exp-063, exp-081, exp-082
+and the sweep, with: the judged and excluded samples, the per-run power mode and load,
+the identity-period check's table, the server half's samples, and the sweep's record.
+Every number from summarize, compare, the instruments, or the check's script, with the
+source named.
+
+AMENDMENT 1 (written 2026-11-13T20:31:00Z, before any exp-086 measurement; registration 2 above
+is unchanged except as stated here)
+- Candidate: fc2a6d84, the head of claude/perf-caches after review F's fixes, one commit
+  on abe3f41e. The identity is kept past its TTL only for a repository whose served
+  root, .git entry and Git directory belong to the reader, and is otherwise discovered
+  every TTL (F2); a repository past the refs' entry bound is walked once per
+  GIT_REPO_INFO_MAX_AGE_S (F4); tests and docs (F1, F3). The same editable checkout,
+  now detached at fc2a6d84 (metab 0.12.1.dev734+dfe7dfaf (+742 commits, fc2a6d84a)),
+  clean at every run's start and end. The corpus root, its .git and its Git directory
+  belong to the reader (uid 502 for all three), so the candidate keeps the identity
+  there. Control unchanged: bfca78d4; the two differ by #368 alone (13 files under
+  src/).
+- Operational stop, which judges nothing: if, while waiting to start a paced pair, no
+  60 s quiet window (one-minute load under 12 at every 10 s sample) comes within 60
+  minutes, the round stops there, releases the lock, and is reported. The stop excludes
+  no pair and changes no rule: the pairs already run keep the registered exclusion
+  rules, and whether the round is then judged as it stands or resumed is the
+  coordinator's decision, made and reported before any judgment.
+
+AMENDMENT 2 (written 2026-11-14T09:02:17Z, before any judged exp-086 measurement): the
+committed protocol
+- Everything above this amendment is registration 2 and its amendment 1, byte for byte
+  as written: sha256
+  98e1eabcdb8177334c87d944992cadf29137ffd2c1181fe4b25fedb469043d06, kept in a gitignored
+  attic until now. It is committed here as exp-086-protocol.txt beside the record, per
+  docs/development.md, "Durable Storage". From here on, machine paths are placeholders:
+    $HARNESS    the frozen harness checkout named in amendment 3
+    $CONTROL    the control's metab, an editable checkout detached at bfca78d4
+    $CANDIDATE  the candidate's metab, an editable checkout detached at fc2a6d84
+    $CORPUS     corpus v2, a standalone clone at 7a02fed4
+  The SERIES section's <corpus-v2> is $CORPUS, and its <metab> is $CONTROL or
+  $CANDIDATE.
+- The analysis the record cites is committed beside it, before the first judged pair:
+    exp-086-exclude.mjs, the load and power exclusion, sha256
+      f3eed509a584e8477a1f0a915b5e86890b07d037bfa0dc81fab875646be44835
+    exp-086-identity-check.mjs, the identity-period explanation check, sha256
+      6bf81bbd8187303da8df0f26afd76398c8cdc5cf16edef6d99498bbcd35eae8e
+    exp-086-refresh-classify.mjs, the server half's standard rule and exp-081's
+      identity-refresh classification, sha256
+      043f20e4f5251a5bf25cbbf13495eeae711567285ae1ed24cc346cb55b3380d1
+  The refresh classifier reproduces exp-081's recorded classification from
+  exp-081-git-routes-samples.json. On the refs route, the refresh pairs are 4, 9 and 14
+  on both builds. With them set aside, the control's range is 20.07 to 24.62 ms and the
+  candidate's 1.47 to 4.11 ms, with 12 of 12 pairs beyond 1.3x.
+- The series lock is $(git rev-parse --git-common-dir)/metabrowser-series.lock. The gate
+  is unchanged: the lock is free, no transitions.mjs run process exists, and the
+  one-minute load has been under 12 for two minutes.
+
+AMENDMENT 3 (written 2026-11-14T09:02:17Z, before any judged exp-086 measurement). It
+amends registration 2, sha256
+98e1eabcdb8177334c87d944992cadf29137ffd2c1181fe4b25fedb469043d06, with amendments 1 and 2.
+- Harness: the transition harness at scenario revision 5, at #417's merge commit on main
+  (3a1ff25e77c47cd665ffec4df8a9d874defada2c, filled in at 2026-11-14T09:21:20Z, before
+  any judged pair; #417's head 597fade8 is review A's fixes with main's #415 merged in),
+  in its own clean checkout, $HARNESS, frozen for every paced pair.
+  - It replaces harness v4 at 5031dc16 (scenario revision 4), which refuses both builds:
+    main's 19a36c5b, which both builds contain, makes every switch to Commits select the
+    newest commit, and revision 4 waited for the Commits prompt.
+  - Paced pair 1 under amendment 1 (series 2026-11-14T00-46-24-933Z, 00:46Z) was refused
+    on both runs in the warm-up pass ("main.files_to_commits.first: not ready within
+    30000 ms"), and was also over the load rule. No metric of it was read. It is
+    reported and not judged. It does not count toward the 20 paced pairs, whose count
+    starts again under this amendment.
+- Every switch to Commits lands on the newest commit on both builds. The diagnostic
+  that shows it:
+  - It ran 2026-11-14, 08:48Z to 08:52Z, at a one-minute load of 7.9 to 8.5, on harness
+    revision 5 at #417's head 2746f5b1, review A's fixes included. It was one run of
+    each build, journeys maintabs,commits, with --keep-going, and it judged nothing.
+  - Both runs were valid with no refusal, and commits_landing was newest on both.
+  - Each of the six switches landed on the newest commit (7a02fed4) and was ready on it
+    (landingAtReady newest): main.files_to_commits.first and .again,
+    main.pulls_to_commits, both main_subject.*_to_commits, and commits.first_show.
+  compare runs without --allow-mixed-landing, so runs whose landings differ are refused,
+  not compared.
+- H88(a)'s commit revisits under the newest landing.
+  - commits.revisit.1 and .2 measure what they did under registration 2. Each is a
+    click, from a selected commit (083af6f8, then 3669a358), on a commit read earlier
+    in the same journey (3669a358, then 5136540f), until that commit's detail and
+    comparison are shown.
+  - What precedes them changes: commits.first_show now opens the newest commit,
+    7a02fed4, a merge whose first-parent diff is 32 files. When the revisits run, the
+    page has shown four commits, not three.
+  - On the candidate, that commit's comparison is one more kept entry, bounded by
+    GIT_COMPARISON_CACHE_BYTES. A revisited comparison it displaced would be fetched
+    again and counted in requests_data, the deciding metric, so a displacement cannot
+    hide.
+  The guards keep their transitions, with the meanings the harness README gives under
+  "The Commits landing":
+  - commits.cold.1 starts from the newest commit's view.
+  - commits.first_show and main.*_to_commits time the landing on the newest commit.
+  - main_subject.*_to_commits time that landing too, not the commit read before.
+  Both builds land the same way, so each guard compares like with like. The
+  identity-period check's pooled requests now include the newest commit's comparison and
+  detail, on both builds. Its hover_click and cold.1 request rules are unchanged.
+- Builds and corpus, re-checked unchanged at 2026-11-14T09:01:26Z, each clean:
+    control    bfca78d4, metab 0.12.1.dev705+67dbbe6e (+710 commits, bfca78d44)
+    candidate  fc2a6d84, metab 0.12.1.dev734+dfe7dfaf (+742 commits, fc2a6d84a)
+    corpus     7a02fed4, its refs unchanged
+  The candidate's product code is fc2a6d84's. Later commits on claude/perf-caches change
+  only tests and records.
+- SERIES (per paced pair), otherwise as registered:
+    METABROWSER_REQUEST_LOG=verbose node $HARNESS/explorations/performance-loop/transitions.mjs
+      run --exp exp-086 --corpus $CORPUS --runs 1 --journeys files,maintabs,commits
+      --out $HARNESS/.bench/transitions/exp-086/runs.jsonl
+      --condition <first>=<$CONTROL or $CANDIDATE> --condition <second>=<the other>
+  The runs file is new. The refused pair's rows stay in harness v4's own bench
+  directory.
+- Power: at 2026-11-14T09:01:26Z, Low Power Mode was on (pmset lowpowermode 1) and the
+  machine was on AC power. Each power sample records both, with the regime. The power
+  rule is unchanged: the round runs in the mode read when its first paced pair starts.

@@ -907,8 +907,8 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
     assert 'key === "recency" && open' in toggle_block
     assert "scheduleRootSummaryRefresh();" in toggle_block
 
-    refresh_start = js.index("function scheduleRootSummaryRefresh()")
-    refresh_block = js[refresh_start : refresh_start + 2000]
+    refresh_start = js.index("async function fetchRootSummary()")
+    refresh_block = js[refresh_start : js.index("\nfunction ", refresh_start + 1)]
     assert "patchOpenRecencyTallyCounts();" in refresh_block
 
 
@@ -955,7 +955,7 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     would drop focus out of a dropdown being arrowed through."""
 
     js = _read("app.js")
-    start = js.index("function scheduleRootSummaryRefresh()")
+    start = js.index("async function fetchRootSummary()")
     # Slice to the next top-level function rather than a fixed character
     # count: a comment added inside this one pushed the last assertion out
     # of an 1800-character window and failed a behavior that had not changed.

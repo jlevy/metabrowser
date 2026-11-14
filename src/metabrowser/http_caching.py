@@ -200,6 +200,24 @@ def immutable_headers(etag: str) -> dict[str, str]:
 IMMUTABLE_CACHE_CONTROL = "max-age=31536000, immutable"
 
 
+def address_version(content_identity: str) -> str:
+    """The token an address carries so that what a browser keeps at it is what it names.
+
+    A body answered with :func:`immutable_headers` is kept at its address for a year, so
+    the address has to name everything the body and its headers were made from:
+    *content_identity* names the subject, its bytes, and anything else the response
+    depends on, and the build is folded in here, as in every tag. The server answers such
+    an address immutable only while the token is the one it would give now. Sixteen hex
+    characters: an address is written into every image of a document, and 64 bits keep
+    two identities from meeting by chance.
+    """
+    digest = hashlib.blake2b(digest_size=8)
+    digest.update(BUILD_TAG.encode())
+    digest.update(b"\0")
+    digest.update(content_identity.encode("utf-8", errors="surrogatepass"))
+    return digest.hexdigest()
+
+
 def stamped_asset_cache_control(*, current: bool) -> str:
     """``Cache-Control`` for one of the application's own assets at a stamped address.
 
@@ -251,6 +269,7 @@ def matches_if_none_match(request: Request, etag: str, *, wildcard: bool = True)
 __all__ = [
     "BUILD_TAG",
     "IMMUTABLE_CACHE_CONTROL",
+    "address_version",
     "build_scoped_etag",
     "editable_install",
     "etag_headers",

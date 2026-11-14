@@ -129,6 +129,9 @@ StandIn.focusMoves = 0;
 /** One page: its history, its pane, and a server that answers the Git routes. */
 async function createPage(start, options = {}) {
   const log = [];
+  // The comparisons the diff's data hook was asked for, apart from `log`, which holds the
+  // commit requests every step prints.
+  const comparisons = [];
   let repositoryReads = 0;
   let historyReads = 0;
   const shown = { pane: "nothing", navPanel: "files" };
@@ -304,7 +307,10 @@ async function createPage(start, options = {}) {
         assert(name === "sdk-views", "Git waits for the shared view helper bundle");
       },
       ensureKindAssets: async () => {},
-      fetchPluginData: async () => ({}),
+      fetchPluginData: async (_plugin, route, params) => {
+        comparisons.push(`${route} ${String(params.revision).slice(0, 7)}`);
+        return {};
+      },
       getRegisteredView: () => ({
         render: async (host) => {
           assert(host.isConnected, "Git diff renders inside connected preview staging");
@@ -505,6 +511,9 @@ async function createPage(start, options = {}) {
     for (let turn = 0; turn < 8; turn += 1) {
       await new Promise((resolve) => setImmediate(resolve));
     }
+    // And the timers those turns queued, as a reader's next step comes after them: the
+    // panel keeps a comparison in a task after the one that delivered it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   };
   await settle();
 
@@ -522,6 +531,7 @@ async function createPage(start, options = {}) {
     held,
     history,
     repositoryReads: () => repositoryReads,
+    comparisons,
     listeners,
     log,
     options,
@@ -777,23 +787,41 @@ async function createPage(start, options = {}) {
   }
 
   // A landing the panel does not outlive paints nothing: there is no panel behind the commit,
-  // and nothing would handle the next one. A gate that fails once tears the panel down as one
-  // that says the root stopped being a repository does, which mb-5gs6 tracks.
-  for (const [step, gate] of [
-    ["the root stopped being a repository", { notARepository: true }],
-    ["the repository gate failed once", { gateFailures: 1 }],
-  ]) {
+  // and nothing would handle the next one. Only an answer that the root is no longer a
+  // repository tears the panel down.
+  {
+    const step = "the root stopped being a repository";
     const page = await createPage("/view/README.md");
     await page.selectRow(COMMIT_A);
     await page.open("src/a.py");
     page.read();
-    Object.assign(page.options, gate);
+    page.options.notARepository = true;
     await page.back();
     const after = page.read();
     assert(after.pane === "file src/a.py", `${step}: ${after.pane}`);
     assert(after.owner === "file", `${step}: a commit took the pane with no panel behind it`);
     assert(after.navPanel === "files", `${step}: ${after.navPanel}`);
     assert(page.listeners.get("popstate")?.size === 1, `${step}: the panel still listens`);
+    transcript[`a landing when ${step}`] = after;
+  }
+
+  // A gate that gets no answer (a 503, a refused or timed-out connection) is not an answer
+  // that the root stopped being a repository: the panel and its rows stay, and the landing
+  // shows its commit. Tearing down here removed Commits from the page for good (mb-5gs6).
+  {
+    const step = "the repository gate failed once";
+    const page = await createPage("/view/README.md");
+    await page.selectRow(COMMIT_A);
+    await page.open("src/a.py");
+    page.read();
+    page.options.gateFailures = 1;
+    await page.back();
+    const after = page.read();
+    assert(after.pane === `commit ${COMMIT_A.slice(0, 7)}`, `${step}: ${after.pane}`);
+    assert(after.owner === "git", `${step}: the commit did not take the pane`);
+    assert(after.navPanel === "git", `${step}: ${after.navPanel}`);
+    // The navigation controller's listener and the panel's own: the panel did not leave.
+    assert(page.listeners.get("popstate")?.size === 2, `${step}: the panel stopped listening`);
     transcript[`a landing when ${step}`] = after;
   }
 
@@ -836,6 +864,24 @@ async function createPage(start, options = {}) {
     assert(shown.navPanel === "files", "a plain folder's Back moved the nav panel");
     assert(page.listeners.get("popstate")?.size === 1, "a plain folder holds a second listener");
     transcript["a folder that is not a repository"] = shown;
+  }
+
+  // A commit opened again shows its diff from the comparison kept for its commit ID, by a
+  // row and by Back alike: each commit's comparison is asked for once.
+  {
+    const page = await createPage("/view/README.md");
+    await page.selectRow(COMMIT_A);
+    await page.selectRow(COMMIT_B);
+    await page.selectRow(COMMIT_A);
+    const reselected = page.read();
+    await page.open("src/a.py");
+    page.read();
+    await page.back();
+    const back = page.read();
+    assert(back.pane === `commit ${COMMIT_A.slice(0, 7)}`, `Back onto the commit: ${back.pane}`);
+    const asked = [...page.comparisons];
+    assert(asked.length === 2, `each comparison is asked for once: ${JSON.stringify(asked)}`);
+    transcript["a commit opened again"] = { reselected, back, comparisons: asked };
   }
 
   // Switching to Commits names no commit and lands on the newest one, the top row. The pane

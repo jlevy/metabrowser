@@ -31,6 +31,7 @@ import { JOURNEYS, runJourney, SUBJECTS } from "./transitions-journeys.mjs";
 import { driver, launchBrowser, REGIONS, Refusal, sleep } from "./transitions-recorder.mjs";
 import {
   CompareRefusal,
+  commitsLandingOf,
   compareRuns,
   formatComparison,
   parseRows,
@@ -253,7 +254,16 @@ function logTransition(row) {
   );
 }
 
-async function pass({ base, journeys, headed, profileRoot, expectedVersion, quiet, keepGoing }) {
+async function pass({
+  base,
+  journeys,
+  headed,
+  profileRoot,
+  expectedVersion,
+  quiet,
+  keepGoing,
+  newestCommit,
+}) {
   const out = [];
   for (const name of journeys) {
     const rows = [];
@@ -269,6 +279,7 @@ async function pass({ base, journeys, headed, profileRoot, expectedVersion, quie
         log: quiet ? null : logTransition,
         keepGoing,
         facts,
+        newestCommit,
         loadavg: () => loadavg()[0],
       });
       const served = await d.evaluate(
@@ -336,7 +347,9 @@ async function oneRun(options) {
     // 3 redefined the clocks and the frame accounting (every frame read after its own
     // layout, painted ready at the ready frame's presentation, counts over the whole
     // window). 4 reads a worker's 304 as revalidated, takes a region's first rendered
-    // match, and skips hidden and off-screen subtrees when looking for content.
+    // match, and skips hidden and off-screen subtrees when looking for content. 5 accepts
+    // a switch to Commits that lands on the newest commit as well as on the prompt, and
+    // records which one each run saw (`commits_landing`).
     // REVISION_NOTES in transitions-stats.mjs says what each older revision differs in.
     scenario_revision: SCENARIO_REVISION,
     exp,
@@ -390,6 +403,11 @@ async function oneRun(options) {
       row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
     }
     row.facts = await serverFacts(server.base);
+    // The commit a switch to Commits lands on in a build that selects the newest commit:
+    // the first commit of the history the panel asks for (transitions-journeys.mjs).
+    const head = row.facts.git_log_head;
+    const newestCommit =
+      typeof head === "string" && /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(head) ? head : null;
     if (warmup && (keepGoing || row.refusals.length === 0)) {
       console.log("  warm-up pass (unrecorded)");
       const warm = await pass({
@@ -400,6 +418,7 @@ async function oneRun(options) {
         expectedVersion: row.build.version,
         quiet: true,
         keepGoing,
+        newestCommit,
       });
       row.warmup = warm.map((j) => ({
         name: j.name,
@@ -424,8 +443,11 @@ async function oneRun(options) {
         expectedVersion: row.build.version,
         quiet: false,
         keepGoing,
+        newestCommit,
       });
       row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
+      // Which Commits landing this build has; compare pairs only runs that agree.
+      row.commits_landing = commitsLandingOf(row.journeys);
       for (const j of row.journeys) {
         for (const [guard, detail] of j.refusals) {
           row.refusals.push([guard, `${j.name}: ${detail}`]);
@@ -610,6 +632,7 @@ function cmdCompare(argv) {
       format: { type: "string", default: "markdown" },
       aa: { type: "string" },
       expect: { type: "string", multiple: true },
+      "allow-mixed-landing": { type: "boolean", default: false },
     },
   });
   if (positionals.length !== 1) {
@@ -621,6 +644,7 @@ function cmdCompare(argv) {
     aa: values.aa,
     tolerance: Number.parseFloat(values.tolerance),
     expect: values.expect ?? [],
+    mixedLanding: values["allow-mixed-landing"],
   });
   if (values.format === "json") {
     const { control, candidate, ...rest } = result;
@@ -663,6 +687,7 @@ const USAGE = `usage:
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]
+                      [--allow-mixed-landing]
   transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
   transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
 compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or

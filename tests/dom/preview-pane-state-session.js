@@ -348,6 +348,7 @@ const SHELL_FUNCTIONS = [
   "createFilePreviewStage",
   "isGitHistoryLanding",
   "cancelMainTabPreview",
+  "resumeRootSummaryRefresh",
   "attachMainTabs",
   "initNavTabs",
   "initHomeHeading",
@@ -387,6 +388,8 @@ const shellSource = [
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
   appDeclaration(/^var retainedPullPageDispose = null;$/m, "retained pull-request finalizer"),
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
+  // Showing Files resumes a root summary that waited; none of these states asks for one.
+  appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(

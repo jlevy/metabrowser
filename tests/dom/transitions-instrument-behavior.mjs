@@ -23,7 +23,16 @@ const {
   requestClass,
   routeFamily,
 } = recorder;
-const { CompareRefusal, chanceApart, compareRuns, sampleRow, scrubText } = stats;
+const {
+  CompareRefusal,
+  chanceApart,
+  commitsLandingOf,
+  compareRuns,
+  landingDrift,
+  sampleRow,
+  scrubText,
+  summarize,
+} = stats;
 
 let checks = 0;
 const check = (name, fn) => {
@@ -486,7 +495,7 @@ const transition = (id, over = {}) => ({
 });
 const row = (condition, run, over = {}) => ({
   schema: "transition-navigation/v1",
-  scenario_revision: 4,
+  scenario_revision: 5,
   exp: "exp-900",
   series: "s1",
   condition,
@@ -976,6 +985,98 @@ check("an older revision compares with itself, with a note, and not with this on
       ),
     /scenario revision/,
   );
+});
+// Main's 19a36c5b made a switch to Commits land on the newest commit (revision 5).
+const landed = (...landings) => [
+  {
+    name: "maintabs",
+    transitions: [
+      transition("files.a"),
+      ...landings.map((landing, i) => transition(`main.to_commits.${i}`, { landing })),
+    ],
+  },
+];
+check("the Commits landing a run saw", () => {
+  assert.equal(commitsLandingOf(landed()), null);
+  assert.equal(commitsLandingOf(landed("newest", "newest")), "newest");
+  // A switch back to Commits before 19a36c5b showed the commit read before.
+  assert.equal(commitsLandingOf(landed("empty", "restored")), "empty");
+  assert.equal(commitsLandingOf(landed("empty", "newest")), "mixed");
+  assert.equal(commitsLandingOf(landed("other 2222")), "mixed");
+  // A transition that was never ready saw no landing.
+  assert.equal(commitsLandingOf(landed("newest", null)), "newest");
+});
+check("runs that saw different Commits landings are compared only when asked", () => {
+  const before = (r) => {
+    r.commits_landing = "empty";
+  };
+  const after = (r) => {
+    r.commits_landing = "newest";
+  };
+  refuses(() => cmp(series(before, after)), /Commits landing differs/);
+  refuses(() => cmp(series(() => {}, after)), /Commits landing differs/);
+  const allowed = cmp(series(before, after), { mixedLanding: true });
+  assert.ok(
+    allowed.notes.some((n) => /^MIXED COMMITS LANDINGS/.test(n)),
+    allowed.notes,
+  );
+  const same = cmp(series(after, after));
+  assert.ok(
+    same.notes.some((n) => /landed on the newest commit/.test(n)),
+    same.notes,
+  );
+  assert.equal(
+    cmp(series()).notes.some((n) => /Commits/.test(n)),
+    false,
+    "runs with no Commits switch have no landing note",
+  );
+});
+check("samples keep each Commits landing", () => {
+  const r = row("a", 1, { commits_landing: "newest", journeys: landed("newest") });
+  const s = sampleRow(r);
+  assert.equal(s.commits_landing, "newest");
+  assert.equal(s.journeys[0].transitions[1].landing, "newest");
+  assert.equal(commitsLandingOf(s.journeys), "newest");
+});
+// Review A of #417: two `mixed` runs can still differ in which switch landed where.
+check("runs whose switches to Commits landed differently are refused per transition", () => {
+  const mixedA = (r) => {
+    r.commits_landing = "mixed";
+    r.journeys = landed("empty", "newest");
+  };
+  const mixedB = (r) => {
+    r.commits_landing = "mixed";
+    r.journeys = landed("newest", "empty");
+  };
+  assert.deepEqual(landingDrift(series(mixedA, mixedB)), [
+    "main.to_commits.0: empty / newest",
+    "main.to_commits.1: newest / empty",
+  ]);
+  refuses(
+    () => cmp(series(mixedA, mixedB)),
+    /per transition, main\.to_commits\.0: empty \/ newest/,
+  );
+  const allowed = cmp(series(mixedA, mixedB), { mixedLanding: true });
+  assert.ok(
+    allowed.notes.some((n) => /per transition main\.to_commits\.0/.test(n)),
+    allowed.notes,
+  );
+  assert.deepEqual(landingDrift(series(mixedA, mixedA)), []);
+});
+check("summarize names each condition's Commits landing and any drift", () => {
+  const rows = series(
+    (r, k) => {
+      r.commits_landing = "newest";
+      r.journeys = landed(k === 1 ? "empty" : "newest");
+    },
+    (r) => {
+      r.commits_landing = "newest";
+      r.journeys = landed("newest");
+    },
+  );
+  const text = summarize(rows).join("\n");
+  assert.match(text, /switches to Commits landed newest\./);
+  assert.match(text, /landing drift in `main\.to_commits\.0`: empty \/ newest/);
 });
 check("chance separation", () => {
   assert.equal(chanceApart(3, 3), 0.1);

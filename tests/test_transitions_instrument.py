@@ -4,8 +4,9 @@ Its pure logic runs browserless: request classes, cache disposition over recorde
 event sequences, frame accounting, region movement, every refusal and verdict of
 ``compare`` over fixture rows, and process cleanup. Its recorder runs in a real headless
 Chrome on synthetic pages, because what it measures is paint and the frame clock:
-readiness against the input, the presentation of the ready frame, content on screen, and
-304s a server logged.
+readiness against the input, the presentation of the ready frame, content on screen,
+304s a server logged, and the journeys' Commits landing on either side of main's
+19a36c5b.
 """
 
 from __future__ import annotations
@@ -13,10 +14,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import warnings
 from pathlib import Path
 
 import pytest
 
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,24 +36,59 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 44 checks passed\n"
+    assert result.stdout == "transitions instrument: 49 checks passed\n"
+
+
+# The longest group is landing: 28.4 to 28.6 s in CI, and 29 to 38 s on a loaded 10-core
+# Mac; content takes 20 s in CI, and a check taken again for its frame clock adds a few
+# seconds. A run cut off at this bound has its whole process group stopped and its
+# profile removed, so a hang leaves nothing running.
+RECORDER_TIMEOUT_S = 50
+# The longest a recorder test can take: its bound, the group's stop, and the profile's
+# teardown. That is more than the suite's 60 s, so the module carries its own limit, with
+# 10 s for the rest of the setup; tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = RECORDER_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
 @pytest.mark.parametrize(
-    ("group", "count"), [("frames", 5), ("frames2", 3), ("content", 10), ("network", 2)]
+    ("group", "count"),
+    [
+        ("frames", 5),
+        ("frames2", 3),
+        ("content", 10),
+        ("network", 2),
+        ("landing", 11),
+    ],
 )
-def test_transition_recorder_in_chrome(group: str, count: int) -> None:
+def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:
     chrome = require_chrome()
-    result = subprocess.run(
-        [require_node(), str(DOM / "transitions-recorder-chrome.mjs"), group],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=50,
+    result = run_in_own_group(
+        [
+            require_node(),
+            str(DOM / "transitions-recorder-chrome.mjs"),
+            group,
+            str(chrome_profile),
+        ],
+        timeout_s=RECORDER_TIMEOUT_S,
         env={**os.environ, "CHROME_BIN": chrome},
+    )
+    # The script names each check on stderr as it starts, so a run stopped at the bound
+    # says which check it was in.
+    assert not result.timed_out, (
+        f"the {group} checks were stopped after {RECORDER_TIMEOUT_S} s: {result.stderr}"
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"transitions recorder {group}: {count} checks passed\n"
+    # A check the machine was too busy to measure the first time is taken again (the
+    # script's FRAME_CLOCK_ATTEMPTS); a pass that needed it says so in the warnings summary
+    # rather than passing silently.
+    retries = [line for line in result.stderr.splitlines() if line.startswith("retry: ")]
+    if retries:
+        warnings.warn(
+            f"transitions recorder {group} passed after retrying: " + " | ".join(retries),
+            stacklevel=1,
+        )
 
 
 # A stand-in `metab`: it reports a version, then serves a complete inventory and drops

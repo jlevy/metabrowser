@@ -238,6 +238,12 @@ function plainClick(target) {
   toc.queryOne.set("[data-kpress-toc-expand-all]", expandAllButton);
   toc.queryMany.set('ol a[href^="#"]', links);
   const container = new ElementShim("article");
+  // The render is placed through a template (place-rendered.js); the document it places
+  // is the one built above, so placing it keeps the container's children.
+  container.ownerDocument = {
+    createElement: () => ({ content: { querySelectorAll: () => [] }, innerHTML: "" }),
+  };
+  container.replaceChildren = () => {};
   container.queryMany.set("a[href]", links);
   container.queryMany.set(
     "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]",

@@ -13,9 +13,12 @@ Now each entry restores its own view, a step within the commit shown loads nothi
 stepping on before a commit answers leaves the later entry in the pane.
 A step taken before the panel is ready ends on the entry the reader stepped to, and a
 landing that outlives the panel paints nothing.
+Only an answer that the root is no longer a repository removes the panel: a repository
+read that gets no answer keeps it, and the landing shows its commit.
 An address with a short commit ID says it needs the full lowercase one, a panel that
 went away and came back starts over, and a folder that is not a repository has no Git
-panel listening.
+panel listening. A commit opened again, from its row or by Back, shows its diff from the
+comparison kept for its commit ID, so each commit’s comparison is asked for once.
 
 Switching to Commits names no commit, so it lands on the newest one, the top row.
 While the first page of history is on its way the pane keeps what it showed, busy
@@ -30,9 +33,9 @@ the newest when Back reaches it, as a reload onto it does.
 An empty history selects nothing and says so; a failed one says so, and the retry that
 loads it lands on the newest.
 A page of history that settles while the panel checks whether HEAD moved leaves the
-landing to that check: an unmoved HEAD lands as the check ends, and a moved one on the
-newest commit of the walk the refresh lays out, not on the old walk’s, even with a page
-of the old walk still on its way.
+landing to that check: an unmoved HEAD, or a check that gets no answer, lands as the
+check ends, and a moved one on the newest commit of the walk the refresh lays out, not
+on the old walk’s, even with a page of the old walk still on its way.
 A walk that recovery rebuilt meanwhile read HEAD itself and lands at once, and the older
 check changes nothing when it ends.
 The busy state ends when the commit shows, when a failure is shown, or when the reader
@@ -256,9 +259,9 @@ $ node tests/dom/git-commit-history-session.js
   },
   "a landing when the repository gate failed once": {
     "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "pane": "file src/a.py",
-    "owner": "file",
-    "navPanel": "files",
+    "pane": "commit aaaaaaa",
+    "owner": "git",
+    "navPanel": "git",
     "requests": []
   },
   "a panel that came back starts over": {
@@ -287,6 +290,29 @@ $ node tests/dom/git-commit-history-session.js
     "owner": "file",
     "navPanel": "files",
     "requests": []
+  },
+  "a commit opened again": {
+    "reselected": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    },
+    "back": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    },
+    "comparisons": [
+      "comparison aaaaaaa",
+      "comparison bbbbbbb"
+    ]
   },
   "switching to Commits": {
     "the page opens on a file": {

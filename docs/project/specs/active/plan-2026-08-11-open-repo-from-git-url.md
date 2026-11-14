@@ -285,6 +285,8 @@ answers.
 - `ensure_private_directory(home, relative_path)` creates or verifies a directory.
 - `open_private_file(home, relative_path, flags)` opens or creates a file and returns a
   descriptor.
+- `private_directory(home, relative_path)` verifies a directory once and opens several
+  files in it.
 - `validate_private_home(home)` checks the home and its ancestors without changing
   anything.
 
@@ -351,6 +353,93 @@ holder acquire the same lock.
 be read or interpreted, and a platform without descriptor-relative, no-follow operations
 all fail closed. Windows is such a platform today: every call refuses as `unverifiable`
 until current-user-only ACL enforcement lands in `mb-pyqf`.
+
+**Every call checks again; only descriptors are reused.** Each call re-establishes every
+guarantee above against the storage as it is at that moment, so a change made after one
+call is refused by the next in exactly the cases a first call would refuse it.
+Re-establishing it does not require opening every directory again.
+A directory below the ancestors that has been opened and verified is kept open, and a
+later call reuses its descriptor only when all of this holds on that call:
+
+- A no-follow stat of its name, taken through the descriptor this call verified for its
+  parent (or by path, for the home), shows the held device and inode.
+  The held descriptor pins that inode, so its number cannot have been reused, and the
+  name refers to the held directory itself, not a replacement or a link.
+- The name reaches that directory through the mount the held descriptor was opened
+  through. Device and inode name a directory, not the mount: a Linux bind mount shows the
+  same directory, same device and inode, under its own flags, such as read-only.
+  On Linux the mount is `statx(2)`’s `STATX_MNT_ID`. On macOS it is the file system ID
+  of the vnode’s volume, from `getattrlistat(2)` `ATTR_CMN_FSID` with
+  `FSOPT_RETURN_REALDEV`; without that option the volumes of a volume group, such as the
+  sealed system volume at `/` and the data volume beside it, all report the group’s one
+  logical ID, as `st_dev` does.
+  With it every mounted volume has its own.
+  macOS has no bind mount that shows one directory through two mounts; were one added,
+  its own file system ID would still tell them apart.
+  Where a platform cannot tell the mount, or the lookup fails, nothing is held for
+  reuse.
+- That stat shows a directory the current user owns and may read, with no group or other
+  mode bits.
+- Its ACL, read through the held descriptor on this call, has no entries at all.
+
+That is a state in which a fresh open would succeed, reach the same directory through
+the same mount, and leave every `shared` policy accepting it without a change or a
+warning, so reuse changes no answer.
+Anything else, including an error, opens and verifies the directory as if nothing were
+held. What each check defends against stays where it was:
+
+| Threat | Where it is checked on every call |
+| --- | --- |
+| A writable, foreign, or linked ancestor that could replace the home | The ancestors are walked and judged by path, as before; none is held |
+| Another principal reading the home or a directory below it | Owner and mode from the fresh stat; the ACL read again |
+| A directory replaced, or swapped for a link, after verification | Device and inode from the fresh stat must be the held ones |
+| The same directory reached through another mount, such as a read-only bind mount | The name’s mount identity must be the held descriptor’s |
+| The owner’s own access withdrawn, by mode or by a deny entry | Owner read in the fresh mode; any ACL entry defers to the full check |
+| A file that is shared, linked, or not regular | Every file is opened and judged afresh |
+
+`test_a_change_after_a_call_is_answered_as_if_nothing_were_held` in
+`tests/test_cache_permissions.py` makes each of those changes, and more, after a call
+has left every directory held, and requires the same answer, the same logged repairs,
+and the same tree afterwards as a call that holds nothing.
+`test_a_read_only_bind_mount_over_a_held_directory_is_honored` does the same for a
+read-only bind mount in a private Linux mount namespace.
+It runs as root of a user namespace where the kernel lets one mount.
+Otherwise it runs as host root through `sudo -n unshare --mount`, which runs this
+project’s interpreter and every module it imports as root, so it takes that route only
+on a disposable machine: a GitHub-hosted runner, which is how CI runs it, or one whose
+owner sets `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. Elsewhere it skips;
+[the test tiers](../../../e2e-testing.md#skips) say when.
+
+Nothing about privacy is remembered between calls, only descriptors.
+`_HELD_DIRECTORY_LIMIT` (`home.py` records the measurement behind it) bounds the
+directories a process keeps open for reuse; it evicts the least recently used and closes
+a descriptor only once no call is borrowing it.
+Calls in progress add their own descriptors on top: a walk borrows one directory at a
+time, releasing each parent once its child is confirmed or opened, so it needs at most
+two at once whatever its depth, and a block keeps only its own directory.
+A held descriptor is never read from, because a directory’s read offset is shared by
+every holder: a listing opens its own descriptor on the directory.
+A held directory also keeps its volume in use until it is evicted or the process exits.
+
+A forked child closes every descriptor its parent owned, those held for reuse and those
+still borrowed alike, and starts a new generation.
+No descriptor of the cache is ever outside that set at a fork: one is opened and
+registered while a fork from another thread waits, and one is dropped and closed in a
+single step under the lock a fork takes.
+A lease or a `PrivateDirectory` from before the fork is void there: using it is refused,
+and releasing it closes nothing, so neither can reach a descriptor number the child has
+reused for something else.
+These rules run in `os.register_at_fork` hooks, so they hold for a fork made through
+Python’s `os.fork`, or by native code that calls `PyOS_BeforeFork` and
+`PyOS_AfterFork_Child` around it; a native extension that forks without those calls
+bypasses them. Nothing in Metabrowser forks that way.
+`subprocess` forks and runs a new program at once, and every held descriptor is
+close-on-exec.
+
+`private_directory(home, relative_path, shared=…)` verifies a directory once for several
+files opened together, such as the pull-request catalog and its three journal files.
+Each file is still opened and judged afresh; a change to the directories made while the
+block runs is noticed by the next call.
 
 On Linux only mode bits are inspected, which is enough for POSIX ACLs: an object’s
 group-class bits are its ACL mask, which bounds every named user and group entry, and a

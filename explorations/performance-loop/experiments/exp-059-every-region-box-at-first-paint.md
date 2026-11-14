@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run, one server process per run.
     candidate: metab 0.12.1.dev165+9903292 (+176 commits, 28e12fa28), the editable checkout of this branch at 28e12fa2, clean at the start and end of every run, one server process per run, run back to back with the control in alternating order.
+    protocol:
+      path: exp-059-064-protocol.txt
+      sha256: 61bcea6cd99b53d5b60b7ac2cfdc7cbad5be2efdbacacd920a4794f509049d49
     record: exp-059-transition-samples.jsonl
   results:
     - metric: region_movement_px.files.cold.source_large
@@ -304,6 +307,10 @@ bar, the file header’s slots) and (b) the pull request header’s rows.
   of the shell’s generic skeleton.
 
 ## Protocol
+
+> Correction, 2026-11-14: the full preregistration this section restates, with its
+> amendments, was kept only in a worktree’s gitignored `attic/`. It is now committed as
+> [exp-059-064-protocol.txt](exp-059-064-protocol.txt) and named in `method.protocol`.
 
 Declared before the measured series (the criteria were first declared for the revision 3
 series and restated unchanged for each later one; metric names are identical in revision

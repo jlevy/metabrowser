@@ -124,6 +124,16 @@ this repository’s structural facts and standing answers.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
 
+## Durable Storage
+
+**Never keep anything a later step, another session, a record, or a lock depends on in a
+transient location**: `/tmp`, `$TMPDIR`, or an agent’s session scratchpad under
+`/private/tmp`. A restart empties them; on 2026-11-14 one took a measurement campaign’s
+lock, scripts, and the protocols its records cite by hash.
+A transient location is only for output that rerunning a command recreates.
+[Durable Storage](docs/development.md#durable-storage) says where each kind of file and
+lock belongs instead, and `tests/test_experiment_storage.py` checks experiment records.
+
 ## Changing This Guidance
 
 Do not add a rule or restriction here or in `docs/development.md` without deciding from

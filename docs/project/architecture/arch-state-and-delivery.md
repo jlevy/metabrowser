@@ -527,18 +527,30 @@ as a defect.
 | Request | `depth` | Returns | Issued by |
 | --- | --- | --- | --- |
 | Rows | absent, or `>= 1` | `tree` populated; tally fields null unless a fresh memo exists | the nav tree, via `treeUrl` |
-| Tallies | `0` | `tree` empty, always; `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets`, `recency_tallies` | `scheduleRootSummaryRefresh`, behind the render |
+| Tallies | `0` | `tree` empty, always; `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets`, `recency_tallies` | `scheduleRootSummaryRefresh`, behind the render, one at a time |
 
 An absent `depth` is not unbounded: it resolves to `DEFAULT_TREE_DEPTH`, which is 2. So
 the browser’s ordinary row request is a depth-2 request, and `depth=0` is a channel that
 never carries rows at all -- time to first row cannot be measured on it.
 
-**Only `depth=0` computes tallies.** The pass costs 0.37 s at 60,000 files indexed and
+**Only `depth=0` computes tallies.** The pass cost 0.37 s at 60,000 files indexed and
 1.30 s at 220,000, and it competes with the walker for the GIL, so paying it on a row
 request delays the rows and slows the scan that is producing them.
 Every tally field is nullable and the client guards each one, which is what makes the
 split safe. See
 `explorations/performance-loop/experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md`.
+Classifying each extension once rather than every file twice has since made the pass
+about four times cheaper: 373 ms at 300,000 entries.
+
+**A page holds one tallies request at a time.** Once the walk has finished, every write
+upserts the root and asks for fresh tallies, and on a moving index each answer is a
+fresh pass. `createRootSummaryRefresh` in `static/navigation.js` answers all the asks
+made while a request is in flight with one request after it, waits at least 2 s or twice
+what the last one took between requests, and asks nothing while the page is hidden or
+Files is behind another tab.
+Without it a page held a pile of identical requests, and WebKit, which sends them in
+parallel, starved the Commits tab of connections.
+See `explorations/tree-summary-storm/README.md`.
 
 A client that wants both asks twice.
 That is what the browser does, and it is why the split is invisible in the app and

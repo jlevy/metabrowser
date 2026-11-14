@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from metabrowser import kpress_adapter
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
@@ -48,8 +48,15 @@ PARTS = (
 # about as long as this machine once its first Chrome had started. 40 s leaves the
 # largest part six times that, and fires before the suite's 60.
 SESSION_TIMEOUT_S = 40
-# The first start's own bound, as long as the suite's gates allow an inner one.
+# The first start's own bound, as long as the suite's gates allow an inner one. A cold
+# Chrome start in CI has taken 28.2 s (the Overview alignment test, 2026-11-14).
 LAUNCH_TIMEOUT_S = 48
+# The longest a part can take: the larger bound, the session's process group stopped after
+# it, and the profile's teardown (tests/process_group.py). That is more than the suite's
+# 60 s, so the module carries its own limit, with 10 s for the faces' copy and the rest of
+# the setup; tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = max(LAUNCH_TIMEOUT_S, SESSION_TIMEOUT_S) + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
 def _kpress_faces(into: Path) -> Path:
@@ -64,25 +71,27 @@ def _kpress_faces(into: Path) -> Path:
 
 
 @pytest.mark.parametrize("part", PARTS)
-def test_the_pull_header_keeps_its_box_in_chrome(tmp_path: Path, part: str) -> None:
+def test_the_pull_header_keeps_its_box_in_chrome(
+    tmp_path: Path, part: str, chrome_profile: Path
+) -> None:
     chrome = require_chrome()
     bound = LAUNCH_TIMEOUT_S if part == "launch" else SESSION_TIMEOUT_S
-    try:
-        result = subprocess.run(
-            [require_node(), str(SESSION), "--part", part],
-            capture_output=True,
-            text=True,
-            timeout=bound,
-            check=False,
-            env={
-                **os.environ,
-                "CHROME_BIN": chrome,
-                "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
-            },
-        )
-    except subprocess.TimeoutExpired as expired:
+    # The session leads a process group of its own, which Chrome joins, and the whole
+    # group is stopped however it ends; its profile is the fixture's to remove
+    # (tests/process_group.py).
+    result = run_in_own_group(
+        [require_node(), str(SESSION), "--part", part],
+        timeout_s=bound,
+        env={
+            **os.environ,
+            "CHROME_BIN": chrome,
+            "CHROME_PROFILES": str(chrome_profile),
+            "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
+        },
+    )
+    if result.timed_out:
         # The steps it finished, each with its time, say where the bound went.
-        pytest.fail(f"{part} ran past {bound} s; its steps:\n{expired.stderr or ''}")
+        pytest.fail(f"{part} ran past {bound} s; its steps:\n{result.stderr}")
     # Each step's time, shown with the case's output when it fails.
     print(result.stderr)
     assert result.returncode == 0, result.stderr or result.stdout

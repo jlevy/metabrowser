@@ -25,6 +25,13 @@
   const SEGMENT_REBASE_PX = settings.GIT_HISTORY_SEGMENT_REBASE_PX || 8_000_000;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
+  // Kept commit comparisons, bounded by the length of their JSON. See settings.py for the
+  // measurement the default is set from.
+  const COMPARISON_CACHE_BYTES = settings.GIT_COMPARISON_CACHE_BYTES || 16 * 1024 * 1024;
+  // A comparison larger than this is shown and not kept: one must not push out every other.
+  const COMPARISON_ENTRY_BYTES = Math.floor(COMPARISON_CACHE_BYTES / 4);
+  // A full SHA-1 or SHA-256 commit ID: the one revision that names the same commit later.
+  const FULL_COMMIT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -113,6 +120,26 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
+  /**
+   * Answered comparisons, least recently used first, by the request that asked for them.
+   * Only a comparison named by full commit IDs is kept, while a ref name or HEAD names
+   * whatever it points at now. A revisit then mounts the diff with no request, where the
+   * comparison route took 88 to 141 ms each time
+   * (research-2026-11-11-ui-apparent-performance.md).
+   *
+   * A kept answer is kept until Refresh, teardown, or a history walk found stale. Four
+   * inputs can change a served folder's answer for the same commit ID before then, and the
+   * page does not see them: the working tree's `.gitattributes`, `.git/config`, the
+   * reader's Git configuration (a diff driver), and a replace ref or graft that gives the
+   * commit another first parent. A store's answers read none of them.
+   *
+   * @type {Map<string, {raw: unknown, bytes: number}>}
+   */
+  const comparisonCache = new Map();
+  let comparisonCacheBytes = 0;
+  // Moved by every clear, so an answer requested before a clear is not kept after it.
+  let comparisonGeneration = 0;
+
   // A commit's object id never changes, but its refs do as branches and tags move, so a
   // detail's refs are true only for the history session they were read in: the
   // `historyGeneration` every rebuild of the history advances. This records it per detail.
@@ -127,6 +154,12 @@
   // Released when that view is relinquished or disposed. `token` names the mount without
   // holding its DOM, which is all a confirmation still on its way keeps.
   /** @typedef {{token: number, revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
+  /**
+   * What the repository gate answered: a repository, an answer that the root is not
+   * one, or no answer at all.
+   *
+   * @typedef {{status: "repo", info: MetabrowserGitRepoInfo} | {status: "not-repo"} | {status: "failed"}} RepoRead
+   */
   /** @type {MountedSummary | null} */
   let mountedSummary = null;
   let summaryMounts = 0;
@@ -194,6 +227,17 @@
   let landingGeneration = 0;
   /** @type {{generation: number, pending: ReturnType<typeof readRepoInfo>} | null} */
   let repoInfoRead = null;
+  // Discovery asks again when the repository read fails, starting here and doubling to
+  // the cap: a refused or timed-out answer is not "no repository", and a page that
+  // gave up on it never showed Commits.
+  const REPO_RETRY_FIRST_MS = 1000;
+  const REPO_RETRY_MAX_MS = 30000;
+  let repoRetryMs = REPO_RETRY_FIRST_MS;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let repoRetryTimer = null;
+  // Which discovery a scheduled retry belongs to. Teardown retires it, so a retry that
+  // fires anyway cannot register a panel the page has given up.
+  let discoveryGeneration = 0;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -421,10 +465,11 @@
   // ── Data ───────────────────────────────────────────────────
 
   /**
-   * Fetch the repository gate. A failed request returns null so init or
-   * the visible panel can retry without registering a broken surface.
+   * Fetch the repository gate. `failed` is a request that got no answer (a refused or
+   * timed-out connection, an error status, an unreadable body), which init and the
+   * visible panel retry; only an answer that says so is `not-repo`.
    *
-   * @returns {Promise<MetabrowserGitRepoInfo | null>}
+   * @returns {Promise<RepoRead>}
    */
   function fetchRepoInfo() {
     const generation = historyGeneration;
@@ -440,16 +485,18 @@
     return pending;
   }
 
+  /** @returns {Promise<RepoRead>} */
   async function readRepoInfo() {
     try {
       const response = await apiFetch("/api/git/repo");
       if (!response.ok) {
-        return null;
+        return { status: "failed" };
       }
+      /** @type {MetabrowserGitRepoInfo | null} */
       const info = await response.json();
-      return info?.is_repo ? info : null;
+      return info?.is_repo ? { status: "repo", info } : { status: "not-repo" };
     } catch {
-      return null;
+      return { status: "failed" };
     }
   }
 
@@ -604,6 +651,9 @@
         recoverSession = failure === "recover";
         if (failure === "stale") {
           state.stale = true;
+          // The refs moved, and a replace ref or a graft among them changes a commit's
+          // first parent, so a kept comparison may no longer be the answer.
+          clearComparisonCache();
         }
         throw new Error(`HTTP ${response.status}`);
       }
@@ -1026,6 +1076,119 @@
   }
 
   /**
+   * The key a comparison request is kept under, or null when its answer can change.
+   *
+   * The key is the request's own query, so every option the request sends is part of it;
+   * what else the answer depends on, the served repository and the build, is the page's
+   * own and does not change while it is open.
+   *
+   * @param {Record<string, string>} params
+   * @returns {string | null}
+   */
+  function comparisonCacheKey(params) {
+    const revision = params.revision;
+    if (typeof revision !== "string" || !FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    const names = Object.keys(params).sort();
+    return new URLSearchParams(names.map((name) => [name, String(params[name])])).toString();
+  }
+
+  /**
+   * The kept answer for *key*, marked most recently used, or undefined.
+   *
+   * @param {string} key
+   */
+  function keptComparison(key) {
+    const kept = comparisonCache.get(key);
+    if (kept) {
+      comparisonCache.delete(key);
+      comparisonCache.set(key, kept);
+    }
+    return kept;
+  }
+
+  /**
+   * Keep *raw* under *key*, evicting the least recently used answers past the bound.
+   *
+   * The bound is on the answer's JSON length in characters; the parsed answer holds 0.97 to
+   * 1.66 times that in V8's heap (see settings.py). Measuring it costs 0.45 ms for a 197 KB
+   * answer and about 8 ms for a 3.3 MB one, so it runs in a task after the one that hands
+   * the answer to the diff (review B of #368, B3).
+   *
+   * @param {string} key
+   * @param {unknown} raw
+   */
+  function keepComparison(key, raw) {
+    let bytes;
+    try {
+      bytes = JSON.stringify(raw)?.length ?? 0;
+    } catch {
+      return;
+    }
+    const previous = comparisonCache.get(key);
+    if (previous) {
+      comparisonCache.delete(key);
+      comparisonCacheBytes -= previous.bytes;
+    }
+    if (bytes > COMPARISON_ENTRY_BYTES) {
+      return;
+    }
+    comparisonCache.set(key, { raw, bytes });
+    comparisonCacheBytes += bytes;
+    for (const [oldest, entry] of comparisonCache) {
+      if (comparisonCacheBytes <= COMPARISON_CACHE_BYTES) {
+        break;
+      }
+      comparisonCache.delete(oldest);
+      comparisonCacheBytes -= entry.bytes;
+    }
+  }
+
+  function clearComparisonCache() {
+    comparisonCache.clear();
+    comparisonCacheBytes = 0;
+    comparisonGeneration += 1;
+  }
+
+  /**
+   * One revision's comparison: the kept answer, or a request whose answer is kept.
+   *
+   * A kept answer resolves at once, and the caller's claim checks after each await still
+   * decide whether it is shown, exactly as for an answer that arrived over the network.
+   *
+   * @param {MetabrowserPublicSdk} pluginSdk
+   * @param {string} revision
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<unknown>}
+   */
+  function fetchComparison(pluginSdk, revision, signal) {
+    const params = { revision };
+    const key = comparisonCacheKey(params);
+    const kept = key === null ? undefined : keptComparison(key);
+    return measureAsync(
+      "gitRevision:comparisonData",
+      () => {
+        if (kept) {
+          return Promise.resolve(kept.raw);
+        }
+        const generation = comparisonGeneration;
+        return pluginSdk.fetchPluginData("diff", "comparison", params, { signal }).then((raw) => {
+          if (key !== null) {
+            setTimeout(() => {
+              if (generation === comparisonGeneration) {
+                keepComparison(key, raw);
+              }
+            }, 0);
+          }
+          return raw;
+        });
+      },
+      { revision, kept: kept !== undefined },
+    );
+  }
+
+  /**
    * Start the independent diff work for one revision.
    *
    * @param {string} revision
@@ -1038,19 +1201,10 @@
           revision,
         })
       : Promise.resolve();
-    const comparison = pluginSdk?.fetchPluginData
-      ? measureAsync(
-          "gitRevision:comparisonData",
-          () =>
-            pluginSdk.fetchPluginData(
-              "diff",
-              "comparison",
-              { revision },
-              { signal: controller?.signal },
-            ),
-          { revision },
-        )
-      : undefined;
+    const comparison =
+      typeof pluginSdk?.fetchPluginData === "function"
+        ? fetchComparison(pluginSdk, revision, controller?.signal)
+        : undefined;
     // Speculative work may be replaced before the diff view awaits it. Attach
     // a rejection handler immediately while preserving the original promise
     // for the view's existing error path. The assets can fail too: the diff
@@ -2805,6 +2959,10 @@
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
+    // A comparison names no refs, but a served folder's answer also
+    // reads its attributes, its configuration, and its replace refs and
+    // grafts, which this panel cannot see change; a refresh is the
+    // reader's way to ask again, so it asks again for both.
     // Recovery keeps the cache, for the rest of a detail and the mounted diff, but not
     // its refs: resetHistoryRequests began a new session, so a cached detail serves again
     // only once that session's row confirms its refs (adoptRowRefs). A detail request
@@ -2813,17 +2971,19 @@
     if (!options.preserveDetail) {
       detailCache.clear();
       missingRevisions.clear();
+      clearComparisonCache();
     }
     state.loading = true;
     renderPanel();
     try {
-      const info = await fetchRepoInfo();
-      if (!info) {
+      const read = await fetchRepoInfo();
+      if (read.status !== "repo") {
         state.loading = false;
         state.failed = true;
         renderPanel();
         return;
       }
+      const info = read.info;
       state.headRevision = info.head?.revision ?? null;
       state.headRef = info.head?.ref ?? null;
 
@@ -2874,10 +3034,10 @@
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
     headReads.set(generation, (headReads.get(generation) ?? 0) + 1);
-    /** @type {MetabrowserGitRepoInfo | null} */
-    let info;
+    /** @type {RepoRead} */
+    let read;
     try {
-      info = await fetchRepoInfo();
+      read = await fetchRepoInfo();
     } finally {
       const left = (headReads.get(generation) ?? 1) - 1;
       if (left > 0) {
@@ -2889,11 +3049,22 @@
     if (generation !== historyGeneration) {
       return;
     }
-    if (!info) {
+    if (read.status === "not-repo") {
       // The served root stopped being a repository under us.
       teardown();
       return;
     }
+    if (read.status === "failed") {
+      // No answer is not "no repository": keep the tab and the rows already read, and
+      // check again the next time it shows. Tearing down here removed Commits from the
+      // page for good on one refused or timed-out request.
+      renderVirtualRows(true);
+      // Nor is it news that HEAD moved: the walk the panel holds answers a landing that a
+      // page settling during the read left to it, as it did before the read began.
+      selectNewestWhenReady();
+      return;
+    }
+    const info = read.info;
     if (
       (info.head?.revision ?? null) !== state.headRevision ||
       (info.head?.ref ?? null) !== state.headRef
@@ -2920,6 +3091,7 @@
   }
 
   function teardown() {
+    cancelDiscoveryRetry();
     resetHistoryRequests();
     clearPendingState();
     cancelHover();
@@ -2944,6 +3116,7 @@
     detailInFlight.clear();
     mountedSummary = null;
     missingRevisions.clear();
+    clearComparisonCache();
     refusedRevision = null;
     lastSelection = null;
     newestLanding = null;
@@ -3156,6 +3329,33 @@
     renderVirtualRows(true);
   }
 
+  /** Ask whether the served root is a repository again, after a read that got no answer. */
+  function retryDiscovery() {
+    if (repoRetryTimer !== null) {
+      return;
+    }
+    const generation = discoveryGeneration;
+    const delay = repoRetryMs;
+    repoRetryMs = Math.min(repoRetryMs * 2, REPO_RETRY_MAX_MS);
+    repoRetryTimer = setTimeout(() => {
+      if (generation !== discoveryGeneration) {
+        return;
+      }
+      repoRetryTimer = null;
+      void init();
+    }, delay);
+  }
+
+  /** Cancel a scheduled discovery retry and retire any that fires anyway. */
+  function cancelDiscoveryRetry() {
+    discoveryGeneration += 1;
+    if (repoRetryTimer !== null) {
+      clearTimeout(repoRetryTimer);
+      repoRetryTimer = null;
+    }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
+  }
+
   /**
    * Register the Commits tab if the served root is a repository.
    *
@@ -3173,10 +3373,13 @@
     started = true;
     const generation = historyGeneration;
 
-    const info = await fetchRepoInfo();
-    if (!info) {
+    const read = await fetchRepoInfo();
+    if (read.status !== "repo") {
       if (generation === historyGeneration) {
         started = false;
+        if (read.status === "failed") {
+          retryDiscovery();
+        }
       }
       return;
     }
@@ -3184,6 +3387,8 @@
     if (!started || generation !== historyGeneration) {
       return;
     }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
+    const info = read.info;
     state.headRevision = info.head?.revision ?? null;
     state.headRef = info.head?.ref ?? null;
 
@@ -3213,6 +3418,14 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      beginDiffPreparation,
+      clearComparisonCache,
+      comparisonCacheKey,
+      comparisonCacheStats: () => ({
+        bytes: comparisonCacheBytes,
+        entries: comparisonCache.size,
+        keys: [...comparisonCache.keys()],
+      }),
       teardown,
       ensurePageLoaded,
       emptyState,

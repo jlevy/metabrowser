@@ -51,6 +51,7 @@ from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
+from stat import S_ISREG
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 
 from starlette.applications import Starlette
@@ -84,6 +85,7 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
+from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -110,9 +112,11 @@ from metabrowser.gz_io import (
 )
 from metabrowser.http_caching import (
     BUILD_TAG,
+    address_version,
     build_scoped_etag,
     editable_install,
     etag_headers,
+    immutable_headers,
     matches_if_none_match,
     stamped_asset_cache_control,
     store_tag,
@@ -947,6 +951,23 @@ _SCRIPT_CAPABLE: Final = re.compile(
     r"^\s*(?:text|application)/(?:x-)?(?:javascript|ecmascript|jscript|livescript|css)\b",
     re.IGNORECASE,
 )
+# Raster images: a browser decodes them and runs nothing, whether they are loaded as an
+# image or opened as a document, so their execution policy is the same under both trust
+# profiles. /raw sends them the sandbox without `allow-scripts` under either profile,
+# rewrites no profile's type for them, and so answers them with the same execution
+# headers whichever profile serves. Only they may be kept for a year at a versioned address
+# (raw_file): an answer kept under one profile is replayed, unasked, under another on the
+# same origin, and an SVG or HTML document's headers differ by profile. Matched by the type
+# /raw sends, which `nosniff` makes the one a browser takes, not by the file's bytes.
+_PROFILE_INDEPENDENT_MEDIA_TYPES: Final = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}
+)
+
+
+def _profile_independent(content_type: str) -> bool:
+    """Whether a /raw answer of *content_type* has the same execution policy in every profile."""
+
+    return content_type.split(";", 1)[0].strip().lower() in _PROFILE_INDEPENDENT_MEDIA_TYPES
 
 
 def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
@@ -1009,7 +1030,18 @@ class _RawTrustHeaderMiddleware:
             if message.get("type") == "http.response.start":
                 started = True
                 headers = MutableHeaders(scope=message)
-                headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
+                # A raster image runs nothing, so it never needs `allow-scripts`, and without it
+                # its policy is the same in both profiles (_PROFILE_INDEPENDENT_MEDIA_TYPES).
+                # raw_file decides that by the type it chose and sends the scriptless sandbox
+                # itself, since a 304 has no Content-Type and a multipart range answer
+                # another; it is kept, as a stricter policy is. The outgoing type covers the
+                # rest, a decompressed stream and a pin's blob among them.
+                scriptless = raw_sandbox_csp(active_content=False)
+                headers["Content-Security-Policy"] = raw_sandbox_csp(
+                    active_content=active_content
+                    and headers.get("content-security-policy") != scriptless
+                    and not _profile_independent(headers.get("content-type", ""))
+                )
                 # Never kept as fresh, whichever branch answered: its headers are this
                 # profile's (SECURITY.md). raw_file sets it with its tag; this covers the
                 # rest -- the decompressed stream, a 404 or a 403 -- by construction.
@@ -3606,7 +3638,17 @@ async def api_kpress_render(request: Request) -> Response:
         # A document the reader does not trust renders inert (kpress_adapter.inert_render).
         with server_timing.phase("render"):
             rendered = kpress_adapter.inert_render(rendered)
-    return JSONResponse(rendered, headers={"cache-control": "no-cache"})
+    # The version of each file the document embeds, which the page puts in that file's
+    # /raw address, so a replaced image is a new address (_raw_versions). Read on every
+    # render, which is never kept: a render names the files as they are when it is asked.
+    # A new mapping: KPress keeps renders, and this one must not change what it keeps.
+    with server_timing.phase("read"):
+        raw_versions = await asyncio.to_thread(
+            _raw_versions, str(rendered.get("html") or ""), subpath
+        )
+    return JSONResponse(
+        {**rendered, "raw_versions": raw_versions}, headers={"cache-control": "no-cache"}
+    )
 
 
 _KPRESS_EXPORT_MODES_SUPPORTED = {"page", "static-hosted", "hashed-static-hosted", "pdf"}
@@ -3972,6 +4014,59 @@ def _raw_identity(mtime_hash: str, stat: os.stat_result, *, passthrough: bool) -
     )
 
 
+def _raw_version(target: Path, stat: os.stat_result) -> str:
+    """The version a ``/raw`` address carries: the file as it is now, and the trust profile.
+
+    A raster image at its versioned address is kept for a year without asking
+    (``SECURITY.md``), so the version names everything that answer depends on: the file
+    by its resolved path and by what a replacement moves -- size, modification and change
+    times, inode, and device -- and the headers by the trust profile and the sandbox
+    policy it sends. The build is folded in by
+    :func:`metabrowser.http_caching.address_version`. The representation is not named: a
+    gzip passthrough answer varies by ``Accept-Encoding``, which a browser keys it by.
+    """
+    active = get_capabilities().active_content
+    return address_version(
+        f"{os.fsencode(target)!r}:{stat.st_size}:{stat.st_mtime_ns}:{stat.st_ctime_ns}:"
+        f"{stat.st_ino}:{stat.st_dev}:{'active' if active else 'inert'}:"
+        f"{raw_sandbox_csp(active_content=active)}"
+    )
+
+
+# How many resources of one render get a version, in document order. Past it a resource's
+# address is unversioned and revalidated, and its image is not held (place-rendered.js).
+# Each version costs what /raw's own resolver costs, a realpath and a stat, and a render
+# is asked for on every entry. Measured 2026-11-14 on a laptop at a load average near 13,
+# through _raw_versions on a document of 1,024 images in one folder, 12 path components
+# deep, warm cache, 30 runs: 1,024 versions took a median of 71 ms, as long as KPress took
+# to render that document uncached (68 ms); 256 took 19 ms, and 64 took 5.5 ms. A re-entry
+# of that document in WebKit asked again for 224 images before they were held (#408), so
+# 256 versions cover a screen of thumbnails, and an image past them loads lazily as KPress
+# wrote it.
+_MAX_RAW_VERSIONS = 256
+
+
+def _raw_versions(rendered_html: str, source_path: str) -> dict[str, str]:
+    """The version of each served file *rendered_html* embeds, by its ``/raw`` identity.
+
+    Each identity is resolved as ``/raw`` resolves its ``path``, safe-path check included,
+    so a version names the file that address serves; one that resolves to no regular file
+    is left out. Runs in a worker thread: a ``stat`` per resource.
+    """
+    versions: dict[str, str] = {}
+    for identity in embedded_raw_paths(rendered_html, source_path, limit=_MAX_RAW_VERSIONS):
+        try:
+            target = resolve_session_identity(identity)
+            if target is None:
+                continue
+            stat = target.stat()
+        except OSError:
+            continue
+        if S_ISREG(stat.st_mode):
+            versions[identity] = _raw_version(target, stat)
+    return versions
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -4014,12 +4109,32 @@ async def raw_file(request: Request) -> Response:
         except OSError:
             return PlainTextResponse("Not found", status_code=404)
         etag = _etag_for(_raw_identity(mtime_hash, stat, passthrough=passthrough))
-        # Revalidated on every use, never kept as fresh: the body is the reader's file and
-        # its headers are the trust profile's (_RawTrustHeaderMiddleware), so a response a
-        # browser keeps without asking could answer for another profile on the same host
-        # and port. A 304 answers only the tag, which names the profile; a date cannot,
-        # so If-Modified-Since alone is answered in full. See SECURITY.md.
-        headers = etag_headers(etag)
+        # The body is the reader's file and its headers are the trust profile's
+        # (_RawTrustHeaderMiddleware). A response a browser keeps without asking is
+        # replayed without reaching this server, so no address can revoke it: one kept
+        # while the trusted profile served would answer, with `allow-scripts`, a link to it
+        # followed after the folder is served `--untrusted` on the same origin. So only an
+        # answer whose execution policy is the same in both profiles, a raster image
+        # (_PROFILE_INDEPENDENT_MEDIA_TYPES), is kept: for a year, at the query form's `v`
+        # while it is the version the file has now (_raw_version). Every other answer, an
+        # SVG or HTML document's at its current version included, is revalidated on every
+        # use: a 304 answers only the tag, which names the profile; a date cannot, so
+        # If-Modified-Since alone is answered in full. The path form is a document's
+        # address, for its relative references, and is never versioned. See SECURITY.md.
+        version = request.query_params.get("v")
+        current = (
+            version is not None
+            and "path" not in getattr(request, "path_params", {})
+            and _profile_independent(media_type)
+            and version == _raw_version(target, stat)
+        )
+        headers = immutable_headers(etag) if current else etag_headers(etag)
+        if _profile_independent(media_type):
+            # By this route's choice of type, so every answer it gives the image -- a 304,
+            # which carries no type, and a multipart range answer, whose type is
+            # multipart/byteranges, as much as a 200 -- has the policy both profiles send
+            # (review C of #426, C1).
+            headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=False)
         if passthrough:
             headers["Vary"] = "Accept-Encoding"
         # The tag alone: `*` names no profile, so it earns no 304 here.

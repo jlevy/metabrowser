@@ -275,6 +275,10 @@ Strict mode is off on a developer machine, which can add these:
 
 - `needs a Git the acquisition floor admits`, where the installed Git is below the
   floor;
+- `reftable repositories need Git 2.45 or later`, for the reftable cases of
+  `tests/test_git_route_memo.py`, where the installed Git is older; the default CI job’s
+  Git is newer, so CI runs them and strict mode fails them if they skip, and the
+  admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
 - `root is never denied by modes`, when the suite runs as root;
 - `symlinks are unavailable`, where the platform or the account cannot create one;
@@ -282,12 +286,39 @@ Strict mode is off on a developer machine, which can add these:
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
   above;
+- `bind mounts are a Linux mount namespace's`, off Linux, and
+  `no private mount namespace could be made`, on Linux, for
+  `test_a_read_only_bind_mount_over_a_held_directory_is_honored` in
+  `tests/test_cache_permissions.py`, which bind-mounts a directory read-only in a mount
+  namespace of its own.
+  It runs there as root of an unprivileged user namespace where the kernel lets one
+  mount. Otherwise it runs as host root through `sudo -n unshare --mount`, and that runs
+  this project’s interpreter, its startup hooks, and everything it imports as root: a
+  private mount namespace confines mounts, not root.
+  So it takes that route only on a machine thrown away after the run: a GitHub-hosted
+  runner, which GitHub marks with `GITHUB_ACTIONS=true` and
+  `RUNNER_ENVIRONMENT=github-hosted`, or one whose owner sets
+  `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. `sudo -n` never asks for a password.
+  CI’s Ubuntu runners cannot mount from an unprivileged user namespace, so CI runs it as
+  root, and a self-hosted runner without the variable fails it under strict mode;
 - `Chrome is not installed`, for the checks that need a real headless Chrome: the
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
-  the Folder Overview’s labels start at several window widths; and the layout checks in
-  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`. The
-  CI runners have Chrome, so CI runs them.
+  the Folder Overview’s labels start at several window widths; the layout checks in
+  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`; and
+  `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer Chrome kept
+  under the trusted profile after the folder is served `--untrusted`. The CI runners
+  have Chrome, so CI runs them.
+  Each runs its Node script in a process group of its own and stops that whole group,
+  Chrome included, however the run ends, with the group’s leader kept unreaped until
+  then so the group ID cannot pass to another process.
+  Chrome keeps every process it starts for a session in that group, which
+  `tests/test_process_group.py` measures for both ways the tests launch it, so stopping
+  the group is the whole mechanism: nothing outside it is signalled.
+  Afterwards a process still naming the profile is reported, failing the test, and left
+  running; the profile is removed even if that look failed.
+  Each test’s bounds, stops, and teardown together fit under its timeout.
+  `tests/process_group.py` does this, and `tests/test_process_group.py` holds it.
 
 ### Timeouts
 

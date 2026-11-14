@@ -10,10 +10,14 @@ function check(name, condition, detail = "failed") {
   }
 }
 
+/** The document every element here belongs to. */
+const FAKE_DOCUMENT = { createElement: (tagName) => new FakeElement(tagName) };
+
 class FakeElement {
   constructor(tagName, attributes = {}, textContent = "") {
     this.attributes = new Map(Object.entries(attributes));
     this.innerHTML = "";
+    this.ownerDocument = FAKE_DOCUMENT;
     this.parentElement = null;
     this.tagName = tagName.toUpperCase();
     this.textContent = textContent;
@@ -34,6 +38,15 @@ class FakeElement {
   // A trusted render is HTML text here, never parsed: no inert article to find.
   querySelector() {
     return null;
+  }
+
+  // It is placed through a template (place-rendered.js), whose content holds no image.
+  get content() {
+    return { innerHTML: this.innerHTML, querySelectorAll: () => [] };
+  }
+
+  replaceChildren(fragment) {
+    this.innerHTML = fragment.innerHTML;
   }
 
   replaceWith(replacement) {

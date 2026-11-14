@@ -303,8 +303,7 @@ class FileTypeRegistry:
     def match(self, name: str, logical_extension: str) -> FileTypeMatch | None:
         """Select basename, exact-extension, then longest-suffix evidence."""
 
-        basename = name.replace("\\", "/").rsplit("/", maxsplit=1)[-1].lower()
-        basename_kind = self._filenames.get(basename)
+        basename_kind = self._filenames.get(_match_basename(name))
         if basename_kind is not None:
             return FileTypeMatch(basename_kind, None, "basename", "exact")
         extension = normalize_logical_extension(logical_extension)
@@ -317,6 +316,15 @@ class FileTypeRegistry:
             if extension.endswith(suffix):
                 return FileTypeMatch(kind, suffix, "suffix", "suffix")
         return None
+
+    def classifies_by_name(self, name: str) -> bool:
+        """Whether *name* alone decides :meth:`classify`, ahead of its extension.
+
+        Any other name classifies exactly as its extension does, so a pass over many
+        files can classify each distinct extension once instead of every file.
+        """
+
+        return _match_basename(name) in self._filenames
 
     def classify(self, name: str, logical_extension: str) -> FileTypeClassification:
         """Return stable classification fields without presentation state."""
@@ -393,6 +401,12 @@ class FileTypeRegistry:
                 for kind in self.kinds
             ),
         }
+
+
+def _match_basename(name: str) -> str:
+    """The basename :meth:`FileTypeRegistry.match` looks up as filename evidence."""
+
+    return name.replace("\\", "/").rsplit("/", maxsplit=1)[-1].lower()
 
 
 def normalize_logical_extension(extension: str) -> str:

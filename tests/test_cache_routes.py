@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser.cache import listing as listing_module
+from metabrowser import home as home_module
 from metabrowser.cache import projection
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.paths import SOURCES, STAGING, source_directory, source_record
@@ -442,7 +442,9 @@ def test_the_listing_comes_from_the_verified_descriptor(
         ensure_private_directory(home, f"{SOURCES}/{name}")
     decoy = tmp_path / "decoy"
     (decoy / "impostor").mkdir(parents=True)
-    open_directory = listing_module._open_directory_entry
+    # The setup left every directory held; the race is against opening one by name.
+    home_module._HELD_DIRECTORIES.clear()  # pyright: ignore[reportPrivateUsage]
+    open_directory = home_module._open_directory_entry
 
     def swap_after_verifying(
         parent_fd: int,
@@ -458,9 +460,43 @@ def test_the_listing_comes_from_the_verified_descriptor(
             (home / SOURCES).symlink_to(decoy, target_is_directory=True)
         return fd
 
-    monkeypatch.setattr(listing_module, "_open_directory_entry", swap_after_verifying)
+    monkeypatch.setattr(home_module, "_open_directory_entry", swap_after_verifying)
 
     assert list_private_directory(home, SOURCES, max_entries=10) == ("a", "b")
+
+
+def test_a_held_listing_comes_from_the_directory_it_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same swap, right after the held walk's last look at the name: still its own names."""
+
+    home = tmp_path / "home"
+    build_empty_home(home)
+    for name in ("a", "b"):
+        ensure_private_directory(home, f"{SOURCES}/{name}")
+    decoy = tmp_path / "decoy"
+    (decoy / "impostor").mkdir(parents=True)
+    leaf = SOURCES.rpartition("/")[2]
+    real_lookup = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
+    swapped: list[bool] = []
+
+    def swap_after_checking(dir_fd: int | None, name: str | Path) -> tuple[int, int] | None:
+        try:
+            return real_lookup(dir_fd, name)
+        finally:
+            if name == leaf and dir_fd is not None and not swapped:
+                swapped.append(True)
+                (home / SOURCES).rename(tmp_path / "moved-aside")
+                (home / SOURCES).symlink_to(decoy, target_is_directory=True)
+
+    monkeypatch.setattr(home_module, "_mount_identity", swap_after_checking)
+
+    assert list_private_directory(home, SOURCES, max_entries=10) == ("a", "b")
+    assert swapped
+    monkeypatch.undo()
+    with pytest.raises(PrivateStorageError) as refused:
+        list_private_directory(home, SOURCES, max_entries=10)
+    assert refused.value.violation.value == "symlink"
 
 
 def test_listing_refuses_a_symlinked_directory(tmp_path: Path) -> None:

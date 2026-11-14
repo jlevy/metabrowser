@@ -14,6 +14,7 @@ import pytest
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import suite_gates
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
+from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
@@ -81,6 +82,19 @@ def git_on_path() -> str:
     """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
 
     return require_git()
+
+
+@pytest.fixture
+def chrome_profile() -> Generator[Path, None, None]:
+    """A headless Chrome's profile directory, owned by the test that drives the browser.
+
+    It is removed after the test. A process still naming it then escaped the test's
+    process group: it is reported, failing the test, and left running; see
+    ``tests/process_group.py``.
+    """
+
+    with owned_profile("metab-test-chrome-") as profile:
+        yield profile
 
 
 @pytest.fixture(scope="session")
@@ -251,7 +265,9 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     come back as another test's home. The ignore cache outlives its test by its TTL, keyed
     by a root path a test can reuse. The catalog revision counts distinct catalogs for the
     process, so a test would read a value set by whichever tests ran before it, and the
-    catalog caches are left filled.
+    catalog caches are left filled. Held private directories keep their descriptors open,
+    and a test that stages a race against the first open of a directory needs that open
+    to happen.
 
     Left alone because a stale value cannot reach another test: ``tree_source._POOLS`` and
     ``dotenv._reported``, keyed by a path under the ``tmp_path`` of the test that made
@@ -259,9 +275,10 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     list already holds.
     """
     yield
-    from metabrowser import events_route, tree
+    from metabrowser import events_route, home, tree
     from metabrowser.cache import probe
 
+    home._HELD_DIRECTORIES.clear()  # pyright: ignore[reportPrivateUsage]
     probe._RESULTS.clear()  # pyright: ignore[reportPrivateUsage]
     tree._IGNORE_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]

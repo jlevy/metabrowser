@@ -599,11 +599,24 @@ Rows inside the input’s window are drawn as before (`promptRows`). A refresh t
 draw the same rows is drawn in place, since it moves nothing (`unchangedRefresh`), and
 an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An offer that a
 later answer makes empty, by bringing back the rows drawn, is withdrawn
-(`offerWithdrawn`). Each hold’s span says how long it held and why it ended, an offer
-included when the reader presses it or the tree closes on it, and a first read that
-fails as failed (`spans`). `invariants` holds, across every model the stories rendered,
-their refresh answering started or not due, that an expanded tree with no rows drawn
-never offers, and that once open it shows progress, a notice, or its line.
+(`offerWithdrawn`). A refresh that lists no files at all is offered as well, and the
+drawn rows keep no line that says there are none until the reader asks for the empty
+list (`refreshListsNone`), whether a read past the rows held brings it, at the offset it
+asked for, or a refresh answering not due (`refreshNotDueListsNone`). A read that
+answers that the server no longer holds the list is offered as well, while the drawn
+rows breathe as the list is listed again (`listGone`, `listGoneWhileAsked`), and its
+notice and Retry join the offer when the list stays unavailable (`listGoneUnavailable`).
+A refresh that says the list is gone is offered the same way (`listGoneOnRefresh`), and
+the offer stands across a refresh’s answer that carries no rows until a read brings
+them, which withdraws it when they are the same files (`listGoneThenListed`); a read
+that fails leaves it standing with its error (`listGoneThenListedFailing`). Each hold’s
+span says how long it held and why it ended, an offer included when the reader presses
+it or the tree closes on it, and a first read that fails as failed (`spans`).
+`invariants` holds, across every model the stories rendered, their refresh answering
+started or not due, that an expanded tree with no rows drawn never offers, that once
+open it shows progress, a notice, or its line, that drawn rows never stand under the
+line of a list with no files, that a change held back from drawn rows is always offered,
+and that drawn rows never sit under progress.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -739,6 +752,172 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "lateRows withdrawn 60000 ms"
     ]
   },
+  "refreshListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)",
+      "empty"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": "No changed files.",
+      "offer": null
+    },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
+    ],
+    "spans": [
+      "opening met 0 ms",
+      "lateRows reader 400 ms"
+    ]
+  },
+  "refreshNotDueListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
+    ]
+  },
+  "listGone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "whileListing": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneUnavailable": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "notice: The list of changed files is unavailable."
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": null,
+      "floats": false
+    }
+  },
+  "listGoneWhileAsked": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneThenListed": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "offers": [
+      "Show the updated list (not listed)",
+      "Show the updated list (not listed)",
+      null
+    ],
+    "reads": 3,
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneThenListedFailing": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "shown": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The server did not answer.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneOnRefresh": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "answered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "whileReading": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
   "unchangedRefresh": {
     "painted": [
       "closed",
@@ -794,7 +973,10 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   },
   "invariants": {
     "an expanded tree with no rows drawn never offers": true,
-    "an open tree with no rows drawn shows progress, a notice, or its line": true
+    "an open tree with no rows drawn shows progress, a notice, or its line": true,
+    "rows drawn never stand under the line of a list with no files": true,
+    "a change held back from rows drawn is always offered": true,
+    "rows drawn never sit under progress": true
   }
 }
 ? 0

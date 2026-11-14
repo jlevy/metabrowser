@@ -20,30 +20,26 @@ it reported. Either way the failure lists how long every earlier phase took.
 The test owns everything it starts. The server stops when its stdin closes. The
 measuring Node process leads a process group of its own, which Chrome and its helpers
 join when Node spawns them, so a run stopped at its budget or by an interrupt stops all
-of them, not Node alone. The browser profile is a directory this module creates and
-removes once those processes are gone.
+of them, not Node alone (tests/process_group.py). The browser profile is the
+``chrome_profile`` fixture's, which removes it once those processes are gone.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import re
-import shutil
-import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import time
-from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 DOM = Path(__file__).parent / "dom"
@@ -103,23 +99,22 @@ _MEASUREMENT_BUDGET_S = (
     + _PHASE_BUDGETS_S["width"] * (len(_WIDTHS) - 1)
     + _NODE_START_EXIT_S
 )
-# Stopping what the run started: the measurement's process group gets SIGTERM, then
-# SIGKILL, and the server its closed stdin, then SIGKILL.
-_TERM_GRACE_S = 3.0
-_KILL_GRACE_S = 2.0
+# Stopping the server: its closed stdin, then SIGKILL. The measurement's process group
+# is stopped by tests/process_group.py, SIGTERM then SIGKILL.
 _SERVER_STOP_S = 5.0
-# The longest a run can take: every budget, then every stop. This module's own limit,
-# over the suite's 60 s default (tests/test_suite_gates.py), adds the fixture's setup and
-# teardown, which list processes once and remove one directory.
-_LONGEST_RUN_S = (
+# The longest the test can take: every budget, then every stop, and the profile's
+# teardown. This module's own limit, over the suite's 60 s default
+# (tests/test_suite_gates.py), adds 10 s for the rest of the setup;
+# tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = (
     _BANNER_BUDGET_S
     + _SERVING_BUDGET_S
     + _MEASUREMENT_BUDGET_S
-    + _TERM_GRACE_S
-    + 2 * _KILL_GRACE_S
+    + GROUP_STOP_S
     + 2 * _SERVER_STOP_S
+    + PROFILE_TEARDOWN_S
 )
-pytestmark = pytest.mark.timeout(_LONGEST_RUN_S + 30)
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 README = """# Sample Project
 
@@ -130,16 +125,6 @@ at a narrow width, and files of several kinds for File Overview to break down.
 
 Run the tool and read the output.
 """
-
-
-@dataclass(frozen=True, slots=True)
-class _Run:
-    """How a run in its own process group ended."""
-
-    returncode: int | None
-    stdout: str
-    stderr: str
-    timed_out: bool
 
 
 @dataclass(slots=True)
@@ -191,60 +176,6 @@ def _free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])
-
-
-def _stop_group(process: subprocess.Popen[str]) -> None:
-    """Stop every process in the group *process* leads: SIGTERM, then SIGKILL, each bounded.
-
-    A group that is already empty, as after a run that closed its own browser, gets no
-    signal at all.
-    """
-
-    group = process.pid
-    for signum, grace in ((signal.SIGTERM, _TERM_GRACE_S), (signal.SIGKILL, _KILL_GRACE_S)):
-        try:
-            os.killpg(group, signum)
-        except ProcessLookupError:
-            return
-        deadline = time.monotonic() + grace
-        while time.monotonic() < deadline:
-            # Reap the leader: until it is reaped its exit leaves it in the group.
-            process.poll()
-            try:
-                os.killpg(group, 0)
-            except ProcessLookupError:
-                return
-            time.sleep(0.05)
-    raise AssertionError(f"process group {group} outlived SIGKILL by {_KILL_GRACE_S:g}s")
-
-
-def _run_in_own_group(argv: list[str], *, timeout_s: float, env: Mapping[str, str]) -> _Run:
-    """Run *argv* as the leader of a new process group, and stop the whole group after.
-
-    The group is stopped however this returns: at the deadline, on an error, or on an
-    interrupt. Killing Node alone would leave the Chrome it started running.
-    """
-
-    process = subprocess.Popen(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=dict(env),
-        start_new_session=True,
-    )
-    timed_out = False
-    try:
-        try:
-            stdout, stderr = process.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            _stop_group(process)
-            # Every process that could hold the pipes open was in the group.
-            stdout, stderr = process.communicate(timeout=_KILL_GRACE_S)
-    finally:
-        _stop_group(process)
-    return _Run(process.returncode, stdout, stderr, timed_out)
 
 
 def _last_lines(stderr: str) -> str:
@@ -317,41 +248,6 @@ def _stop_server(server: subprocess.Popen[str]) -> None:
         server.wait(timeout=_SERVER_STOP_S)
 
 
-def _kill_processes_naming(profile: Path) -> list[str]:
-    """Kill any process whose command line still names *profile*; return what was found."""
-
-    listed = subprocess.run(
-        ["ps", "-A", "-ww", "-o", "pid=,args="],
-        capture_output=True,
-        check=True,
-        text=True,
-        timeout=5,
-    ).stdout
-    found = [line.strip() for line in listed.splitlines() if str(profile) in line]
-    for line in found:
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(int(line.split()[0]), signal.SIGKILL)
-    return found
-
-
-@pytest.fixture
-def chrome_profile() -> Iterator[Path]:
-    """A profile directory the test owns, removed after the processes that used it stop.
-
-    The teardown also fails the test if any process naming the profile is still running,
-    which would mean it escaped the process group, and kills it so it does not leak.
-    """
-
-    profile = Path(tempfile.mkdtemp(prefix="overview-alignment-chrome-"))
-    try:
-        yield profile
-    finally:
-        survivors = _kill_processes_naming(profile)
-        shutil.rmtree(profile, ignore_errors=True)
-        assert not profile.exists(), f"the browser profile {profile} was not removed"
-        assert not survivors, f"processes outlived their group: {survivors}"
-
-
 def test_overview_labels_start_on_the_tab_label_at_every_width(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
@@ -382,7 +278,7 @@ def test_overview_labels_start_on_the_tab_label_at_every_width(
         port = _read_port(server, log, phases)
         _wait_until_serving(server, port, log, phases)
         node_started = time.monotonic()
-        run = _run_in_own_group(
+        run = run_in_own_group(
             [
                 node,
                 str(DOM / "folder-overview-alignment-chrome.mjs"),
