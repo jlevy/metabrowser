@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run.
     candidate: metab 0.12.1.dev165+9903292 (+175 commits, d0fe9618e), the editable checkout of claude/perf-delivery at d0fe9618, clean at the start and end of every run. It carries H87, H89, and mb-rldd together.
+    protocol:
+      path: exp-060-062-protocol.txt
+      sha256: 76cc3393fd428174f4d55069a8adffa5bf3c94921dedd1f550b6536ba28c4761
     record: exp-060-landing-files-samples.jsonl
   results:
     - metric: revalidated_total.landing.reload
@@ -110,6 +113,14 @@ one it was stamped with.
 representation, the trust profile, and the sandbox policy.
 
 ## Protocol
+
+> Correction, 2026-11-14: the pre-registration file below was kept in an agent’s
+> temporary directory, which the 2026-11-14 restart emptied, and was rebuilt byte for
+> byte from session transcripts.
+> It is now committed as [exp-060-062-protocol.txt](exp-060-062-protocol.txt) and named
+> in `method.protocol`, with the worktree parent directory written as `$WORKTREES`. Its
+> first 32 lines are the file before the amendment, and writing that directory back
+> reproduces both sha256 values cited here.
 
 Declared before any measurement, at 2026-11-12T15:36:54Z, in a local pre-registration
 file (sha256 `3d5afd678b01bc7d389cdecdb1d7ee5430a3d4ef994a0866bec0690772b8a6f0`), and

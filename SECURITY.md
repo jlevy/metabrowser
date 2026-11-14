@@ -140,20 +140,42 @@ subresources; a previewed page can still probe file existence through load and e
 events, but cannot read those bytes.
 When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
 still renders markup and loads subresources, but executes nothing.
+A raster image — PNG, JPEG, GIF, WebP, or AVIF, by the type `/raw` sends — runs nothing,
+as an image or opened as a document, so its sandbox omits `allow-scripts` under either
+profile, in every answer `/raw` gives it: the route decides by the type it chose, so a
+`304`, which carries no type, and a multipart range answer, whose type is
+`multipart/byteranges`, have that policy too.
 
-Those headers belong to the profile that sent them, so no `/raw` response is kept as
-fresh: every one, whichever branch answered, is `Cache-Control: no-cache`, and a browser
-asks again before it loads one anew.
+Those headers belong to the profile that sent them, and an answer a browser keeps
+without asking is replayed without reaching the server, under whichever profile serves
+the origin by then: no address can revoke it.
+So the only answer kept as fresh is one whose execution headers — its type, its sandbox,
+and `nosniff` — are the same under both profiles, a raster image’s, and only at the
+query form’s `v` while it is the version the file has now.
+That answer is `Cache-Control: private, max-age=31536000, immutable`. `v` is a version
+the render route gives each served file a Markdown document embeds (`raw_versions`): a
+digest of the file’s resolved path, size, modification and change times, inode, and
+device, of the trust profile and its sandbox policy, and of the build, so a replaced
+file is a new address.
+Every other response, whichever branch answered, is `Cache-Control: no-cache`, and a
+browser asks again before it loads one anew: an SVG, HTML, or any other document at its
+current version, an unversioned address, a version the file no longer has, the path form
+`/raw/{path}`, which a sandboxed preview loads as a document and which is never
+versioned, and every error.
+An untrusted document can link to an address the trusted profile gave, with an absolute
+link to this origin; following it after the switch asks the untrusted profile, unless
+the address is a raster image’s, whose kept answer is the one that profile would send.
+`tests/test_raw_profile_cache_chrome.py` follows such a link to an SVG in Chrome.
 A file’s `ETag` names the file (its name, size, modification and change times, and
 inode), the representation, the trust profile, the sandbox policy, and the build, and
 only a matching tag in `If-None-Match` is answered `304`; `*` and `If-Modified-Since`
 alone get the whole response, because neither can say which profile made the copy a
 browser holds. So a response stored while one profile served the folder is never reused
 by a new load, unasked or by a 304, after another profile serves it on the same host and
-port. Going back or forward in a tab is not a new load: a browser may show again, from
-its history, a `/raw` document it already showed, with the headers it was sent then,
-until it is reloaded.
-Only `no-store` would rule that out, at the cost of every image’s 304.
+port, except a raster image’s, whose execution headers both profiles share.
+Going back or forward in a tab is not a new load: a browser may show again, from its
+history, a `/raw` document it already showed, with the headers it was sent then, until
+it is reloaded. Only `no-store` would rule that out, at the cost of every image’s 304.
 
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the

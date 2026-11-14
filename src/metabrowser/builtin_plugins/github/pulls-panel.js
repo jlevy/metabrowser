@@ -57,9 +57,35 @@ const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
 // pull requests a reader most often opens next. With the two neighbours that is seven, under
 // the server's eight record refreshes a scan, so one scan's changes do not crowd them out.
 export const PREFETCH_TOP_ROWS = 5;
+// The changed-files lists a prefetch names, the server's MAX_PREFETCH_NUMBERS: the rows the
+// pointer or focus last rested on, the open row, its neighbours, then the rows in view.
+export const PREFETCH_FILES = 16;
+// Rows the pointer or focus rested on that a prefetch names first, newest first: the row a
+// click is about to open, and the one the pointer left for it.
+export const PREFETCH_RESTED = 2;
+// How long the rows in view stay put before their changed files are asked for, so a reader
+// scrolling past rows starts no list for them. A choice, not a bound on any cost: past the
+// pauses inside one scroll, and under the seconds a reader spends reading rows before
+// expanding one. A one-page list took about 1.1 s with its two account checks (github.com,
+// 2026-11-13), and the lane reads one at a time, so the wait is the reader's, not the dwell.
+export const FILES_DWELL_MS = 500;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;
-const CORE_CONTROL_TIMEOUT_MS = 2000;
+// How long the panel waits for a batch's answer, a cache check unless it starts a read.
+// Measured 2026-11-13 on 5,000 cataloged PRs: 14-34 ms idle; about 0.47 s, at most
+// 0.73 s, beside eight 1000-row list reads. The slowest ever logged was 6.5 s, in a
+// window serving a large repository, before those checks cost 2.5 times less. Each
+// timeout is above all of these: an answer given up on is work thrown away and asked
+// for again. A reader's next viewport aborts a visible batch sooner. A background batch
+// is aborted by any visible one, so its timeout only ends a server that never answers.
+const CORE_VISIBLE_TIMEOUT_MS = 10000;
+const CORE_BACKGROUND_TIMEOUT_MS = 30000;
+// A release clears ownership in memory, reading no disk.
+const CORE_RELEASE_TIMEOUT_MS = 2000;
+// A batch left unanswered this many times in a row, by a timeout or a failed request, is
+// passed over; the walk returns to it at the end of its pass, as to a partial cohort,
+// once 30 s have passed for every batch it passed over.
+const CORE_MAX_MISSES = 2;
 export const CORE_BUSY_RETRY_MS = 1000;
 
 export const LISTS = Object.freeze(["open", "closed", "all"]);
@@ -511,7 +537,7 @@ function pinChanged(response) {
 }
 
 /**
- * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
+ * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[], lane: "visible" | "background"}} CoreWindowRequest
  * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean, admitted?: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullsResponse
  * A row's record as one read answered it, and when that answer landed, by `now()`.
@@ -668,6 +694,12 @@ export function createPullsController(deps, options = {}) {
   // Traversal can restart while the same accepted producer remains owned.
   let corePass = 0;
   let sendingCore = false;
+  /** The demand being sent, which a visible demand aborts. @type {{demand: CoreDemand, controller: AbortController} | null} */
+  let coreRequest = null;
+  /** The batch last left unanswered, and how many times in a row. @type {{key: string, count: number} | null} */
+  let coreMisses = null;
+  /** Batches this pass has passed over: one more miss passes over them again. @type {Set<string>} */
+  const passedOverCores = new Set();
   /** @type {unknown} */
   let coreRetryTimer = null;
   /** The actual viewport may span several transport batches. @type {PullRow[]} */
@@ -686,6 +718,10 @@ export function createPullsController(deps, options = {}) {
   let warmGeneration = null;
   /** Earliest retry among settled partial cohorts. @type {number | null} */
   let warmDeferredAt = null;
+  // The latest deadline among batches passed over. The walk returns to the top for all of
+  // them at once, so it waits for the last, and none is asked for before its own.
+  /** @type {number | null} */
+  let passedOverUntil = null;
   let warmRetryDelay = CORE_BUSY_RETRY_MS;
   /** @type {unknown} */
   let warmTimer = null;
@@ -697,17 +733,37 @@ export function createPullsController(deps, options = {}) {
   // Background prefetch (`PREFETCH_ROUTE`): the scan it last asked after, by the list's
   // `fetched_at`, and whether a request is on its way. An ask made meanwhile waits as the
   // one pending ask, sent when that request answers and built from the panel as it is then,
-  // `changed` when any ask that waited had it; null when none waits.
+  // `changed` when any ask that waited had it; null when none waits. A pending ask that only
+  // files asks made goes through their checks again when it is sent (`sendFiles`): the
+  // answer on its way may have held them, or a walk or a read of the rows in view begun.
   /** @type {string | null} */
   let prefetchedScan = null;
   let prefetching = false;
-  /** @type {boolean | null} */
+  /** @type {{changed: boolean, files: boolean} | null} */
   let prefetchPending = null;
   // The lane's report is followed while it works: its next read, and the row it is reading.
   /** @type {unknown} */
   let prefetchTimer = null;
   /** @type {number[]} */
   let prefetchRows = [];
+  // Rows likely to be expanded next, whose changed files a prefetch names beside the open
+  // row's and its neighbours': the rows the pointer or focus last rested on, newest first, and
+  // the rows in view, in the list's order. A files ask sends them once the rows in view stay
+  // put, or at once for a row rested on, and sends nothing when it would repeat the last ask.
+  /** @type {number[]} */
+  let restedRows = [];
+  /** @type {number[]} */
+  let viewRows = [];
+  /** @type {unknown} */
+  let filesTimer = null;
+  let lastAsk = "";
+  // The `changed` of the last ask sent, which a files ask carries on, so it drops nothing a
+  // scan's ask queued.
+  let askChanged = false;
+  // While the server says the budget admits no background work, a files ask waits a slow
+  // poll; a scan's or a landing's ask still goes, and the server answers it from memory.
+  /** @type {number | null} */
+  let filesHeldUntil = null;
 
   /** @returns {HeldList} */
   function held() {
@@ -795,9 +851,11 @@ export function createPullsController(deps, options = {}) {
   /** @param {boolean} [release] Whether the catalog identity revoked its producer. */
   function restartCorePass(release = true) {
     corePass += 1;
+    passedOverCores.clear();
     warmAfter = null;
     warmGeneration = null;
     warmDeferredAt = null;
+    passedOverUntil = null;
     warming = true;
     warmPaused = false;
     visibleCoreKey = "";
@@ -901,12 +959,14 @@ export function createPullsController(deps, options = {}) {
       }
       if (envelope.rows.length === 0) {
         if (envelope.complete && !envelope.refreshing && envelope.state !== "absent") {
-          if (warmDeferredAt !== null) {
-            const retryAt = warmDeferredAt;
+          if (warmDeferredAt !== null || passedOverUntil !== null) {
+            const retryAt = Math.max(warmDeferredAt ?? 0, passedOverUntil ?? 0);
             warmDeferredAt = null;
+            passedOverUntil = null;
             warmAfter = null;
-            // Later rows have had their turn. Revisit only after the partial
-            // cohort's existing attempt lease; successful siblings stay cached.
+            // Later rows have had their turn. Revisit only after the partial cohort's
+            // existing attempt lease and every passed-over batch's deadline; successful
+            // siblings stay cached.
             pauseCoreQueue({ reset_at: new Date(retryAt).toISOString() });
           } else {
             warming = false;
@@ -939,22 +999,71 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
-  /** @param {CoreWindowRequest} body */
-  async function controlCoreWindow(body) {
+  /**
+   * @param {CoreWindowRequest} body
+   * @param {AbortSignal} signal
+   */
+  async function controlCoreWindow(body, signal) {
     try {
-      return await deps.request("POST", CORE_PREPARE_ROUTE, {
-        body,
-        // An exact-owner release must still be sendable after panel disposal.
-        signal: AbortSignal.timeout(CORE_CONTROL_TIMEOUT_MS),
-      });
+      return await deps.request("POST", CORE_PREPARE_ROUTE, { body, signal });
     } catch {
       return null;
     }
   }
 
+  /**
+   * One demand's request, ended by its lane's timeout or by `controller`.
+   * @param {CoreDemand} demand
+   * @param {AbortController} controller
+   */
+  async function requestCoreWindow(demand, controller) {
+    const timeout = deps.schedule(
+      () => controller.abort(),
+      demand.lane === "visible" ? CORE_VISIBLE_TIMEOUT_MS : CORE_BACKGROUND_TIMEOUT_MS,
+    );
+    try {
+      return await controlCoreWindow(demand.body, controller.signal);
+    } finally {
+      deps.cancel(timeout);
+    }
+  }
+
   /** @param {CoreDemand} demand */
   function releaseCoreWindow(demand) {
-    return controlCoreWindow({ ...demand.body, numbers: [] });
+    // An exact-owner release must still be sendable after panel disposal.
+    return controlCoreWindow(
+      { ...demand.body, numbers: [] },
+      AbortSignal.timeout(CORE_RELEASE_TIMEOUT_MS),
+    );
+  }
+
+  /** @param {CoreDemand} demand */
+  function coreBatchKey(demand) {
+    return JSON.stringify([demand.lane, demand.body.state, demand.body.numbers]);
+  }
+
+  /**
+   * Count a batch the server left unanswered; pass it over after `CORE_MAX_MISSES` in a row,
+   * or after one when it was passed over before, so a revisit costs one attempt.
+   * @param {CoreDemand} demand
+   */
+  function noteCoreMiss(demand) {
+    const key = coreBatchKey(demand);
+    const count = coreMisses?.key === key ? coreMisses.count + 1 : 1;
+    coreMisses = { key, count };
+    if (count < (passedOverCores.has(key) ? 1 : CORE_MAX_MISSES)) {
+      return;
+    }
+    coreMisses = null;
+    passedOverCores.add(key);
+    if (demand.lane === "background") {
+      warmAfter = demand.body.numbers.at(-1) ?? warmAfter;
+    } else if (demand.queueKey === visibleCoreKey) {
+      visibleCoreAt += demand.body.numbers.length;
+    }
+    // The walk revisits it after its pass, not before its slowest retry has passed.
+    warming = true;
+    passedOverUntil = Math.max(passedOverUntil ?? 0, deps.now() + SLOW_POLL_MS);
   }
 
   function cancelCoreRetry() {
@@ -986,7 +1095,10 @@ export function createPullsController(deps, options = {}) {
           }
           continue;
         }
-        const response = await controlCoreWindow(demand.body);
+        const controller = new AbortController();
+        coreRequest = { demand, controller };
+        const response = await requestCoreWindow(demand, controller);
+        coreRequest = null;
         const receipt =
           /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], retry_numbers?: number[], retry_at?: string, failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
             response?.body
@@ -1087,6 +1199,8 @@ export function createPullsController(deps, options = {}) {
             }
             demand.done = true;
             warmRetryDelay = CORE_BUSY_RETRY_MS;
+            coreMisses = null;
+            passedOverCores.delete(coreBatchKey(demand));
             if (retryAt !== null) {
               warming = true;
               warmDeferredAt =
@@ -1105,6 +1219,10 @@ export function createPullsController(deps, options = {}) {
             pauseCoreQueue(null);
           } else {
             demand.done = true;
+            if (receipt?.preparation !== "failed" && receipt?.preparation !== "held") {
+              // A source-wide failure holds every batch; no answer at all holds only this one.
+              noteCoreMiss(demand);
+            }
             pauseCoreQueue(receipt?.failure);
           }
         }
@@ -1143,6 +1261,9 @@ export function createPullsController(deps, options = {}) {
     cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
+    // Nothing wants the batch on its way any more, so it does not hold up the release
+    // behind it, and the server stops it. A release is never aborted here.
+    coreRequest?.controller.abort();
     noteCoreRefreshing();
     void sendCoreWindow();
   }
@@ -1168,8 +1289,15 @@ export function createPullsController(deps, options = {}) {
       pass: corePass,
       canRetry: true,
       retryDelay: CORE_BUSY_RETRY_MS,
-      body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
+      body: { state, window: { id, generation }, numbers: rows.map((row) => row.number), lane },
     };
+    if (lane === "visible") {
+      // The batch on its way is no longer wanted, so what the reader sees does not wait for
+      // it. The server stops it at its next step; its ownership is settled as for any
+      // request that went unanswered. Its lane tells the server to preempt a background
+      // job that request started, unless that job reads rows this batch needs.
+      coreRequest?.controller.abort();
+    }
     noteCoreRefreshing();
     void sendCoreWindow();
   }
@@ -1180,6 +1308,13 @@ export function createPullsController(deps, options = {}) {
   function prepareVisible(numbers) {
     if (!live() || !online() || walkingTo !== null) {
       return;
+    }
+    if (numbers.join(",") !== viewRows.join(",")) {
+      // Their changed files are asked for once they stay put, after their own metadata.
+      viewRows = numbers.slice();
+      if (numbers.length > 0) {
+        askFiles(FILES_DWELL_MS);
+      }
     }
     const list = held();
     if (typeof list.envelope?.generation !== "string" || list.content === null) {
@@ -1802,15 +1937,19 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * Ask the server to refresh, behind the reader, what they are likely to open next: the
-   * anchored row's neighbours and the top of the list, and the changed files of the open
-   * row and its neighbours. *changed* adds what the server answered most recently that the
-   * scan just found changed. Only while shown, visible, and online; the server reads each
-   * again, admits what is due within its caps, and waits behind any reader's work.
+   * anchored row's neighbours and the top of the list, and the changed files of the rows the
+   * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
+   * *changed* adds what the server answered most recently that the scan just found changed.
+   * Only while shown, visible, and online; the server reads each again, admits what is due
+   * within its caps and the budget's floor, and waits behind any reader's work. A
+   * *filesAsk* is `sendFiles`'s: it sends nothing when it would repeat the last ask sent,
+   * and, waiting behind the one on its way, it is checked again when that one answers.
    *
    * @param {boolean} changed
+   * @param {boolean} [filesAsk]
    * @returns {boolean} Whether a request was sent, or waits behind the one on its way.
    */
-  function prefetch(changed) {
+  function prefetch(changed, filesAsk = false) {
     const list = held();
     if (
       !live() ||
@@ -1824,7 +1963,11 @@ export function createPullsController(deps, options = {}) {
       return false;
     }
     if (prefetching) {
-      prefetchPending = prefetchPending === true || changed;
+      prefetchPending = {
+        changed: (prefetchPending?.changed ?? false) || changed,
+        // A scan's or a landing's ask that waits goes as it is; only files asks are checked.
+        files: (prefetchPending?.files ?? true) && filesAsk,
+      };
       return true;
     }
     const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
@@ -1834,23 +1977,50 @@ export function createPullsController(deps, options = {}) {
     const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
-    const files = [...new Set([...(current === null ? [] : [current]), ...near])];
+    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    const files = [
+      ...new Set([
+        ...restedRows.filter(listed),
+        ...(current === null ? [] : [current]),
+        ...near,
+        ...viewRows.filter(listed),
+      ]),
+    ].slice(0, PREFETCH_FILES);
+    const key = JSON.stringify([records, files, changed]);
+    if (filesAsk && key === lastAsk) {
+      return false;
+    }
+    lastAsk = key;
+    askChanged = changed;
     prefetching = true;
     void deps
       .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
       .then((response) => {
         // A lane started or joined: follow it, so the row it reads breathes while it does.
         if (response.status === 202) {
+          filesHeldUntil = null;
           watchPrefetch();
+        } else if (
+          /** @type {{prefetch?: unknown} | null} */ (response.body)?.prefetch === "deferred"
+        ) {
+          holdFiles();
         }
       })
-      .catch(() => null)
+      .catch(() => {
+        // Not sent, as far as the panel knows: the next files ask may send it again.
+        lastAsk = "";
+      })
       .finally(() => {
         prefetching = false;
         const pending = prefetchPending;
         prefetchPending = null;
         if (pending !== null && !disposed) {
-          prefetch(pending);
+          if (pending.files) {
+            // After this answer's own hold, if it set one, and as the reader is now.
+            sendFiles();
+          } else {
+            prefetch(pending.changed);
+          }
         }
       });
     return true;
@@ -1876,7 +2046,7 @@ export function createPullsController(deps, options = {}) {
       setPrefetchRows([]);
       return;
     }
-    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[]} | null} */
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
     let report = null;
     try {
       const response = await deps.request("GET", PREFETCH_ROUTE, {});
@@ -1888,6 +2058,16 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const running = report?.running ?? null;
+    const files = report?.files;
+    if (
+      report?.governor?.admits === false ||
+      (typeof files?.hour_used === "number" &&
+        typeof files.per_hour === "number" &&
+        files.hour_used >= files.per_hour)
+    ) {
+      // The lane stopped, or will, at the budget's floor or the hour's cap of lists.
+      holdFiles();
+    }
     setPrefetchRows(
       running?.kind === "record" && typeof running.number === "number" ? [running.number] : [],
     );
@@ -1919,6 +2099,79 @@ export function createPullsController(deps, options = {}) {
     }
     prefetchRows = [];
     prefetchPending = null;
+    if (filesTimer !== null) {
+      deps.cancel(filesTimer);
+      filesTimer = null;
+    }
+    // The rows in view are measured again when the panel next paints them.
+    viewRows = [];
+  }
+
+  /** The server admits no background work, or no more lists this hour: files asks wait. */
+  function holdFiles() {
+    filesHeldUntil = deps.now() + SLOW_POLL_MS;
+    // The ask it refused was not acted on, so the same ask may be sent once the hold ends.
+    lastAsk = "";
+  }
+
+  /**
+   * Whether GitHub is, or may be, being read for the rows in view: a batch of them whose
+   * answer is still on its way, since the server may have started reading GitHub before it
+   * answers; one it admitted, whose titles breathe; or, after one, the next batch the queue
+   * holds. That is what the reader sees and waits for, and a files ask waits behind it. A
+   * batch the cache answered holds nothing up once its answer is in.
+   */
+  function viewBeingRead() {
+    if (
+      coreWanted === null ||
+      coreWanted.lane !== "visible" ||
+      !coreWanted.canRetry ||
+      !coreLive() ||
+      warmPaused
+    ) {
+      return false;
+    }
+    if (coreRequest !== null && coreRequest.demand === coreWanted) {
+      return true;
+    }
+    return (
+      coreWanted.admitted === true && (!coreWanted.done || visibleCoreAt < visibleCores.length)
+    );
+  }
+
+  /**
+   * Ask, *delayMs* from now, for the changed files of the rows the reader is likely to
+   * expand: at once for a row the pointer or focus rests on, and once the rows in view stay
+   * put for the rows in view. A later ask replaces one still waiting.
+   *
+   * @param {number} delayMs
+   */
+  function askFiles(delayMs) {
+    if (filesTimer !== null) {
+      deps.cancel(filesTimer);
+    }
+    filesTimer = deps.schedule(() => {
+      filesTimer = null;
+      sendFiles();
+    }, delayMs);
+  }
+
+  /**
+   * Send a files ask, unless the reader is walking, GitHub is being read for the rows in
+   * view, which it then waits behind, or the server said the budget admits none.
+   */
+  function sendFiles() {
+    if (!live() || !online() || walkingTo !== null) {
+      return;
+    }
+    if (filesHeldUntil !== null && deps.now() < filesHeldUntil) {
+      return;
+    }
+    if (viewBeingRead()) {
+      askFiles(CORE_BUSY_RETRY_MS);
+      return;
+    }
+    prefetch(askChanged, true);
   }
 
   /** After a scan the server finished, once per scan: ask for what it found changed. */
@@ -2476,16 +2729,24 @@ export function createPullsController(deps, options = {}) {
       }
     },
     /**
-     * A row took the pointer or focus: read its record ahead of a click. A walk does not
-     * come here, so it reads nothing per row, and neither does the row whose page holds the
-     * pane or is opening, which reads its own: a pointer resting on the row it just clicked
-     * would otherwise read the record the page has just read.
+     * A row took the pointer or focus: read its record ahead of a click, and ask for its
+     * changed files, which the click expands. A walk does not come here, so it reads
+     * nothing per row, and neither does the row whose page holds the pane or is opening,
+     * which reads its own: a pointer resting on the row it just clicked would otherwise read
+     * the record the page has just read. That row's files are in every ask already.
      *
      * @param {number} number
      */
     peek(number) {
       if (!disposed && walkingTo === null && number !== current) {
         void readRecord(number);
+        if (restedRows[0] !== number) {
+          restedRows = [number, ...restedRows.filter((row) => row !== number)].slice(
+            0,
+            PREFETCH_RESTED,
+          );
+          askFiles(0);
+        }
       }
     },
     /** The reader neared the end of the displayed rows. */

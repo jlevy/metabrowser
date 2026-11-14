@@ -450,6 +450,15 @@ class FilesystemContentSource:
             # any syscall. That is the same answer as traversal: there is no
             # such file under this root, so it is a refusal, not a crash.
             return None
+        except RuntimeError as error:
+            # Python 3.12's `resolve` raises this for a symbolic link that loops, with the
+            # ELOOP error as its context; 3.13 returns the path, and opening it fails with
+            # that error. Either way the link names no file, which is the answer to give:
+            # a document embedding such a link still renders, and its image is a 404. Any
+            # other RuntimeError is not this, and goes on with its cause.
+            if not str(error).startswith("Symlink loop"):
+                raise
+            return None
         if not _is_within(target, self._root):
             return None
         return ContentHandle.from_path(identity, target)

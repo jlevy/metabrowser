@@ -838,7 +838,11 @@ def test_a_selection_reads_its_record_once() -> None:
 
 
 def test_background_core_warming_covers_viewport_and_catalog_without_stranding_reconnect() -> None:
-    """Transport batches never cap coverage, and recovery keeps the settled cursor."""
+    """Transport batches never cap coverage, and recovery keeps the settled cursor.
+
+    No batch stalls the walk: one left unanswered is passed over, and none holds up what
+    the reader sees.
+    """
 
     assert run_session("github-pr-prefetch-behavior.js") == {
         "catalogRows": 24,
@@ -856,7 +860,68 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         "cachedAfterReconnect": 24,
         "completedBeforeDisconnect": 8,
         "backgroundRequestsAfterCompletion": 17,
+        # A batch no answer ever comes for: each lane passes over it after two attempts,
+        # 1 s apart, which once stalled at 8 of 24 rows. The walk returns to it after its
+        # pass once its 30 s have passed: at 41 s, not at the visible lane's 34 s.
+        "passedOver": {
+            "cached": 16,
+            "atMs": 7000,
+            "attempts": ["open@3000", "open@4000", "all@9000", "all@10000", "all@41000"],
+        },
+        # A visible demand aborts the background batch on its way instead of waiting for it.
+        "preemption": {"visibleSentAfterMs": 0, "backgroundAbortedAfterMs": 0},
+        # Every answer taking 6.5 s, the slowest logged, still covers the catalog.
+        "slowCoveredMs": 51500,
+        "giveUpMs": {"visible": 10000, "background": 30000},
+        # Disposal, a pause, or a hidden page aborts the batch on its way at once, and the
+        # token the server admitted for it is released.
+        "tornDown": [
+            {"exit": exit, "abortedAfterMs": 0, "released": 1}
+            for exit in ("dispose", "pause", "hide")
+        ],
+        # Failures per batch in five virtual minutes, none retried before its deadline.
+        "staggeredFailures": [2, 11, 10],
     }
+
+
+def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() -> None:
+    """The rows in view and a row rested on are listed first; a later expansion reads the
+    cache. Nothing is asked below the floor, during a walk, or while the rows' own metadata
+    is read or its admission unanswered, including by a files ask that waited behind
+    another; an unanswered ask holds up none of the reader's reads."""
+
+    facts = run_session("github-pulls-files-prefetch-behavior.js")
+    assert facts["asksBeforeDwell"] == 0
+    assert facts["visibleAsk"]["afterMs"] == 500
+    assert len(facts["visibleAsk"]["files"]) == 16
+    assert facts["restedAsk"] == {"afterMs": 0, "first": 89}
+    assert all(entry.endswith(" by prefetch") for entry in facts["listed"])
+    assert facts["expandedAfterPrefetch"] == {
+        "drawnAfterMs": 0,
+        "rows": 4,
+        "refreshAsks": 0,
+        "githubReads": [],
+    }
+    assert facts["expandedOutOfView"] == {
+        "drawnAfterMs": 2000,
+        "rows": 4,
+        "refreshAsks": 1,
+        "githubReads": ["reader"],
+    }
+    assert facts["belowFloor"] == {"asks": 1, "githubReads": 0}
+    assert facts["afterFloor"] == {"asks": 1, "firstRead": 97}
+    behind = facts["behindMetadata"]
+    assert behind["filesAskedMs"] >= behind["metadataSettledMs"]
+    assert behind["listsBeforeSettled"] == 0
+    assert (facts["asksDuringWalk"], facts["asksOnceStopped"]) == (0, 1)
+    assert facts["readerReadsWhileAskHeld"] == ["pull-files +0 ms", "pull +0 ms"]
+    # Review A1: a files ask that waited behind another is checked again when sent.
+    assert facts["pendingThenWalk"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenMetadata"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenDeferred"] == {"sentWhile": 0, "sentAfter": 0}
+    # Review A2: a metadata admission whose answer is on its way is reader work.
+    assert facts["admissionHeld"] == {"asks": 0}
+    assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
 
 
 def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:

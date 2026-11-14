@@ -2,7 +2,11 @@
 // in the same page, a document set in faces the first did not use. Neither document's
 // paragraphs may move once it is shown.
 //
-//   CHROME_BIN=/path/to/chrome node tests/dom/staged-fonts-chrome.mjs http://127.0.0.1:PORT
+//   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
+//     node tests/dom/staged-fonts-chrome.mjs http://127.0.0.1:PORT
+//
+// CHROME_PROFILES is where Chrome's profile goes (tests/dom/chrome-session.mjs);
+// tests/test_staged_fonts_chrome.py owns it and removes it.
 //
 // tests/test_staged_fonts_chrome.py serves plain.md and italic.md from a fresh server.
 // The HTTP cache is off and every request waits 40 ms, so each face arrives after the
@@ -76,10 +80,11 @@ const FOLLOW = `async (marker, ms, navigate) => {
 
 async function main() {
   const bin = process.env.CHROME_BIN;
-  if (!bin || !base) {
-    throw new Error("CHROME_BIN and a server address are required");
+  const profiles = process.env.CHROME_PROFILES;
+  if (!bin || !profiles || !base) {
+    throw new Error("CHROME_BIN, CHROME_PROFILES, and a server address are required");
   }
-  const browser = await launchChrome(bin);
+  const browser = await launchChrome(bin, { profiles });
   try {
     await browser.send("Page.enable");
     await browser.send("Network.enable");

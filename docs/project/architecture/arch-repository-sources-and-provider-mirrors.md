@@ -854,6 +854,30 @@ partial batch instead returns `partial`, these two lists, `retry_numbers`, and
 An unavailable PR retains its attempt lease while valid siblings and later cohorts
 proceed; callers revisit unfinished members after that deadline.
 Settled partial owners retire, so a later retry can prepare their missing members.
+The panel waits 10 s for a visible batch and 30 s for a background one
+(`CORE_VISIBLE_TIMEOUT_MS`, `CORE_BACKGROUND_TIMEOUT_MS`, with their measurements).
+A visible demand aborts the background batch on its way rather than waiting for it.
+So does clearing the panel’s demand (disposal, a pause, or a hidden page), which then
+releases the aborted batch’s token as for any request left unanswered.
+A batch left unanswered twice in a row, by a timeout or a failed request, is passed
+over.
+After its pass the walk returns to the top once 30 s have passed for every batch it
+passed over, and gives each one attempt.
+A batch whose client has gone stops at its next thread hop and starts no provider read;
+a release always runs to its end.
+A source runs one core job at a time, and the panel names each batch’s `lane`. A visible
+batch that finds a background job running preempts it, unless that job reads a member
+the visible batch still needs; it then answers `busy` as before.
+A job’s read is the members it asks GitHub for, not the batch it was asked for: members
+it left to a lease or the cache do not hold a visible batch back.
+A failure the background job records while the visible batch checks its rows holds the
+visible batch too, which answers `held` and starts no read.
+Preemption follows the release order: it revokes the background window first, cancels
+its job, and waits for the job to unwind before admitting the visible window.
+So a provider read the job had started is killed, a write under way finishes, and its
+slot is free. The cancelled read keeps its attempt leases: those members wait for their
+lease to end, as after any read that did not finish, rather than being read twice within
+it. Another background batch never preempts, and neither does one visible batch another.
 A failed owner batch returns `failed`; subsequent batches return `held` with the same
 outcome, message, and reset time until another attempt is eligible.
 `cores.refresh.json` persists provider and malformed-response holds under the same
@@ -1169,18 +1193,29 @@ five public pull requests when this was built (2026-11-11).
 A visible page names what the reader is likely to open next with
 `POST github/pulls-prefetch` (`pull_prefetch.py`), and nothing on the server starts that
 work by itself, so a hidden or offline page spends nothing.
-Each served repository has one lane, a coordinator job that runs one item at a time and
-reads it again from disk before it runs, so a record or list another process refreshed
-meanwhile is skipped.
+The Pulls panel names the records of the anchored row’s neighbours and the top rows, and
+the changed files of the rows the pointer or focus last rested on, the open row, its
+neighbours, and the rows in view, up to 16 (`pulls-panel.js`). It asks for a row rested
+on at once, and for the rows in view once they stay put for `FILES_DWELL_MS`; it asks
+for no files during a walk, while GitHub reads the metadata of the rows in view or that
+read’s admission is unanswered, or for a slow poll after the server said the governor
+admits nothing or the hour’s lists are spent.
+A files ask that waits behind another prefetch is checked again when that one answers.
+Each served repository has one lane, a coordinator job that runs one item at a time, a
+record and then a files list in turn, and reads each again from disk before it runs, so
+a record or list another process refreshed meanwhile is skipped.
+Taking turns keeps the missing records of a server that just started, about 2 s each,
+from holding back every list.
 Its caps are 8 record refreshes per catalog publication, however many pages its scan
-read, 40 an hour, and 20 GitHub file lists an hour, kept in memory for each repository a
-server process serves.
+read, 40 an hour, and 100 GitHub file lists an hour, kept in memory for each repository
+a server process serves; a cap drops only the rest of its own kind.
 A background record refresh costs at most 8 core points when each part fits on one page,
 two of them account checks, which GitHub counts, and a one-page file list 3; at the caps
-that is 380 core points an hour for each repository in each process, 7.6% of a
-5,000-point limit.
-A job a reader preempts gives its place in the caps back, and the lane
-stops there.
+that is 620 core points an hour for each repository in each process, 12.4% of a
+5,000-point limit. A hundred lists an hour are six panes of rows in view with a few
+rested on; a one-page list of a small pull request took 0.51 to 0.58 s and an account
+check 0.27 to 0.29 s from github.com on 2026-11-13. A job a reader preempts gives its
+place in the caps back, and the lane stops there.
 
 `gh_budget.py` keeps, per process, the newest `x-ratelimit-*` observation of each
 resource every response carries, until its reset, and holds every resource after a

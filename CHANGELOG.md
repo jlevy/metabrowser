@@ -4,17 +4,70 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A Markdown document’s images no longer blink when you come back to its file in the
-  macOS app. Opening another file and returning built the document again with lazy
-  images, which WebKit fetched again before drawing them, so the images at the top were
-  blank for a moment. An image already loaded in the page now loads at once from that
-  copy; one you have not reached yet still waits until you scroll to it.
-  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
-  the page forget every copy it holds, so in the macOS app the next return fetches the
-  images again, a replaced image or the file behind a link to one included.
-  In Chrome, before this change and after it, a replaced image can show its old copy,
-  even after a reload, until Chrome no longer treats its cached copy as fresh.
+- Expanding a pull request’s files in the Pulls tab usually draws them at once, from the
+  cache, instead of waiting a second or more on GitHub.
+  The panel now asks Metabrowser to list, behind you, the changed files of the rows in
+  view once they stay put, and of a row as soon as the pointer or focus rests on it.
+  It asks nothing while you walk the list with a held key, while GitHub reads the rows’
+  own details, or while less than a quarter of the account’s GitHub rate limit remains.
+  `/api/plugin/github/pulls-prefetch` now reads a record and a file list in turn, so a
+  newly started server’s missing records no longer hold back every list, and a cap stops
+  only its own kind; it lists at most 100 pull requests’ files an hour, up from 20.
+
+- The Commits tab loads in a large repository that keeps changing.
+  Each change asked every open page to recount the whole tree for the tally above the
+  Files tree, one request per change, and in the macOS app those requests took every
+  connection, so Commits waited behind them: 7.6 s with one page open, more than 90 s
+  with four. A page now asks one count at a time, waits longer between counts the longer
+  the last one took, and asks none while it is hidden or while another tab is in front
+  of Files. The count itself is about four times faster.
+  A failed check for a repository is retried instead of leaving the page without a
+  Commits tab, and no longer removes a Commits tab already shown.
+
+- The pull requests you scroll to in the Pulls tab are prepared at once, even while the
+  list is preparing others in the background.
+  The server prepared one batch at a time per repository, so a batch you were looking at
+  was refused as busy until the background batch’s GitHub read ended, and the list asked
+  again 1 s, then 2 s, later.
+  Now the batch you are looking at stops the background batch, unless that one is
+  reading some of the same pull requests, and starts its own read.
+  Measured with a simulated one-second GitHub read, your rows used to wait about a
+  second to be admitted and two to be prepared; now they are admitted in about 10 ms and
+  prepared in about one second.
+  The stopped batch’s pull requests are asked for again later, no sooner than a minute
+  after its read began, as for any batch whose read did not finish.
+
+- A pull request page’s header no longer loses your keyboard focus when you switch tabs
+  or a refresh repaints it.
+  Every repaint built the whole header again, so a focused branch chip’s copy button, or
+  any other header control, was replaced and focus went to the page.
+  The header now keeps each part, from the title and badge to the branch chips, labels,
+  and Refresh, and builds again only a part whose content changed.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A Markdown document’s images no longer blink when you come back to its file in the
+  macOS app, images from other sites such as badges included.
+  Opening another file and returning built the document again with lazy images, which
+  WebKit fetched again before drawing them, so the images at the top were blank for a
+  moment. An image already loaded in the page now loads at once from that copy; one you
+  have not reached yet still waits until you scroll to it.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A replaced image in a Markdown document shows its new content when you come back to
+  the document or reload it, in Chrome as in the macOS app; Chrome used to keep showing
+  the old one. Each image of a served file is now addressed with a version of the file,
+  which `/api/kpress/render` answers as `raw_versions`, so a replaced file has a new
+  address, and a hidden file, a file behind a link, or one replaced with the same size
+  and time is no exception.
+  Editing the document no longer makes the macOS app fetch its images again.
+  A PNG, JPEG, GIF, WebP, or AVIF image at its file’s current version is kept by the
+  browser without asking, so a reload in Chrome asks for nothing; its sandbox no longer
+  allows scripts, which an image never runs, so it is the same under `--untrusted`.
+  Every other `/raw` answer, an SVG’s or an HTML document’s included, is revalidated as
+  before, so no copy a browser keeps under the trusted profile answers, allowing
+  scripts, after the folder is served `--untrusted` (see `SECURITY.md`). A link to an
+  image that links to itself no longer fails the document’s render, or `/raw`, on Python
+  3.12.
 
 - Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
   shell observes: the changed inventory paths with their ancestors, or `null` when
@@ -50,6 +103,16 @@ All notable changes to Metabrowser are documented here.
   on each and asked again later.
   On a stand-in of 5,000 pull requests read by eight list windows at once, an answer now
   takes 460 ms instead of 1.25 s.
+
+- No slow or failing batch stops the Pulls tab’s preparation of pull requests.
+  The list now waits 10 s for a batch you are looking at and 30 s for one in the
+  background, instead of 2 s for both, so a busy server’s slow answers are used.
+  A batch that still goes unanswered twice is passed over and tried again after the rest
+  of the list, no sooner than 30 s later; it used to be asked for again and again, every
+  30 s, with nothing after it prepared.
+  The rows you scroll to no longer wait for a background batch already on its way: it is
+  abandoned, as one is when the tab is closed, hidden, or paused, and the server stops
+  working on an abandoned batch at its next step, before it reads anything from GitHub.
 
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
@@ -197,6 +260,11 @@ All notable changes to Metabrowser are documented here.
   floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
+  A refresh that finds no changed files is offered as **Show the updated list (no
+  files)**; the files shown no longer stay, with nothing to press, under “No changed
+  files.” A list Metabrowser no longer holds is offered as **Show the updated list (not
+  listed)**, while the files shown stay as they were last listed and are not covered by
+  “Listing changed files…”.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

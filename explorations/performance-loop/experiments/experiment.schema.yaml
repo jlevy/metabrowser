@@ -51,6 +51,18 @@ properties:
       control: {type: string}
       candidate: {type: string}
       record: {type: string, description: Path to the recorded runs.}
+      protocol:
+        type: object
+        additionalProperties: false
+        required: [path, sha256]
+        description: >-
+          The round's committed protocol (pre-registration, criteria, and amendments): a path
+          beside the record, and the sha256 of that file as committed with the record. A
+          recorded round's protocol is not edited again; a later correction goes in the
+          record. tests/test_experiment_storage.py checks both.
+        properties:
+          path: {type: string}
+          sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
       bytecode:
         type: string
         enum: [cached, uncached]
