@@ -1206,12 +1206,18 @@ async function loadTree(options = {}) {
 // — and the ignored half is dimmed to match how those rows read in the
 // tree below. Falls back to the combined figure when the server has no
 // split to give (a subtree request, or an index still warming up).
+//
+// Both forms are a navigation metadata line (`.nav-metadata` in styles.css),
+// the component the Commits and Pulls lines share, and both say the figure in
+// the same words, "4 files (38 B)": the fallback once set it in the tree rows'
+// count and size chips, so the line changed colour and lost its parentheses
+// the moment the split arrived.
 function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
   if (!summary || typeof summary.files !== "number") {
     return (
-      '<div class="tree-summary">' +
-      `<span class="tree-summary-count">${countHtml(fallbackFiles)}</span>` +
-      `<span class="tree-summary-size">${sizeHtml(fallbackSize)}</span>` +
+      '<div class="tree-summary nav-metadata">' +
+      `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles)}</span>` +
+      `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize)}</span>` +
       "</div>"
     );
   }
@@ -1232,7 +1238,25 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
       `<span class="tree-summary-bytes">(${esc(formatSize(summary.ignored_size))})</span>` +
       "</span>";
   }
-  return `<div class="tree-summary tree-summary-split">${tracked}${ignored}</div>`;
+  return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
+}
+
+// The fallback's figures, in the split row's words. A figure still being
+// counted is the pending tally; an omitted one (a Git listing has no size
+// fact) is nothing at all, as in countHtml and sizeHtml.
+function treeSummaryCountHtml(n) {
+  if (n === undefined) {
+    return "";
+  }
+  return isPendingNumber(n) ? '<span class="count tally-pending"></span>' : esc(formatCount(n));
+}
+function treeSummarySizeHtml(bytes) {
+  if (bytes === undefined) {
+    return "";
+  }
+  return isPendingNumber(bytes)
+    ? '<span class="size tally-pending"></span>'
+    : `(${esc(formatSize(bytes))})`;
 }
 
 // The walker's root upsert carries gitignore-blind totals, so it
@@ -1343,7 +1367,7 @@ async function fetchRootSummary() {
   // showing first-paint figures under a recency filter.
   _lastTreeSummaryHtml = html;
   _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-    /<div class="tree-summary(?: tree-summary-split)?">.*?<\/div>$/,
+    /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
     html,
   );
   return true;
@@ -3215,7 +3239,7 @@ function renderSelectionOutsideFilterNote(selectedPath) {
     return;
   }
   var note = document.createElement("div");
-  note.className = "tree-selection-note";
+  note.className = "tree-selection-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
   var anchor =
@@ -4459,7 +4483,7 @@ function setRecentContinuityStatus(status) {
     return;
   }
   var note = document.createElement("div");
-  note.className = "recent-stale-note";
+  note.className = "recent-stale-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
   var anchor =
@@ -5145,7 +5169,7 @@ function _renderFilteredTally(panel, state, count) {
   }
   var summary = panel.querySelector(".tree-summary");
   var line = document.createElement("div");
-  line.className = "tree-summary-filtered";
+  line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
   line.textContent = text;
   if (summary) {
@@ -7391,10 +7415,10 @@ function updateRootAggregatePresentation(entry) {
   var countEl = queryHtml(".tree-summary-count");
   var sizeEl = queryHtml(".tree-summary-size");
   if (countEl) {
-    countEl.innerHTML = countHtml(totalFiles);
+    countEl.innerHTML = treeSummaryCountHtml(totalFiles);
   }
   if (sizeEl) {
-    sizeEl.innerHTML = sizeHtml(totalSize);
+    sizeEl.innerHTML = treeSummarySizeHtml(totalSize);
   }
   scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");

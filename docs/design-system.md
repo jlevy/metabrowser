@@ -1480,9 +1480,10 @@ A row or menu item is a link, so the title sets its own ink and weight, and no v
 hover, focus, selected, or current state changes them.
 The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
-Usernames and the repository summary use the same small metadata size and bold normal
-text ink. Branch names use the remote [ref chip](#branch-chips), slightly smaller than
-the line, head → base, as [Merge Direction](#merge-direction) sets them.
+Usernames use the same small metadata size and bold normal text ink; the repository
+summary above the list is the [navigation metadata line](#navigation-metadata-line).
+Branch names use the remote [ref chip](#branch-chips), slightly smaller than the line,
+head → base, as [Merge Direction](#merge-direction) sets them.
 Known native stack membership uses a small Layers icon and bold position in a column of
 the title line, before the age, in all the room the title and it share but 4ch of the
 title, and cut short with an ellipsis past that; the tooltip names the stack and every
@@ -1564,9 +1565,9 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
 | Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
-| Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. | Counts describe the repository. Nothing says how many rows are held: the list continues as the reader scrolls. |
+| Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
 | Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
-| Connection | One live status row: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
+| Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
 | Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
 
@@ -2649,6 +2650,42 @@ The bar is as wide as the pane and sits under the identity it belongs to and ove
 content it switches.
 A use site does not pad, recolor, or re-letter it.
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Metadata Line
+
+Under each main tab’s toolbar, a line or two says what the list below holds and how
+current it is: the Files totals, “12,797 files (413.8 MB) + 248,189 ignored (10.1 GB)”,
+and the filter’s remarks under them; the Commits tally, “10,044 commits begun 1y ago”;
+and the Pulls count, “381 PRs on owner/repo”, over its connection line, “Updated just
+now” or what keeps the list from refreshing.
+All of them are one component, `.nav-metadata` in `static/styles.css`. They were three
+recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
+in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
+
+- **Type.** `--nav-font-size` in regular weight and `--text` ink, line height 1.5, and
+  tabular numerals, so a count that grows while it is counted does not jitter.
+  A remark on the line above it — a filter’s count, a connection’s state or remedy —
+  adds `.nav-metadata-note`, which mutes it and changes nothing else.
+  Inside a line, spans carry only what they mean: the gitignored half is muted, an age
+  is the [age primitive](#age), and a repository name is `.repository-name`.
+- **Box.** The navigation column’s inset, `--pane-header-padding-x`, and
+  `--nav-metadata-padding-y` above and below, with the band’s rule under it.
+  One line of it is exactly the toolbar slot’s height, so on Commits, which has no
+  toolbar of its own, the line stands in the slot and its text sits as far from either
+  rule as it does under the Files and Pulls toolbars.
+  Consecutive lines are one band: padding above the first, below the last, and one rule.
+- **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
+  item built of spans, about a word space and a half.
+- **Height.** Each line reserves its own line box before anything arrives, so a pending
+  tally, a count still being taken, and a settled one are one height, and the Pulls
+  lines hold theirs from loading through every failure.
+  Text wraps only when it is longer than the pane: the Files totals in a narrow pane,
+  and a Pulls remedy, which keeps its whole command, as the pull request header’s does.
+
+A plugin whose tab states metadata under its toolbar uses the class, as the Pulls tab
+does, and restyles none of this.
+`tests/test_nav_metadata_line.py` holds the markup and stylesheets to the component, and
+`tests/test_nav_metadata_chrome.py` measures each tab, and each state, in Chrome.
 
 ### Section Headings
 

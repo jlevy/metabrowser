@@ -555,6 +555,13 @@ and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet 
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
 
+A navigation tab that says what its list holds and how current it is, under its toolbar,
+puts each line in the host’s `nav-metadata` class, and a remark on the line above it,
+such as a refresh’s state, in `nav-metadata nav-metadata-note` too.
+The host owns the line’s type, inset, padding, rule, and spacing, so it reads as the
+Files and Commits tallies do; a plugin stylesheet lays out the line’s own spans and
+nothing else. See [Navigation Metadata Line](design-system.md#navigation-metadata-line).
+
 A control in a view that shows or hides content, such as a row with the `icons.toggle`
 chevron, a fold, or a section trigger, carries the host’s `disclosure-toggle` class, so
 clicking it never selects text; a native `summary` needs nothing.

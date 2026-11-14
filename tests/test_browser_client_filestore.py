@@ -406,8 +406,9 @@ def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
     assert 'queryHtml(".tree-summary-count")' in helper_block
     assert 'queryHtml(".tree-summary-size")' in helper_block
     assert 'queryHtml(".header-path")' in helper_block
-    assert "countHtml(totalFiles)" in helper_block
-    assert "sizeHtml(totalSize)" in helper_block
+    # The fallback's own words, "4 files (38 B)", which the split row says too.
+    assert "treeSummaryCountHtml(totalFiles)" in helper_block
+    assert "treeSummarySizeHtml(totalSize)" in helper_block
     assert "pathEl.dataset.tipFiles" in helper_block
     assert "pathEl.dataset.tipSize" in helper_block
 
@@ -518,7 +519,7 @@ def test_load_tree_renders_single_file_tally() -> None:
         in fn_block
     )
     assert "treeSummaryHtml(stableSummary, summaryFiles, summarySize)" in fn_block
-    assert '"tree-summary"' in summary_block
+    assert '"tree-summary nav-metadata"' in summary_block
     assert "tree-summary-count" in summary_block
     assert "tree-summary-size" in summary_block
     # The duplicate header tally must not come back.

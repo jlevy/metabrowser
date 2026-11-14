@@ -1624,7 +1624,7 @@ async def index(
     toolbars = (
         '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git"'
         f"{'' if commits_in_front else ' hidden'}>"
-        f'<div class="git-history-summary">{pending_tally}</div></div>'
+        f'<div class="git-history-summary nav-metadata">{pending_tally}</div></div>'
         if commits_tab
         else ""
     ) + (

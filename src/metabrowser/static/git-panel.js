@@ -1828,7 +1828,7 @@
     if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
       // The toolbar's tally settles too: it has no count to wait for.
       const failed = document.createElement("div");
-      failed.className = "git-history-summary git-history-summary-failed";
+      failed.className = "git-history-summary nav-metadata nav-metadata-note";
       failed.textContent = "History unavailable";
       historyToolbar()?.replaceChildren(failed);
       renderRefreshState(
@@ -1849,7 +1849,7 @@
     let list = panel.querySelector(".git-graph-list");
     if (!(list instanceof HTMLElement)) {
       const summary = document.createElement("div");
-      summary.className = "git-history-summary";
+      summary.className = "git-history-summary nav-metadata";
       list = document.createElement("div");
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
@@ -1887,7 +1887,7 @@
     if (!(row instanceof HTMLElement)) {
       return;
     }
-    row.classList.remove("git-history-summary-failed");
+    row.classList.remove("nav-metadata-note");
     if (!state.summary) {
       const pending = document.createElement("span");
       pending.className = "count tally-pending";

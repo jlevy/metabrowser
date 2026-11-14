@@ -69,8 +69,12 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     assert "min-height: var(--nav-toolbar-height);" in _rule(css, ".nav-filter-bar")
     assert "display: none;" in _rule(css, ".nav-filter-bar[hidden],\n.nav-toolbar[hidden]")
     assert ".nav-filter-bar[inert]" not in css
-    tally = _rule(css, ".nav-toolbar > .git-history-summary")
-    assert "padding: 0;" in tally and "min-height: 0;" in tally
+    # The Commits tally is a metadata line, and one line of that is the slot's height, so in
+    # the slot it keeps its own padding above and below and gives up only its inset and rule.
+    tally = _rule(css, ".nav-toolbar > .nav-metadata")
+    assert "padding-inline: 0;" in tally and "border-bottom: none;" in tally
+    assert "padding-block" not in tally and "min-height" not in tally
+    assert "flex-wrap: nowrap;" in tally
     pulls = _rule(_github_css(), ".github-pulls-filters:where(.nav-toolbar > *)")
     assert "position: static;" in pulls and "padding: 0;" in pulls
     tabs = (STATIC / "main-tabs.js").read_text(encoding="utf-8")
@@ -323,15 +327,21 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
 
 
 def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
+    """Each is a metadata line, which reserves its own line box (`.nav-metadata`)."""
+
+    line = _rule(_css(), ".nav-metadata")
+    assert "min-height: 1lh;" in line and "box-sizing: content-box;" in line
     css = _github_css()
-    for selector in (".github-pulls-status,\n.github-pulls-connection",):
-        assert "min-height: calc(1lh + 6px);" in _rule(css, selector)
-    status = _rule(css, ".github-pulls-status")
-    assert "white-space: nowrap;" in status and "text-overflow: ellipsis;" in status
+    assert "flex-wrap: nowrap;" in _rule(css, ".github-pulls-status")
+    total = _rule(css, ".github-pulls-total-line")
+    assert "white-space: nowrap;" in total and "text-overflow: ellipsis;" in total
     assert ".github-pulls-connection:not([hidden])" not in css
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "status.hidden" not in panel and "connection.hidden" not in panel
-    assert 'h("div", { class: "github-pulls-connection" }, [' in panel
+    assert 'h("p", { class: "github-pulls-status nav-metadata" })' in panel
+    assert (
+        'h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [' in panel
+    )
 
 
 def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None:

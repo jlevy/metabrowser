@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
+  and the pull request count with how fresh it is — now looks the same on every tab.
+  It was three styles: on Pulls it was smaller, gray, and hard against the filters with
+  no space above it, so a notice such as “Run gh auth login --hostname github.com to
+  connect” sat right under the toolbar’s rule.
+  All three are now one component, `.nav-metadata`, with the same type, inset, space
+  above and below, and spacing between items, and each keeps one height from the first
+  paint through loading, counting, and refresh failures.
+  The Files totals read “N files (size)” while the index is still being counted, as they
+  do once it finishes, instead of switching from blue figures to plain text, and the
+  Pulls count is no longer bold.
+  A plugin whose tab states metadata under its toolbar can use the class (see
+  `docs/plugins.md`).
+
 - Reading Metabrowser’s private cache costs less on a busy server.
   Every read checks that no other user can read or replace what it reads, and it used to
   open each directory on the way again to check it.
