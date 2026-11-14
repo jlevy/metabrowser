@@ -46,7 +46,12 @@ tar -xJf "${work}/${tarball}" -C "$work"
 # The core commands and the HTTP(S) remote helper, which HTTPS acquisition needs.
 # No Tcl/Tk tools, translations, Perl or Python commands, DAV push, or OpenSSL
 # (curl brings its own TLS).
+# Built as C17 (git's own CFLAGS plus -std=gnu17): GCC 15 compiles C23 by default, where
+# <stddef.h> defines an unreachable() macro that breaks an older Git's reflog.c ("macro
+# 'unreachable' passed 3 arguments"). This script is part of the CI cache key, so a change
+# here rebuilds every admitted Git.
 if ! make -C "${work}/git-${version}" -j"$(nproc)" prefix="$prefix" \
+  CFLAGS="-g -O2 -Wall -std=gnu17" \
   NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 NO_EXPAT=1 NO_OPENSSL=1 \
   all install >"${work}/build.log" 2>&1; then
   tail -n 60 "${work}/build.log" >&2
