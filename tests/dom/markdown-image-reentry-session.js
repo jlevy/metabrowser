@@ -1,149 +1,35 @@
 // Which of a Markdown document's images load eagerly when its file is entered again
 // (docs/design-system.md, "A Repaint Keeps Its Images").
 //
-// The production pieces run together, as the page runs them:
-// - the shell's inventory stream handlers and its file store, extracted from app.js
-//   verbatim, which turn each `fs.snapshot` and `fs.change` frame into the
-//   `metabrowser:inventory-change` event;
-// - the plugin SDK, whose `onInventoryChange` hears that event;
-// - the Markdown plugin's index.js, which subscribes `forgetHeldImages` to it; and
-// - the link enhancer, imported from its file, which resolves each image's address on
-//   images that arrive as KPress writes them: lazy, with the address the author wrote.
-// Only the browser is a double: the event stream, the DOM, and the engine's loads, which
-// are events this session fires, so it decides which images the page holds. The frames
-// are shaped as the server sends them on the shell's `root-depth-2` stream.
+// The production placement (place-rendered.js) and link enhancer (link-enhancer.js) run
+// together, as a mount runs them, on renders shaped as the server sends them: HTML whose
+// images KPress wrote lazy at the address the author wrote, and `raw_versions`, the
+// version of each served file the document embeds. Only the browser is a double: the DOM,
+// a template that parses the render's images, and the engine's loads, which are events
+// this session fires, so it decides which images the page holds.
 //
-// An image whose served address has loaded in this page since the last filesystem
-// change is made eager before that address is set, its authored address removed first;
-// any other stays lazy. Any change, a reconnect even with the same snapshot, forgets
-// every held image, and a load assigned before a change is not remembered after it. An
-// image under a hidden name is never held: the watcher reports no change there. The
-// record keeps `MAX_HELD_IMAGES` images and forgets the least recently loaded past that.
+// The page holds a loaded image only at an address that names its bytes: a served file's
+// address with the version the render gave it, any served address on a pinned revision,
+// and an address on another origin. A held served image is made eager before its address
+// is set, its authored address removed first; a held outside image is made eager in the
+// template, before the page adopts it. A replaced file has a new version, so its address
+// is new and it loads lazily there; an unversioned served address, and an absolute one
+// on the page's own origin, are never held. The record keeps `MAX_HELD_IMAGES` images
+// and forgets the least recently loaded past that.
 //
 // This checks attributes, their order, listeners, and the record, not loading or paint,
 // which are the engine's; the design-system section has the WebKit and Chrome
 // measurements.
-const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const vm = require("node:vm");
-const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const markdownDir = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
 const moduleUrl = (name) => pathToFileURL(path.join(markdownDir, name)).href;
-const appSource = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf8");
 
-/** One app.js declaration, bounded by its closing line at column zero. */
-function appDeclaration(pattern, label) {
-  const match = appSource.match(pattern);
-  if (!match) {
-    throw new Error(`app.js ${label} is not extractable`);
-  }
-  return match[0];
-}
-
-const SHELL_VARIABLES = [
-  "fileStore",
-  "fileStoreSubscribers",
-  "inventoryEventSource",
-  "lastInventorySnapshot",
-  "catalogFeedCanStart",
-];
-const SHELL_FUNCTIONS = [
-  "_createInventoryEventSource",
-  "fileStoreApplySnapshot",
-  "fileStoreApplySnapshotInner",
-  "fileStoreApplyChange",
-  "fileStoreApplyChangeInner",
-  "notifyFileStoreSubscribers",
-  "announceUnchangedSnapshot",
-];
-const shellSource = [
-  appDeclaration(/^const activeFiles = new Map\(\);[^\n]*$/m, "active files"),
-  appDeclaration(/^const fileCache = new Map\(\);$/m, "file cache"),
-  ...SHELL_VARIABLES.map((name) =>
-    appDeclaration(new RegExp(`^var ${name} = [^\\n]*;`, "m"), `variable ${name}`),
-  ),
-  ...SHELL_FUNCTIONS.map((name) =>
-    appDeclaration(
-      new RegExp(`^function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
-      `function ${name}`,
-    ),
-  ),
-].join("\n\n");
-
-// The shell services a frame is handed to besides the file store; none of them decides
-// whether a consumer hears the change.
-const COLLABORATORS = `
-var _perf = { measure: (_label, fn) => fn() };
-var pageConnections = { suspended: () => false, defer() {} };
-var quickFileCatalogFeed = null;
-var knownFileCatalog = null;
-var filterState = null;
-var inventoryChangeHighlightingActive = false;
-var recentEverLoaded = false;
-var currentRecentWindow = null;
-var recentContinuity = { dirtyActiveRequest() {} };
-var fileNeedsRevalidate = new Set();
-var subtreeCache = new Map();
-var subtreeRequests = new Map();
-var recentFilterRefetch = { pending: () => false };
-var treeFilterModel = { observeRecentSentinel() {} };
-function filterHasConstraints() { return false; }
-function recentRepairDescriptor() { return null; }
-function filesPanelUsesRecentSource() { return false; }
-function recentViewOwnsCurrentCursor() { return false; }
-function _scheduleRecentRecompute() {}
-function _scheduleInventoryReconnect() {}
-function retryFailedExpandedSubtrees() {}
-function invalidateSubtreeCaches() {}
-function invalidateFilePreviews() {}
-function applyCellPatch() {}
-function _mirrorActiveFromFsEntry() {}
-function _removeDeferredTreePageEntries() {}
-function _removeRenderedRows() {}
-function _removeRenderedRowsImmediately() {}
-function loadTree() {}
-`;
-
-/** The shell with its stream, the SDK, and the Markdown plugin, in one page. */
-async function createPage() {
-  const events = new EventTarget();
-  const streams = [];
-  class SessionEventSource {
-    constructor(url) {
-      this.url = String(url);
-      this.handlers = new Map();
-      streams.push(this);
-    }
-    addEventListener(type, handler) {
-      this.handlers.set(type, handler);
-    }
-    close() {}
-  }
-  const sandbox = createSdkSandbox({
-    CustomEvent,
-    EventSource: SessionEventSource,
-    JSON,
-    addEventListener: events.addEventListener.bind(events),
-    dispatchEvent: events.dispatchEvent.bind(events),
-    removeEventListener: events.removeEventListener.bind(events),
-  });
-  vm.runInContext(COLLABORATORS, sandbox, { filename: "markdown-image-collaborators.js" });
-  vm.runInContext(shellSource, sandbox, { filename: "app-inventory-stream.js" });
-  vm.runInContext("_createInventoryEventSource()", sandbox);
-  // The plugin's own index.js subscribes the enhancer's record to the SDK.
-  globalThis.window = { metabrowser: sandbox.metabrowser };
-  await import(moduleUrl("index.js"));
-  const stream = streams.at(-1);
-  return {
-    /** The server sends *type* with *data* on the shell's stream. */
-    sends(type, data) {
-      stream.handlers.get(type)({ data: JSON.stringify(data) });
-    },
-  };
-}
+// The page's origin: an image addressed there is the page's own, not outside it.
+const ORIGIN = "http://127.0.0.1:8000";
+globalThis.location = { origin: ORIGIN };
 
 class ElementShim {}
 global.Element = ElementShim;
@@ -154,7 +40,7 @@ class FakeElement extends ElementShim {
     this.tagName = tagName.toUpperCase();
     this.parentElement = null;
     this.attributes = new Map(Object.entries(attributes));
-    /** Attribute changes after the element was parsed, in order. */
+    /** Attribute changes after the element was parsed, and its placement, in order. */
     this.changes = [];
   }
 
@@ -177,14 +63,56 @@ class FakeElement extends ElementShim {
   }
 }
 
-/** A rendered document's root: its parsed elements, and the listeners put on it. */
-class FakeContainer extends FakeElement {
-  constructor(elements) {
+const RESOURCE_SELECTOR =
+  "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]";
+
+/** Parsed elements, queried as a template's content or a placed root is. */
+class FakeParent extends FakeElement {
+  constructor(tagName) {
+    super(tagName);
+    this.elements = [];
+  }
+
+  querySelector() {
+    return null;
+  }
+
+  querySelectorAll(selector) {
+    if (selector === RESOURCE_SELECTOR || selector === "img[src]") {
+      return this.elements.filter((element) => element.hasAttribute("src"));
+    }
+    return [];
+  }
+}
+
+/** A template: its HTML is parsed into images that load nothing until placed. */
+class FakeTemplate extends FakeParent {
+  constructor() {
+    super("template");
+    this.content = new FakeParent("#document-fragment");
+  }
+
+  set innerHTML(html) {
+    this.content.elements = [...html.matchAll(/<img loading="lazy" src="([^"]*)">/g)].map(
+      (match) => new FakeElement("img", { loading: "lazy", src: match[1] }),
+    );
+  }
+}
+
+/** A rendered document's root: what was placed in it, and the listeners put on it. */
+class FakeContainer extends FakeParent {
+  constructor() {
     super("div");
-    this.elements = elements;
     this.listeners = new Map();
-    for (const element of elements) {
+    this.ownerDocument = { createElement: () => new FakeTemplate() };
+  }
+
+  replaceChildren(fragment) {
+    this.elements = fragment.elements;
+    fragment.elements = [];
+    for (const element of this.elements) {
       element.parentElement = this;
+      element.changes.push("placed");
     }
   }
 
@@ -199,20 +127,6 @@ class FakeContainer extends FakeElement {
     }
   }
 
-  querySelector() {
-    return null;
-  }
-
-  querySelectorAll(selector) {
-    if (
-      selector ===
-      "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]"
-    ) {
-      return this.elements.filter((element) => element.hasAttribute("src"));
-    }
-    return [];
-  }
-
   /** The engine finished loading *image*: its load reaches the root in the capture phase. */
   load(image) {
     const entry = this.listeners.get("load");
@@ -222,70 +136,44 @@ class FakeContainer extends FakeElement {
   }
 }
 
-/** An image as KPress writes it. */
-function image(src) {
-  return new FakeElement("img", { loading: "lazy", src });
+/** A render as the server sends it: each image as KPress writes it, and the versions. */
+function render(sources, versions = {}) {
+  return {
+    html: sources.map((source) => `<img loading="lazy" src="${source}">`).join("\n"),
+    raw_versions: versions,
+  };
 }
-
-/** An inventory entry as the stream sends it. */
-function entry(entryPath, type) {
-  return { path: entryPath, type, size: 460, mtime_ns: 1_790_000_000_000_000_000 };
-}
-
-// The shell's `root-depth-2` snapshot: the root, `docs`, and what is directly in it.
-const SNAPSHOT = {
-  scope: "root-depth-2",
-  complete: true,
-  entries: [
-    entry("", "dir"),
-    entry("docs", "dir"),
-    entry("docs/readme.md", "file"),
-    entry("docs/images", "dir"),
-  ],
-};
-// Editing docs/readme.md: the file, and each ancestor whose totals it moved.
-const MARKDOWN_EDITED = {
-  ops: [
-    { op: "upsert", entry: entry("docs/readme.md", "file") },
-    { op: "upsert", entry: entry("docs", "dir") },
-    { op: "upsert", entry: entry("", "dir") },
-  ],
-};
-// Replacing docs/images/shown.png, deeper than the stream watches: its deepest watched
-// ancestor, and theirs.
-const IMAGE_REPLACED = {
-  ops: [
-    { op: "upsert", entry: entry("docs/images", "dir") },
-    { op: "upsert", entry: entry("docs", "dir") },
-    { op: "upsert", entry: entry("", "dir") },
-  ],
-};
 
 async function run() {
-  const page = await createPage();
-  const { enhanceRenderedLinks, MAX_HELD_IMAGES } = await import(moduleUrl("link-enhancer.js"));
-  let current = { path: "docs/readme.md" };
+  const { placeRendered, MAX_HELD_IMAGES } = await import(moduleUrl("place-rendered.js"));
+  const { enhanceRenderedLinks } = await import(moduleUrl("link-enhancer.js"));
+  let sourceKind = "filesystem";
   const mb = {
     decorateExternalLink() {},
     navigation: {
-      current: () => current,
+      current: () => ({ path: "docs/readme.md" }),
       href: (target) => `/view/${target.path}`,
       open: async () => {},
     },
+    sourceKind: () => sourceKind,
   };
   const eventTarget = { addEventListener() {}, removeEventListener() {} };
   const options = { cancel: () => {}, eventTarget, schedule: () => 0 };
 
-  /** Enter `docs/readme.md` with images parsed from *sources*, as a mount does. */
-  function enter(sources) {
-    current = { path: "docs/readme.md" };
-    const images = sources.map(image);
-    const container = new FakeContainer(images);
-    const handle = enhanceRenderedLinks(container, "docs/readme.md", mb, options);
-    return { container, handle, images };
+  /** Enter `docs/readme.md`, rendered with *sources* and *versions*, as a mount does. */
+  async function enter(sources, versions = {}) {
+    const container = new FakeContainer();
+    const rendered = render(sources, versions);
+    const { enhanced: handle } = await placeRendered(container, rendered, mb, (root) =>
+      enhanceRenderedLinks(root, "docs/readme.md", mb, {
+        ...options,
+        rawVersions: rendered.raw_versions,
+      }),
+    );
+    return { container, handle, images: container.elements };
   }
 
-  /** Each image's loading, address, and the changes the enhancer made to it. */
+  /** Each image's loading, address, and the changes made to it, placement included. */
   const facts = (images) =>
     images.map((element) => ({
       loading: element.getAttribute("loading"),
@@ -294,8 +182,8 @@ async function run() {
     }));
 
   /** Enter a document showing *sources* and report each one's loading; load nothing. */
-  function observe(sources) {
-    const entered = enter(sources);
+  async function observe(sources, versions = {}) {
+    const entered = await enter(sources, versions);
     entered.handle.dispose();
     return Object.fromEntries(
       sources.map((source, index) => [source, entered.images[index].getAttribute("loading")]),
@@ -303,85 +191,91 @@ async function run() {
   }
 
   /** Enter a document showing *sources*, and the engine loads each, in order. */
-  function loadAll(sources) {
-    const entered = enter(sources);
+  async function loadAll(sources, versions = {}) {
+    const entered = await enter(sources, versions);
     for (const element of entered.images) {
       entered.container.load(element);
     }
     entered.handle.dispose();
   }
 
-  const README = ["images/shown.png", "images/far.png", "https://example.com/remote.png"];
-  const SHOWN = ["images/shown.png"];
+  /** Each source under docs/, at version *version*. */
+  const versioned = (sources, version) =>
+    Object.fromEntries(sources.map((source) => [`docs/${source}`, version]));
+
+  const SHOWN = "images/shown.png";
+  const FAR = "images/far.png";
+  const UNVERSIONED = "images/past-the-bound.png";
+  const REMOTE = "https://example.com/remote.png";
+  const README = [SHOWN, FAR, UNVERSIONED, REMOTE];
+  // The render versions each served file it embeds, up to its bound.
+  const VERSIONS = versioned([SHOWN, FAR], "a1b2c3d4e5f60718");
   const steps = [];
 
-  page.sends("fs.snapshot", SNAPSHOT);
-
   // First entry: the page holds nothing, so every image is lazy.
-  const first = enter(README);
+  const first = await enter(README, VERSIONS);
   steps.push({
     step: "first entry",
     listens: { load: first.container.listeners.get("load")?.capture ? "capture" : null },
     images: facts(first.images),
   });
-  // The reader sees the first image and the remote one; the far one never loads.
-  first.container.load(first.images[0]);
-  first.container.load(first.images[2]);
+  // The reader sees all but the far image, which never loads.
+  for (const index of [0, 2, 3]) {
+    first.container.load(first.images[index]);
+  }
   first.handle.dispose();
   steps.push({ step: "left", listening: [...first.container.listeners.keys()] });
 
   // Entering again builds the document again.
-  const second = enter(README);
+  const second = await enter(README, VERSIONS);
   steps.push({ step: "entered again", images: facts(second.images) });
   second.handle.dispose();
 
-  /** What *action* does to the held shown image: its loading before and after. */
-  function across(step, action) {
-    const before = observe(SHOWN)[SHOWN[0]];
-    action();
-    steps.push({ step, before, after: observe(SHOWN)[SHOWN[0]] });
-  }
-
-  // The stream reconnects and sends the same snapshot: deep files may still have changed.
-  across("a reconnect sends the same snapshot", () => page.sends("fs.snapshot", SNAPSHOT));
-  loadAll(SHOWN);
-  across("the Markdown changes", () => page.sends("fs.change", MARKDOWN_EDITED));
-  loadAll(SHOWN);
-  across("an image under docs/images is replaced", () => page.sends("fs.change", IMAGE_REPLACED));
-
-  // A load in flight across a change may carry the bytes from before it.
-  across("a load assigned before a change finishes after it", () => {
-    const inFlight = enter(SHOWN);
-    page.sends("fs.change", IMAGE_REPLACED);
-    inFlight.container.load(inFlight.images[0]);
-    inFlight.handle.dispose();
+  // The image is replaced: the next render gives it a new version, so a new address.
+  const REPLACED = versioned([SHOWN], "0f1e2d3c4b5a6978");
+  const replaced = await enter([SHOWN], REPLACED);
+  steps.push({ step: "the image is replaced", images: facts(replaced.images) });
+  replaced.container.load(replaced.images[0]);
+  replaced.handle.dispose();
+  steps.push({
+    step: "its new address loaded, then entered again",
+    loading: await observe([SHOWN], REPLACED),
   });
-  across("a load assigned after the change", () => loadAll(SHOWN));
 
-  // The watcher reports nothing under a hidden name, so nothing would forget it.
-  const HIDDEN = [".assets/logo.png", "images/.cache/thumb.png"];
-  loadAll(HIDDEN);
-  steps.push({ step: "images under hidden names load", loading: observe(HIDDEN) });
+  // An absolute address on the page's own origin is the page's, and may change.
+  const OWN = `${ORIGIN}/raw?path=docs%2Fimages%2Fshown.png`;
+  await loadAll([OWN]);
+  steps.push({
+    step: "an absolute address on the page's origin loads",
+    loading: await observe([OWN]),
+  });
+
+  // On a pinned revision a served file never changes at its address.
+  sourceKind = "git_revision";
+  const PINNED = ["images/pinned.png"];
+  await loadAll(PINNED);
+  steps.push({ step: "a pinned revision's image loads", loading: await observe(PINNED) });
+  sourceKind = "filesystem";
 
   // The record fills to its bound, least recently loaded first.
-  page.sends("fs.change", MARKDOWN_EDITED);
   const gallery = Array.from({ length: MAX_HELD_IMAGES }, (_, index) => `gallery/${index}.png`);
-  loadAll(gallery);
+  const galleryVersions = versioned([...gallery, "extra/0.png", "extra/1.png"], "1111222233334444");
+  await loadAll(gallery, galleryVersions);
   steps.push({
     step: `${MAX_HELD_IMAGES} images loaded: the bound`,
-    loading: observe([gallery[0], gallery.at(-1)]),
+    loading: await observe([gallery[0], gallery.at(-1)], galleryVersions),
   });
-  loadAll(["extra/0.png"]);
+  await loadAll(["extra/0.png"], galleryVersions);
   steps.push({
     step: "one more loads: the least recently loaded is forgotten",
-    loading: observe([gallery[0], gallery[1], "extra/0.png"]),
+    loading: await observe([gallery[0], gallery[1], "extra/0.png"], galleryVersions),
   });
   // Loading an older image again makes it the most recently loaded.
-  loadAll([gallery[1]]);
-  loadAll(["extra/1.png"]);
+  await loadAll([gallery[1]], galleryVersions);
+  await loadAll(["extra/1.png"], galleryVersions);
   steps.push({
     step: "gallery/1.png loads again, then one more loads",
-    loading: observe([gallery[1], gallery[2], gallery[3], "extra/1.png"]),
+    loading: await observe([gallery[1], gallery[2], gallery[3], "extra/1.png"], galleryVersions),
   });
 
   return { bound: MAX_HELD_IMAGES, steps };

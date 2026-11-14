@@ -51,6 +51,7 @@ from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
+from stat import S_ISREG
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 
 from starlette.applications import Starlette
@@ -84,6 +85,7 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
+from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -110,9 +112,11 @@ from metabrowser.gz_io import (
 )
 from metabrowser.http_caching import (
     BUILD_TAG,
+    address_version,
     build_scoped_etag,
     editable_install,
     etag_headers,
+    immutable_headers,
     matches_if_none_match,
     stamped_asset_cache_control,
     store_tag,
@@ -3606,7 +3610,17 @@ async def api_kpress_render(request: Request) -> Response:
         # A document the reader does not trust renders inert (kpress_adapter.inert_render).
         with server_timing.phase("render"):
             rendered = kpress_adapter.inert_render(rendered)
-    return JSONResponse(rendered, headers={"cache-control": "no-cache"})
+    # The version of each file the document embeds, which the page puts in that file's
+    # /raw address, so a replaced image is a new address (_raw_versions). Read on every
+    # render, which is never kept: a render names the files as they are when it is asked.
+    # A new mapping: KPress keeps renders, and this one must not change what it keeps.
+    with server_timing.phase("read"):
+        raw_versions = await asyncio.to_thread(
+            _raw_versions, str(rendered.get("html") or ""), subpath
+        )
+    return JSONResponse(
+        {**rendered, "raw_versions": raw_versions}, headers={"cache-control": "no-cache"}
+    )
 
 
 _KPRESS_EXPORT_MODES_SUPPORTED = {"page", "static-hosted", "hashed-static-hosted", "pdf"}
@@ -3972,6 +3986,58 @@ def _raw_identity(mtime_hash: str, stat: os.stat_result, *, passthrough: bool) -
     )
 
 
+def _raw_version(target: Path, stat: os.stat_result) -> str:
+    """The version a ``/raw`` address carries: the file as it is now, and the trust profile.
+
+    A versioned address is kept for a year without asking (``SECURITY.md``), so it names
+    everything that answer depends on: the file by its resolved path and by what a
+    replacement moves -- size, modification and change times, inode, and device -- and the
+    headers by the trust profile and the sandbox policy it sends. The build is folded in by
+    :func:`metabrowser.http_caching.address_version`. The representation is not named: a
+    gzip passthrough answer varies by ``Accept-Encoding``, which a browser keys it by.
+    """
+    active = get_capabilities().active_content
+    return address_version(
+        f"{os.fsencode(target)!r}:{stat.st_size}:{stat.st_mtime_ns}:{stat.st_ctime_ns}:"
+        f"{stat.st_ino}:{stat.st_dev}:{'active' if active else 'inert'}:"
+        f"{raw_sandbox_csp(active_content=active)}"
+    )
+
+
+# How many resources of one render get a version, in document order. Past it a resource's
+# address is unversioned and revalidated, and its image is not held (place-rendered.js).
+# Each version costs what /raw's own resolver costs, a realpath and a stat, and a render
+# is asked for on every entry. Measured 2026-11-14 on a laptop at a load average near 13,
+# through _raw_versions on a document of 1,024 images in one folder, 12 path components
+# deep, warm cache, 30 runs: 1,024 versions took a median of 71 ms, as long as KPress took
+# to render that document uncached (68 ms); 256 took 19 ms, and 64 took 5.5 ms. A re-entry
+# of that document in WebKit asked again for 224 images before they were held (#408), so
+# 256 versions cover a screen of thumbnails, and an image past them loads lazily as KPress
+# wrote it.
+_MAX_RAW_VERSIONS = 256
+
+
+def _raw_versions(rendered_html: str, source_path: str) -> dict[str, str]:
+    """The version of each served file *rendered_html* embeds, by its ``/raw`` identity.
+
+    Each identity is resolved as ``/raw`` resolves its ``path``, safe-path check included,
+    so a version names the file that address serves; one that resolves to no regular file
+    is left out. Runs in a worker thread: a ``stat`` per resource.
+    """
+    versions: dict[str, str] = {}
+    for identity in embedded_raw_paths(rendered_html, source_path, limit=_MAX_RAW_VERSIONS):
+        try:
+            target = resolve_session_identity(identity)
+            if target is None:
+                continue
+            stat = target.stat()
+        except OSError:
+            continue
+        if S_ISREG(stat.st_mode):
+            versions[identity] = _raw_version(target, stat)
+    return versions
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -4014,12 +4080,21 @@ async def raw_file(request: Request) -> Response:
         except OSError:
             return PlainTextResponse("Not found", status_code=404)
         etag = _etag_for(_raw_identity(mtime_hash, stat, passthrough=passthrough))
-        # Revalidated on every use, never kept as fresh: the body is the reader's file and
-        # its headers are the trust profile's (_RawTrustHeaderMiddleware), so a response a
-        # browser keeps without asking could answer for another profile on the same host
-        # and port. A 304 answers only the tag, which names the profile; a date cannot,
-        # so If-Modified-Since alone is answered in full. See SECURITY.md.
-        headers = etag_headers(etag)
+        # The body is the reader's file and its headers are the trust profile's
+        # (_RawTrustHeaderMiddleware), so a response a browser keeps without asking must
+        # be at an address that names both. The query form's `v` does, while it is the
+        # version the file has now (_raw_version): that answer is kept for a year. Any
+        # other is revalidated on every use: a 304 answers only the tag, which names the
+        # profile; a date cannot, so If-Modified-Since alone is answered in full. The path
+        # form is a document's address, for its relative references, and is never
+        # versioned. See SECURITY.md.
+        version = request.query_params.get("v")
+        current = (
+            version is not None
+            and "path" not in getattr(request, "path_params", {})
+            and version == _raw_version(target, stat)
+        )
+        headers = immutable_headers(etag) if current else etag_headers(etag)
         if passthrough:
             headers["Vary"] = "Accept-Encoding"
         # The tag alone: `*` names no profile, so it earns no 304 here.

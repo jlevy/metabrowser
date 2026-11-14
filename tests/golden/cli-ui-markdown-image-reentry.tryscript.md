@@ -6,18 +6,18 @@ env:
 ---
 # Golden Test: Markdown Image Re-entry
 
-This browserless session runs the production pieces together, as the page does: the
-shell’s inventory stream handlers and file store, extracted from `app.js`; the plugin
-SDK’s `onInventoryChange`; the Markdown plugin’s `index.js`, which subscribes
-`forgetHeldImages`; and the link enhancer, imported from its file, on images as KPress
-writes them: lazy, at the address the author wrote.
-The stream frames are shaped as the server sends them on the shell’s `root-depth-2`
-stream, and the engine’s loads are events the session fires.
+This browserless session runs the Markdown plugin’s placement, `place-rendered.js`, and
+its link enhancer together, as a mount runs them, on renders shaped as the server sends
+them: images as KPress writes them, lazy and at the address the author wrote, and
+`raw_versions`, the version of each served file the document embeds.
+The engine’s loads are events the session fires.
 It pins which images a document entered again makes eager, the order of each image’s
-attribute changes, the load listener’s lifecycle, that any change and any reconnect,
-even with the same snapshot, forget every held image, that a load assigned before a
-change is not remembered, that an image under a hidden name is never held, and the
-record’s bound and least recently loaded eviction.
+attribute changes and its placement, and the load listener’s lifecycle: a served image
+is held at its versioned address and made eager before that address is set, an image
+from another origin is held and made eager before the page adopts it, a replaced file’s
+new version is a new address that loads lazily, an unversioned served address and an
+absolute address on the page’s own origin are never held, a pinned revision’s images are
+held, and the record keeps its bound and evicts the least recently loaded.
 When an image is fetched and painted is the engine’s; see “A Repaint Keeps Its Images”
 in `docs/design-system.md`.
 
@@ -34,22 +34,34 @@ $ node tests/dom/markdown-image-reentry-session.js
       "images": [
         {
           "loading": "lazy",
-          "src": "/raw?path=docs%2Fimages%2Fshown.png",
+          "src": "/raw?path=docs%2Fimages%2Fshown.png&v=a1b2c3d4e5f60718",
           "changes": [
-            "src=/raw?path=docs%2Fimages%2Fshown.png"
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Fshown.png&v=a1b2c3d4e5f60718"
           ]
         },
         {
           "loading": "lazy",
-          "src": "/raw?path=docs%2Fimages%2Ffar.png",
+          "src": "/raw?path=docs%2Fimages%2Ffar.png&v=a1b2c3d4e5f60718",
           "changes": [
-            "src=/raw?path=docs%2Fimages%2Ffar.png"
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Ffar.png&v=a1b2c3d4e5f60718"
+          ]
+        },
+        {
+          "loading": "lazy",
+          "src": "/raw?path=docs%2Fimages%2Fpast-the-bound.png",
+          "changes": [
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Fpast-the-bound.png"
           ]
         },
         {
           "loading": "lazy",
           "src": "https://example.com/remote.png",
-          "changes": []
+          "changes": [
+            "placed"
+          ]
         }
       ]
     },
@@ -62,57 +74,69 @@ $ node tests/dom/markdown-image-reentry-session.js
       "images": [
         {
           "loading": "eager",
-          "src": "/raw?path=docs%2Fimages%2Fshown.png",
+          "src": "/raw?path=docs%2Fimages%2Fshown.png&v=a1b2c3d4e5f60718",
           "changes": [
+            "placed",
             "remove src",
             "loading=eager",
-            "src=/raw?path=docs%2Fimages%2Fshown.png"
+            "src=/raw?path=docs%2Fimages%2Fshown.png&v=a1b2c3d4e5f60718"
           ]
         },
         {
           "loading": "lazy",
-          "src": "/raw?path=docs%2Fimages%2Ffar.png",
+          "src": "/raw?path=docs%2Fimages%2Ffar.png&v=a1b2c3d4e5f60718",
           "changes": [
-            "src=/raw?path=docs%2Fimages%2Ffar.png"
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Ffar.png&v=a1b2c3d4e5f60718"
           ]
         },
         {
           "loading": "lazy",
+          "src": "/raw?path=docs%2Fimages%2Fpast-the-bound.png",
+          "changes": [
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Fpast-the-bound.png"
+          ]
+        },
+        {
+          "loading": "eager",
           "src": "https://example.com/remote.png",
-          "changes": []
+          "changes": [
+            "loading=eager",
+            "placed"
+          ]
         }
       ]
     },
     {
-      "step": "a reconnect sends the same snapshot",
-      "before": "eager",
-      "after": "lazy"
+      "step": "the image is replaced",
+      "images": [
+        {
+          "loading": "lazy",
+          "src": "/raw?path=docs%2Fimages%2Fshown.png&v=0f1e2d3c4b5a6978",
+          "changes": [
+            "placed",
+            "src=/raw?path=docs%2Fimages%2Fshown.png&v=0f1e2d3c4b5a6978"
+          ]
+        }
+      ]
     },
     {
-      "step": "the Markdown changes",
-      "before": "eager",
-      "after": "lazy"
-    },
-    {
-      "step": "an image under docs/images is replaced",
-      "before": "eager",
-      "after": "lazy"
-    },
-    {
-      "step": "a load assigned before a change finishes after it",
-      "before": "lazy",
-      "after": "lazy"
-    },
-    {
-      "step": "a load assigned after the change",
-      "before": "lazy",
-      "after": "eager"
-    },
-    {
-      "step": "images under hidden names load",
+      "step": "its new address loaded, then entered again",
       "loading": {
-        ".assets/logo.png": "lazy",
-        "images/.cache/thumb.png": "lazy"
+        "images/shown.png": "eager"
+      }
+    },
+    {
+      "step": "an absolute address on the page's origin loads",
+      "loading": {
+        "http://127.0.0.1:8000/raw?path=docs%2Fimages%2Fshown.png": "lazy"
+      }
+    },
+    {
+      "step": "a pinned revision's image loads",
+      "loading": {
+        "images/pinned.png": "eager"
       }
     },
     {

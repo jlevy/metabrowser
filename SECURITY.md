@@ -141,19 +141,33 @@ events, but cannot read those bytes.
 When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
 still renders markup and loads subresources, but executes nothing.
 
-Those headers belong to the profile that sent them, so no `/raw` response is kept as
-fresh: every one, whichever branch answered, is `Cache-Control: no-cache`, and a browser
-asks again before it loads one anew.
+Those headers belong to the profile that sent them, so a `/raw` response is kept as
+fresh only at an address that names the profile.
+The query form’s `v`, a version the render route gives each served file a Markdown
+document embeds (`raw_versions`), is such an address: it is a digest of the file’s
+resolved path, size, modification and change times, inode, and device, of the trust
+profile and its sandbox policy, and of the build.
+While `v` is the version the file has now, the answer is
+`Cache-Control: private, max-age=31536000, immutable`, so a replaced file, a changed
+profile, or another build is a new address.
+Every other response, whichever branch answered, is `Cache-Control: no-cache`, and a
+browser asks again before it loads one anew: an unversioned address, a version the file
+no longer has, the path form `/raw/{path}`, which a sandboxed preview loads as a
+document and which is never versioned, and every error.
+A versioned address stored under one profile is not one a page asks for under another,
+since its render gives every file the other profile’s version; under the untrusted
+profile a document’s root-relative `/raw` addresses lose their address, so a document
+cannot name another profile’s version either.
 A file’s `ETag` names the file (its name, size, modification and change times, and
 inode), the representation, the trust profile, the sandbox policy, and the build, and
 only a matching tag in `If-None-Match` is answered `304`; `*` and `If-Modified-Since`
 alone get the whole response, because neither can say which profile made the copy a
 browser holds. So a response stored while one profile served the folder is never reused
 by a new load, unasked or by a 304, after another profile serves it on the same host and
-port. Going back or forward in a tab is not a new load: a browser may show again, from
-its history, a `/raw` document it already showed, with the headers it was sent then,
-until it is reloaded.
-Only `no-store` would rule that out, at the cost of every image’s 304.
+port, unless that load names the other profile’s version.
+Going back or forward in a tab is not a new load: a browser may show again, from its
+history, a `/raw` document it already showed, with the headers it was sent then, until
+it is reloaded. Only `no-store` would rule that out, at the cost of every image’s 304.
 
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the

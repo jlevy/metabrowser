@@ -5,16 +5,23 @@ All notable changes to Metabrowser are documented here.
 ## Unreleased
 
 - A Markdown document’s images no longer blink when you come back to its file in the
-  macOS app. Opening another file and returning built the document again with lazy
-  images, which WebKit fetched again before drawing them, so the images at the top were
-  blank for a moment. An image already loaded in the page now loads at once from that
-  copy; one you have not reached yet still waits until you scroll to it.
-  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
-  the page forget every copy it holds, so in the macOS app the next return fetches the
-  images again, a replaced image or the file behind a link to one included.
-  In Chrome, before this change and after it, a replaced image can show its old copy,
-  even after a reload, until Chrome no longer treats its cached copy as fresh.
+  macOS app, images from other sites such as badges included.
+  Opening another file and returning built the document again with lazy images, which
+  WebKit fetched again before drawing them, so the images at the top were blank for a
+  moment. An image already loaded in the page now loads at once from that copy; one you
+  have not reached yet still waits until you scroll to it.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A replaced image in a Markdown document shows its new content when you come back to
+  the document or reload it, in Chrome as in the macOS app; Chrome used to keep showing
+  the old one. Each image of a served file is now addressed with a version of the file,
+  which `/api/kpress/render` answers as `raw_versions`, so a replaced file has a new
+  address, and a hidden file, a file behind a link, or one replaced with the same size
+  and time is no exception.
+  Editing the document no longer makes the macOS app fetch its images again.
+  A `/raw` answer at a file’s current version is kept by the browser without asking, so
+  a reload in Chrome asks for nothing; every other `/raw` answer is revalidated as
+  before (see `SECURITY.md`).
 
 - Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
   shell observes: the changed inventory paths with their ancestors, or `null` when
