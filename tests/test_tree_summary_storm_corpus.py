@@ -98,7 +98,9 @@ def test_the_builder_leaves_an_inherited_repository_untouched(
         env=environment,
         capture_output=True,
         text=True,
-        timeout=120,
+        # The build took 0.7 s at a load average near 170, so this only catches a hang,
+        # under the suite's 50 s ceiling for inner bounds (pyproject.toml).
+        timeout=30,
         check=False,
     )
 
