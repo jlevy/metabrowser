@@ -285,9 +285,11 @@ Strict mode is off on a developer machine, which can add these:
 - `Chrome is not installed`, for the checks that need a real headless Chrome: the
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
-  the Folder Overview’s labels start at several window widths; and the layout checks in
-  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`. The
-  CI runners have Chrome, so CI runs them.
+  the Folder Overview’s labels start at several window widths; the layout checks in
+  `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`; and
+  `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer Chrome kept
+  under the trusted profile after the folder is served `--untrusted`. The CI runners
+  have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
   then so the group ID cannot pass to another process.

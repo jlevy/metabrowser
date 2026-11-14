@@ -20,12 +20,12 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "raw-profile-cache-chrome.mjs"
@@ -34,6 +34,12 @@ SESSION = Path(__file__).resolve().parent / "dom" / "raw-profile-cache-chrome.mj
 # than half the suite's 60 s budget, so the test carries its own, and the session's bound
 # fires before it.
 SESSION_TIMEOUT_S = 100
+# The longest the test can take: the session's bound, its process group stopped after it
+# (Chrome and both servers are in it), and the profile's teardown (tests/process_group.py),
+# with 10 s more for the rest of the setup; tests/test_process_group.py holds the sum under
+# the module's limit.
+LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 _METAB = Path(sys.executable).with_name("metab")
 
 
@@ -43,20 +49,23 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-@pytest.mark.timeout(120)
-def test_a_trusted_answer_kept_by_chrome_runs_nothing_after_untrusted(tmp_path: Path) -> None:
+def test_a_trusted_answer_kept_by_chrome_runs_nothing_after_untrusted(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
     chrome = require_chrome()
     root = tmp_path / "served"
     root.mkdir()
     state = tmp_path / "state"
     state.mkdir()
-    result = subprocess.run(
+    # The session leads a process group of its own, which Chrome and both servers join, and
+    # the whole group is stopped however it ends; the profile is the fixture's to remove.
+    result = run_in_own_group(
         [require_node(), str(SESSION), str(_METAB), str(root), str(_free_port()), str(state)],
-        capture_output=True,
-        text=True,
-        timeout=SESSION_TIMEOUT_S,
-        check=False,
-        env={**os.environ, "CHROME_BIN": chrome},
+        timeout_s=SESSION_TIMEOUT_S,
+        env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
+    )
+    assert not result.timed_out, (
+        f"the session ran past {SESSION_TIMEOUT_S} s: {result.stderr or result.stdout}"
     )
     assert result.returncode == 0, result.stderr or result.stdout
     record = json.loads(result.stdout.strip().splitlines()[-1])

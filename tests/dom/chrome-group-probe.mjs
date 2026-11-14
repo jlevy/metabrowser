@@ -1,11 +1,11 @@
 // Where a headless Chrome's processes live. Chrome is started from this process the two
-// ways the Chrome tests start it: through tests/dom/chrome-session.mjs, as the pull header
-// and staged fonts sessions do, and through the performance loop's launchBrowser, as the
-// recorder and the Overview alignment do (with --no-sandbox on Linux). Each loads a page
-// with a dedicated worker and a frame, so Chrome starts its renderer, GPU, network, and
-// storage helpers. While they run, this prints every process on the machine as JSON, with
-// this process's ID, for tests/test_process_group.py to check that each process Chrome
-// started is in this process's group, the group the caller stops.
+// ways the Chrome tests start it: through tests/dom/chrome-session.mjs, as the pull header,
+// staged fonts, and raw profile cache sessions do, and through the performance loop's
+// launchBrowser, as the recorder and the Overview alignment do (with --no-sandbox on
+// Linux). Each loads a page with a dedicated worker and a frame, so Chrome starts its
+// renderer, GPU, network, and storage helpers. While they run, this prints every process
+// on the machine as JSON, with this process's ID, for tests/test_process_group.py to check
+// that each process Chrome started is in this process's group, the group the caller stops.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     node tests/dom/chrome-group-probe.mjs
