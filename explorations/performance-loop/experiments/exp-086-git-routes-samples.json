@@ -1,0 +1,2235 @@
+{
+  "started_at": "2026-11-14T10:41:03.987Z",
+  "loadavg_start": [3.16162109375, 2.90185546875, 3.12353515625],
+  "n": 15,
+  "routes": {
+    "/api/git/log?limit=250": {
+      "warmup": {
+        "control": {
+          "at_ms": 1.5,
+          "ms": 224.08,
+          "status": 200,
+          "bytes": 87099,
+          "etag": false,
+          "server_timing": "srv;dur=196.7"
+        },
+        "candidate": {
+          "at_ms": 225.7,
+          "ms": 209.34,
+          "status": 200,
+          "bytes": 87099,
+          "etag": true,
+          "server_timing": "srv;dur=206.4"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "at_ms": 435,
+            "ms": 147.02,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=143.0"
+          },
+          {
+            "at_ms": 2132.1,
+            "ms": 136.92,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=133.6"
+          },
+          {
+            "at_ms": 3196.2,
+            "ms": 140.97,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=138.2"
+          },
+          {
+            "at_ms": 4281.6,
+            "ms": 137.87,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=135.1"
+          },
+          {
+            "at_ms": 5349.3,
+            "ms": 176.95,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=174.3"
+          },
+          {
+            "at_ms": 6635.4,
+            "ms": 137.36,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=134.4"
+          },
+          {
+            "at_ms": 7719.2,
+            "ms": 138.87,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=136.0"
+          },
+          {
+            "at_ms": 8818.4,
+            "ms": 148.98,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=145.8"
+          },
+          {
+            "at_ms": 9939.8,
+            "ms": 144.36,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=141.8"
+          },
+          {
+            "at_ms": 11140.5,
+            "ms": 181.41,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=178.8"
+          },
+          {
+            "at_ms": 12433.6,
+            "ms": 153.41,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=150.5"
+          },
+          {
+            "at_ms": 13590.4,
+            "ms": 144.58,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=142.0"
+          },
+          {
+            "at_ms": 14709.5,
+            "ms": 144.05,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=141.1"
+          },
+          {
+            "at_ms": 15860.5,
+            "ms": 142.17,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=139.4"
+          },
+          {
+            "at_ms": 17115,
+            "ms": 188.07,
+            "status": 200,
+            "bytes": 87099,
+            "etag": false,
+            "server_timing": "srv;dur=184.7"
+          }
+        ],
+        "candidate": [
+          {
+            "at_ms": 582.1,
+            "ms": 6.74,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.8"
+          },
+          {
+            "at_ms": 2126,
+            "ms": 6.13,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 3337.2,
+            "ms": 6.04,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 4275.5,
+            "ms": 6.07,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 5526.2,
+            "ms": 6.44,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=4.0"
+          },
+          {
+            "at_ms": 6629.6,
+            "ms": 5.81,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 7858.1,
+            "ms": 5.75,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 8812.5,
+            "ms": 5.89,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 10084.2,
+            "ms": 5.71,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 11134.9,
+            "ms": 5.62,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=4.1"
+          },
+          {
+            "at_ms": 12587,
+            "ms": 5.82,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.7"
+          },
+          {
+            "at_ms": 13584.3,
+            "ms": 6.17,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.7"
+          },
+          {
+            "at_ms": 14853.6,
+            "ms": 5.96,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.7"
+          },
+          {
+            "at_ms": 15854.4,
+            "ms": 6.04,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=3.6"
+          },
+          {
+            "at_ms": 17303.1,
+            "ms": 6.63,
+            "status": 200,
+            "bytes": 87099,
+            "etag": true,
+            "server_timing": "srv;dur=4.2"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 144.4,
+          "min": 136.92,
+          "max": 188.07,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 6,
+          "min": 5.62,
+          "max": 6.74,
+          "statuses": [200],
+          "etag": true
+        },
+        "pair_ratios": {
+          "min": 21.81,
+          "median": 24.15,
+          "max": 32.28,
+          "beyond_1_3": 15
+        },
+        "ratio": 24.07,
+        "apart": true
+      }
+    },
+    "/api/git/summary": {
+      "warmup": {
+        "control": {
+          "at_ms": 18329.9,
+          "ms": 162.55,
+          "status": 200,
+          "bytes": 67,
+          "etag": false,
+          "server_timing": "srv;dur=160.3"
+        },
+        "candidate": {
+          "at_ms": 18492.5,
+          "ms": 46,
+          "status": 200,
+          "bytes": 67,
+          "etag": true,
+          "server_timing": "srv;dur=43.7"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "at_ms": 18538.5,
+            "ms": 159.45,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=157.0"
+          },
+          {
+            "at_ms": 19688.2,
+            "ms": 149.49,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=147.2"
+          },
+          {
+            "at_ms": 20812.5,
+            "ms": 145.98,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=143.8"
+          },
+          {
+            "at_ms": 22032.9,
+            "ms": 153.11,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=150.7"
+          },
+          {
+            "at_ms": 23174.4,
+            "ms": 186.91,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=184.5"
+          },
+          {
+            "at_ms": 24369.4,
+            "ms": 164.36,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=162.1"
+          },
+          {
+            "at_ms": 25621,
+            "ms": 187.64,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=184.5"
+          },
+          {
+            "at_ms": 27079.8,
+            "ms": 184.92,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=182.7"
+          },
+          {
+            "at_ms": 28456.7,
+            "ms": 240.99,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=238.5"
+          },
+          {
+            "at_ms": 29837.9,
+            "ms": 165.22,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=162.8"
+          },
+          {
+            "at_ms": 31023.6,
+            "ms": 154.54,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=153.0"
+          },
+          {
+            "at_ms": 32250.7,
+            "ms": 147.53,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=145.1"
+          },
+          {
+            "at_ms": 33367,
+            "ms": 149.67,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=147.5"
+          },
+          {
+            "at_ms": 34597.7,
+            "ms": 189.87,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=187.4"
+          },
+          {
+            "at_ms": 35911.4,
+            "ms": 201.7,
+            "status": 200,
+            "bytes": 67,
+            "etag": false,
+            "server_timing": "srv;dur=199.1"
+          }
+        ],
+        "candidate": [
+          {
+            "at_ms": 18698,
+            "ms": 2,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.1"
+          },
+          {
+            "at_ms": 19685.3,
+            "ms": 2.9,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 20958.5,
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 22030,
+            "ms": 2.91,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 23361.4,
+            "ms": 3.34,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.3"
+          },
+          {
+            "at_ms": 24366.6,
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 25808.7,
+            "ms": 3.24,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.0"
+          },
+          {
+            "at_ms": 27077,
+            "ms": 2.72,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 28697.7,
+            "ms": 3.14,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.3"
+          },
+          {
+            "at_ms": 29834.7,
+            "ms": 3.16,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.1"
+          },
+          {
+            "at_ms": 31178.1,
+            "ms": 2.88,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 32247.8,
+            "ms": 2.91,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 33516.7,
+            "ms": 2.82,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=0.8"
+          },
+          {
+            "at_ms": 34594.3,
+            "ms": 3.39,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.4"
+          },
+          {
+            "at_ms": 36113.1,
+            "ms": 2.99,
+            "status": 200,
+            "bytes": 67,
+            "etag": true,
+            "server_timing": "srv;dur=1.0"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 164.4,
+          "min": 145.98,
+          "max": 240.99,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 2.9,
+          "min": 2,
+          "max": 3.39,
+          "statuses": [200],
+          "etag": true
+        },
+        "pair_ratios": {
+          "min": 50.7,
+          "median": 55.96,
+          "max": 79.72,
+          "beyond_1_3": 15
+        },
+        "ratio": 56.69,
+        "apart": true
+      }
+    },
+    "/api/git/refs": {
+      "warmup": {
+        "control": {
+          "at_ms": 37422.4,
+          "ms": 27.72,
+          "status": 200,
+          "bytes": 2470,
+          "etag": false,
+          "server_timing": "srv;dur=25.0"
+        },
+        "candidate": {
+          "at_ms": 37450.1,
+          "ms": 28.48,
+          "status": 200,
+          "bytes": 2470,
+          "etag": true,
+          "server_timing": "srv;dur=26.0"
+        }
+      },
+      "samples": {
+        "control": [
+          {
+            "at_ms": 37478.6,
+            "ms": 22.56,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=19.8"
+          },
+          {
+            "at_ms": 38660,
+            "ms": 20.95,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=19.7"
+          },
+          {
+            "at_ms": 39660.7,
+            "ms": 59.52,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=57.2"
+          },
+          {
+            "at_ms": 40706.5,
+            "ms": 20.93,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.4"
+          },
+          {
+            "at_ms": 41789.8,
+            "ms": 21.8,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=19.2"
+          },
+          {
+            "at_ms": 42873.3,
+            "ms": 20.47,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.1"
+          },
+          {
+            "at_ms": 43861.2,
+            "ms": 21.05,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.5"
+          },
+          {
+            "at_ms": 44873.9,
+            "ms": 58.3,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=55.9"
+          },
+          {
+            "at_ms": 45893.2,
+            "ms": 20.79,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.2"
+          },
+          {
+            "at_ms": 46935.4,
+            "ms": 20.65,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.2"
+          },
+          {
+            "at_ms": 47986.5,
+            "ms": 22.06,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=19.5"
+          },
+          {
+            "at_ms": 49009.7,
+            "ms": 20.46,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.2"
+          },
+          {
+            "at_ms": 49998.5,
+            "ms": 58.54,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=56.1"
+          },
+          {
+            "at_ms": 51036.9,
+            "ms": 20.61,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.3"
+          },
+          {
+            "at_ms": 52081.4,
+            "ms": 20.57,
+            "status": 200,
+            "bytes": 2470,
+            "etag": false,
+            "server_timing": "srv;dur=18.3"
+          }
+        ],
+        "candidate": [
+          {
+            "at_ms": 37501.2,
+            "ms": 3.39,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.1"
+          },
+          {
+            "at_ms": 38656.8,
+            "ms": 3.22,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.0"
+          },
+          {
+            "at_ms": 39720.2,
+            "ms": 3.19,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.2"
+          },
+          {
+            "at_ms": 40703.6,
+            "ms": 2.95,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 41811.6,
+            "ms": 3.21,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.0"
+          },
+          {
+            "at_ms": 42870.4,
+            "ms": 2.95,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 43882.3,
+            "ms": 2.84,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.8"
+          },
+          {
+            "at_ms": 44870.6,
+            "ms": 3.29,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.4"
+          },
+          {
+            "at_ms": 45914,
+            "ms": 2.87,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.8"
+          },
+          {
+            "at_ms": 46932.4,
+            "ms": 2.93,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 48008.5,
+            "ms": 2.85,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.8"
+          },
+          {
+            "at_ms": 49006.9,
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.9"
+          },
+          {
+            "at_ms": 50057,
+            "ms": 3.26,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.2"
+          },
+          {
+            "at_ms": 51033.4,
+            "ms": 3.46,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=1.1"
+          },
+          {
+            "at_ms": 52102,
+            "ms": 1.54,
+            "status": 200,
+            "bytes": 2470,
+            "etag": true,
+            "server_timing": "srv;dur=0.8"
+          }
+        ]
+      },
+      "summary": {
+        "control": {
+          "median": 21,
+          "min": 20.46,
+          "max": 59.52,
+          "statuses": [200],
+          "etag": false
+        },
+        "candidate": {
+          "median": 3,
+          "min": 1.54,
+          "max": 3.46,
+          "statuses": [200],
+          "etag": true
+        },
+        "pair_ratios": {
+          "min": 5.96,
+          "median": 7.24,
+          "max": 18.66,
+          "beyond_1_3": 15
+        },
+        "ratio": 7,
+        "apart": true
+      }
+    }
+  },
+  "checks": [
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 1,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 588.9,
+      "end_ms": 2126
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 2,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 2269.1,
+      "end_ms": 3196.2
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 3,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 3343.3,
+      "end_ms": 4275.5
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 4,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 4419.5,
+      "end_ms": 5349.3
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 5,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 5532.7,
+      "end_ms": 6629.6
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 6,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 6772.8,
+      "end_ms": 7719.2
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 7,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 7863.9,
+      "end_ms": 8812.4
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 8,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 8967.4,
+      "end_ms": 9939.8
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 9,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 10089.9,
+      "end_ms": 11134.8
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 10,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 11321.9,
+      "end_ms": 12433.6
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 11,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 12592.8,
+      "end_ms": 13584.2
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 12,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 13735,
+      "end_ms": 14709.5
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 13,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 14859.5,
+      "end_ms": 15854.4
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 14,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 16002.7,
+      "end_ms": 17115
+    },
+    {
+      "route": "/api/git/log?limit=250",
+      "pair": 15,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 17309.7,
+      "end_ms": 18329.9
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 1,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 18700,
+      "end_ms": 19685.3
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 2,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 19837.7,
+      "end_ms": 20812.5
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 3,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 20961.3,
+      "end_ms": 22030
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 4,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 22186,
+      "end_ms": 23174.4
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 5,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 23364.7,
+      "end_ms": 24366.6
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 6,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 24533.8,
+      "end_ms": 25621
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 7,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 25811.9,
+      "end_ms": 27077
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 8,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 27264.7,
+      "end_ms": 28456.7
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 9,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 28700.9,
+      "end_ms": 29834.7
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 10,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 30003.1,
+      "end_ms": 31023.6
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 11,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 31181,
+      "end_ms": 32247.8
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 12,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 32398.3,
+      "end_ms": 33367
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 13,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 33519.5,
+      "end_ms": 34594.3
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 14,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 34787.6,
+      "end_ms": 35911.3
+    },
+    {
+      "route": "/api/git/summary",
+      "pair": 15,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 36116.1,
+      "end_ms": 37422.4
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 1,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 37504.6,
+      "end_ms": 38656.8
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 2,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 38681,
+      "end_ms": 39660.6
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 3,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 39723.4,
+      "end_ms": 40703.5
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 4,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 40727.5,
+      "end_ms": 41789.8
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 5,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 41814.8,
+      "end_ms": 42870.4
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 6,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 42893.8,
+      "end_ms": 43861.2
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 7,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 43885.1,
+      "end_ms": 44870.6
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 8,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 44932.2,
+      "end_ms": 45893.2
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 9,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 45916.9,
+      "end_ms": 46932.4
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 10,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 46956,
+      "end_ms": 47986.5
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 11,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 48011.4,
+      "end_ms": 49006.9
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 12,
+      "move": "move-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 49030.1,
+      "end_ms": 49998.5
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 13,
+      "move": "tag",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 50060.3,
+      "end_ms": 51033.4
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 14,
+      "move": "delete-loose",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 51057.5,
+      "end_ms": 52081.4
+    },
+    {
+      "route": "/api/git/refs",
+      "pair": 15,
+      "move": "commit",
+      "correct": true,
+      "routes": {
+        "/api/git/refs": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/summary?scope=all": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        },
+        "/api/git/log?limit=50": {
+          "agrees": true,
+          "status": 200,
+          "tag_moved": true
+        }
+      },
+      "at_ms": 52103.5,
+      "end_ms": 53138.7
+    }
+  ],
+  "loadavg_end": [3.02734375, 2.91455078125, 3.11279296875],
+  "ended_at": "2026-11-14T10:41:57.126Z",
+  "check_summary": {
+    "checks": 45,
+    "wrong": 0
+  }
+}

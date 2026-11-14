@@ -1,0 +1,221 @@
+{
+  "rule": "exp-086 identity-period explanation check",
+  "boundary_ms": 5000,
+  "fits": false,
+  "table": {
+    "control": {
+      "comparison": {
+        "n_boundary": 36,
+        "n_within": 132,
+        "median_boundary_ms": 121,
+        "median_within_ms": 76,
+        "ratio": 1.5921052631578947
+      },
+      "commit": {
+        "n_boundary": 0,
+        "n_within": 84,
+        "median_boundary_ms": null,
+        "median_within_ms": 29,
+        "ratio": null
+      }
+    },
+    "candidate": {
+      "comparison": {
+        "n_boundary": 31,
+        "n_within": 53,
+        "median_boundary_ms": 78,
+        "median_within_ms": 78,
+        "ratio": 1
+      },
+      "commit": {
+        "n_boundary": 5,
+        "n_within": 79,
+        "median_boundary_ms": 28,
+        "median_within_ms": 27,
+        "ratio": 1.037037037037037
+      }
+    }
+  },
+  "runs": [
+    {
+      "series": "2026-11-14T09-25-03-170Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 30,
+      "hover_click": {
+        "boundary": false,
+        "ms": 78
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 125
+      }
+    },
+    {
+      "series": "2026-11-14T09-25-03-170Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 73
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 78
+      }
+    },
+    {
+      "series": "2026-11-14T09-37-55-612Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 75
+      },
+      "cold_1": {
+        "boundary": false,
+        "ms": 81
+      }
+    },
+    {
+      "series": "2026-11-14T09-37-55-612Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 30,
+      "hover_click": {
+        "boundary": false,
+        "ms": 78
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 124
+      }
+    },
+    {
+      "series": "2026-11-14T09-50-42-276Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 31,
+      "hover_click": {
+        "boundary": false,
+        "ms": 79
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 127
+      }
+    },
+    {
+      "series": "2026-11-14T09-50-42-276Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 90
+      },
+      "cold_1": {
+        "boundary": false,
+        "ms": 81
+      }
+    },
+    {
+      "series": "2026-11-14T10-03-37-422Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 74
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 84
+      }
+    },
+    {
+      "series": "2026-11-14T10-03-37-422Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 30,
+      "hover_click": {
+        "boundary": false,
+        "ms": 82
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 117
+      }
+    },
+    {
+      "series": "2026-11-14T10-16-24-539Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 30,
+      "hover_click": {
+        "boundary": false,
+        "ms": 71
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 120
+      }
+    },
+    {
+      "series": "2026-11-14T10-16-24-539Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 85
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 77
+      }
+    },
+    {
+      "series": "2026-11-14T10-29-12-096Z",
+      "pair": 1,
+      "condition": "candidate",
+      "git_backed": 73,
+      "boundaries": 29,
+      "hover_click": {
+        "boundary": true,
+        "ms": 83
+      },
+      "cold_1": {
+        "boundary": false,
+        "ms": 79
+      }
+    },
+    {
+      "series": "2026-11-14T10-29-12-096Z",
+      "pair": 1,
+      "condition": "control",
+      "git_backed": 87,
+      "boundaries": 30,
+      "hover_click": {
+        "boundary": false,
+        "ms": 70
+      },
+      "cold_1": {
+        "boundary": true,
+        "ms": 143
+      }
+    }
+  ]
+}
