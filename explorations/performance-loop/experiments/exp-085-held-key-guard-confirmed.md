@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean at the start and end of every run.
     candidate: metab 0.12.1.dev176+28e12fa2 (+176 commits, 28e12fa28), the editable checkout of this branch at 28e12fa2, the candidate exp-064 measured, clean at the start and end of every run.
+    protocol:
+      path: exp-085-protocol.txt
+      sha256: bb6334e53f9bd27d574a3855be037e894ac909f579df5f7e0a627609723fc64c
     record: exp-085-skim-samples.jsonl
   results:
     - metric: file_envelope_requests.skim.held_arrow_down
@@ -73,6 +76,11 @@ This round measures the same two builds again on that one journey, with six judg
 and the evidence that would explain the guard written down before any measurement.
 
 ## Protocol
+
+> Correction, 2026-11-14: the full preregistration this section restates, with its
+> amendments, was kept only in a worktree’s gitignored `attic/`. It is now committed as
+> [exp-085-protocol.txt](exp-085-protocol.txt) and named in `method.protocol`, with the
+> worktree parent directory written as `$WORKTREES`.
 
 Declared before any measurement, in the lane’s preregistration:
 

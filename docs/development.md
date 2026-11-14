@@ -989,9 +989,6 @@ It is plain text (`.txt`), not Markdown, so `make format` never rewrites it and 
 sha256 holds, and so the records’ `exp-*.md` glob does not read it as a record.
 Commit it before the first timed run, and commit each amendment, with its timestamp,
 before the measurement it governs; the history then shows which version governed what.
-Four records from before this rule (exp-060, exp-062, exp-083, and exp-087) cite a local
-file by sha256; each now names a committed copy with the worktree parent directory
-written as `$WORKTREES`, and writing it back reproduces the cited hash.
 
 **A lock outlives a crash.** The series lock is taken by a campaign’s driver, not by the
 transition harness, which takes none.
@@ -1010,7 +1007,8 @@ and re-arm any watcher from its durable copy.
 - no record points its evidence at a session scratchpad, or, outside a fenced recipe, at
   an operating system temporary directory;
 - every file a record names is in the repository: its protocol, with the sha256 the
-  record cites, the sample files `method.record` names, and every relative link;
+  record’s `method.protocol` gives, the files `method.record` names, and every relative
+  link;
 - a record that cites a pre-registration by sha256, or is dated from the rule on, names
   its committed protocol.
 

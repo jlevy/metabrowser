@@ -104,10 +104,12 @@ work was identical. This round measures how often each build lands on the later 
 
 ## Protocol
 
-> Correction, 2026-11-14: the pre-registration file below was kept only in a local
-> worktree. It is now committed as [exp-087-protocol.txt](exp-087-protocol.txt) and named
-> in `method.protocol`, with the worktree parent directory written as `$WORKTREES`;
-> writing that directory back reproduces the sha256 cited here.
+> Correction, 2026-11-14: the pre-registration file below was kept in an agent’s
+> temporary directory, which the 2026-11-14 restart emptied, and was rebuilt byte for
+> byte from session transcripts.
+> It is now committed as [exp-087-protocol.txt](exp-087-protocol.txt) and named in
+> `method.protocol`, with the worktree parent directory written as `$WORKTREES`; writing
+> that directory back reproduces the sha256 cited here.
 
 Declared before any measurement, in a local pre-registration file (sha256
 `68d473ccea6153b5d72806913965f475021ef932a6baa852b6fc3503fb199d1a`), which the

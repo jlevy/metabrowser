@@ -2,10 +2,10 @@
 
 The checks behind docs/development.md, "Durable Storage", for experiment records:
 
-- no record points its evidence at a session scratchpad or an operating system temporary
-  directory;
-- every file a record names is in the repository: its protocol, with the sha256 the record
-  cites, the sample files in `method.record`, and every relative link;
+- no record points its evidence at a session scratchpad, or, outside a fenced recipe, at an
+  operating system temporary directory;
+- every file a record names is in the repository: its protocol, with the sha256
+  `method.protocol` gives, the files `method.record` names, and every relative link;
 - a record that cites a pre-registration by sha256, or is dated from the rule on, names its
   committed protocol in `method.protocol`.
 """
@@ -29,17 +29,17 @@ SCHEMA = EXPERIMENTS / "experiment.schema.yaml"
 
 # Anywhere in a record: an agent's scratchpad, which no one else can read either.
 SCRATCHPAD = re.compile(r"scratchpad", re.IGNORECASE)
-# Outside a fenced block: a temporary directory the system empties. A bare `/tmp` that says where
-# something ran, not what was kept, is not a path into it. Inside one, a
+# Outside a fenced block: a temporary directory the system empties. Inside one, a
 # "Reproducing" recipe may write an intermediate there, because rerunning it recreates it.
+# A bare `/tmp` that says where something ran, not what was kept, is not a path into it.
 TEMPORARY = re.compile(
     r"(?<![\w.~])/tmp/|/private/tmp|/var/folders|\$\{?TMPDIR\b|\bmktemp\b", re.IGNORECASE
 )
 FENCE = re.compile(r"^(`{3,}|~{3,})")
-SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
-PREREGISTRATION = re.compile(r"pre-?registration", re.IGNORECASE)
+SHA256 = re.compile(r"\b[0-9a-f]{64}\b", re.IGNORECASE)
+PREREGISTRATION = re.compile(r"pre[- ]?registration|protocol file", re.IGNORECASE)
 LINK = re.compile(r"\]\(([^)\s#]+)(?:#[^)]*)?\)")
-NAMED_FILE = re.compile(r"\bexp-[\w.-]+\.(?:jsonl|json|mjs|py|txt)\b")
+NAMED_FILE = re.compile(r"(?<![\w./-])[\w./-]*[\w-]\.(?:jsonl|json|mjs|py|txt)\b")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Records written before the rule that point at evidence that no longer exists, with why.
@@ -155,7 +155,7 @@ def test_every_file_a_record_names_is_in_the_repository(path: Path) -> None:
     record = method.get("record")
     if isinstance(record, str):
         for name in NAMED_FILE.findall(record):
-            found = [EXPERIMENTS / name, LOOP / name, *EXPERIMENTS.rglob(name)]
+            found = [EXPERIMENTS / name, LOOP / name, ROOT / name, *LOOP.rglob(Path(name).name)]
             assert any(candidate.is_file() for candidate in found), (
                 f"{path.name}: method.record names {name}, which is not committed"
             )
@@ -176,7 +176,8 @@ def test_a_record_that_cites_a_protocol_names_it(path: Path) -> None:
     method = front.get("method") or {}
     if method.get("protocol") or _id(path) in KNOWN_LOST:
         return
-    cites = bool(PREREGISTRATION.search(body) and SHA256.search(body))
+    paragraphs = re.split(r"\n\s*\n", body)
+    cites = any(PREREGISTRATION.search(p) and SHA256.search(p) for p in paragraphs)
     assert not cites, (
         f"{path.name} cites a pre-registration by sha256 but names no committed protocol "
         "in method.protocol"

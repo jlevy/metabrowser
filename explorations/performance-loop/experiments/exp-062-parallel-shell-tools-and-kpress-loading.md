@@ -116,11 +116,13 @@ SDK to the `sdk-views` tier to restore startup headroom.
 
 ## Protocol
 
-> Correction, 2026-11-14: the pre-registration file below was kept only in a local
-> worktree. It is now committed as [exp-060-062-protocol.txt](exp-060-062-protocol.txt)
-> and named in `method.protocol`, with the worktree parent directory written as
-> `$WORKTREES`. Its first 32 lines are the file before the amendment, and writing that
-> directory back reproduces both sha256 values cited here.
+> Correction, 2026-11-14: the pre-registration file below was kept in an agent’s
+> temporary directory, which the 2026-11-14 restart emptied, and was rebuilt byte for
+> byte from session transcripts.
+> It is now committed as [exp-060-062-protocol.txt](exp-060-062-protocol.txt) and named
+> in `method.protocol`, with the worktree parent directory written as `$WORKTREES`. Its
+> first 32 lines are the file before the amendment, and writing that directory back
+> reproduces both sha256 values cited here.
 
 Declared before any measurement, at 2026-11-12T15:36:54Z, in a local pre-registration
 file (sha256 `3d5afd678b01bc7d389cdecdb1d7ee5430a3d4ef994a0866bec0690772b8a6f0`). It was

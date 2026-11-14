@@ -111,10 +111,12 @@ reverted it (`c30ee25c`, `add7edac`, `8ce4a224`, with docs in `372cbcec` and gol
 
 ## Protocol
 
-> Correction, 2026-11-14: the pre-registration file below was kept only in a local
-> worktree. It is now committed as [exp-083-protocol.txt](exp-083-protocol.txt) and named
-> in `method.protocol`, with the worktree parent directory written as `$WORKTREES`;
-> writing that directory back reproduces the sha256 cited here.
+> Correction, 2026-11-14: the pre-registration file below was kept in an agent’s
+> temporary directory, which the 2026-11-14 restart emptied, and was rebuilt byte for
+> byte from session transcripts.
+> It is now committed as [exp-083-protocol.txt](exp-083-protocol.txt) and named in
+> `method.protocol`, with the worktree parent directory written as `$WORKTREES`; writing
+> that directory back reproduces the sha256 cited here.
 
 Declared before any exp-083 measurement, at 2026-11-13T07:25Z, in a local
 pre-registration file (sha256
