@@ -197,6 +197,9 @@ All notable changes to Metabrowser are documented here.
   floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
+  A refresh that finds no changed files is offered as **Show the updated list (no
+  files)**; the files shown no longer stay, with nothing to press, under “No changed
+  files.”
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

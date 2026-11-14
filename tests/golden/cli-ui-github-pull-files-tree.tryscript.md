@@ -599,11 +599,14 @@ Rows inside the input’s window are drawn as before (`promptRows`). A refresh t
 draw the same rows is drawn in place, since it moves nothing (`unchangedRefresh`), and
 an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An offer that a
 later answer makes empty, by bringing back the rows drawn, is withdrawn
-(`offerWithdrawn`). Each hold’s span says how long it held and why it ended, an offer
-included when the reader presses it or the tree closes on it, and a first read that
-fails as failed (`spans`). `invariants` holds, across every model the stories rendered,
-their refresh answering started or not due, that an expanded tree with no rows drawn
-never offers, and that once open it shows progress, a notice, or its line.
+(`offerWithdrawn`). A refresh that lists no files at all is offered as well, and the
+drawn rows keep no line that says there are none until the reader asks for the empty
+list (`refreshListsNone`). Each hold’s span says how long it held and why it ended, an
+offer included when the reader presses it or the tree closes on it, and a first read
+that fails as failed (`spans`). `invariants` holds, across every model the stories
+rendered, their refresh answering started or not due, that an expanded tree with no rows
+drawn never offers, that once open it shows progress, a notice, or its line, and that
+drawn rows never stand under the line of a list with no files.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -739,6 +742,29 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "lateRows withdrawn 60000 ms"
     ]
   },
+  "refreshListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)",
+      "empty"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": "No changed files.",
+      "offer": null
+    },
+    "spans": [
+      "opening met 0 ms",
+      "lateRows reader 400 ms"
+    ]
+  },
   "unchangedRefresh": {
     "painted": [
       "closed",
@@ -794,7 +820,8 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   },
   "invariants": {
     "an expanded tree with no rows drawn never offers": true,
-    "an open tree with no rows drawn shows progress, a notice, or its line": true
+    "an open tree with no rows drawn shows progress, a notice, or its line": true,
+    "rows drawn never stand under the line of a list with no files": true
   }
 }
 ? 0

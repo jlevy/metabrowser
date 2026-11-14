@@ -490,6 +490,43 @@ async function run() {
     facts.offerWithdrawn = { painted: returned.painted, spans: returned.spans };
   }
 
+  // A drawn list whose refresh, with no input since, lists no files at all: it is offered as
+  // any other change to drawn rows, and the drawn rows keep no line that contradicts them
+  // (mb-aw30). The reader's press draws the empty list and its line.
+  {
+    const input = { at: 0 };
+    const none = {
+      ...structuredClone(recorded.comparison),
+      generation: `${"0".repeat(31)}7`,
+      fetched: 0,
+      rows: [],
+    };
+    const emptied = story(tree, [structuredClone(recorded.comparison), none], input);
+    emptied.controller.expand();
+    emptied.frame();
+    await settle();
+    emptied.frame();
+    const window = recorded.comparison.fresh_for_s * 1000;
+    await emptied.advance(window);
+    const offered = emptied.last();
+    input.at = window + 400;
+    await emptied.advance(input.at);
+    emptied.controller.reveal();
+    emptied.frame();
+    const shown = emptied.last();
+    facts.refreshListsNone = {
+      painted: emptied.painted,
+      offered: {
+        rows: offered.rows.length,
+        line: offered.line,
+        offer: offered.offer,
+        floats: offered.offerFloats,
+      },
+      shown: { rows: shown.rows.length, line: shown.line, offer: shown.offer },
+      spans: emptied.spans,
+    };
+  }
+
   // A cached list that is stale, drawn at the click, whose refresh answers a second later with
   // the same files, as after a rebase that leaves the diff as it was: it would draw the same
   // rows, so it is drawn in place, and nothing is offered.
@@ -574,7 +611,8 @@ async function run() {
   // Held across every model any story's tree rendered, its refresh answering started or not
   // due: an offer stands in only for a change to rows already drawn, so an expanded tree with
   // none drawn never carries one, and once open it shows its files, its progress, a notice,
-  // or its line ("No changed files."), never nothing.
+  // or its line ("No changed files."), never nothing; and rows drawn never stand under that
+  // line, which would contradict them (mb-aw30).
   const empty = rendered.filter((model) => model.expanded && model.rows.length === 0);
   facts.invariants = {
     "an expanded tree with no rows drawn never offers": empty.every(
@@ -583,6 +621,9 @@ async function run() {
     "an open tree with no rows drawn shows progress, a notice, or its line": empty
       .filter((model) => !model.opening)
       .every((model) => model.loading || model.notice !== null || model.line !== null),
+    "rows drawn never stand under the line of a list with no files": rendered
+      .filter((model) => model.expanded && model.rows.length > 0)
+      .every((model) => model.line !== "No changed files."),
   };
   return facts;
 }

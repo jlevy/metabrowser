@@ -614,8 +614,9 @@ export function fileListFailure(envelope, formatTime) {
 
 /**
  * `withheld` is how many files the rows held and not drawn list, and `drawn` how many the
- * drawn tree lists. An offer stands in only for a change to drawn rows, so it needs both: the
- * controller never holds rows from a tree with none drawn.
+ * drawn tree lists. An offer stands in only for a change to drawn rows, so it needs `drawn`:
+ * the controller never holds rows from a tree with none drawn. `withheld` is 0, not absent,
+ * when what is held is a list of no files, which is offered too.
  *
  * @param {FilesEnvelope | null} envelope
  * @param {{
@@ -638,7 +639,23 @@ export function describeFileTree(envelope, held) {
   const model = describeDrawnTree(envelope, held);
   const withheld = held.withheld ?? 0;
   const drawn = held.drawn ?? 0;
-  if (withheld > 0 && drawn > 0) {
+  // A refresh that lists no files at all replaces every drawn row as well.
+  const emptied =
+    held.withheld === 0 &&
+    drawn > 0 &&
+    envelope !== null &&
+    envelope.listed_from !== null &&
+    envelope.fetched === 0;
+  if (emptied) {
+    // The rows drawn stay until the reader asks for the empty list, so the line does not say
+    // there are none while they show; it says so once they are gone.
+    if (envelope.complete) {
+      model.line = null;
+    }
+    model.offer = "Show the updated list (no files)";
+    model.offerFloats = held.floats === true;
+    model.live = model.notice?.text ?? "No files listed";
+  } else if (withheld > 0 && drawn > 0) {
     // What is drawn keeps its line and notices; the offer only joins them.
     const more = withheld - drawn;
     model.offer =
