@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request page’s header no longer loses your keyboard focus when you switch tabs
+  or a refresh repaints it.
+  Every repaint built the whole header again, so a focused branch chip’s copy button, or
+  any other header control, was replaced and focus went to the page.
+  The header now keeps each part, from the title and badge to the branch chips, labels,
+  and Refresh, and builds again only a part whose content changed.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
 - A Markdown document’s images no longer blink when you come back to its file in the
   macOS app. Opening another file and returning built the document again with lazy
   images, which WebKit fetched again before drawing them, so the images at the top were
@@ -50,6 +58,16 @@ All notable changes to Metabrowser are documented here.
   on each and asked again later.
   On a stand-in of 5,000 pull requests read by eight list windows at once, an answer now
   takes 460 ms instead of 1.25 s.
+
+- No slow or failing batch stops the Pulls tab’s preparation of pull requests.
+  The list now waits 10 s for a batch you are looking at and 30 s for one in the
+  background, instead of 2 s for both, so a busy server’s slow answers are used.
+  A batch that still goes unanswered twice is passed over and tried again after the rest
+  of the list, no sooner than 30 s later; it used to be asked for again and again, every
+  30 s, with nothing after it prepared.
+  The rows you scroll to no longer wait for a background batch already on its way: it is
+  abandoned, as one is when the tab is closed, hidden, or paused, and the server stops
+  working on an abandoned batch at its next step, before it reads anything from GitHub.
 
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
