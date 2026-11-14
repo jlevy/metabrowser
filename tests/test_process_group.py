@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import re
 import shutil
 import signal
@@ -30,6 +31,7 @@ import threading
 import time
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -391,4 +393,64 @@ def test_a_chrome_test_s_whole_lifecycle_fits_its_timeout(name: str) -> None:
     lifecycle = float(module.LIFECYCLE_S)
     assert lifecycle + SETUP_ALLOWANCE_S <= _timeout_of(module), (
         f"{name} can take {lifecycle:g} s, over its {_timeout_of(module):g} s timeout"
+    )
+
+
+# ── Where Chrome's processes live ────────────────────────────────────────
+
+
+def _chrome_tree(snapshot: list[dict[str, Any]], node: int) -> tuple[list[str], list[str]]:
+    """The processes Node started, by parent, that left its group; and the processes
+    naming a profile (CHROME_PROFILES) that are not in it."""
+
+    children: dict[int, list[dict[str, Any]]] = {}
+    for row in snapshot:
+        children.setdefault(int(row["ppid"]), []).append(row)
+    tree: list[dict[str, Any]] = []
+    pending = [node]
+    while pending:
+        for row in children.get(pending.pop(), []):
+            tree.append(row)
+            pending.append(int(row["pid"]))
+    left = [
+        f"{row['pid']} pgid {row['pgid']}: {str(row['args'])[:120]}"
+        for row in tree
+        if row["pgid"] != node
+    ]
+    return left, [str(row["args"])[:160] for row in tree]
+
+
+def test_diagnostic_chrome_keeps_its_processes_in_the_group(chrome_profile: Path) -> None:
+    import json
+    import warnings
+
+    from tests.required_tools import require_chrome
+
+    run = run_in_own_group(
+        [require_node(), str(ROOT / "tests" / "dom" / "chrome-group-probe.mjs")],
+        timeout_s=40,
+        env={**os.environ, "CHROME_BIN": require_chrome(), "CHROME_PROFILES": str(chrome_profile)},
+    )
+    assert run.returncode == 0, run.stderr
+    probe = json.loads(run.stdout)
+    report = []
+    for launcher, snapshot in probe["snapshots"].items():
+        left, tree = _chrome_tree(snapshot, probe["node"])
+        naming = [
+            f"{row['pid']} pgid {row['pgid']}: {str(row['args'])[:200]}"
+            for row in snapshot
+            if str(chrome_profile) in str(row["args"]) and row["pgid"] != probe["node"]
+        ]
+        outside_chrome = [
+            f"{row['pid']} ppid {row['ppid']} pgid {row['pgid']}: {str(row['args'])[:200]}"
+            for row in snapshot
+            if row["pgid"] != probe["node"]
+            and row["pid"] > probe["node"]
+            and ("chrom" in str(row["args"]).lower())
+        ]
+        report.append(
+            f"{launcher}: {len(tree)} descendants, left the group: {left}; naming the profile outside the group: {naming}; newer Chrome processes outside the group: {outside_chrome}"
+        )
+    warnings.warn(
+        "DIAGNOSTIC chrome groups (" + sys.platform + "): " + " || ".join(report), stacklevel=1
     )
