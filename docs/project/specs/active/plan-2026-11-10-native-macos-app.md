@@ -275,7 +275,10 @@ spike, with CI and the review fixes), jlevy/metabrowser#359 (everyday use),
 jlevy/metabrowser#361 (setup), jlevy/metabrowser#362 (guidelines and robustness),
 jlevy/metabrowser#363 (the engine gate’s record), and jlevy/metabrowser#377 (the final
 review’s fixes). The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have
-merged; step 9 is under way.
+merged; step 9 is under way: on 2026-11-14 the check ran on `main` at c098e6a8 and every
+check a shell can drive passed, and the checks that need the owner’s clicks are scripted
+and wait for the owner (`mb-hwxu`’s notes; the stale setup-flow stand-ins it found are
+`mb-jeb5`).
 
 The steps run in this order, which the beads record as dependencies:
 
