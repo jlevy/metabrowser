@@ -211,6 +211,13 @@
   /** @type {Promise<boolean> | null} */
   let viewHelpersPending = null;
   let refreshing = false;
+  // How many of ensureHistory's HEAD reads are on their way, by the history generation
+  // each began in. While one of the current generation is, its walk may be about to be
+  // replaced, so a waiting newest landing is not answered from it (selectNewestWhenReady).
+  // A read from an earlier generation holds nothing: a refresh replaced its walk, read
+  // HEAD itself, and answers the landing as it ends.
+  /** @type {Map<number, number>} */
+  const headReads = new Map();
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
   let wantedRange = null;
@@ -2907,7 +2914,11 @@
   }
 
   /**
-   * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
+   * `supersede` replaces the walk even while a page of it is on its way: HEAD moved, so
+   * that page is obsolete, and the reset below aborts it. Without it a page on its way
+   * defers the refresh to whoever reads HEAD next.
+   *
+   * @param {{preserveDetail?: boolean, selectedId?: string | null, supersede?: boolean}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
@@ -2916,7 +2927,7 @@
     if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
       return;
     }
-    if (state.loading || refreshing) {
+    if ((state.loading && !options.supersede) || refreshing) {
       return;
     }
 
@@ -3022,7 +3033,19 @@
     // cannot be repainted, only recomputed. Re-reading identity on every
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
-    const read = await fetchRepoInfo();
+    headReads.set(generation, (headReads.get(generation) ?? 0) + 1);
+    /** @type {RepoRead} */
+    let read;
+    try {
+      read = await fetchRepoInfo();
+    } finally {
+      const left = (headReads.get(generation) ?? 1) - 1;
+      if (left > 0) {
+        headReads.set(generation, left);
+      } else {
+        headReads.delete(generation);
+      }
+    }
     if (generation !== historyGeneration) {
       return;
     }
@@ -3036,6 +3059,9 @@
       // check again the next time it shows. Tearing down here removed Commits from the
       // page for good on one refused or timed-out request.
       renderVirtualRows(true);
+      // Nor is it news that HEAD moved: the walk the panel holds answers a landing that a
+      // page settling during the read left to it, as it did before the read began.
+      selectNewestWhenReady();
       return;
     }
     const info = read.info;
@@ -3043,7 +3069,8 @@
       (info.head?.revision ?? null) !== state.headRevision ||
       (info.head?.ref ?? null) !== state.headRef
     ) {
-      await refreshHistory();
+      // A page of the old walk that began during the read is obsolete with it.
+      await refreshHistory({ supersede: true });
       return;
     }
     // A summary whose refs a read could not confirm tries again each time the panel shows.
@@ -3055,9 +3082,12 @@
       } else if (state.cursor) {
         await loadNextPage(false);
       }
-      return;
+    } else {
+      renderVirtualRows(true);
     }
-    renderVirtualRows(true);
+    // HEAD did not move, so the walk can answer a landing that a page settling during the
+    // read left to it.
+    selectNewestWhenReady();
   }
 
   function teardown() {
@@ -3197,9 +3227,12 @@
 
   /**
    * Answer a waiting newest landing once history can. It runs when the landing has caught
-   * up and whenever a page of history settles, so the first page selects the newest commit
-   * whichever arrives last, and nothing asks for history twice. Anything that took the pane
-   * or the address since, a file, a pull request, or a commit's own address, ends the wait.
+   * up, whenever a page of history settles, and as a HEAD read ends, so the first page
+   * selects the newest commit whichever arrives last, and nothing asks for history twice.
+   * While HEAD is being read it waits: a page of the walk that settles then must not answer
+   * from a walk the read may replace, or the refresh that follows would leave the list with
+   * no selection under the old newest commit. Anything that took the pane or the address
+   * since, a file, a pull request, or a commit's own address, ends the wait.
    */
   function selectNewestWhenReady() {
     const waiting = newestLanding;
@@ -3211,7 +3244,12 @@
       newestLanding = null;
       return;
     }
-    if (refreshing || viewHelpersPending !== null || (state.rowCount === 0 && state.loading)) {
+    if (
+      refreshing ||
+      headReads.has(historyGeneration) ||
+      viewHelpersPending !== null ||
+      (state.rowCount === 0 && state.loading)
+    ) {
       return;
     }
     if (state.rowCount === 0) {

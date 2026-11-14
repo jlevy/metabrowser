@@ -192,6 +192,14 @@ async function heldTabKeys(page) {
     hasAttribute(name) {
       return this.attributes.has(name);
     }
+    contains(node) {
+      for (let at = node; at; at = at.parentNode) {
+        if (at === this) {
+          return true;
+        }
+      }
+      return false;
+    }
     checkVisibility() {
       for (let node = this; node; node = node.parentNode) {
         if (node.attributes.has("hidden")) {
@@ -201,6 +209,8 @@ async function heldTabKeys(page) {
       return true;
     }
   }
+  // The stack menu's repaint keeps focus on its control, which it reads as an HTMLElement.
+  globalThis.HTMLElement = LiveElement;
   const listeners = [];
   const body = new LiveElement("body");
   body.connected = true;
@@ -240,6 +250,9 @@ async function heldTabKeys(page) {
   current.record.unavailable.comparison = "no_store";
   /** Markdown answers the session releases. */
   const markdown = [];
+  /** The stack answer, which the session releases while the first paint holds. */
+  const stackAnswers = [];
+  const stacked = require("../fixtures/github-stacks-responses.json").current;
   const response = (answer) => ({
     status: 200,
     headers: { get: () => null },
@@ -263,6 +276,18 @@ async function heldTabKeys(page) {
     if (route.startsWith("/api/plugin/github/pull?")) {
       return response(current);
     }
+    if (route === "/api/plugin/github/stacks") {
+      // Pull request 7 is the middle of a stack of three, for the same source and reader.
+      return new Promise((resolve) =>
+        stackAnswers.push(() =>
+          resolve({
+            status: stacked.status,
+            headers: { get: (name) => (name === "etag" ? stacked.etag : null) },
+            json: async () => structuredClone(stacked.body),
+          }),
+        ),
+      );
+    }
     return { status: 304, headers: { get: () => null } };
   };
   const shell = {
@@ -275,7 +300,7 @@ async function heldTabKeys(page) {
   };
   shell.window = shell;
   vm.createContext(shell);
-  for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+  for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js", "pulls-nav.js"]) {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), shell, { filename: file });
   }
@@ -287,7 +312,7 @@ async function heldTabKeys(page) {
   body.append(container);
   const handle = page.mountPullPage(
     container,
-    { number: 7, tab: "", open: (route) => opened.push(route.tab), reader: null },
+    { number: 7, tab: "", open: (route) => opened.push(route), reader: null },
     {
       perf,
       ensureAsset: async () => {},
@@ -302,6 +327,44 @@ async function heldTabKeys(page) {
       shortcuts: { attach: facade.attachShortcut },
     },
   );
+  // The Pulls tab shows the page, so it is active, and its N and P are the production pair,
+  // walking this page's stack (pulls-nav.js reaches the page through `hasStack`).
+  handle.activate();
+  const unregisterStackKeys = shell.MetabrowserPullsNav.registerKeys(
+    {
+      hasStack: () => handle.hasStack(),
+      moveStack: (delta) => handle.moveStack(delta),
+      ...Object.fromEntries(
+        ["activateAnchor", "activateFile", "collapse", "expand", "fileLeft", "fileRight"]
+          .concat(["move", "moveFile", "toggleFiles"])
+          .map((name) => [name, () => false]),
+      ),
+    },
+    registry,
+  );
+  // The revealed strip renders again on these events (keyboard-help.js, REVEAL_EVENT_KINDS),
+  // reading the live reveal surface; `strip` is the stack keys it showed at its last render.
+  const stackKeys = () =>
+    registry
+      .snapshot("reveal", { live: true })
+      .filter((group) => group.id === "pull-stack")
+      .flatMap((group) => group.commands.flatMap((command) => command.commandIds))
+      .join(", ") || "none";
+  let strip = "not rendered";
+  const unsubscribeStrip = registry.subscribe((event) => {
+    const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
+    if (
+      registry.isRevealed() &&
+      kinds.some((kind) => ["dispatch", "reveal", "target"].includes(kind))
+    ) {
+      strip = stackKeys();
+    }
+  });
+  // The stack menus in the header's labels row, past the strut that holds its height.
+  const stackMenus = () =>
+    container
+      .querySelector(".github-pull-stacks")
+      .children.filter((node) => !String(node.getAttribute("class")).includes("strut")).length;
   const press = (key) => {
     opened.length = 0;
     let handled = false;
@@ -325,7 +388,13 @@ async function heldTabKeys(page) {
     for (const entry of listeners.filter((candidate) => candidate.type === "keydown")) {
       entry.listener(event);
     }
-    return handled ? `opened the ${opened[0] || "conversation"} route` : "not handled";
+    if (!handled) {
+      return "not handled";
+    }
+    const [route] = opened;
+    return route && route.number !== 7
+      ? `opened #${route.number}`
+      : `opened the ${route?.tab || "conversation"} route`;
   };
   const live = () =>
     ["conversation", "files", "checks"].filter((id) =>
@@ -355,6 +424,10 @@ async function heldTabKeys(page) {
   await settle();
   // Inert, the column lets go of focus, as Chrome moves it to the body.
   globalThis.document.activeElement = body;
+  // The stack arrives while the header waits: its menu waits with it, and so do N and P.
+  assert.equal(stackAnswers.length, 1, "the page asked for its stack");
+  stackAnswers.shift()();
+  await settle();
   // Shift held under the hold: the inert links carry no badge, and waking them badges them.
   registry.setRevealed(true);
   /** Each tab that carries a Shift badge now, as its label and its badge's key. */
@@ -371,14 +444,22 @@ async function heldTabKeys(page) {
     live: live(),
     badges: heldBadges.join(", ") || "none",
     g: press("g"),
+    stackMenus: stackMenus(),
+    stackKeys: stackKeys(),
+    strip,
+    n: press("n"),
   };
   assert.equal(whileHeld.holding, true, "the landing's first paint is held");
   assert.deepEqual(whileHeld.live, [], "no tab key is live while the header waits");
+  assert.equal(whileHeld.stackMenus, 0, "the stack menu waits with the header");
+  assert.equal(whileHeld.stackKeys, "none", "N and P wait with the header");
+  assert.equal(whileHeld.n, "not handled", "N opens nothing while the header waits");
   while (markdown.length > 0) {
     markdown.shift()();
     await settle();
   }
   const wokenBadges = badged().join(", ") || "none";
+  const wokenStrip = strip;
   registry.setRevealed(false);
   const released = {
     holding: bodyNode()?.classes.has("github-pull-body-holding") ?? false,
@@ -387,8 +468,19 @@ async function heldTabKeys(page) {
     badges: wokenBadges,
     focus: focused.join("; ") || "none",
     g: press("g"),
+    stackMenus: stackMenus(),
+    stackKeys: stackKeys(),
+    strip: wokenStrip,
+    n: press("n"),
+    p: press("p"),
   };
   assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");
+  assert.equal(released.stackMenus, 1, "the header paints its stack menu at release");
+  assert.equal(released.strip, released.stackKeys, "the strip shows N and P at release");
+  unsubscribeStrip();
+  for (const unregister of unregisterStackKeys) {
+    unregister();
+  }
   handle.dispose();
   detachRegistry();
   registry.dispose();
