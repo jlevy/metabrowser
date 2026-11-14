@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The pull requests you scroll to in the Pulls tab are prepared at once, even while the
+  list is preparing others in the background.
+  The server prepared one batch at a time per repository, so a batch you were looking at
+  was refused as busy until the background batch’s GitHub read ended, and the list asked
+  again 1 s, then 2 s, later.
+  Now the batch you are looking at stops the background batch, unless that one is
+  reading some of the same pull requests, and starts its own read.
+  Measured with a simulated one-second GitHub read, your rows used to wait about a
+  second to be admitted and two to be prepared; now they are admitted in about 10 ms and
+  prepared in about one second.
+  The stopped batch’s pull requests are asked for again later, no sooner than a minute
+  after its read began, as for any batch whose read did not finish.
+
 - A pull request page’s header no longer loses your keyboard focus when you switch tabs
   or a refresh repaints it.
   Every repaint built the whole header again, so a focused branch chip’s copy button, or
