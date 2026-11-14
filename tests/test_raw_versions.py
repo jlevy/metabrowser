@@ -288,3 +288,55 @@ def test_a_looping_link_is_left_unversioned_and_the_document_renders(tmp_path: P
     assert "<h1" in response.json()["html"]
     assert sorted(response.json()["raw_versions"]) == ["a.png"]
     assert client.get("/raw", params={"path": "loop.png"}).status_code == 404
+
+
+def test_every_kept_answer_of_an_image_has_the_scriptless_policy_in_both_profiles(
+    tmp_path: Path,
+) -> None:
+    """Review C of #426, C1: the policy was chosen by the outgoing Content-Type, which a
+    304 lacks and a multipart range answer replaces, so the trusted profile sent those
+    `allow-scripts` with `immutable`, and a cache updates the headers it keeps from a 304.
+    Every answer at a raster image's current version now has one scriptless policy."""
+
+    (tmp_path / "pic.png").write_bytes(PNG + bytes(range(64)))
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    scriptless = "sandbox allow-popups allow-forms allow-downloads"
+
+    def answers() -> dict[str, dict[str, str | None]]:
+        target = server._safe_path("pic.png")
+        assert target is not None
+        params = {"path": "pic.png", "v": server._raw_version(target, target.stat())}
+        full = client.get("/raw", params=params)
+        kinds = {
+            "200": full,
+            "304": client.get(
+                "/raw", params=params, headers={"if-none-match": full.headers["etag"]}
+            ),
+            "range": client.get("/raw", params=params, headers={"range": "bytes=0-3"}),
+            "ranges": client.get("/raw", params=params, headers={"range": "bytes=0-0,2-2"}),
+        }
+        assert [kinds[kind].status_code for kind in kinds] == [200, 304, 206, 206]
+        assert kinds["ranges"].headers["content-type"].startswith("multipart/byteranges")
+        return {
+            kind: {
+                "cache-control": answer.headers.get("cache-control"),
+                "content-security-policy": answer.headers.get("content-security-policy"),
+                "x-content-type-options": answer.headers.get("x-content-type-options"),
+            }
+            for kind, answer in kinds.items()
+        }
+
+    trusted = answers()
+    set_capabilities(Capabilities(active_content=False, mutations=False))
+    try:
+        untrusted = answers()
+    finally:
+        set_capabilities(DEFAULT_CAPABILITIES)
+    for kind in trusted:
+        for profile in (trusted, untrusted):
+            assert profile[kind] == {
+                "cache-control": IMMUTABLE,
+                "content-security-policy": scriptless,
+                "x-content-type-options": "nosniff",
+            }, kind

@@ -1032,8 +1032,14 @@ class _RawTrustHeaderMiddleware:
                 headers = MutableHeaders(scope=message)
                 # A raster image runs nothing, so it never needs `allow-scripts`, and without it
                 # its policy is the same in both profiles (_PROFILE_INDEPENDENT_MEDIA_TYPES).
+                # raw_file decides that by the type it chose and sends the scriptless sandbox
+                # itself, since a 304 has no Content-Type and a multipart range answer
+                # another; it is kept, as a stricter policy is. The outgoing type covers the
+                # rest, a decompressed stream and a pin's blob among them.
+                scriptless = raw_sandbox_csp(active_content=False)
                 headers["Content-Security-Policy"] = raw_sandbox_csp(
                     active_content=active_content
+                    and headers.get("content-security-policy") != scriptless
                     and not _profile_independent(headers.get("content-type", ""))
                 )
                 # Never kept as fresh, whichever branch answered: its headers are this
@@ -4123,6 +4129,12 @@ async def raw_file(request: Request) -> Response:
             and version == _raw_version(target, stat)
         )
         headers = immutable_headers(etag) if current else etag_headers(etag)
+        if _profile_independent(media_type):
+            # By this route's choice of type, so every answer it gives the image -- a 304,
+            # which carries no type, and a multipart range answer, whose type is
+            # multipart/byteranges, as much as a 200 -- has the policy both profiles send
+            # (review C of #426, C1).
+            headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=False)
         if passthrough:
             headers["Vary"] = "Accept-Encoding"
         # The tag alone: `*` names no profile, so it earns no 304 here.

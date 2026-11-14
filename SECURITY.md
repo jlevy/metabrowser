@@ -142,7 +142,9 @@ When active content is off, the sandbox omits `allow-scripts` so a direct `/raw`
 still renders markup and loads subresources, but executes nothing.
 A raster image — PNG, JPEG, GIF, WebP, or AVIF, by the type `/raw` sends — runs nothing,
 as an image or opened as a document, so its sandbox omits `allow-scripts` under either
-profile.
+profile, in every answer `/raw` gives it: the route decides by the type it chose, so a
+`304`, which carries no type, and a multipart range answer, whose type is
+`multipart/byteranges`, have that policy too.
 
 Those headers belong to the profile that sent them, and an answer a browser keeps
 without asking is replayed without reaching the server, under whichever profile serves
