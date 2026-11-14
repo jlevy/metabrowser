@@ -278,7 +278,13 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
     refresh changes floats its offer over the tree's top, so offering moves nothing. A
     refresh that lists no files is offered too, and the rows drawn meanwhile keep no line
     that says there are none (``refreshListsNone``, mb-aw30), whether a read past the
-    rows held or a refresh answering not due brings it (``refreshNotDueListsNone``).
+    rows held or a refresh answering not due brings it (``refreshNotDueListsNone``). A
+    read that answers that the server no longer holds the list is offered as well, while the
+    rows drawn breathe as the list is listed again (``listGone``, ``listGoneWhileAsked``)
+    or its notice says why not (``listGoneUnavailable``, mb-uc1s), whether a read or a
+    refresh says so, and the offer stands across a refresh's answer that carries no rows
+    until a read brings them (``listGoneThenListed``, ``listGoneThenListedFailing``,
+    ``listGoneOnRefresh``).
     """
 
     assert run_session("github-pull-files-opening-behavior.js") == {
@@ -390,6 +396,124 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
                 "/api/plugin/github/pull-files?number=7&offset=2",
             ],
         },
+        # A late read that answers the list is no longer held is offered, and withdrawn when
+        # GitHub lists the same files again (mb-uc1s); before, the rows breathed with no
+        # offer, so nothing said they were no longer the list.
+        "listGone": {
+            "painted": [
+                "closed",
+                "4 rows",
+                "4 rows, offer: Show the updated list (not listed)",
+                "4 rows",
+            ],
+            "whileListing": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": True,
+                "notice": None,
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+            "spans": ["opening met 0 ms", "lateRows withdrawn 2000 ms"],
+        },
+        # A list that stays unavailable: its notice and Retry join the offer, and the
+        # reader's press draws the tree with no rows under that notice.
+        "listGoneUnavailable": {
+            "painted": [
+                "closed",
+                "4 rows",
+                "4 rows, offer: Show the updated list (not listed)",
+                "notice: The list of changed files is unavailable.",
+            ],
+            "offered": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": False,
+                "notice": "The list of changed files is unavailable.",
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+            "shown": {
+                "rows": 0,
+                "line": None,
+                "loading": False,
+                "refreshing": False,
+                "notice": "The list of changed files is unavailable.",
+                "offer": None,
+                "floats": False,
+            },
+        },
+        # The same while a refresh the tree asked for is recent: the rows breathe; before,
+        # they sat under the loading line ("loading": True), with no offer.
+        "listGoneWhileAsked": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show the updated list (not listed)"],
+            "offered": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": True,
+                "notice": None,
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+        },
+        # The list goes away on a read, and its refresh answers not due with a list another
+        # request listed since, with no rows: the offer stands until a read brings the rows
+        # and they are compared (review A1 of #429). Two seconds late, they are the same
+        # files, so it is withdrawn; a read the server does not answer leaves it with the
+        # error. At 3b70728, the refresh's answer removed the offer at once in both.
+        "listGoneThenListed": {
+            "painted": [
+                "closed",
+                "4 rows",
+                "4 rows, offer: Show the updated list (not listed)",
+                "4 rows",
+            ],
+            "offers": [
+                "Show the updated list (not listed)",
+                "Show the updated list (not listed)",
+                None,
+            ],
+            "reads": 3,
+            "spans": ["opening met 0 ms", "lateRows withdrawn 2000 ms"],
+        },
+        "listGoneThenListedFailing": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show the updated list (not listed)"],
+            "shown": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": False,
+                "notice": "The server did not answer.",
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+        },
+        # A refresh that answers the list is gone, after a read found it stale, is the same
+        # change and is offered at once (review A1 of #429); at 3b70728 it was never offered.
+        "listGoneOnRefresh": {
+            "painted": ["closed", "4 rows", "4 rows, offer: Show the updated list (not listed)"],
+            "answered": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": True,
+                "notice": None,
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+            "whileReading": {
+                "rows": 4,
+                "line": None,
+                "loading": False,
+                "refreshing": True,
+                "notice": None,
+                "offer": "Show the updated list (not listed)",
+                "floats": True,
+            },
+        },
         # A refresh that changes nothing draws the same rows, so it is drawn in place and
         # offers nothing (review C3); before, "Show the updated list of 2 files".
         "unchangedRefresh": {"painted": ["closed", "4 rows"], "reads": 3, "offer": None},
@@ -425,11 +549,14 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
         },
         # Across every story, its refresh answering started or not due. The second was false
         # before review A1: a not-due answer left the open tree with nothing to show. The
-        # third was false before mb-aw30, in `refreshListsNone`.
+        # third was false before mb-aw30, in `refreshListsNone`; the fourth and fifth before
+        # mb-uc1s, in `listGone` and `listGoneWhileAsked`.
         "invariants": {
             "an expanded tree with no rows drawn never offers": True,
             "an open tree with no rows drawn shows progress, a notice, or its line": True,
             "rows drawn never stand under the line of a list with no files": True,
+            "a change held back from rows drawn is always offered": True,
+            "rows drawn never sit under progress": True,
         },
     }
 
