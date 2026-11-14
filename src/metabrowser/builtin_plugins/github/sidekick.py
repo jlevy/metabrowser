@@ -35,8 +35,11 @@ from metabrowser.source import get_source_session
 from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
     from starlette.requests import Request
 
+    from metabrowser.builtin_plugins.github.pull_cores import CoreRequest
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.builtin_plugins.github.pull_route import PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
@@ -63,6 +66,9 @@ _TOO_MANY: Final = {
     "error": "too many pull requests are being fetched; try again when one has finished",
     "code": "too_many",
 }
+# What a batch whose client disconnected answers, which no client reads: nginx's "client
+# closed request", so the slow-request log tells an abandoned batch from an answered one.
+_CLIENT_CLOSED: Final = 499
 
 
 async def _resolve(request: Request) -> None:
@@ -442,6 +448,35 @@ def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
 
 
+async def _unless_disconnected[ResultT](
+    request: Request, work: Coroutine[Any, Any, ResultT]
+) -> ResultT | None:
+    """*work*'s result, or ``None`` when the client disconnected first and *work* was cancelled.
+
+    Read the body before calling this: it waits on the request's next message, which
+    after the body is the disconnect. Cancellation lands at *work*'s next ``await``, so a
+    blocking call already in a worker thread runs to its end, and nothing after it does.
+    """
+
+    async def disconnected() -> None:
+        while (await request.receive())["type"] != "http.disconnect":
+            pass
+
+    doing = asyncio.ensure_future(work)
+    disconnect = asyncio.ensure_future(disconnected())
+    try:
+        await asyncio.wait((doing, disconnect), return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        disconnect.cancel()
+        if not doing.done():
+            doing.cancel()
+        # Let both unwind before the response: cancelled work ends its own processes.
+        await asyncio.wait((doing, disconnect))
+    if doing.cancelled():
+        return None
+    return doing.result()
+
+
 async def pull_timeline_handler(request: Request) -> JSONResponse:
     """Read the selected PR's independently cached Conversation projection."""
 
@@ -470,35 +505,23 @@ async def pull_timeline_handler(request: Request) -> JSONResponse:
         gate = getattr(request.app.state, "github_pull_timeline_gate", None)
         if gate is None:
             gate = request.app.state.github_pull_timeline_gate = asyncio.Lock()
-
-        async def disconnected() -> None:
-            while (await request.receive())["type"] != "http.disconnect":
-                pass
-
-        async with asyncio.TaskGroup() as group:
-            reading = group.create_task(read_timeline(host.pulls, ask, gate))
-            disconnect = group.create_task(disconnected())
-            finished, _ = await asyncio.wait(
-                (reading, disconnect), return_when=asyncio.FIRST_COMPLETED
-            )
-            if disconnect in finished:
-                reading.cancel()
-            else:
-                answer = reading.result()
-            disconnect.cancel()
+        read = await _unless_disconnected(request, read_timeline(host.pulls, ask, gate))
+        if read is not None:
+            answer = read
     if (refusal := pin_changed_response(request.headers.get(PIN_HEADER))) is not None:
         return refusal
     return JSONResponse(answer.model_dump(mode="json"), headers=_NO_STORE)
 
 
-async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
-    """Schedule or release a source-owned visible core window."""
-    from metabrowser.builtin_plugins.github.pull_cores import (
-        cached_batch,
-        core_request,
-        request_preparation,
-    )
-    from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
+async def pull_cores_prepare_handler(request: Request) -> Response:
+    """Schedule or release a source-owned visible core window.
+
+    A batch stops at its next thread hop once its client has gone: the panel abandons a
+    batch a reader scrolled past, and one that has waited past its timeout. It starts no
+    provider read for it then. A release always runs to its end, so ownership is never
+    left behind.
+    """
+    from metabrowser.builtin_plugins.github.pull_cores import core_request
 
     body = await _json_body(request)
     if isinstance(body, tuple):
@@ -507,6 +530,19 @@ async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
         ask = core_request(body)
     except ValueError as exc:
         return _invalid_request(str(exc))
+    if not ask.numbers:
+        return await _core_window_answer(request, ask)
+    answer = await _unless_disconnected(request, _core_window_answer(request, ask))
+    if answer is None:
+        # Nobody reads it; the status names an abandoned batch in the slow-request log.
+        return Response(status_code=_CLIENT_CLOSED, headers=_NO_STORE)
+    return answer
+
+
+async def _core_window_answer(request: Request, ask: CoreRequest) -> JSONResponse:
+    from metabrowser.builtin_plugins.github.pull_cores import cached_batch, request_preparation
+    from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
+
     await _resolve(request)
     host = pull_host(request.app)
     if host is None or host.coordinator is None:

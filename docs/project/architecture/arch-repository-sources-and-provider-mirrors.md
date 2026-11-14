@@ -854,6 +854,13 @@ partial batch instead returns `partial`, these two lists, `retry_numbers`, and
 An unavailable PR retains its attempt lease while valid siblings and later cohorts
 proceed; callers revisit unfinished members after that deadline.
 Settled partial owners retire, so a later retry can prepare their missing members.
+The panel waits 10 s for a visible batch and 30 s for a background one
+(`CORE_VISIBLE_TIMEOUT_MS`, `CORE_BACKGROUND_TIMEOUT_MS`, with their measurements).
+A visible demand aborts the background batch on its way rather than waiting for it.
+A batch left unanswered twice in a row, by a timeout or a failed request, is passed
+over, and the walk revisits it after its pass with one attempt.
+A batch whose client has gone stops at its next thread hop and starts no provider read;
+a release always runs to its end.
 A failed owner batch returns `failed`; subsequent batches return `held` with the same
 outcome, message, and reset time until another attempt is eligible.
 `cores.refresh.json` persists provider and malformed-response holds under the same

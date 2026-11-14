@@ -1251,11 +1251,13 @@ selected. The whole measured viewport has priority over the remaining catalog.
 Eight is a transport batch size.
 A completed pass stops, ordinary busy work backs off without abandoning demand, and
 reconnect keeps its settled cursor.
+A batch left unanswered twice is passed over and revisited after the pass, a visible
+demand aborts the background batch on its way, and each lane waits out a 6.5 s answer.
 These virtual-clock values describe scheduler behavior, not browser paint latency.
 
 ```console
 $ node tests/dom/github-pr-prefetch-behavior.js
-{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17}
+{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17,"passedOver":{"cached":16,"atMs":7000,"attempts":["open@3000","open@4000","all@9000","all@10000","all@35000"]},"preemption":{"visibleSentAfterMs":0,"backgroundAbortedAfterMs":0},"slowCoveredMs":51500,"giveUpMs":{"visible":10000,"background":30000}}
 ? 0
 ```
 

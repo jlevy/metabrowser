@@ -542,6 +542,8 @@ cover the batch while callers continue later cohorts and defer unfinished member
 A failed owner batch and later source holds carry `failure` with `outcome`, `message`,
 and optional `reset_at`. An empty `numbers` list releases only the window matching its
 state, ID, and generation; it retains useful persisted metadata.
+A batch whose client disconnects stops at its next thread hop, starts no provider read,
+and answers `499`, which no client reads; a release always runs to its end.
 
 Admission checks the exact cohort and generation.
 Each publication rechecks its indexed fingerprint under the same source, reader,
