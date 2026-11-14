@@ -157,8 +157,9 @@ AMENDMENT 3 (written 2026-11-14T09:02:17Z, before any judged exp-086 measurement
 amends registration 2, sha256
 98e1eabcdb8177334c87d944992cadf29137ffd2c1181fe4b25fedb469043d06, with amendments 1 and 2.
 - Harness: the transition harness at scenario revision 5, at #417's merge commit on main
-  (<pending #417 merge>), in its own clean checkout, $HARNESS, frozen for every paced
-  pair.
+  (3a1ff25e77c47cd665ffec4df8a9d874defada2c, filled in at 2026-11-14T09:21:20Z, before
+  any judged pair; #417's head 597fade8 is review A's fixes with main's #415 merged in),
+  in its own clean checkout, $HARNESS, frozen for every paced pair.
   - It replaces harness v4 at 5031dc16 (scenario revision 4), which refuses both builds:
     main's 19a36c5b, which both builds contain, makes every switch to Commits select the
     newest commit, and revision 4 waited for the Commits prompt.
