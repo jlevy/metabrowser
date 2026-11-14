@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Command-R always reloads.
+  In the macOS app, View > Reload Page was disabled while the window showed its status
+  view, and did nothing in a tab still loading or reloading its page.
+  It now reloads in every state: with no page it loads the page again, and with no
+  server, or after a failure, it restarts the server as Retry does; a sheet on the
+  window is cancelled first.
+  In a browser and in the app, keys held with Command, Control, or Option are left to
+  the browser everywhere: the tree map, the Files tab’s filters, the branch switcher,
+  and a pull request’s stack menu no longer take Command-Up, Command-Left, or the like
+  as a plain arrow, and a dialog’s focus trap no longer takes Command-Tab or
+  Control-Tab. The Keyboard Shortcuts section of `docs/design-system.md` now documents
+  Command-R.
+
 - Reading Metabrowser’s private cache costs less on a busy server.
   Every read checks that no other user can read or replace what it reads, and it used to
   open each directory on the way again to check it.

@@ -971,6 +971,23 @@ Terminal launch.
   The page calls only the web’s `window.print()`; frames inside it keep WebKit’s, which
   does nothing. If the web content process dies, the window reloads, at most twice in 30
   seconds, and then shows the status view.
+- **Reload:** Command-R, View > Reload Page, reloads in every state a folder window can
+  be in, so it is never disabled while one is key (`PageReload`, `PageMenu`). With its
+  page on screen, WebKit reloads the page.
+  With the server ready and no page to reload (a page still loading, a discarded tab
+  coming back, or a tab WebKit opened whose first load has not committed), the window
+  loads its page again.
+  With the failure view, whatever failed, it does what Retry does, and with no server to
+  load from, what File > Restart Server (Command-Option-R) does: a fresh server, then
+  the page. A start waiting for a `metab` the app can run is asked again, and Settings
+  opens if there is still none.
+  A restored folder waiting for its tab to be selected starts as selecting it does.
+  A sheet on the window goes first, answered as Cancel: a page’s `alert`, `confirm`, or
+  `prompt`, or an open, save, or print panel.
+  The page sees each key before the menu and takes none held with Command, Control, or
+  Option (`tests/test_modified_keys.py`), so Command-R reaches the menu with focus in a
+  field, Quick Search, Help, or a menu of the page.
+  The app’s own windows, Settings and About, have no page and no Reload.
 
 ### Files, Tabs, Recents, and the Last Session
 

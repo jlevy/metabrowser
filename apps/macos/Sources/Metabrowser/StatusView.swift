@@ -1,21 +1,9 @@
 import ShellCore
 import SwiftUI
 
-/// What a folder window shows in place of the page: the server is starting, it failed
-/// and here is why, it waits for its tab to be selected or for a `metab` the app can run,
-/// or a discarded tab reloads.
+/// What a folder window shows in place of the page (`WindowPhase`).
 @Observable final class WindowStatus {
-    enum Phase: Equatable {
-        case starting
-        case failed(ServerFailure)
-        /// A restored folder in a protected location, whose server starts only once its tab
-        /// is selected, so that a launch raises no privacy prompt for it.
-        case waitingForSelection
-        /// A start waiting for a `metab` the app accepts.
-        case waitingForRuntime
-        /// A tab that gave up its page loads it again from the running server.
-        case reloading
-    }
+    typealias Phase = WindowPhase
 
     var phase: Phase = .starting
 }

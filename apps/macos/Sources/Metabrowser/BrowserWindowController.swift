@@ -323,7 +323,49 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     @objc func navigateBack(_ sender: Any?) { webView.goBack() }
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }
-    @objc func reloadPage(_ sender: Any?) { webView.reload() }
+
+    /// Command-R, in every state the window can be in (`PageReload`).
+    @objc func reloadPage(_ sender: Any?) {
+        if let window { Self.cancelSheets(of: window) }
+        switch PageReload.route(in: windowState) {
+        case .reloadPage: webView.reload()
+        case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
+        case .restartServer: session?.retry()
+        case .startAsSelected: session?.windowShown(self)
+        }
+    }
+
+    /// Loads the window's page again from the ready server, in place of a load still on its
+    /// way: the page that load was loading, else the one asked for or shown last, else the
+    /// entry page (`PageReload.loadPage`).
+    private func loadPageAgain(from endpoint: ServerEndpoint) {
+        supersedeLoad()
+        rememberPage()
+        isDiscarded = false
+        loadNextPageOnceAnswered(from: endpoint)
+    }
+
+    /// Cancels the sheet on `window`, and any sheet on it first: a page's alert, confirm,
+    /// or prompt answers as its Cancel does, and an open, save, or print panel closes
+    /// with nothing chosen.
+    private static func cancelSheets(of window: NSWindow) {
+        guard let sheet = window.attachedSheet else { return }
+        cancelSheets(of: sheet)
+        if let panel = sheet as? NSSavePanel {
+            panel.cancel(nil)  // an open or save panel ends its own sheet
+        } else {
+            window.endSheet(sheet, returnCode: .cancel)
+        }
+    }
+
+    /// The window as its menu items see it (`PageMenu`, `PageReload`).
+    private var windowState: FolderWindowState {
+        FolderWindowState(
+            phase: status.phase, showsPage: !container.showsStatus,
+            hasPage: webView.backForwardList.currentItem != nil, serverReady: endpoint != nil,
+            canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+    }
+
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
     @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
     @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
@@ -369,15 +411,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        let showingPage = !container.showsStatus
+        let window = windowState
         switch item.action {
-        case #selector(navigateBack(_:)): return showingPage && webView.canGoBack
-        case #selector(navigateForward(_:)): return showingPage && webView.canGoForward
-        case #selector(reloadPage(_:)), #selector(printPage(_:)), #selector(actualSize(_:)),
-             #selector(zoomIn(_:)), #selector(zoomOut(_:)):
-            return showingPage
+        case #selector(navigateBack(_:)): return PageMenu.isEnabled(.back, in: window)
+        case #selector(navigateForward(_:)): return PageMenu.isEnabled(.forward, in: window)
+        case #selector(reloadPage(_:)): return PageMenu.isEnabled(.reload, in: window)
+        case #selector(printPage(_:)): return PageMenu.isEnabled(.print, in: window)
+        case #selector(actualSize(_:)): return PageMenu.isEnabled(.actualSize, in: window)
+        case #selector(zoomIn(_:)): return PageMenu.isEnabled(.zoomIn, in: window)
+        case #selector(zoomOut(_:)): return PageMenu.isEnabled(.zoomOut, in: window)
         case #selector(performFindAction(_:)):
-            guard showingPage, let action = NSTextFinder.Action(rawValue: item.tag) else { return false }
+            guard PageMenu.isEnabled(.find, in: window), let action = NSTextFinder.Action(rawValue: item.tag)
+            else { return false }
             return textFinder.validateAction(action)
         case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
         default: return true
