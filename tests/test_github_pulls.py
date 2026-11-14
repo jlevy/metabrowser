@@ -4814,6 +4814,84 @@ def test_core_ready_receipt_opens_the_catalog_the_same_number_of_times_for_any_b
     }
 
 
+def test_core_batch_whose_client_left_starts_no_provider_read(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panel abandons a batch it scrolled past or waited on too long; the server stops.
+
+    The client leaves during the batch's first cache check, in a worker thread. That check
+    runs to its end, but nothing after it does: no provider read, and no window owned.
+    """
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import Message
+
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.sidekick import pull_cores_prepare_handler
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    entries = scenario(stand.origin)["api"]
+    rest = {number: entries[f"repos/octo/demo/pulls/{number}"]["body"] for number in (8, 7)}
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    calls: list[tuple[int, ...]] = []
+
+    async def graph(_query: str, variables: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        calls.append((int(variables["n0"]),))
+        data = graph_core_data(rest[8])
+        data["repository"]["p0"] = data["repository"].pop("pull")
+        return data
+
+    entered, left = threading.Event(), threading.Event()
+    check = pull_cores.cached_batch
+
+    def checked_while_leaving(pulls_set: ServedPulls, request: pull_cores.CoreRequest) -> Any:
+        entered.set()
+        # A server that never listens for the client goes on after this wait.
+        left.wait(1)
+        return check(pulls_set, request)
+
+    owner = {"id": "scrolled-past", "generation": catalog.generation("all")}
+    ask = {"state": "all", "window": owner, "numbers": [8]}
+
+    async def abandoned_batch() -> Response:
+        delivered = False
+
+        async def leave_during_the_check() -> Message:
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": json.dumps(ask).encode()}
+            await asyncio.to_thread(entered.wait, 5)
+            left.set()
+            return {"type": "http.disconnect"}
+
+        # The handler itself, on the served app's loop, where its coordinator runs.
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": _PREPARE_CORES,
+            "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+            "app": app,
+        }
+        return await pull_cores_prepare_handler(Request(scope, leave_during_the_check))
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+    monkeypatch.setattr(pull_cores, "cached_batch", checked_while_leaving)
+    assert client.portal is not None
+    abandoned = client.portal.call(abandoned_batch)
+    _drain_visible_cores(client)
+    assert (abandoned.status_code, calls) == (499, [])
+    # A client that stays is admitted as before, and its batch is read.
+    monkeypatch.setattr(pull_cores, "cached_batch", check)
+    assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+
+
 def test_core_transient_capacity_does_not_claim_unattempted_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
