@@ -1243,14 +1243,16 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
 // navigation.js). A live tree upserts its root on every write, and each answer is a
 // pass over the whole index: on a 303,000-file tree with writes every 250 ms, one
 // WebKit page held up to ten of these requests, five at the server at once, each
-// answered in about 3.2 s, and the Commits tab waited behind them; with four pages it
-// never loaded (explorations/tree-summary-storm/README.md). The next request waits at
-// least ROOT_SUMMARY_MIN_INTERVAL_MS, or twice the last one's duration, after it, so a
-// page spends at most a third of a busy tree's time waiting on its tallies, and an
-// isolated change still shows after the debounce alone.
+// answered in about 3.2 s, and the Commits tab waited behind them; with four pages its
+// first request was still unanswered 90 s after Commits was opened
+// (explorations/tree-summary-storm/README.md). The next request waits at least
+// ROOT_SUMMARY_MIN_INTERVAL_MS, or twice the last one's duration, after it, so a page
+// spends at most a third of a busy tree's time waiting on its tallies, and an isolated
+// change still shows after the debounce alone.
 var ROOT_SUMMARY_MIN_INTERVAL_MS = 2000;
 var ROOT_SUMMARY_COST_FACTOR = 2;
-// A failure is retried at double the spacing each time, never more than this apart.
+// Each failure in a row doubles the spacing, until it reaches this. The cap bounds only
+// that backoff: a slow answer still waits twice its own duration, however long.
 var ROOT_SUMMARY_MAX_INTERVAL_MS = 30000;
 /** @type {ReturnType<Window["MetabrowserNavigationRoute"]["createRootSummaryRefresh"]> | null} */
 var _rootSummaryRefresh = null;

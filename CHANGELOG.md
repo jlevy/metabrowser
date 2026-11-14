@@ -7,10 +7,10 @@ All notable changes to Metabrowser are documented here.
 - The Commits tab loads in a large repository that keeps changing.
   Each change asked every open page to recount the whole tree for the tally above the
   Files tree, one request per change, and in the macOS app those requests took every
-  connection, so Commits waited behind them or never loaded.
-  A page now asks one count at a time, waits longer between counts the longer the last
-  one took, and asks none while it is hidden or while another tab is in front of Files.
-  The count itself is about four times faster.
+  connection, so Commits waited behind them: 7.6 s with one page open, more than 90 s
+  with four. A page now asks one count at a time, waits longer between counts the longer
+  the last one took, and asks none while it is hidden or while another tab is in front
+  of Files. The count itself is about four times faster.
   A failed check for a repository is retried instead of leaving the page without a
   Commits tab, and no longer removes a Commits tab already shown.
 

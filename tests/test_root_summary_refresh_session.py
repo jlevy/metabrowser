@@ -5,8 +5,8 @@ fresh ``/api/tree?depth=0``, and each answer costs the server a pass over the wh
 index. A live tree upserts its root on every write, so the page sent a request per
 ask: on a 303,000-file tree with writes every 250 ms, one WebKit page held up to ten of
 them, five at the server at once, each answered in about 3.2 s, and the Commits tab
-waited behind them; with four pages it never loaded
-(``explorations/tree-summary-storm/README.md``).
+waited behind them; with four pages its first request was still unanswered 90 s after
+Commits was opened (``explorations/tree-summary-storm/README.md``).
 
 ``tests/dom/root-summary-refresh-session.js`` runs the shell's summary refresh, the
 block of ``static/app.js`` from its introducing comment to the tree cache, verbatim
@@ -31,6 +31,7 @@ import pytest
 from tests.golden_harness import run_session
 
 LIVE = "a live tree upserts its root every 100 ms and each answer takes 3.2 s"
+SLOW = "a live tree whose every answer takes 20 s"
 QUIET = "an isolated change on a quiet tree"
 FAILING = "the server fails the first two requests"
 HIDDEN = "a page that is hidden while its tree changes"
@@ -59,7 +60,7 @@ def _settled_at(step: dict[str, Any]) -> list[int]:
 
 
 def test_the_session_runs_every_scenario(scenarios: dict[str, list[dict[str, Any]]]) -> None:
-    assert list(scenarios) == [LIVE, QUIET, FAILING, HIDDEN, BEHIND]
+    assert list(scenarios) == [LIVE, SLOW, QUIET, FAILING, HIDDEN, BEHIND]
 
 
 def test_a_live_tree_holds_one_request_at_a_time(
@@ -83,6 +84,20 @@ def test_requests_are_spaced_by_what_the_last_one_cost(
         assert next_sent - settled_at >= 2 * LIVE_SERVER_MS, (
             "the next request must wait twice what the last one cost"
         )
+
+
+def test_the_failure_cap_never_shortens_the_spacing_a_slow_answer_earned(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    """A 20 s answer waits 40 s, not the 30 s cap on the failure backoff.
+
+    Capping the spacing itself let a page whose tallies take longer than 15 s spend more
+    than a third of its time waiting on them.
+    """
+    (busy,) = scenarios[SLOW]
+    assert _sent_at(busy) == [500, 60500]
+    assert _settled_at(busy) == [20500]
+    assert busy["after"]["maxInFlight"] == 1
 
 
 def test_the_last_ask_is_answered_after_the_writes_stop(

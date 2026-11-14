@@ -55,9 +55,10 @@ Four things compound.
   flight per page. An ask while one is in flight or waiting marks the summary stale, and
   one request after it answers them all.
   The next request waits at least 2 s, or twice what the last one took, after the last
-  one settled; a failure doubles that, up to 30 s, and asks again.
-  A hidden page, or a Files panel behind another tab, asks nothing until it is shown.
-  `tests/dom/root-summary-refresh-session.js` runs the shell’s own code for this.
+  one settled, however long that is; each failure in a row doubles it, up to 30 s, and
+  asks again. A hidden page, or a Files panel behind another tab, asks nothing until it
+  is shown. `tests/dom/root-summary-refresh-session.js` runs the shell’s own code for
+  this.
 
 - The provider classifies each distinct extension once per pass rather than every file
   twice (`FileTypeRegistry.classifies_by_name`), and readers that arrive during a pass
@@ -99,16 +100,21 @@ document start through the driver’s `measure` mode or through `chrome.mjs`, an
 `summarize.mjs`: how many root summaries the page sent and the most it had in flight,
 how many reached the server and the most it answered at once, their server times, and
 when each Commits request was sent and answered.
-`profile_pass.py` times one tally pass over a synthetic index, and `--profile` shows
-where it goes.
+The probe sends its two index status reads beside the click rather than before it, gives
+each 3 s, and reports what it has at an overall deadline, 90 s after the click, because
+those reads share the connections a starved trial is measuring.
+It records whether and when it clicked Commits, so a Commits request that never reached
+the server is the page’s and not the probe’s. `profile_pass.py` times one tally pass
+over a synthetic index, and `--profile` shows where it goes.
 
 ## Recorded Result
 
 Measured on 2026-11-13 on macOS 26.5.2, in WKWebView (WebKit 21624.2.5.11.8, a debug
-`WebKitDriver`) and headless Chrome 152.0.7977.83. Before is commit `f6902b8a`; after is
-the fix. Each row is one run, not a back-to-back pair, on a machine with a load average
-near 13 from unrelated work, so no time here is a clean one; the differences are ten
-times or more.
+`WebKitDriver`) and headless Chrome 152.0.7977.83. Before is commit `f6902b8a`, and
+`42cf298e` for the four-page rows; after is the fix.
+Each row is one run, not a back-to-back pair, on a machine with a load average near 13
+from unrelated work, so no time here is a clean one; the differences are ten times or
+more.
 
 ### After the Walk, with Writes Every 250 ms
 
@@ -118,17 +124,31 @@ Root summaries are counted over the whole run.
 | Run | Pages | Summaries sent by the page | Most in flight | Most at the server at once | Server time, median | Commits time to load |
 | --- | --- | --- | --- | --- | --- | --- |
 | Before, WebKit | 1 | 53 | 10 | 5 | 3,225 ms | 7,566 ms |
-| Before, WebKit | 4 | 250 reached the server in 7 min | — | 2 | 3,297 ms | never: no Commits request reached the server in 7 min |
+| Before, WebKit | 4 | 189 | 171 | 2 | 3,242 ms | not loaded at the 90 s deadline: `/api/git/repo` sent at the click and never answered, and no Commits request reached the server |
 | Before, Chrome | 1 | 36 (14 reached the server) | 23 | 1 | 1,559 ms | 722 ms |
 | After, WebKit | 1 | 10 | 1 | 1 | 385 ms | 414 ms |
 | After, WebKit | 1 | 10 | 1 | 1 | 392 ms | 428 ms |
-| After, WebKit | 4 | 10 (39 from all four reached the server) | 1 | 2 | 406 ms | 464 ms |
+| After, WebKit | 4 | 9 (35 from all four reached the server) | 1 | 2 | 408 ms | 533 ms |
 | After, Chrome | 1 | 8 | 1 | 1 | 398 ms | 468 ms |
 
 Before, in WebKit with one page, each Commits request waited 1.5 to 3.9 s for a
 connection while the server answered it in 0.1 to 0.7 s, and the tab showed its loading
 skeleton for 7.5 s. The frames of the four-page runs are not instrumented, so the page
 columns count the top page only.
+
+The four-page rows use the probe with bounded status reads, and both record the click at
+35.06 s. The before run clicked Commits, which showed its skeleton and sent
+`/api/git/repo` 6 ms later; that request had no answer at the deadline, the server
+received no Commits request after the click, and the probe’s own status read beside the
+click got no answer in 3 s. The server answered 68 summaries from the four pages, at
+most two at once, which fits the pages’ four event streams holding the other four of
+WebKit’s six connections.
+An earlier four-page run on `f6902b8a`, whose probe awaited a status read before
+clicking, never reported and is left out: that read could have stopped it before the
+click. The one-page rows used that earlier probe, and each recorded its actual click,
+which its time to load counts from: 35.0 to 35.1 s in every run but the one-page WebKit
+run on main, where the status read waited behind the summaries and held the click until
+37.6 s.
 
 ### During the Walk
 

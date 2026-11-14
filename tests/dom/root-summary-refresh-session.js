@@ -216,6 +216,19 @@ async function main() {
   }
 
   {
+    // A server so slow that twice its answer is past the failure backoff's 30 s cap.
+    const page = createPage({ serverMs: 20000 });
+    transcript.push({
+      scenario: "a live tree whose every answer takes 20 s",
+      steps: [
+        await step("the root is upserted every 100 ms for 70 s", page, () =>
+          page.askEvery(100, 70000),
+        ),
+      ],
+    });
+  }
+
+  {
     const page = createPage({ serverMs: 300 });
     transcript.push({
       scenario: "an isolated change on a quiet tree",

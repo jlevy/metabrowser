@@ -34,7 +34,11 @@ const page = {
   engine: record.engine?.name ?? record.engine,
   outcome: record.outcome,
   pages: 1 + (record.frames ?? 0),
-  walkAtClick: record.scanAtClick?.status,
+  // Whether the Commits tab was actually clicked, and when: without a click, no Commits
+  // request is the probe's doing, not the page's.
+  clicked: record.clicked ?? record.clickAt !== undefined,
+  clickAt: record.clickAt ?? null,
+  walkAtClick: record.scanAtClick?.status ?? record.scanAtClick?.error ?? null,
   commitsTimeToLoadMs: record.commitsTimeToLoadMs ?? null,
   summaryRequestsSent: summaries.length,
   summaryMostInFlight: record.depth0MaxInFlight,
@@ -77,6 +81,23 @@ const server = {
   ),
   summaryMs: spread(atServer.map((request) => request.ms)),
 };
+
+const commits = requests.filter(
+  (/** @type {{path: string, start: number}} */ request) =>
+    request.path.startsWith("/api/git/") && request.start >= (record.clickAt ?? Infinity),
+);
+page.commitsRequestsAfterClick = commits.length;
+page.commitsRequestsUnanswered = commits.filter(
+  (/** @type {{end?: number}} */ request) => request.end === undefined,
+).length;
+const gitAtServer = served.filter(
+  (request) =>
+    request.path.startsWith("/api/git/") &&
+    record.timeOrigin !== undefined &&
+    record.clickAt !== undefined &&
+    request.start * 1000 >= record.timeOrigin + record.clickAt,
+);
+server.commitsRequestsAfterClick = gitAtServer.length;
 
 console.log(JSON.stringify({ page, server }, null, 1));
 console.log("Commits requests (page ms: sent -> answered, server ms):");

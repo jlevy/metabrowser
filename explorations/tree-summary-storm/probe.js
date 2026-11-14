@@ -62,17 +62,31 @@
     samples.push([now(), treeInFlight, depth0InFlight]);
   }, 250);
 
+  // The status read shares the connection pool a starved trial is measuring, so it is
+  // bounded, never awaited before the click, and the whole probe has a deadline after
+  // which it reports what it has.
+  const STATUS_TIMEOUT_MS = 3000;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   async function scanStatus() {
-    try {
-      const resp = await origFetch("/api/index/progress", { cache: "no-store" });
-      const body = await resp.json();
-      return { at: now(), status: body.status, files: body.indexed_files };
-    } catch (error) {
-      return { at: now(), error: String(error) };
-    }
+    const sentAt = now();
+    const controller = new AbortController();
+    const answer = origFetch("/api/index/progress", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((resp) => resp.json())
+      .then(
+        (body) => ({ sentAt, at: now(), status: body.status, files: body.indexed_files }),
+        (error) => ({ sentAt, at: now(), error: String(error) }),
+      );
+    const unanswered = sleep(STATUS_TIMEOUT_MS).then(() => {
+      controller.abort();
+      return { sentAt, at: now(), error: `no answer in ${STATUS_TIMEOUT_MS} ms` };
+    });
+    return Promise.race([answer, unanswered]);
   }
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const panelText = () =>
     (document.querySelector('[data-tab-content="git"] .git-history-skeleton')
       ? "[skeleton] "
@@ -82,8 +96,8 @@
       .trim()
       .slice(0, 160);
 
-  async function run() {
-    const record = { clickAtTarget: CLICK_AT_MS, frames: FRAMES };
+  /** @param {Record<string, unknown>} record */
+  async function run(record) {
     // Extra same-origin pages, standing in for other tabs on the same server.
     for (let index = 0; index < FRAMES; index++) {
       const frame = document.createElement("iframe");
@@ -101,8 +115,11 @@
       }
       await sleep(100);
     }
-    record.scanAtClick = await scanStatus();
-    const deadline = now() + TIMEOUT_MS;
+    // Sent beside the click, not before it.
+    const atClick = scanStatus().then((status) => {
+      record.scanAtClick = status;
+    });
+    const deadline = CLICK_AT_MS + TIMEOUT_MS;
     let button = null;
     while (now() < deadline) {
       button = document.querySelector('.tab-btn[data-tab="git"]');
@@ -115,11 +132,14 @@
       record.tabRegisteredAt = now();
     }
     if (!button) {
+      record.clicked = false;
       record.outcome = "commits tab never registered";
     } else {
       record.clickAt = now();
       button.click();
+      record.clicked = true;
       const snapshots = [];
+      record.snapshots = snapshots;
       let last = null;
       while (now() < deadline) {
         const text = panelText();
@@ -135,15 +155,19 @@
         }
         await sleep(50);
       }
-      record.snapshots = snapshots;
       record.outcome = record.firstRowsAt ? "rows" : "timeout";
       if (record.firstRowsAt) {
         record.commitsTimeToLoadMs = record.firstRowsAt - record.clickAt;
       }
     }
+    await atClick;
     record.scanAtEnd = await scanStatus();
     // Let in-flight tree requests settle a moment so their timings land.
     await sleep(500);
+  }
+
+  /** @param {Record<string, unknown>} record */
+  function finish(record) {
     clearInterval(sampler);
     record.treeMaxInFlight = treeMaxInFlight;
     record.depth0MaxInFlight = depth0MaxInFlight;
@@ -161,9 +185,26 @@
     return record;
   }
 
-  let resolveDone;
+  /** @type {(record: Record<string, unknown>) => void} */
+  let resolveDone = () => {};
   globalThis.__webkitGate = { done: new Promise((resolve) => (resolveDone = resolve)) };
-  const start = () => run().then(resolveDone, (error) => resolveDone({ error: String(error) }));
+  const start = () => {
+    /** @type {Record<string, unknown>} */
+    const record = { clickAtTarget: CLICK_AT_MS, frames: FRAMES };
+    // Past this the probe reports whatever it has, whatever is still waiting.
+    const overall = CLICK_AT_MS + TIMEOUT_MS + 2 * STATUS_TIMEOUT_MS + 1000;
+    const deadline = sleep(Math.max(0, overall - now())).then(() => {
+      record.outcome ??= "probe deadline";
+      record.probeDeadlineAt = now();
+    });
+    Promise.race([run(record), deadline]).then(
+      () => resolveDone(finish(record)),
+      (error) => {
+        record.error = String(error);
+        resolveDone(finish(record));
+      },
+    );
+  };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });
   } else {

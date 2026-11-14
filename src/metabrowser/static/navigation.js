@@ -622,7 +622,8 @@
    * An ask while a request is in flight or waiting only marks the summary stale, and the
    * request that follows reads it once. The next request waits out `debounceMs` after the
    * ask and at least `minIntervalMs`, or `costFactor` times the last request's duration,
-   * after the last one settled, doubled for each failure in a row up to `maxIntervalMs`.
+   * after the last one settled. Each failure in a row doubles that wait, up to
+   * `maxIntervalMs`; the cap never shortens the wait a request's own cost earned.
    * A failure leaves the summary stale, so it is asked again after that backoff.
    * While `wanted` is false (the page is hidden, or no summary row is on screen) a stale
    * summary waits, and `resume` sends it once it is wanted again.
@@ -672,7 +673,11 @@
           stale = true;
         }
         const spacing = Math.max(deps.minIntervalMs, (settled - started) * deps.costFactor);
-        notBefore = settled + Math.min(deps.maxIntervalMs, spacing * 2 ** failures);
+        // The cap bounds how far failures back off, never the spacing a request's own
+        // cost earned: a 20 s answer still waits 40 s, so a page spends at most a third
+        // of its time waiting on its tallies however slow the server is.
+        const backoff = Math.min(deps.maxIntervalMs, spacing * 2 ** failures);
+        notBefore = settled + Math.max(spacing, backoff);
         arm();
       };
       let request;

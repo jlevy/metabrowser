@@ -26,6 +26,8 @@ The transcript pins these behaviors:
 
 - A live tree that upserts its root every 100 ms, with each answer taking 3.2 s, gets
   one request in flight at a time, and the next waits twice what the last one cost.
+- An answer that takes 20 s is followed by 40 s of spacing: the 30 s cap bounds only the
+  backoff after failures, never the spacing a slow answer earned.
 - Asks made while a request was in flight are answered by one more request after the
   writes stop.
 - An isolated change on a quiet tree is requested after the debounce alone.
@@ -74,6 +76,26 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 5,
           "maxInFlight": 1,
           "inFlight": 0
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "a live tree whose every answer takes 20 s",
+    "steps": [
+      {
+        "step": "the root is upserted every 100 ms for 70 s",
+        "did": [
+          "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
+          "t=20500 #1 answered",
+          "t=20500 painted 1 files",
+          "t=60500 sent #2 /api/tree?depth=0 (1 in flight)"
+        ],
+        "after": {
+          "asks": 700,
+          "requests": 2,
+          "maxInFlight": 1,
+          "inFlight": 1
         }
       }
     ]
