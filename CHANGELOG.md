@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request page’s header no longer loses your keyboard focus when you switch tabs
+  or a refresh repaints it.
+  Every repaint built the whole header again, so a focused branch chip’s copy button, or
+  any other header control, was replaced and focus went to the page.
+  The header now keeps each part, from the title and badge to the branch chips, labels,
+  and Refresh, and builds again only a part whose content changed.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
 - A Markdown document’s images no longer blink when you come back to its file in the
   macOS app. Opening another file and returning built the document again with lazy
   images, which WebKit fetched again before drawing them, so the images at the top were
