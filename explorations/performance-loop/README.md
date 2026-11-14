@@ -154,6 +154,32 @@ the metric it named:
 A round that improves its own metric and quietly costs a paint or twenty pixels is not
 an improvement, and exp-010 is the worked example of finding that out six rounds late.
 
+### Where a round’s files live
+
+Nothing a round depends on lives in a transient location: not `/tmp`, `$TMPDIR`, or an
+agent’s session scratchpad, which a restart empties
+([Durable Storage](../../docs/development.md#durable-storage)).
+
+- **The protocol is committed** beside the record as `exp-NNN-protocol.txt`, before the
+  first timed run. Plain text keeps `make format` from rewriting it, so its sha256 holds.
+  It names builds by version line and commit and machine paths by placeholders, so it
+  passes the public-hygiene check.
+  Each amendment is committed, with its timestamp, before the measurement it governs.
+  The record names the protocol in `method.protocol` with its sha256, and the file is
+  not edited after the round is recorded; a later correction goes in the record.
+- **Samples and analysis scripts are committed** beside the record and named in
+  `method.record`.
+- **Logs, drivers, and probe output** that hold local paths stay in the worktree’s
+  gitignored `attic/`.
+- **The series lock** that keeps timed rounds from overlapping is
+  `$(git rev-parse --git-common-dir)/metabrowser-series.lock`, a directory made with one
+  atomic `mkdir` and holding an `owner` file.
+  Every worktree of the checkout shares it, and a restart does not remove it.
+  A lock whose owner is no longer running is stale, and a person or the coordinating
+  agent removes it after checking.
+
+`tests/test_experiment_storage.py` holds these for every record.
+
 ## Running a round
 
 ```shell

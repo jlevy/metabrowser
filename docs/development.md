@@ -958,6 +958,54 @@ that verifies green can still push a commit that fails CI.
 - Lefthook cannot run from a git worktree created outside the repository, so pushing
   from a clean temporary worktree is not a workaround for a dirty one.
 
+## Durable Storage
+
+Agents are told to put temporary files in a session scratchpad, and that scratchpad
+lives under `/private/tmp`. So do `/tmp`, `$TMPDIR`, and `/var/folders`, which the
+operating system empties on restart and at other times without warning.
+On 2026-11-14 one restart took a performance campaign’s series lock, its coordination
+scripts, and the protocol files that committed experiment records cite by sha256, and
+they had to be rebuilt from session transcripts.
+Every running subagent and background loop ended with it.
+
+**The rule: a transient location holds only output that rerunning a command recreates.**
+Anything a later step, another session, a record, or a lock depends on goes somewhere
+durable:
+
+| What | Where |
+| --- | --- |
+| An experiment’s protocol, criteria, and amendments | Committed beside its record as `exp-NNN-protocol.txt`, named in the record’s `method.protocol` |
+| Samples, analysis and figure scripts a record cites | Committed beside the record |
+| Logs, drivers, and probe output that hold local paths | The worktree’s gitignored `attic/` |
+| Raw bench output and corpora | The gitignored `.bench/` |
+| A lock that serializes timed rounds across worktrees | `$(git rev-parse --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
+| Coordination scripts a campaign reuses | A worktree’s gitignored `attic/` |
+| Rebuilt intermediates, such as a filtered sample file in a “Reproducing” recipe | A transient location is fine |
+
+**Write a protocol so it can be committed.** Name builds by their version line and
+commit, and machine paths by placeholders such as `$CONTROL` and `$CORPUS`, so the
+public-hygiene check accepts it.
+It is plain text (`.txt`), not Markdown, so `make format` never rewrites it and its
+sha256 holds, and so the records’ `exp-*.md` glob does not read it as a record.
+Commit it before the first timed run, and commit each amendment, with its timestamp,
+before the measurement it governs; the history then shows which version governed what.
+
+**A lock outlives a crash.** A lock is a directory made with one atomic `mkdir`, with an
+`owner` file naming the process and the start time.
+A lock whose owner is no longer running is reported as stale and left for a person or
+the coordinating agent to remove; it is never removed automatically.
+
+**After a restart,** expect every subagent, background loop, and timed series to have
+ended. Check what a timed series recorded before it stopped, resume agents by message,
+and re-arm any watcher from its durable copy.
+
+`tests/test_experiment_storage.py` holds the rule for experiment records:
+- no record points its evidence at a session scratchpad or an operating system temporary
+  directory;
+- every file a record names in `method.protocol` and `method.record` is committed, and
+  the protocol’s sha256 matches;
+- a record dated after the rule names its protocol.
+
 ## Pull Requests
 
 1. Start from current `main` and create a focused branch.
