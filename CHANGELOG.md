@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A heading that opens a pull request’s description, comment, or review no longer sits
+  pressed under the card’s header.
+  It had 8 px above it and 16 px below, so it read as part of the header rather than of
+  its section; a text now has 16 px above and below it, as GitHub pads a comment.
+  Headings inside a text keep the spacing they have in a Markdown file: 32 px above an
+  h1 or h2 after a paragraph, list, code block, or quotation, and 16 px below.
+
 - Reading Metabrowser’s private cache costs less on a busy server.
   Every read checks that no other user can read or replace what it reads, and it used to
   open each directory on the way again to check it.
