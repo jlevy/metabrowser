@@ -1736,7 +1736,7 @@ for reasons that have nothing to do with this plan.
 
 `metab --api` (`mb-ian3`) and the persisted-state parity clause have landed, so this
 phase uses them directly rather than building a parallel inspection harness.
-See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
+See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
 
 #### Phase 1A implementation decisions
 

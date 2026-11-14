@@ -5,7 +5,7 @@ Pull request #355 (bead `mb-wlx0`), the second of the spinner-free refresh stack
 `mb-c93s`), landed on `main` with the presentation pull request #354 (`mb-wl9x`) in
 93badac9 on 2026-11-11. The changed-files prefetch of the rows rested on and in view
 (T3) followed in #424 (`mb-5mcn`). One GraphQL query per record refresh is a later,
-separate change (`mb-xhtc`) and is out of scope.
+separate change (`mb-6aa8`) and is out of scope.
 
 ## Reader Behavior
 

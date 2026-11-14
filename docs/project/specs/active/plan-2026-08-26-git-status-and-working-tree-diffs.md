@@ -1027,7 +1027,7 @@ transcript (`mb-y06t`) on the day it exists rather than by a test harness writte
 Fixture repositories are built with pinned identity and dates, which makes commit
 revisions identical across runs and machines, so the goldens assert real revisions
 instead of placeholders.
-See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
+See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
 - [ ] Add the Git 2.36 status-safety gate over the existing `parse_git_version` and
   `detect_git_version`; keep repository discovery and History usable below it.

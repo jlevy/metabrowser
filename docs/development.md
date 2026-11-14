@@ -684,7 +684,7 @@ pass on whatever Git the machine has and the floor refuses an older one.
 Ubuntu 24.04 packages Git 2.43.0, which is below the floor.
 The hosted CI runner currently ships a newer Git that the floor admits, but nothing here
 pins it. The fixed clock is what lets these transcripts print every recorded time; see
-[CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
+[CLI-first delivery](project/specs/done/plan-2026-08-28-cli-first-delivery-map.md).
 
 ## Compatibility and Legacy Code
 

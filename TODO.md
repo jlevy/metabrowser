@@ -23,7 +23,7 @@ Checked items below are supported today; unchecked items are planned work.
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | On-demand assets, progressive inventory delivery, and startup-script budget implemented; broader performance goals remain |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; the asset-loading work it waited on has landed |
-| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
+| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type
@@ -107,7 +107,8 @@ is no longer outstanding.
   rather than as a large panel inside Overview
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
-- [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
+- [ ] Cover DOM lifecycle browserlessly against the production JavaScript (`mb-wgka`)
+  and pin the versioned payload contracts with a schema (`mb-xzb1`)
 - [x] Add
   [contextual keyboard help and accessible tree navigation](docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
   through one shortcut registry
@@ -226,8 +227,8 @@ They are not part of the v0.1.0 core contract.
   [HTML rendering and content-trust model](docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md),
   building on the sandboxed `/raw` responses, same-origin proof on `/api`, and
   `--untrusted` profile that landed through #209
-- [ ] Enforce a strict Content Security Policy after replacing or nonce-enabling the
-  remaining inline shell and plugin handlers
+- [ ] Extend the strict Content Security Policy, now enforced under the untrusted
+  profile, to the default profile (`mb-gluj`); no inline shell or plugin handlers remain
 
 The current renderer sanitizes untrusted document HTML, and event data is escaped before
 DOM insertion. A Content Security Policy remains useful defense in depth because the

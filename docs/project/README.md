@@ -73,7 +73,6 @@ links to the document that covers each in depth.
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
-- [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
 - [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
 
@@ -107,6 +106,8 @@ Once its questions are answered and its measurements are superseded, it moves to
 
 ## Reviews
 
+- [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md) —
+  every bead closed, updated, or held in the audit after 0.12.0, with its evidence
 - [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
   — the intended changes to what v0.11.0 already did, for sign-off: each with its
   changelog entry, its pull request, and how it was checked against the v0.11.0 wheel;
@@ -161,6 +162,7 @@ Once its questions are answered and its measurements are superseded, it moves to
   — the 0.12.0 acceptance record; its deferred checks are open beads under `mb-425f`
 - [Watching GitHub pull requests](specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
 - [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md)
+- [CLI-first delivery: parity, Git status, and the repository cache](specs/done/plan-2026-08-28-cli-first-delivery-map.md)
 
 The [roadmap](../../TODO.md) is the concise status index.
 Draft architecture and plan documents record intent rather than compatibility

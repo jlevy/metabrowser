@@ -246,7 +246,7 @@ before going on. Run all checks on this same selected commit.
 - [End-to-end testing](e2e-testing.md)
 - [Development](development.md)
 - [Repository library and open from a Git URL](project/specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [CLI-first delivery map](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md)
+- [CLI-first delivery map](project/specs/done/plan-2026-08-28-cli-first-delivery-map.md)
 - [Views, models, and routes](project/architecture/arch-views-models-routes.md)
 
 ## Phase 0: Setup
