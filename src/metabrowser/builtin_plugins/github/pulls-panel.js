@@ -70,7 +70,21 @@ export const PREFETCH_RESTED = 2;
 export const FILES_DWELL_MS = 500;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;
-const CORE_CONTROL_TIMEOUT_MS = 2000;
+// How long the panel waits for a batch's answer, a cache check unless it starts a read.
+// Measured 2026-11-13 on 5,000 cataloged PRs: 14-34 ms idle; about 0.47 s, at most
+// 0.73 s, beside eight 1000-row list reads. The slowest ever logged was 6.5 s, in a
+// window serving a large repository, before those checks cost 2.5 times less. Each
+// timeout is above all of these: an answer given up on is work thrown away and asked
+// for again. A reader's next viewport aborts a visible batch sooner. A background batch
+// is aborted by any visible one, so its timeout only ends a server that never answers.
+const CORE_VISIBLE_TIMEOUT_MS = 10000;
+const CORE_BACKGROUND_TIMEOUT_MS = 30000;
+// A release clears ownership in memory, reading no disk.
+const CORE_RELEASE_TIMEOUT_MS = 2000;
+// A batch left unanswered this many times in a row, by a timeout or a failed request, is
+// passed over; the walk returns to it at the end of its pass, as to a partial cohort,
+// once 30 s have passed for every batch it passed over.
+const CORE_MAX_MISSES = 2;
 export const CORE_BUSY_RETRY_MS = 1000;
 
 export const LISTS = Object.freeze(["open", "closed", "all"]);
@@ -679,6 +693,12 @@ export function createPullsController(deps, options = {}) {
   // Traversal can restart while the same accepted producer remains owned.
   let corePass = 0;
   let sendingCore = false;
+  /** The demand being sent, which a visible demand aborts. @type {{demand: CoreDemand, controller: AbortController} | null} */
+  let coreRequest = null;
+  /** The batch last left unanswered, and how many times in a row. @type {{key: string, count: number} | null} */
+  let coreMisses = null;
+  /** Batches this pass has passed over: one more miss passes over them again. @type {Set<string>} */
+  const passedOverCores = new Set();
   /** @type {unknown} */
   let coreRetryTimer = null;
   /** The actual viewport may span several transport batches. @type {PullRow[]} */
@@ -697,6 +717,10 @@ export function createPullsController(deps, options = {}) {
   let warmGeneration = null;
   /** Earliest retry among settled partial cohorts. @type {number | null} */
   let warmDeferredAt = null;
+  // The latest deadline among batches passed over. The walk returns to the top for all of
+  // them at once, so it waits for the last, and none is asked for before its own.
+  /** @type {number | null} */
+  let passedOverUntil = null;
   let warmRetryDelay = CORE_BUSY_RETRY_MS;
   /** @type {unknown} */
   let warmTimer = null;
@@ -824,9 +848,11 @@ export function createPullsController(deps, options = {}) {
   /** @param {boolean} [release] Whether the catalog identity revoked its producer. */
   function restartCorePass(release = true) {
     corePass += 1;
+    passedOverCores.clear();
     warmAfter = null;
     warmGeneration = null;
     warmDeferredAt = null;
+    passedOverUntil = null;
     warming = true;
     warmPaused = false;
     visibleCoreKey = "";
@@ -930,12 +956,14 @@ export function createPullsController(deps, options = {}) {
       }
       if (envelope.rows.length === 0) {
         if (envelope.complete && !envelope.refreshing && envelope.state !== "absent") {
-          if (warmDeferredAt !== null) {
-            const retryAt = warmDeferredAt;
+          if (warmDeferredAt !== null || passedOverUntil !== null) {
+            const retryAt = Math.max(warmDeferredAt ?? 0, passedOverUntil ?? 0);
             warmDeferredAt = null;
+            passedOverUntil = null;
             warmAfter = null;
-            // Later rows have had their turn. Revisit only after the partial
-            // cohort's existing attempt lease; successful siblings stay cached.
+            // Later rows have had their turn. Revisit only after the partial cohort's
+            // existing attempt lease and every passed-over batch's deadline; successful
+            // siblings stay cached.
             pauseCoreQueue({ reset_at: new Date(retryAt).toISOString() });
           } else {
             warming = false;
@@ -968,22 +996,71 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
-  /** @param {CoreWindowRequest} body */
-  async function controlCoreWindow(body) {
+  /**
+   * @param {CoreWindowRequest} body
+   * @param {AbortSignal} signal
+   */
+  async function controlCoreWindow(body, signal) {
     try {
-      return await deps.request("POST", CORE_PREPARE_ROUTE, {
-        body,
-        // An exact-owner release must still be sendable after panel disposal.
-        signal: AbortSignal.timeout(CORE_CONTROL_TIMEOUT_MS),
-      });
+      return await deps.request("POST", CORE_PREPARE_ROUTE, { body, signal });
     } catch {
       return null;
     }
   }
 
+  /**
+   * One demand's request, ended by its lane's timeout or by `controller`.
+   * @param {CoreDemand} demand
+   * @param {AbortController} controller
+   */
+  async function requestCoreWindow(demand, controller) {
+    const timeout = deps.schedule(
+      () => controller.abort(),
+      demand.lane === "visible" ? CORE_VISIBLE_TIMEOUT_MS : CORE_BACKGROUND_TIMEOUT_MS,
+    );
+    try {
+      return await controlCoreWindow(demand.body, controller.signal);
+    } finally {
+      deps.cancel(timeout);
+    }
+  }
+
   /** @param {CoreDemand} demand */
   function releaseCoreWindow(demand) {
-    return controlCoreWindow({ ...demand.body, numbers: [] });
+    // An exact-owner release must still be sendable after panel disposal.
+    return controlCoreWindow(
+      { ...demand.body, numbers: [] },
+      AbortSignal.timeout(CORE_RELEASE_TIMEOUT_MS),
+    );
+  }
+
+  /** @param {CoreDemand} demand */
+  function coreBatchKey(demand) {
+    return JSON.stringify([demand.lane, demand.body.state, demand.body.numbers]);
+  }
+
+  /**
+   * Count a batch the server left unanswered; pass it over after `CORE_MAX_MISSES` in a row,
+   * or after one when it was passed over before, so a revisit costs one attempt.
+   * @param {CoreDemand} demand
+   */
+  function noteCoreMiss(demand) {
+    const key = coreBatchKey(demand);
+    const count = coreMisses?.key === key ? coreMisses.count + 1 : 1;
+    coreMisses = { key, count };
+    if (count < (passedOverCores.has(key) ? 1 : CORE_MAX_MISSES)) {
+      return;
+    }
+    coreMisses = null;
+    passedOverCores.add(key);
+    if (demand.lane === "background") {
+      warmAfter = demand.body.numbers.at(-1) ?? warmAfter;
+    } else if (demand.queueKey === visibleCoreKey) {
+      visibleCoreAt += demand.body.numbers.length;
+    }
+    // The walk revisits it after its pass, not before its slowest retry has passed.
+    warming = true;
+    passedOverUntil = Math.max(passedOverUntil ?? 0, deps.now() + SLOW_POLL_MS);
   }
 
   function cancelCoreRetry() {
@@ -1015,7 +1092,10 @@ export function createPullsController(deps, options = {}) {
           }
           continue;
         }
-        const response = await controlCoreWindow(demand.body);
+        const controller = new AbortController();
+        coreRequest = { demand, controller };
+        const response = await requestCoreWindow(demand, controller);
+        coreRequest = null;
         const receipt =
           /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], retry_numbers?: number[], retry_at?: string, failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
             response?.body
@@ -1116,6 +1196,8 @@ export function createPullsController(deps, options = {}) {
             }
             demand.done = true;
             warmRetryDelay = CORE_BUSY_RETRY_MS;
+            coreMisses = null;
+            passedOverCores.delete(coreBatchKey(demand));
             if (retryAt !== null) {
               warming = true;
               warmDeferredAt =
@@ -1134,6 +1216,10 @@ export function createPullsController(deps, options = {}) {
             pauseCoreQueue(null);
           } else {
             demand.done = true;
+            if (receipt?.preparation !== "failed" && receipt?.preparation !== "held") {
+              // A source-wide failure holds every batch; no answer at all holds only this one.
+              noteCoreMiss(demand);
+            }
             pauseCoreQueue(receipt?.failure);
           }
         }
@@ -1172,6 +1258,9 @@ export function createPullsController(deps, options = {}) {
     cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
+    // Nothing wants the batch on its way any more, so it does not hold up the release
+    // behind it, and the server stops it. A release is never aborted here.
+    coreRequest?.controller.abort();
     noteCoreRefreshing();
     void sendCoreWindow();
   }
@@ -1199,6 +1288,12 @@ export function createPullsController(deps, options = {}) {
       retryDelay: CORE_BUSY_RETRY_MS,
       body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
     };
+    if (lane === "visible") {
+      // The batch on its way is no longer wanted, so what the reader sees does not wait for
+      // it. The server stops it at its next step; its ownership is settled as for any
+      // request that went unanswered.
+      coreRequest?.controller.abort();
+    }
     noteCoreRefreshing();
     void sendCoreWindow();
   }
