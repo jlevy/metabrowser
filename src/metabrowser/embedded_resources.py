@@ -32,10 +32,14 @@ _ATTRIBUTE = re.compile(
 )
 # links.js resolveExternal: a scheme, or `//`, after leading controls and spaces.
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+# What JavaScript's `trimStart` removes: its white space and line terminators.
+_JS_LEADING_SPACE = re.compile(
+    "^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+"
+)
 # A `%` that does not start an escape, where decodeURIComponent throws.
 _BAD_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 # links.js MAX_AUTHORED_TARGET_LENGTH.
-_MAX_AUTHORED_TARGET_LENGTH = 4096
+_MAX_AUTHORED_TARGET_LENGTH = 16384
 
 
 def embedded_raw_paths(rendered_html: str, source_path: str, *, limit: int) -> list[str]:
@@ -62,35 +66,52 @@ def embedded_raw_paths(rendered_html: str, source_path: str, *, limit: int) -> l
 
 
 def resolve_embedded_path(authored: str, source_path: str) -> str | None:
-    """The identity links.js resolves *authored* to from *source_path*, or None.
+    """The identity the link enhancer asks ``/raw`` for when *authored* is embedded, or None.
 
-    None for an outside address, an address of the document itself or of a folder, and
-    every address links.js refuses: a backslash, a NUL, a malformed escape, an encoded
-    separator, or a path above the served root.
+    It is links.js ``resolveStandardTarget`` for an embed on a served folder, followed by
+    the enhancer's ``normalizedFilePath``: the document itself for an address with no path,
+    a folder for one that names a folder, which no version is given for, and None for an
+    outside address and every address links.js refuses -- a backslash, a NUL, a malformed
+    escape, an encoded separator, or a path above the served root.
+    ``tests/test_raw_versions.py`` compares it with links.js itself.
     """
 
-    if len(authored) > _MAX_AUTHORED_TARGET_LENGTH or "\\" in authored or "\0" in authored:
+    # The bound counts UTF-16 code units, as a JavaScript string's length does.
+    units = len(authored.encode("utf-16-le", errors="surrogatepass")) // 2
+    if units > _MAX_AUTHORED_TARGET_LENGTH or "\\" in authored or "\0" in authored:
         return None
-    probe = "".join(character for character in authored if ord(character) > 32)
+    trimmed = _JS_LEADING_SPACE.sub("", authored)
+    probe = "".join(character for character in trimmed if ord(character) > 32)
     if probe.startswith("//") or _SCHEME.match(probe):
         return None
-    path = authored.split("#", 1)[0].split("?", 1)[0]
-    if not path:
+    before_fragment, _, fragment = authored.partition("#")
+    path, _, query = before_fragment.partition("?")
+    resolved = _resolve_logical_path(source_path, path)
+    if resolved is None or not _valid_part(query) or not _valid_part(fragment):
         return None
+    return resolved.removesuffix("/")
+
+
+def _resolve_logical_path(source_path: str, path: str) -> str | None:
+    """links.js ``resolveLogicalPath`` for a served folder."""
+
+    if not path:
+        return source_path
     rooted = path.startswith("/")
     relative = path[1:] if rooted else path
-    if not relative or relative.endswith("/"):
-        return None
+    if not relative:
+        return ""
+    trailing_slash = relative.endswith("/")
+    raw_segments = relative.split("/")
     segments: list[str] = []
     parent_pops = 0
-    for raw in relative.split("/"):
-        if not raw or _BAD_ESCAPE.search(raw):
+    for index, raw in enumerate(raw_segments):
+        if not raw:
+            if trailing_slash and index == len(raw_segments) - 1:
+                continue
             return None
-        try:
-            segment = unquote(raw, errors="strict")
-        except UnicodeDecodeError:
-            return None
-        if "/" in segment or "\0" in segment:
+        segment = _decode(raw)
+        if segment is None or "/" in segment or "\0" in segment:
             return None
         if segment == ".":
             continue
@@ -103,19 +124,38 @@ def resolve_embedded_path(authored: str, source_path: str) -> str | None:
                 parent_pops += 1
             continue
         segments.append(segment)
-    if not segments:
-        return None
     # links.js inventoryName: the inventory spells `%` as `%25` and a backslash as `%5C`.
     authored_path = "/".join(
         segment.replace("%", "%25").replace("\\", "%5C") for segment in segments
     )
-    if rooted:
-        return authored_path
-    parents = source_path.split("/")[:-1]
-    if parent_pops > len(parents):
+    base = ""
+    if not rooted:
+        parents = source_path.split("/")[:-1]
+        if parent_pops > len(parents):
+            return None
+        base = "/".join(parents[: len(parents) - parent_pops])
+    resolved = f"{base}/{authored_path}" if base and authored_path else base or authored_path
+    return f"{resolved}/" if trailing_slash and resolved else resolved
+
+
+def _decode(raw: str) -> str | None:
+    """decodeURIComponent, or None where it throws."""
+
+    if _BAD_ESCAPE.search(raw):
         return None
-    base = "/".join(parents[: len(parents) - parent_pops])
-    return f"{base}/{authored_path}" if base else authored_path
+    try:
+        return unquote(raw, errors="strict")
+    except UnicodeDecodeError:
+        return None
+
+
+def _valid_part(serialized: str) -> bool:
+    """links.js ``validateSerializedPart``: a query or fragment that decodes, with no NUL."""
+
+    if not serialized:
+        return True
+    decoded = _decode(serialized)
+    return decoded is not None and "\0" not in decoded
 
 
 __all__ = ["embedded_raw_paths", "resolve_embedded_path"]

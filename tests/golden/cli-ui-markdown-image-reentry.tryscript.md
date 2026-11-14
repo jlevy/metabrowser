@@ -14,10 +14,11 @@ The engine’s loads are events the session fires.
 It pins which images a document entered again makes eager, the order of each image’s
 attribute changes and its placement, and the load listener’s lifecycle: a served image
 is held at its versioned address and made eager before that address is set, an image
-from another origin is held and made eager before the page adopts it, a replaced file’s
-new version is a new address that loads lazily, an unversioned served address and an
-absolute address on the page’s own origin are never held, a pinned revision’s images are
-held, and the record keeps its bound and evicts the least recently loaded.
+from another origin, a scheme-relative one included, is held and made eager before the
+page adopts it, a replaced file’s new version is a new address that loads lazily, an
+unversioned served address and an absolute or scheme-relative address on the page’s own
+origin are never held, a pinned revision’s images are held, and the record keeps its
+bound and evicts the least recently loaded.
 When an image is fetched and painted is the engine’s; see “A Repaint Keeps Its Images”
 in `docs/design-system.md`.
 
@@ -62,6 +63,20 @@ $ node tests/dom/markdown-image-reentry-session.js
           "changes": [
             "placed"
           ]
+        },
+        {
+          "loading": "lazy",
+          "src": "//cdn.example.com/badge.svg",
+          "changes": [
+            "placed"
+          ]
+        },
+        {
+          "loading": "lazy",
+          "src": "//127.0.0.1:8000/own.png",
+          "changes": [
+            "placed"
+          ]
         }
       ]
     },
@@ -103,6 +118,21 @@ $ node tests/dom/markdown-image-reentry-session.js
           "src": "https://example.com/remote.png",
           "changes": [
             "loading=eager",
+            "placed"
+          ]
+        },
+        {
+          "loading": "eager",
+          "src": "//cdn.example.com/badge.svg",
+          "changes": [
+            "loading=eager",
+            "placed"
+          ]
+        },
+        {
+          "loading": "lazy",
+          "src": "//127.0.0.1:8000/own.png",
+          "changes": [
             "placed"
           ]
         }

@@ -68,17 +68,23 @@ const holdableImages = new WeakSet();
 
 /**
  * Whether *href* is an image from another origin than the page's, which serves the
- * reader's files. Such an image keeps the address its author wrote.
+ * reader's files. Such an image keeps the address its author wrote, which is the key
+ * the page holds it by.
+ *
+ * It is resolved against the page's address, as the browser resolves it, so a
+ * scheme-relative `//host/badge.svg` is outside when its host is another (links.js
+ * `resolveExternal` takes it as external), and only an http or https address is.
  *
  * @param {string} href
  */
 export function isOutsideAddress(href) {
-  if (!/^https?:\/\//i.test(href)) {
+  const page = globalThis.location;
+  if (!page?.href) {
     return false;
   }
-  const origin = globalThis.location?.origin;
   try {
-    return !origin || new URL(href).origin !== origin;
+    const url = new URL(href, page.href);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.origin !== page.origin;
   } catch (_error) {
     return false;
   }

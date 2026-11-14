@@ -1,17 +1,21 @@
-"""Versioned ``/raw`` addresses: a replaced file is a new address, kept only while current.
+"""Versioned ``/raw`` addresses: a replaced file is a new address.
 
 The render route answers ``raw_versions``, the version of each served file a document
 embeds, by the identity the page's link enhancer resolves it to, and the enhancer puts
 the version in the image's address. So a browser that reuses an image by its address --
 Chrome's list of available images on a return to a document, a reload's cache -- asks
-again when the file was replaced. ``/raw`` keeps an answer for a year only at the
-version the file has now, which names the trust profile as well, and revalidates every
-other (``SECURITY.md``).
+again when the file was replaced. ``/raw`` keeps an answer for a year only for a raster
+image at the version the file has now, whose execution policy is the same in both trust
+profiles, and revalidates every other (``SECURITY.md``):
+``tests/test_raw_profile_cache_chrome.py`` follows an SVG's old address across a switch to
+``--untrusted`` in Chrome.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -20,46 +24,87 @@ from starlette.testclient import TestClient
 from metabrowser import http_caching, server
 from metabrowser.capabilities import DEFAULT_CAPABILITIES, Capabilities, set_capabilities
 from metabrowser.embedded_resources import embedded_raw_paths, resolve_embedded_path
+from tests.required_tools import require_node
 
 PNG = b"\x89PNG\r\n\x1a\n"
 IMMUTABLE = "private, max-age=31536000, immutable"
+SOURCE = "docs/guide/readme.md"
+RESOLVER = Path(__file__).resolve().parent / "dom" / "embedded-resource-resolution.js"
+# links.js MAX_AUTHORED_TARGET_LENGTH: a longer address is refused.
+LIMIT = 16384
+# Enough `./` that `ab.png` after them is exactly LIMIT units long.
+PAD = (LIMIT - 6) // 2
+
+# Authored addresses, each with the identity the enhancer asks /raw for, or None.
+ADDRESSES: list[tuple[str, str | None]] = [
+    ("images/a.png", "docs/guide/images/a.png"),
+    ("./images/./a.png", "docs/guide/images/a.png"),
+    ("../top.png", "docs/top.png"),
+    ("../../top.png", "top.png"),
+    ("../../../escape.png", None),
+    ("/assets/logo.png", "assets/logo.png"),
+    ("/../escape.png", None),
+    ("images/a.png?raw=1#frag", "docs/guide/images/a.png"),
+    ("my%20image.png", "docs/guide/my image.png"),
+    # The inventory spells a `%` in a name as `%25`.
+    ("100%25.png", "docs/guide/100%25.png"),
+    ("na%C3%AFve.png", "docs/guide/naïve.png"),
+    # A folder, the root, and the document itself: /raw finds no regular file there.
+    ("images/", "docs/guide/images"),
+    ("images/..", "docs/guide"),
+    ("/", ""),
+    ("", SOURCE),
+    ("#frag", SOURCE),
+    ("?query", SOURCE),
+    # Every address links.js refuses, or that is not a served file's.
+    ("a%2Fb.png", None),
+    ("a%zz.png", None),
+    ("a%E9.png", None),
+    ("a.png?bad=%zz", None),
+    ("a.png#%00", None),
+    ("a\\b.png", None),
+    ("a//b.png", None),
+    ("https://example.com/badge.png", None),
+    ("//example.com/badge.png", None),
+    (" //example.com/badge.png", None),
+    ("data:image/png;base64,AAAA", None),
+    (" javascript:alert(1)", None),
+    ("c:image.png", None),
+    # At links.js's bound, `./` repeated before a short name; one unit more is refused.
+    ("./" * PAD + "ab.png", "docs/guide/ab.png"),
+    ("./" * PAD + "abc.png", None),
+    # The bound counts UTF-16 units: an astral character is two.
+    ("./" * PAD + "\U0001f600.png", "docs/guide/\U0001f600.png"),
+    ("./" * PAD + "a\U0001f600.png", None),
+]
 
 
-@pytest.mark.parametrize(
-    ("authored", "expected"),
-    [
-        ("images/a.png", "docs/guide/images/a.png"),
-        ("./images/./a.png", "docs/guide/images/a.png"),
-        ("../top.png", "docs/top.png"),
-        ("../../top.png", "top.png"),
-        ("../../../escape.png", None),
-        ("/assets/logo.png", "assets/logo.png"),
-        ("/../escape.png", None),
-        ("images/a.png?raw=1#frag", "docs/guide/images/a.png"),
-        ("my%20image.png", "docs/guide/my image.png"),
-        # The inventory spells a `%` in a name as `%25`.
-        ("100%25.png", "docs/guide/100%25.png"),
-        ("na%C3%AFve.png", "docs/guide/naïve.png"),
-        # Every address links.js refuses, or that is not a served file's.
-        ("a%2Fb.png", None),
-        ("a%zz.png", None),
-        ("a%E9.png", None),
-        ("a\\b.png", None),
-        ("a//b.png", None),
-        ("images/", None),
-        ("", None),
-        ("#frag", None),
-        ("?query", None),
-        ("https://example.com/badge.png", None),
-        ("//example.com/badge.png", None),
-        ("data:image/png;base64,AAAA", None),
-        (" javascript:alert(1)", None),
-    ],
-)
+@pytest.mark.parametrize(("authored", "expected"), ADDRESSES)
 def test_an_embedded_address_resolves_as_the_link_enhancer_resolves_it(
     authored: str, expected: str | None
 ) -> None:
-    assert resolve_embedded_path(authored, "docs/guide/readme.md") == expected
+    assert resolve_embedded_path(authored, SOURCE) == expected
+
+
+def test_the_prediction_is_the_production_resolvers() -> None:
+    """Review A of #426, A3: each address, its bound included, through links.js itself."""
+
+    cases = [{"authored": authored, "source": SOURCE} for authored, _ in ADDRESSES]
+    result = subprocess.run(
+        [require_node(), str(RESOLVER)],
+        input=json.dumps(cases),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [expected for _, expected in ADDRESSES]
+
+
+def test_the_bound_cases_sit_on_the_bound() -> None:
+    lengths = [len(authored.encode("utf-16-le")) // 2 for authored, _ in ADDRESSES[-4:]]
+    assert lengths == [LIMIT, LIMIT + 1, LIMIT, LIMIT + 1]
 
 
 def test_a_render_names_each_resource_once_in_order_and_within_its_bound() -> None:
@@ -178,3 +223,68 @@ def test_a_version_names_the_build(served: TestClient, monkeypatch: pytest.Monke
     before = _versions(served)["docs/images/a.png"]
     monkeypatch.setattr(http_caching, "BUILD_TAG", "0" * len(http_caching.BUILD_TAG))
     assert _versions(served)["docs/images/a.png"] != before
+
+
+# Execution headers: what decides whether, and as what, a browser runs an answer.
+EXECUTION_HEADERS = ("content-type", "content-security-policy", "x-content-type-options")
+
+
+def _answers(client: TestClient, identity: str) -> dict[str, object]:
+    """The answer at *identity*'s current version, under the profile serving now."""
+
+    target = server._safe_path(identity)
+    assert target is not None
+    version = server._raw_version(target, target.stat())
+    answer = client.get("/raw", params={"path": identity, "v": version})
+    assert answer.status_code == 200
+    return {
+        "cache-control": answer.headers["cache-control"],
+        "execution": {name: answer.headers.get(name) for name in EXECUTION_HEADERS},
+    }
+
+
+def test_only_a_raster_image_is_kept_and_its_policy_is_every_profiles(tmp_path: Path) -> None:
+    """Reviews A and B of #426, A1 and B1: an answer a browser keeps is replayed without
+    reaching the server, under whichever profile serves the origin by then. So only an
+    answer whose execution headers are the same under both profiles is kept: a raster
+    image's. An SVG or an HTML document runs scripts under the trusted profile, and is
+    revalidated at its current version too."""
+
+    raster = ["a.png", "a.jpg", "a.jpeg", "a.gif", "a.webp", "a.avif", "upper.PNG"]
+    documents = ["a.svg", "a.html", "a.js", "a.css", "a.txt", "a.bmp", "a.ico", "a.pdf"]
+    for name in raster + documents:
+        (tmp_path / name).write_bytes(PNG + b"x" * 16)
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    trusted = {name: _answers(client, name) for name in raster + documents}
+    set_capabilities(Capabilities(active_content=False, mutations=False))
+    try:
+        untrusted = {name: _answers(client, name) for name in raster + documents}
+    finally:
+        set_capabilities(DEFAULT_CAPABILITIES)
+    for name in raster:
+        assert trusted[name]["cache-control"] == IMMUTABLE, name
+        assert untrusted[name]["cache-control"] == IMMUTABLE, name
+        assert trusted[name]["execution"] == untrusted[name]["execution"], name
+        assert "allow-scripts" not in str(trusted[name]["execution"]), name
+    for name in documents:
+        assert trusted[name]["cache-control"] == "no-cache", name
+        assert untrusted[name]["cache-control"] == "no-cache", name
+    assert "allow-scripts" in str(trusted["a.svg"]["execution"])
+    assert "allow-scripts" not in str(untrusted["a.svg"]["execution"])
+
+
+def test_a_looping_link_is_left_unversioned_and_the_document_renders(tmp_path: Path) -> None:
+    """Review B of #426, B2: on Python 3.12 resolving a link to itself raised
+    RuntimeError, which failed the whole render; now the link names no file."""
+
+    (tmp_path / "a.png").write_bytes(PNG)
+    (tmp_path / "loop.png").symlink_to("loop.png")
+    (tmp_path / "readme.md").write_text("# Loop\n\n![x](loop.png) ![a](a.png)\n")
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    response = client.get("/api/kpress/render", params={"path": "readme.md"})
+    assert response.status_code == 200
+    assert "<h1" in response.json()["html"]
+    assert sorted(response.json()["raw_versions"]) == ["a.png"]
+    assert client.get("/raw", params={"path": "loop.png"}).status_code == 404

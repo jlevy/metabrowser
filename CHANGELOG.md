@@ -19,9 +19,14 @@ All notable changes to Metabrowser are documented here.
   address, and a hidden file, a file behind a link, or one replaced with the same size
   and time is no exception.
   Editing the document no longer makes the macOS app fetch its images again.
-  A `/raw` answer at a file’s current version is kept by the browser without asking, so
-  a reload in Chrome asks for nothing; every other `/raw` answer is revalidated as
-  before (see `SECURITY.md`).
+  A PNG, JPEG, GIF, WebP, or AVIF image at its file’s current version is kept by the
+  browser without asking, so a reload in Chrome asks for nothing; its sandbox no longer
+  allows scripts, which an image never runs, so it is the same under `--untrusted`.
+  Every other `/raw` answer, an SVG’s or an HTML document’s included, is revalidated as
+  before, so no copy a browser keeps under the trusted profile answers, allowing
+  scripts, after the folder is served `--untrusted` (see `SECURITY.md`). A link to an
+  image that links to itself no longer fails the document’s render, or `/raw`, on Python
+  3.12.
 
 - Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
   shell observes: the changed inventory paths with their ancestors, or `null` when

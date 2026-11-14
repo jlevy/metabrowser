@@ -3293,18 +3293,21 @@ embeds, a token of the file’s resolved path, size, modification and change tim
 and device, of the trust profile and its sandbox policy, and of the build, read when the
 render is asked for, which is on every entry.
 The link enhancer puts the version in the file’s `/raw` address, so a replaced file is a
-new address, and `/raw` keeps an answer for a year only at the version the file has now
-(`SECURITY.md`). So the page reuses what it holds at an address without asking whether
-the file changed: an image whose file changed has a new address, which the page does not
-hold, and loads lazily there.
+new address. `/raw` keeps a raster image’s answer for a year at the version the file has
+now, and revalidates every other, an SVG’s included, since its sandbox differs by trust
+profile (`SECURITY.md`); a revalidated image the page holds is still taken from its
+copy. So the page reuses what it holds at an address without asking whether the file
+changed: an image whose file changed has a new address, which the page does not hold,
+and loads lazily there.
 That is true of a hidden file, a file behind a link, a file deeper than the shell’s
 event stream watches, and a replacement that keeps the file’s size and time, because the
 version is read from the file, not heard from the shell.
 On a pinned revision a file never changes at its address, and an image from another
-origin is that host’s to keep fresh, as Chrome reuses one anyway, so both are held too.
+origin, a scheme-relative `//host/badge.svg` on another host included, is that host’s to
+keep fresh, as Chrome reuses one anyway, so both are held too.
 A served address without a version, which is any past the render’s first 256 files, and
-an absolute address on the page’s own origin can change under the page, and are never
-held.
+an absolute or scheme-relative address on the page’s own origin can change under the
+page, and are never held.
 
 A held served image is made eager before its address is set, its authored address
 removed first: an eager image asks for its address at once, and the authored one,
@@ -3354,8 +3357,11 @@ reuses an image the page has loaded at the same address whatever its headers say
 reload asked again because `/raw` was `no-cache`. With versions a change to the document
 no longer costs its images a round trip in WebKit, since nothing forgets them, and a
 replaced image is asked for once, at its new address, in both engines.
-After the reload Chrome kept the new image from its cache without asking, the answer at
-the current version being kept for a year; WebKit asked for it again.
+After the reload Chrome kept the new image from its cache without asking, the PNG’s
+answer at the current version being kept for a year; WebKit asked for it again.
+With an SVG added to the first screen, whose answer is revalidated, and an image from
+another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
+neither and had both complete in their first frame, as Chrome did for the SVG.
 
 The rule has its limits.
 A version is read when the document is rendered, so a document on screen keeps the image

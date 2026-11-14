@@ -12,9 +12,10 @@
 // address with the version the render gave it, any served address on a pinned revision,
 // and an address on another origin. A held served image is made eager before its address
 // is set, its authored address removed first; a held outside image is made eager in the
-// template, before the page adopts it. A replaced file has a new version, so its address
-// is new and it loads lazily there; an unversioned served address, and an absolute one
-// on the page's own origin, are never held. The record keeps `MAX_HELD_IMAGES` images
+// template, before the page adopts it; a scheme-relative address is outside when its host
+// is another. A replaced file has a new version, so its address is new and it loads
+// lazily there; an unversioned served address, and an absolute or scheme-relative one on
+// the page's own origin, are never held. The record keeps `MAX_HELD_IMAGES` images
 // and forgets the least recently loaded past that.
 //
 // This checks attributes, their order, listeners, and the record, not loading or paint,
@@ -29,7 +30,7 @@ const moduleUrl = (name) => pathToFileURL(path.join(markdownDir, name)).href;
 
 // The page's origin: an image addressed there is the page's own, not outside it.
 const ORIGIN = "http://127.0.0.1:8000";
-globalThis.location = { origin: ORIGIN };
+globalThis.location = { href: `${ORIGIN}/view/docs/readme.md`, origin: ORIGIN };
 
 class ElementShim {}
 global.Element = ElementShim;
@@ -207,7 +208,10 @@ async function run() {
   const FAR = "images/far.png";
   const UNVERSIONED = "images/past-the-bound.png";
   const REMOTE = "https://example.com/remote.png";
-  const README = [SHOWN, FAR, UNVERSIONED, REMOTE];
+  // Scheme-relative: another host's, and the page's own.
+  const SCHEMELESS = "//cdn.example.com/badge.svg";
+  const OWN_SCHEMELESS = "//127.0.0.1:8000/own.png";
+  const README = [SHOWN, FAR, UNVERSIONED, REMOTE, SCHEMELESS, OWN_SCHEMELESS];
   // The render versions each served file it embeds, up to its bound.
   const VERSIONS = versioned([SHOWN, FAR], "a1b2c3d4e5f60718");
   const steps = [];
@@ -220,7 +224,7 @@ async function run() {
     images: facts(first.images),
   });
   // The reader sees all but the far image, which never loads.
-  for (const index of [0, 2, 3]) {
+  for (const index of [0, 2, 3, 4, 5]) {
     first.container.load(first.images[index]);
   }
   first.handle.dispose();

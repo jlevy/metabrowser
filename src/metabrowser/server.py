@@ -951,6 +951,23 @@ _SCRIPT_CAPABLE: Final = re.compile(
     r"^\s*(?:text|application)/(?:x-)?(?:javascript|ecmascript|jscript|livescript|css)\b",
     re.IGNORECASE,
 )
+# Raster images: a browser decodes them and runs nothing, whether they are loaded as an
+# image or opened as a document, so their execution policy is the same under both trust
+# profiles. /raw sends them the sandbox without `allow-scripts` under either profile,
+# rewrites no profile's type for them, and so answers them with the same execution
+# headers whichever profile serves. Only they may be kept for a year at a versioned address
+# (raw_file): an answer kept under one profile is replayed, unasked, under another on the
+# same origin, and an SVG or HTML document's headers differ by profile. Matched by the type
+# /raw sends, which `nosniff` makes the one a browser takes, not by the file's bytes.
+_PROFILE_INDEPENDENT_MEDIA_TYPES: Final = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}
+)
+
+
+def _profile_independent(content_type: str) -> bool:
+    """Whether a /raw answer of *content_type* has the same execution policy in every profile."""
+
+    return content_type.split(";", 1)[0].strip().lower() in _PROFILE_INDEPENDENT_MEDIA_TYPES
 
 
 def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
@@ -1013,7 +1030,12 @@ class _RawTrustHeaderMiddleware:
             if message.get("type") == "http.response.start":
                 started = True
                 headers = MutableHeaders(scope=message)
-                headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
+                # A raster image runs nothing, so it never needs `allow-scripts`, and without it
+                # its policy is the same in both profiles (_PROFILE_INDEPENDENT_MEDIA_TYPES).
+                headers["Content-Security-Policy"] = raw_sandbox_csp(
+                    active_content=active_content
+                    and not _profile_independent(headers.get("content-type", ""))
+                )
                 # Never kept as fresh, whichever branch answered: its headers are this
                 # profile's (SECURITY.md). raw_file sets it with its tag; this covers the
                 # rest -- the decompressed stream, a 404 or a 403 -- by construction.
@@ -3989,10 +4011,11 @@ def _raw_identity(mtime_hash: str, stat: os.stat_result, *, passthrough: bool) -
 def _raw_version(target: Path, stat: os.stat_result) -> str:
     """The version a ``/raw`` address carries: the file as it is now, and the trust profile.
 
-    A versioned address is kept for a year without asking (``SECURITY.md``), so it names
-    everything that answer depends on: the file by its resolved path and by what a
-    replacement moves -- size, modification and change times, inode, and device -- and the
-    headers by the trust profile and the sandbox policy it sends. The build is folded in by
+    A raster image at its versioned address is kept for a year without asking
+    (``SECURITY.md``), so the version names everything that answer depends on: the file
+    by its resolved path and by what a replacement moves -- size, modification and change
+    times, inode, and device -- and the headers by the trust profile and the sandbox
+    policy it sends. The build is folded in by
     :func:`metabrowser.http_caching.address_version`. The representation is not named: a
     gzip passthrough answer varies by ``Accept-Encoding``, which a browser keys it by.
     """
@@ -4081,17 +4104,22 @@ async def raw_file(request: Request) -> Response:
             return PlainTextResponse("Not found", status_code=404)
         etag = _etag_for(_raw_identity(mtime_hash, stat, passthrough=passthrough))
         # The body is the reader's file and its headers are the trust profile's
-        # (_RawTrustHeaderMiddleware), so a response a browser keeps without asking must
-        # be at an address that names both. The query form's `v` does, while it is the
-        # version the file has now (_raw_version): that answer is kept for a year. Any
-        # other is revalidated on every use: a 304 answers only the tag, which names the
-        # profile; a date cannot, so If-Modified-Since alone is answered in full. The path
-        # form is a document's address, for its relative references, and is never
-        # versioned. See SECURITY.md.
+        # (_RawTrustHeaderMiddleware). A response a browser keeps without asking is
+        # replayed without reaching this server, so no address can revoke it: one kept
+        # while the trusted profile served would answer, with `allow-scripts`, a link to it
+        # followed after the folder is served `--untrusted` on the same origin. So only an
+        # answer whose execution policy is the same in both profiles, a raster image
+        # (_PROFILE_INDEPENDENT_MEDIA_TYPES), is kept: for a year, at the query form's `v`
+        # while it is the version the file has now (_raw_version). Every other answer, an
+        # SVG or HTML document's at its current version included, is revalidated on every
+        # use: a 304 answers only the tag, which names the profile; a date cannot, so
+        # If-Modified-Since alone is answered in full. The path form is a document's
+        # address, for its relative references, and is never versioned. See SECURITY.md.
         version = request.query_params.get("v")
         current = (
             version is not None
             and "path" not in getattr(request, "path_params", {})
+            and _profile_independent(media_type)
             and version == _raw_version(target, stat)
         )
         headers = immutable_headers(etag) if current else etag_headers(etag)

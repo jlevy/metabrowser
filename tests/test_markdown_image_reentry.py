@@ -11,7 +11,8 @@ holds, which left a re-entered document's first images blank for the round trip.
 So the page holds a loaded image at an address that names its bytes, and makes it eager
 when it is entered again: a served image at its versioned address, made eager after its
 authored address is removed and before its served one is set; and an image from another
-origin, made eager in the template before the page adopts it. A replaced file has a new
+origin, a scheme-relative address on another host included, made eager in the template
+before the page adopts it. A replaced file has a new
 version, so a new address, and loads lazily there; an unversioned served address and an
 absolute address on the page's own origin are never held; on a pinned revision every
 served image is held. The record keeps ``MAX_HELD_IMAGES`` images, forgetting the least
@@ -30,12 +31,16 @@ SHOWN = f"/raw?path=docs%2Fimages%2Fshown.png&v={VERSION}"
 FAR = f"/raw?path=docs%2Fimages%2Ffar.png&v={VERSION}"
 UNVERSIONED = "/raw?path=docs%2Fimages%2Fpast-the-bound.png"
 REMOTE = "https://example.com/remote.png"
+# Scheme-relative: another host's, and the page's own (the session's page is 127.0.0.1:8000).
+SCHEMELESS = "//cdn.example.com/badge.svg"
+OWN_SCHEMELESS = "//127.0.0.1:8000/own.png"
+OUTSIDE = (REMOTE, SCHEMELESS, OWN_SCHEMELESS)
 
 
 def _lazy(src: str) -> dict[str, object]:
     """An image left lazy: its served address set after placement, or an outside one."""
 
-    changes = ["placed"] if src == REMOTE else ["placed", f"src={src}"]
+    changes = ["placed"] if src in OUTSIDE else ["placed", f"src={src}"]
     return {"loading": "lazy", "src": src, "changes": changes}
 
 
@@ -58,12 +63,20 @@ def test_a_reentered_document_takes_the_images_the_page_holds() -> None:
         {
             "step": "first entry",
             "listens": {"load": "capture"},
-            "images": [_lazy(SHOWN), _lazy(FAR), _lazy(UNVERSIONED), _lazy(REMOTE)],
+            "images": [
+                _lazy(SHOWN),
+                _lazy(FAR),
+                _lazy(UNVERSIONED),
+                _lazy(REMOTE),
+                _lazy(SCHEMELESS),
+                _lazy(OWN_SCHEMELESS),
+            ],
         },
         {"step": "left", "listening": []},
-        # The shown and the outside image loaded and are held; the far one did not load,
-        # and an unversioned address can change under the page. The outside image is
-        # eager before it is placed.
+        # All but the far image loaded. The shown and the two outside images are held; an
+        # unversioned address, and a scheme-relative one on the page's own origin, can
+        # change under the page (review A of #426, A2). An outside image is eager before
+        # it is placed.
         {
             "step": "entered again",
             "images": [
@@ -71,6 +84,8 @@ def test_a_reentered_document_takes_the_images_the_page_holds() -> None:
                 _lazy(FAR),
                 _lazy(UNVERSIONED),
                 {"loading": "eager", "src": REMOTE, "changes": ["loading=eager", "placed"]},
+                {"loading": "eager", "src": SCHEMELESS, "changes": ["loading=eager", "placed"]},
+                _lazy(OWN_SCHEMELESS),
             ],
         },
         # A replaced file's new version is a new address, which the page does not hold.
