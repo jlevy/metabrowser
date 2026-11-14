@@ -333,3 +333,96 @@ Analysis committed before the first pair
   gives the same pairs as the driver's stopping count.
 - The driver runs under `caffeinate -i`, so the machine does not sleep while idle during the
   series. That changes no power reading.
+
+AMENDMENT 3 (written 2026-11-14T12:25:00Z, during the series, before any exp-079 result was
+read). It amends the registration with amendments 1 and 2, sha256
+7dce509e1e1a53ee54f64194c54e9d3ba6cbaa6b16b845a5d3db5fcd798295ff (commit 1192929d). It changes
+no rule of measurement. It fixes, before any result is read, how the registered judgments are
+computed.
+- The series started at 2026-11-14T12:15:11Z (lock) and 12:16:13Z (attempt 1). No metric of any
+  attempt has been read. One glance at the running attempt's log showed three lines of the
+  first run's views journey (views.folder.revisit and .revisit_2), which no judgment reads.
+- Analysis committed beside the record, before any result is read:
+    exp-079-derive.mjs, sha256
+      92d4f862723a8b7a921a127d3a5d13411c8c7c990c7284399db85e9bc96db87d: from the judged
+      pairs' full rows, the skim evidence exp-085 declared for H91 (c)'s guard (E1 to E3).
+    exp-065-instruments/derive-h92-h106.mjs, unchanged, sha256
+      fbdf4a15d36e566deef4ea1edae5d760509cd6a0e9a9f07c9591f13283867713: on the same rows, the
+      per-run readings of H92 (a) and (c) and of H106. Its printed pair ratios match runs by
+      pair index, which is 1 in every one-pair invocation, so the record does not use them;
+      exp-079-analyze.mjs pairs runs by series.
+    exp-079-analyze.mjs, sha256
+      b09ab7c8dd47d67fe28df1f30e1b543e5d26e095584f615158a36ccf293b76d6: the judgments,
+      from the judged samples, the two derived files, and the harness's compareRuns with
+      the Commits landings allowed to differ.
+- The rules it applies, stated in its header:
+  - A transition whose recorded Commits landing differs between a judged pair's two runs is
+    reported and not judged, wherever it appears.
+  - A deciding metric passes when its median moved the predicted way and compare's outcome
+    is a result: for counts and values, ranges apart; for times and frames, ranges apart
+    with two or more pairs beyond 1.3x. A per-run derived count passes on its medians and
+    ranges. "Not higher" passes unless the metric is a result in the higher direction.
+  - In a guard or elsewhere in the record's table, a wrong-way result is compare's wrong-way
+    flag with a result or an explain outcome (two or more pairs beyond 1.3x under
+    overlapping ranges), as exp-086 states the rule. compare also flags a rerun (ranges
+    apart, one pair beyond), which it calls not yet a result. A rerun is listed and does not
+    block, as exp-065 read its guards.
+  - A wrong-way result is accounted for only in two ways:
+    - by a rule its record declared: exp-085's E1 to E3 for H91 (c)'s guard, and exp-087's
+      later-frame test for H87. The later-frame test accounts for painted_ready_ms,
+      ready_ms, ready_after_last_input_ms, frames_to_ready, settled_ms, blank_frames and
+      blank_ms on files.cold.json, files.cold.image and files.revisit.markdown_large, the
+      metrics exp-083 named one frame later there, for each view whose Fisher p is 0.05 or
+      more;
+    - where the record accepted the same metric on the same transitions moving the same
+      way, and said why. exp-065 did so for H92 (a)'s description guards and H92 (c)'s
+      Changes painted ready; exp-080 for H106's description and painted-ready guards. Both
+      named the first-paint hold, which is the change.
+    The output names every account, so a verdict that rests on one can be read apart.
+  - Verdict:
+    - accepted, when every judged deciding metric passes and every wrong-way result in the
+      table is accounted for;
+    - rejected, when a deciding metric is a result the other way, or a rule its record
+      declared rejects it (exp-085: the guard ranges apart, two or more pairs beyond);
+    - otherwise unresolved;
+    - not measured, when no deciding metric can be judged.
+    Clause 4, the complexity judgment, is the coordinator's.
+- What each third clause sees, per its record:
+  - H86 (a): the 27 transitions' region_movement_px, with painted_ready_ms and blank_frames
+    on each, and landing.reload's shift_sum_no_input.
+  - H86 (b): region_movement_px on its eight transitions, and on pulls.list_to_pr.cold and
+    pulls.pr_to_pr.*, which must not rise; painted_ready_ms and pr_header_ms on all of
+    them.
+  - H91 (a), (b) and (d): the deciding metric, and the guards exp-064 restates
+    (painted_ready_ms, styled_markdown_ms, blank_frames; painted_ready_ms, blank_frames;
+    painted_ready_ms).
+  - H91 (c), exp-085:
+    - deciding: file_envelope_requests;
+    - the guard: ready_after_last_input_ms, under exp-085's rule;
+    - painted_ready_ms on the skim;
+    - blank and placeholder frames, as E3 reads them;
+    - painted_ready_ms on keyboard.down_cold.1 to .3, exp-064's guards, which exp-085 did
+      not re-measure.
+  - H92 (a): the per-run duplicate reads over the five clicks; subject_duplicates on each,
+    not higher; pr_description_shown_ms and pr_description_final_ms on the four cold clicks
+    (pulls.list_to_pr.cold, pr_to_pr.cold, pr_to_pr.hover_click, pr_changes_to_pr).
+  - H92 (c): the per-run body shift after ready over the four Changes paints, and
+    painted_ready_ms on each.
+  - H106:
+    - metric 1, the per-run count of Conversation transitions whose description showed
+      before its final form;
+    - metric 2, not higher: the per-run Conversation body shift after ready, and
+      preview_top_replaced and shift_sum_no_input on every pull request transition;
+    - the guards: the two description milestones on the four cold clicks, and
+      painted_ready_ms on every Conversation transition.
+  - H87:
+    - deciding: landing.reload's revalidated requests over the five families, per run;
+    - the guard: painted_ready_ms on landing.reload;
+    - the declared check: long_task_max_ms on files.revisit.source_large;
+    - the cold Markdown prediction;
+    - every compare entry on a landing.* or files.* transition (exp-083).
+  - H88 (a): its four deciding metrics, and every compare entry on a commits.* or
+    main_subject.*commits* transition, with every judged run valid.
+- Not measured here, as registered: H92 (b), H88 (b) and WebKit. The hold-span guard of
+  exp-065 and exp-080 (probe-holds-corpus.mjs), an instrument other than this scenario, is
+  not measured either.
