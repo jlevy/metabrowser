@@ -4,39 +4,19 @@
   "routes": {
     "/api/git/log?limit=250": {
       "standard": {
-        "control_range": [
-          136.92,
-          188.07
-        ],
-        "candidate_range": [
-          5.62,
-          6.74
-        ],
+        "control_range": [136.92, 188.07],
+        "candidate_range": [5.62, 6.74],
         "apart": true,
         "pairs": 15,
         "pairs_beyond": 15
       },
       "refresh_pairs": {
-        "control": [
-          5,
-          10,
-          15
-        ],
-        "candidate": [
-          5,
-          10,
-          15
-        ]
+        "control": [5, 10, 15],
+        "candidate": [5, 10, 15]
       },
       "refresh_set_aside": {
-        "control_range": [
-          136.92,
-          153.41
-        ],
-        "candidate_range": [
-          5.71,
-          6.74
-        ],
+        "control_range": [136.92, 153.41],
+        "candidate_range": [5.71, 6.74],
         "apart": true,
         "pairs": 12,
         "pairs_beyond": 12
@@ -46,39 +26,19 @@
     },
     "/api/git/summary": {
       "standard": {
-        "control_range": [
-          145.98,
-          240.99
-        ],
-        "candidate_range": [
-          2,
-          3.39
-        ],
+        "control_range": [145.98, 240.99],
+        "candidate_range": [2, 3.39],
         "apart": true,
         "pairs": 15,
         "pairs_beyond": 15
       },
       "refresh_pairs": {
-        "control": [
-          5,
-          9,
-          14
-        ],
-        "candidate": [
-          5,
-          9,
-          14
-        ]
+        "control": [5, 9, 14],
+        "candidate": [5, 9, 14]
       },
       "refresh_set_aside": {
-        "control_range": [
-          145.98,
-          201.7
-        ],
-        "candidate_range": [
-          2,
-          3.24
-        ],
+        "control_range": [145.98, 201.7],
+        "candidate_range": [2, 3.24],
         "apart": true,
         "pairs": 12,
         "pairs_beyond": 12
@@ -88,39 +48,19 @@
     },
     "/api/git/refs": {
       "standard": {
-        "control_range": [
-          20.46,
-          59.52
-        ],
-        "candidate_range": [
-          1.54,
-          3.46
-        ],
+        "control_range": [20.46, 59.52],
+        "candidate_range": [1.54, 3.46],
         "apart": true,
         "pairs": 15,
         "pairs_beyond": 15
       },
       "refresh_pairs": {
-        "control": [
-          3,
-          8,
-          13
-        ],
-        "candidate": [
-          3,
-          8,
-          13
-        ]
+        "control": [3, 8, 13],
+        "candidate": [3, 8, 13]
       },
       "refresh_set_aside": {
-        "control_range": [
-          20.46,
-          22.56
-        ],
-        "candidate_range": [
-          1.54,
-          3.46
-        ],
+        "control_range": [20.46, 22.56],
+        "candidate_range": [1.54, 3.46],
         "apart": true,
         "pairs": 12,
         "pairs_beyond": 12
