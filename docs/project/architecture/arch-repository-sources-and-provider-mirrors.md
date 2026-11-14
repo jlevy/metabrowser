@@ -857,8 +857,12 @@ Settled partial owners retire, so a later retry can prepare their missing member
 The panel waits 10 s for a visible batch and 30 s for a background one
 (`CORE_VISIBLE_TIMEOUT_MS`, `CORE_BACKGROUND_TIMEOUT_MS`, with their measurements).
 A visible demand aborts the background batch on its way rather than waiting for it.
+So does clearing the panel’s demand (disposal, a pause, or a hidden page), which then
+releases the aborted batch’s token as for any request left unanswered.
 A batch left unanswered twice in a row, by a timeout or a failed request, is passed
-over, and the walk revisits it after its pass with one attempt.
+over.
+After its pass the walk returns to the top once 30 s have passed for every batch it
+passed over, and gives each one attempt.
 A batch whose client has gone stops at its next thread hop and starts no provider read;
 a release always runs to its end.
 A failed owner batch returns `failed`; subsequent batches return `held` with the same

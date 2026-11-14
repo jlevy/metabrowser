@@ -39,6 +39,10 @@ async function run() {
     prepareLatency = () => 0,
     // A demand naming this row fails every time, as a request that timed out does.
     failingNumber = null,
+    // Whether a demand fails as a timed-out request does, by its body and the time.
+    fails = () => false,
+    // Whether to hold an answer the server already gave until the request is aborted.
+    holdAnswer = null,
   } = {}) {
     let now = 0,
       online = true,
@@ -46,6 +50,8 @@ async function run() {
       serial = 0;
     /** Every demand sent, when, and when its request was aborted. */
     const prepares = [];
+    /** Answers held after the server gave them, and when their request was aborted. */
+    const heldAnswers = [];
     const timers = new Map(),
       requests = [],
       batches = [],
@@ -73,7 +79,8 @@ async function run() {
           if (body.numbers.length > 0) {
             const sent = { at: now, state: body.state, numbers: body.numbers, aborted: null };
             prepares.push(sent);
-            if (body.numbers.includes(failingNumber)) {
+            if (body.numbers.includes(failingNumber) || fails(body, now)) {
+              sent.failed = true;
               throw new DOMException("The operation timed out.", "TimeoutError");
             }
             const latency = prepareLatency(body);
@@ -342,6 +349,20 @@ async function run() {
     const request = deps.request;
     deps.request = async (method, route, options) => {
       const response = await request(method, route, options);
+      if (route.endsWith("pull-cores-prepare") && holdAnswer?.(options.body, response)) {
+        const kept = { at: now, body: options.body, aborted: null };
+        heldAnswers.push(kept);
+        await new Promise((_resolve, reject) => {
+          options.signal?.addEventListener(
+            "abort",
+            () => {
+              kept.aborted = now;
+              reject(new DOMException("The operation was aborted.", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      }
       const held = holdReceipt?.(options.body, response);
       if (held) {
         holdReceipt = null;
@@ -357,6 +378,7 @@ async function run() {
       controller,
       requests,
       prepares,
+      heldAnswers,
       batches,
       attempts,
       cached,
@@ -929,9 +951,9 @@ async function run() {
   await failing.until(() => failing.cached.size === rows.length - 8, 60);
   const passedOver = { cached: failing.cached.size, atMs: failing.now(), attempts: [] };
   // Each lane passes over it after two attempts; the walk returns to it after its pass.
-  await failing.until(() => failing.now() >= 40000, 60);
+  await failing.until(() => failing.now() >= 50000, 60);
   passedOver.attempts = failing.prepares
-    .filter((p) => p.numbers.includes(unanswered) && p.at < 40000)
+    .filter((p) => p.numbers.includes(unanswered) && p.at < 50000)
     .map((p) => `${p.state}@${p.at}`);
   failing.controller.dispose();
 
@@ -983,6 +1005,58 @@ async function run() {
   };
   silent.controller.dispose();
 
+  // Teardown aborts the batch on its way at once, then releases the token the server
+  // admitted for it, so neither a request nor ownership outlives the panel's interest.
+  const tornDown = [];
+  for (const exit of ["dispose", "pause", "hide"]) {
+    const teardown = rig({
+      trackOwnership: true,
+      holdAnswer: (body, response) => body.numbers.length > 0 && response.status === 202,
+    });
+    await teardown.start();
+    await teardown.until(() => teardown.heldAnswers.length > 0);
+    const [kept] = teardown.heldAnswers;
+    const owner = teardown.owner();
+    assert.equal(owner, kept.body.window.id, "the server admitted the batch it answered");
+    const leftAt = teardown.now();
+    if (exit === "dispose") {
+      teardown.controller.dispose();
+    } else if (exit === "pause") {
+      teardown.controller.pause();
+    } else {
+      teardown.hide();
+    }
+    await settle();
+    assert.equal(kept.aborted, leftAt, `${exit} aborts the batch on its way at once`);
+    assert.deepEqual(teardown.releases, [owner], `${exit} then releases the admitted token`);
+    teardown.finishRelease();
+    await settle();
+    assert.equal(teardown.owner(), null, `${exit} leaves no window owned`);
+    teardown.controller.dispose();
+    tornDown.push({ exit, abortedAfterMs: kept.aborted - leftAt, released: 1 });
+  }
+
+  // Staggered failures: one batch fails from the start in both lanes, another only from
+  // 20 s, on the walk's return. No batch passed over is asked for again before its own
+  // deadline, 30 s after it was passed over, whichever batch's deadline came first.
+  const staggered = rig({
+    failingNumber: rows[8].number,
+    fails: (body, at) => body.numbers.includes(rows[16].number) && at >= 20000,
+  });
+  await staggered.start();
+  await staggered.until(() => staggered.now() >= 300000, 400);
+  const failedBy = new Map();
+  for (const p of staggered.prepares.filter((sent) => sent.failed)) {
+    const key = `${p.state}:${p.numbers.join(",")}`;
+    failedBy.set(key, [...(failedBy.get(key) ?? []), p.at]);
+  }
+  const retriedEarly = [...failedBy].flatMap(([key, times]) =>
+    times.slice(2).flatMap((at, i) => (at - times[i + 1] < 30000 ? [`${key}@${at}`] : [])),
+  );
+  assert.deepEqual(retriedEarly, [], "no batch passed over is asked for before its deadline");
+  const staggeredFailures = [...failedBy.values()].map((times) => times.length);
+  staggered.controller.dispose();
+
   return {
     catalogRows: rows.length,
     settledOwnershipReleases,
@@ -1003,6 +1077,8 @@ async function run() {
     preemption,
     slowCoveredMs,
     giveUpMs,
+    tornDown,
+    staggeredFailures,
   };
 }
 run()

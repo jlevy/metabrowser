@@ -71,7 +71,8 @@ const CORE_BACKGROUND_TIMEOUT_MS = 30000;
 // A release clears ownership in memory, reading no disk.
 const CORE_RELEASE_TIMEOUT_MS = 2000;
 // A batch left unanswered this many times in a row, by a timeout or a failed request, is
-// passed over; the walk returns to it at the end of its pass, as to a partial cohort.
+// passed over; the walk returns to it at the end of its pass, as to a partial cohort,
+// once 30 s have passed for every batch it passed over.
 const CORE_MAX_MISSES = 2;
 export const CORE_BUSY_RETRY_MS = 1000;
 
@@ -705,6 +706,10 @@ export function createPullsController(deps, options = {}) {
   let warmGeneration = null;
   /** Earliest retry among settled partial cohorts. @type {number | null} */
   let warmDeferredAt = null;
+  // The latest deadline among batches passed over. The walk returns to the top for all of
+  // them at once, so it waits for the last, and none is asked for before its own.
+  /** @type {number | null} */
+  let passedOverUntil = null;
   let warmRetryDelay = CORE_BUSY_RETRY_MS;
   /** @type {unknown} */
   let warmTimer = null;
@@ -818,6 +823,7 @@ export function createPullsController(deps, options = {}) {
     warmAfter = null;
     warmGeneration = null;
     warmDeferredAt = null;
+    passedOverUntil = null;
     warming = true;
     warmPaused = false;
     visibleCoreKey = "";
@@ -921,12 +927,14 @@ export function createPullsController(deps, options = {}) {
       }
       if (envelope.rows.length === 0) {
         if (envelope.complete && !envelope.refreshing && envelope.state !== "absent") {
-          if (warmDeferredAt !== null) {
-            const retryAt = warmDeferredAt;
+          if (warmDeferredAt !== null || passedOverUntil !== null) {
+            const retryAt = Math.max(warmDeferredAt ?? 0, passedOverUntil ?? 0);
             warmDeferredAt = null;
+            passedOverUntil = null;
             warmAfter = null;
-            // Later rows have had their turn. Revisit only after the partial
-            // cohort's existing attempt lease; successful siblings stay cached.
+            // Later rows have had their turn. Revisit only after the partial cohort's
+            // existing attempt lease and every passed-over batch's deadline; successful
+            // siblings stay cached.
             pauseCoreQueue({ reset_at: new Date(retryAt).toISOString() });
           } else {
             warming = false;
@@ -1021,10 +1029,9 @@ export function createPullsController(deps, options = {}) {
     } else if (demand.queueKey === visibleCoreKey) {
       visibleCoreAt += demand.body.numbers.length;
     }
-    // The walk revisits it after its pass, no sooner than its slowest retry.
+    // The walk revisits it after its pass, not before its slowest retry has passed.
     warming = true;
-    const retryAt = deps.now() + SLOW_POLL_MS;
-    warmDeferredAt = warmDeferredAt === null ? retryAt : Math.min(warmDeferredAt, retryAt);
+    passedOverUntil = Math.max(passedOverUntil ?? 0, deps.now() + SLOW_POLL_MS);
   }
 
   function cancelCoreRetry() {
@@ -1222,6 +1229,9 @@ export function createPullsController(deps, options = {}) {
     cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
+    // Nothing wants the batch on its way any more, so it does not hold up the release
+    // behind it, and the server stops it. A release is never aborted here.
+    coreRequest?.controller.abort();
     noteCoreRefreshing();
     void sendCoreWindow();
   }

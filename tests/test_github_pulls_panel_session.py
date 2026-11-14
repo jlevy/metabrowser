@@ -861,17 +861,26 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         "completedBeforeDisconnect": 8,
         "backgroundRequestsAfterCompletion": 17,
         # A batch no answer ever comes for: each lane passes over it after two attempts,
-        # 1 s apart, and returns to it after its pass, which once stalled at 8 of 24 rows.
+        # 1 s apart, which once stalled at 8 of 24 rows. The walk returns to it after its
+        # pass once its 30 s have passed: at 41 s, not at the visible lane's 34 s.
         "passedOver": {
             "cached": 16,
             "atMs": 7000,
-            "attempts": ["open@3000", "open@4000", "all@9000", "all@10000", "all@35000"],
+            "attempts": ["open@3000", "open@4000", "all@9000", "all@10000", "all@41000"],
         },
         # A visible demand aborts the background batch on its way instead of waiting for it.
         "preemption": {"visibleSentAfterMs": 0, "backgroundAbortedAfterMs": 0},
         # Every answer taking 6.5 s, the slowest logged, still covers the catalog.
         "slowCoveredMs": 51500,
         "giveUpMs": {"visible": 10000, "background": 30000},
+        # Disposal, a pause, or a hidden page aborts the batch on its way at once, and the
+        # token the server admitted for it is released.
+        "tornDown": [
+            {"exit": exit, "abortedAfterMs": 0, "released": 1}
+            for exit in ("dispose", "pause", "hide")
+        ],
+        # Failures per batch in five virtual minutes, none retried before its deadline.
+        "staggeredFailures": [2, 11, 10],
     }
 
 
