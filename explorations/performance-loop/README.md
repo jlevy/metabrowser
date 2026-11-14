@@ -913,11 +913,15 @@ round can commit its samples beside its artifact and regenerate its tables from 
 
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
-A check whose measurement the recorder refused for its frame clock alone is taken again,
-up to three attempts in all, and a pass that needed another attempt is reported as a
-pytest warning. A runner too busy to draw at the display rate says nothing about those
-definitions. The `frame_clock` guard itself is unchanged, and a check that fails any
-other way fails at once.
+A check that can be repeated, and that failed while the recorder refused one of its
+measurements for its frame clock alone, is taken again, up to three attempts in all.
+A pass that needed another attempt is reported as a pytest warning.
+A runner too busy to draw at the display rate says nothing about those definitions.
+The two network checks are not repeated: they count what the server answered across two
+measurements, so a second attempt would find the browser cache and the server’s hit
+counts already changed.
+The `frame_clock` guard itself is unchanged, and a check that fails any other way fails
+at once.
 
 **Limits.** Headless Chrome only; the native app’s WebKit is not measured.
 Painted ready is read from the main thread: raster and GPU time are not visible to the
