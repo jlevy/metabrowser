@@ -1740,7 +1740,8 @@ In a browser it is the browser’s own Reload, in the page, a tree row, Quick Se
 field, Help, or an open menu alike; the `modified` part of
 `tests/dom/key-reveal-session.js` presses it in each of those places.
 In the macOS app it is View > Reload Page, which is never disabled in a folder window:
-while the status view covers the page it restarts the server or loads the page again
+while the status view covers the page it loads the page again, starts the server or
+waits for the start under way, or, after the server failed, restarts it as Retry does
 ([apps/macos/README.md](../apps/macos/README.md#the-window) has each case).
 The app’s other keys are the standard ones of its menus: Back and Forward are Command-\[
 and Command-\], and Restart Server is Command-Option-R.

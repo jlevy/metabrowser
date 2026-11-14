@@ -380,6 +380,30 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
   assert.equal(document.activeElement, menuLinks[0], "Down opens at the top stack member");
+  // With the menu open, Escape held with a modifier reaches the document's listeners, the
+  // one that closes the open menu among them, and none takes it or closes the menu.
+  const documentKeydowns = [...(documentEvents.get("keydown") ?? [])];
+  assert(documentKeydowns.length > 0, "the open menu listens for Escape on the document");
+  const escapes = [];
+  for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+    for (const listener of documentKeydowns) {
+      let prevented = false;
+      listener({
+        key: "Escape",
+        [modifier]: true,
+        target: menuLinks[0],
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {},
+      });
+      if (prevented || !standalone.element.open) {
+        escapes.push(modifier);
+      }
+    }
+  }
+  assert.deepEqual(escapes, [], "a modified Escape leaves the open stack menu open");
+  assert.equal(document.activeElement, menuLinks[0], "a modified Escape moves no focus");
   key("End");
   assert.equal(document.activeElement, menuLinks[2]);
   key("Home");

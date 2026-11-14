@@ -7,9 +7,11 @@ All notable changes to Metabrowser are documented here.
 - Command-R always reloads.
   In the macOS app, View > Reload Page was disabled while the window showed its status
   view, and did nothing in a tab still loading or reloading its page.
-  It now reloads in every state: with no page it loads the page again, and with no
-  server, or after a failure, it restarts the server as Retry does; a sheet on the
-  window is cancelled first.
+  It now reloads in every state.
+  With no page it loads the page again; on “Starting…” it waits for the start under way,
+  or starts a stopped server; after the server failed it restarts it, as Retry does.
+  A dialog or panel the page opened is cancelled first; the app’s own sheets, such as
+  the offer to restart after an upgrade or a download’s save panel, stay.
   In a browser and in the app, keys held with Command, Control, or Option are left to
   the browser everywhere: the tree map, the Files tab’s filters, the branch switcher,
   and a pull request’s stack menu no longer take Command-Up, Command-Left, or the like

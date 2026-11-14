@@ -37,13 +37,19 @@ import Testing
     }
 
     /// Only Reload changed: the items that act on the page itself still need it on screen.
+    /// Every item is read, so one added later is held to a rule here too.
     @Test func theOtherPageItemsStillNeedThePageShown() {
         for window in Self.everyWindow {
-            for item in [PageMenu.Item.print, .actualSize, .zoomIn, .zoomOut, .find] {
-                #expect(PageMenu.isEnabled(item, in: window) == window.showsPage, "\(item) in \(window)")
+            for item in PageMenu.Item.allCases {
+                let expected =
+                    switch item {
+                    case .reload: true
+                    case .back: window.showsPage && window.canGoBack
+                    case .forward: window.showsPage && window.canGoForward
+                    case .print, .actualSize, .zoomIn, .zoomOut, .find: window.showsPage
+                    }
+                #expect(PageMenu.isEnabled(item, in: window) == expected, "\(item) in \(window)")
             }
-            #expect(PageMenu.isEnabled(.back, in: window) == (window.showsPage && window.canGoBack))
-            #expect(PageMenu.isEnabled(.forward, in: window) == (window.showsPage && window.canGoForward))
         }
     }
 
@@ -73,23 +79,34 @@ import Testing
         #expect(route(.reloading, showsPage: false, hasPage: false, serverReady: true) == .loadPage)
     }
 
-    /// With no server to load from, Command-R does what the status view's Retry and
-    /// File > Restart Server do: a fresh server, then the page.
-    @Test func noServerRestartsIt() {
-        #expect(route(.starting, showsPage: false, serverReady: false) == .restartServer)
-        #expect(route(.reloading, showsPage: false, serverReady: false) == .restartServer)
-        #expect(route(.starting, showsPage: true, hasPage: false, serverReady: false) == .restartServer)
+    /// With no server to load from and no failure shown, Command-R starts the server, which
+    /// joins a start already under way rather than stopping it (review A1 on #433): pressed
+    /// on "Starting…", it never throws the start away or sends it to the back of the
+    /// launch queue.
+    @Test func noServerStartsOneOrJoinsTheStartUnderWay() {
+        #expect(route(.starting, showsPage: false, serverReady: false) == .startServer)
+        #expect(route(.reloading, showsPage: false, serverReady: false) == .startServer)
+        #expect(route(.starting, showsPage: true, hasPage: false, serverReady: false) == .startServer)
+        for hasPage in [false, true] {
+            #expect(route(.starting, showsPage: false, hasPage: hasPage, serverReady: false) == .startServer)
+        }
     }
 
-    /// The failure view offers Retry, whatever failed: the server, the page's load, or the
-    /// web content process, again and again. Its page is behind it, even with a ready server.
-    @Test func aFailureRetriesAsItsButtonDoes() {
-        for serverReady in [false, true] {
-            for hasPage in [false, true] {
-                #expect(
-                    route(.failed(Self.failure), showsPage: false, hasPage: hasPage, serverReady: serverReady)
-                        == .restartServer)
-            }
+    /// The server failed: the failure view's default action, Retry, restarts it.
+    @Test func aServerFailureRetriesAsItsDefaultButtonDoes() {
+        for hasPage in [false, true] {
+            #expect(route(.failed(Self.failure), showsPage: false, hasPage: hasPage, serverReady: false) == .restartServer)
+        }
+    }
+
+    /// Only the page failed, while the server is still ready: a provisional load failure, or
+    /// a content process that kept dying. Command-R loads this tab's page again, after the
+    /// health check, and restarts nothing under the folder's other tabs (review A6 on #433).
+    /// A server that no longer answers the check fails, every tab says so, and the next
+    /// Command-R restarts it.
+    @Test func aPageFailureLoadsThePageAgain() {
+        for hasPage in [false, true] {
+            #expect(route(.failed(Self.failure), showsPage: false, hasPage: hasPage, serverReady: true) == .loadPage)
         }
     }
 
@@ -108,5 +125,36 @@ import Testing
         for serverReady in [false, true] {
             #expect(route(.waitingForSelection, showsPage: false, serverReady: serverReady) == .startAsSelected)
         }
+    }
+}
+
+/// The sheets Command-R cancels before it reloads: only the ones the page opened (review A2
+/// on #433). A sheet the app put on the window, such as the runtime-upgrade offer or a
+/// download's save panel, is never recorded, so it stays, and the reload runs behind it.
+@Suite struct PageSheetsTests {
+    private final class Sheet {}
+
+    @Test func onlyASheetThePageOpenedIsCancelled() {
+        var sheets = PageSheets<Sheet>()
+        let alert = Sheet()
+        let upgradeOffer = Sheet()
+        sheets.opened(alert)
+        #expect(sheets.cancels(alert))
+        #expect(!sheets.cancels(upgradeOffer))
+        #expect(!sheets.cancels(nil))
+    }
+
+    @Test func aSheetAnsweredIsForgotten() {
+        var sheets = PageSheets<Sheet>()
+        let prompt = Sheet()
+        let openPanel = Sheet()
+        sheets.opened(prompt)
+        sheets.opened(openPanel)
+        sheets.closed(prompt)
+        #expect(!sheets.cancels(prompt))
+        #expect(sheets.cancels(openPanel))
+        #expect(sheets.count == 1)
+        sheets.opened(openPanel)  // recorded once
+        #expect(sheets.count == 1)
     }
 }

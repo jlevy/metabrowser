@@ -3,9 +3,7 @@ import SwiftUI
 
 /// What a folder window shows in place of the page (`WindowPhase`).
 @Observable final class WindowStatus {
-    typealias Phase = WindowPhase
-
-    var phase: Phase = .starting
+    var phase: WindowPhase = .starting
 }
 
 struct StatusView: View {
