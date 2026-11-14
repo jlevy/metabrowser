@@ -4,6 +4,21 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Reading Metabrowser’s private cache costs less on a busy server.
+  Every read checks that no other user can read or replace what it reads, and it used to
+  open each directory on the way again to check it.
+  Each of those system calls waits for any busy thread in the server, so the Pulls tab’s
+  background answers could take seconds.
+  A directory that passed the check now stays open, and a later read checks it again
+  with one stat and one ACL read instead of reopening it.
+  The pull-request catalog and its three journal files are checked under one look at
+  their directory instead of four.
+  Every check is still made on every read, so a cache directory that becomes shared,
+  linked, replaced, or foreign-owned is refused exactly as before.
+  In a Pulls session on a stand-in repository, these checks made half as many system
+  calls, and with eight list windows reading at once a background preparation answer
+  took about 400 ms instead of about 600 ms.
+
 - Shutting down no longer logs a file watcher traceback.
   A change the watcher picked up just as the server stopped used to be refused by the
   already-closed inventory, and the log showed an `InventoryClosedError` twice: as

@@ -285,6 +285,8 @@ answers.
 - `ensure_private_directory(home, relative_path)` creates or verifies a directory.
 - `open_private_file(home, relative_path, flags)` opens or creates a file and returns a
   descriptor.
+- `private_directory(home, relative_path)` verifies a directory once and opens several
+  files in it.
 - `validate_private_home(home)` checks the home and its ancestors without changing
   anything.
 
@@ -351,6 +353,52 @@ holder acquire the same lock.
 be read or interpreted, and a platform without descriptor-relative, no-follow operations
 all fail closed. Windows is such a platform today: every call refuses as `unverifiable`
 until current-user-only ACL enforcement lands in `mb-pyqf`.
+
+**Every call checks again; only descriptors are reused.** Each call re-establishes every
+guarantee above against the storage as it is at that moment, so a change made after one
+call is refused by the next in exactly the cases a first call would refuse it.
+Re-establishing it does not require opening every directory again.
+A directory below the ancestors that has been opened and verified is kept open, and a
+later call reuses its descriptor only when all of this holds on that call:
+
+- A no-follow stat of its name, taken through the descriptor this call verified for its
+  parent (or by path, for the home), shows the held device and inode.
+  The held descriptor pins that inode, so its number cannot have been reused, and the
+  name refers to the held directory itself, not a replacement or a link.
+- That stat shows a directory the current user owns and may read, with no group or other
+  mode bits.
+- Its ACL, read through the held descriptor on this call, has no entries at all.
+
+That is a state in which a fresh open would succeed and every `shared` policy would
+accept the directory without a change or a warning, so reuse changes no answer.
+Anything else, including an error, opens and verifies the directory as if nothing were
+held. What each check defends against stays where it was:
+
+| Threat | Where it is checked on every call |
+| --- | --- |
+| A writable, foreign, or linked ancestor that could replace the home | The ancestors are walked and judged by path, as before; none is held |
+| Another principal reading the home or a directory below it | Owner and mode from the fresh stat; the ACL read again |
+| A directory replaced, or swapped for a link, after verification | Device and inode from the fresh stat must be the held ones |
+| The owner’s own access withdrawn, by mode or by a deny entry | Owner read in the fresh mode; any ACL entry defers to the full check |
+| A file that is shared, linked, or not regular | Every file is opened and judged afresh |
+
+`test_a_change_after_a_call_is_answered_as_if_nothing_were_held` in
+`tests/test_cache_permissions.py` makes each of those changes, and more, after a call
+has left every directory held, and requires the same answer, the same logged repairs,
+and the same tree afterwards as a call that holds nothing.
+
+Nothing about privacy is remembered between calls, only descriptors.
+A process holds at most `_HELD_DIRECTORY_LIMIT` directories (`home.py` records the
+measurement behind it), evicts the least recently used, and closes a descriptor only
+once no call is using it; a forked child starts with none.
+A held descriptor is never read from, because a directory’s read offset is shared by
+every holder: a listing opens its own descriptor on the directory.
+A held directory also keeps its volume in use until it is evicted or the process exits.
+
+`private_directory(home, relative_path, shared=…)` verifies a directory once for several
+files opened together, such as the pull-request catalog and its three journal files.
+Each file is still opened and judged afresh; a change to the directories made while the
+block runs is noticed by the next call.
 
 On Linux only mode bits are inspected, which is enough for POSIX ACLs: an object’s
 group-class bits are its ACL mask, which bounds every named user and group entry, and a

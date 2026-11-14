@@ -35,6 +35,19 @@ Each rule answers a specific threat:
   mode, link count, and ACL are all judged again on the opened descriptor. A file is
   opened with ``O_NONBLOCK`` and without ``O_TRUNC``, and all of that is judged before
   it is truncated or handed back.
+- **Judged again on every call; only descriptors are reused.** Every call walks the
+  ancestors by path and judges each one again. The home and the directories below it
+  are kept open once verified, and a later call reuses such a descriptor only when a
+  no-follow stat of the directory's name, taken on this call through its parent's
+  descriptor (by path, for the home), shows the held device and inode, an owner who is
+  the current user and may read it, and no group or other mode bits, and an ACL read
+  through the held descriptor on this call has no entries at all. That is a state in
+  which opening it again would succeed and no policy would refuse or change it.
+  Anything else, an error included, opens and verifies it as if nothing were held. A
+  held descriptor pins its inode, so the number it matched cannot belong to another
+  directory. Files are always opened and judged afresh. :func:`private_directory`
+  verifies a directory once for several files opened together, such as a database and
+  its journal files; a change made while its block runs is noticed by the next call.
 - **Repair only what is ours, and never mistake repair for revocation.** Repairing an
   entry the current user owns removes its group and other permission bits and clears a
   sharing ACL, with a logged warning; a caller that must change nothing, such as a route
@@ -86,7 +99,9 @@ import secrets
 import stat
 import struct
 import sys
-from collections.abc import Callable, Mapping
+import threading
+from collections import OrderedDict
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -488,8 +503,8 @@ def validate_private_home(home: Path) -> None:
     """
 
     _require_home_argument(home)
-    _verify_home_ancestors(home)
-    os.close(_open_home(home))
+    with _verified_directory(home, "", shared="refuse", create=False):
+        pass
 
 
 @_without_file_names
@@ -507,19 +522,8 @@ def ensure_private_directory(home: Path, relative_path: str = "") -> Path:
 
     _require_home_argument(home)
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=True)
-    _verify_home_ancestors(home)
-    _create_home_if_missing(home)
-    path = home
-    fd = _open_home(home)
-    try:
-        for name in relative_path.split("/") if relative_path else ():
-            path = path / name
-            child = _open_directory_entry(fd, name, path, create=True)
-            os.close(fd)
-            fd = child
-    finally:
-        os.close(fd)
-    return path
+    with _verified_directory(home, relative_path, shared="repair", create=True) as (_fd, path):
+        return path
 
 
 @_without_file_names
@@ -551,23 +555,86 @@ def open_private_file(
 
     _require_home_argument(home)
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=False)
+    _require_file_flags(flags)
+    directory, _, name = relative_path.rpartition("/")
+    with _verified_directory(home, directory, shared=shared, create=False) as (fd, path):
+        return _open_file_entry(fd, name, flags, path / name, shared=shared)
+
+
+class PrivateDirectory:
+    """An owner-only directory below the home, verified once for several opens in it.
+
+    :func:`private_directory` yields one. Its :meth:`open` opens a file in the directory
+    exactly as :func:`open_private_file` opens one, but the home's ancestors, the home,
+    and the directories down to this one were verified when the block began rather than
+    again for each file. Keep the block to a few opens in one step, such as a database
+    and its journal files: a change to those directories made during the block is
+    noticed by the next call, not by the next open in the block.
+    """
+
+    __slots__ = ("_fd", "_path", "_shared")
+
+    def __init__(self, fd: int, path: Path, shared: SharedEntryPolicy) -> None:
+        self._fd: int | None = fd
+        self._path: Path = path
+        self._shared: SharedEntryPolicy = shared
+
+    @_without_file_names
+    def open(self, name: str, flags: int) -> int:
+        """Open the owner-only file *name* in this directory; see :func:`open_private_file`."""
+
+        if self._fd is None:
+            raise ValueError("the private directory was used after its block ended")
+        if "/" in name:
+            raise ValueError("a private directory opens its own entries; name one without '/'")
+        require_canonical_inventory_path(name, "application-home path", allow_root=False)
+        _require_file_flags(flags)
+        return _open_file_entry(self._fd, name, flags, self._path / name, shared=self._shared)
+
+
+@contextlib.contextmanager
+def private_directory(
+    home: Path, relative_path: str, *, shared: SharedEntryPolicy = "repair"
+) -> Generator[PrivateDirectory]:
+    """Verify the owner-only directory *relative_path* below *home* once, for several opens.
+
+    *relative_path* is a POSIX-relative path; the empty string names the home. The
+    directory and everything on the way to it are verified as :func:`open_private_file`
+    verifies a file's parents, under the same *shared* policy, and are never created, so a
+    missing one raises :class:`FileNotFoundError`. The yielded :class:`PrivateDirectory`
+    is usable only inside the block.
+    """
+
+    _require_home_argument(home)
+    require_canonical_inventory_path(relative_path, "application-home path", allow_root=True)
+    with contextlib.ExitStack() as stack:
+        fd, path = _enter_verified_directory(stack, home, relative_path, shared)
+        directory = PrivateDirectory(fd, path, shared)
+        try:
+            yield directory
+        finally:
+            directory._fd = None  # pyright: ignore[reportPrivateUsage]
+
+
+@_without_file_names
+def _enter_verified_directory(
+    stack: contextlib.ExitStack[bool | None],
+    home: Path,
+    relative_path: str,
+    shared: SharedEntryPolicy,
+) -> tuple[int, Path]:
+    """Verify as :func:`private_directory` does, leaving any error without file names."""
+
+    return stack.enter_context(
+        _verified_directory(home, relative_path, shared=shared, create=False)
+    )
+
+
+def _require_file_flags(flags: int) -> None:
     if flags & os.O_DIRECTORY:
         raise ValueError("open_private_file opens files; use ensure_private_directory")
     if flags & os.O_TRUNC and not flags & _WRITE_ACCESS_FLAGS:
         raise ValueError("O_TRUNC needs O_WRONLY or O_RDWR")
-    _verify_home_ancestors(home)
-    *parents, name = relative_path.split("/")
-    path = home
-    fd = _open_home(home)
-    try:
-        for parent in parents:
-            path = path / parent
-            child = _open_directory_entry(fd, parent, path, create=False, shared=shared)
-            os.close(fd)
-            fd = child
-        return _open_file_entry(fd, name, flags, path / name, shared=shared)
-    finally:
-        os.close(fd)
 
 
 @_without_file_names
@@ -576,20 +643,12 @@ def private_directory_is_writable(home: Path, relative_path: str) -> bool:
 
     This is an admission check for disposable caches, not a promise that a later atomic
     replacement succeeds: permissions, ACLs, free space, or mounts can change afterward.
-    Unsupported effective-access checks refuse admission. Every component is opened by
+    Unsupported effective-access checks refuse admission. Every component is verified by
     descriptor with the read-only ``refuse`` policy, as for a private record read.
     """
     _require_home_argument(home)
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=True)
-    _verify_home_ancestors(home)
-    path = home
-    fd = _open_home(home)
-    try:
-        for name in relative_path.split("/") if relative_path else ():
-            path = path / name
-            child = _open_directory_entry(fd, name, path, create=False, shared="refuse")
-            os.close(fd)
-            fd = child
+    with _verified_directory(home, relative_path, shared="refuse", create=False) as (fd, _path):
         needed = stat.S_IWUSR | stat.S_IXUSR
         if stat.S_IMODE(os.fstat(fd).st_mode) & needed != needed:
             return False
@@ -598,8 +657,6 @@ def private_directory_is_writable(home: Path, relative_path: str) -> bool:
         if os.access not in os.supports_dir_fd or os.access not in os.supports_effective_ids:
             return False
         return os.access(".", os.W_OK | os.X_OK, dir_fd=fd, effective_ids=True)
-    finally:
-        os.close(fd)
 
 
 def _storage_directory(
@@ -1002,6 +1059,224 @@ def _refuse_shared_home_mode(status: os.stat_result, home: Path) -> None:
         raise PrivateStorageError(
             PrivateStorageViolation.PERMISSIVE, PrivateStorageLocation.HOME, home, mode=mode
         )
+
+
+# ── Held directory descriptors ─────────────────────────────────────
+#
+# Opening the home and each directory below it costs a stat, an open, an fstat, an ACL
+# read, and a close, and every one of those system calls gives up the GIL, which is what
+# made a busy server slow (see _HELD_DIRECTORY_LIMIT). So a directory that has been
+# opened and verified is kept open, and a later call reuses its descriptor once a
+# no-follow stat of its name, taken through the parent's descriptor on this call, shows
+# the same device and inode and the directory is still plainly private: a directory the
+# current user owns, readable by them, with no group or other mode bits and no ACL
+# entries at all, read through the held descriptor on this call. That is exactly a state
+# in which a fresh open would succeed and every policy would accept the directory without
+# changing it, so the descriptor is reused only where opening it again would have made
+# no difference. Anything else, including any error, falls back to opening and verifying
+# that directory as if nothing were held; each directory below it is then confirmed or
+# opened the same way, through the descriptor this call verified for its parent. A
+# directory with any ACL entry, even one that only denies, is therefore opened and
+# verified in full on every call, as before.
+#
+# Nothing about a directory's privacy is remembered between calls: only descriptors are,
+# and every check is made again on every call. A held descriptor pins its inode, so the
+# inode number cannot be reused while the descriptor is held, and a matching stat proves
+# the name still refers to the held directory. The ancestors above the home are not held:
+# they are walked and judged by path on every call as before.
+#
+# A held descriptor is never read from: reading a directory moves an offset every holder
+# shares, so a listing opens its own descriptor on ".". It is closed only when nothing is
+# using it: when it is evicted or replaced and its last user releases it.
+
+# Directories held open per process. Serving one pull request of the stand-in repository
+# that tests/github_pull_fixture.py builds, through two minutes of scrolling its Pulls
+# list, opening pull requests, and browsing its files, held 11 distinct directories across
+# the cache and configuration homes, each repository adding about five. The limit holds
+# that for several repositories at once while keeping the descriptors well under the 256
+# a macOS process may open by default.
+_HELD_DIRECTORY_LIMIT: Final = 32
+
+
+@dataclass(eq=False, slots=True)
+class _HeldDirectory:
+    """A verified directory's descriptor, the inode it pins, and who is using it."""
+
+    fd: int
+    device: int
+    inode: int
+    users: int = 0
+    retired: bool = False
+
+
+class _HeldDirectories:
+    """A bounded, thread-safe set of held directory descriptors keyed by home and path."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._lock = threading.Lock()
+        self._held: OrderedDict[tuple[str, str], _HeldDirectory] = OrderedDict()
+
+    def acquire(self, key: tuple[str, str]) -> _HeldDirectory | None:
+        """Return the held directory for *key*, in use until :meth:`release`, or ``None``."""
+
+        with self._lock:
+            held = self._held.get(key)
+            if held is not None:
+                self._held.move_to_end(key)
+                held.users += 1
+            return held
+
+    def release(self, held: _HeldDirectory) -> None:
+        with self._lock:
+            held.users -= 1
+            close = held.retired and held.users == 0
+        if close:
+            os.close(held.fd)
+
+    def keep(self, key: tuple[str, str], fd: int) -> _HeldDirectory:
+        """Hold *fd*, a directory just opened and verified, in use until :meth:`release`.
+
+        The descriptor is the caller's to close if this raises.
+        """
+
+        status = os.fstat(fd)
+        held = _HeldDirectory(fd, status.st_dev, status.st_ino, users=1)
+        with self._lock:
+            replaced = [self._held.pop(key)] if key in self._held else []
+            self._held[key] = held
+            while len(self._held) > self._limit:
+                replaced.append(self._held.popitem(last=False)[1])
+            closing = [old.fd for old in replaced if self._retire(old)]
+        for old_fd in closing:
+            os.close(old_fd)
+        return held
+
+    def forget(self, key: tuple[str, str], held: _HeldDirectory) -> None:
+        """Stop holding *held*, which its caller is still using, if *key* still names it."""
+
+        with self._lock:
+            if self._held.get(key) is held:
+                del self._held[key]
+                held.retired = True
+
+    def clear(self) -> None:
+        """Stop holding every directory; each closes when its last user releases it."""
+
+        with self._lock:
+            retired = list(self._held.values())
+            self._held.clear()
+            closing = [held.fd for held in retired if self._retire(held)]
+        for fd in closing:
+            os.close(fd)
+
+    def reset_after_fork(self) -> None:
+        """Start a forked child empty, with a lock no thread of the parent can be holding."""
+
+        self._lock = threading.Lock()
+        held, self._held = list(self._held.values()), OrderedDict()
+        for entry in held:
+            with contextlib.suppress(OSError):
+                os.close(entry.fd)
+
+    @staticmethod
+    def _retire(held: _HeldDirectory) -> bool:
+        """Mark *held* retired; return whether it can be closed now. Call under the lock."""
+
+        held.retired = True
+        return held.users == 0
+
+
+_HELD_DIRECTORIES: Final = _HeldDirectories(_HELD_DIRECTORY_LIMIT)
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_HELD_DIRECTORIES.reset_after_fork)
+
+
+@contextlib.contextmanager
+def _verified_directory(
+    home: Path, relative_path: str, *, shared: SharedEntryPolicy, create: bool
+) -> Generator[tuple[int, Path]]:
+    """Yield a verified descriptor on *relative_path* below *home* and its path.
+
+    The ancestors above the home are verified as always. The home and each directory
+    below it are a held descriptor the current call confirmed, or are opened and verified
+    by :func:`_open_home` and :func:`_open_directory_entry` exactly as they would be with
+    nothing held, creating what is missing when *create* is set. The descriptor stays
+    valid until the block ends and must not be closed or read from by the caller.
+    """
+
+    _verify_home_ancestors(home)
+    in_use: list[_HeldDirectory] = []
+    try:
+        root = os.fspath(home)
+        path, prefix = home, ""
+        held = _confirm_held((root, prefix), None, home, path, in_use)
+        if held is None:
+            if create:
+                _create_home_if_missing(home)
+            held = _hold((root, prefix), _open_home(home), in_use)
+        for name in relative_path.split("/") if relative_path else ():
+            parent_fd = held.fd
+            path, prefix = path / name, f"{prefix}/{name}" if prefix else name
+            held = _confirm_held((root, prefix), parent_fd, name, path, in_use)
+            if held is None:
+                child = _open_directory_entry(parent_fd, name, path, create=create, shared=shared)
+                held = _hold((root, prefix), child, in_use)
+        yield held.fd, path
+    finally:
+        for held in in_use:
+            _HELD_DIRECTORIES.release(held)
+
+
+def _hold(key: tuple[str, str], fd: int, in_use: list[_HeldDirectory]) -> _HeldDirectory:
+    try:
+        held = _HELD_DIRECTORIES.keep(key, fd)
+    except BaseException:
+        os.close(fd)
+        raise
+    in_use.append(held)
+    return held
+
+
+def _confirm_held(
+    key: tuple[str, str],
+    parent_fd: int | None,
+    name: str | Path,
+    path: Path,
+    in_use: list[_HeldDirectory],
+) -> _HeldDirectory | None:
+    """Return the held directory for *key* if a fresh look shows it unchanged and private.
+
+    *name* is looked up without following a link, through *parent_fd* or, for the home,
+    by path. ``None`` means the directory must be opened and verified as usual: nothing
+    is held, its name now refers to something else, or anything about it is not plainly
+    private, including a stat or ACL read that failed, which that verification reports.
+    """
+
+    held = _HELD_DIRECTORIES.acquire(key)
+    if held is None:
+        return None
+    in_use.append(held)
+    try:
+        status = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        mode = stat.S_IMODE(status.st_mode)
+        unchanged = bool(
+            (status.st_dev, status.st_ino) == (held.device, held.inode)
+            and stat.S_ISDIR(status.st_mode)
+            and status.st_uid == os.geteuid()
+            # A fresh open needs owner read access; without it, opening refuses.
+            and mode & stat.S_IRUSR
+            and not mode & _SHARED_ACCESS_BITS
+            # Any entry at all, a deny entry for the owner included, defers to the full
+            # check, which reads it with the same function.
+            and not (_EXTENDED_ACLS and _read_acl(held.fd, path))
+        )
+    except (OSError, _AclUnverifiable):
+        unchanged = False
+    if unchanged:
+        return held
+    _HELD_DIRECTORIES.forget(key, held)
+    return None
 
 
 # ── Entries below the home ─────────────────────────────────────────
