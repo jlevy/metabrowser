@@ -865,6 +865,15 @@ After its pass the walk returns to the top once 30 s have passed for every batch
 passed over, and gives each one attempt.
 A batch whose client has gone stops at its next thread hop and starts no provider read;
 a release always runs to its end.
+A source runs one core job at a time, and the panel names each batch’s `lane`. A visible
+batch that finds a background job running preempts it, unless that job reads a member
+the visible batch still needs; it then answers `busy` as before.
+Preemption follows the release order: it revokes the background window first, cancels
+its job, and waits for the job to unwind before admitting the visible window.
+So a provider read the job had started is killed, a write under way finishes, and its
+slot is free. The cancelled read keeps its attempt leases: those members wait for their
+lease to end, as after any read that did not finish, rather than being read twice within
+it. Another background batch never preempts, and neither does one visible batch another.
 A failed owner batch returns `failed`; subsequent batches return `held` with the same
 outcome, message, and reset time until another attempt is eligible.
 `cores.refresh.json` persists provider and malformed-response holds under the same

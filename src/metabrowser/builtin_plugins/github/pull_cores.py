@@ -604,27 +604,28 @@ async def request_preparation(
     # A reader's rows do not wait for the walk's: a running background batch is preempted.
     # The slot it may hold is freed by preempting it, so only what else holds work back
     # is checked first.
-    preempting = (
-        ask.lane == "visible"
+    background = (
+        current
+        if ask.lane == "visible"
         and current is not None
         and current.ask.lane == "background"
         and current.key == key
         and coordinator.running(key)
+        else None
     )
-    if held_back() if preempting else busy():
+    if busy() if background is None else held_back():
         return "busy"
     window = CoreWindow(ask, coordinator, key, pulls_set.published, pulls_set.source)
     eligible = None
     carried: dict[int, tuple[CatalogMember, PreparedCore]] = {}
-    if preempting:
-        assert current is not None
+    if background is not None:
         catalog, admitted = await asyncio.to_thread(_eligible, window)
-        if pulls_set.core_window is not current or pulls_set.published is not publication:
+        if pulls_set.core_window is not background or pulls_set.published is not publication:
             return "busy"
         if catalog is None:
             return "not_owner"
         uncovered = {number: member for number, member in admitted.items() if number not in ready}
-        if uncovered.keys() & set(current.ask.numbers):
+        if uncovered.keys() & set(background.ask.numbers):
             # The background batch reads rows this one needs: it is doing the reader's work.
             return "busy"
         if not _attemptable(pulls_set, catalog, uncovered, running):
@@ -634,7 +635,7 @@ async def request_preparation(
         # finishes, and its slot is free before this batch is admitted. Its attempt leases
         # stand, so a read it may have sent is not repeated before they end.
         pulls_set.core_window = None
-        preempted = current.cancel()
+        preempted = background.cancel()
         if preempted is not None:
             await asyncio.wait((preempted,))
         if pulls_set.core_window is not None or pulls_set.published is not publication or busy():
