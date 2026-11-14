@@ -1,0 +1,25 @@
+Declared 2026-11-12 before the measured series (harness v3 5e368814), from the exp-058 revision 3 baseline's movements.
+One series serves both rounds: H86 reserves region boxes; H91 changes fonts, reveals, the key walk, and palette order. Disjoint mechanisms and transitions.
+
+H86(a) shell chrome. Metric: region_movement_px, lower (to 0), on every transition where the baseline moved shell chrome:
+  files.cold.{source_large,json,diff,image,binary}, files.revisit.json, keyboard.down_cold.{1,2,3}, keyboard.up_revisit.{1,2},
+  main.* (8), main_subject.{files_to_commits,pulls_to_files,files_to_pulls,commits_to_files}, commits.first_show, pulls.first_show,
+  tree.expand.docs, skim.held_arrow_down; and landing.reload shift_sum_no_input lower (the late Commits tab).
+  Accept: each lower with ranges apart, n>=3 per side; guards painted_ready_ms and blank_frames with no wrong-way pair result.
+H86(b) PR header sections. Metric: region_movement_px, lower (to 0), on pulls.tab.{changes_first,checks_first,changes_revisit,
+  conversation_revisit_2,changes_first_2,changes_revisit_2}, pulls.history_back, pulls.pr_changes_to_pr; and no rise on
+  pulls.list_to_pr.cold and pulls.pr_to_pr.*. Guards painted_ready_ms and pr_header_ms, no wrong-way pair result.
+H91(a) fonts. Metric: landing.cold_markdown shift_sum_no_input, lower (0.0033 -> 0). Guards: painted_ready_ms and styled_markdown_ms on
+  landing.cold_markdown (first document), no wrong-way pair result. First contentful paint is not recorded by this scenario.
+H91(b) deep reveal. Metric: reveal.deep_landing shift_sum_no_input, lower (0.053 -> 0). Guard: painted_ready_ms on reveal.deep_landing.
+H91(c) held key. Metric: skim.held_arrow_down file_envelope_requests, lower. Revision 3's skim sends one plain keyDown then five
+  autoRepeat keyDowns; a plain press opens at once by this lane's design, so the predicted end value is 2 envelopes (the first row
+  and the row it stops on), not the registry's 1. Accept: lower with ranges apart. Guards: painted_ready_ms and
+  ready_after_last_input_ms on the skim; painted_ready_ms on keyboard.down_cold.{1,2,3} (a single press), no wrong-way pair result.
+H91(d) palette order. Metric: palette.query list_row_replacements, lower (11 -> 0). Guard: painted_ready_ms on palette.query.
+Every other wrong-way result compare reports is listed and accounted for, or the verdict it touches is not accepted.
+2026-11-12 04:05:15
+v4 series uses the criteria above unchanged (metric names identical in revision 4); declared 2026-11-12 05:37:38 before the v4 measured series
+Official series on the fixed head 666a066c (reviews A and B addressed), harness v4 5031dc16, same control and corpus: criteria above unchanged, metric names identical; the rev-4 interim rows of 078c4c69 are a diagnostic only. Declared 2026-11-12 08:05:55 before the measured series.
+Official series on head 28e12fa2 (reviews A, B, and C addressed; coordinator's go-ahead), harness v4 5031dc16, same control and corpus: criteria above unchanged, metric names identical. Load rule, declared before any result: a pair is excluded if either of its runs saw a one-minute load above 12 at its start or at any measured transition's start (load1); excluded rows are kept and named, and replacement pairs are added until at least 3 pairs are valid. The 078c4c69 rows (revision 3 and the revision-4 interim) are diagnostics about the instrument only. Declared 2026-11-12 09:46:43 PST before the measured series.
+Journeys, declared 2026-11-12 13:34:20 PST before the measured series, at the coordinator's request to use less machine time: landing,files,keyboard,maintabs,commits,pulls,tree,palette,skim,reveal, for both builds, with --out naming the official rows file. Only views is dropped: no deciding metric or declared guard of H86 or H91 reads a views.* transition. keyboard stays (H86(a) deciding keyboard.down_cold.{1,2,3} and keyboard.up_revisit.{1,2}; H91(c) guards keyboard.down_cold.{1,2,3}), commits stays (commits.first_show), pulls stays (H86(b) and pulls.first_show). Criteria, guards, n >= 3 valid pairs, the load gate and exclusion rule, and the lock are unchanged.
