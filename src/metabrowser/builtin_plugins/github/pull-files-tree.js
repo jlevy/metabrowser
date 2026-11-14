@@ -370,6 +370,28 @@ function listIdentity(envelope) {
 }
 
 /**
+ * Whether *envelope* is a whole list of no files: listed, complete, and empty, so that any
+ * window of it, from any offset and with any limit, holds all of it.
+ *
+ * @param {FilesEnvelope} envelope
+ */
+function listsNoFiles(envelope) {
+  return envelope.listed_from !== null && envelope.complete && envelope.fetched === 0;
+}
+
+/**
+ * *envelope* as the rows held take it: a list of no files from its start, whatever window
+ * was asked for, since the server keeps the offset asked for (`pull_files_route.py`) and
+ * a list of no files has no rows past any offset. Anything else as it came.
+ *
+ * @param {FilesEnvelope} envelope
+ * @returns {FilesEnvelope}
+ */
+function whole(envelope) {
+  return listsNoFiles(envelope) ? { ...envelope, offset: 0, rows: [] } : envelope;
+}
+
+/**
  * The rows of one pull request's list, held as its pages arrive.
  *
  * `query()` is the window to ask for next: from the first row held, or past what is held
@@ -614,8 +636,9 @@ export function fileListFailure(envelope, formatTime) {
 
 /**
  * `withheld` is how many files the rows held and not drawn list, and `drawn` how many the
- * drawn tree lists. An offer stands in only for a change to drawn rows, so it needs both: the
- * controller never holds rows from a tree with none drawn.
+ * drawn tree lists. An offer stands in only for a change to drawn rows, so it needs `drawn`:
+ * the controller never holds rows from a tree with none drawn. `withheld` is 0, not absent,
+ * when what is held is a list of no files, which is offered too.
  *
  * @param {FilesEnvelope | null} envelope
  * @param {{
@@ -638,7 +661,23 @@ export function describeFileTree(envelope, held) {
   const model = describeDrawnTree(envelope, held);
   const withheld = held.withheld ?? 0;
   const drawn = held.drawn ?? 0;
-  if (withheld > 0 && drawn > 0) {
+  // A refresh that lists no files at all replaces every drawn row as well.
+  const emptied =
+    held.withheld === 0 &&
+    drawn > 0 &&
+    envelope !== null &&
+    envelope.listed_from !== null &&
+    envelope.fetched === 0;
+  if (emptied) {
+    // The rows drawn stay until the reader asks for the empty list, so the line does not say
+    // there are none while they show; it says so once they are gone.
+    if (envelope.complete) {
+      model.line = null;
+    }
+    model.offer = "Show the updated list (no files)";
+    model.offerFloats = held.floats === true;
+    model.live = model.notice?.text ?? "No files listed";
+  } else if (withheld > 0 && drawn > 0) {
     // What is drawn keeps its line and notices; the offer only joins them.
     const more = withheld - drawn;
     model.offer =
@@ -1134,6 +1173,34 @@ export function createFileTreeController(deps, options) {
     );
   }
 
+  /**
+   * A change to the rows held, drawn or held for the reader. A late change to rows already
+   * drawn waits for the reader: a list's further pages and a refresh that replaces it. A tree
+   * with no rows drawn has nothing to move, so its first rows are drawn whenever they come, as
+   * the reader who expanded it expects.
+   *
+   * @param {boolean} changed
+   * @returns {boolean} *changed*
+   */
+  function take(changed) {
+    if (changed && withheld && drawsSameRows()) {
+      // A later answer brought back the rows drawn: the offer has nothing to show.
+      endOffer("withdrawn");
+      withheld = false;
+      offerFloats = false;
+      rebuild();
+    } else if (changed && rows.length > 0 && (withheld || (late() && !drawsSameRows()))) {
+      if (!withheld) {
+        offerFloats = !lineShown;
+        heldSince = deps.now();
+      }
+      withheld = true;
+    } else if (changed) {
+      rebuild();
+    }
+    return changed;
+  }
+
   /** Read the rows past those held. */
   async function poll() {
     if (!live() || polling) {
@@ -1153,25 +1220,8 @@ export function createFileTreeController(deps, options) {
       if (response.status === 200 && isFilesEnvelope(response.body)) {
         envelope = response.body;
         error = null;
-        const changed = holder.accept(envelope);
-        // A late change to rows already drawn waits for the reader: a list's further pages and
-        // a refresh that replaces it. A tree with no rows drawn has nothing to move, so its
-        // first rows are drawn whenever they come, as the reader who expanded it expects.
-        if (changed && withheld && drawsSameRows()) {
-          // A later answer brought back the rows drawn: the offer has nothing to show.
-          endOffer("withdrawn");
-          withheld = false;
-          offerFloats = false;
-          rebuild();
-        } else if (changed && rows.length > 0 && (withheld || (late() && !drawsSameRows()))) {
-          if (!withheld) {
-            offerFloats = !lineShown;
-            heldSince = deps.now();
-          }
-          withheld = true;
-        } else if (changed) {
-          rebuild();
-        } else if (envelope.offset !== 0 && holder.query().endsWith("offset=0")) {
+        const changed = take(holder.accept(whole(envelope)));
+        if (!changed && envelope.offset !== 0 && holder.query().endsWith("offset=0")) {
           // The rows did not follow those held: another list, read again from its start.
           again = true;
         }
@@ -1225,8 +1275,12 @@ export function createFileTreeController(deps, options) {
         answer !== null &&
         isFilesEnvelope(answer.files)
       ) {
-        // Its envelope has no rows: it says how the list stands, and the rows held stay.
+        // Its envelope has no rows: it says how the list stands, and the rows held stay,
+        // unless it lists no files at all, which no read could add a row to.
         envelope = { ...answer.files, rows: [] };
+        if (listsNoFiles(envelope)) {
+          take(holder.accept(whole(envelope)));
+        }
         missingSettled =
           envelope.listed_from === null && !envelope.refreshing && envelope.state !== "pending";
         error = null;

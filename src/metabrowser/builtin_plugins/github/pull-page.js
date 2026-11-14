@@ -2917,6 +2917,32 @@ export function h(tag, attributes = {}, children = []) {
   return element;
 }
 
+/**
+ * Give *parent* exactly *nodes*, in order, moving only what is out of place: a node that is
+ * already where it belongs is not touched, so it keeps its hover, its focus, and a tooltip
+ * anchored to it.
+ *
+ * @param {Element} parent
+ * @param {Element[]} nodes
+ */
+function placeChildren(parent, nodes) {
+  /** @type {Set<Node>} */
+  const wanted = new Set(nodes);
+  for (const node of [...parent.childNodes]) {
+    if (!wanted.has(node)) {
+      node.remove();
+    }
+  }
+  let cursor = parent.firstChild;
+  for (const node of nodes) {
+    if (node === cursor) {
+      cursor = cursor.nextSibling;
+    } else {
+      parent.insertBefore(node, cursor);
+    }
+  }
+}
+
 /** The shell's keyframes for refreshing text (static/styles.css, `.mb-refreshing`). */
 const REFRESHING = "mb-refreshing-text";
 
@@ -2968,9 +2994,10 @@ export function avatarUrl(value) {
  * When the image loads is its placement's (docs/design-system.md, "A Repaint Keeps Its
  * Images"). Lazy, the default, leaves an avatar the reader has not scrolled to unasked, as
  * the conversation's are: its sections are kept across tabs and polls. A placement whose
- * avatar a repaint builds again passes `eager`, as the header does on every tab switch and
- * poll: in WebKit, the macOS app's engine, a lazy image waits for layout and then asks the
- * network again, so the unchanged avatar had no image for that round trip after each one.
+ * avatar a repaint builds again passes `eager`, as the header does when its actor or avatar
+ * changes: in WebKit, the macOS app's engine, a lazy image waits for layout and then asks
+ * the network again, and when the header built its actor on every tab switch and poll the
+ * unchanged avatar had no image for that round trip after each one.
  *
  * @param {string} name
  * @param {unknown} url
@@ -3404,10 +3431,11 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
  * SDK's shortcut surface: each takes 1 to 9 from its place on screen, as the shell's
  * numbered controls do, so nothing here picks a digit (docs/design-system.md, "Keyboard
  * Shortcuts"). *held* maps what a control does, such as `refresh`, to its handle and the
- * action it runs now; the header is rebuilt on each paint, so a control that is drawn
- * again moves its number to its new element and runs its new action, one no longer drawn
- * lets its number go, and one drawn for the first time takes one. Each lasts until
- * *signal* aborts, as the page's disposal aborts it.
+ * action it runs now. Each paint passes every control it shows, and each runs the action
+ * that paint gave it: a control the header kept is the same element, which keeps its
+ * number; one the header built again because what it shows changed moves its number to
+ * the new element; one no longer shown lets its number go, and one shown for the first
+ * time takes one. Each lasts until *signal* aborts, as the page's disposal aborts it.
  *
  * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
  * @param {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} held
@@ -3736,7 +3764,9 @@ export function mountPullPage(container, ctx, mb) {
         if (element.textContent !== label) {
           element.textContent = label;
         }
-        element.setAttribute("class", `github-pull-age ${className}`);
+        if (element.getAttribute("class") !== `github-pull-age ${className}`) {
+          element.setAttribute("class", `github-pull-age ${className}`);
+        }
       }
     }
   };
@@ -4153,42 +4183,82 @@ export function mountPullPage(container, ctx, mb) {
     return memberships.find((stack) => stack.number === preferredStack) ?? memberships[0] ?? null;
   }
 
+  /** The header's parts as last built, each with the inputs it was built from, as JSON.
+   * @type {Map<string, {inputs: string, node: unknown}>} */
+  const headerParts = new Map();
+
+  /**
+   * The header's part *name*: the node last built for it while *inputs*, everything it
+   * shows, are unchanged, and else a new one. A tab switch or a poll then builds only what
+   * changed, and the node under the reader's pointer or focus stays: replaced on each tab
+   * switch, a branch chip's focused copy button lost its focus to the page, and the chip
+   * under the pointer gave the shell's tooltip a new anchor (docs/design-system.md, "A
+   * Repaint Keeps Its Images").
+   *
+   * @template T
+   * @param {string} name
+   * @param {unknown} inputs
+   * @param {() => T} build
+   * @returns {T}
+   */
+  function headerPart(name, inputs, build) {
+    const key = JSON.stringify(inputs);
+    const held = headerParts.get(name);
+    if (held !== undefined && held.inputs === key) {
+      return /** @type {T} */ (held.node);
+    }
+    const node = build();
+    headerParts.set(name, { inputs: key, node });
+    return node;
+  }
+
+  // A sizer of every state's label, each a badge's box of no height, after the badge: the
+  // slot is as wide as the widest, so a stale record that turns out merged does not widen
+  // the badge under the reader (github/styles.css, `.github-pull-state-slot`).
+  const badgeSizers = Object.values(PULL_STATES).map(({ label }) =>
+    h(
+      "span",
+      {
+        class: "file-header-badge github-pull-badge github-pull-badge-sizer",
+        "aria-hidden": "true",
+      },
+      [label],
+    ),
+  );
+
   /** Keep stack disclosure and focus connected while ages and record details repaint.
    * @param {NonNullable<PullModel["pull"]>} pull
    */
   function paintStateRow(pull) {
     stateRow.hidden = false;
-    // The badge, then a sizer of every state's label, each a badge's box of no height: the
-    // slot is as wide as the widest, so a stale record that turns out merged does not widen
-    // the badge under the reader (github/styles.css, `.github-pull-state-slot`).
-    stateBadge.replaceChildren(
-      badge(pull.state, pull.stateLabel),
-      ...Object.values(PULL_STATES).map(({ label }) =>
-        h(
-          "span",
-          {
-            class: "file-header-badge github-pull-badge github-pull-badge-sizer",
-            "aria-hidden": "true",
-          },
-          [label],
-        ),
-      ),
-    );
+    placeChildren(stateBadge, [
+      headerPart("badge", [pull.state, pull.stateLabel], () => badge(pull.state, pull.stateLabel)),
+      ...badgeSizers,
+    ]);
     // A narrow row gives way in its sentence first and its branches last: the action is
     // cut short before the merge's names are (styles.css, "One line").
-    stateDetails.replaceChildren(
-      ...(pull.actor === null
+    const actor = pull.actor;
+    placeChildren(stateDetails, [
+      ...(actor === null
         ? []
-        : [authorLabel(pull.actor, pull.actorAvatar, "", { loading: "eager" })]),
-      h("span", { class: "github-pull-action" }, [
-        `${pull.actor === null ? "" : " "}${pull.action}: `,
-      ]),
-      mb.mergeRefs(
-        { name: pull.headRef, label: pull.head },
-        { name: pull.baseRef, label: pull.base },
-        { kind: "remote" },
+        : [
+            headerPart("identity", [actor, pull.actorAvatar], () =>
+              authorLabel(actor, pull.actorAvatar, "", { loading: "eager" }),
+            ),
+          ]),
+      headerPart("action", [actor === null, pull.action], () =>
+        h("span", { class: "github-pull-action" }, [
+          `${actor === null ? "" : " "}${pull.action}: `,
+        ]),
       ),
-    );
+      headerPart("branches", [pull.headRef, pull.head, pull.baseRef, pull.base], () =>
+        mb.mergeRefs(
+          { name: pull.headRef, label: pull.head },
+          { name: pull.baseRef, label: pull.base },
+          { kind: "remote" },
+        ),
+      ),
+    ]);
     return stateRow;
   }
 
@@ -4246,8 +4316,21 @@ export function mountPullPage(container, ctx, mb) {
     ]);
   }
 
+  /** Refresh what the page shows: on Changes, the comparison on screen with the record. */
+  function refreshShown() {
+    if (listening.signal.aborted || shown?.canRefresh !== true) {
+      return;
+    }
+    const displayed = shown.tab === "files" ? diffFor : null;
+    filesRefresh = displayed;
+    void controller.requestRefresh(
+      displayed === null ? undefined : { base: displayed.left, head: displayed.right },
+    );
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
+    /** @type {Element[]} */
     const children = [];
     const pull = model.pull;
     /** The situational controls this paint draws, by what each does, for their numbers.
@@ -4262,35 +4345,73 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
-      const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
-      // The number is outside the clamped text, so a title cut short keeps it.
-      const title = h(
-        "h1",
-        { class: "page-heading github-pull-title github-pull-title-with-state" },
-        [
-          pullStateIcon(pull.state, { named: false }),
-          titleText,
-          " ",
-          h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
-        ],
-      );
-      // Two lines at most: a title cut short there carries the whole of it in its tooltip.
-      // Cut short is a line or more hidden; a title of two lines that fit overhangs its box
-      // by a pixel or two of descender (62 against 60 px, Chrome 152).
-      title.addEventListener("pointerenter", () => {
-        if (titleText.scrollHeight - titleText.clientHeight > TITLE_OVERHANG_PX) {
-          title.dataset.tipText = `${pull.title} #${pull.number}`;
-        } else {
-          delete title.dataset.tipText;
-        }
+      const title = headerPart("title", [pull.state, pull.title, pull.number], () => {
+        const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
+        // The number is outside the clamped text, so a title cut short keeps it.
+        const heading = h(
+          "h1",
+          { class: "page-heading github-pull-title github-pull-title-with-state" },
+          [
+            pullStateIcon(pull.state, { named: false }),
+            titleText,
+            " ",
+            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+          ],
+        );
+        // Two lines at most: a title cut short there carries the whole of it in its
+        // tooltip. Cut short is a line or more hidden; a title of two lines that fit
+        // overhangs its box by a pixel or two of descender (62 against 60 px, Chrome 152).
+        heading.addEventListener("pointerenter", () => {
+          if (titleText.scrollHeight - titleText.clientHeight > TITLE_OVERHANG_PX) {
+            heading.dataset.tipText = `${pull.title} #${pull.number}`;
+          } else {
+            delete heading.dataset.tipText;
+          }
+        });
+        return heading;
       });
-      const onGitHub = mb.decorateExternalLink(
-        outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
-        {
-          icon: "github",
-          position: "before",
+      const root = mb.navigation.href({ path: "" });
+      // The row's ages are told again below when it is kept; which of them it shows is
+      // among its inputs.
+      const opened = headerPart(
+        "opened",
+        [
+          pull.created,
+          pull.updated,
+          closedAt,
+          pull.closedLabel,
+          repeatsOpened,
+          repeatsClosed,
+          pull.htmlUrl,
+          model.browse,
+          root,
+        ],
+        () => {
+          const onGitHub = mb.decorateExternalLink(
+            outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
+            {
+              icon: "github",
+              position: "before",
+            },
+          );
+          const browse = model.browse === null ? null : browseControl(model.browse);
+          const row = h("div", { class: "github-pull-quiet" }, [
+            "Opened ",
+            age(pull.created, repeatsOpened ? also : null),
+            ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
+            ...(closedAt === null
+              ? []
+              : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
+            " · ",
+            onGitHub,
+            browse === null ? null : " · ",
+            browse,
+          ]);
+          return { row, onGitHub, browse };
         },
       );
+      retellAges(opened.row);
+      const onGitHub = opened.onGitHub;
       if (onGitHub.tagName === "A") {
         numbered.set("github", {
           element: onGitHub,
@@ -4298,49 +4419,43 @@ export function mountPullPage(container, ctx, mb) {
             window.open(onGitHub.getAttribute("href") ?? "", "_blank", "noopener,noreferrer"),
         });
       }
-      const browse = model.browse === null ? null : browseControl(model.browse);
-      if (browse !== null) {
-        const root = mb.navigation.href({ path: "" });
+      if (opened.browse !== null) {
         numbered.set("browse", {
-          element: browse,
+          element: opened.browse,
           run:
             model.browse?.kind === "link"
               ? () => mb.navigation.open({ path: "" })
               : () => controller.browseCode(root),
         });
       }
-      children.push(
-        title,
-        paintStateRow(pull),
-        h("div", { class: "github-pull-quiet" }, [
-          "Opened ",
-          age(pull.created, repeatsOpened ? also : null),
-          ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
-          ...(closedAt === null
-            ? []
-            : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
-          " · ",
-          onGitHub,
-          browse === null ? null : " · ",
-          browse,
-        ]),
-      );
+      children.push(title, paintStateRow(pull), opened.row);
       // A row that is always there, so a pull request with labels is as tall as one without.
-      labelList.replaceChildren(
-        ...pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
+      placeChildren(
+        labelList,
+        headerPart("labels", pull.labels, () =>
+          pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
+        ),
       );
       children.push(labelsRow);
     } else {
       children.push(
-        h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
+        headerPart("loading title", model.number, () =>
+          h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
+        ),
       );
       // While the record is on its way the header keeps the rows it will have, empty, at
       // their heights, so the record lands without moving the tab bar.
       if (model.status !== "unavailable") {
-        stateBadge.replaceChildren();
-        stateDetails.replaceChildren();
-        labelList.replaceChildren();
-        children.push(stateRow, h("div", { class: "github-pull-quiet" }, ["\u00a0"]), labelsRow);
+        placeChildren(stateBadge, []);
+        placeChildren(stateDetails, []);
+        placeChildren(labelList, []);
+        children.push(
+          stateRow,
+          headerPart("opened placeholder", null, () =>
+            h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
+          ),
+          labelsRow,
+        );
       }
     }
     status.dataset.status = model.status;
@@ -4351,88 +4466,94 @@ export function mountPullPage(container, ctx, mb) {
       "github-pull-status-failed",
       model.failure !== null && model.failureHold !== true,
     );
-    for (const node of [...status.childNodes]) {
-      if (node !== freshnessLine) {
-        node.remove();
-      }
-    }
-    if (freshnessLine.parentNode !== status) {
-      status.prepend(freshnessLine);
-    }
     freshnessLine.hidden = model.freshness === null;
     if (freshnessLine.textContent !== (model.freshness ?? "")) {
       freshnessLine.textContent = model.freshness ?? "";
     }
     paintRefreshing(model);
-    if (model.message !== null) {
-      status.append(h("span", { class: "github-pull-message" }, [model.message]));
-    }
-    if (model.failure !== null) {
-      status.append(tipWhenCut(h("span", { class: "github-pull-failure" }, [model.failure])));
-    }
-    if (model.failureHelp !== undefined) {
-      status.append(
-        outside(mb, "https://cli.github.com/", "", [
-          model.failureHelp === "install" ? "Install GitHub CLI" : "Update GitHub CLI",
-        ]),
-      );
-    }
+    const message = model.message;
+    const failure = model.failure;
+    const failureHelp = model.failureHelp;
     // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
     // to refresh: it came and went with the tab, moving the tab bar 8 px.
-    const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
-      model.status === "absent" ? "Fetch" : "Refresh",
-    ]);
-    refresh.hidden = !model.canRefresh;
+    const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
+    const refresh = headerPart("refresh", refreshLabel, () => {
+      const button = h("button", { type: "button", class: "btn github-pull-refresh" }, [
+        refreshLabel,
+      ]);
+      button.addEventListener("click", refreshShown);
+      return button;
+    });
+    if (refresh.hidden !== !model.canRefresh) {
+      refresh.hidden = !model.canRefresh;
+    }
     // Offers sit at the row's end with Refresh, so the freshness text changing its width
     // moves nothing after it: it moved an offer by 100 px.
-    const end = h("span", { class: "github-pull-status-end" }, [refresh]);
-    const refreshNow = () => {
-      if (listening.signal.aborted || shown?.canRefresh !== true) {
-        return;
-      }
-      const displayed = shown.tab === "files" ? diffFor : null;
-      filesRefresh = displayed;
-      void controller.requestRefresh(
-        displayed === null ? undefined : { base: displayed.left, head: displayed.right },
-      );
-    };
-    refresh.addEventListener("click", refreshNow);
+    /** @type {Element[]} */
+    const ending = [];
     if (model.headOffer !== null) {
-      const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
-        "Switch to the head",
-      ]);
+      const text = model.headOffer.text;
       const switchNow = () => void controller.switchToHead();
-      button.addEventListener("click", switchNow);
-      numbered.set("switch", { element: button, run: switchNow });
-      end.insertBefore(offer(model.headOffer.text, button), refresh);
+      const held = headerPart("switch offer", text, () => {
+        const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
+          "Switch to the head",
+        ]);
+        button.addEventListener("click", switchNow);
+        return { offer: offer(text, button), button };
+      });
+      numbered.set("switch", { element: held.button, run: switchNow });
+      ending.push(held.offer);
     }
-    if (model.checkoutAtHead !== null) {
-      const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
-      numbered.set("checkout", { element: root, run: () => mb.navigation.open({ path: "" }) });
-      end.insertBefore(offer(model.checkoutAtHead, root), refresh);
+    const checkoutAtHead = model.checkoutAtHead;
+    if (checkoutAtHead !== null) {
+      const href = mb.navigation.href({ path: "" });
+      const held = headerPart("checkout offer", [checkoutAtHead, href], () => {
+        const link = h("a", { href }, ["Browse the checkout"]);
+        return { offer: offer(checkoutAtHead, link), link };
+      });
+      numbered.set("checkout", {
+        element: held.link,
+        run: () => mb.navigation.open({ path: "" }),
+      });
+      ending.push(held.offer);
     }
     // Only a Refresh that shows takes a number: its held slot has nothing to run.
     if (!refresh.hidden) {
-      numbered.set("refresh", { element: refresh, run: refreshNow });
+      numbered.set("refresh", { element: refresh, run: refreshShown });
     }
-    status.append(end);
+    const end = headerPart("status end", null, () =>
+      h("span", { class: "github-pull-status-end" }),
+    );
+    placeChildren(end, [...ending, refresh]);
+    placeChildren(status, [
+      freshnessLine,
+      ...(message === null
+        ? []
+        : [
+            headerPart("message", message, () =>
+              h("span", { class: "github-pull-message" }, [message]),
+            ),
+          ]),
+      ...(failure === null
+        ? []
+        : [
+            headerPart("failure", failure, () =>
+              tipWhenCut(h("span", { class: "github-pull-failure" }, [failure])),
+            ),
+          ]),
+      ...(failureHelp === undefined
+        ? []
+        : [
+            headerPart("failure help", failureHelp, () =>
+              outside(mb, "https://cli.github.com/", "", [
+                failureHelp === "install" ? "Install GitHub CLI" : "Update GitHub CLI",
+              ]),
+            ),
+          ]),
+      end,
+    ]);
     children.push(status);
-    const visible = children.filter((child) => child !== null);
-    /** @type {Set<Node>} */
-    const retained = new Set(visible);
-    for (const node of [...header.childNodes]) {
-      if (!retained.has(node)) {
-        node.remove();
-      }
-    }
-    let cursor = header.firstChild;
-    for (const node of visible) {
-      if (node === cursor) {
-        cursor = cursor.nextSibling;
-      } else {
-        header.insertBefore(node, cursor);
-      }
-    }
+    placeChildren(header, children);
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
@@ -4450,7 +4571,11 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
     }
-    live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
+    const said = [model.message, model.failure].filter(Boolean).join(" ");
+    // Said again only when it changes: a live region announces each change of its text.
+    if (live.textContent !== said) {
+      live.textContent = said;
+    }
     numberHeaderControls(mb.shortcuts, headerNumbers, numbered, listening.signal);
   }
 
