@@ -365,12 +365,22 @@ later call reuses its descriptor only when all of this holds on that call:
   parent (or by path, for the home), shows the held device and inode.
   The held descriptor pins that inode, so its number cannot have been reused, and the
   name refers to the held directory itself, not a replacement or a link.
+- The name reaches that directory through the mount the held descriptor was opened
+  through. Device and inode name a directory, not the mount: a Linux bind mount shows the
+  same directory, same device and inode, under its own flags, such as read-only.
+  On Linux the mount is `statx(2)`’s `STATX_MNT_ID`; on macOS it is the file system ID
+  of the vnode’s mount, from `getattrlistat(2)` `ATTR_CMN_FSID`, which every mount has
+  its own of. macOS has no bind mount that shows one directory through two mounts; were
+  one added, its own file system ID would still tell them apart.
+  Where a platform cannot tell the mount, or the lookup fails, nothing is held for
+  reuse.
 - That stat shows a directory the current user owns and may read, with no group or other
   mode bits.
 - Its ACL, read through the held descriptor on this call, has no entries at all.
 
-That is a state in which a fresh open would succeed and every `shared` policy would
-accept the directory without a change or a warning, so reuse changes no answer.
+That is a state in which a fresh open would succeed, reach the same directory through
+the same mount, and leave every `shared` policy accepting it without a change or a
+warning, so reuse changes no answer.
 Anything else, including an error, opens and verifies the directory as if nothing were
 held. What each check defends against stays where it was:
 
@@ -379,6 +389,7 @@ held. What each check defends against stays where it was:
 | A writable, foreign, or linked ancestor that could replace the home | The ancestors are walked and judged by path, as before; none is held |
 | Another principal reading the home or a directory below it | Owner and mode from the fresh stat; the ACL read again |
 | A directory replaced, or swapped for a link, after verification | Device and inode from the fresh stat must be the held ones |
+| The same directory reached through another mount, such as a read-only bind mount | The name’s mount identity must be the held descriptor’s |
 | The owner’s own access withdrawn, by mode or by a deny entry | Owner read in the fresh mode; any ACL entry defers to the full check |
 | A file that is shared, linked, or not regular | Every file is opened and judged afresh |
 
@@ -386,14 +397,26 @@ held. What each check defends against stays where it was:
 `tests/test_cache_permissions.py` makes each of those changes, and more, after a call
 has left every directory held, and requires the same answer, the same logged repairs,
 and the same tree afterwards as a call that holds nothing.
+`test_a_read_only_bind_mount_over_a_held_directory_is_honored` does the same for a
+read-only bind mount in a private Linux mount namespace; it runs on Linux, as root of a
+user namespace or through `sudo -n`, which is how CI runs it.
 
 Nothing about privacy is remembered between calls, only descriptors.
-A process holds at most `_HELD_DIRECTORY_LIMIT` directories (`home.py` records the
-measurement behind it), evicts the least recently used, and closes a descriptor only
-once no call is using it; a forked child starts with none.
+`_HELD_DIRECTORY_LIMIT` (`home.py` records the measurement behind it) bounds the
+directories a process keeps open for reuse; it evicts the least recently used and closes
+a descriptor only once no call is borrowing it.
+Calls in progress add their own descriptors on top: a walk borrows one directory at a
+time, releasing each parent once its child is confirmed or opened, so it needs at most
+two at once whatever its depth, and a block keeps only its own directory.
 A held descriptor is never read from, because a directory’s read offset is shared by
 every holder: a listing opens its own descriptor on the directory.
 A held directory also keeps its volume in use until it is evicted or the process exits.
+
+A forked child closes every descriptor its parent owned, those held for reuse and those
+still borrowed alike, and starts a new generation.
+A lease or a `PrivateDirectory` from before the fork is void there: using it is refused,
+and releasing it closes nothing, so neither can reach a descriptor number the child has
+reused for something else.
 
 `private_directory(home, relative_path, shared=…)` verifies a directory once for several
 files opened together, such as the pull-request catalog and its three journal files.

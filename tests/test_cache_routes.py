@@ -468,7 +468,7 @@ def test_the_listing_comes_from_the_verified_descriptor(
 def test_a_held_listing_comes_from_the_directory_it_checked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The same swap, right after a held directory's check: the names are still its own."""
+    """The same swap, right after the held walk's last look at the name: still its own names."""
 
     home = tmp_path / "home"
     build_empty_home(home)
@@ -477,19 +477,19 @@ def test_a_held_listing_comes_from_the_directory_it_checked(
     decoy = tmp_path / "decoy"
     (decoy / "impostor").mkdir(parents=True)
     leaf = SOURCES.rpartition("/")[2]
-    real_stat = os.stat
+    real_lookup = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
     swapped: list[bool] = []
 
-    def swap_after_checking(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+    def swap_after_checking(dir_fd: int | None, name: str | Path) -> tuple[int, int] | None:
         try:
-            return real_stat(path, *args, **kwargs)
+            return real_lookup(dir_fd, name)
         finally:
-            if path == leaf and kwargs.get("dir_fd") is not None and not swapped:
+            if name == leaf and dir_fd is not None and not swapped:
                 swapped.append(True)
                 (home / SOURCES).rename(tmp_path / "moved-aside")
                 (home / SOURCES).symlink_to(decoy, target_is_directory=True)
 
-    monkeypatch.setattr(os, "stat", swap_after_checking)
+    monkeypatch.setattr(home_module, "_mount_identity", swap_after_checking)
 
     assert list_private_directory(home, SOURCES, max_entries=10) == ("a", "b")
     assert swapped
