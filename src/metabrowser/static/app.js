@@ -1237,62 +1237,116 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
 
 // The walker's root upsert carries gitignore-blind totals, so it
 // cannot refresh the split. Refetch the summary instead — depth=0 so
-// the response is the tally and nothing else — debounced, because the
-// root aggregate is patched repeatedly while the walk converges.
-var _summaryRefreshHandle = null;
+// the response is the tally and nothing else.
+//
+// One request at a time, however many callers ask (createRootSummaryRefresh in
+// navigation.js). A live tree upserts its root on every write, and each answer is a
+// pass over the whole index: on a 303,000-file tree with writes every 250 ms, one
+// WebKit page held up to ten of these requests, five at the server at once, each
+// answered in about 3.2 s, and the Commits tab waited behind them; with four pages its
+// first request was still unanswered 90 s after Commits was opened
+// (explorations/tree-summary-storm/README.md). The next request waits at least
+// ROOT_SUMMARY_MIN_INTERVAL_MS, or twice the last one's duration, after it, so a page
+// spends at most a third of a busy tree's time waiting on its tallies, and an isolated
+// change still shows after the debounce alone.
+var ROOT_SUMMARY_MIN_INTERVAL_MS = 2000;
+var ROOT_SUMMARY_COST_FACTOR = 2;
+// Each failure in a row doubles the spacing, until it reaches this. The cap bounds only
+// that backoff: a slow answer still waits twice its own duration, however long.
+var ROOT_SUMMARY_MAX_INTERVAL_MS = 30000;
+/** @type {ReturnType<Window["MetabrowserNavigationRoute"]["createRootSummaryRefresh"]> | null} */
+var _rootSummaryRefresh = null;
+
+// Built on first use: the debounce is a setting declared further down this file.
+function rootSummaryRefresh() {
+  _rootSummaryRefresh ??= window.MetabrowserNavigationRoute.createRootSummaryRefresh({
+    fetchSummary: fetchRootSummary,
+    wanted: rootSummaryWanted,
+    now: () => performance.now(),
+    setTimer: (callback, ms) => setTimeout(callback, ms),
+    debounceMs: RECENT_RECLUSTER_DEBOUNCE_MS * 5,
+    minIntervalMs: ROOT_SUMMARY_MIN_INTERVAL_MS,
+    costFactor: ROOT_SUMMARY_COST_FACTOR,
+    maxIntervalMs: ROOT_SUMMARY_MAX_INTERVAL_MS,
+  });
+  return _rootSummaryRefresh;
+}
+
 function scheduleRootSummaryRefresh() {
-  // Either summary row, not just the split one. A first paint that
-  // landed before the index could answer renders the plain fallback
-  // row, and gating on the split row means the refresh that would
-  // replace it can never run — so the filter tallies keep whatever
-  // partial counts they were built with, for the life of the page,
-  // while the totals beside them stay live because
-  // updateRootAggregatePresentation patches those directly. Selecting
-  // the shared class lets the fallback be upgraded once the index has
-  // something to say.
-  if (_summaryRefreshHandle || !document.querySelector(".tree-summary")) {
-    return;
+  rootSummaryRefresh().request();
+}
+
+// Whether a fresh summary would be seen now. Either summary row, not just the split
+// one. A first paint that landed before the index could answer renders the plain
+// fallback row, and gating on the split row means the refresh that would replace it
+// can never run — so the filter tallies keep whatever partial counts they were built
+// with, for the life of the page, while the totals beside them stay live because
+// updateRootAggregatePresentation patches those directly. Selecting the shared class
+// lets the fallback be upgraded once the index has something to say.
+//
+// A hidden page, or a Files panel behind another tab, shows neither the row nor the
+// filter bar: its refresh waits, and resumeRootSummaryRefresh sends it on return.
+function rootSummaryWanted() {
+  if (document.visibilityState === "hidden" || !document.querySelector(".tree-summary")) {
+    return false;
   }
-  _summaryRefreshHandle = setTimeout(() => {
-    _summaryRefreshHandle = null;
-    fetch("/api/tree?depth=0")
-      .then((resp) => (resp.ok ? resp.json() : null))
-      .then((data) => {
-        if (!data?.summary || !_lastTreeRender) {
-          return;
-        }
-        var row = document.querySelector(".tree-summary");
-        if (!row) {
-          return;
-        }
-        // Only rebuild the bar when no dropdown is open. Replacing
-        // its DOM mid-poll would drop focus out of a menu the user
-        // is arrowing through, and this runs repeatedly while the
-        // index warms up.
-        if (updateFilterTallies(data)) {
-          if (filterOpenMenu === null) {
-            renderNavFilterBar();
-          } else {
-            patchOpenRecencyTallyCounts();
-          }
-        }
-        var html = treeSummaryHtml(data.summary, null, null);
-        row.outerHTML = html;
-        // Keep both caches in step: chromeHtml feeds a source swap back
-        // to the tree, and _lastTreeSummaryHtml is what the recency
-        // source prepends. Updating only the first left the tally
-        // showing first-paint figures under a recency filter.
-        _lastTreeSummaryHtml = html;
-        _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-          /<div class="tree-summary(?: tree-summary-split)?">.*?<\/div>$/,
-          html,
-        );
-      })
-      .catch(() => {
-        // A failed refresh leaves the previous figures in place, which
-        // is better than blanking a number the user is reading.
-      });
-  }, RECENT_RECLUSTER_DEBOUNCE_MS * 5);
+  var files = document.getElementById("tab-files");
+  return files?.style.display !== "none";
+}
+
+function resumeRootSummaryRefresh() {
+  _rootSummaryRefresh?.resume();
+}
+
+/**
+ * Fetch the root's tallies and paint them.
+ *
+ * @returns {Promise<boolean>} false when the server did not answer, so the refresh
+ *   asks again after its backoff
+ */
+async function fetchRootSummary() {
+  var data;
+  try {
+    var resp = await fetch("/api/tree?depth=0");
+    if (!resp.ok) {
+      return false;
+    }
+    data = await resp.json();
+  } catch (_error) {
+    // A failed refresh leaves the previous figures in place, which
+    // is better than blanking a number the user is reading.
+    return false;
+  }
+  if (!data?.summary || !_lastTreeRender) {
+    return true;
+  }
+  var row = document.querySelector(".tree-summary");
+  if (!row) {
+    return true;
+  }
+  // Only rebuild the bar when no dropdown is open. Replacing
+  // its DOM mid-poll would drop focus out of a menu the user
+  // is arrowing through, and this runs repeatedly while the
+  // index warms up.
+  if (updateFilterTallies(data)) {
+    if (filterOpenMenu === null) {
+      renderNavFilterBar();
+    } else {
+      patchOpenRecencyTallyCounts();
+    }
+  }
+  var html = treeSummaryHtml(data.summary, null, null);
+  row.outerHTML = html;
+  // Keep both caches in step: chromeHtml feeds a source swap back
+  // to the tree, and _lastTreeSummaryHtml is what the recency
+  // source prepends. Updating only the first left the tally
+  // showing first-paint figures under a recency filter.
+  _lastTreeSummaryHtml = html;
+  _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+    /<div class="tree-summary(?: tree-summary-split)?">.*?<\/div>$/,
+    html,
+  );
+  return true;
 }
 
 // Last /api/tree payload plus the chrome rendered above it. Cached so
@@ -3771,6 +3825,7 @@ function attachMainTabs() {
   mainTabs ??=
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
+      filesShown: resumeRootSummaryRefresh,
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
@@ -8581,6 +8636,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     location.search,
     location.hash,
   );
+  // A root summary that waited while the page was hidden is sent when it shows.
+  document.addEventListener("visibilitychange", resumeRootSummaryRefresh);
   var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
   startIndexProgressPolling();
   // The tree fetch always runs: it supplies the header path and root
