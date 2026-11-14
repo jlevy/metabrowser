@@ -18,6 +18,16 @@ All notable changes to Metabrowser are documented here.
   On a stand-in repository, one background preparation answer now makes 1,510 of these
   system calls instead of 2,204.
 
+- The Commits tab loads in a large repository that keeps changing.
+  Each change asked every open page to recount the whole tree for the tally above the
+  Files tree, one request per change, and in the macOS app those requests took every
+  connection, so Commits waited behind them: 7.6 s with one page open, more than 90 s
+  with four. A page now asks one count at a time, waits longer between counts the longer
+  the last one took, and asks none while it is hidden or while another tab is in front
+  of Files. The count itself is about four times faster.
+  A failed check for a repository is retried instead of leaving the page without a
+  Commits tab, and no longer removes a Commits tab already shown.
+
 - The pull requests you scroll to in the Pulls tab are prepared at once, even while the
   list is preparing others in the background.
   The server prepared one batch at a time per repository, so a batch you were looking at
@@ -40,16 +50,28 @@ All notable changes to Metabrowser are documented here.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
 
 - A Markdown document’s images no longer blink when you come back to its file in the
-  macOS app. Opening another file and returning built the document again with lazy
-  images, which WebKit fetched again before drawing them, so the images at the top were
-  blank for a moment. An image already loaded in the page now loads at once from that
-  copy; one you have not reached yet still waits until you scroll to it.
-  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
-  the page forget every copy it holds, so in the macOS app the next return fetches the
-  images again, a replaced image or the file behind a link to one included.
-  In Chrome, before this change and after it, a replaced image can show its old copy,
-  even after a reload, until Chrome no longer treats its cached copy as fresh.
+  macOS app, images from other sites such as badges included.
+  Opening another file and returning built the document again with lazy images, which
+  WebKit fetched again before drawing them, so the images at the top were blank for a
+  moment. An image already loaded in the page now loads at once from that copy; one you
+  have not reached yet still waits until you scroll to it.
   See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- A replaced image in a Markdown document shows its new content when you come back to
+  the document or reload it, in Chrome as in the macOS app; Chrome used to keep showing
+  the old one. Each image of a served file is now addressed with a version of the file,
+  which `/api/kpress/render` answers as `raw_versions`, so a replaced file has a new
+  address, and a hidden file, a file behind a link, or one replaced with the same size
+  and time is no exception.
+  Editing the document no longer makes the macOS app fetch its images again.
+  A PNG, JPEG, GIF, WebP, or AVIF image at its file’s current version is kept by the
+  browser without asking, so a reload in Chrome asks for nothing; its sandbox no longer
+  allows scripts, which an image never runs, so it is the same under `--untrusted`.
+  Every other `/raw` answer, an SVG’s or an HTML document’s included, is revalidated as
+  before, so no copy a browser keeps under the trusted profile answers, allowing
+  scripts, after the folder is served `--untrusted` (see `SECURITY.md`). A link to an
+  image that links to itself no longer fails the document’s render, or `/raw`, on Python
+  3.12.
 
 - Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
   shell observes: the changed inventory paths with their ancestors, or `null` when
@@ -244,7 +266,9 @@ All notable changes to Metabrowser are documented here.
   tree’s notices and **Retry** stay while something is offered.
   A refresh that finds no changed files is offered as **Show the updated list (no
   files)**; the files shown no longer stay, with nothing to press, under “No changed
-  files.”
+  files.” A list Metabrowser no longer holds is offered as **Show the updated list (not
+  listed)**, while the files shown stay as they were last listed and are not covered by
+  “Listing changed files…”.
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

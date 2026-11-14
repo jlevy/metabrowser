@@ -262,6 +262,14 @@ async function loadModule() {
     .replace('"./links.js"', JSON.stringify(linksUrl))
     .replace('"./dom-traversal.js"', JSON.stringify(traversalUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace(
+      '"./place-rendered.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/place-rendered.js"),
+        ).href,
+      ),
+    )
     .replace('"./reconciliation-coordinator.js"', JSON.stringify(coordinatorUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki-enhancer.js"', JSON.stringify(wikiEnhancerUrl));

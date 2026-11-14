@@ -284,3 +284,125 @@ def test_the_snapshot_and_its_revision_are_read_together() -> None:
     for writer in ("_replace_index_entry", "_pop_index_entry"):
         writer_source = inspect.getsource(getattr(index, writer))
         assert "self._rollup_cache_lock" in writer_source, f"{writer} no longer takes the lock"
+
+
+class _CountingLock:
+    """A lock that counts the threads waiting on it, so a test knows who has arrived."""
+
+    def __init__(self) -> None:
+        self._inner = threading.Lock()
+        self._guard = threading.Lock()
+        self.waiting = 0
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        if self._inner.acquire(blocking=False):
+            return True
+        if not blocking:
+            return False
+        with self._guard:
+            self.waiting += 1
+        try:
+            return self._inner.acquire(True, timeout)
+        finally:
+            with self._guard:
+                self.waiting -= 1
+
+    def release(self) -> None:
+        self._inner.release()
+
+    def __enter__(self) -> bool:
+        return self.acquire()
+
+    def __exit__(self, *_exc: object) -> None:
+        self.release()
+
+
+def _await(condition: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + _HANG_BREAKER_S
+    while not condition():
+        assert time.monotonic() < deadline, "a reader never arrived"
+        time.sleep(0.001)
+
+
+def test_readers_who_arrive_during_a_pass_share_the_next_one() -> None:
+    """A burst of root-summary readers on a live tree costs two passes, not one each.
+
+    After a walk, a moving revision makes the memo stale for every reader, so each one
+    that found a pass running waited for it and then ran its own: the tree writes during
+    every pass, so no two readers' images matched. On a 303,000-file tree with writes
+    every 250 ms that put five identical root requests at about 3.2 s each
+    (explorations/tree-summary-storm/README.md). Now readers that arrived during a pass
+    share the one after it, whose image is newer than each of their arrivals, so every
+    answer still counts every write made before its reader asked.
+    """
+    from metabrowser.inventory_engine.contract import (
+        EntryQuery,
+        NavigationProjection,
+        NavigationQuery,
+        ReadRequest,
+    )
+
+    index = _index_with(8)
+    index._status = "done"  # pyright: ignore[reportPrivateUsage]
+    lock = _CountingLock()
+    index._navigation_tally_lock = lock  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    real_compute = index._compute_navigation_tallies  # pyright: ignore[reportPrivateUsage]
+    passes: list[int] = []
+    first_pass_running = threading.Event()
+    release_first_pass = threading.Event()
+    written = 0
+
+    def write() -> None:
+        nonlocal written
+        written += 1
+        index.apply_live_entry(
+            FsEntry.for_observed_file(
+                path=f"live{written}.py", parent="", name=f"live{written}.py", size=1, mtime_ns=1
+            )
+        )
+
+    def live_pass(*args: object) -> object:
+        passes.append(len(passes))
+        # A live tree writes while every pass runs.
+        write()
+        if len(passes) == 1:
+            first_pass_running.set()
+            assert release_first_pass.wait(_HANG_BREAKER_S)
+        return real_compute(*args)  # pyright: ignore[reportArgumentType]
+
+    index._compute_navigation_tallies = live_pass  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    request = ReadRequest(
+        queries=(EntryQuery(query_id="root", path=""), NavigationQuery(query_id="navigation"))
+    )
+    answers: dict[str, int] = {}
+
+    def read(name: str, files_before: int) -> None:
+        result = index._read_sync(request)  # pyright: ignore[reportPrivateUsage]
+        navigation = result.projection("navigation")
+        assert isinstance(navigation, NavigationProjection)
+        summary = navigation.payload["summary"]
+        assert isinstance(summary, dict)
+        files = summary["files"]
+        assert isinstance(files, int)
+        assert files >= files_before, f"{name} was answered from before it asked"
+        answers[name] = files
+
+    first = threading.Thread(target=read, args=("first", 8))
+    first.start()
+    assert first_pass_running.wait(_HANG_BREAKER_S)
+    readers = []
+    for arrived, name in enumerate(("second", "third", "fourth"), start=1):
+        # Each reader asks after another write, as root upserts arrive one by one.
+        write()
+        files_before = 8 + written
+        thread = threading.Thread(target=read, args=(name, files_before))
+        thread.start()
+        _await(lambda arrived=arrived: lock.waiting == arrived)
+        readers.append(thread)
+    release_first_pass.set()
+    for thread in (first, *readers):
+        thread.join(_HANG_BREAKER_S)
+        assert not thread.is_alive()
+
+    assert sorted(answers) == ["first", "fourth", "second", "third"]
+    assert len(passes) == 2, f"{len(passes)} passes for one burst of four readers"

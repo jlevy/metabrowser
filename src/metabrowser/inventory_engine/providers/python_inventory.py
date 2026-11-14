@@ -38,7 +38,10 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
-from metabrowser.file_type_registry import load_file_type_registry_from_text
+from metabrowser.file_type_registry import (
+    FileTypeClassification,
+    load_file_type_registry_from_text,
+)
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.inventory_engine.contract import (
     MAX_ASSEMBLED_ROWS,
@@ -379,6 +382,9 @@ class _NavigationReadMemo:
     base: _NavigationTallyBase
     computed_at: float
     compute_cost_s: float
+    # Monotonic nanoseconds before the image was captured: every reader that arrived
+    # earlier asked about writes the image already holds.
+    captured_ns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,6 +716,9 @@ class _PythonInventoryStore:
         # return the older version honestly instead of pairing stale tallies with the
         # provider's current version and state.
         self._navigation_read_memo: _NavigationReadMemo | None = None
+        # One root-summary pass at a time (``_read_navigation_sync``), so readers who
+        # arrive together share a pass instead of queueing for one each.
+        self._navigation_pass_lock = threading.Lock()
         # Complete projections are retained only when a response has another page.
         # The small table supports bundled paged queries without repeating full scans.
         self._page_lock = threading.Lock()
@@ -1618,7 +1627,71 @@ class _PythonInventoryStore:
         request: ReadRequest,
         shape: _NavigationReadShape,
     ) -> ReadResult:
-        """Reuse one coherent root-summary boundary before copying the index."""
+        """Reuse one coherent root-summary boundary before copying the index.
+
+        A miss runs one pass at a time, and every reader that waited behind a pass whose
+        image was captured after it arrived takes that pass's answer. A live tree moves
+        its revision between any two reads, so readers that arrived together each used
+        to find the memo superseded and queue for a pass of their own, one after another
+        on the tally lock: on a 303,000-file tree with writes every 250 ms, five
+        identical root requests at once took about 3.2 s each
+        (``explorations/tree-summary-storm/README.md``). Now a burst of readers costs at
+        most the pass already running and one more, and each still gets an answer
+        computed from an image taken after it asked, which is the exactness a settled or
+        live-mutating index requires (see ``_navigation_memo_read``).
+        """
+
+        arrived_ns = time.monotonic_ns()
+        cached = self._navigation_memo_read(request, shape, arrived_ns=arrived_ns)
+        if cached is not None:
+            return cached
+        with self._navigation_pass_lock:
+            cached = self._navigation_memo_read(request, shape, arrived_ns=arrived_ns)
+            if cached is not None:
+                return cached
+            # Read before the image: an image captured after this instant reflects every
+            # write that preceded any reader who arrived before it.
+            captured_ns = time.monotonic_ns()
+            result = self._read_snapshot_sync(request)
+            navigation = request.queries[1]
+            if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
+                raise TypeError("the navigation cache received the wrong query shape")
+            expected_key: _NavigationTallyKey = (
+                result.version.sequence,
+                navigation.max_rows,
+                tuple(
+                    (preset_id, tuple(sorted(values))) for preset_id, values in navigation.presets
+                ),
+            )
+            with self._navigation_tally_lock:
+                tally_memo = self._navigation_tally_memo
+                existing = self._navigation_read_memo
+                if (
+                    tally_memo is not None
+                    and tally_memo[0] == expected_key
+                    and (existing is None or existing.version.sequence <= result.version.sequence)
+                ):
+                    self._navigation_read_memo = _NavigationReadMemo(
+                        shape=shape,
+                        version=result.version,
+                        cursor=result.cursor,
+                        state=result.state,
+                        projections=result.projections,
+                        base=tally_memo[1],
+                        computed_at=self._navigation_tally_at,
+                        compute_cost_s=self._navigation_tally_cost_s,
+                        captured_ns=captured_ns,
+                    )
+        return result
+
+    def _navigation_memo_read(
+        self,
+        request: ReadRequest,
+        shape: _NavigationReadShape,
+        *,
+        arrived_ns: int,
+    ) -> ReadResult | None:
+        """The memoized root summary, when it answers a reader that arrived at *arrived_ns*."""
 
         lock_started = time.monotonic_ns()
         with self._rollup_cache_lock:
@@ -1628,96 +1701,71 @@ class _PythonInventoryStore:
         now = time.monotonic()
         with self._navigation_tally_lock:
             memo = self._navigation_read_memo
-            if memo is not None and memo.shape == shape:
-                if request.at_version is not None:
-                    reusable = request.at_version == memo.version
-                elif memo.version.sequence == current_sequence:
-                    reusable = True
-                elif current_status == "scanning":
-                    refresh_after = max(
-                        _NAVIGATION_TALLY_REFRESH_FLOOR_S,
-                        memo.compute_cost_s,
-                    )
-                    reusable = now - memo.computed_at <= refresh_after
-                else:
-                    # A finalized walk or a live mutation needs one exact refresh.
-                    # Otherwise a single debounced browser request could consume a
-                    # completed-but-stale summary and have no later event that asks
-                    # again. The cost-aware concession exists only while discovery is
-                    # already labelling every tally provisional.
-                    reusable = False
-            else:
-                reusable = False
-
-        if reusable and memo is not None:
-            wall_started = time.monotonic_ns()
-            cpu_started = time.thread_time_ns()
-            navigation = request.queries[1]
-            if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
-                raise TypeError("the navigation cache received the wrong query shape")
-            current_ns = time.time_ns() if navigation.as_of_ns is None else navigation.as_of_ns
-            projections = tuple(
-                NavigationProjection(
-                    query_id=projection.query_id,
-                    payload=_with_recency(
-                        memo.base,
-                        navigation.recency_windows,
-                        current_ns,
-                    ),
+            if memo is None or memo.shape != shape:
+                return None
+            if request.at_version is not None:
+                reusable = request.at_version == memo.version
+            elif memo.version.sequence == current_sequence:
+                reusable = True
+            elif memo.captured_ns >= arrived_ns:
+                # Captured after this reader asked, so it holds every write the reader
+                # could be asking about: the pass it waited behind is its answer.
+                reusable = True
+            elif current_status == "scanning":
+                refresh_after = max(
+                    _NAVIGATION_TALLY_REFRESH_FLOOR_S,
+                    memo.compute_cost_s,
                 )
-                if isinstance(projection, NavigationProjection)
-                else projection
-                for projection in memo.projections
-            )
-            rows_returned = sum(self._projection_rows(projection) for projection in projections)
-            work = WorkCounters(
-                rows_visited=1,
-                rows_returned=rows_returned,
-                maintained_index_work=1,
-            )
-            metrics = BoundaryMetrics(
-                lock_wait_ns=lock_wait_ns,
-                cpu_time_ns=time.thread_time_ns() - cpu_started,
-                wall_time_ns=time.monotonic_ns() - wall_started,
-            )
-            self._record_read_work(work, metrics)
-            return ReadResult(
-                version=memo.version,
-                cursor=memo.cursor,
-                state=memo.state,
-                projections=projections,
-                work=work,
-                metrics=metrics,
-            )
+                reusable = now - memo.computed_at <= refresh_after
+            else:
+                # A finalized walk or a live mutation needs one exact refresh.
+                # Otherwise a single debounced browser request could consume a
+                # completed-but-stale summary and have no later event that asks
+                # again. The cost-aware concession exists only while discovery is
+                # already labelling every tally provisional.
+                reusable = False
+        if not reusable:
+            return None
 
-        result = self._read_snapshot_sync(request)
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
         navigation = request.queries[1]
         if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
             raise TypeError("the navigation cache received the wrong query shape")
-        expected_key: _NavigationTallyKey = (
-            result.version.sequence,
-            navigation.max_rows,
-            tuple((preset_id, tuple(sorted(values))) for preset_id, values in navigation.presets),
+        current_ns = time.time_ns() if navigation.as_of_ns is None else navigation.as_of_ns
+        projections = tuple(
+            NavigationProjection(
+                query_id=projection.query_id,
+                payload=_with_recency(
+                    memo.base,
+                    navigation.recency_windows,
+                    current_ns,
+                ),
+            )
+            if isinstance(projection, NavigationProjection)
+            else projection
+            for projection in memo.projections
         )
-        with self._navigation_tally_lock:
-            tally_memo = self._navigation_tally_memo
-            existing = self._navigation_read_memo
-            if (
-                tally_memo is not None
-                and tally_memo[0] == expected_key
-                and (existing is None or existing.version.sequence <= result.version.sequence)
-            ):
-                self._navigation_read_memo = _NavigationReadMemo(
-                    shape=shape,
-                    version=result.version,
-                    cursor=result.cursor,
-                    state=result.state,
-                    projections=result.projections,
-                    base=tally_memo[1],
-                    computed_at=self._navigation_tally_at,
-                    compute_cost_s=self._navigation_tally_cost_s,
-                )
-        return result
+        rows_returned = sum(self._projection_rows(projection) for projection in projections)
+        work = WorkCounters(
+            rows_visited=1,
+            rows_returned=rows_returned,
+            maintained_index_work=1,
+        )
+        metrics = BoundaryMetrics(
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=time.thread_time_ns() - cpu_started,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        self._record_read_work(work, metrics)
+        return ReadResult(
+            version=memo.version,
+            cursor=memo.cursor,
+            state=memo.state,
+            projections=projections,
+            work=work,
+            metrics=metrics,
+        )
 
     def _read_rollup_sync(self, request: ReadRequest) -> ReadResult:
         """Answer rollup bundles atomically without copying the whole index.
@@ -2764,6 +2812,11 @@ class _PythonInventoryStore:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
+        # Each distinct extension is classified once. Classifying every file twice was
+        # four fifths of the pass: 1.7 s of a 300,000-file pass, measured with
+        # ``explorations/tree-summary-storm/profile_pass.py``. A name decides its own
+        # classification only when the registry lists it (``classifies_by_name``).
+        by_extension: dict[str, FileTypeClassification] = {}
         for entry_index, entry in enumerate(snapshot):
             if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
                 time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
@@ -2778,6 +2831,10 @@ class _PythonInventoryStore:
                 size += entry.size or 0
 
             ext = ascii_casefold(entry.ext)
+            extension_classification = by_extension.get(ext)
+            if extension_classification is None:
+                extension_classification = self._registry.classify("", ext)
+                by_extension[ext] = extension_classification
             if ext:
                 row = extension_counts.get(ext)
                 if row is None:
@@ -2785,7 +2842,6 @@ class _PythonInventoryStore:
                     extension_counts[ext] = row
                 row[ignored_index] += 1
 
-                extension_classification = self._registry.classify("", ext)
                 canonical = extension_classification.canonical_extension or ext
                 canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
                 canonical_row[ignored_index] += 1
@@ -2798,7 +2854,11 @@ class _PythonInventoryStore:
                     family_row[ignored_index] += 1
 
             name = ascii_casefold(entry.name)
-            semantic_category = self._registry.classify(name, ext).group_id
+            semantic_category = (
+                self._registry.classify(name, ext).group_id
+                if self._registry.classifies_by_name(name)
+                else extension_classification.group_id
+            )
             for preset_id, preset_extensions, preset_names in normalized_presets:
                 if (
                     preset_id == semantic_category

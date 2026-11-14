@@ -24,6 +24,9 @@ experiment:
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the editable control checkout at origin/main 09903292, clean.
     candidate: metab 0.12.1.dev692+91bf42b3 (+181 commits, 10d659aee), the editable checkout of claude/perf-delivery checked out at 10d659ae for the series, clean; the code and dependencies of exp-083's candidate, with venv metadata re-synced since.
+    protocol:
+      path: exp-087-protocol.txt
+      sha256: 7afe7e112e9065e64b82f9d3091b2d47d85fe72a947003274c845a66cd86d2ff
     record: exp-087-files-samples.jsonl
   results:
     - metric: later_frame_share.files.cold.json
@@ -100,6 +103,13 @@ The per-request server time differed by 0.2–0.5 ms between the builds, and the
 work was identical. This round measures how often each build lands on the later frame.
 
 ## Protocol
+
+> Correction, 2026-11-14: the pre-registration file below was kept in an agent’s
+> temporary directory, which the 2026-11-14 restart emptied, and was rebuilt byte for
+> byte from session transcripts.
+> It is now committed as [exp-087-protocol.txt](exp-087-protocol.txt) and named in
+> `method.protocol`, with the worktree parent directory written as `$WORKTREES`; writing
+> that directory back reproduces the sha256 cited here.
 
 Declared before any measurement, in a local pre-registration file (sha256
 `68d473ccea6153b5d72806913965f475021ef932a6baa852b6fc3503fb199d1a`), which the

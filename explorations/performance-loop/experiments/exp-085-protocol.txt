@@ -1,0 +1,94 @@
+exp-085: confirmation round for H91 (c), the held arrow key. Declared before any measurement.
+
+Why: exp-064 left H91 (c) unresolved. Its deciding metric moved as predicted (skim.held_arrow_down
+file_envelope_requests 6 -> 2, ranges apart), but its declared guard ready_after_last_input_ms on the
+skim went 47.85 (39.6-49.4) -> 56.55 (46.4-71.3) ms with 2 of 4 pairs higher beyond 1.3x under
+overlapping ranges, which compare lists as wrong-way. exp-064 is not rewritten; (a), (b), (d) stand.
+
+Id: exp-085 is free: no file or mention on origin/main, claude/perf-caches, claude/perf-delivery,
+claude/perf-delivery-h89-reference, claude/perf-layout, claude/perf-prpage, or claude/perf-wkprobe
+(git ls-tree and git grep, after git fetch).
+
+Builds (the same as exp-064):
+- candidate: this worktree checked out detached at 28e12fa2 (the measured candidate of exp-064),
+  its editable .venv; uv.lock is unchanged between 28e12fa2 and the branch head, and pyproject.toml
+  differs only by an sdist exclude, so the environment is the same.
+- control: $WORKTREES/metabrowser-perf-control/.venv/bin/metab at 09903292.
+- harness: $WORKTREES/metabrowser-perf-harness-v4 at 5031dc16 (revision 4, frozen).
+- corpus: $WORKTREES/metabrowser-perf-corpus-v2 (7a02fed4).
+
+Journeys: skim only, with --out attic/bench-exp085/runs.jsonl. H91 (c)'s deciding metric
+(skim.held_arrow_down file_envelope_requests) is measured on skim, so no other journey is added.
+
+Pairs: 6 judged interleaved back-to-back pairs. Run 6; apply the load rule (attic/exclude.mjs:
+a pair is excluded if either run started above a one-minute load of 12, saw a transition start above
+it, or was refused) before reading any result; add replacement pairs until 6 are valid, at most 12
+attempted pairs in all. If fewer than 6 are valid after 12 attempts, judge on the valid pairs if there
+are at least 5; with fewer than 5, H91 (c) stays unresolved. Excluded rows are kept and named.
+
+Lock and load: take the shared series lock behind whoever holds it, only after the one-minute load
+has stayed under 12 for two minutes; release it when the last timed run ends.
+
+Decides H91 (c): skim.held_arrow_down file_envelope_requests, predicted lower; a result when the
+median is lower and the ranges do not overlap (n >= 5 per side).
+
+Guard: skim.held_arrow_down ready_after_last_input_ms, judged by compare at 1.3x:
+- ranges apart (higher) with two or more pairs beyond 1.3x: a guard result; H91 (c) is rejected.
+- two or more pairs higher beyond 1.3x with overlapping ranges: explain with the evidence below, or
+  H91 (c) is not accepted (unresolved).
+- fewer than two pairs beyond 1.3x: the guard holds.
+The other guards declared for (c) in exp-064 are not re-measured here: painted_ready_ms on the skim
+is read as before (no wrong-way pair result), and keyboard.down_cold.{1,2,3} held in exp-064.
+
+Evidence that would explain an overlapping guard, decided now, from fields the harness records on
+each skim transition (no other instrument):
+- E1, the walk released on the key's release: in every candidate run, ready_after_last_input_ms is
+  under WALK_SETTLE_MS (120 ms). A run at or over it means the walk held to its timer, which is the
+  walk's own cost, and E1 fails.
+- E2, the time is the last file's own render, not a hold: for each pair beyond 1.3x, the candidate's
+  excess over its control in ready_after_last_input_ms is within one frame (16.7 ms) of the excess
+  in that pair's last fileNavigation:selectToReady span (the final row's select to ready), or is
+  matched by that candidate run's recorded long-task or LoAF blocking time.
+- E3, no frame was lost to the wait: blank frames and placeholder frames are 0 in every candidate run.
+The guard is explained only if E1 and E3 hold in every candidate run and E2 holds for every pair
+beyond 1.3x.
+
+Declared 2026-11-13 (local time below) before any exp-085 measurement.
+Declared at 2026-11-13 08:47:49 PST.
+
+Addendum, power state (coordinator's note: Low Power Mode has been on for every round so far, and
+the user is about to turn it off). Declared before any exp-085 measurement.
+- At declaration:  lowpowermode 1; Now drawing from 'AC Power'.
+- The launcher samples `pmset -g` lowpowermode and `pmset -g ps`'s power source every 5 s from
+  before the lock to after the last run (attic/exp085-power.log), and logs both at each series
+  invocation's start and end; each run's mode at its start and end is read from those samples.
+- A pair any of whose runs spans a change of mode is excluded. If the mode changed at all during the
+  series, only pairs wholly in the last mode are judged, and replacement pairs (at most 12 attempted
+  in all) are taken only in that mode. The rule is applied by attic/exclude085.mjs, with the load
+  rule, before any result is read.
+- It is preferred to start in lowpowermode 0; if it still reads 1 when the lock is taken, the series
+  runs and the record says so. exp-085's numbers belong to the regime it ran in.
+Declared at 2026-11-13 10:02:32 PST.
+
+Amendment 2, paced pairs (coordinator's decision after the first attempt). Declared before any
+further measurement; no result metric of the first attempt was read.
+- First attempt (series 2026-11-13T18-50-52 and its replacement series, 12 pairs): every pair was
+  excluded by the load rule. Back-to-back runs of about 22 s drove the one-minute load from 11.24 to
+  38.82 within 90 s, then 16 to 17 by the twelfth pair. Those 12 pairs stay in the rows and samples
+  as excluded, named in the record with this reason.
+- Pacing: one transitions.mjs run invocation with --runs 1 per pair, each pair's two runs back to
+  back in alternating order (control first in odd-numbered paced pairs, candidate first in even),
+  each pair starting only once the one-minute load has stayed under 12 for 60 s (sampled every
+  10 s). One invocation per pair, not per condition: compare pairs the two runs by the invocation's
+  series id and pair index, so a pair's runs must share one invocation.
+- Unchanged: the load rule and the power rule (attic/exclude085.mjs, applied to every attempted
+  pair before any result is read), 6 judged pairs as the target with at least 5, the deciding
+  metric, the guard and its rule, and the evidence E1 to E3.
+- Attempts: the cap rises to 20 attempted paced pairs. With fewer than 5 judged pairs after 20,
+  H91 (c) stays unresolved and is recorded that way.
+- Power: if lowpowermode reads 0 when the series starts, it runs in that regime; otherwise in 1,
+  and the record says so. The two are never mixed among judged pairs. At this amendment:
+   lowpowermode 1; Now drawing from 'AC Power'.
+- Lock: the usual gate (the one-minute load under 12 for two minutes) before taking the series lock,
+  held across all paced pairs and released when the last ends.
+Declared at 2026-11-13 11:01:05 PST.

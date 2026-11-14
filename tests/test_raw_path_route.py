@@ -20,6 +20,9 @@ from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.server import app
 
 _RAW_CSP = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
+# A raster image runs nothing, so its sandbox allows no scripts under either profile, and a
+# copy a browser keeps is the same under both (SECURITY.md).
+_RASTER_CSP = "sandbox allow-popups allow-forms allow-downloads"
 
 # A real one-pixel RGBA PNG (signature, IHDR, IDAT, IEND, CRCs valid), so the
 # subdirectory subresource is a genuine binary asset rather than text wearing
@@ -34,7 +37,8 @@ _ONE_PIXEL_PNG = (
 
 def _assert_raw_trust_headers(response: Any) -> None:
     csp = response.headers["content-security-policy"]
-    assert csp == _RAW_CSP
+    raster = response.headers.get("content-type", "").startswith("image/png")
+    assert csp == (_RASTER_CSP if raster else _RAW_CSP)
     assert "allow-same-origin" not in csp
     assert "frame-ancestors" not in csp
     assert response.headers["x-content-type-options"] == "nosniff"
