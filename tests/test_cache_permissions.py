@@ -2051,8 +2051,9 @@ def _restore_owner_access(root: Path) -> None:
         directory.chmod(stat.S_IMODE(os.lstat(directory).st_mode) | stat.S_IRWXU)
         # An ACL that denies the owner is removed by remove_test_acls.
         with contextlib.suppress(PermissionError):
+            # Path.is_dir takes follow_symlinks only from Python 3.13.
             pending += [
-                entry for entry in directory.iterdir() if entry.is_dir(follow_symlinks=False)
+                entry for entry in directory.iterdir() if stat.S_ISDIR(os.lstat(entry).st_mode)
             ]
 
 
