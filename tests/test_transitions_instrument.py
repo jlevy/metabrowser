@@ -4,8 +4,9 @@ Its pure logic runs browserless: request classes, cache disposition over recorde
 event sequences, frame accounting, region movement, every refusal and verdict of
 ``compare`` over fixture rows, and process cleanup. Its recorder runs in a real headless
 Chrome on synthetic pages, because what it measures is paint and the frame clock:
-readiness against the input, the presentation of the ready frame, content on screen, and
-304s a server logged.
+readiness against the input, the presentation of the ready frame, content on screen,
+304s a server logged, and the journeys' Commits landing on either side of main's
+19a36c5b.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 44 checks passed\n"
+    assert result.stdout == "transitions instrument: 49 checks passed\n"
 
 
 # The longest a group has taken: 20 s for content in CI, which a check taken again for its
@@ -48,7 +49,14 @@ LIFECYCLE_S = RECORDER_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 
 
 @pytest.mark.parametrize(
-    ("group", "count"), [("frames", 5), ("frames2", 3), ("content", 10), ("network", 2)]
+    ("group", "count"),
+    [
+        ("frames", 5),
+        ("frames2", 3),
+        ("content", 10),
+        ("network", 2),
+        ("landing", 11),
+    ],
 )
 def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:
     chrome = require_chrome()

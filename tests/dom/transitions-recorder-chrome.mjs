@@ -2,9 +2,12 @@
 // of its definitions fail if it were wrong: readiness before the input, DOM work after the
 // subject is shown, a stall after the ready frame, a long ready frame, content that is in
 // the DOM but not on screen, blank and placeholder frames after ready, region movement,
-// input fidelity, and cache disposition against a server that logs its 304s.
+// input fidelity, cache disposition against a server that logs its 304s, and the
+// journeys' Commits landing (revision 5) on a page that lands on the prompt, on the newest
+// commit, or on another commit.
 //
-//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network <profile dir>
+//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network|landing \
+//     <profile dir>
 //
 // The profile directory is the caller's: tests/test_transitions_instrument.py creates it,
 // runs this in a process group of its own, stops that whole group however the run ends,
@@ -20,11 +23,93 @@ const HERE = import.meta.dirname;
 const { launchBrowser, driver, sleep } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
+const { COMMITS_LANDING } = await import(
+  path.resolve(HERE, "../../explorations/performance-loop/transitions-journeys.mjs")
+);
 
 const [group, profileDir] = process.argv.slice(2);
 if (!profileDir) {
   throw new Error("usage: transitions-recorder-chrome.mjs <group> <profile dir>");
 }
+
+// The main tabs as the journeys' predicates read them: a Files and a Commits tab, the
+// Commits list, and the preview. A click on Commits does what `window.mode` says: show the
+// tab's prompt (`empty`, builds before main's 19a36c5b); select and show the newest commit
+// on its own address, 60 ms later (`newest`, since 19a36c5b); the older commit (`older`,
+// the commit read before, or any commit that is not the newest); or the newest commit's
+// view with the older row selected (`unselected`).
+const NEWEST = "1".repeat(40);
+const OLDER = "2".repeat(40);
+const LANDING_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>landing probe</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  .nav-tab-bar .tab-btn { width: 120px; height: 30px; }
+  #tab-git { display: none; }
+  #tab-git.shown { display: block; }
+  .git-graph-row { height: 24px; }
+  #preview-pane { min-height: 400px; }
+</style></head><body>
+<div class="nav-tab-bar"><button class="tab-btn active" data-tab="files" id="to-files">Files</button><button class="tab-btn" data-tab="git" id="to-git">Commits</button></div>
+<div id="tree-content"><div id="tab-files" data-tab-content="files">a file list</div><div id="tab-git" data-tab-content="git"><div class="git-graph-row" data-revision="${NEWEST}">the newest commit</div><div class="git-graph-row" data-revision="${OLDER}">an older commit</div></div></div>
+<div id="preview-pane"><div data-active-view="true">a file</div></div>
+<script>
+const pane = document.getElementById("preview-pane");
+const git = document.getElementById("tab-git");
+const files = document.getElementById("tab-files");
+window.mode = "empty";
+const activate = (tab) => {
+  for (const b of document.querySelectorAll(".nav-tab-bar .tab-btn")) { b.classList.toggle("active", b.dataset.tab === tab); }
+  git.classList.toggle("shown", tab === "git");
+  files.style.display = tab === "files" ? "" : "none";
+};
+const select = (rev) => { for (const r of git.querySelectorAll(".git-graph-row")) { r.classList.toggle("selected", r.dataset.revision === rev); } };
+const ROWS = git.innerHTML;
+const prompt = (text) => { pane.innerHTML = '<div class="preview-empty">' + text + '</div>'; };
+const showCommit = (rev, diff = "<pre>+ a line added</pre>") => {
+  history.replaceState(null, "", "/commit/" + rev);
+  pane.innerHTML = '<div class="git-commit-stage"><div class="git-commit-view" data-revision="' + rev + '"><p>commit ' + rev.slice(0, 8) + '</p><div class="git-commit-diff">' + diff + '</div></div></div>';
+};
+document.getElementById("to-files").addEventListener("click", () => {
+  activate("files"); git.innerHTML = ROWS; select(null); history.replaceState(null, "", "/view/landing");
+  pane.innerHTML = '<div data-active-view="true">a file</div>';
+});
+// Modes after review A of #417: \`flash\` paints the prompt at once and the newest commit
+// 400 ms later; \`staleflash\` the commit read before at once and the newest 400 ms later;
+// \`detailfail\` selects the newest and fails its detail, as git-panel.js renders that;
+// \`emptyhistory\` and \`failedhistory\` leave no rows; \`slowdetail\` keeps the pane, mounts
+// the commit with a loading diff at 150 ms, and fills it at 500 ms.
+document.getElementById("to-git").addEventListener("click", () => {
+  activate("git");
+  const mode = window.mode;
+  if (mode === "empty") { select(null); prompt("Select a commit to preview"); return; }
+  if (mode === "flash") {
+    prompt("Select a commit to preview");
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}"); }, 400);
+    return;
+  }
+  if (mode === "staleflash") {
+    select("${OLDER}"); showCommit("${OLDER}");
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}"); }, 400);
+    return;
+  }
+  if (mode === "emptyhistory" || mode === "failedhistory") {
+    git.innerHTML = "";
+    prompt(mode === "emptyhistory" ? "No commits yet." : "Could not load the commit history.");
+    return;
+  }
+  if (mode === "slowdetail") {
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}", '<div class="loading">Loading diff</div>'); }, 150);
+    setTimeout(() => { showCommit("${NEWEST}"); }, 500);
+    return;
+  }
+  setTimeout(() => {
+    if (mode === "newest") { select("${NEWEST}"); showCommit("${NEWEST}"); }
+    else if (mode === "older") { select("${OLDER}"); showCommit("${OLDER}"); }
+    else if (mode === "unselected") { select("${OLDER}"); showCommit("${NEWEST}"); }
+    else if (mode === "detailfail") { select("${NEWEST}"); history.replaceState(null, "", "/commit/${NEWEST}"); prompt("Could not load this commit."); }
+  }, 60);
+});
+</script></body></html>`;
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>recorder probe</title>
 <style>
@@ -129,6 +214,9 @@ const server = http.createServer((req, res) => {
   if (u.pathname === "/view/probe") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(PAGE);
+  } else if (u.pathname === "/view/landing") {
+    res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    res.end(LANDING_PAGE);
   } else if (u.pathname === "/slow.png") {
     setTimeout(() => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
@@ -297,8 +385,14 @@ async function check(name, fn, { retryable = true } = {}) {
 }
 
 try {
-  await d.navigate(`${base}/view/probe`);
-  assert.ok(await d.waitFor("!!window.__tr && !!document.getElementById('go-reset')", 20000));
+  const landingGroup = group === "landing";
+  await d.navigate(`${base}/view/${landingGroup ? "landing" : "probe"}`);
+  assert.ok(
+    await d.waitFor(
+      `!!window.__tr && !!document.getElementById(${JSON.stringify(landingGroup ? "to-git" : "go-reset")})`,
+      20000,
+    ),
+  );
   await sleep(500);
 
   if (group === "frames") {
@@ -575,8 +669,116 @@ try {
       },
       { retryable: false },
     );
+  } else if (group === "landing") {
+    const L = COMMITS_LANDING;
+    // A switch from Files to Commits on the page in `mode`, measured with `spec`.
+    const landOn = async (mode, spec) => {
+      await d.click("#to-files");
+      await sleep(300);
+      await d.evaluate(`window.mode = ${JSON.stringify(mode)}`);
+      const r = await take({
+        id: `landing.${mode}`,
+        subject: "Commits",
+        input: { kind: "click", selector: "#to-git" },
+        settleMs: 400,
+        timeoutMs: 5000,
+        ...spec,
+      });
+      await sleep(200);
+      return r;
+    };
+    const toList = {
+      ready: L.ready(NEWEST),
+      converged: L.converged(NEWEST),
+      landing: L.kind(NEWEST),
+      emptyState: true,
+    };
+    const notReady = (r) =>
+      r.refusals.some(([guard, detail]) => guard === "converged" && /not ready/.test(detail));
+    await check("a switch to Commits that shows the prompt is the empty landing", async () => {
+      const r = await landOn("empty", toList);
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.landing, "empty");
+    });
+    await check(
+      "a switch to Commits that shows the newest commit is the newest landing",
+      async () => {
+        const r = await landOn("newest", toList);
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        assert.equal(r.landing, "newest");
+      },
+    );
+    await check("the prompt alone, revision 4's test, refuses the newest landing", async () => {
+      const r = await landOn("newest", { ready: L.prompt, converged: `() => ""`, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+    });
+    await check("a switch to Commits that shows another commit is neither landing", async () => {
+      const r = await landOn("older", { ...toList, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+      assert.equal(r.landing, null);
+    });
+    await check("the newest landing converges only with the newest row selected", async () => {
+      const r = await landOn("unselected", toList);
+      assert.ok(
+        r.refusals.some(([guard, detail]) => guard === "converged" && /selected/.test(detail)),
+        JSON.stringify(r.refusals),
+      );
+    });
+    await check(
+      "a switch back to Commits lands on the commit read before or the newest",
+      async () => {
+        const spec = {
+          ready: L.subjectReady(OLDER, NEWEST),
+          converged: L.subjectConverged(OLDER, NEWEST),
+          landing: L.kind(NEWEST, OLDER),
+        };
+        const restored = await landOn("older", spec);
+        assert.equal(restored.ok, true, JSON.stringify(restored.refusals));
+        assert.equal(restored.landing, "restored");
+        const newest = await landOn("newest", spec);
+        assert.equal(newest.ok, true, JSON.stringify(newest.refusals));
+        assert.equal(newest.landing, "newest");
+      },
+    );
+    // Review A of #417.
+    const movedOn = (r, from, to) =>
+      r.refusals.some(
+        ([guard, detail]) =>
+          guard === "converged" && detail.includes(`ready on ${from}, converged on ${to}`),
+      );
+    await check("a prompt painted before the newest commit is refused, not timed", async () => {
+      const r = await landOn("flash", toList);
+      assert.ok(movedOn(r, "empty", "newest"), JSON.stringify(r.refusals));
+      assert.equal(r.landingAtReady, "empty");
+      assert.equal(r.landing, "newest");
+    });
+    await check("the commit read before, painted before the newest, is refused", async () => {
+      const r = await landOn("staleflash", {
+        ready: L.subjectReady(OLDER, NEWEST),
+        converged: L.subjectConverged(OLDER, NEWEST),
+        landing: L.kind(NEWEST, OLDER),
+      });
+      assert.ok(movedOn(r, "restored", "newest"), JSON.stringify(r.refusals));
+    });
+    await check("the newest commit's failed detail is not the prompt", async () => {
+      const r = await landOn("detailfail", { ...toList, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+      assert.match(await d.evaluate(`(${L.kind(NEWEST)})()`), /^other \/commit\//);
+    });
+    await check("an empty or failed history is never ready", async () => {
+      for (const mode of ["emptyhistory", "failedhistory"]) {
+        const r = await landOn(mode, { ...toList, timeoutMs: 1500 });
+        assert.ok(notReady(r), `${mode}: ${JSON.stringify(r.refusals)}`);
+      }
+    });
+    await check("a slow detail is ready when its diff has text, not when it mounts", async () => {
+      const r = await landOn("slowdetail", toList);
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.landing, "newest");
+      assert.ok(r.readyMs >= 450, `ready ${r.readyMs}`);
+    });
   } else {
-    throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
+    throw new Error(`unknown group ${group}; frames, frames2, content, network, or landing`);
   }
 } finally {
   // Stops every Chrome process of the profile, then removes the profile.
