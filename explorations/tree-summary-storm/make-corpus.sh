@@ -5,6 +5,13 @@
 #
 #   explorations/tree-summary-storm/make-corpus.sh DEST
 set -euo pipefail
+# Only the repository made here may be written. A git hook exports GIT_DIR and
+# GIT_WORK_TREE, and either outranks the working directory, so with them inherited the
+# commits, fast-import, and `reset --hard main` below would land in that checkout
+# instead. The list is metabrowser.git.process._REPO_PINNING_GIT_VARS, which
+# tests/test_tree_summary_storm_corpus.py keeps in step.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES
 DEST=${1:?destination}
 COMMITS=${COMMITS:-10000}
 REFS=${REFS:-2500}
