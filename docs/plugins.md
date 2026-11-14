@@ -555,6 +555,12 @@ and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet 
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
 
+A view that shows a message about the content, such as a description or a comment, plain
+or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
+never on its page, and sets no face of its own: chrome prose is sans under either
+reading font, and a document shown beside it keeps the reader’s reading font.
+See [Serif Is for Documents](design-system.md#serif-is-for-documents).
+
 A control in a view that shows or hides content, such as a row with the `icons.toggle`
 chevron, a fold, or a section trigger, carries the host’s `disclosure-toggle` class, so
 clicking it never selects text; a native `summary` needs nothing.

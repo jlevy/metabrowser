@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Markdown file in a pull request’s Changes now reads in your reading font, serif
+  unless you chose Sans, as the same file does in its Document view.
+  It was always sans, because the rule that keeps the pull request’s description,
+  comments, and reviews sans covered the whole page.
+  Those messages stay sans under either reading font, as a commit message does.
+  A plugin’s Markdown view that renders into `md-body` without KPress also reads in the
+  reading font now; it was always sans.
+  Plugin authors: put the new `chrome-prose` class on the element that holds a message,
+  plain or Markdown, and never on a page.
+  See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
+
 - Reading Metabrowser’s private cache costs less on a busy server.
   Every read checks that no other user can read or replace what it reads, and it used to
   open each directory on the way again to check it.
