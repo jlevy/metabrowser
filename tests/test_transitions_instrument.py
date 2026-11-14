@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import warnings
 from pathlib import Path
 
 import pytest
@@ -59,6 +60,15 @@ def test_transition_recorder_in_chrome(group: str, count: int) -> None:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"transitions recorder {group}: {count} checks passed\n"
+    # A check the machine was too busy to measure the first time is taken again (the
+    # script's FRAME_CLOCK_ATTEMPTS); a pass that needed it says so in the warnings summary
+    # rather than passing silently.
+    retries = [line for line in result.stderr.splitlines() if line.startswith("retry: ")]
+    if retries:
+        warnings.warn(
+            f"transitions recorder {group} passed after retrying: " + " | ".join(retries),
+            stacklevel=1,
+        )
 
 
 # A stand-in `metab`: it reports a version, then serves a complete inventory and drops
