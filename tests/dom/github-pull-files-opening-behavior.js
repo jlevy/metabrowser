@@ -678,6 +678,87 @@ async function run() {
     asked.frame();
     await asked.advance(tree.FILES_POLL_MS);
     facts.listGoneWhileAsked = { painted: asked.painted, offered: offeredShape(asked.last()) };
+
+    // The list goes away on a read, and the refresh that read asks for answers not due with a
+    // list another request has listed since, with none of its rows (review A1 of #429). That
+    // answer is the list's metadata alone, so the offer stands until the rows are read and
+    // compared with those drawn: a read that answers two seconds late brings back the same
+    // files and withdraws it, and one the server does not answer leaves it with its error.
+    const listedAgain = {
+      status: 200,
+      body: { refresh: "not_due", files: { ...again, limit: 0 } },
+    };
+    const sampled = [];
+    const slowRows = story(
+      tree,
+      [
+        structuredClone(recorded.comparison),
+        at(recorded.absent),
+        (route) => ({ afterMs: 2000, body: { ...again, offset: offsetOf(route) } }),
+      ],
+      { at: 0 },
+      listedAgain,
+    );
+    slowRows.controller.expand();
+    slowRows.frame();
+    await settle();
+    slowRows.frame();
+    for (const target of [window, window + 1000, window + 2000]) {
+      await slowRows.advance(target);
+      sampled.push(offeredShape(slowRows.last()));
+    }
+    facts.listGoneThenListed = {
+      painted: slowRows.painted,
+      offers: sampled.map((model) => model.offer),
+      reads: slowRows.reads.length,
+      spans: slowRows.spans,
+    };
+    const failedRows = story(
+      tree,
+      [structuredClone(recorded.comparison), at(recorded.absent), "fail"],
+      { at: 0 },
+      listedAgain,
+    );
+    failedRows.controller.expand();
+    failedRows.frame();
+    await settle();
+    failedRows.frame();
+    await failedRows.advance(window + 5000);
+    facts.listGoneThenListedFailing = {
+      painted: failedRows.painted,
+      shown: offeredShape(failedRows.last()),
+    };
+
+    // The other order: a read finds the list stale, and the refresh it asks for answers that
+    // the server no longer holds it (review A1 of #429). That is the same change as an absent
+    // read, so it is offered at once, while the next read answers three seconds late.
+    const staleRead = (route) => ({
+      ...structuredClone(recorded.comparison),
+      state: "stale",
+      offset: offsetOf(route),
+      rows: [],
+    });
+    const absentAnswer = story(
+      tree,
+      [
+        structuredClone(recorded.comparison),
+        staleRead,
+        (route) => ({ afterMs: 3000, body: { ...recorded.pending, offset: offsetOf(route) } }),
+      ],
+      { at: 0 },
+    );
+    absentAnswer.controller.expand();
+    absentAnswer.frame();
+    await settle();
+    absentAnswer.frame();
+    await absentAnswer.advance(window);
+    const answered = offeredShape(absentAnswer.last());
+    await absentAnswer.advance(window + 2000);
+    facts.listGoneOnRefresh = {
+      painted: absentAnswer.painted,
+      answered,
+      whileReading: offeredShape(absentAnswer.last()),
+    };
   }
 
   // A cached list that is stale, drawn at the click, whose refresh answers a second later with

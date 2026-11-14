@@ -606,13 +606,17 @@ asked for, or a refresh answering not due (`refreshNotDueListsNone`). A read tha
 answers that the server no longer holds the list is offered as well, while the drawn
 rows breathe as the list is listed again (`listGone`, `listGoneWhileAsked`), and its
 notice and Retry join the offer when the list stays unavailable (`listGoneUnavailable`).
-Each hold’s span says how long it held and why it ended, an offer included when the
-reader presses it or the tree closes on it, and a first read that fails as failed
-(`spans`). `invariants` holds, across every model the stories rendered, their refresh
-answering started or not due, that an expanded tree with no rows drawn never offers,
-that once open it shows progress, a notice, or its line, that drawn rows never stand
-under the line of a list with no files, that a change held back from drawn rows is
-always offered, and that drawn rows never sit under progress.
+A refresh that says the list is gone is offered the same way (`listGoneOnRefresh`), and
+the offer stands across a refresh’s answer that carries no rows until a read brings
+them, which withdraws it when they are the same files (`listGoneThenListed`); a read
+that fails leaves it standing with its error (`listGoneThenListedFailing`). Each hold’s
+span says how long it held and why it ended, an offer included when the reader presses
+it or the tree closes on it, and a first read that fails as failed (`spans`).
+`invariants` holds, across every model the stories rendered, their refresh answering
+started or not due, that an expanded tree with no rows drawn never offers, that once
+open it shows progress, a notice, or its line, that drawn rows never stand under the
+line of a list with no files, that a change held back from drawn rows is always offered,
+and that drawn rows never sit under progress.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -846,6 +850,65 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "4 rows, offer: Show the updated list (not listed)"
     ],
     "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneThenListed": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "offers": [
+      "Show the updated list (not listed)",
+      "Show the updated list (not listed)",
+      null
+    ],
+    "reads": 3,
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneThenListedFailing": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "shown": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The server did not answer.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneOnRefresh": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "answered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "whileReading": {
       "rows": 4,
       "line": null,
       "loading": false,
