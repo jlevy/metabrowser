@@ -1659,7 +1659,9 @@ export function driver(browser) {
    * spec.list: { rows: selector }, an ordered list whose rows are watched for replacement.
    * spec.landing: in-page `() => string` source naming which of a destination's landings
    *   the subject was (the Commits landing: `empty`, `newest`, or `restored`), read with
-   *   `converged` and recorded as `landing`; null when the subject was never ready.
+   *   `converged` and recorded as `landing`; null when the subject was never ready. A ready
+   *   predicate with several branches may name the one that held first in `readyBranch`,
+   *   cleared at arm and recorded as `landingAtReady`.
    */
   async function measure(spec) {
     const settleMs = spec.settleMs ?? 400;
@@ -1682,7 +1684,7 @@ export function driver(browser) {
           .map(([name, fn]) => `${JSON.stringify(name)}: (${fn})`)
           .join(", ")} }`
       : "null";
-    const armExtras = `R.listSpec = ${JSON.stringify(spec.list ?? null)}; R.listLog = []; R.lastList = null; R.milestoneFns = ${milestoneFns}; R.milestones = {};`;
+    const armExtras = `R.listSpec = ${JSON.stringify(spec.list ?? null)}; R.listLog = []; R.lastList = null; R.milestoneFns = ${milestoneFns}; R.milestones = {}; R.readyBranch = null;`;
     let armScript = null;
     if (landing) {
       // Marks the outgoing document, so waiting below cannot read its recorder.
@@ -1766,7 +1768,7 @@ export function driver(browser) {
         armedAt: R.armedAt, observers: R.observers, kept, spans, state0: R.state0 ?? "",
         dom0: R.dom0 ?? null, dom1: document.getElementsByTagName("*").length,
         w: innerWidth, h: innerHeight, vis: document.visibilityState, path: location.pathname,
-        listLog: R.listLog,
+        listLog: R.listLog, readyBranch: R.readyBranch ?? null,
       };
     })()`);
     await evaluate("window.__tr.readyFn = null; window.__tr.listSpec = null");
@@ -1933,7 +1935,7 @@ export function driver(browser) {
       input: input.kind,
       ok: refusals.length === 0,
       refusals,
-      ...(spec.landing ? { landing: landingSeen } : {}),
+      ...(spec.landing ? { landing: landingSeen, landingAtReady: raw.readyBranch } : {}),
       ...frameAccount,
       // DOM work after the subject was shown, reported apart from readiness: when the
       // preview, and the navigation panels, last changed inside the window; 0 when they

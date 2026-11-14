@@ -43,6 +43,25 @@ export function commitsLandingOf(journeys) {
   return seen.size === 1 ? [...seen][0] : "mixed";
 }
 
+/** Each transition whose recorded `landing` differs across `rows`: "id: a / b". */
+export function landingDrift(rows) {
+  const byId = new Map();
+  for (const r of rows) {
+    for (const t of (r.journeys ?? []).flatMap((j) => j.transitions ?? [])) {
+      if (t.landing === undefined || t.landing === null) {
+        continue;
+      }
+      if (!byId.has(t.id)) {
+        byId.set(t.id, new Set());
+      }
+      byId.get(t.id).add(t.landing);
+    }
+  }
+  return [...byId]
+    .filter(([, seen]) => seen.size > 1)
+    .map(([id, seen]) => `${id}: ${[...seen].join(" / ")}`);
+}
+
 /** A comparison that cannot be made to mean anything; the command exits 2. */
 export class CompareRefusal extends Error {}
 
@@ -441,10 +460,13 @@ export function compareRuns(
   // A switch to Commits that lands on the newest commit shows, fetches, and paints a commit;
   // one that lands on the prompt shows a list. The same transition ids measure different
   // subjects, so they are compared only when asked to, with a note.
+  // Judged per transition as well as per run: two `mixed` runs can still differ in which
+  // switch landed where.
   const landings = [...new Set(all.map((r) => JSON.stringify(r.commits_landing ?? null)))];
-  if (landings.length > 1 && !mixedLanding) {
+  const drift = landingDrift(all);
+  if ((landings.length > 1 || drift.length) && !mixedLanding) {
     refuse(
-      `the Commits landing differs across the runs: ${landings.join(" / ")}; a switch to Commits that lands on the newest commit measures something else than one that lands on the prompt (--allow-mixed-landing compares them anyway, with a note)`,
+      `the Commits landing differs across the runs: ${landings.join(" / ")}${drift.length ? `; per transition, ${drift.slice(0, 6).join("; ")}` : ""}; a switch to Commits that lands on the newest commit measures something else than one that lands on the prompt (--allow-mixed-landing compares them anyway, with a note)`,
     );
   }
 
@@ -452,9 +474,9 @@ export function compareRuns(
   const notes = [
     `every run served corpus ${corpus.corpus.commit.slice(0, 8)} (trunk ${String(corpus.corpus.trunk).slice(0, 8)}, server git log head ${String(corpus.facts?.git_log_head).slice(0, 8)}, ${corpus.server?.indexed_files} indexed files)`,
   ];
-  if (landings.length > 1) {
+  if (landings.length > 1 || drift.length) {
     notes.push(
-      `MIXED COMMITS LANDINGS, compared with --allow-mixed-landing: the runs saw ${landings.join(" / ")}, so every switch to Commits measures a different subject on each side`,
+      `MIXED COMMITS LANDINGS, compared with --allow-mixed-landing: the runs saw ${landings.join(" / ")}${drift.length ? `, and per transition ${drift.join("; ")}` : ""}, so those switches to Commits measure a different subject on each side`,
     );
   } else if (landings[0] !== "null") {
     const where = {
@@ -845,11 +867,17 @@ export function summarize(rows, { condition = null, allowMixed = false } = {}) {
   const out = [];
   for (const c of [...conditions.values()].filter((x) => !condition || x.label === condition)) {
     const builds = [...new Set(c.valid.map((r) => r.build.version))];
+    const landed = [...new Set(c.valid.map((r) => r.commits_landing ?? null))].filter(
+      (x) => x !== null,
+    );
     out.push(`### Condition \`${c.label}\``, "");
     out.push(
-      `${c.valid.length} valid run(s), ${c.refused.length} refused; build ${builds.join(", ") || "n/a"}; load average (1 min) ${loadRange(c.valid)} at run start and end.`,
+      `${c.valid.length} valid run(s), ${c.refused.length} refused; build ${builds.join(", ") || "n/a"}; load average (1 min) ${loadRange(c.valid)} at run start and end${landed.length ? `; switches to Commits landed ${landed.join(" / ")}` : ""}.`,
       "",
     );
+    for (const d of landingDrift(c.valid)) {
+      out.push(`- landing drift in \`${d.split(": ")[0]}\`: ${d.split(": ").slice(1).join(": ")}`);
+    }
     for (const r of c.refused) {
       out.push(
         `- refused run ${r.run} (${r.series}): ${r.refusals
@@ -921,6 +949,7 @@ export function keepTransition(t) {
     ok: t.ok,
     refusals: scrubRefusals(t.refusals),
     landing: t.landing,
+    landingAtReady: t.landingAtReady,
     readyMs: t.readyMs,
     paintedReadyMs: t.paintedReadyMs,
     nextFrameMs: t.nextFrameMs,

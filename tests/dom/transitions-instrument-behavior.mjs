@@ -23,7 +23,16 @@ const {
   requestClass,
   routeFamily,
 } = recorder;
-const { CompareRefusal, chanceApart, commitsLandingOf, compareRuns, sampleRow, scrubText } = stats;
+const {
+  CompareRefusal,
+  chanceApart,
+  commitsLandingOf,
+  compareRuns,
+  landingDrift,
+  sampleRow,
+  scrubText,
+  summarize,
+} = stats;
 
 let checks = 0;
 const check = (name, fn) => {
@@ -1028,6 +1037,46 @@ check("samples keep each Commits landing", () => {
   assert.equal(s.commits_landing, "newest");
   assert.equal(s.journeys[0].transitions[1].landing, "newest");
   assert.equal(commitsLandingOf(s.journeys), "newest");
+});
+// Review A of #417: two `mixed` runs can still differ in which switch landed where.
+check("runs whose switches to Commits landed differently are refused per transition", () => {
+  const mixedA = (r) => {
+    r.commits_landing = "mixed";
+    r.journeys = landed("empty", "newest");
+  };
+  const mixedB = (r) => {
+    r.commits_landing = "mixed";
+    r.journeys = landed("newest", "empty");
+  };
+  assert.deepEqual(landingDrift(series(mixedA, mixedB)), [
+    "main.to_commits.0: empty / newest",
+    "main.to_commits.1: newest / empty",
+  ]);
+  refuses(
+    () => cmp(series(mixedA, mixedB)),
+    /per transition, main\.to_commits\.0: empty \/ newest/,
+  );
+  const allowed = cmp(series(mixedA, mixedB), { mixedLanding: true });
+  assert.ok(
+    allowed.notes.some((n) => /per transition main\.to_commits\.0/.test(n)),
+    allowed.notes,
+  );
+  assert.deepEqual(landingDrift(series(mixedA, mixedA)), []);
+});
+check("summarize names each condition's Commits landing and any drift", () => {
+  const rows = series(
+    (r, k) => {
+      r.commits_landing = "newest";
+      r.journeys = landed(k === 1 ? "empty" : "newest");
+    },
+    (r) => {
+      r.commits_landing = "newest";
+      r.journeys = landed("newest");
+    },
+  );
+  const text = summarize(rows).join("\n");
+  assert.match(text, /switches to Commits landed newest\./);
+  assert.match(text, /landing drift in `main\.to_commits\.0`: empty \/ newest/);
 });
 check("chance separation", () => {
   assert.equal(chanceApart(3, 3), 0.1);

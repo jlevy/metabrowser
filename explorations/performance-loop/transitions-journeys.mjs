@@ -302,6 +302,10 @@ function context(d, base, journey, rows, options) {
     const load1 = options.loadavg ? options.loadavg() : null;
     const row = await d.measure({ journey, ...spec });
     row.load1 = load1;
+    const landed = spec.subjectByLanding?.[row.landing];
+    if (landed) {
+      row.subject = landed;
+    }
     rows.push(row);
     if (options.log) {
       options.log(row);
@@ -553,6 +557,12 @@ async function views(ctx) {
 // git log (`facts.git_log_head`), the first commit of the first page the panel selects.
 // Without it, only the prompt is accepted. A subject that is itself the newest commit
 // reads `newest` under either build.
+//
+// The landing that made a switch ready must be the one it converged on: a build that
+// paints the prompt and then the newest commit would otherwise be timed at the prompt
+// (review A of #417). The ready predicate keeps the branch that first held on the
+// recorder (`readyBranch`, cleared when a transition is armed), and `converged` refuses
+// a switch whose settled landing is another.
 const commitsList = listReady("git", ".git-graph-row", ":scope > .preview-empty");
 const commitsListConverged = listConverged(
   "git",
@@ -560,29 +570,51 @@ const commitsListConverged = listConverged(
   ":scope > .preview-empty",
   ".git-commit-view",
 );
+// The prompt on an address that names no commit. The newest landing's own failure, "Could
+// not load this commit.", is a `.preview-empty` on `/commit/<newest>`, and is not it.
+const emptyLanding = `() => !location.pathname.startsWith("/commit/") && (${commitsList})()`;
 // The list is shown and the newest commit is shown beside it, on its own address, as a
 // commit a click opened would be.
 const newestLanding = (newest) =>
-  newest
-    ? `() => (${listShown("git", ".git-graph-row")})() && (${commitReady(newest)})()`
-    : "() => false";
-const commitsLanding = (newest) => `() => (${commitsList})() || (${newestLanding(newest)})()`;
-const commitsLandingConverged = (newest) => `() => {
-  if ((${commitsList})()) { return (${commitsListConverged})(); }
-  if (${newest ? `(${newestLanding(newest)})()` : "false"}) { return (${newest ? commitConverged(newest) : '() => ""'})(); }
-  return "neither the Commits prompt nor the newest commit is shown";
+  `() => (${listShown("git", ".git-graph-row")})() && (${commitReady(newest)})()`;
+// Ready on the first branch, [name, ready, converged], to hold; the branch is kept.
+const eitherReady = (branches) => `() => {
+  const R = window.__tr;
+  ${branches.map(([name, ready]) => `if ((${ready})()) { if (R && R.readyBranch == null) { R.readyBranch = ${J(name)}; } return true; }`).join("\n  ")}
+  return false;
 }`;
+const eitherConverged = (branches, neither) => `() => {
+  const at = window.__tr ? window.__tr.readyBranch : null;
+  ${branches.map(([name, ready, converged]) => `if ((${ready})()) { const moved = at && at !== ${J(name)} ? "ready on " + at + ", converged on " + ${J(name)} : ""; return [moved, (${converged})()].filter(Boolean).join("; "); }`).join("\n  ")}
+  return ${J(neither)};
+}`;
+const listBranches = (newest) => [
+  ["empty", emptyLanding, commitsListConverged],
+  ...(newest ? [["newest", newestLanding(newest), commitConverged(newest)]] : []),
+];
+const commitsLanding = (newest) => eitherReady(listBranches(newest));
+const commitsLandingConverged = (newest) =>
+  eitherConverged(
+    listBranches(newest),
+    "neither the Commits prompt nor the newest commit is shown",
+  );
 // A switch back to Commits after a commit was read: that commit, or the newest.
-const commitSubjectLanding = (rev, newest) =>
-  `() => (${commitReady(rev)})() || (${newestLanding(newest)})()`;
-const commitSubjectLandingConverged = (rev, newest) => `() => {
-  if ((${commitReady(rev)})()) { return (${commitConverged(rev)})(); }
-  if (${newest ? `(${newestLanding(newest)})()` : "false"}) { return (${newest ? commitConverged(newest) : '() => ""'})(); }
-  return "neither the commit read before nor the newest commit is shown";
-}`;
+const subjectBranches = (rev, newest) => [
+  ["restored", commitReady(rev), commitConverged(rev)],
+  ...(newest ? [["newest", newestLanding(newest), commitConverged(newest)]] : []),
+];
+const commitSubjectLanding = (rev, newest) => eitherReady(subjectBranches(rev, newest));
+const commitSubjectLandingConverged = (rev, newest) =>
+  eitherConverged(
+    subjectBranches(rev, newest),
+    "neither the commit read before nor the newest commit is shown",
+  );
 const landingKind = (newest, restored = null) => `() => {
   const pane = document.getElementById("preview-pane");
-  if (pane && pane.querySelector(":scope > .preview-empty")) { return "empty"; }
+  const prompt = pane && pane.querySelector(":scope > .preview-empty");
+  if (prompt) {
+    return location.pathname.startsWith("/commit/") ? "other " + location.pathname + ": " + prompt.textContent.trim().slice(0, 60) : "empty";
+  }
   const v = pane && pane.querySelector(":scope > .git-commit-stage > .git-commit-view");
   const rev = v ? v.dataset.revision : null;
   if (rev && rev === ${J(newest)}) { return "newest"; }
@@ -691,6 +723,8 @@ async function mainTabs(ctx) {
       ready: commitSubjectLanding(rev, newest),
       converged: commitSubjectLandingConverged(rev, newest),
       landing: landingKind(newest, rev),
+      // The subject a row names is the commit it landed on.
+      subjectByLanding: newest ? { newest } : null,
       subjectRequest: [...commitRequest(rev), ...newestRequests(newest)],
       settleMs: 800,
       timeoutMs: 30000,

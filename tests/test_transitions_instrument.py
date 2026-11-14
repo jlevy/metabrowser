@@ -34,7 +34,7 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 47 checks passed\n"
+    assert result.stdout == "transitions instrument: 49 checks passed\n"
 
 
 @pytest.mark.parametrize(
@@ -44,7 +44,7 @@ def test_transition_instrument_logic() -> None:
         ("frames2", 3),
         ("content", 10),
         ("network", 2),
-        ("landing", 6),
+        ("landing", 11),
     ],
 )
 def test_transition_recorder_in_chrome(group: str, count: int) -> None:

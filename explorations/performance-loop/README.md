@@ -742,7 +742,10 @@ Before it, a switch showed the tab’s prompt (“Select a commit to preview”)
 visit, and the last commit read after that.
 Since revision 5 a switch to Commits is ready on either landing:
 
-- `empty`: the list and the prompt, which converge with no commit mounted;
+- `empty`: the list and the prompt, on an address that names no commit, which converge
+  with no commit mounted.
+  A prompt on a `/commit/` address is the newest landing’s own failure (“Could not load
+  this commit.”) and is neither landing;
 - `newest`: the list and the newest commit, shown as `commitReady` requires, which
   converge with that commit’s row the one selected;
 - `restored`: a switch back to Commits after a commit was read (`main_subject.*`), shown
@@ -750,18 +753,43 @@ Since revision 5 a switch to Commits is ready on either landing:
 
 The newest commit is named by identity, the head of the server’s git log
 (`facts.git_log_head`), the first commit of the history the panel selects from; another
-commit satisfies neither landing.
+commit satisfies neither landing, and an empty or failed history, which shows no rows,
+is never ready. The landing that made a switch ready must be the one it settles on: the
+ready predicate keeps the branch that held first (`landingAtReady`), and a switch that
+was ready on one landing and converged on another is refused (`converged`: “ready on
+empty, converged on newest”), so a build that paints the prompt, or the commit read
+before, ahead of the newest commit is not timed at the first paint.
 Each such transition records the landing it saw (`landing`), and each run records which
 landing its build has (`commits_landing`): `newest` when every switch landed on the
 newest commit, `empty` when every one landed as before `19a36c5b`, `mixed` otherwise,
 and null when no switch to Commits was measured.
-Under the newest landing, `main.*_to_commits.*` and `commits.first_show` measure a
-switch until the newest commit’s detail is ready, its comparison and detail requests
-counted as the subject’s, and `main_subject.*_to_commits` measure that landing instead
-of the commit read before.
-`compare` refuses runs whose `commits_landing` differs, since the same transition then
-measures a different subject on each side; `--allow-mixed-landing` compares them anyway
-and notes it.
+
+Under the newest landing these transitions measure something else than they did before
+`19a36c5b`:
+
+- `main.files_to_commits.first` and `commits.first_show` time a switch until the newest
+  commit’s detail is ready, its comparison and detail requests counted as the subject’s,
+  and they now pay the diff kind’s assets and the first commit view’s mount.
+  On the standing corpus the newest commit is a merge whose first-parent diff is 32
+  files;
+- `main.files_to_commits.again`, `main.pulls_to_commits`, and both
+  `main_subject.*_to_commits` are revisits of the newest commit, its detail already
+  held; a `main_subject` row then names the newest commit as its `subject`, not the
+  commit read before;
+- `main.commits_to_files.*` and `main.commits_to_pulls` start from a mounted commit diff
+  instead of the prompt, so their teardown differs and `blankFramesOriginPrompt` no
+  longer applies, and `main_subject.commits_to_*` start from the newest commit’s diff
+  instead of the commit read before;
+- `commits.cold.1` starts from the newest commit’s view rather than the prompt, and is
+  no longer the profile’s first commit view.
+  `commits.cold.2` and `.3`, the revisits, and `commits.hover_click` already started
+  from a selected commit and are unchanged.
+
+`compare` refuses runs whose `commits_landing` differs, or in which any one transition
+landed differently, since the same transition then measures a different subject on each
+side; `--allow-mixed-landing` compares them anyway and notes which transitions differ.
+`summarize` names each condition’s landing and any transition whose landing drifted
+between its runs.
 
 **How a frame is read.** Every frame is read once, after its own style and layout and
 before it paints: the recorder’s `requestAnimationFrame` callback creates a
@@ -862,7 +890,8 @@ start for a landing).
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
   presentation time for the first `pointerdown`, `click`, and `keydown`), the
   application’s `…ToReady` spans, the DOM node count, the one-minute load average when
-  the transition started, and on a switch to Commits the landing it saw (`landing`).
+  the transition started, and on a switch to Commits the landing it saw (`landing`) and
+  the one it was ready on (`landingAtReady`).
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when any of these fails anywhere in its passes:
