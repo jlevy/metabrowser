@@ -279,3 +279,57 @@ Operational stops. They exclude no pair and change no rule.
 - After a stop, whether the round is judged as it stands or resumed is the coordinator's
   decision, made and reported before any judgment. A resumed series needs a further
   amendment.
+
+AMENDMENT 2 (written 2026-11-14T12:14:00Z, before any exp-079 measurement). It amends the
+registration and amendment 1, which together have sha256
+aac08aff6a70cfc4201ec802554aed77bc4df416d50566dc695bdb4b512bc72a (commit 7f643849). Everything
+there stands except as stated here.
+
+Corpus
+- The coordinator removed refs/remotes/origin/HEAD from $CORPUS at 2026-11-14T12:10:14Z, with
+  `git symbolic-ref --delete`. Its reflog's one entry was the 09:09:50Z fetch. No
+  configuration was set.
+- Read at 2026-11-14T12:11:21Z through $HARNESS's corpusProvenance: 7a02fed4, clean, trunk
+  083e78e4, refs digest 387f68dc4e8eb8e0. That is the state every row of the committed
+  transition samples of exp-058 through exp-085 and of exp-087 records.
+- The first pair must start on 387f68dc4e8eb8e0, so the driver runs with
+  CORPUS_REFS=387f68dc4e8eb8e0. Amendment 1's per-pair check is otherwise unchanged: every
+  later pair starts only on what the first pair started on, or the series stops and is
+  reported.
+- Amendment 1's last two points under Corpus no longer hold: neither build now shows an
+  origin/HEAD ref, and this round measures the corpus state those rounds measured. Rows of
+  different scenario revisions are still never pooled (Builds, above).
+
+Where H89's and H90's code lives
+- GitHub shows #389 and #430 as merged only because their heads became reachable from main.
+- H89's code is at 14150b84, #389's head; #372 reverted it before merging.
+- H90's code is at 6b876c54, #430's head; bd971661 reverted it before #368 merged.
+- Neither is on main at c74d0ef3, and neither is judged here.
+
+Records and registry
+- The registration's "report.md is not touched" is replaced. Following the runbook, the pull
+  request runs `run.py report` after the record is written, and commits the regenerated
+  report.md.
+- The pull request updates the hypothesis registry's status column to match the records, as
+  part of the final performance update. It changes no decision a record made.
+
+Not measured here
+- WebKit. The WKWebView probe needs a visible window and an unlocked screen with the user
+  present, so it cannot run unattended in a paced series. WebKit is recorded as a follow-up
+  and judges nothing here. This is the round's answer to line 255 of
+  plan-2026-11-11-ui-apparent-performance.md ("counts requests in WKWebView once the probe
+  ... is committed").
+- H88 (b), as registered and as amendment 1 states.
+
+Amendment 1's additions stand: the operational stops; the first pair matching the recorded
+digest, now 387f68dc4e8eb8e0; the power mode as the pair of lowpowermode and power source;
+the unset METABROWSER_* variables; and the candidate's environment made with --all-groups.
+
+Analysis committed before the first pair
+- exp-079-exclude.mjs, the registered load and power exclusion, sha256
+  e9003941e7e90dd09c2030442687f9134e07497260d0f57074df8bda54aa53ab. It runs the committed
+  exp-060-062-load-filter.mjs as it is and applies amendment 1's power mode, with the judged
+  mode taken from the first attempt's reading before its pair. It reads no metric. It
+  gives the same pairs as the driver's stopping count.
+- The driver runs under `caffeinate -i`, so the machine does not sleep while idle during the
+  series. That changes no power reading.
