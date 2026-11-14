@@ -151,11 +151,11 @@ experiment:
   complexity:
     lines_changed: 6066
     new_dependencies: []
-    notes: "The campaign's four product lanes as shipped, each counted under src/ at its merge into main: #370 (H86, H91) 20 files, 1,285 lines added and 218 removed; #369 (H92, H106) 10 files, 1,718 and 291; #372 (H87; H89 reverted) 17 files, 1,083 and 218; #368 (H88; H90 removed) 11 files, 1,137 and 116. Clause 4, the complexity judgment for each accepted hypothesis, is the coordinator's; Facts for the Complexity Judgments, below, gives what it rests on."
+    notes: "The campaign's four product lanes as shipped, each counted under src/ at its merge into main: #370 (H86, H91) 20 files, 1,285 lines added and 218 removed; #369 (H92, H106) 10 files, 1,718 and 291; #372 (H87; H89 reverted) 17 files, 1,083 and 218; #368 (H88; H90 removed) 11 files, 1,137 and 116. Clause 4 for each hypothesis that meets clauses 1 to 3 is in Complexity Judgments, below, resting on Facts for the Complexity Judgments."
   verdict:
     decision: unresolved
     primary_metric: "Per hypothesis, the deciding metrics of the record that accepted it: region movement (H86), revalidated requests per reload (H87), commit revisit requests and painted ready (H88 (a)), no-input shift, file envelopes, and row replacements (H91), duplicate reads and the Changes body shift (H92), and plain-first Conversation transitions (H106)"
-    reason: "Judged mechanically at final main against the campaign control, six judged pairs, none excluded. Clauses 1 to 3 met: H86 (a); H91 (a), (b) and (d); H92 (a) and (c), each with exp-065's account of the first-paint hold. Unresolved: H86 (b), its header guards later on 13 pull request transitions by the first-paint holds, which exp-059 does not account for; H87, 17 unaccounted wrong-way results on landing and files transitions; H88 (a), 12 on its commits and main_subject guard; H106, main_subject.commits_to_pulls painted ready, which exp-080 did not show higher. Rejected: H91 (c), its guard ready_after_last_input_ms 46.2 to 65.0 ms, ranges apart with 3 of 6 pairs beyond 1.3x, which exp-085's rule rejects. Not measured: H88 (b), H92 (b), and WebKit. Not on main: H89 and H90. Clause 4 is the coordinator's."
+    reason: "Judged mechanically at final main against the campaign control, six judged pairs, none excluded. Accepted, clauses 1 to 3 met and the coordinator's complexity judgment worth it: H86 (a); H91 (a), (b) and (d); H92 (a) and (c), each with exp-065's account of the first-paint hold, H92 (c) as the campaign's costliest accepted trade (Changes ready 79 to 102 ms against 43 to 45 ms, for a body shift of 1.49 per run removed). Unresolved: H86 (b), its header guards later on 13 pull request transitions by the first-paint holds, which exp-059 does not account for; H87, 17 unaccounted wrong-way results on landing and files transitions; H88 (a), 12 on its commits and main_subject guard; H106, main_subject.commits_to_pulls painted ready, which exp-080 did not show higher. Rejected: H91 (c), its guard ready_after_last_input_ms 46.2 to 65.0 ms, ranges apart with 3 of 6 pairs beyond 1.3x, which exp-085's rule rejects. Not measured: H88 (b), H92 (b), and WebKit. Not on main: H89 and H90."
     commit: c74d0ef3
 ---
 **Status:** The campaign’s closing round (epic `mb-mpo0`). It compares final main, at
@@ -163,10 +163,13 @@ experiment:
 hypothesis is judged mechanically on the criteria of the record that accepted it.
 Six pairs were judged, none was excluded, and all 12 runs were valid.
 
-Clauses 1 to 3 of the accept rule, judged by [exp-079-analyze.mjs](exp-079-analyze.mjs);
-clause 4, the complexity judgment, is the coordinator’s:
+Clauses 1 to 3 of the accept rule are judged by
+[exp-079-analyze.mjs](exp-079-analyze.mjs).
+Clause 4, the complexity judgment, is the coordinator’s, in **Complexity Judgments**,
+below.
 
-- **Met:** H86 (a); H91 (a), (b) and (d); H92 (a) and (c). H92’s two parts rest on
+- **Accepted at final main:** H86 (a); H91 (a), (b) and (d); H92 (a) and (c). H92’s two
+  parts rest on
   [exp-065](exp-065-one-read-per-click-trees-that-open-once-and-a-held-changes-paint.md)’s
   account of the first-paint hold.
 - **Unresolved:** H86 (b), H87, H88 (a), and H106.
@@ -236,6 +239,12 @@ It changes one verdict: H106, accepted by the first version, is unresolved by th
 as amendment 3 states it.
 No other verdict changes.
 Both versions are in this branch’s history.
+
+**The coordinator’s ruling: the correction stands.** Amendment 3’s text is the
+registration, and the hashed script was its implementation; where they disagree, the
+script is wrong. The correction removes only accounts the text does not allow, so it
+cannot turn a failure into a pass, and it was made in the direction that costs the
+campaign a verdict. The script as hashed is at `655a7bec`, and differs only on H106.
 
 ## Identities, Load, and Power
 
@@ -444,12 +453,11 @@ This round has no evidence that says which change in final main each belongs to.
 
 ## Verdicts
 
-Clause 4, the complexity judgment, is the coordinator’s for each hypothesis that meets
-clauses 1 to 3.
+Clauses 1 to 3 are the analysis’s; clause 4 is the coordinator’s, in **Complexity
+Judgments**, below.
 
-- **H86 (a): clauses 1 to 3 met.** All 23 judged deciding transitions moved shell chrome
-  0 px, ranges apart; `landing.reload`’s shift went 0.0002 to 0. No guard moved the
-  wrong way.
+- **H86 (a): accepted.** All 23 judged deciding transitions moved shell chrome 0 px,
+  ranges apart; `landing.reload`’s shift went 0.0002 to 0. No guard moved the wrong way.
 - **H86 (b): unresolved.** Its deciding metric is met, but its guards have 13
   unaccounted wrong-way results, the pull request page’s first-paint holds.
 - **H87: unresolved.** Its deciding metric (43 to 1), its guard and its declared check
@@ -459,11 +467,10 @@ clauses 1 to 3.
   Its guard has 12 unaccounted wrong-way results, on `main_subject.commits_to_pulls`,
   `main_subject.commits_to_files`, and `commits.cold.1`.
 - **H88 (b): not measured.**
-- **H91 (a), (b), (d): clauses 1 to 3 met.**
+- **H91 (a), (b), (d): accepted.**
 - **H91 (c): rejected** by exp-085’s guard rule.
   Its deciding metric is met.
-- **H92 (a), (c): clauses 1 to 3 met,** each with exp-065’s account of the first-paint
-  hold.
+- **H92 (a), (c): accepted,** each with exp-065’s account of the first-paint hold.
 - **H92 (b): not measured.**
 - **H106: unresolved,** on `main_subject.commits_to_pulls`’s painted ready.
 
@@ -474,23 +481,33 @@ against the campaign control in this round.
 
 | Hypothesis | Its record | Final main against the control (exp-079) | Numbers, control → final main |
 | --- | --- | --- | --- |
-| H86 (a), shell chrome | accepted, [exp-059](exp-059-every-region-box-at-first-paint.md) | clauses 1 to 3 met | region movement 11–37 px → 0 on 23 transitions; reload no-input shift 0.0002 → 0; four Commits-switch transitions not judged |
+| H86 (a), shell chrome | accepted, [exp-059](exp-059-every-region-box-at-first-paint.md) | accepted | region movement 11–37 px → 0 on 23 transitions; reload no-input shift 0.0002 → 0; four Commits-switch transitions not judged |
 | H86 (b), pull request header | accepted, exp-059 | unresolved | header movement 8 px → 0 on eight transitions; painted ready and header time later on 13 pull request transitions (`changes_first` 42.8 → 102.2 ms) |
 | H87, immutable stamped assets | accepted, [exp-083](exp-083-immutable-stamped-assets-without-h89.md) and [exp-087](exp-087-frame-quantization-confirms-h87.md) | unresolved | revalidated requests per reload 43 → 1; reload painted ready 166.5 → 106.7 ms; 17 unaccounted wrong-way results on `landing.*` and `files.*` |
 | H88 (a), comparison cache | accepted, [exp-086](exp-086-comparison-cache-route-memo-and-markdown-render-cache-confirmation.md) | unresolved | revisit data requests 1 → 0; revisit painted ready 122.5 → 30.4 and 164.4 → 31.1 ms; 12 unaccounted guard results |
 | H88 (b), route memo | accepted, exp-086 | not measured | decided on the server half, `git-route-pairs.mjs`, which this series does not run |
 | H89, parallel shell tools and KPress loading | rejected, [exp-062](exp-062-parallel-shell-tools-and-kpress-loading.md) | not on main | #372 reverted it; its code is at `14150b84` |
 | H90, render cache and kept Worker | unresolved, exp-086 (after [exp-063](exp-063-markdown-render-cache-and-kept-worker.md) and [exp-082](exp-082-markdown-render-cache-and-kept-worker-confirmation.md)) | not on main | #368 took it out (`bd971661`); its code is at `6b876c54` |
-| H91 (a), fonts | accepted, [exp-064](exp-064-four-movements-nobody-asked-for.md) | clauses 1 to 3 met | first-document no-input shift 0.0033 → 0 |
-| H91 (b), deep landing | accepted, exp-064 | clauses 1 to 3 met | deep-landing no-input shift 0.057 → 0 |
+| H91 (a), fonts | accepted, [exp-064](exp-064-four-movements-nobody-asked-for.md) | accepted | first-document no-input shift 0.0033 → 0 |
+| H91 (b), deep landing | accepted, exp-064 | accepted | deep-landing no-input shift 0.057 → 0 |
 | H91 (c), held key | accepted, [exp-085](exp-085-held-key-guard-confirmed.md) | rejected, by exp-085’s guard rule | file envelopes per skim 6 → 2; ready after the last input 46.2 → 65.0 ms, ranges apart, 3 of 6 pairs beyond |
-| H91 (d), palette order | accepted, exp-064 | clauses 1 to 3 met | row replacements 11 → 0 |
-| H92 (a), one read per click | accepted, [exp-065](exp-065-one-read-per-click-trees-that-open-once-and-a-held-changes-paint.md) | clauses 1 to 3 met, with exp-065’s account | duplicate reads per run 8 → 0 |
+| H91 (d), palette order | accepted, exp-064 | accepted | row replacements 11 → 0 |
+| H92 (a), one read per click | accepted, [exp-065](exp-065-one-read-per-click-trees-that-open-once-and-a-held-changes-paint.md) | accepted, with exp-065’s account | duplicate reads per run 8 → 0 |
 | H92 (b), trees that open once | accepted, exp-065 | not measured | decided on the pilot tree probe; the scenario’s warm server cannot produce a late file list |
-| H92 (c), a held Changes paint | accepted, exp-065 | clauses 1 to 3 met, with exp-065’s account | Changes body shift after ready per run 1.4889 → 0; Changes painted ready 42.5–45.1 → 79.2–102.2 ms |
+| H92 (c), a held Changes paint | accepted, exp-065 | accepted, with exp-065’s account | Changes body shift after ready per run 1.4889 → 0; Changes painted ready 42.5–45.1 → 79.2–102.2 ms |
 | H106, the Conversation final at first paint | accepted, [exp-080](exp-080-pull-request-conversation-final-at-first-paint.md) | unresolved | plain-first Conversation transitions per run 6 → 1; `main_subject.commits_to_pulls` painted ready 79.4 → 112.1 ms |
 
 WebKit is not measured; it is a follow-up.
+
+**What final main costs.** No judged transition moves at final main, and the commit
+revisits and the reload are ready in 0.19x to 0.67x of the control’s time.
+Pull request pages pay for that stillness, by the first-paint holds of H92 (c) and H106
+(**The Campaign Summary**, below):
+
+- Changes is ready at 79 to 102 ms, against 43 to 45 ms.
+- A pull request click is ready at 44 to 112 ms, against 28 to 62 ms.
+
+The held-key skim’s last row is ready 19 ms later, which rejects H91 (c).
 
 ## Facts for the Complexity Judgments
 
@@ -533,6 +550,41 @@ For each hypothesis that meets clauses 1 to 3. The diff sizes are product code u
     is 42.5 to 45.1 ms.
   - **Failure modes (exp-065):** a Changes paint waits out of sight up to 200 ms; if the
     page goes before the selection’s read answers, the read is aborted with it.
+
+## Complexity Judgments
+
+Clause 4, the coordinator’s, for each hypothesis that meets clauses 1 to 3, on the facts
+above. Each is worth its complexity, so each is accepted at final main.
+
+- **H86 (a): worth it.** Its mechanism is reserved boxes: slots, stable gutters, and a
+  tab the server draws.
+  They cost nothing at run time, and no guard moved on any of its 23 transitions.
+  Its one wait, the Overview’s hold of the previous folder, is bounded at 100 ms.
+  Its failure modes are cosmetic: a row cut short with its text in a tooltip, and a
+  toolbar that scrolls.
+- **H91 (a): worth it.** A wait of at most 100 ms, for faces the page loads anyway,
+  removes the first document’s reflow, and cold Markdown’s painted ready did not move.
+- **H91 (b): worth it.** A bounded server inline (300 rows, 8 levels) removes the deep
+  landing’s shift, and its painted ready did not move.
+  A landing beyond the bounds keeps the control’s movement, no worse than before.
+- **H91 (d): worth it.** A fixed group order removes all 11 row replacements, at no
+  measured cost.
+- **H92 (a): worth it.** It removes work: the page takes the read the selection already
+  made, and duplicate reads went 8 to 0. The guard cells that rose are the first-paint
+  hold’s, which (a) does not add.
+- **H92 (c): worth it, and the campaign’s costliest accepted trade.**
+  - The hold removes a body shift of 1.49 per run: content that moved under the reader
+    after it painted. The control’s 43 ms is the time to a view that then rearranged
+    itself.
+  - It costs 34 to 59 ms on every Changes paint.
+    Final main is ready at 79 to 102 ms, inside the 78 to 110 ms exp-065 recorded when
+    it accepted the hold, so the cost has not grown.
+  - The owner asked that nothing on the pull request page move, and the hold is how
+    final main meets that.
+  - It leaves Changes at about 100 ms, the edge of a switch that feels instant.
+    The way to keep the stillness and win back the time is a hold with nothing to wait
+    for: the first screen’s diffs prepared before the click.
+    No registered hypothesis covers that yet.
 
 ## The Campaign Summary
 
