@@ -262,8 +262,11 @@
         }
       }
     };
-    if (typeof requestIdleCallback === "function") {
-      requestIdleCallback(run, { timeout: 2000 });
+    // Idle work goes through the SDK's one helper, which waits for the first view to
+    // settle and input to pause where the engine has no idle callback (WebKit).
+    const whenIdle = window.metabrowser?.whenIdle;
+    if (typeof whenIdle === "function") {
+      whenIdle(run, { timeout: 2000 });
     } else {
       setTimeout(run, 1000);
     }

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from starlette.datastructures import Headers
@@ -30,10 +31,15 @@ from metabrowser.http_caching import (
     BUILD_TAG,
     _newest_source_change,
     build_scoped_etag,
+    editable_install,
     etag_headers,
     matches_if_none_match,
+    stamped_asset_cache_control,
     store_tag,
 )
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "metabrowser"
 THIS_MODULE = SRC / "http_caching.py"
@@ -222,3 +228,39 @@ def test_a_validator_identifies_the_response_not_just_the_file() -> None:
     assert first != second
     # Same window, same tag — the caching still works.
     assert first == build_scoped_etag(f"{file_identity}-0-65536")
+
+
+class _ConditionalRequest:
+    def __init__(self, **headers: str) -> None:
+        self.headers = Headers(
+            raw=[
+                (name.replace("_", "-").encode(), value.encode()) for name, value in headers.items()
+            ]
+        )
+
+
+def _conditional(**headers: str) -> Request:
+    return cast("Request", _ConditionalRequest(**headers))
+
+
+def test_if_none_match_is_a_list_compared_weakly() -> None:
+    """RFC 9110 section 13.1.2: `*`, or any tag of a list, compared weakly."""
+    tag = build_scoped_etag("file")
+    assert matches_if_none_match(_conditional(if_none_match=tag), tag)
+    assert matches_if_none_match(_conditional(if_none_match=f'"a", {tag}, "b"'), tag)
+    assert matches_if_none_match(_conditional(if_none_match=f"W/{tag}"), tag)
+    assert matches_if_none_match(_conditional(if_none_match="*"), tag)
+    assert not matches_if_none_match(_conditional(if_none_match="*"), tag, wildcard=False)
+    assert not matches_if_none_match(_conditional(if_none_match='"a", "b"'), tag)
+    # A malformed list matches nothing: the client gets the body, the safe direction.
+    assert not matches_if_none_match(_conditional(if_none_match=f"junk {tag}"), tag)
+    assert not matches_if_none_match(_conditional(), tag)
+
+
+def test_only_a_current_stamp_earns_immutable() -> None:
+    assert stamped_asset_cache_control(current=True) == "public, max-age=31536000, immutable"
+    assert stamped_asset_cache_control(current=False) == "no-cache"
+
+
+def test_an_absent_distribution_is_not_editable() -> None:
+    assert editable_install("metabrowser-no-such-distribution") is False

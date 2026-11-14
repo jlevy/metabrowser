@@ -84,6 +84,7 @@ async function run() {
         {
           perf,
           ensureAsset: async () => {},
+          whenIdle: require("./sdk-idle-fixture.js").whenIdle,
           ensureKindAssets: async () => {},
           getRegisteredView: () => ({
             render: async (container) => {

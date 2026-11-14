@@ -517,8 +517,11 @@ def test_the_routes_gzip_test_is_the_middlewares(tmp_path: Path) -> None:
 
     assert sidekick.middleware_sends_gzip("gzip;q=0")
     assert not sidekick.middleware_sends_gzip("identity")
+    # The application's is Starlette's, timed (metabrowser.server_timing), which keeps
+    # Starlette's choice of when to compress.
     assert any(
-        isinstance(m.cls, type) and m.cls is GZipMiddleware for m in server.app.user_middleware
+        isinstance(m.cls, type) and issubclass(m.cls, GZipMiddleware)
+        for m in server.app.user_middleware
     )
     store, base, target = _store(tmp_path)
     two = (("left", base), ("right", target), ("base_policy", "merge_base"))
