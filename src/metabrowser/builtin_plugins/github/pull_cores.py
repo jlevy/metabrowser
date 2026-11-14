@@ -236,7 +236,11 @@ def _eligible(window: CoreWindow) -> tuple[CatalogState | None, dict[int, Catalo
 def cached_batch(
     pulls_set: ServedPulls, ask: CoreRequest
 ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-    """Classify an exact catalog batch using local files only, before provider admission."""
+    """Classify an exact catalog batch using local files only, before provider admission.
+
+    Each core is checked against the catalog snapshot read here, so the catalog is opened
+    once per batch rather than once per core.
+    """
 
     catalog, members = catalog_members(pulls_set.home, pulls_set.slug, ask.state, ask.numbers)
     if (
@@ -252,7 +256,16 @@ def cached_batch(
     for number in ask.numbers:
         if not _record_path_missing(pulls_set.home, pulls_set.slug, number):
             skipped.append(number)
-        elif read_cached_core(pulls_set.home, pulls_set.slug, number, fresh_only=True) is not None:
+        elif (
+            read_cached_core(
+                pulls_set.home,
+                pulls_set.slug,
+                number,
+                fresh_only=True,
+                snapshot=(catalog, members),
+            )
+            is not None
+        ):
             ready.append(number)
     return tuple(ready), tuple(skipped)
 

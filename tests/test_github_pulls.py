@@ -4609,6 +4609,59 @@ def test_core_ready_receipt_rechecks_complete_cache_coverage(
     assert checks == 2 and calls == [(8,)]
 
 
+def test_core_ready_receipt_opens_the_catalog_the_same_number_of_times_for_any_batch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once for the checkpoint and once per coverage check, never once per core.
+
+    Every catalog open verifies the catalog and its three journal files as private files.
+    When each core reopened the catalog to check itself, a receipt for eight cached cores
+    opened it 19 times, and a busy server spent seconds on it in thread switches.
+    """
+    from metabrowser.builtin_plugins.github import pull_catalog
+    from metabrowser.builtin_plugins.github.pull_catalog import catalog_members
+    from metabrowser.builtin_plugins.github.pull_core_cache import write_cached_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import generated_item, seed_catalog
+
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    items = [generated_item(number) for number in range(11, 19)]
+    catalog = seed_catalog(ListedRepository(home, slug, "octo", "demo"), items, reader=READER)
+    numbers = [item["number"] for item in items]
+    _, members = catalog_members(home, slug, "all", tuple(numbers))
+    cores = {
+        item["number"]: pulls._graph_pull(  # pyright: ignore[reportPrivateUsage]
+            graph_core_data(item)["repository"]["pull"], item["number"]
+        )
+        for item in items
+    }
+    written = write_cached_cores(home, slug, catalog, members, cores, FETCHED_AT)
+    assert sorted(written) == numbers
+    database = pull_catalog._database  # pyright: ignore[reportPrivateUsage]
+    opened = 0
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        nonlocal opened
+        opened += 1
+        return database(*args, **kwargs)
+
+    monkeypatch.setattr(pull_catalog, "_database", counted)
+    receipts: dict[int, tuple[Any, int]] = {}
+    for size in (1, 8):
+        opened = 0
+        owner = {"id": f"batch-{size}", "generation": catalog.generation("all")}
+        ask = {"state": "all", "window": owner, "numbers": numbers[:size]}
+        receipts[size] = (client.post(_PREPARE_CORES, json=ask).json(), opened)
+    assert receipts == {
+        size: (
+            {"preparation": "ready", "ready_numbers": numbers[:size], "skipped_numbers": []},
+            3,
+        )
+        for size in (1, 8)
+    }
+
+
 def test_core_transient_capacity_does_not_claim_unattempted_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

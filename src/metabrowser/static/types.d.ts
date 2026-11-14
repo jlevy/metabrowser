@@ -1279,6 +1279,7 @@ type MetabrowserSdk = {
     opts: MetabrowserRollupOptions,
     onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
   ): MetabrowserRollupWatch;
+  onInventoryChange(listener: (paths: ReadonlyArray<string> | null) => void): () => void;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
     viewId?: string,

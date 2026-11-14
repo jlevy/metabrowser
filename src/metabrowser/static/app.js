@@ -3533,6 +3533,20 @@ function announceScanCompletion() {
   );
 }
 
+// A reconnect whose snapshot equals the last one skips parsing and repainting it, so
+// no file-store notice goes out. It still cannot prove deep files unchanged (see the
+// fs.snapshot listener): a file deeper than the stream watches may have changed while it
+// was down. Announce it as a changed snapshot is announced, with null paths -- "anything
+// may have changed" -- so SDK consumers such as the Markdown plugin's held images
+// (onInventoryChange) and rollup watches treat it as the reconnect it is.
+function announceUnchangedSnapshot() {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: "snapshot", paths: null },
+    }),
+  );
+}
+
 async function refreshTreeIfPendingTallies() {
   if (indexProgressCompletionRefreshInFlight || _rootTreeRequestsInFlight > 0) {
     return;
@@ -7723,6 +7737,7 @@ function _createInventoryEventSource() {
           fileNeedsRevalidate.add(path);
         }
         retryFailedExpandedSubtrees(true);
+        announceUnchangedSnapshot();
       }
       _scheduleRecentRecompute();
       // Every depth-limited sentinel establishes a transport boundary. The
