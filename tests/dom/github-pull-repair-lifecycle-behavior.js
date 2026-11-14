@@ -63,6 +63,7 @@ async function story({ delaySecondMount = false } = {}) {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({
         render: async (host, context) => {

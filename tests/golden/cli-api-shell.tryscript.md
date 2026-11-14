@@ -920,7 +920,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8aeaaafb77d8ec54",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -932,7 +932,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -944,7 +944,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "49d55a2dbac06488",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -956,7 +956,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "3899b614d6672436",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -968,7 +968,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "86c6396bc77060cd",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -980,7 +980,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "4271064a37f3ffc0",
         "output_path": "fonts/pt-serif-latin-400-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-400-normal.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/pt-serif-latin-400-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -992,7 +992,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "bf23a7a4eebedbb8",
         "output_path": "fonts/pt-serif-latin-700-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-700-normal.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/pt-serif-latin-700-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1004,7 +1004,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "cb373bde18855c82",
         "output_path": "fonts/pt-serif-latin-400-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-400-italic.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/pt-serif-latin-400-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1016,7 +1016,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "3cb3cfab3c562cbb",
         "output_path": "fonts/pt-serif-latin-700-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/pt-serif-latin-700-italic.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/pt-serif-latin-700-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1028,7 +1028,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "7a19a7027e125257",
         "output_path": "fonts/source-sans-3-latin-wght-normal.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/source-sans-3-latin-wght-normal.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/source-sans-3-latin-wght-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1040,7 +1040,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "9a15dafc2c2b2414",
         "output_path": "fonts/source-sans-3-latin-wght-italic.woff2",
-        "public_url": "/kpress-static/v0.3.5/fonts/source-sans-3-latin-wght-italic.woff2",
+        "public_url": "/kpress-static/@df6620998653ccad/v0.3.5/fonts/source-sans-3-latin-wght-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       }
