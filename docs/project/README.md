@@ -44,6 +44,9 @@ links to the document that covers each in depth.
 
 ## Active Feature Plans
 
+- [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md)
+  — the thesis, a README with the app icon, task guides, architecture documents for
+  every layer, a baseline scale benchmark, and checks that keep the set linked
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md) — folder identity
   and window titles, the icon and release pipeline adapted from a sister app, warm
   folder switching, host mode and the agent front door, and the app-managed runtime,
