@@ -28,7 +28,7 @@ experiment:
     runs_per_condition: 6
     interleaved: true
     control: metab 0.12.1.dev165+9903292 (+165 commits, 099032928), the campaign control and the build exp-058 measured, an editable checkout at 09903292, clean at the start and end of every run, a fresh server process per run.
-    candidate: metab 0.12.1.dev991+c74d0ef3 (+991 commits, c74d0ef3d), main at #368's merge, an editable checkout at c74d0ef3, clean at the start and end of every run, a fresh server process per run. It carries every campaign lane (#370, #369, #372, #368) and 46 other merges since 09903292.
+    candidate: metab 0.12.1.dev991+c74d0ef3 (+991 commits, c74d0ef3d), main at #368's merge, an editable checkout at c74d0ef3, clean at the start and end of every run, a fresh server process per run. It carries every campaign lane (#370, #369, #372, #368) and 52 other merges since 09903292, among them the instrument changes.
     record: exp-079-transition-samples.jsonl, exp-079-power.jsonl, exp-079-power-samples.log, exp-079-derived-samples.jsonl, exp-079-skim-evidence.jsonl, exp-079-analysis.json, exp-079-exclude.mjs, exp-079-derive.mjs, exp-079-analyze.mjs
     protocol:
       path: exp-079-protocol.txt
@@ -155,7 +155,7 @@ experiment:
   verdict:
     decision: unresolved
     primary_metric: "Per hypothesis, the deciding metrics of the record that accepted it: region movement (H86), revalidated requests per reload (H87), commit revisit requests and painted ready (H88 (a)), no-input shift, file envelopes, and row replacements (H91), duplicate reads and the Changes body shift (H92), and plain-first Conversation transitions (H106)"
-    reason: "Judged mechanically at final main against the campaign control, six judged pairs, none excluded. Accepted, clauses 1 to 3 met and the coordinator's complexity judgment worth it: H86 (a); H91 (a), (b) and (d); H92 (a) and (c), each with exp-065's account of the first-paint hold, H92 (c) as the campaign's costliest accepted trade (Changes ready 79 to 102 ms against 43 to 45 ms, for a body shift of 1.49 per run removed). Unresolved: H86 (b), its header guards later on 13 pull request transitions by the first-paint holds, which exp-059 does not account for; H87, 17 unaccounted wrong-way results on landing and files transitions; H88 (a), 12 on its commits and main_subject guard; H106, main_subject.commits_to_pulls painted ready, which exp-080 did not show higher. Rejected: H91 (c), its guard ready_after_last_input_ms 46.2 to 65.0 ms, ranges apart with 3 of 6 pairs beyond 1.3x, which exp-085's rule rejects. Not measured: H88 (b), H92 (b), and WebKit. Not on main: H89 and H90."
+    reason: "Judged mechanically at final main against the campaign control, six judged pairs, none excluded. Accepted, clauses 1 to 3 met and the coordinator's complexity judgment worth it: H86 (a); H91 (a), (b) and (d); H92 (a) and (c), each with exp-065's account of the first-paint hold, H92 (c) as the campaign's costliest accepted trade (Changes ready 79 to 102 ms against 43 to 45 ms, for a body shift of 1.49 per run removed). Unresolved: H86 (b), 13 wrong-way results on its guards over nine pull request transitions, the first-paint holds, which exp-059 does not account for; H87, 17 unaccounted wrong-way results on landing and files transitions; H88 (a), 12 on its commits and main_subject guard; H106, main_subject.commits_to_pulls painted ready, which exp-080 did not show higher; the analysis as amendment 3 hashed it accepts H106, on a broader reading the registration also states, and the coordinator ruled for the narrower one. Rejected: H91 (c), its guard ready_after_last_input_ms 46.2 to 65.0 ms, ranges apart with 3 of 6 pairs beyond 1.3x, which exp-085's rule rejects. Not measured: H88 (b), H92 (b), and WebKit. Not on main: H89 and H90."
     commit: c74d0ef3
 ---
 **Status:** The campaign’s closing round (epic `mb-mpo0`). It compares final main, at
@@ -179,7 +179,7 @@ below.
 - **Not on main:** H89 and H90.
 
 Every result belongs to final main as a whole, which carries the four campaign lanes and
-46 other merges since `09903292`, not to one change alone.
+52 other merges since `09903292`, not to one change alone.
 
 The generated ledger shows exp-079 as `unresolved`, because the schema carries one
 decision per record.
@@ -206,14 +206,20 @@ the registration and three amendments:
   requests; which hypotheses are on main, each checked by its merge and code; the corpus
   and the per-pair refs check; the harness, lock path and power mode; the operational
   stops.
-- **Amendment 2** (12:14:00Z, before any measurement): the corpus back on refs digest
-  `387f68dc4e8eb8e0` after the coordinator removed `refs/remotes/origin/HEAD`; where
-  H89’s and H90’s code lives; `report.md` regenerated and the registry updated by this
-  pull request; WebKit and H88 (b) not measured; the exclusion script
+- **Amendment 2** (committed 12:13:48Z, before any measurement): the corpus back on refs
+  digest `387f68dc4e8eb8e0` after the coordinator removed `refs/remotes/origin/HEAD`;
+  where H89’s and H90’s code lives; `report.md` regenerated and the registry updated by
+  this pull request; WebKit and H88 (b) not measured; the exclusion script
   ([exp-079-exclude.mjs](exp-079-exclude.mjs)) by sha256.
-- **Amendment 3** (12:25:00Z, during the series, before any result was read): the
-  analysis, by sha256, and its rules: what passes, what counts as wrong-way, which
-  accounts are allowed, what each third clause sees, and the verdict labels.
+- **Amendment 3** (written 12:25:00Z, committed 12:33:41Z): the analysis, by sha256, and
+  its rules: what passes, what counts as wrong-way, which accounts are allowed, what
+  each third clause sees, and the verdict labels.
+  It was committed 20 s after the first pair finished (12:33:21Z in
+  [exp-079-power.jsonl](exp-079-power.jsonl)) and before the second began.
+  No analysis had run on an exp-079 result.
+  The operator had seen three log lines of `views.folder.*`, which nothing judges, as
+  the amendment says. That no judged result was read rests on the operator’s statement;
+  the committed files cannot show it.
 
 **The accept rule** is the runbook’s. A deciding count or value passes when its median
 moved the predicted way with ranges apart; a time or frame count, with ranges apart and
@@ -232,19 +238,31 @@ That version carried exp-080’s account to every Conversation transition and co
 That is broader than the rule: in exp-080, `main_subject.commits_to_pulls` painted ready
 went 64.9 to 64.7 ms, not higher.
 
+**The registration is not consistent on this point.** The same amendment also says
+exp-080 accounted for “H106’s description and painted-ready guards”, and defines H106’s
+painted-ready guard as every Conversation transition.
+That sentence backs the broad reading the hashed script took.
+
 The committed version, sha256 `787bc624…`, names each record’s cells one by one, as its
 own tables give them.
-The correction only narrows what is accounted for.
-It changes one verdict: H106, accepted by the first version, is unresolved by the rule
-as amendment 3 states it.
-No other verdict changes.
+The correction only narrows what is accounted for: every cell set it names is a subset
+of the hashed version’s. It changes one verdict: H106, accepted by the hashed version,
+is unresolved here. No other verdict changes; the wording of the accounts on H92’s
+entries also changes.
 Both versions are in this branch’s history.
 
-**The coordinator’s ruling: the correction stands.** Amendment 3’s text is the
-registration, and the hashed script was its implementation; where they disagree, the
-script is wrong. The correction removes only accounts the text does not allow, so it
-cannot turn a failure into a pass, and it was made in the direction that costs the
-campaign a verdict. The script as hashed is at `655a7bec`, and differs only on H106.
+One comment in the committed version overstates its list.
+It says exp-065’s cells come from that record’s guard table and its “What moved the
+wrong way” section, but the list omits that section’s cells.
+The list is narrower than the comment, which is again the conservative side.
+
+**The coordinator’s ruling: the correction stands.** Where the registration gives two
+readings, this round takes the one that accounts for less.
+The general rule, the same metric moving the same way on the same transition, is the
+condition for an account.
+An account cannot cover a transition its record saw unchanged.
+The correction cannot turn a failure into a pass, and it costs the campaign a verdict.
+Under the hashed script, at `655a7bec`, H106 is accepted; no other verdict differs.
 
 ## Identities, Load, and Power
 
@@ -255,7 +273,7 @@ campaign a verdict. The script as hashed is at `655a7bec`, and differs only on H
 | Harness | `3a1ff25e`, scenario revision 5, clean, frozen for the round |
 | Corpus | `7a02fed4` checked out, clean, 1,286 indexed files; trunk `083e78e4`; refs digest `387f68dc4e8eb8e0` before every pair and at every run’s start and end |
 | Chrome | 152.0.7977.83, headless |
-| Lock | taken 12:15:11Z at a one-minute load of 1.57, released 14:01:17Z |
+| Lock | taken 12:15:11Z at a one-minute load of 1.57, released 14:01:17Z, from the driver’s log, which is not committed because it holds a local path; the pairs’ own times, below, are in [exp-079-power.jsonl](exp-079-power.jsonl) |
 | Pairs | six, 12:16:13Z to 14:01:16Z, the control first in odd attempts; all six judged, none excluded |
 | Load | one-minute load 1.67 to 5.04 at run starts, at most 10.13 at a measured transition’s start |
 | Power | Low Power Mode on and AC power before and after every pair ([exp-079-power.jsonl](exp-079-power.jsonl)) and in all 424 samples taken every 15 s ([exp-079-power-samples.log](exp-079-power-samples.log)); the judged mode is lowpowermode 1, AC Power |
@@ -322,8 +340,8 @@ Pairs beyond are against 1.3x.
 
 - **Deciding, met.** The eight tab and history transitions went 8 px to 0, ranges apart.
   The four pull request switches stayed at 0 on both builds.
-- **Guards not met.** Painted ready, and the header’s time, are later in final main on
-  every Changes paint and every pull request click:
+- **Guards not met.** Painted ready is later in final main on every Changes paint and
+  every pull request click, and the header’s time on four of the clicks:
 
 | Transition | Painted ready | compare |
 | --- | --- | --- |
@@ -338,10 +356,13 @@ Pairs beyond are against 1.3x.
 | `pulls.pr_to_pr.hover_click` | 38.5 (30.2–48.1) → 96.4 (82.3–97.1) | ranges apart, 6 of 6 beyond |
 
 `pr_header_ms` equals painted ready on the four clicks shown with it in
-[exp-079-analysis.json](exp-079-analysis.json): 13 wrong-way results in all.
-They are the same cells exp-065 and exp-080 accounted for as the first-paint hold, in
-which a pull request page waits out of sight until its body is final.
-exp-059 names no account for them.
+[exp-079-analysis.json](exp-079-analysis.json): 13 wrong-way results on nine
+transitions. The nine painted-ready cells are ones exp-065 and exp-080 accounted for as
+the first-paint hold, in which a pull request page waits out of sight until its body is
+final.
+The four header cells are in neither record’s tables; exp-065’s text describes the
+header arriving later on the clicks.
+exp-059 names no account for any of them.
 
 ### H87: Immutable Stamped Assets
 
@@ -379,7 +400,12 @@ The cold JSON and image views’ `preview_top_replaced` results are counted belo
 - **Frames to ready.** On `files.cold.markdown_mid` and `files.cold.source_large`,
   frames to ready rose, ranges overlapping, with 2 and 3 of 6 pairs beyond.
 
-This round has no evidence that says which change in final main each belongs to.
+This round has no evidence of its own that says which change in final main each belongs
+to.
+One has an earlier account: [exp-064](exp-064-four-movements-nobody-asked-for.md) saw
+`requests_kpress` rise on both landings (18 to 20), and accounted for it as H91 (a)’s
+font wait loading every declared face at idle.
+The protocol limits H87’s accounts to exp-083’s, so that result stays unaccounted here.
 
 ### H88 (a): Commit Revisits
 
@@ -393,7 +419,8 @@ This round has no evidence that says which change in final main each belongs to.
     (80.5–112.4), ranges overlapping, 3 of 6 pairs beyond, with ready, ready after the
     last input, and the header’s and the description’s times; data requests 12 to 13 and
     `data_network` 15 to 16; and 7,174 to 7,599 DOM nodes.
-    It is a switch to a pull request page, which the first-paint hold delays.
+    It is a switch to a pull request page, but this round does not show why it is later:
+    exp-080 measured it at 64.9 and 64.7 ms with the first-paint hold in place.
   - **`main_subject.commits_to_files`:** 6,045 to 6,129 DOM nodes.
   - **`commits.cold.1`:** painted ready 122.9 (114.2–180.3) to 163.5 (112.6–164.8), with
     ready and ready after the last input, ranges overlapping, 2 of 6 pairs beyond.
@@ -403,6 +430,8 @@ This round has no evidence that says which change in final main each belongs to.
 
 - **(a) Fonts, met.** `landing.cold_markdown`’s no-input shift went 0.0033 to 0. Its
   guards (painted ready, styled Markdown, blank frames) have no wrong-way result.
+  Blank frames went 11 (11–12) to 13 and blank time 183.4 (183.3–200.0) to 216.7
+  (216.7–216.8) ms, ranges apart but every pair within 1.3x, as exp-064 also saw.
 - **(b) Deep landing, met.** `reveal.deep_landing`’s shift went 0.057 (0.0531–0.0608) to
   0\. Its painted ready and blank frames have no wrong-way result.
 - **(d) Palette order, met.** `palette.query`’s row replacements went 11 to 0, and those
@@ -482,7 +511,7 @@ against the campaign control in this round.
 | Hypothesis | Its record | Final main against the control (exp-079) | Numbers, control → final main |
 | --- | --- | --- | --- |
 | H86 (a), shell chrome | accepted, [exp-059](exp-059-every-region-box-at-first-paint.md) | accepted | region movement 11–37 px → 0 on 23 transitions; reload no-input shift 0.0002 → 0; four Commits-switch transitions not judged |
-| H86 (b), pull request header | accepted, exp-059 | unresolved | header movement 8 px → 0 on eight transitions; painted ready and header time later on 13 pull request transitions (`changes_first` 42.8 → 102.2 ms) |
+| H86 (b), pull request header | accepted, exp-059 | unresolved | header movement 8 px → 0 on eight transitions; 13 wrong-way results on its guards over nine pull request transitions, painted ready and header time (`changes_first` 42.8 → 102.2 ms) |
 | H87, immutable stamped assets | accepted, [exp-083](exp-083-immutable-stamped-assets-without-h89.md) and [exp-087](exp-087-frame-quantization-confirms-h87.md) | unresolved | revalidated requests per reload 43 → 1; reload painted ready 166.5 → 106.7 ms; 17 unaccounted wrong-way results on `landing.*` and `files.*` |
 | H88 (a), comparison cache | accepted, [exp-086](exp-086-comparison-cache-route-memo-and-markdown-render-cache-confirmation.md) | unresolved | revisit data requests 1 → 0; revisit painted ready 122.5 → 30.4 and 164.4 → 31.1 ms; 12 unaccounted guard results |
 | H88 (b), route memo | accepted, exp-086 | not measured | decided on the server half, `git-route-pairs.mjs`, which this series does not run |
@@ -495,7 +524,7 @@ against the campaign control in this round.
 | H92 (a), one read per click | accepted, [exp-065](exp-065-one-read-per-click-trees-that-open-once-and-a-held-changes-paint.md) | accepted, with exp-065’s account | duplicate reads per run 8 → 0 |
 | H92 (b), trees that open once | accepted, exp-065 | not measured | decided on the pilot tree probe; the scenario’s warm server cannot produce a late file list |
 | H92 (c), a held Changes paint | accepted, exp-065 | accepted, with exp-065’s account | Changes body shift after ready per run 1.4889 → 0; Changes painted ready 42.5–45.1 → 79.2–102.2 ms |
-| H106, the Conversation final at first paint | accepted, [exp-080](exp-080-pull-request-conversation-final-at-first-paint.md) | unresolved | plain-first Conversation transitions per run 6 → 1; `main_subject.commits_to_pulls` painted ready 79.4 → 112.1 ms |
+| H106, the Conversation final at first paint | accepted, [exp-080](exp-080-pull-request-conversation-final-at-first-paint.md) | unresolved; accepted by the analysis as hashed, on a broader reading of its accounts | plain-first Conversation transitions per run 6 → 1; `main_subject.commits_to_pulls` painted ready 79.4 → 112.1 ms |
 
 WebKit is not measured; it is a follow-up.
 
@@ -558,10 +587,12 @@ above. Each is worth its complexity, so each is accepted at final main.
 
 - **H86 (a): worth it.** Its mechanism is reserved boxes: slots, stable gutters, and a
   tab the server draws.
-  They cost nothing at run time, and no guard moved on any of its 23 transitions.
-  Its one wait, the Overview’s hold of the previous folder, is bounded at 100 ms.
-  Its failure modes are cosmetic: a row cut short with its text in a tooltip, and a
-  toolbar that scrolls.
+  No guard in exp-059’s table moved on any of its 23 transitions.
+  `compare` lists 22 other wrong-way results on them, outside that table, such as frames
+  to ready on `keyboard.down_cold.1`; this round does not say which change in final main
+  they belong to. Its one wait, the Overview’s hold of the previous folder, is bounded at
+  100 ms. Its failure modes are cosmetic: a row cut short with its text in a tooltip, and
+  a toolbar that scrolls.
 - **H91 (a): worth it.** A wait of at most 100 ms, for faces the page loads anyway,
   removes the first document’s reflow, and cold Markdown’s painted ready did not move.
 - **H91 (b): worth it.** A bounded server inline (300 rows, 8 levels) removes the deep
@@ -857,10 +888,14 @@ which those are.
 
 - **Final main is one build.** A result here belongs to the whole of it, not to the one
   change whose record names the metric:
-  - the 46 merges since `09903292` outside the campaign touch some of the same files;
-  - one lane’s first-paint holds cost another’s guards (H86 (b), H88 (a), H106).
-- **The control is six-day-old main.** Product behavior that changed since, such as the
-  newest-commit landing, is not judged where it changes a transition’s subject.
+  - the 52 merges since `09903292` outside the campaign lanes touch some of the same
+    files;
+  - one lane’s first-paint holds cost another’s guards (H86 (b));
+  - `main_subject.commits_to_pulls`, which leaves H88 (a) and H106 unresolved, is later
+    for a reason this round does not show.
+- **The control is main from 2.5 days and 826 commits earlier.** Product behavior that
+  changed since, such as the newest-commit landing, is not judged where it changes a
+  transition’s subject.
 - **Six pairs** resolve the large effects here.
   They do not resolve a one-frame difference, which is why exp-087’s later-frame test
   exists for H87.
@@ -875,16 +910,16 @@ which those are.
 node $HARNESS/explorations/performance-loop/transitions.mjs samples \
   $HARNESS/.bench/transitions/exp-079/runs.jsonl --out exp-079-transition-samples.jsonl
 node exp-079-exclude.mjs exp-079-transition-samples.jsonl exp-079-power.jsonl \
-  --split /tmp/exp079-judged.jsonl /tmp/exp079-other.jsonl
+  --split /tmp/judged-samples.jsonl /tmp/exp079-other.jsonl
 node exp-079-exclude.mjs $HARNESS/.bench/transitions/exp-079/runs.jsonl exp-079-power.jsonl \
   --split /tmp/exp079-judged-runs.jsonl /tmp/exp079-other-runs.jsonl
 node exp-079-derive.mjs /tmp/exp079-judged-runs.jsonl exp-079-skim-evidence.jsonl
 node exp-065-instruments/derive-h92-h106.mjs /tmp/exp079-judged-runs.jsonl \
   exp-079-derived-samples.jsonl
-node exp-079-analyze.mjs $HARNESS /tmp/exp079-judged.jsonl exp-079-derived-samples.jsonl \
+node exp-079-analyze.mjs $HARNESS /tmp/judged-samples.jsonl exp-079-derived-samples.jsonl \
   exp-079-skim-evidence.jsonl exp-079-analysis.json
 node_modules/.bin/biome format --write exp-079-analysis.json   # the committed file is Biome's format
-node $HARNESS/explorations/performance-loop/transitions.mjs compare /tmp/exp079-judged.jsonl \
+node $HARNESS/explorations/performance-loop/transitions.mjs compare /tmp/judged-samples.jsonl \
   --control control --candidate candidate --allow-mixed-landing
 ```
 
