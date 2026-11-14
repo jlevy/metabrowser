@@ -9,8 +9,9 @@ which KPress and its rendering stack are the single largest contributor, and
 every `metab` invocation pays it -- `--help`, `--walk`, and every `--api` route
 included. Only three surfaces need the runtime: `/api/kpress/render`,
 `/api/kpress/export`, and `/kpress-static/*`. The browser shell needs two KPress
-asset URLs, but their public versioned shape can be built from distribution
-metadata without importing the renderer. Serve resolves those unconditional
+asset URLs, but their public shape -- a stamp of the package's files, then its
+version -- can be built from the files and the distribution metadata without
+importing the renderer. Serve resolves those unconditional
 assets before Uvicorn starts; non-serve modes and data routes do not pay for a
 renderer they never use.
 
@@ -27,12 +28,16 @@ import re
 import threading
 from collections.abc import Callable
 from contextvars import ContextVar
-from functools import cache
+from functools import cache, lru_cache
 from html import escape
 from importlib.metadata import version as distribution_version
+from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import quote
+
+from metabrowser.asset_stamps import StampedTree
+from metabrowser.http_caching import editable_install
 
 if TYPE_CHECKING:
     # Annotations only. `from __future__ import annotations` makes these
@@ -128,6 +133,9 @@ __all__ = [
     "export_kpress_document",
     "get_kpress_static_asset",
     "inert_render",
+    "kpress_asset_prefix_settled",
+    "kpress_asset_url_prefix",
+    "kpress_stamp_is_current",
     "kpress_static_url",
     "prepare_browser_assets",
     "render_kpress_view",
@@ -135,26 +143,79 @@ __all__ = [
 ]
 
 
-def kpress_static_url(rel_path: str) -> str:
-    """Version-keyed URL for a KPress static asset (e.g. a vendored font).
+def kpress_static_url(rel_path: str, *, prefix: str | None = None) -> str:
+    """Content-keyed URL for a KPress static asset (e.g. a vendored font).
 
     Matches the URL embedded documents request, so chrome that preloads or links
     the same asset shares one download and cache entry instead of fetching a
     second copy. KPress defines this public path as
-    ``/kpress-static/v<distribution-version>/<quoted-path>``. Building that
-    small contract here keeps the shell from importing the renderer; the host
+    ``<asset_url_prefix>v<distribution-version>/<quoted-path>``, and the prefix
+    Metabrowser gives it is :func:`kpress_asset_url_prefix`. Building that small
+    contract here keeps the shell from importing the renderer; the host
     integration test compares it with KPress' own helper so an upstream change
-    cannot drift silently.
+    cannot drift silently. *prefix* is one :func:`kpress_asset_url_prefix` already
+    returned, for a page that names several assets.
     """
 
-    return f"{_kpress_static_prefix()}{quote(rel_path.lstrip('/'))}"
+    base = kpress_asset_url_prefix() if prefix is None else prefix
+    return f"{base}{_kpress_version_segment()}/{quote(rel_path.lstrip('/'))}"
 
 
 @cache
-def _kpress_static_prefix() -> str:
-    """Return the stable KPress asset namespace without importing its runtime."""
+def _kpress_version_segment() -> str:
+    """The version segment KPress puts after the prefix, without importing its runtime."""
 
-    return f"/kpress-static/v{distribution_version('kpress')}/"
+    return f"v{distribution_version('kpress')}"
+
+
+@cache
+def _kpress_tree() -> StampedTree | None:
+    """The KPress package's files, located without importing it.
+
+    The stamp covers every non-Python file under the package, so it needs nothing of how
+    KPress lays out its assets; an upgrade, or an edit in an editable KPress, moves it.
+    """
+
+    spec = find_spec("kpress")
+    locations = list(spec.submodule_search_locations or []) if spec is not None else []
+    if not locations:
+        return None
+    return StampedTree(Path(locations[0]), live=editable_install("kpress"))
+
+
+def kpress_asset_url_prefix() -> str:
+    """The ``asset_url_prefix`` KPress renders with: ``/kpress-static/@<digest>/``.
+
+    The digest names the KPress tree's contents (:mod:`metabrowser.asset_stamps`), so
+    its CSS and JS can be kept without revalidation, which the version alone did not
+    allow: an editable KPress serves changed bytes under the same version. KPress puts
+    its version segment after it, and its stylesheets and modules reach their fonts and
+    imports by relative URL, so everything under it inherits the digest. A KPress that
+    cannot be stamped keeps the plain prefix, whose answers are revalidated.
+    """
+
+    tree = _kpress_tree()
+    stamp = tree.stamp() if tree is not None else None
+    return "/kpress-static/" if stamp is None else f"/kpress-static/@{stamp.digest}/"
+
+
+def kpress_asset_prefix_settled() -> bool:
+    """Whether :func:`kpress_asset_url_prefix` would return without touching the disk."""
+
+    tree = _kpress_tree()
+    return tree is None or tree.settled
+
+
+def kpress_stamp_is_current(digest: str | None, body: bytes) -> bool:
+    """Whether *body*, requested under ``@<digest>``, is what that stamp names now.
+
+    KPress resolves the file itself, so the check is on the bytes: they must be among the
+    files the current stamp was taken from.
+    """
+
+    tree = _kpress_tree()
+    stamp = tree.latest() if tree is not None and digest is not None else None
+    return stamp is not None and stamp.digest == digest and stamp.holds_content(body)
 
 
 def clear_render_cache() -> None:
@@ -183,13 +244,16 @@ def render_kpress_view(
     profile: str | None = None,
     include_toc: Literal["auto", "on", "off"] = "auto",
     plain_code: bool = False,
+    asset_url_prefix: str | None = None,
 ) -> dict[str, Any]:
     """Render a Metabrowser file through KPress.
 
     ``include_toc="off"`` suppresses the table of contents for a document
     embedded inside Metabrowser's own navigation; see the README panel in the
     folder Overview. ``plain_code`` shows fenced code escaped rather than
-    highlighted (see :data:`_PLAIN_CODE`).
+    highlighted (see :data:`_PLAIN_CODE`). ``asset_url_prefix`` defaults to
+    :func:`kpress_asset_url_prefix`; KPress keeps renders by it, so a render made
+    under an older stamp never answers for the current one.
     """
 
     runtime = _runtime()
@@ -213,7 +277,9 @@ def render_kpress_view(
         profile=profile,
         include_theme_resolver=False,
         host="metabrowser",
-        asset_url_prefix="/kpress-static/",
+        asset_url_prefix=kpress_asset_url_prefix()
+        if asset_url_prefix is None
+        else asset_url_prefix,
         # metabrowser shows the file path in its own file-header, so suppress
         # KPress's rendered <h1> doc header rather than hiding it with host CSS.
         show_doc_header=False,
@@ -245,11 +311,14 @@ def prepare_browser_assets() -> None:
     """Initialize KPress and resolve the browser shell's required assets.
 
     Serve calls this before Uvicorn starts. Other CLI modes keep the deferred
-    runtime boundary and pay no KPress renderer import cost.
+    runtime boundary and pay no KPress renderer import cost. The package's asset
+    stamp is taken here too, so the first page does not wait for its files to be
+    read.
     """
 
     for rel_path in _BROWSER_SHELL_ASSET_PATHS:
         get_kpress_static_asset(rel_path)
+    kpress_asset_url_prefix()
 
 
 def build_export_request(**kwargs: Any) -> KPressExportRequest:
@@ -328,15 +397,20 @@ def _assets_loading(assets: dict[str, Any], loading: frozenset[str]) -> dict[str
     }
 
 
-@cache
 def document_stylesheets() -> dict[str, Any]:
     """The manifest of KPress's stylesheets, for prose a page sets in a KPress article itself.
 
     What KPress lists for an empty document, so no text chooses what a page loads, and
     stylesheets alone: nothing in it runs. A page gives it to ``loadKpressAssets``. One
-    render, once per process.
+    render per asset stamp, so once per process in a release.
     """
 
+    return _document_stylesheets(kpress_asset_url_prefix())
+
+
+# A live KPress tree moves its stamp at each edit; the last few are enough to keep.
+@lru_cache(maxsize=4)
+def _document_stylesheets(asset_url_prefix: str) -> dict[str, Any]:
     rendered = render_kpress_view(
         source_text="",
         source_path="document-stylesheets.md",
@@ -346,6 +420,7 @@ def document_stylesheets() -> dict[str, Any]:
         mtime_hash="document-stylesheets",
         size=0,
         include_toc="off",
+        asset_url_prefix=asset_url_prefix,
     )
     return _assets_loading(cast("dict[str, Any]", rendered["assets"]), frozenset({"stylesheet"}))
 

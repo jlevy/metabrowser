@@ -175,9 +175,11 @@ def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> Non
     chain_start = html.index("var assets = ")
     chain = html[chain_start : html.index("</script>", chain_start)]
 
-    assert "requestIdleCallback" in chain, "the prefetched chain no longer waits for idle"
+    # Through the one idle helper, whose WebKit fallback waits for the first view and
+    # quiet input rather than a fixed timer (tests/test_idle_work_js.py).
+    assert "window.metabrowser.whenIdle(start" in chain, "the chain no longer waits for idle"
     assert f"timeout: {server.PREFETCH_IDLE_TIMEOUT_MS}" in chain
-    assert f"setTimeout(start, {server.PREFETCH_FALLBACK_DELAY_MS})" in chain
+    assert "setTimeout(start" not in chain
     # DOMContentLoaded may still be the earliest point the chain is *scheduled*
     # from, but it must schedule rather than start.
     assert 'addEventListener("DOMContentLoaded", schedule' in chain

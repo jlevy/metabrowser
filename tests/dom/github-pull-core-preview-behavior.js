@@ -233,6 +233,7 @@ async function retentionCapability(routes) {
       disposed = 0;
     const mount = routes.createViewMount({
       sdk: {
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
           render(node) {
@@ -395,6 +396,7 @@ async function run() {
   const mb = {
     perf,
     ensureAsset: async () => {},
+    whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     ...require("./sdk-ref-fixture.js").refHelpers(document),
     formatAge: () => ({ label: "now", className: "age" }),
@@ -682,6 +684,7 @@ async function run() {
     instances = [];
   const mount = routes.createViewMount({
     sdk: {
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({
         render(host) {

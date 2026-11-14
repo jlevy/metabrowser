@@ -1225,6 +1225,51 @@
     }
   }
 
+  // "Idle Work" in docs/development.md.
+  const IDLE_INPUT_QUIET_MS = 250;
+  let _lastInput = -Infinity;
+  const _viewSettled = new Promise((resolve) =>
+    global.addEventListener?.("metabrowser:first-view-settled", resolve),
+  );
+  if (!global.requestIdleCallback) {
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      global.addEventListener?.(type, () => (_lastInput = performance.now()), {
+        capture: true,
+        passive: true,
+      });
+    }
+  }
+  function whenIdle(callback, options) {
+    const timeout = options?.timeout;
+    if (global.requestIdleCallback) {
+      const id = global.requestIdleCallback(() => callback(), { timeout });
+      return () => global.cancelIdleCallback(id);
+    }
+    const deadline = performance.now() + (timeout ?? Infinity);
+    let waiting = true;
+    let timer;
+    const check = () => {
+      const now = performance.now();
+      const wait = Math.min(_lastInput + IDLE_INPUT_QUIET_MS - now, deadline - now);
+      timer = wait > 0 ? setTimeout(check, wait) : void callback();
+    };
+    const start = () => {
+      if (waiting) {
+        waiting = false;
+        clearTimeout(timer);
+        timer = setTimeout(check);
+      }
+    };
+    _viewSettled.then(start);
+    if (timeout !== undefined) {
+      timer = setTimeout(start, timeout);
+    }
+    return () => {
+      waiting = false;
+      clearTimeout(timer);
+    };
+  }
+
   // On-demand vendored libraries. asset-loader.js owns the loading; the SDK
   // only publishes it, so a plugin never reaches into a private global.
   // A consumer awaits this before touching the library's global: Chart.js is
@@ -1688,6 +1733,7 @@
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
     ensureKindAssets: ensureKindAssets,
+    whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
     chart: chart,

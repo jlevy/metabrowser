@@ -605,6 +605,8 @@ async function pageHostStory() {
       removeNavPanel: () => told.push("tab removed"),
     },
     metabrowser: {
+      // The window's requestIdleCallback never fires here, so neither does idle work.
+      whenIdle: () => () => {},
       ensureKindAssets: async () => {},
       getRegisteredView: () => view,
       sourceKind: () => "git_revision",
@@ -997,6 +999,8 @@ function twoTreesPage() {
       removeNavPanel() {},
     },
     metabrowser: {
+      // The window's requestIdleCallback never fires here, so neither does idle work.
+      whenIdle: () => () => {},
       ensureKindAssets: async () => {},
       sourceKind: () => "git_revision",
       getRegisteredView: () => ({

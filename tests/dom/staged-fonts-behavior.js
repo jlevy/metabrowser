@@ -119,9 +119,12 @@ function compositorWith({
     clearTimeout(id) {
       cleared.push(id);
     },
-    requestIdleCallback(callback) {
-      idle.push(callback);
-      return idle.length;
+    // The shell schedules idle work through the SDK's one helper (metabrowser.whenIdle).
+    metabrowser: {
+      whenIdle(callback) {
+        idle.push(callback);
+        return () => {};
+      },
     },
   };
   sandbox.window = sandbox;

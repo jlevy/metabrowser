@@ -251,7 +251,8 @@ def _gzip_settings() -> tuple[int, int]:
     from metabrowser import server
 
     for middleware in server.app.user_middleware:
-        if middleware.cls is GZipMiddleware:
+        # Starlette's, or a subclass that keeps its compression (server_timing's timed one).
+        if isinstance(middleware.cls, type) and issubclass(middleware.cls, GZipMiddleware):
             options = cast("dict[str, Any]", middleware.kwargs)
             return int(options["compresslevel"]), int(options["minimum_size"])
     raise SystemExit("the application has no gzip middleware; this check measures its output")

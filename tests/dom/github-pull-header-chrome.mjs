@@ -158,6 +158,7 @@ const MEASURE = `async (name, change, tab, width) => {
     {
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       ensureAsset: async () => {},
+      whenIdle: mb.whenIdle,
       ensureKindAssets: async () => {},
       decorateExternalLink: mb.decorateExternalLink,
       refChip: mb.refChip,
