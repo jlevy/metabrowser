@@ -87,6 +87,17 @@ Without H89, H87’s prediction holds and its guard improves, and exp-060’s op
 does not recur. A cold JSON view that paints one frame later in every pair now keeps the
 third clause open.
 
+## Follow-up, 2026-11-14
+
+[exp-087](exp-087-frame-quantization-confirms-h87.md) met this round’s third clause, and
+H87 is accepted on this round’s metric and guard.
+diag083 traced the extra frame to a frame-quantization race that occurs in every build.
+In 9 pre-registered pairs, the cold JSON, cold image, and large Markdown revisit views
+landed on a later frame no more often with H87 than without it: 1/9 against 0/9, 1/9
+against 0/9, and 0/9 against 0/9 (Fisher p=1.0 each).
+This record is left as measured.
+Its verdict field keeps the decision made at the time.
+
 ## Why This Round
 
 [exp-060](exp-060-immutable-stamped-assets-on-reload.md) measured H87 in a head that
