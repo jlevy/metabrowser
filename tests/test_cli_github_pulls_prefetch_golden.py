@@ -273,9 +273,10 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     )
 
     session.say(
-        "A visible page asks for 7, 8, and 10 and for 8's changed files: only 7's checks are "
-        "due, which its own page reads; 8 is current; 10 has no record, so it is read; 8's "
-        "files come from the store's comparison, with no request to GitHub."
+        "A visible page asks for 7, 8, and 10 and for 8's changed files, which the lane reads "
+        "in turn, a record and then a list: only 7's checks are due, which its own page reads; "
+        "8's files come from the store's comparison, with no request to GitHub; 8 is current; "
+        "10 has no record, so it is read."
     )
     prefetch = session.run(
         CANONICAL, "--api", PREFETCH, body={"records": [7, 8, 10], "files": [8]}, full=True
@@ -284,9 +285,9 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     report = json.loads(prefetch.stdout[prefetch.stdout.rindex("status: 200\n{") + 12 :])
     assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
         (7, "skipped:checks"),
+        (8, "refreshed"),
         (8, "skipped:current"),
         (10, "refreshed"),
-        (8, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
 
