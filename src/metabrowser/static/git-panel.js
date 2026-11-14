@@ -201,6 +201,9 @@
   let repoRetryMs = REPO_RETRY_FIRST_MS;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let repoRetryTimer = null;
+  // Which discovery a scheduled retry belongs to. Teardown retires it, so a retry that
+  // fires anyway cannot register a panel the page has given up.
+  let discoveryGeneration = 0;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -2919,6 +2922,7 @@
   }
 
   function teardown() {
+    cancelDiscoveryRetry();
     resetHistoryRequests();
     clearPendingState();
     cancelHover();
@@ -3152,12 +3156,26 @@
     if (repoRetryTimer !== null) {
       return;
     }
+    const generation = discoveryGeneration;
     const delay = repoRetryMs;
     repoRetryMs = Math.min(repoRetryMs * 2, REPO_RETRY_MAX_MS);
     repoRetryTimer = setTimeout(() => {
+      if (generation !== discoveryGeneration) {
+        return;
+      }
       repoRetryTimer = null;
       void init();
     }, delay);
+  }
+
+  /** Cancel a scheduled discovery retry and retire any that fires anyway. */
+  function cancelDiscoveryRetry() {
+    discoveryGeneration += 1;
+    if (repoRetryTimer !== null) {
+      clearTimeout(repoRetryTimer);
+      repoRetryTimer = null;
+    }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
   }
 
   /**
