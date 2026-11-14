@@ -3,13 +3,17 @@ type: is
 id: is-01m7bj988bdg3crc888wrertd4
 title: "Raw resources: a replaced image stays stale in Chrome (path-only /raw URLs, no revalidation)"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 labels: []
 dependencies: []
 created_at: 2026-11-13T23:01:04.393Z
-updated_at: 2026-11-14T00:49:45.619Z
+updated_at: 2026-11-14T09:58:36.588Z
+closed_at: 2026-11-14T09:58:36.587Z
+close_reason: "Merged in #426: Markdown images use versioned /raw addresses (a replaced file gets a new address), raster images at their current version are cached immutably with a scriptless policy identical under both profiles, other types revalidate; outside images are made eager before placement."
+resolution: null
+duplicate_of: null
 ---
 Found while fixing #408 (mb-wzly), present on main: in Chrome, a Markdown image replaced on disk at the same path keeps showing the old image, both on returning to the document and after a reload (0 requests). Measured with a 240x120 red image replaced by a 360x90 magenta one. WebKit reloads it correctly.
 

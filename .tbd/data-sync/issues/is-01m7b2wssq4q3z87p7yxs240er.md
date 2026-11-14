@@ -3,13 +3,17 @@ type: is
 id: is-01m7b2wssq4q3z87p7yxs240er
 title: "PR header: keep unchanged nodes across repaints (identity, badge, chips, icons)"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-11-13T18:32:07.734Z
-updated_at: 2026-11-14T00:49:47.367Z
+updated_at: 2026-11-14T09:00:49.546Z
+closed_at: 2026-11-14T09:00:49.545Z
+close_reason: "Merged into main as 3fed8049 (#418): the PR header keeps unchanged parts across repaints; focus and hover survive tab switches and polls; pinned in the avatar repaint session with node reuse and detach checks."
+resolution: null
+duplicate_of: null
 ---
 Found by the avatar-flicker sweep (#399). `paintStateRow` and `paintHeader` in `builtin_plugins/github/pull-page.js` rebuild unchanged nodes on every paint: the identity, the badge with #370's badge sizers, the branch chips with their copy buttons, the title's state-icon SVG, the GitHub mark, and the labels. Every paint includes tab switches and the 1 s polls while a refresh runs.
 

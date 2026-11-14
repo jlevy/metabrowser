@@ -3,13 +3,17 @@ type: is
 id: is-01m7bjen8x7x00nvtp8qzdvv08
 title: "Commits tab starved during a large repository's first scan: a storm of slow /api/tree?depth=0 requests"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-11-13T23:04:01.563Z
-updated_at: 2026-11-13T23:04:54.245Z
+updated_at: 2026-11-14T09:49:02.851Z
+closed_at: 2026-11-14T09:49:02.850Z
+close_reason: "Merged in #413: one root-summary request in flight per page (coalesced, spaced by cost, paused while unseen), a cheaper shared tally pass on the server, and the Commits tab retries discovery instead of tearing itself down; Commits loads in about 0.4 s during live writes on a 300k-file tree in WebKit."
+resolution: null
+duplicate_of: null
 ---
 The user (2026-11-13): "the commits tab on the currently running native app is not loading ... this is for the trading repo window." The window serves a large private repository: about 12,800 tracked files, 248,000 ignored files (10 GB), 10,044 commits, and a 261 KB refs list.
 

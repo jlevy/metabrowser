@@ -3,9 +3,9 @@ type: is
 id: is-01m774r3cs24qrntm810jeqndz
 title: "Git: comparison cache by commit ID; route memo by refs fingerprint"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:33.134Z
-updated_at: 2026-11-12T17:37:51.707Z
+updated_at: 2026-11-14T11:42:23.284Z
 started_at: 2026-11-12T05:53:04.459Z
+closed_at: 2026-11-14T11:42:23.283Z
+close_reason: "Landed in #368 (c74d0ef3): H88(a) browser comparison cache and H88(b) server route memo, both accepted in exp-086 (6 judged pairs, harness revision 5 at 3a1ff25e). H90 moved to reference draft #430 (mb-mbd3)."
+resolution: null
+duplicate_of: null
 ---
 Browser cache of diff comparisons keyed by full commit ID; server memo of git refs, log pages, and summary keyed by a refs fingerprint. Measured as commit revisit requests and painted-ready, and route server time.
 

@@ -3,13 +3,17 @@ type: is
 id: is-01m7bde46evfpq54z0vn6xbx6a
 title: 'Pulls file tree: a late empty refresh leaves stale rows under "No changed files."'
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-11-13T21:36:21.197Z
-updated_at: 2026-11-14T00:49:44.378Z
+updated_at: 2026-11-14T08:59:32.186Z
+closed_at: 2026-11-14T08:59:32.185Z
+close_reason: "Merged in #416: a drawn Pulls file tree whose late refresh or POST lists no files offers 'Show the updated list (no files)' instead of keeping stale rows under 'No changed files.'; pinned across GET and POST paths."
+resolution: null
+duplicate_of: null
 ---
 Found while fixing mb-ld8g (#406), present on main too. When a late refresh lists 0 files, a drawn Pulls file tree keeps its old rows under the line "No changed files." with no offer: `withheld` is true with 0 rows held, and `describeFileTree` words an offer only when `withheld > 0`.
 
