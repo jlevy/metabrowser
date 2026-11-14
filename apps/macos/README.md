@@ -203,8 +203,11 @@ folder="$(mktemp -d)"
    With the server answering,
    `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
    `open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
-3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
-   `INFO:` lines) beside its `Serving` line, which came through stdout.
+3. **stdout and stderr in the log.** `tail "$logs"/*.log` shows the server’s `Serving`
+   and `Plugins:` lines, which came through stdout.
+   A server serving without trouble writes nothing to stderr.
+   What it writes there when its stdin closes, “Stopping Metabrowser: stdin closed.”,
+   ends the folder’s log after the crash in step 4.
 4. **After a crash.** With the folder open,
    `pkill -9 -f "$app/Contents/MacOS/Metabrowser"`. Within a second
    `pgrep -fl -- "--exit-on-eof"` finds no server, and the folder’s log ends with

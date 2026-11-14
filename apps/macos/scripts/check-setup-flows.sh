@@ -111,8 +111,10 @@ install_link() {
   mv -f "$2.new" "$2"
 }
 
-install_script() {
-  printf '%s\n' "$1" >"$2.new"
+# A copy of one of the stand-ins in scripts/setup-check, the same way. Each answers the
+# app's check as the metab it stands for does, which SetupCheckStandInTests holds it to.
+install_stand_in() {
+  cp "scripts/setup-check/$1" "$2.new"
   chmod 755 "$2.new"
   mv -f "$2.new" "$2"
 }
@@ -164,10 +166,7 @@ case "$scenario" in
     ;;
   old-metab)
     install_link "$uv_path" "$home/.local/bin/uv"
-    install_script '#!/bin/sh
-[ "$1" = --version ] && { echo "metab 0.12.0"; exit 0; }
-echo "this stand-in for an old metab only reports its version" >&2
-exit 1' "$home/.local/bin/metab"
+    install_stand_in metab-0.12.0 "$home/.local/bin/metab"
     launch "$copy" "$folder"
     step "An older metab (a stand-in that reports 0.12.0)" \
       "Settings opens: \"Metabrowser needs metab 0.12.1 or later\"." \
@@ -182,9 +181,8 @@ exit 1' "$home/.local/bin/metab"
     install_link "$checkout_metab" "$home/.local/bin/metab"
     step "Upgraded (the stand-in replaced by this checkout's metab)" \
       "Within a few seconds, without clicking anything, the notes folder opens in its own window."
-    install_script "#!/bin/sh
-[ \"\$1\" = --version ] && { echo \"metab 0.13.0\"; exit 0; }
-exec \"$checkout_metab\" \"\$@\"" "$home/.local/bin/metab"
+    install_link "$checkout_metab" "$home/.local/bin/metab-checkout"
+    install_stand_in metab-0.13.0 "$home/.local/bin/metab"
     step "Upgraded again under the running server (a wrapper that reports 0.13.0)" \
       "Within a few seconds an alert: \"metab was updated to 0.13.0\"," \
       "\"1 open folder runs a server started from metab ${current%%+*}…\"." \
