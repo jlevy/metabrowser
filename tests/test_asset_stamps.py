@@ -411,7 +411,8 @@ def test_raw_answers_its_tag_with_304_and_is_always_revalidated(tmp_path: Path) 
     # A date cannot name the trust profile the headers came from, so it earns no 304.
     since = {"if-modified-since": first.headers["last-modified"]}
     assert client.get("/raw", params={"path": "pic.png"}, headers=since).status_code == 200
-    # No address of a reader's file is kept without asking, whatever it carries.
+    # An address without the file's current version is never kept without asking
+    # (tests/test_raw_versions.py has the one that is).
     for query in ({"path": "pic.png", "v": "anything"}, {"path": "pic.png"}):
         assert client.get("/raw", params=query).headers["cache-control"] == "no-cache"
     # `*` names no trust profile, so it earns no 304 (review D of #372, D2).

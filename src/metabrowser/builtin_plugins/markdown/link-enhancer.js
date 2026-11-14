@@ -3,6 +3,12 @@ import { localizeGithubUrl } from "./github-localizer.js";
 import { createTrustedStandardLinkResolutionContext, gitPathWireForDisplayPath } from "./links.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
+  holdImage,
+  isOutsideAddress,
+  loadHeldImageEagerly,
+  rememberHeldImage,
+} from "./place-rendered.js";
+import {
   createMarkdownEnhancementBudget,
   createMarkdownReconciliationCoordinator,
 } from "./reconciliation-coordinator.js";
@@ -18,111 +24,6 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
   Object.freeze({ selector: "object[data]", attribute: "data" }),
 ]);
 
-/**
- * The served images this page has loaded since the last filesystem change, by address,
- * least recently loaded first.
- *
- * KPress writes `loading="lazy"` on a document's images, and entering a file again builds
- * its document again. WebKit, the macOS app's engine, does not give a new lazy image the
- * copy the page holds: once layout shows the image it asks the network again, so the
- * images at the top of a document entered again had none for the round trip. An image
- * made eager before its address is set takes the held copy, as a lazy one does in Chrome.
- * An image the page has not loaded since the last change stays lazy, and is fetched
- * again. docs/design-system.md, "A Repaint Keeps Its Images", has the measurements.
- *
- * @type {Set<string>}
- */
-const heldImages = new Set();
-/**
- * How many held images the page remembers; past it, the least recently loaded is
- * forgotten and loads lazily again. A document's first images load first, so one with
- * more images than this loses its first ones first.
- *
- * Measured 2026-11-13 through this module in the app's WKWebView (WebKit 21624) and
- * headless Chrome 152, with 60-character paths. An entry is 140 bytes of V8 heap after a
- * GC, 143 KB at this bound, and 321 bytes of JavaScriptCore heap capacity in the system
- * `jsc`, 329 KB. Remembering a load took 1 to 2.5 µs, and as long past the bound, where
- * each evicts one. Entering again a document of 1,024 held images asked for none of them
- * and showed it in 67 to 87 ms in WebKit and 50 to 66 ms in Chrome, against 58 to 62 and
- * 38 to 40 ms on main, with no frame over 50 ms; main's WebKit asked for 224 images
- * again. Both costs grow with the bound, and one re-entry makes at most this many eager.
- */
-export const MAX_HELD_IMAGES = 1024;
-/** How many times the held images have been forgotten (`forgetHeldImages`). */
-let invalidations = 0;
-/**
- * The images whose served address the enhancer set, each with `invalidations` as it was
- * then. A load that finishes after a later change may carry the bytes from before it.
- *
- * @type {WeakMap<Element, number>}
- */
-const servedImages = new WeakMap();
-
-/**
- * Make *image* eager if the page holds the image at *href*, before its address is set.
- *
- * The authored address goes first. An eager image asks for its address at once, and the
- * authored one, relative to the document, is not where the image is served.
- *
- * @param {Element} image
- * @param {string} href
- */
-function loadHeldImageEagerly(image, href) {
-  if (heldImages.has(href)) {
-    image.removeAttribute("src");
-    image.setAttribute("loading", "eager");
-  }
-}
-
-/**
- * Record that the enhancer set *image*'s served address, unless no change to its file
- * would be heard: the shell's watcher reports nothing inside a hidden folder or file, one
- * whose name starts with a dot, so such an image is never held.
- *
- * @param {Element} image
- * @param {string} path
- */
-function serveImage(image, path) {
-  if (!path.split("/").some((segment) => segment.startsWith("."))) {
-    servedImages.set(image, invalidations);
-  }
-}
-
-/** @param {Event} event */
-function rememberHeldImage(event) {
-  const image = /** @type {Element | null} */ (event.target);
-  // A load from before the last change may hold what the change replaced.
-  if (!image || servedImages.get(image) !== invalidations) {
-    return;
-  }
-  const href = image.getAttribute("src");
-  if (!href) {
-    return;
-  }
-  heldImages.delete(href);
-  heldImages.add(href);
-  if (heldImages.size > MAX_HELD_IMAGES) {
-    const oldest = heldImages.values().next();
-    if (!oldest.done) {
-      heldImages.delete(oldest.value);
-    }
-  }
-}
-
-/**
- * Forget every held image: a filesystem change, any change, may have replaced one.
- *
- * The plugin calls this for each change `onInventoryChange` reports, whatever its paths.
- * The paths cannot say which images a change touched: an image can be a link to a file
- * elsewhere, and a change deeper than the shell watches arrives as a folder. So reuse
- * lasts only while nothing changes, which is when a reader moves between files. A load
- * still in flight when this runs is not remembered when it finishes.
- */
-export function forgetHeldImages() {
-  heldImages.clear();
-  invalidations += 1;
-}
-
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
 
 /**
@@ -131,7 +32,9 @@ export function forgetHeldImages() {
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ *   `rawVersions` is the render's `raw_versions`: the version of each served file it
+ *   embeds, by identity, which that file's address carries.
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
@@ -141,6 +44,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const ownsWorkerClient = !options.workerClient;
   const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const sourceKind = mb.sourceKind?.() === "git_revision" ? "git_revision" : "filesystem";
+  const rawVersions = rawVersionsOf(options.rawVersions);
   const standardLinks = createTrustedStandardLinkResolutionContext(
     sourcePath,
     undefined,
@@ -287,13 +191,21 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         },
         (resolved) => {
           if (resolved.status === "internal") {
-            const href = rawResourceHref(resolved);
-            if (tagName === "img") {
+            const version = rawVersions.get(normalizedFilePath(resolved.path));
+            const href = rawResourceHref(resolved, version);
+            // Held only at an address that names its bytes: a versioned one, or any on a
+            // pinned revision, whose files never change (place-rendered.js).
+            if (tagName === "img" && (version !== undefined || sourceKind === "git_revision")) {
               loadHeldImageEagerly(resource, href);
-              serveImage(resource, normalizedFilePath(resolved.path));
+              holdImage(resource);
             }
             resource.setAttribute(descriptor.attribute, href);
-          } else if (resolved.status !== "external") {
+          } else if (resolved.status === "external") {
+            // Placement made it eager if the page holds it (place-rendered.js).
+            if (tagName === "img" && isOutsideAddress(authoredTarget)) {
+              holdImage(resource);
+            }
+          } else {
             disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
           }
         },
@@ -329,6 +241,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           signal: nestedOptions.signal,
           transclusionBudget: nestedOptions.budget,
           transclusionChain: nestedOptions.chain,
+          rawVersions: nestedOptions.rawVersions,
           workerClient,
         }),
     },
@@ -469,10 +382,37 @@ function navigationTarget(resolved) {
   return Object.freeze(target);
 }
 
-/** @param {{path: string, fragment?: string}} resolved */
-function rawResourceHref(resolved) {
+/**
+ * A served file's address, with the version the render gave it when it gave one.
+ *
+ * @param {{path: string, fragment?: string}} resolved
+ * @param {string | undefined} version
+ */
+function rawResourceHref(resolved, version) {
   const fragment = resolved.fragment ? `#${encodeURIComponent(resolved.fragment)}` : "";
-  return `/raw?path=${encodeURIComponent(normalizedFilePath(resolved.path))}${fragment}`;
+  const versioned = version === undefined ? "" : `&v=${encodeURIComponent(version)}`;
+  const path = encodeURIComponent(normalizedFilePath(resolved.path));
+  return `/raw?path=${path}${versioned}${fragment}`;
+}
+
+/**
+ * The render's `raw_versions` as a map, keeping only string versions under string
+ * identities; anything else versions nothing.
+ *
+ * @param {unknown} value
+ * @returns {ReadonlyMap<string, string>}
+ */
+function rawVersionsOf(value) {
+  /** @type {Map<string, string>} */
+  const versions = new Map();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [identity, version] of Object.entries(value)) {
+      if (typeof version === "string" && version) {
+        versions.set(identity, version);
+      }
+    }
+  }
+  return versions;
 }
 
 /** @param {Element} element @param {string} attribute @param {string} status @param {string} reason */
