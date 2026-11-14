@@ -6,6 +6,7 @@ import json
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
 
 from starlette.testclient import TestClient
 
@@ -34,10 +35,70 @@ class _WikiMetadata(HTMLParser):
             self.ids.append(identifier)
 
 
-def _preprocessed_readme() -> dict[str, object]:
+_HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+_VOID = frozenset({"area", "br", "col", "embed", "hr", "img", "input", "source", "track", "wbr"})
+
+
+class _HeadingLayout(HTMLParser):
+    """A render's prose column: the tags of its children, how many paragraphs hold
+    nothing but wiki heading anchors, each heading's id and text, and each anchor's id
+    with the id of the heading it sits in (None outside a heading)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prose_children: list[str] = []
+        self.anchor_only_paragraphs = 0
+        self.headings: list[tuple[str, str]] = []
+        self.anchors: list[tuple[str, str | None]] = []
+        self._open: list[str] = []
+        self._prose_depth: int | None = None
+        self._heading: tuple[str, list[str]] | None = None
+        self._paragraph_content: bool | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = (values.get("class") or "").split()
+        if self._prose_depth is not None and len(self._open) == self._prose_depth:
+            self.prose_children.append(tag)
+        if tag in _VOID:
+            return
+        self._open.append(tag)
+        if tag == "div" and "kpress-prose" in classes:
+            self._prose_depth = len(self._open)
+        if "metabrowser-wiki-heading" in classes:
+            self.anchors.append((values.get("id") or "", self._heading and self._heading[0]))
+            return
+        if self._paragraph_content is not None:
+            self._paragraph_content = True
+        if tag in _HEADINGS:
+            self._heading = (values.get("id") or "", [])
+        elif tag == "p":
+            self._paragraph_content = False
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._open or self._open[-1] != tag:
+            return
+        self._open.pop()
+        if tag in _HEADINGS and self._heading:
+            self.headings.append((self._heading[0], "".join(self._heading[1])))
+            self._heading = None
+        elif tag == "p" and self._paragraph_content is not None:
+            self.anchor_only_paragraphs += not self._paragraph_content
+            self._paragraph_content = None
+        if self._prose_depth is not None and len(self._open) < self._prose_depth:
+            self._prose_depth = None
+
+    def handle_data(self, data: str) -> None:
+        if self._heading:
+            self._heading[1].append(data)
+        if self._paragraph_content is not None and data.strip():
+            self._paragraph_content = True
+
+
+def _preprocessed(path: Path) -> dict[str, object]:
     require_node()
     result = subprocess.run(
-        ["node", str(PREPROCESSOR), str(REPO_ROOT), str(FIXTURE_ROOT / "README.md")],
+        ["node", str(PREPROCESSOR), str(REPO_ROOT), str(path)],
         capture_output=True,
         text=True,
         timeout=30,
@@ -45,6 +106,10 @@ def _preprocessed_readme() -> dict[str, object]:
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+def _preprocessed_readme() -> dict[str, object]:
+    return _preprocessed(FIXTURE_ROOT / "README.md")
 
 
 def test_obsidian_fixture_source_metadata_survives_safe_rendering() -> None:
@@ -80,6 +145,91 @@ def test_obsidian_fixture_source_metadata_survives_safe_rendering() -> None:
     assert "obsidian-heading-Vault Home" in parser.ids
     assert "obsidian-heading-Local heading" in parser.ids
     assert "obsidian-block-home-block" in parser.ids
+
+
+_HEADING_DOCUMENT = """\
+# Title
+
+Intro with [[#Section]] and [[#Title#Section#Child]].
+
+## Section
+
+Text.
+
+### Child
+
+- one
+- two
+---
+
+Setext Heading
+--------------
+
+## Section
+
+A second section of the same name.
+"""
+
+
+def _render(client: TestClient, source_text: str) -> Any:
+    response = client.post(
+        "/api/kpress/render",
+        json={
+            "path": "headings.md",
+            "view": "rendered",
+            "profile": "document",
+            "source_text": source_text,
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_wiki_heading_anchors_render_inside_their_headings(tmp_path: Path) -> None:
+    """The preprocessed render's blocks are the authored render's: each heading keeps its
+    KPress id and title, the title is the prose column's first child (so its first-child
+    margin trim applies), no paragraph holds only anchors, and every Obsidian name of a
+    heading -- its hierarchical forms included, each once -- sits inside that heading,
+    where `[[#Section]]` and `[[#Title#Section#Child]]` reach it."""
+    document = tmp_path / "headings.md"
+    document.write_text(_HEADING_DOCUMENT, encoding="utf-8")
+    preprocessed = _preprocessed(document)
+    assert preprocessed["changed"] is True
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    authored = _render(client, _HEADING_DOCUMENT)
+    wiki = _render(client, str(preprocessed["source"]))
+
+    authored_layout = _HeadingLayout()
+    authored_layout.feed(str(authored["html"]))
+    layout = _HeadingLayout()
+    layout.feed(str(wiki["html"]))
+
+    assert layout.prose_children == authored_layout.prose_children
+    assert layout.prose_children[0] == "h1"
+    assert layout.anchor_only_paragraphs == 0
+    assert (
+        layout.headings
+        == authored_layout.headings
+        == [
+            ("title", "Title"),
+            ("section", "Section"),
+            ("child", "Child"),
+            ("setext-heading", "Setext Heading"),
+            ("section-1", "Section"),
+        ]
+    )
+    assert wiki["model"]["headings"] == authored["model"]["headings"]
+    assert layout.anchors == [
+        ("obsidian-heading-Title", "title"),
+        ("obsidian-heading-Title#Section", "section"),
+        ("obsidian-heading-Section", "section"),
+        ("obsidian-heading-Title#Section#Child", "child"),
+        ("obsidian-heading-Section#Child", "child"),
+        ("obsidian-heading-Child", "child"),
+        ("obsidian-heading-Title#Setext Heading", "setext-heading"),
+        ("obsidian-heading-Setext Heading", "setext-heading"),
+    ]
 
 
 def test_obsidian_fixture_has_exact_ambiguous_and_missing_targets() -> None:

@@ -16,6 +16,10 @@ const MAX_INLINE_DELIMITER_PASSES = 5;
  * copied verbatim. The returned spans have no destination until the completed render is
  * resolved against the current inventory.
  *
+ * A heading's anchors, one empty span for each Obsidian name it answers to, open its
+ * inline content, so they add no block before it and no text to its title or slug:
+ * KPress names a heading from its text, not from inline HTML.
+ *
  * @param {string} source
  */
 export function preprocessObsidianWiki(source) {
@@ -101,7 +105,7 @@ export function preprocessObsidianWiki(source) {
           const key = hierarchy.slice(index).join("#");
           const id = `obsidian-heading-${key}`;
           if (!anchorIds.has(id)) {
-            const anchor = `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>${lineEnding || "\n"}`;
+            const anchor = `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>`;
             if (claimReplacement(outputBudget, "", anchor)) {
               inserted.push(anchor);
               anchorIds.add(id);
@@ -111,13 +115,16 @@ export function preprocessObsidianWiki(source) {
           }
         }
       }
+      // A heading's marker and indentation hold no wiki syntax; its anchors go
+      // between them and its inline content.
+      const contentStart = heading ? heading.contentStart : 0;
       const processed = processInline(
-        content,
+        content.slice(contentStart),
         MAX_WIKI_TARGETS - targetCount,
         metrics,
         outputBudget,
         literal.mask,
-        current.start,
+        current.start + contentStart,
       );
       if (processed.outputLimited) {
         return outputLimitedResult(source, metrics);
@@ -126,7 +133,12 @@ export function preprocessObsidianWiki(source) {
       targetLimited ||= processed.targetLimited;
       const lineChanged = inserted.length > 0 || processed.changed || Boolean(block);
       if (lineChanged) {
-        output.push(source.slice(outputOffset, current.start), ...inserted, processed.source);
+        output.push(
+          source.slice(outputOffset, current.start),
+          content.slice(0, contentStart),
+          ...inserted,
+          processed.source,
+        );
         if (block) {
           blockCount += 1;
           output.push(blockMarkup);
@@ -591,19 +603,43 @@ export function findNamedBlock(line) {
   return Object.freeze({ id: match[1], start: match.index });
 }
 
-/** @param {string} line @param {string} nextLine */
+// A setext heading's text is a paragraph line, so a line that opens any other block
+// is never one, whatever `===` or `---` follows it: a block quote, a list item, a
+// table row, an underline or thematic break, a link or footnote definition, or
+// KPress's container, math, and attribute blocks. Their anchors would turn it into
+// paragraph text and change the block.
+const NON_PARAGRAPH_LINE =
+  /^ {0,3}(?:[>|]|[-+*](?:[\t ]|$)|\d{1,9}[.)](?:[\t ]|$)|(?:=+|-+)[\t ]*$|([-*_])(?:[\t ]*\1){2,}[\t ]*$|\[[^\]]*\]:|:::|\$\$|\{[^}]*\}[\t ]*$)/;
+
+/**
+ * The heading a line opens, with *nextLine* as a possible setext underline.
+ * `contentStart` is where its inline content begins in *line*, after the ATX marker
+ * or the indentation: anything placed there is part of the heading's content.
+ *
+ * @param {string} line @param {string} nextLine
+ */
 export function findMarkdownHeading(line, nextLine) {
-  const match = /^ {0,3}(#{1,6})[\t ]+(.+?)[\t ]*#*[\t ]*$/.exec(line);
+  const match = /^( {0,3}(#{1,6})[\t ]+)(.+?)[\t ]*#*[\t ]*$/.exec(line);
   if (match) {
-    const text = headingText(match[2]);
-    return text ? Object.freeze({ level: match[1].length, text }) : null;
+    // `# #` is an empty heading, as `#` is: its only content is its closing sequence.
+    const closingOnly = /^#+[\t ]*$/.test(line.slice(match[1].length));
+    const text = closingOnly ? "" : headingText(match[3]);
+    return text
+      ? Object.freeze({ contentStart: match[1].length, level: match[2].length, text })
+      : null;
   }
   const setext = /^ {0,3}(=+|-+)[\t ]*$/.exec(nextLine);
-  if (!setext) {
+  if (!setext || NON_PARAGRAPH_LINE.test(line)) {
     return null;
   }
   const text = headingText(line);
-  return text ? Object.freeze({ level: setext[1][0] === "=" ? 1 : 2, text }) : null;
+  return text
+    ? Object.freeze({
+        contentStart: line.search(/\S/),
+        level: setext[1][0] === "=" ? 1 : 2,
+        text,
+      })
+    : null;
 }
 
 /** @param {string} value */
