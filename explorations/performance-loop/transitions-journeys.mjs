@@ -143,6 +143,14 @@ const listReady = (tab, rowSelector, promptSelector) => `() => {
   return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel);
 }`;
 
+// A main tab's list on screen, whatever the preview shows.
+const listShown = (tab, rowSelector) => `() => {
+  const panel = document.querySelector('#tree-content > [data-tab-content="${tab}"]');
+  if (!panel || !window.__tr.rendered(panel)) { return false; }
+  if (panel.querySelectorAll(${J(rowSelector)}).length === 0 || !window.__tr.hasUseful(panel)) { return false; }
+  return ${activeNav} === ${J(tab)} && !window.__tr.hasPlaceholder(panel);
+}`;
+
 const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `() => {
   const issues = [];
   if (!(${listReady(tab, rowSelector, promptSelector)})()) { issues.push("list or prompt not shown"); }
@@ -284,9 +292,12 @@ const commitRequest = (rev) => [
  * Wrap a driver so each measurement lands in `rows` with its journey name. A refused
  * transition stops the journey (the run is invalid from that point) unless
  * `options.keepGoing`, which a diagnostic run sets to see every refusal.
+ * `options.newestCommit` is the head of the server's git log, the commit a switch to
+ * Commits lands on in a build that selects the newest commit (null when it is unknown).
  */
 function context(d, base, journey, rows, options) {
   const facts = options.facts ?? {};
+  const newestCommit = options.newestCommit ?? null;
   const measure = async (spec) => {
     const load1 = options.loadavg ? options.loadavg() : null;
     const row = await d.measure({ journey, ...spec });
@@ -366,7 +377,7 @@ function context(d, base, journey, rows, options) {
       };
     }
   };
-  return { d, base, measure, setupClick, land, requireRow, facts };
+  return { d, base, measure, setupClick, land, requireRow, facts, newestCommit };
 }
 
 // The scroll container of every navigation panel.
@@ -533,6 +544,15 @@ async function views(ctx) {
   await cycle("folder", folder, true);
 }
 
+// The Commits landing. Main's 19a36c5b (2026-11-13) made every switch to Commits select
+// the newest commit and show it. Before it, a switch showed the tab's prompt ("Select a
+// commit to preview") on a first visit and the last commit read after that. Revision 5
+// accepts either landing as the subject of a switch, and records which one it saw
+// (`landing`): `empty` for the prompt, `newest` for the newest commit, `restored` for the
+// commit read before. The newest commit is named by identity: the head of the server's
+// git log (`facts.git_log_head`), the first commit of the first page the panel selects.
+// Without it, only the prompt is accepted. A subject that is itself the newest commit
+// reads `newest` under either build.
 const commitsList = listReady("git", ".git-graph-row", ":scope > .preview-empty");
 const commitsListConverged = listConverged(
   "git",
@@ -540,6 +560,46 @@ const commitsListConverged = listConverged(
   ":scope > .preview-empty",
   ".git-commit-view",
 );
+// The list is shown and the newest commit is shown beside it, on its own address, as a
+// commit a click opened would be.
+const newestLanding = (newest) =>
+  newest
+    ? `() => (${listShown("git", ".git-graph-row")})() && (${commitReady(newest)})()`
+    : "() => false";
+const commitsLanding = (newest) => `() => (${commitsList})() || (${newestLanding(newest)})()`;
+const commitsLandingConverged = (newest) => `() => {
+  if ((${commitsList})()) { return (${commitsListConverged})(); }
+  if (${newest ? `(${newestLanding(newest)})()` : "false"}) { return (${newest ? commitConverged(newest) : '() => ""'})(); }
+  return "neither the Commits prompt nor the newest commit is shown";
+}`;
+// A switch back to Commits after a commit was read: that commit, or the newest.
+const commitSubjectLanding = (rev, newest) =>
+  `() => (${commitReady(rev)})() || (${newestLanding(newest)})()`;
+const commitSubjectLandingConverged = (rev, newest) => `() => {
+  if ((${commitReady(rev)})()) { return (${commitConverged(rev)})(); }
+  if (${newest ? `(${newestLanding(newest)})()` : "false"}) { return (${newest ? commitConverged(newest) : '() => ""'})(); }
+  return "neither the commit read before nor the newest commit is shown";
+}`;
+const landingKind = (newest, restored = null) => `() => {
+  const pane = document.getElementById("preview-pane");
+  if (pane && pane.querySelector(":scope > .preview-empty")) { return "empty"; }
+  const v = pane && pane.querySelector(":scope > .git-commit-stage > .git-commit-view");
+  const rev = v ? v.dataset.revision : null;
+  if (rev && rev === ${J(newest)}) { return "newest"; }
+  if (rev && rev === ${J(restored)}) { return "restored"; }
+  return "other " + rev;
+}`;
+const newestRequests = (newest) => (newest ? commitRequest(newest) : []);
+
+/** The Commits landing predicates, for the instrument's own tests. */
+export const COMMITS_LANDING = {
+  prompt: commitsList,
+  ready: commitsLanding,
+  converged: commitsLandingConverged,
+  subjectReady: commitSubjectLanding,
+  subjectConverged: commitSubjectLandingConverged,
+  kind: landingKind,
+};
 const pullsList = listReady("pulls", "a.github-pulls-row", ":scope > .pull-request-list-host");
 const pullsListConverged = listConverged(
   "pulls",
@@ -566,6 +626,7 @@ async function mainTabs(ctx) {
   const file = SUBJECTS.mainTabsFile;
   const rev = SUBJECTS.mainTabsCommit;
   const pr = SUBJECTS.mainTabsPull;
+  const newest = ctx.newestCommit;
   await ctx.land(file);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
   const toFiles = (id) =>
@@ -582,8 +643,10 @@ async function mainTabs(ctx) {
       id,
       subject: "Commits list",
       input: click(navTab("git")),
-      ready: commitsList,
-      converged: commitsListConverged,
+      ready: commitsLanding(newest),
+      converged: commitsLandingConverged(newest),
+      landing: landingKind(newest),
+      subjectRequest: newestRequests(newest),
       emptyState: true,
       settleMs,
       timeoutMs: 30000,
@@ -611,7 +674,7 @@ async function mainTabs(ctx) {
   await toFiles("main.pulls_to_files.again");
 
   // Give Commits and Pulls a selected subject, then repeat the round trip.
-  await ctx.setupClick(navTab("git"), commitsList, "Commits");
+  await ctx.setupClick(navTab("git"), commitsLanding(newest), "Commits");
   await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   await ctx.setupClick(commitRow(rev), commitReady(rev), `commit ${rev.slice(0, 8)}`);
   await ctx.setupClick(navTab("pulls"), pullsList, "Pulls");
@@ -619,14 +682,16 @@ async function mainTabs(ctx) {
   await ctx.setupClick(pullRow(pr), pullReady(pr), `pull request #${pr}`, 60000);
   await sleep(1500);
   await ctx.setupClick(navTab("files"), fileReady(file), file);
+  // A build that selects the newest commit on every switch lands there, not on `rev`.
   const subjectCommit = (id) =>
     ctx.measure({
       id,
       subject: rev,
       input: click(navTab("git")),
-      ready: commitReady(rev),
-      converged: commitConverged(rev),
-      subjectRequest: commitRequest(rev),
+      ready: commitSubjectLanding(rev, newest),
+      converged: commitSubjectLandingConverged(rev, newest),
+      landing: landingKind(newest, rev),
+      subjectRequest: [...commitRequest(rev), ...newestRequests(newest)],
       settleMs: 800,
       timeoutMs: 30000,
     });
@@ -653,14 +718,17 @@ async function mainTabs(ctx) {
 
 async function commits(ctx) {
   const C = SUBJECTS.commits;
+  const newest = ctx.newestCommit;
   await ctx.land(SUBJECTS.landing);
   await ctx.requireRow(navTab("git"), "the Commits tab");
   await ctx.measure({
     id: "commits.first_show",
     subject: "Commits list",
     input: click(navTab("git")),
-    ready: commitsList,
-    converged: commitsListConverged,
+    ready: commitsLanding(newest),
+    converged: commitsLandingConverged(newest),
+    landing: landingKind(newest),
+    subjectRequest: newestRequests(newest),
     emptyState: true,
     settleMs: 900,
     timeoutMs: 30000,

@@ -728,13 +728,40 @@ main-tab Pulls rows land on.
 | `files` | Eight cold file clicks across kinds, four revisits, history back and forward, hover then click |
 | `keyboard` | ArrowDown to three cold neighbors, ArrowUp to two revisits |
 | `views` | View tab first visit and two revisits for Markdown, JSON, and a folder’s Overview and Treemap |
-| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected |
-| `commits` | Commits first show, three cold commits, two revisits, hover then click |
+| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected; each switch to Commits lands as the build does (below) |
+| `commits` | Commits first show (landing as the build does), three cold commits, two revisits, hover then click |
 | `pulls` | Pulls first show, list to pull request, its tabs first and again, pull request to pull request cold, revisit, and after a hover, history back, and Changes to another pull request |
 | `tree` | Folder expand, collapse, re-expand, and a nested expand |
 | `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
 | `skim` | ArrowDown held over six rows: one `keyDown`, five more flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
 | `reveal` | A landing on a file three folders down, its ancestors collapsed |
+
+**The Commits landing.** Main’s `19a36c5b` made every switch to Commits select the
+newest commit and show it, on that commit’s address.
+Before it, a switch showed the tab’s prompt (“Select a commit to preview”) on a first
+visit, and the last commit read after that.
+Since revision 5 a switch to Commits is ready on either landing:
+
+- `empty`: the list and the prompt, which converge with no commit mounted;
+- `newest`: the list and the newest commit, shown as `commitReady` requires, which
+  converge with that commit’s row the one selected;
+- `restored`: a switch back to Commits after a commit was read (`main_subject.*`), shown
+  as a build before `19a36c5b` restores it.
+
+The newest commit is named by identity, the head of the server’s git log
+(`facts.git_log_head`), the first commit of the history the panel selects from; another
+commit satisfies neither landing.
+Each such transition records the landing it saw (`landing`), and each run records which
+landing its build has (`commits_landing`): `newest` when every switch landed on the
+newest commit, `empty` when every one landed as before `19a36c5b`, `mixed` otherwise,
+and null when no switch to Commits was measured.
+Under the newest landing, `main.*_to_commits.*` and `commits.first_show` measure a
+switch until the newest commit’s detail is ready, its comparison and detail requests
+counted as the subject’s, and `main_subject.*_to_commits` measure that landing instead
+of the commit read before.
+`compare` refuses runs whose `commits_landing` differs, since the same transition then
+measures a different subject on each side; `--allow-mixed-landing` compares them anyway
+and notes it.
 
 **How a frame is read.** Every frame is read once, after its own style and layout and
 before it paints: the recorder’s `requestAnimationFrame` callback creates a
@@ -762,6 +789,9 @@ Revision 4 reads a 304 for a request a worker made as `revalidated` (revision 3 
 as `network`, so its cache disposition counts are wrong for worker requests), takes a
 region’s first rendered match rather than its first match, and skips hidden and
 off-screen subtrees when it looks for useful content.
+Revision 5 accepts a switch to Commits that lands on the newest commit as well as one
+that lands on the prompt, and records the landing; revision 4 refused every build since
+main’s `19a36c5b`, which lands on the newest commit (**The Commits landing**, above).
 
 **What each transition records.** The clock starts at the input event’s own `timeStamp`
 (the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
@@ -831,8 +861,8 @@ start for a landing).
   list’s row replacements (the palette’s results), request body bytes of every POST,
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
   presentation time for the first `pointerdown`, `click`, and `keydown`), the
-  application’s `…ToReady` spans, the DOM node count, and the one-minute load average
-  when the transition started.
+  application’s `…ToReady` spans, the DOM node count, the one-minute load average when
+  the transition started, and on a switch to Commits the landing it saw (`landing`).
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when any of these fails anywhere in its passes:
@@ -862,10 +892,11 @@ runs each, then `compare`, naming the hypothesis’s metric with
 condition has fewer than three valid runs, a label is missing (only `--aa` names one), a
 condition pools two builds or a dirty build has no content identity, the corpus commit,
 cleanliness, trunk, refs, server git log head, or indexed file count differ, the
-scenario revisions differ, or the regime or the journeys requested differ.
-It notes a mixed harness or Chrome version, a non-standard regime, a dirty build with
-its content identity, the catalog totals per condition, runs without a back-to-back
-partner, and an A/A comparison.
+scenario revisions differ, the regime or the journeys requested differ, or the runs’
+Commits landings differ (unless `--allow-mixed-landing`). It notes a mixed harness or
+Chrome version, a non-standard regime, a dirty build with its content identity, the
+catalog totals per condition, the Commits landing, runs without a back-to-back partner,
+and an A/A comparison.
 
 For each transition and metric it needs three values on both sides, and it lists every
 gap: a transition measured on one side only, a metric with fewer values, and a value

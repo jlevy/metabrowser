@@ -6,7 +6,7 @@
 import path from "node:path";
 
 export const SCENARIO = "transition-navigation/v1";
-export const SCENARIO_REVISION = 4;
+export const SCENARIO_REVISION = 5;
 export const MIN_RUNS = 3;
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
@@ -15,7 +15,33 @@ export const REVISION_NOTES = {
   1: "revision 1 credited a frame only when no DOM change followed it, so its times and frame counts mean something else",
   2: "revision 2 credited a frame only when no DOM change followed it, so its times and frame counts mean something else",
   3: "revision 3 recorded a request a worker made as network even when the wire answered 304 (the cache disposition counts), took a region's first match even when it was hidden, and gave up looking for useful content after 400 text nodes whether or not they were displayed",
+  4: "revision 4 took a switch to Commits as ready only on the tab's prompt, so it refused every build that lands on the newest commit, and its rows record no Commits landing",
 };
+
+/**
+ * Which Commits landing a run saw: `newest` when every switch to Commits landed on the
+ * newest commit, `empty` when every one landed as builds did before main's 19a36c5b (on
+ * the prompt, or a switch back on the commit read before), `mixed` otherwise, and null
+ * when no switch to Commits was measured. A transition's own is its `landing`.
+ */
+export function commitsLandingOf(journeys) {
+  const kind = (landing) =>
+    landing === "newest"
+      ? "newest"
+      : landing === "empty" || landing === "restored"
+        ? "empty"
+        : "mixed";
+  const seen = new Set(
+    (journeys ?? [])
+      .flatMap((j) => j.transitions ?? [])
+      .filter((t) => t.landing !== undefined && t.landing !== null)
+      .map((t) => kind(t.landing)),
+  );
+  if (seen.size === 0) {
+    return null;
+  }
+  return seen.size === 1 ? [...seen][0] : "mixed";
+}
 
 /** A comparison that cannot be made to mean anything; the command exits 2. */
 export class CompareRefusal extends Error {}
@@ -349,7 +375,10 @@ export const sameEverywhere = (rows, get, what, refuse) => {
  * against even ones). Throws CompareRefusal when the runs cannot be compared; otherwise
  * returns every judgement, every gap, and the exit code.
  */
-export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, expect = [] } = {}) {
+export function compareRuns(
+  rows,
+  { control, candidate, aa, tolerance = 1.3, expect = [], mixedLanding = false } = {},
+) {
   if (!(tolerance > 1 && tolerance < 2)) {
     throw new CompareRefusal("--tolerance must be above 1 and below 2 (1.3 rough cut; never 2x)");
   }
@@ -409,11 +438,33 @@ export function compareRuns(rows, { control, candidate, aa, tolerance = 1.3, exp
   );
   const flags = sameEverywhere(all, regimeFlags, "the regime (headed, warm-up, journeys)", refuse);
   sameEverywhere(all, (r) => r.journeys_requested, "the journeys requested", refuse);
+  // A switch to Commits that lands on the newest commit shows, fetches, and paints a commit;
+  // one that lands on the prompt shows a list. The same transition ids measure different
+  // subjects, so they are compared only when asked to, with a note.
+  const landings = [...new Set(all.map((r) => JSON.stringify(r.commits_landing ?? null)))];
+  if (landings.length > 1 && !mixedLanding) {
+    refuse(
+      `the Commits landing differs across the runs: ${landings.join(" / ")}; a switch to Commits that lands on the newest commit measures something else than one that lands on the prompt (--allow-mixed-landing compares them anyway, with a note)`,
+    );
+  }
 
   const corpus = all[0];
   const notes = [
     `every run served corpus ${corpus.corpus.commit.slice(0, 8)} (trunk ${String(corpus.corpus.trunk).slice(0, 8)}, server git log head ${String(corpus.facts?.git_log_head).slice(0, 8)}, ${corpus.server?.indexed_files} indexed files)`,
   ];
+  if (landings.length > 1) {
+    notes.push(
+      `MIXED COMMITS LANDINGS, compared with --allow-mixed-landing: the runs saw ${landings.join(" / ")}, so every switch to Commits measures a different subject on each side`,
+    );
+  } else if (landings[0] !== "null") {
+    const where = {
+      newest: "on the newest commit",
+      empty: "as before main's 19a36c5b: on the prompt, or on the commit read before",
+      mixed: "on more than one kind of subject within a run",
+    };
+    const landing = JSON.parse(landings[0]);
+    notes.push(`every run's switches to Commits landed ${where[landing] ?? landing}`);
+  }
   if (revision !== SCENARIO_REVISION) {
     notes.push(
       `runs are scenario revision ${revision}, compared with each other; this reads revision ${SCENARIO_REVISION}${REVISION_NOTES[revision] ? `, and ${REVISION_NOTES[revision]}` : ""}`,
@@ -869,6 +920,7 @@ export function keepTransition(t) {
     subject: t.subject,
     ok: t.ok,
     refusals: scrubRefusals(t.refusals),
+    landing: t.landing,
     readyMs: t.readyMs,
     paintedReadyMs: t.paintedReadyMs,
     nextFrameMs: t.nextFrameMs,
