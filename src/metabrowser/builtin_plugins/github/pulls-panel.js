@@ -57,6 +57,17 @@ const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
 // pull requests a reader most often opens next. With the two neighbours that is seven, under
 // the server's eight record refreshes a scan, so one scan's changes do not crowd them out.
 export const PREFETCH_TOP_ROWS = 5;
+// The changed-files lists a prefetch names, the server's MAX_PREFETCH_NUMBERS: the rows the
+// pointer or focus last rested on, the open row, its neighbours, then the rows in view.
+export const PREFETCH_FILES = 16;
+// Rows the pointer or focus rested on that a prefetch names first, newest first: the row a
+// click is about to open, and the one the pointer left for it.
+export const PREFETCH_RESTED = 2;
+// How long the rows in view stay put before their changed files are asked for, so a reader
+// scrolling past rows starts no list for them. A choice, not a bound on any cost: past the
+// pauses inside one scroll, and under the second or more a reader spends reading rows before
+// expanding one. A list GitHub reads takes 1 to 5 s, so the files are there long before that.
+export const FILES_DWELL_MS = 500;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;
 const CORE_CONTROL_TIMEOUT_MS = 2000;
@@ -708,6 +719,24 @@ export function createPullsController(deps, options = {}) {
   let prefetchTimer = null;
   /** @type {number[]} */
   let prefetchRows = [];
+  // Rows likely to be expanded next, whose changed files a prefetch names beside the open
+  // row's and its neighbours': the rows the pointer or focus last rested on, newest first, and
+  // the rows in view, in the list's order. A files ask sends them once the rows in view stay
+  // put, or at once for a row rested on, and sends nothing when it would repeat the last ask.
+  /** @type {number[]} */
+  let restedRows = [];
+  /** @type {number[]} */
+  let viewRows = [];
+  /** @type {unknown} */
+  let filesTimer = null;
+  let lastAsk = "";
+  // The `changed` of the last ask sent, which a files ask carries on, so it drops nothing a
+  // scan's ask queued.
+  let askChanged = false;
+  // While the server says the budget admits no background work, a files ask waits a slow
+  // poll; a scan's or a landing's ask still goes, and the server answers it from memory.
+  /** @type {number | null} */
+  let filesHeldUntil = null;
 
   /** @returns {HeldList} */
   function held() {
@@ -1180,6 +1209,13 @@ export function createPullsController(deps, options = {}) {
   function prepareVisible(numbers) {
     if (!live() || !online() || walkingTo !== null) {
       return;
+    }
+    if (numbers.join(",") !== viewRows.join(",")) {
+      // Their changed files are asked for once they stay put, after their own metadata.
+      viewRows = numbers.slice();
+      if (numbers.length > 0) {
+        askFiles(FILES_DWELL_MS);
+      }
     }
     const list = held();
     if (typeof list.envelope?.generation !== "string" || list.content === null) {
@@ -1802,15 +1838,18 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * Ask the server to refresh, behind the reader, what they are likely to open next: the
-   * anchored row's neighbours and the top of the list, and the changed files of the open
-   * row and its neighbours. *changed* adds what the server answered most recently that the
-   * scan just found changed. Only while shown, visible, and online; the server reads each
-   * again, admits what is due within its caps, and waits behind any reader's work.
+   * anchored row's neighbours and the top of the list, and the changed files of the rows the
+   * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
+   * *changed* adds what the server answered most recently that the scan just found changed.
+   * Only while shown, visible, and online; the server reads each again, admits what is due
+   * within its caps and the budget's floor, and waits behind any reader's work. *onlyNew*
+   * sends nothing when the ask would repeat the last one sent.
    *
    * @param {boolean} changed
+   * @param {boolean} [onlyNew]
    * @returns {boolean} Whether a request was sent, or waits behind the one on its way.
    */
-  function prefetch(changed) {
+  function prefetch(changed, onlyNew = false) {
     const list = held();
     if (
       !live() ||
@@ -1834,17 +1873,39 @@ export function createPullsController(deps, options = {}) {
     const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
-    const files = [...new Set([...(current === null ? [] : [current]), ...near])];
+    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    const files = [
+      ...new Set([
+        ...restedRows.filter(listed),
+        ...(current === null ? [] : [current]),
+        ...near,
+        ...viewRows.filter(listed),
+      ]),
+    ].slice(0, PREFETCH_FILES);
+    const key = JSON.stringify([records, files, changed]);
+    if (onlyNew && key === lastAsk) {
+      return false;
+    }
+    lastAsk = key;
+    askChanged = changed;
     prefetching = true;
     void deps
       .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
       .then((response) => {
         // A lane started or joined: follow it, so the row it reads breathes while it does.
         if (response.status === 202) {
+          filesHeldUntil = null;
           watchPrefetch();
+        } else if (
+          /** @type {{prefetch?: unknown} | null} */ (response.body)?.prefetch === "deferred"
+        ) {
+          holdFiles();
         }
       })
-      .catch(() => null)
+      .catch(() => {
+        // Not sent, as far as the panel knows: the next files ask may send it again.
+        lastAsk = "";
+      })
       .finally(() => {
         prefetching = false;
         const pending = prefetchPending;
@@ -1876,7 +1937,7 @@ export function createPullsController(deps, options = {}) {
       setPrefetchRows([]);
       return;
     }
-    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[]} | null} */
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
     let report = null;
     try {
       const response = await deps.request("GET", PREFETCH_ROUTE, {});
@@ -1888,6 +1949,16 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const running = report?.running ?? null;
+    const files = report?.files;
+    if (
+      report?.governor?.admits === false ||
+      (typeof files?.hour_used === "number" &&
+        typeof files.per_hour === "number" &&
+        files.hour_used >= files.per_hour)
+    ) {
+      // The lane stopped, or will, at the budget's floor or the hour's cap of lists.
+      holdFiles();
+    }
     setPrefetchRows(
       running?.kind === "record" && typeof running.number === "number" ? [running.number] : [],
     );
@@ -1919,6 +1990,71 @@ export function createPullsController(deps, options = {}) {
     }
     prefetchRows = [];
     prefetchPending = null;
+    if (filesTimer !== null) {
+      deps.cancel(filesTimer);
+      filesTimer = null;
+    }
+    // The rows in view are measured again when the panel next paints them.
+    viewRows = [];
+  }
+
+  /** The server admits no background work, or no more lists this hour: files asks wait. */
+  function holdFiles() {
+    filesHeldUntil = deps.now() + SLOW_POLL_MS;
+    // The ask it refused was not acted on, so the same ask may be sent once the hold ends.
+    lastAsk = "";
+  }
+
+  /**
+   * Whether GitHub is being read for the rows in view: a batch of them whose titles breathe,
+   * or, after one, the next batch the queue holds. That is what the reader sees and waits
+   * for, and a files ask waits behind it. Batches the cache answers hold nothing up.
+   */
+  function viewBeingRead() {
+    return (
+      coreWanted !== null &&
+      coreWanted.lane === "visible" &&
+      coreWanted.admitted === true &&
+      coreWanted.canRetry &&
+      coreLive() &&
+      !warmPaused &&
+      (!coreWanted.done || visibleCoreAt < visibleCores.length)
+    );
+  }
+
+  /**
+   * Ask, *delayMs* from now, for the changed files of the rows the reader is likely to
+   * expand: at once for a row the pointer or focus rests on, and once the rows in view stay
+   * put for the rows in view. A later ask replaces one still waiting.
+   *
+   * @param {number} delayMs
+   */
+  function askFiles(delayMs) {
+    if (filesTimer !== null) {
+      deps.cancel(filesTimer);
+    }
+    filesTimer = deps.schedule(() => {
+      filesTimer = null;
+      sendFiles();
+    }, delayMs);
+  }
+
+  /**
+   * Send a files ask, unless the reader is walking, GitHub is being read for the rows in
+   * view, which it then waits behind, or the server said the budget admits none.
+   */
+  function sendFiles() {
+    if (!live() || !online() || walkingTo !== null) {
+      return;
+    }
+    if (filesHeldUntil !== null && deps.now() < filesHeldUntil) {
+      return;
+    }
+    if (viewBeingRead()) {
+      askFiles(CORE_BUSY_RETRY_MS);
+      return;
+    }
+    prefetch(askChanged, true);
   }
 
   /** After a scan the server finished, once per scan: ask for what it found changed. */
@@ -2476,16 +2612,24 @@ export function createPullsController(deps, options = {}) {
       }
     },
     /**
-     * A row took the pointer or focus: read its record ahead of a click. A walk does not
-     * come here, so it reads nothing per row, and neither does the row whose page holds the
-     * pane or is opening, which reads its own: a pointer resting on the row it just clicked
-     * would otherwise read the record the page has just read.
+     * A row took the pointer or focus: read its record ahead of a click, and ask for its
+     * changed files, which the click expands. A walk does not come here, so it reads
+     * nothing per row, and neither does the row whose page holds the pane or is opening,
+     * which reads its own: a pointer resting on the row it just clicked would otherwise read
+     * the record the page has just read. That row's files are in every ask already.
      *
      * @param {number} number
      */
     peek(number) {
       if (!disposed && walkingTo === null && number !== current) {
         void readRecord(number);
+        if (restedRows[0] !== number) {
+          restedRows = [number, ...restedRows.filter((row) => row !== number)].slice(
+            0,
+            PREFETCH_RESTED,
+          );
+          askFiles(0);
+        }
       }
     },
     /** The reader neared the end of the displayed rows. */
