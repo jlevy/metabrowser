@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser import kpress_adapter
-from tests.process_group import run_in_own_group
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-header-chrome.mjs"
@@ -48,10 +48,15 @@ PARTS = (
 # about as long as this machine once its first Chrome had started. 40 s leaves the
 # largest part six times that, and fires before the suite's 60.
 SESSION_TIMEOUT_S = 40
-# The first start's own bound, as long as the suite's gates allow an inner one. Stopping
-# the session's process group after either bound takes at most 7 s more
-# (tests/process_group.py), which still ends before the suite's 60.
+# The first start's own bound, as long as the suite's gates allow an inner one. A cold
+# Chrome start in CI has taken 28.2 s (the Overview alignment test, 2026-11-14).
 LAUNCH_TIMEOUT_S = 48
+# The longest a part can take: the larger bound, the session's process group stopped after
+# it, and the profile's teardown (tests/process_group.py). That is more than the suite's
+# 60 s, so the module carries its own limit, with 10 s for the faces' copy and the rest of
+# the setup; tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = max(LAUNCH_TIMEOUT_S, SESSION_TIMEOUT_S) + GROUP_STOP_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
 def _kpress_faces(into: Path) -> Path:

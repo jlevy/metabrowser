@@ -39,7 +39,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from tests.process_group import KILL_GRACE_S, TERM_GRACE_S, run_in_own_group
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
 DOM = Path(__file__).parent / "dom"
@@ -102,18 +102,19 @@ _MEASUREMENT_BUDGET_S = (
 # Stopping the server: its closed stdin, then SIGKILL. The measurement's process group
 # is stopped by tests/process_group.py, SIGTERM then SIGKILL.
 _SERVER_STOP_S = 5.0
-# The longest a run can take: every budget, then every stop. This module's own limit,
-# over the suite's 60 s default (tests/test_suite_gates.py), adds the fixture's setup and
-# teardown, which list processes once and remove one directory.
-_LONGEST_RUN_S = (
+# The longest the test can take: every budget, then every stop, and the profile's
+# teardown. This module's own limit, over the suite's 60 s default
+# (tests/test_suite_gates.py), adds 10 s for the rest of the setup;
+# tests/test_process_group.py holds the sum under it.
+LIFECYCLE_S = (
     _BANNER_BUDGET_S
     + _SERVING_BUDGET_S
     + _MEASUREMENT_BUDGET_S
-    + TERM_GRACE_S
-    + 2 * KILL_GRACE_S
+    + GROUP_STOP_S
     + 2 * _SERVER_STOP_S
+    + PROFILE_TEARDOWN_S
 )
-pytestmark = pytest.mark.timeout(_LONGEST_RUN_S + 30)
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 README = """# Sample Project
 

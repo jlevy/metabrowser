@@ -288,9 +288,15 @@ Strict mode is off on a developer machine, which can add these:
   the Folder Overview’s labels start at several window widths; and the layout checks in
   `tests/test_github_pull_header_chrome.py` and `tests/test_staged_fonts_chrome.py`. The
   CI runners have Chrome, so CI runs them.
-  Each runs its Node script in a process group of its own, stops that whole group
-  however the run ends, Chrome included, and removes the profile it gave the script
-  (`tests/process_group.py`, held by `tests/test_process_group.py`).
+  Each runs its Node script in a process group of its own and stops that whole group,
+  Chrome included, however the run ends, with the group’s leader kept unreaped until
+  then so the group ID cannot pass to another process.
+  Afterwards it kills any Chrome process that escaped the group, one running the
+  launched browser with a `--user-data-dir` inside the test’s profile, and its helpers;
+  waits for those to exit; and removes the profile, even if that sweep failed.
+  A process that only mentions the profile is not signalled.
+  Each test’s bounds, stops, and teardown together fit under its timeout.
+  `tests/process_group.py` does this, and `tests/test_process_group.py` holds it.
 
 ### Timeouts
 

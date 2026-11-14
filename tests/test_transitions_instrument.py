@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.process_group import run_in_own_group
+from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,10 +38,13 @@ def test_transition_instrument_logic() -> None:
     assert result.stdout == "transitions instrument: 44 checks passed\n"
 
 
-# The longest a group has taken: 20 s for content in CI. A run cut off at this bound has
-# its whole process group stopped and its profile removed, so a hang leaves nothing
-# running; the bound and the stops stay under the suite's 60 s per-test timeout.
-RECORDER_TIMEOUT_S = 45
+# The longest a group has taken: 20 s for content in CI, which a check taken again for its
+# frame clock lengthens by a few seconds. A run cut off at this bound has its whole
+# process group stopped and its profile removed, so a hang leaves nothing running.
+RECORDER_TIMEOUT_S = 40
+# The longest a recorder test can take: its bound, the group's stop, and the profile's
+# teardown. tests/test_process_group.py holds it under the suite's per-test timeout.
+LIFECYCLE_S = RECORDER_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 
 
 @pytest.mark.parametrize(
