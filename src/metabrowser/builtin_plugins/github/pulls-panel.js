@@ -65,8 +65,9 @@ export const PREFETCH_FILES = 16;
 export const PREFETCH_RESTED = 2;
 // How long the rows in view stay put before their changed files are asked for, so a reader
 // scrolling past rows starts no list for them. A choice, not a bound on any cost: past the
-// pauses inside one scroll, and under the second or more a reader spends reading rows before
-// expanding one. A list GitHub reads takes 1 to 5 s, so the files are there long before that.
+// pauses inside one scroll, and under the seconds a reader spends reading rows before
+// expanding one. A one-page list took about 1.1 s with its two account checks (github.com,
+// 2026-11-13), and the lane reads one at a time, so the wait is the reader's, not the dwell.
 export const FILES_DWELL_MS = 500;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;

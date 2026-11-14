@@ -623,20 +623,22 @@ It replaces the repository’s background lane queue and starts or joins the lan
 with `prefetch: "started"` or `"joined"` and `github/pulls-prefetch` as its
 `status_route`; `200` with `"not_due"` when nothing was named, or `"deferred"` with a
 `reason` (`below_floor` or `rate_hold`) when the rate-limit governor admits no
-background work. The lane runs one item at a time and reads each again before it runs: a
-record that is missing (named only) or that the catalog says changed, and a files list
-the files route would refresh automatically.
-It stops at the governor, at 8 record refreshes per catalog publication or 40 an hour,
-at 20 GitHub file lists an hour, or when a reader’s job preempts its job, which gives
-its place in the caps back; it does not stop merely because a reader’s work runs, which
-it cannot delay. `GET github/pulls-prefetch` reports the lane from server memory:
-`running`, `queued`, the `records` and `files` caps with their use, the `governor`
-(`floor`, `admits`, `reason`, `held_until`, and each resource `observed` from GitHub’s
-rate-limit headers), and the outcomes of the last 16 items (`recent`). A background job
-takes no network slot, waits at a store turn behind every other job and is cancelled
-when one starts waiting, and a reader’s request for its pull request joins and promotes
-it. `cli-github-pulls-prefetch.txt` pins a run that refreshes, skips, and defers, with
-the `gh` calls each made.
+background work. The lane runs one item at a time, a record and then a files list in
+turn, each in its order, and reads each again before it runs: a record that is missing
+(named only) or that the catalog says changed, and a files list the files route would
+refresh automatically.
+It stops at the governor, or when a reader’s job preempts its job, which gives its place
+in the caps back; a cap drops only the rest of its own kind: 8 record refreshes per
+catalog publication or 40 an hour, and 100 GitHub file lists an hour.
+It does not stop merely because a reader’s work runs, which it cannot delay.
+`GET github/pulls-prefetch` reports the lane from server memory: `running`, `queued`,
+the `records` and `files` caps with their use, the `governor` (`floor`, `admits`,
+`reason`, `held_until`, and each resource `observed` from GitHub’s rate-limit headers),
+and the outcomes of the last 16 items (`recent`). A background job takes no network
+slot, waits at a store turn behind every other job and is cancelled when one starts
+waiting, and a reader’s request for its pull request joins and promotes it.
+`cli-github-pulls-prefetch.txt` pins a run that refreshes, skips, and defers, with the
+`gh` calls each made.
 See
 [Background prefetch](arch-repository-sources-and-provider-mirrors.md#background-prefetch-and-the-rate-limit-governor).
 
@@ -921,6 +923,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState`, `static/plugin-sdk-views.js#mergeRefs` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-watch` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh` | `node tests/dom/github-pulls-catalog-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.background-freshness` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-prefetch`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-prefetch-behavior.js` | `cli-ui-github-pulls-prefetch.tryscript.md` |
+| `github.files-prefetch` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-files-tree.js#createFileTreeController` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-prefetch`, `/api/plugin/github/pull-cores-prepare`, `/api/plugin/github/pull-files`, `/api/plugin/github/pull-files-refresh` | `node tests/dom/github-pulls-files-prefetch-behavior.js` | `cli-ui-github-pulls-prefetch.tryscript.md` |
 | `github.visible-core-window` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-cores-prepare`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-viewport-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-file-selection` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-files` | `node tests/dom/github-pulls-file-selection-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.native-stack-ui` | interaction | `builtin_plugins/github/pull-stacks.js#createStackController`, `builtin_plugins/github/pull-stacks.js#createStackIndex`, `builtin_plugins/github/pull-stacks.js#stackMembership`, `builtin_plugins/github/pull-stacks.js#memberRoute` | `/api/plugin/github/stacks`, `/api/plugin/github/stacks-refresh` | `node tests/dom/github-pull-stacks-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |

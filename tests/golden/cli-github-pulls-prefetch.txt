@@ -172,7 +172,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## A visible page asks for 7, 8, and 10 and for 8's changed files: only 7's checks are due, which its own page reads; 8 is current; 10 has no record, so it is read; 8's files come from the store's comparison, with no request to GitHub.
+## A visible page asks for 7, 8, and 10 and for 8's changed files, which the lane reads in turn, a record and then a list: only 7's checks are due, which its own page reads; 8's files come from the store's comparison, with no request to GitHub; 8 is current; 10 has no record, so it is read.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
 --- stdout ---
@@ -221,6 +221,12 @@ status: 200
       "at": "2026-09-17T14:00:00Z"
     },
     {
+      "kind": "files",
+      "number": 8,
+      "outcome": "refreshed",
+      "at": "2026-09-17T14:00:00Z"
+    },
+    {
       "kind": "record",
       "number": 8,
       "outcome": "skipped:current",
@@ -229,12 +235,6 @@ status: 200
     {
       "kind": "record",
       "number": 10,
-      "outcome": "refreshed",
-      "at": "2026-09-17T14:00:00Z"
-    },
-    {
-      "kind": "files",
-      "number": 8,
       "outcome": "refreshed",
       "at": "2026-09-17T14:00:00Z"
     }

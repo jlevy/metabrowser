@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Expanding a pull request’s files in the Pulls tab usually draws them at once, from the
+  cache, instead of waiting a second or more on GitHub.
+  The panel now asks Metabrowser to list, behind you, the changed files of the rows in
+  view once they stay put, and of a row as soon as the pointer or focus rests on it.
+  It asks nothing while you walk the list with a held key, while GitHub reads the rows’
+  own details, or while less than a quarter of the account’s GitHub rate limit remains.
+  `/api/plugin/github/pulls-prefetch` now reads a record and a file list in turn, so a
+  newly started server’s missing records no longer hold back every list, and a cap stops
+  only its own kind; it lists at most 100 pull requests’ files an hour, up from 20.
+
 - A Markdown document’s images no longer blink when you come back to its file in the
   macOS app. Opening another file and returning built the document again with lazy
   images, which WebKit fetched again before drawing them, so the images at the top were

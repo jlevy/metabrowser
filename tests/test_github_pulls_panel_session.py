@@ -884,6 +884,38 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
     }
 
 
+def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() -> None:
+    """The rows in view and a row rested on are listed first; a later expansion reads the
+    cache. Nothing is asked below the floor, during a walk, or while the rows' own metadata
+    is read; an unanswered ask holds up none of the reader's reads."""
+
+    facts = run_session("github-pulls-files-prefetch-behavior.js")
+    assert facts["asksBeforeDwell"] == 0
+    assert facts["visibleAsk"]["afterMs"] == 500
+    assert len(facts["visibleAsk"]["files"]) == 16
+    assert facts["restedAsk"] == {"afterMs": 0, "first": 89}
+    assert all(entry.endswith(" by prefetch") for entry in facts["listed"])
+    assert facts["expandedAfterPrefetch"] == {
+        "drawnAfterMs": 0,
+        "rows": 4,
+        "refreshAsks": 0,
+        "githubReads": [],
+    }
+    assert facts["expandedOutOfView"] == {
+        "drawnAfterMs": 2000,
+        "rows": 4,
+        "refreshAsks": 1,
+        "githubReads": ["reader"],
+    }
+    assert facts["belowFloor"] == {"asks": 1, "githubReads": 0}
+    assert facts["afterFloor"] == {"asks": 1, "firstRead": 97}
+    behind = facts["behindMetadata"]
+    assert behind["filesAskedMs"] >= behind["metadataSettledMs"]
+    assert behind["listsBeforeSettled"] == 0
+    assert (facts["asksDuringWalk"], facts["asksOnceStopped"]) == (0, 1)
+    assert facts["readerReadsWhileAskHeld"] == ["pull-files +0 ms", "pull +0 ms"]
+
+
 def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
     """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
 

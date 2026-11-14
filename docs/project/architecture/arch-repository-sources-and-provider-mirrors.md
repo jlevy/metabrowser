@@ -1180,18 +1180,27 @@ five public pull requests when this was built (2026-11-11).
 A visible page names what the reader is likely to open next with
 `POST github/pulls-prefetch` (`pull_prefetch.py`), and nothing on the server starts that
 work by itself, so a hidden or offline page spends nothing.
-Each served repository has one lane, a coordinator job that runs one item at a time and
-reads it again from disk before it runs, so a record or list another process refreshed
-meanwhile is skipped.
+The Pulls panel names the records of the anchored row’s neighbours and the top rows, and
+the changed files of the rows the pointer or focus last rested on, the open row, its
+neighbours, and the rows in view, up to 16 (`pulls-panel.js`). It asks for a row rested
+on at once, and for the rows in view once they stay put for `FILES_DWELL_MS`; it asks
+for no files during a walk, while GitHub reads the metadata of the rows in view, or for
+a slow poll after the server said the governor admits nothing or the hour’s lists are
+spent. Each served repository has one lane, a coordinator job that runs one item at a
+time, a record and then a files list in turn, and reads each again from disk before it
+runs, so a record or list another process refreshed meanwhile is skipped.
+Taking turns keeps the missing records of a server that just started, about 2 s each,
+from holding back every list.
 Its caps are 8 record refreshes per catalog publication, however many pages its scan
-read, 40 an hour, and 20 GitHub file lists an hour, kept in memory for each repository a
-server process serves.
+read, 40 an hour, and 100 GitHub file lists an hour, kept in memory for each repository
+a server process serves; a cap drops only the rest of its own kind.
 A background record refresh costs at most 8 core points when each part fits on one page,
 two of them account checks, which GitHub counts, and a one-page file list 3; at the caps
-that is 380 core points an hour for each repository in each process, 7.6% of a
-5,000-point limit.
-A job a reader preempts gives its place in the caps back, and the lane
-stops there.
+that is 620 core points an hour for each repository in each process, 12.4% of a
+5,000-point limit. A hundred lists an hour are six panes of rows in view with a few
+rested on; a one-page list of a small pull request took 0.51 to 0.58 s and an account
+check 0.27 to 0.29 s from github.com on 2026-11-13. A job a reader preempts gives its
+place in the caps back, and the lane stops there.
 
 `gh_budget.py` keeps, per process, the newest `x-ratelimit-*` observation of each
 resource every response carries, until its reset, and holds every resource after a
