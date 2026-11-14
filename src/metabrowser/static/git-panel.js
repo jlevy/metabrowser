@@ -178,10 +178,13 @@
   /** @type {Promise<boolean> | null} */
   let viewHelpersPending = null;
   let refreshing = false;
-  // How many of ensureHistory's HEAD reads are on their way. While one is, the walk may be
-  // about to be replaced, so a waiting newest landing is not answered from it
-  // (selectNewestWhenReady).
-  let headReads = 0;
+  // How many of ensureHistory's HEAD reads are on their way, by the history generation
+  // each began in. While one of the current generation is, its walk may be about to be
+  // replaced, so a waiting newest landing is not answered from it (selectNewestWhenReady).
+  // A read from an earlier generation holds nothing: a refresh replaced its walk, read
+  // HEAD itself, and answers the landing as it ends.
+  /** @type {Map<number, number>} */
+  const headReads = new Map();
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
   let wantedRange = null;
@@ -2757,7 +2760,11 @@
   }
 
   /**
-   * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
+   * `supersede` replaces the walk even while a page of it is on its way: HEAD moved, so
+   * that page is obsolete, and the reset below aborts it. Without it a page on its way
+   * defers the refresh to whoever reads HEAD next.
+   *
+   * @param {{preserveDetail?: boolean, selectedId?: string | null, supersede?: boolean}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
@@ -2766,7 +2773,7 @@
     if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
       return;
     }
-    if (state.loading || refreshing) {
+    if ((state.loading && !options.supersede) || refreshing) {
       return;
     }
 
@@ -2866,18 +2873,20 @@
     // cannot be repainted, only recomputed. Re-reading identity on every
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
-    headReads += 1;
+    headReads.set(generation, (headReads.get(generation) ?? 0) + 1);
     /** @type {MetabrowserGitRepoInfo | null} */
     let info;
     try {
       info = await fetchRepoInfo();
     } finally {
-      headReads -= 1;
+      const left = (headReads.get(generation) ?? 1) - 1;
+      if (left > 0) {
+        headReads.set(generation, left);
+      } else {
+        headReads.delete(generation);
+      }
     }
     if (generation !== historyGeneration) {
-      // Another walk replaced this one during the read, and a page of it that settled then
-      // left a waiting landing to the read.
-      selectNewestWhenReady();
       return;
     }
     if (!info) {
@@ -2889,7 +2898,8 @@
       (info.head?.revision ?? null) !== state.headRevision ||
       (info.head?.ref ?? null) !== state.headRef
     ) {
-      await refreshHistory();
+      // A page of the old walk that began during the read is obsolete with it.
+      await refreshHistory({ supersede: true });
       return;
     }
     // A summary whose refs a read could not confirm tries again each time the panel shows.
@@ -3063,7 +3073,7 @@
     }
     if (
       refreshing ||
-      headReads > 0 ||
+      headReads.has(historyGeneration) ||
       viewHelpersPending !== null ||
       (state.rowCount === 0 && state.loading)
     ) {

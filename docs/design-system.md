@@ -2602,8 +2602,8 @@ detail, whether by a click, the tab’s shortcut, or a history step onto the tab
 entry; a return after reading an older commit lands on the newest again.
 Only an address that names a commit, opened directly or reached by Back or Forward,
 selects another. The selection waits for the first page of history, and for any check
-under way of whether HEAD moved, so after a checkout made while Commits was hidden it
-selects the newest commit of the history as it is now.
+under way of whether HEAD moved; when HEAD moved, the history is read again, a page of
+the old one still on its way notwithstanding, and its newest commit is selected.
 The pane keeps what it showed until the commit is ready, so the switch paints no prompt
 and no blank frame. The commit’s address replaces the tab’s entry, so Back returns to
 where the reader was.

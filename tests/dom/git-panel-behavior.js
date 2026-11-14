@@ -3481,8 +3481,9 @@ async function run() {
     }
 
     // As above, but the page answers that the history session expired, and recovery rebuilds
-    // the walk while the panel's read is still on its way. The rebuilt walk waits for that
-    // read too, which answers the landing from it as it ends.
+    // the walk while the panel's read is still on its way. Recovery read HEAD itself, so the
+    // rebuilt walk answers the landing at once, and the older read, whose answer is for a
+    // walk that is gone, holds nothing and changes nothing when it ends.
     {
       const walk = [
         commit(SHA_D, [SHA_C], "rebuilt newest"),
@@ -3530,23 +3531,91 @@ async function run() {
       await settle();
       assertEqual("expired: recovery read HEAD again", reads, 2);
       assertEqual(
-        "expired: the landing waits for the panel's read",
-        replacedRoutes.length,
-        routesBefore,
-      );
-      releaseRead();
-      await settle();
-      assertEqual(
-        "expired: the read answers the landing",
+        "expired: the rebuilt walk answers the landing",
         internals.stateForTests().selectedId,
         SHA_D,
       );
-      assertEqual(
+      const answered = replacedRoutes.length;
+      assertTrue(
         "expired: its address replaces the entry",
-        replacedRoutes.at(-1),
-        `/commit/${SHA_D}`,
+        answered > routesBefore &&
+          replacedRoutes.slice(routesBefore).every((route) => route === `/commit/${SHA_D}`),
+      );
+      releaseRead();
+      await settle();
+      assertEqual("expired: the older read changes nothing", replacedRoutes.length, answered);
+      assertEqual(
+        "expired: the newest stays selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
       );
       responses.set("/api/git/repo", repoAt(SHA_D));
+    }
+
+    // HEAD moved, and the reader scrolled a page of the old walk into loading while HEAD was
+    // read. The page is still on its way when the read ends: it is obsolete with its walk,
+    // so the refresh replaces the walk anyway, and the landing selects the new newest commit.
+    {
+      const oldWalk = [
+        commit(SHA_D, [SHA_C], "before the move"),
+        commit(SHA_C, [SHA_B], "second before"),
+        commit(SHA_B, [], "third before"),
+      ];
+      const old = internals.emptyState();
+      old.headRevision = SHA_D;
+      old.headRef = "refs/heads/main";
+      internals.setStateForTests(old);
+      const firstPage = historyPage(0, oldWalk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(oldWalk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        if (cursor === "history:1") {
+          await pageHeld;
+          return historyPage(1, oldWalk.slice(2), 3, SHA_D);
+        }
+        return historyPage(
+          0,
+          [commit(SHA_E, [SHA_D], "after the move"), commit(SHA_D, [], "under it")],
+          2,
+          SHA_E,
+        );
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_E));
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      await settle();
+      const page = internals.loadNextPage(false);
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "moved, page loading: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_E,
+      );
+      assertTrue(
+        "moved, page loading: only its address replaces the entry",
+        replacedRoutes.length > routesBefore &&
+          replacedRoutes.slice(routesBefore).every((route) => route === `/commit/${SHA_E}`),
+      );
+      assertEqual(
+        "moved, page loading: the walk is the new one",
+        internals.stateForTests().headRevision,
+        SHA_E,
+      );
+      releasePage();
+      assertTrue("moved, page loading: the obsolete page lands nothing", !(await page));
+      await settle();
+      assertEqual(
+        "moved, page loading: the newest stays selected",
+        internals.stateForTests().selectedId,
+        SHA_E,
+      );
     }
 
     // Not mounted: the reader left a commit far down a history deep enough to evict its first
