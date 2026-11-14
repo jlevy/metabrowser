@@ -467,9 +467,51 @@ const CHANGES = [
   "pulls.tab.changes_first_2",
   "pulls.tab.changes_revisit_2",
 ];
-const holdAccount = (record, metrics, ids) => (e) =>
-  e.direction === "higher" && metrics.includes(e.metric) && ids.includes(e.id)
-    ? `${record}: the first-paint hold, which is the change (accepted there on the same metric and transitions)`
+// Correction, after the results were read: the version amendment 3 names (sha256
+// b09ab7c8...) carried a record's account to every transition and metric it listed, which is
+// broader than amendment 3's rule ("the same metric on the same transitions moving the same
+// way"). Each record's cells are now named one by one, as its own tables give them: a cell
+// carries the account only where that record shows the candidate higher. The correction
+// only narrows what is accounted for.
+const HELD = {
+  // exp-065's guard table and "What moved the wrong way" (the holds).
+  "exp-065": [
+    ["pulls.pr_to_pr.cold", "pr_description_shown_ms"],
+    ["pulls.pr_to_pr.hover_click", "pr_description_shown_ms"],
+    ["pulls.pr_changes_to_pr", "pr_description_shown_ms"],
+    ["pulls.list_to_pr.cold", "pr_description_final_ms"],
+    ["pulls.pr_to_pr.hover_click", "pr_description_final_ms"],
+    ["pulls.pr_changes_to_pr", "pr_description_final_ms"],
+    ...CHANGES.map((id) => [id, "painted_ready_ms"]),
+  ],
+  // exp-080's guard table: every cell whose candidate median is above the control's.
+  "exp-080": [
+    ...[
+      "pulls.pr_to_pr.cold",
+      "pulls.pr_to_pr.revisit",
+      "pulls.pr_to_pr.hover_click",
+      "pulls.pr_changes_to_pr",
+      "pulls.history_back",
+    ].map((id) => [id, "pr_description_shown_ms"]),
+    ...[
+      "pulls.list_to_pr.cold",
+      "pulls.pr_to_pr.hover_click",
+      "pulls.pr_changes_to_pr",
+      "pulls.history_back",
+    ].map((id) => [id, "pr_description_final_ms"]),
+    ...[
+      "pulls.list_to_pr.cold",
+      "pulls.pr_to_pr.cold",
+      "pulls.pr_to_pr.revisit",
+      "pulls.pr_to_pr.hover_click",
+      "pulls.pr_changes_to_pr",
+      "pulls.history_back",
+    ].map((id) => [id, "painted_ready_ms"]),
+  ],
+};
+const holdAccount = (record) => (e) =>
+  e.direction === "higher" && HELD[record].some(([id, m]) => id === e.id && m === e.metric)
+    ? `${record}: the first-paint hold, which is the change (that record shows the same metric on the same transition higher, and accepted it)`
     : null;
 {
   const decide = [
@@ -483,10 +525,7 @@ const holdAccount = (record, metrics, ids) => (e) =>
   ];
   const detail = CLICKS.map((id) => notHigher(id, "subject_duplicates"));
   const guards = cross(COLD_CLICKS, ["pr_description_shown_ms", "pr_description_final_ms"]);
-  const wrong = tableWrongWay(
-    guards,
-    holdAccount("exp-065", ["pr_description_shown_ms", "pr_description_final_ms"], COLD_CLICKS),
-  );
+  const wrong = tableWrongWay(guards, holdAccount("exp-065"));
   hypotheses.push({
     id: "H92 (a)",
     record: "exp-065",
@@ -512,10 +551,7 @@ hypotheses.push({
       "lower",
     ),
   ];
-  const wrong = tableWrongWay(
-    cross(CHANGES, ["painted_ready_ms"]),
-    holdAccount("exp-065", ["painted_ready_ms"], CHANGES),
-  );
+  const wrong = tableWrongWay(cross(CHANGES, ["painted_ready_ms"]), holdAccount("exp-065"));
   hypotheses.push({
     id: "H92 (c)",
     record: "exp-065",
@@ -572,14 +608,7 @@ hypotheses.push({
     ...cross(COLD_CLICKS, ["pr_description_final_ms", "pr_description_shown_ms"]),
     ...cross(conversation, ["painted_ready_ms"]),
   ];
-  const wrong = tableWrongWay(
-    guards,
-    holdAccount(
-      "exp-080",
-      ["pr_description_final_ms", "pr_description_shown_ms", "painted_ready_ms"],
-      [...COLD_CLICKS, ...conversation],
-    ),
-  );
+  const wrong = tableWrongWay(guards, holdAccount("exp-080"));
   hypotheses.push({
     id: "H106",
     record: "exp-080",
