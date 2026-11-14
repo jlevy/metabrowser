@@ -23,20 +23,20 @@ from tests.required_tools import require_node
 CHILD = "setInterval(() => {}, 1000);"
 # The parent starts the child, writes the child's pid, and then hangs or exits.
 PARENT = """
-const {{ spawn }} = require("node:child_process");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
-const [profile, pidFile, mode] = process.argv.slice(1);
-const child = spawn(process.execPath, ["-e", {child}, profile], {{
+const [child, profile, pidFile, mode] = process.argv.slice(1);
+const started = spawn(process.execPath, ["-e", child, profile], {
   stdio: "ignore",
   detached: mode === "leave-group",
-}});
-fs.writeFileSync(pidFile, String(child.pid));
-if (mode === "hang") {{
-  setInterval(() => {{}}, 1000);
-}} else {{
-  child.unref();
-}}
-""".format(child=repr(CHILD))
+});
+fs.writeFileSync(pidFile, String(started.pid));
+if (mode === "hang") {
+  setInterval(() => {}, 1000);
+} else {
+  started.unref();
+}
+"""
 # Long enough for Node to start and write the pid file on a loaded machine; the run is
 # stopped here only in the hanging case.
 DEADLINE_S = 5.0
@@ -57,7 +57,7 @@ def _gone(pid: int, within_s: float = 2.0) -> bool:
 
 def _run(profile: Path, pid_file: Path, mode: str) -> tuple[bool, int]:
     run = run_in_own_group(
-        [require_node(), "-e", PARENT, str(profile), str(pid_file), mode],
+        [require_node(), "-e", PARENT, CHILD, str(profile), str(pid_file), mode],
         timeout_s=DEADLINE_S,
         env=os.environ,
     )
@@ -86,12 +86,14 @@ def test_a_run_whose_parent_exits_still_stops_the_child_it_left(tmp_path: Path) 
 def test_a_process_that_left_the_group_is_killed_and_reported(tmp_path: Path) -> None:
     pid_file = tmp_path / "child.pid"
     profiles: list[Path] = []
-    with pytest.raises(AssertionError, match="processes outlived their group"):
-        with owned_profile("metab-test-group-") as profile:
-            profiles.append(profile)
-            timed_out, child = _run(profile, pid_file, "leave-group")
-            assert not timed_out
-            # In a session of its own, the child is out of the group's reach.
-            assert not _gone(child, within_s=0.5)
+    with (
+        pytest.raises(AssertionError, match="processes outlived their group"),
+        owned_profile("metab-test-group-") as profile,
+    ):
+        profiles.append(profile)
+        timed_out, child = _run(profile, pid_file, "leave-group")
+        assert not timed_out
+        # In a session of its own, the child is out of the group's reach.
+        assert not _gone(child, within_s=0.5)
     assert _gone(int(pid_file.read_text(encoding="utf-8")))
     assert not profiles[0].exists()
