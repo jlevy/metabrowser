@@ -601,17 +601,18 @@ an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An of
 later answer makes empty, by bringing back the rows drawn, is withdrawn
 (`offerWithdrawn`). A refresh that lists no files at all is offered as well, and the
 drawn rows keep no line that says there are none until the reader asks for the empty
-list (`refreshListsNone`). A read that answers that the server no longer holds the list
-is offered as well, while the drawn rows breathe as the list is listed again
-(`listGone`, `listGoneWhileAsked`), and its notice and Retry join the offer when the
-list stays unavailable (`listGoneUnavailable`). Each hold’s span says how long it held
-and why it ended, an offer included when the reader presses it or the tree closes on it,
-and a first read that fails as failed (`spans`). `invariants` holds, across every model
-the stories rendered, their refresh answering started or not due, that an expanded tree
-with no rows drawn never offers, that once open it shows progress, a notice, or its
-line, that drawn rows never stand under the line of a list with no files, that a change
-held back from drawn rows is always offered, and that drawn rows never sit under
-progress.
+list (`refreshListsNone`), whether a read past the rows held brings it, at the offset it
+asked for, or a refresh answering not due (`refreshNotDueListsNone`). A read that
+answers that the server no longer holds the list is offered as well, while the drawn
+rows breathe as the list is listed again (`listGone`, `listGoneWhileAsked`), and its
+notice and Retry join the offer when the list stays unavailable (`listGoneUnavailable`).
+Each hold’s span says how long it held and why it ended, an offer included when the
+reader presses it or the tree closes on it, and a first read that fails as failed
+(`spans`). `invariants` holds, across every model the stories rendered, their refresh
+answering started or not due, that an expanded tree with no rows drawn never offers,
+that once open it shows progress, a notice, or its line, that drawn rows never stand
+under the line of a list with no files, that a change held back from drawn rows is
+always offered, and that drawn rows never sit under progress.
 
 ```console
 $ node tests/dom/github-pull-files-opening-behavior.js
@@ -765,9 +766,30 @@ $ node tests/dom/github-pull-files-opening-behavior.js
       "line": "No changed files.",
       "offer": null
     },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
+    ],
     "spans": [
       "opening met 0 ms",
       "lateRows reader 400 ms"
+    ]
+  },
+  "refreshNotDueListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
     ]
   },
   "listGone": {
