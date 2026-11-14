@@ -216,10 +216,10 @@ the registration and three amendments:
   each third clause sees, and the verdict labels.
   It was committed 20 s after the first pair finished (12:33:21Z in
   [exp-079-power.jsonl](exp-079-power.jsonl)) and before the second began.
-  No analysis had run on an exp-079 result.
-  The operator had seen three log lines of `views.folder.*`, which nothing judges, as
-  the amendment says. That no judged result was read rests on the operator’s statement;
-  the committed files cannot show it.
+  The operator states that no analysis had run on an exp-079 result and no judged result
+  had been read, and that it had seen three log lines of `views.folder.*`, which nothing
+  judges, as the amendment says.
+  The committed files cannot show this.
 
 **The accept rule** is the runbook’s. A deciding count or value passes when its median
 moved the predicted way with ranges apart; a time or frame count, with ranges apart and
@@ -253,7 +253,7 @@ Both versions are in this branch’s history.
 
 One comment in the committed version overstates its list.
 It says exp-065’s cells come from that record’s guard table and its “What moved the
-wrong way” section, but the list omits that section’s cells.
+wrong way” section, but the list omits most of that section’s cells.
 The list is narrower than the comment, which is again the conservative side.
 
 **The coordinator’s ruling: the correction stands.** Where the registration gives two
@@ -273,7 +273,7 @@ Under the hashed script, at `655a7bec`, H106 is accepted; no other verdict diffe
 | Harness | `3a1ff25e`, scenario revision 5, clean, frozen for the round |
 | Corpus | `7a02fed4` checked out, clean, 1,286 indexed files; trunk `083e78e4`; refs digest `387f68dc4e8eb8e0` before every pair and at every run’s start and end |
 | Chrome | 152.0.7977.83, headless |
-| Lock | taken 12:15:11Z at a one-minute load of 1.57, released 14:01:17Z, from the driver’s log, which is not committed because it holds a local path; the pairs’ own times, below, are in [exp-079-power.jsonl](exp-079-power.jsonl) |
+| Lock | taken 12:15:11Z at a one-minute load of 1.57, released 14:01:17Z, from the driver’s log (`attic/exp079/exp079-paced.log` in the round’s worktree), which is not committed because it holds a local path; the pairs’ own times, below, are in [exp-079-power.jsonl](exp-079-power.jsonl) |
 | Pairs | six, 12:16:13Z to 14:01:16Z, the control first in odd attempts; all six judged, none excluded |
 | Load | one-minute load 1.67 to 5.04 at run starts, at most 10.13 at a measured transition’s start |
 | Power | Low Power Mode on and AC power before and after every pair ([exp-079-power.jsonl](exp-079-power.jsonl)) and in all 424 samples taken every 15 s ([exp-079-power-samples.log](exp-079-power-samples.log)); the judged mode is lowpowermode 1, AC Power |
