@@ -5,8 +5,8 @@ title: Golden-pin file:// acquire, reuse, and staging sweep without a live Git f
 kind: task
 status: closed
 priority: 1
-version: 9
-spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
+version: 10
+spec_path: docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
   - release:v0.11.0
@@ -18,7 +18,7 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:06:35.665Z
-updated_at: 2026-09-20T05:50:31.279Z
+updated_at: 2026-11-14T19:07:04.554Z
 started_at: 2026-09-18T03:06:44.122Z
 closed_at: 2026-09-20T05:50:31.279Z
 close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (file:// acquire, no serving). Review remains mb-k900. Nothing merged to main."

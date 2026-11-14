@@ -5,8 +5,8 @@ title: "Cache goldens: layout, acquisition, crash recovery, and URL grammar"
 kind: task
 status: closed
 priority: 1
-version: 18
-spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
+version: 19
+spec_path: docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md
 delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:28.818Z
-updated_at: 2026-09-23T05:32:39.586Z
+updated_at: 2026-11-14T19:07:00.637Z
 started_at: 2026-09-16T21:10:44.821Z
 closed_at: 2026-09-23T05:32:39.584Z
 close_reason: "Done on codex/v012-foundation-stabilization (PR #226; bb6888b2, a4f2043c, e229f5cf). New goldens: cli-cache-interrupt-store, cli-cache-interrupt-alias, cli-cache-fetch-failures, cli-cache-url-grammar (real-subprocess tryscript), cli-cache-unsupported-git, cli-cache-repair-guidance, cli-cache-readonly-miss, and the live acquire golden cli-cache-acquire-live, green on real Git 2.43.7 and 2.50.1. Narrowed by design: interruption during CAS ref publication moves to mb-jlon (publish_refs does not exist before Phase 2B), and auth-isolated fetch failures move to mb-s1lt (file:// has no credentials). Both are noted on those beads."

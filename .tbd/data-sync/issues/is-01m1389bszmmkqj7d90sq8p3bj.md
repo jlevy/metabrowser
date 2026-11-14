@@ -5,8 +5,8 @@ title: Accept local origins as first-class Git sources under the untrusted profi
 kind: task
 status: closed
 priority: 1
-version: 19
-spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
+version: 20
+spec_path: docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
   - release:v0.12.0
@@ -21,7 +21,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:15.870Z
-updated_at: 2026-09-23T06:18:30.852Z
+updated_at: 2026-11-14T19:06:59.205Z
 started_at: 2026-09-18T01:15:32.181Z
 closed_at: 2026-09-23T06:18:30.851Z
 close_reason: "Done. file:// origins are first-class Git sources (#217), and every pin entry point now runs under a forced untrusted profile that no flag or environment lifts (d99d0b9d, PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023)). URL-opened roots follow in Phase 2A (mb-99ub stays open for them)."

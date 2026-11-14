@@ -5,8 +5,8 @@ title: "CLI: --no-serve so acquisition goldens inspect without ASGI"
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
   - release:v0.11.0
@@ -17,7 +17,7 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T01:31:37.213Z
-updated_at: 2026-09-20T05:52:55.623Z
+updated_at: 2026-11-14T19:07:03.320Z
 started_at: 2026-09-18T02:44:30.720Z
 closed_at: 2026-09-20T05:52:55.615Z
 close_reason: "Implemented on survivor draft #217 https://github.com/jlevy/metabrowser/pull/217 (--no-serve acquire). Review remains mb-k900."

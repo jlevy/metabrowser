@@ -5,13 +5,13 @@ title: "Complete human release sign-off: browser matrix, private auth and extern
 kind: task
 status: open
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 created_at: 2026-10-03T05:05:53.854Z
-updated_at: 2026-11-14T18:44:35.218Z
+updated_at: 2026-11-14T19:07:44.849Z
 ---
 Walk beside the user through Chrome/Safari/Firefox focus/layout/HTML/print/Back behavior; readable and unreadable private repositories without recording identities or secrets; external Plugin SDK 0.7 copy and Load more controls. Do not alter global gh login or disable the host network without specific authorization. These are outstanding acceptance checks, not implicit passes.
 

@@ -5,8 +5,8 @@ title: "v0.11 start gate: v0.10.0 released from main"
 kind: task
 status: closed
 priority: 1
-version: 38
-spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
+version: 39
+spec_path: docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md
 labels:
   - release:v0.11.0
 dependencies:
@@ -82,7 +82,7 @@ dependencies:
     target: is-01kzcvmqfy6gw5h36vs1hx3bms
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-15T01:05:49.099Z
-updated_at: 2026-09-15T16:22:48.909Z
+updated_at: 2026-11-14T19:07:02.053Z
 closed_at: 2026-09-15T16:22:48.909Z
 close_reason: v0.10.0 is released from main; the tag v0.10.0 points at c97de624 and PyPI carries 0.10.0.
 resolution: null
