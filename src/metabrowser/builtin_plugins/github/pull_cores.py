@@ -187,6 +187,9 @@ class CoreWindow:
     previews: dict[int, PreparedCore] | None = None
     checking_replacement: bool = False
     failure: PullRefreshStamp | None = None
+    # The members its job asks GitHub for, set before its read and kept while it
+    # publishes them; empty until the job has chosen them.
+    reading: tuple[int, ...] = ()
 
     def prepared(self, number: int) -> PreparedCore | None:
         return self.previews.get(number) if self.previews is not None else None
@@ -360,6 +363,7 @@ async def _prepare(
             window.previews = {number: entry for number, (_member, entry) in carried.items()}
             return
         numbers = tuple(attempts)
+        window.reading = numbers
         window.admission = CoreAdmission(
             publication,
             window.source,
@@ -622,11 +626,16 @@ async def request_preparation(
         catalog, admitted = await asyncio.to_thread(_eligible, window)
         if pulls_set.core_window is not background or pulls_set.published is not publication:
             return "busy"
+        # The background job may have failed during that check. Its window stays owned, so
+        # its failure holds the source here as it would have before the check.
+        if _failure_held(pulls_set):
+            return "held"
         if catalog is None:
             return "not_owner"
         uncovered = {number: member for number, member in admitted.items() if number not in ready}
-        if uncovered.keys() & set(background.ask.numbers):
-            # The background batch reads rows this one needs: it is doing the reader's work.
+        if uncovered.keys() & set(background.reading):
+            # The background job is reading rows this one needs: it does the reader's work.
+            # Rows it asked for but left to a lease or the cache are not among them.
             return "busy"
         if not _attemptable(pulls_set, catalog, uncovered, running):
             return "partial"
@@ -640,6 +649,10 @@ async def request_preparation(
             await asyncio.wait((preempted,))
         if pulls_set.core_window is not None or pulls_set.published is not publication or busy():
             return "busy"
+        # The revoked job records no failure, but another request may have read one that
+        # another process persisted while this one waited.
+        if _failure_held(pulls_set):
+            return "held"
         eligible = (catalog, admitted)
     elif current is not None:
         # Keep a ready window while at most one competing token proves eligibility.

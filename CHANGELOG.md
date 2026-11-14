@@ -11,10 +11,11 @@ All notable changes to Metabrowser are documented here.
   again 1 s, then 2 s, later.
   Now the batch you are looking at stops the background batch, unless that one is
   reading some of the same pull requests, and starts its own read.
-  Measured with a GitHub read of one second, your rows used to wait about a second to be
-  admitted and two to be prepared; now they are admitted in about 10 ms and prepared in
-  about one second. The stopped batch’s pull requests are asked for again later, no
-  sooner than a minute after its read began, as for any batch whose read did not finish.
+  Measured with a simulated one-second GitHub read, your rows used to wait about a
+  second to be admitted and two to be prepared; now they are admitted in about 10 ms and
+  prepared in about one second.
+  The stopped batch’s pull requests are asked for again later, no sooner than a minute
+  after its read began, as for any batch whose read did not finish.
 
 - A Markdown document’s images no longer blink when you come back to its file in the
   macOS app. Opening another file and returning built the document again with lazy

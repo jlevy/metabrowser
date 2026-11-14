@@ -868,6 +868,10 @@ a release always runs to its end.
 A source runs one core job at a time, and the panel names each batch’s `lane`. A visible
 batch that finds a background job running preempts it, unless that job reads a member
 the visible batch still needs; it then answers `busy` as before.
+A job’s read is the members it asks GitHub for, not the batch it was asked for: members
+it left to a lease or the cache do not hold a visible batch back.
+A failure the background job records while the visible batch checks its rows holds the
+visible batch too, which answers `held` and starts no read.
 Preemption follows the release order: it revokes the background window first, cancels
 its job, and waits for the job to unwind before admitting the visible window.
 So a provider read the job had started is killed, a write under way finishes, and its

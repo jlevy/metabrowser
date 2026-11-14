@@ -3578,6 +3578,146 @@ def test_visible_core_preempts_only_a_background_batch_reading_other_rows(
     assert _read(client, 8).json()["core_preview"]["number"] == 8
 
 
+def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    _stand, client = pinned_pull
+    entered, fail = threading.Event(), threading.Event()
+
+    async def fail_batch() -> None:
+        entered.set()
+        assert await asyncio.to_thread(fail.wait, 5)
+        raise GhError("GitHub did not answer", state="network_error")
+
+    background, _rest, calls = _visible_core_fixture(
+        pinned_pull,
+        monkeypatch,
+        sibling=True,
+        visible=(8,),
+        hold_batch=fail_batch,
+        lane="background",
+    )
+    visible = {
+        **background,
+        "window": {**background["window"], "id": "viewport"},
+        "numbers": [9],
+        "lane": "visible",
+    }
+    eligible = pull_cores._eligible  # pyright: ignore[reportPrivateUsage]
+    checking, resume = threading.Event(), threading.Event()
+
+    def paused(window: Any) -> Any:
+        if window.ask.lane == "visible":
+            checking.set()
+            assert resume.wait(5)
+        return eligible(window)
+
+    monkeypatch.setattr(pull_cores, "_eligible", paused)
+    replies: list[Any] = []
+    sending = threading.Thread(
+        target=lambda: replies.append(client.post(_PREPARE_CORES, json=visible))
+    )
+    assert client.portal is not None
+    try:
+        assert entered.wait(5)
+        sending.start()
+        # The visible batch is checking its rows when the background read fails.
+        assert checking.wait(5)
+        fail.set()
+        deadline = time.monotonic() + 5
+        while client.portal.call(_core_job_state)[0] and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert client.portal.call(_core_job_state) == (False, "visible-8")
+    finally:
+        fail.set()
+        resume.set()
+        sending.join(10)
+    assert not sending.is_alive() and len(replies) == 1
+    answer = replies[0].json()
+    assert answer["preparation"] == "held"
+    assert answer["failure"]["outcome"] == "network_error"
+    # The source-wide failure hold covers the visible batch: no second provider read.
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+
+
+def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    entries = scenario(stand.origin)["api"]
+    rest = {n: entries[f"repos/octo/demo/pulls/{n}"]["body"] for n in (10, 9, 8, 7)}
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    calls: list[tuple[int, ...]] = []
+
+    async def graph(_query: str, variables: dict[str, str | int], **_kwargs: Any) -> dict[str, Any]:
+        numbers = tuple(int(v) for k, v in variables.items() if k.startswith("n") and k != "name")
+        calls.append(numbers)
+        if numbers == (9,):
+            entered.set()
+            try:
+                assert await asyncio.to_thread(release.wait, 5)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+        result = graph_core_data(rest[8])
+        repo = result["repository"]
+        repo.pop("pull")
+        for i, number in enumerate(numbers):
+            # GitHub has no answer for 8, which keeps its attempt lease.
+            repo[f"p{i}"] = (
+                None if number == 8 else graph_core_data(rest[number])["repository"]["pull"]
+            )
+        return result
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+
+    def ask(owner: str, numbers: list[int], lane: str) -> dict[str, Any]:
+        return {
+            "state": "all",
+            "window": {"id": owner, "generation": catalog.generation("all")},
+            "numbers": numbers,
+            "lane": lane,
+        }
+
+    assert client.post(_PREPARE_CORES, json=ask("lease", [8], "background")).status_code == 202
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+    # The walk asks for 8 and 9, but reads only 9: 8 is leased.
+    walk = ask("walk", [8, 9], "background")
+    visible = ask("viewport", [8, 10], "visible")
+    assert client.portal is not None
+    try:
+        assert client.post(_PREPARE_CORES, json=walk).status_code == 202
+        assert entered.wait(5) and calls == [(8,), (9,)]
+        # The visible batch also asks for 8, which the walk is not reading, so it does not
+        # wait for the walk: it preempts it and reads 10.
+        response = client.post(_PREPARE_CORES, json=visible)
+        assert (response.status_code, response.json()["preparation"]) == (202, "started")
+        assert cancelled.is_set()
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,), (10,)]
+    assert client.portal.call(_core_job_state) == (False, "viewport")
+    assert client.post(_PREPARE_CORES, json={**visible, "numbers": []}).json() == {
+        "preparation": "released"
+    }
+    settled = client.post(_PREPARE_CORES, json=visible).json()
+    assert settled["preparation"] == "partial"
+    assert settled["ready_numbers"] == [10] and settled["retry_numbers"] == [8]
+    assert calls == [(8,), (9,), (10,)], "8 keeps its lease"
+    assert client.portal.call(_core_job_state) == (False, None)
+
+
 def test_core_request_lane_is_visible_or_background(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:
