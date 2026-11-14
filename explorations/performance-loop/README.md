@@ -728,13 +728,68 @@ main-tab Pulls rows land on.
 | `files` | Eight cold file clicks across kinds, four revisits, history back and forward, hover then click |
 | `keyboard` | ArrowDown to three cold neighbors, ArrowUp to two revisits |
 | `views` | View tab first visit and two revisits for Markdown, JSON, and a folder’s Overview and Treemap |
-| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected |
-| `commits` | Commits first show, three cold commits, two revisits, hover then click |
+| `maintabs` | Files, Commits, and Pulls round trips with nothing selected, then again with a commit and a pull request selected; each switch to Commits lands as the build does (below) |
+| `commits` | Commits first show (landing as the build does), three cold commits, two revisits, hover then click |
 | `pulls` | Pulls first show, list to pull request, its tabs first and again, pull request to pull request cold, revisit, and after a hover, history back, and Changes to another pull request |
 | `tree` | Folder expand, collapse, re-expand, and a nested expand |
 | `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
 | `skim` | ArrowDown held over six rows: one `keyDown`, five more flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
 | `reveal` | A landing on a file three folders down, its ancestors collapsed |
+
+**The Commits landing.** Main’s `19a36c5b` made every switch to Commits select the
+newest commit and show it, on that commit’s address.
+Before it, a switch showed the tab’s prompt (“Select a commit to preview”) on a first
+visit, and the last commit read after that.
+Since revision 5 a switch to Commits is ready on either landing:
+
+- `empty`: the list and the prompt, on an address that names no commit, which converge
+  with no commit mounted.
+  A prompt on a `/commit/` address is the newest landing’s own failure (“Could not load
+  this commit.”) and is neither landing;
+- `newest`: the list and the newest commit, shown as `commitReady` requires, which
+  converge with that commit’s row the one selected;
+- `restored`: a switch back to Commits after a commit was read (`main_subject.*`), shown
+  as a build before `19a36c5b` restores it.
+
+The newest commit is named by identity, the head of the server’s git log
+(`facts.git_log_head`), the first commit of the history the panel selects from; another
+commit satisfies neither landing, and an empty or failed history, which shows no rows,
+is never ready. The landing that made a switch ready must be the one it settles on: the
+ready predicate keeps the branch that held first (`landingAtReady`), and a switch that
+was ready on one landing and converged on another is refused (`converged`: “ready on
+empty, converged on newest”), so a build that paints the prompt, or the commit read
+before, ahead of the newest commit is not timed at the first paint.
+Each such transition records the landing it saw (`landing`), and each run records which
+landing its build has (`commits_landing`): `newest` when every switch landed on the
+newest commit, `empty` when every one landed as before `19a36c5b`, `mixed` otherwise,
+and null when no switch to Commits was measured.
+
+Under the newest landing these transitions measure something else than they did before
+`19a36c5b`:
+
+- `main.files_to_commits.first` and `commits.first_show` time a switch until the newest
+  commit’s detail is ready, its comparison and detail requests counted as the subject’s,
+  and they now pay the diff kind’s assets and the first commit view’s mount.
+  On the standing corpus the newest commit is a merge whose first-parent diff is 32
+  files;
+- `main.files_to_commits.again`, `main.pulls_to_commits`, and both
+  `main_subject.*_to_commits` are revisits of the newest commit, its detail already
+  held; a `main_subject` row then names the newest commit as its `subject`, not the
+  commit read before;
+- `main.commits_to_files.*` and `main.commits_to_pulls` start from a mounted commit diff
+  instead of the prompt, so their teardown differs and `blankFramesOriginPrompt` no
+  longer applies, and `main_subject.commits_to_*` start from the newest commit’s diff
+  instead of the commit read before;
+- `commits.cold.1` starts from the newest commit’s view rather than the prompt, and is
+  no longer the profile’s first commit view.
+  `commits.cold.2` and `.3`, the revisits, and `commits.hover_click` already started
+  from a selected commit and are unchanged.
+
+`compare` refuses runs whose `commits_landing` differs, or in which any one transition
+landed differently, since the same transition then measures a different subject on each
+side; `--allow-mixed-landing` compares them anyway and notes which transitions differ.
+`summarize` names each condition’s landing and any transition whose landing drifted
+between its runs.
 
 **How a frame is read.** Every frame is read once, after its own style and layout and
 before it paints: the recorder’s `requestAnimationFrame` callback creates a
@@ -762,6 +817,9 @@ Revision 4 reads a 304 for a request a worker made as `revalidated` (revision 3 
 as `network`, so its cache disposition counts are wrong for worker requests), takes a
 region’s first rendered match rather than its first match, and skips hidden and
 off-screen subtrees when it looks for useful content.
+Revision 5 accepts a switch to Commits that lands on the newest commit as well as one
+that lands on the prompt, and records the landing; revision 4 refused every build since
+main’s `19a36c5b`, which lands on the newest commit (**The Commits landing**, above).
 
 **What each transition records.** The clock starts at the input event’s own `timeStamp`
 (the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
@@ -831,8 +889,9 @@ start for a landing).
   list’s row replacements (the palette’s results), request body bytes of every POST,
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
   presentation time for the first `pointerdown`, `click`, and `keydown`), the
-  application’s `…ToReady` spans, the DOM node count, and the one-minute load average
-  when the transition started.
+  application’s `…ToReady` spans, the DOM node count, the one-minute load average when
+  the transition started, and on a switch to Commits the landing it saw (`landing`) and
+  the one it was ready on (`landingAtReady`).
 
 **Guards.** A run is written with `valid: false` and its refusals, and `summarize` and
 `compare` leave it out, when any of these fails anywhere in its passes:
@@ -862,10 +921,11 @@ runs each, then `compare`, naming the hypothesis’s metric with
 condition has fewer than three valid runs, a label is missing (only `--aa` names one), a
 condition pools two builds or a dirty build has no content identity, the corpus commit,
 cleanliness, trunk, refs, server git log head, or indexed file count differ, the
-scenario revisions differ, or the regime or the journeys requested differ.
-It notes a mixed harness or Chrome version, a non-standard regime, a dirty build with
-its content identity, the catalog totals per condition, runs without a back-to-back
-partner, and an A/A comparison.
+scenario revisions differ, the regime or the journeys requested differ, or the runs’
+Commits landings differ (unless `--allow-mixed-landing`). It notes a mixed harness or
+Chrome version, a non-standard regime, a dirty build with its content identity, the
+catalog totals per condition, the Commits landing, runs without a back-to-back partner,
+and an A/A comparison.
 
 For each transition and metric it needs three values on both sides, and it lists every
 gap: a transition measured on one side only, a metric with fewer values, and a value
@@ -913,6 +973,15 @@ round can commit its samples beside its artifact and regenerate its tables from 
 
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
+A check that can be repeated, and that failed while the recorder refused one of its
+measurements for its frame clock alone, is taken again, up to three attempts in all.
+A pass that needed another attempt is reported as a pytest warning.
+A runner too busy to draw at the display rate says nothing about those definitions.
+The two network checks are not repeated: they count what the server answered across two
+measurements, so a second attempt would find the browser cache and the server’s hit
+counts already changed.
+The `frame_clock` guard itself is unchanged, and a check that fails any other way fails
+at once.
 
 **Limits.** Headless Chrome only; the native app’s WebKit is not measured.
 Painted ready is read from the main thread: raster and GPU time are not visible to the

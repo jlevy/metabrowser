@@ -4,8 +4,9 @@ Its pure logic runs browserless: request classes, cache disposition over recorde
 event sequences, frame accounting, region movement, every refusal and verdict of
 ``compare`` over fixture rows, and process cleanup. Its recorder runs in a real headless
 Chrome on synthetic pages, because what it measures is paint and the frame clock:
-readiness against the input, the presentation of the ready frame, content on screen, and
-304s a server logged.
+readiness against the input, the presentation of the ready frame, content on screen,
+304s a server logged, and the journeys' Commits landing on either side of main's
+19a36c5b.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import warnings
 from pathlib import Path
 
 import pytest
@@ -33,11 +35,18 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 44 checks passed\n"
+    assert result.stdout == "transitions instrument: 49 checks passed\n"
 
 
 @pytest.mark.parametrize(
-    ("group", "count"), [("frames", 5), ("frames2", 3), ("content", 10), ("network", 2)]
+    ("group", "count"),
+    [
+        ("frames", 5),
+        ("frames2", 3),
+        ("content", 10),
+        ("network", 2),
+        ("landing", 11),
+    ],
 )
 def test_transition_recorder_in_chrome(group: str, count: int) -> None:
     chrome = require_chrome()
@@ -51,6 +60,15 @@ def test_transition_recorder_in_chrome(group: str, count: int) -> None:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"transitions recorder {group}: {count} checks passed\n"
+    # A check the machine was too busy to measure the first time is taken again (the
+    # script's FRAME_CLOCK_ATTEMPTS); a pass that needed it says so in the warnings summary
+    # rather than passing silently.
+    retries = [line for line in result.stderr.splitlines() if line.startswith("retry: ")]
+    if retries:
+        warnings.warn(
+            f"transitions recorder {group} passed after retrying: " + " | ".join(retries),
+            stacklevel=1,
+        )
 
 
 # A stand-in `metab`: it reports a version, then serves a complete inventory and drops

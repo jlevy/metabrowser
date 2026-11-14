@@ -9,15 +9,35 @@ All notable changes to Metabrowser are documented here.
   open each directory on the way again to check it.
   Each of those system calls waits for any busy thread in the server, so the Pulls tab’s
   background answers could take seconds.
-  A directory that passed the check now stays open, and a later read checks it again
-  with one stat and one ACL read instead of reopening it.
+  A directory that passed the check now stays open, and a later read checks it again,
+  its mount included, without reopening it.
   The pull-request catalog and its three journal files are checked under one look at
   their directory instead of four.
   Every check is still made on every read, so a cache directory that becomes shared,
   linked, replaced, or foreign-owned is refused exactly as before.
-  In a Pulls session on a stand-in repository, these checks made half as many system
-  calls, and with eight list windows reading at once a background preparation answer
-  took about 400 ms instead of about 600 ms.
+  On a stand-in repository, one background preparation answer now makes 1,510 of these
+  system calls instead of 2,204.
+
+- The pull requests you scroll to in the Pulls tab are prepared at once, even while the
+  list is preparing others in the background.
+  The server prepared one batch at a time per repository, so a batch you were looking at
+  was refused as busy until the background batch’s GitHub read ended, and the list asked
+  again 1 s, then 2 s, later.
+  Now the batch you are looking at stops the background batch, unless that one is
+  reading some of the same pull requests, and starts its own read.
+  Measured with a simulated one-second GitHub read, your rows used to wait about a
+  second to be admitted and two to be prepared; now they are admitted in about 10 ms and
+  prepared in about one second.
+  The stopped batch’s pull requests are asked for again later, no sooner than a minute
+  after its read began, as for any batch whose read did not finish.
+
+- A pull request page’s header no longer loses your keyboard focus when you switch tabs
+  or a refresh repaints it.
+  Every repaint built the whole header again, so a focused branch chip’s copy button, or
+  any other header control, was replaced and focus went to the page.
+  The header now keeps each part, from the title and badge to the branch chips, labels,
+  and Refresh, and builds again only a part whose content changed.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
 
 - A Markdown document’s images no longer blink when you come back to its file in the
   macOS app. Opening another file and returning built the document again with lazy
@@ -222,6 +242,9 @@ All notable changes to Metabrowser are documented here.
   floating over its top, so the rows you are reading never move.
   A refresh that leaves the same files is drawn at once, since it moves nothing, and the
   tree’s notices and **Retry** stay while something is offered.
+  A refresh that finds no changed files is offered as **Show the updated list (no
+  files)**; the files shown no longer stay, with nothing to press, under “No changed
+  files.”
 
 - For plugin authors: the diff view’s render context accepts `markdownHoldMs`, how long
   the first screen’s Markdown files wait for **Rendered**, and the mounted diff’s handle

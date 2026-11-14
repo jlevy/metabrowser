@@ -62,6 +62,10 @@ type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
 type Preparation = Literal[
     "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held", "partial"
 ]
+# Whose batch it is: the rows a reader is looking at, or the panel's walk through the rest.
+# A visible batch preempts a background one reading other rows (`request_preparation`).
+type CoreLane = Literal["visible", "background"]
+CORE_LANES: Final[tuple[CoreLane, ...]] = ("visible", "background")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +74,7 @@ class CoreRequest:
     owner: str
     generation: str
     numbers: tuple[int, ...]
+    lane: CoreLane = "background"
 
     def owns(self, other: CoreRequest) -> bool:
         return (self.state, self.owner, self.generation) == (
@@ -83,8 +88,11 @@ def core_request(body: Mapping[str, object]) -> CoreRequest:
     state = body.get("state")
     window = body.get("window")
     numbers = body.get("numbers")
-    if set(body) != {"state", "window", "numbers"} or state not in PULL_LIST_NAMES:
-        raise ValueError('expected "state", "window", and "numbers"')
+    lane = body.get("lane", "background")
+    if set(body) - {"lane"} != {"state", "window", "numbers"} or state not in PULL_LIST_NAMES:
+        raise ValueError('expected "state", "window", "numbers", and an optional "lane"')
+    if lane not in CORE_LANES:
+        raise ValueError('"lane" is "visible" or "background"')
     if not isinstance(window, dict) or set(window) != {"id", "generation"}:
         raise ValueError('"window" requires "id" and "generation"')
     owner, generation = window["id"], window["generation"]
@@ -102,7 +110,7 @@ def core_request(body: Mapping[str, object]) -> CoreRequest:
         or len(set(numbers)) != len(numbers)
     ):
         raise ValueError("expected at most eight distinct pull request numbers")
-    return CoreRequest(state, owner, generation, tuple(numbers))
+    return CoreRequest(state, owner, generation, tuple(numbers), lane)
 
 
 def _batch_query(count: int) -> str:
@@ -179,6 +187,9 @@ class CoreWindow:
     previews: dict[int, PreparedCore] | None = None
     checking_replacement: bool = False
     failure: PullRefreshStamp | None = None
+    # The members its job asks GitHub for, set before its read and kept while it
+    # publishes them; empty until the job has chosen them.
+    reading: tuple[int, ...] = ()
 
     def prepared(self, number: int) -> PreparedCore | None:
         return self.previews.get(number) if self.previews is not None else None
@@ -352,6 +363,7 @@ async def _prepare(
             window.previews = {number: entry for number, (_member, entry) in carried.items()}
             return
         numbers = tuple(attempts)
+        window.reading = numbers
         window.admission = CoreAdmission(
             publication,
             window.source,
@@ -585,23 +597,64 @@ async def request_preparation(
         return "partial"
     key = preparation_key(pulls_set.source)
 
-    def busy() -> bool:
-        return (
-            pulls_set.foreground_pending(running)
-            or coordinator.running(key)
-            or coordinator.slot().locked()
-            or (
-                pulls_set.core_hold_until is not None
-                and pulls.utc_now() < pulls_set.core_hold_until
-            )
+    def held_back() -> bool:
+        return pulls_set.foreground_pending(running) or (
+            pulls_set.core_hold_until is not None and pulls.utc_now() < pulls_set.core_hold_until
         )
 
-    if busy():
+    def busy() -> bool:
+        return held_back() or coordinator.running(key) or coordinator.slot().locked()
+
+    # A reader's rows do not wait for the walk's: a running background batch is preempted.
+    # The slot it may hold is freed by preempting it, so only what else holds work back
+    # is checked first.
+    background = (
+        current
+        if ask.lane == "visible"
+        and current is not None
+        and current.ask.lane == "background"
+        and current.key == key
+        and coordinator.running(key)
+        else None
+    )
+    if busy() if background is None else held_back():
         return "busy"
     window = CoreWindow(ask, coordinator, key, pulls_set.published, pulls_set.source)
     eligible = None
     carried: dict[int, tuple[CatalogMember, PreparedCore]] = {}
-    if current is not None:
+    if background is not None:
+        catalog, admitted = await asyncio.to_thread(_eligible, window)
+        if pulls_set.core_window is not background or pulls_set.published is not publication:
+            return "busy"
+        # The background job may have failed during that check. Its window stays owned, so
+        # its failure holds the source here as it would have before the check.
+        if _failure_held(pulls_set):
+            return "held"
+        if catalog is None:
+            return "not_owner"
+        uncovered = {number: member for number, member in admitted.items() if number not in ready}
+        if uncovered.keys() & set(background.reading):
+            # The background job is reading rows this one needs: it does the reader's work.
+            # Rows it asked for but left to a lease or the cache are not among them.
+            return "busy"
+        if not _attemptable(pulls_set, catalog, uncovered, running):
+            return "partial"
+        # Revoke its ownership first, as a release does, then wait for its job to unwind
+        # from its next await: its provider read is killed, a write already under way
+        # finishes, and its slot is free before this batch is admitted. Its attempt leases
+        # stand, so a read it may have sent is not repeated before they end.
+        pulls_set.core_window = None
+        preempted = background.cancel()
+        if preempted is not None:
+            await asyncio.wait((preempted,))
+        if pulls_set.core_window is not None or pulls_set.published is not publication or busy():
+            return "busy"
+        # The revoked job records no failure, but another request may have read one that
+        # another process persisted while this one waited.
+        if _failure_held(pulls_set):
+            return "held"
+        eligible = (catalog, admitted)
+    elif current is not None:
         # Keep a ready window while at most one competing token proves eligibility.
         if current.checking_replacement:
             return "busy"

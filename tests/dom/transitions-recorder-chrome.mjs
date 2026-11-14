@@ -2,9 +2,11 @@
 // of its definitions fail if it were wrong: readiness before the input, DOM work after the
 // subject is shown, a stall after the ready frame, a long ready frame, content that is in
 // the DOM but not on screen, blank and placeholder frames after ready, region movement,
-// input fidelity, and cache disposition against a server that logs its 304s.
+// input fidelity, cache disposition against a server that logs its 304s, and the
+// journeys' Commits landing (revision 5) on a page that lands on the prompt, on the newest
+// commit, or on another commit.
 //
-//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network
+//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network|landing
 //
 // Paint and the frame clock are the behavior under test, so this needs a browser; the
 // pure accounting is tested browserless in transitions-instrument-behavior.mjs.
@@ -18,8 +20,90 @@ const HERE = import.meta.dirname;
 const { launchBrowser, driver, sleep } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
+const { COMMITS_LANDING } = await import(
+  path.resolve(HERE, "../../explorations/performance-loop/transitions-journeys.mjs")
+);
 
 const group = process.argv[2];
+
+// The main tabs as the journeys' predicates read them: a Files and a Commits tab, the
+// Commits list, and the preview. A click on Commits does what `window.mode` says: show the
+// tab's prompt (`empty`, builds before main's 19a36c5b); select and show the newest commit
+// on its own address, 60 ms later (`newest`, since 19a36c5b); the older commit (`older`,
+// the commit read before, or any commit that is not the newest); or the newest commit's
+// view with the older row selected (`unselected`).
+const NEWEST = "1".repeat(40);
+const OLDER = "2".repeat(40);
+const LANDING_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>landing probe</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  .nav-tab-bar .tab-btn { width: 120px; height: 30px; }
+  #tab-git { display: none; }
+  #tab-git.shown { display: block; }
+  .git-graph-row { height: 24px; }
+  #preview-pane { min-height: 400px; }
+</style></head><body>
+<div class="nav-tab-bar"><button class="tab-btn active" data-tab="files" id="to-files">Files</button><button class="tab-btn" data-tab="git" id="to-git">Commits</button></div>
+<div id="tree-content"><div id="tab-files" data-tab-content="files">a file list</div><div id="tab-git" data-tab-content="git"><div class="git-graph-row" data-revision="${NEWEST}">the newest commit</div><div class="git-graph-row" data-revision="${OLDER}">an older commit</div></div></div>
+<div id="preview-pane"><div data-active-view="true">a file</div></div>
+<script>
+const pane = document.getElementById("preview-pane");
+const git = document.getElementById("tab-git");
+const files = document.getElementById("tab-files");
+window.mode = "empty";
+const activate = (tab) => {
+  for (const b of document.querySelectorAll(".nav-tab-bar .tab-btn")) { b.classList.toggle("active", b.dataset.tab === tab); }
+  git.classList.toggle("shown", tab === "git");
+  files.style.display = tab === "files" ? "" : "none";
+};
+const select = (rev) => { for (const r of git.querySelectorAll(".git-graph-row")) { r.classList.toggle("selected", r.dataset.revision === rev); } };
+const ROWS = git.innerHTML;
+const prompt = (text) => { pane.innerHTML = '<div class="preview-empty">' + text + '</div>'; };
+const showCommit = (rev, diff = "<pre>+ a line added</pre>") => {
+  history.replaceState(null, "", "/commit/" + rev);
+  pane.innerHTML = '<div class="git-commit-stage"><div class="git-commit-view" data-revision="' + rev + '"><p>commit ' + rev.slice(0, 8) + '</p><div class="git-commit-diff">' + diff + '</div></div></div>';
+};
+document.getElementById("to-files").addEventListener("click", () => {
+  activate("files"); git.innerHTML = ROWS; select(null); history.replaceState(null, "", "/view/landing");
+  pane.innerHTML = '<div data-active-view="true">a file</div>';
+});
+// Modes after review A of #417: \`flash\` paints the prompt at once and the newest commit
+// 400 ms later; \`staleflash\` the commit read before at once and the newest 400 ms later;
+// \`detailfail\` selects the newest and fails its detail, as git-panel.js renders that;
+// \`emptyhistory\` and \`failedhistory\` leave no rows; \`slowdetail\` keeps the pane, mounts
+// the commit with a loading diff at 150 ms, and fills it at 500 ms.
+document.getElementById("to-git").addEventListener("click", () => {
+  activate("git");
+  const mode = window.mode;
+  if (mode === "empty") { select(null); prompt("Select a commit to preview"); return; }
+  if (mode === "flash") {
+    prompt("Select a commit to preview");
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}"); }, 400);
+    return;
+  }
+  if (mode === "staleflash") {
+    select("${OLDER}"); showCommit("${OLDER}");
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}"); }, 400);
+    return;
+  }
+  if (mode === "emptyhistory" || mode === "failedhistory") {
+    git.innerHTML = "";
+    prompt(mode === "emptyhistory" ? "No commits yet." : "Could not load the commit history.");
+    return;
+  }
+  if (mode === "slowdetail") {
+    setTimeout(() => { select("${NEWEST}"); showCommit("${NEWEST}", '<div class="loading">Loading diff</div>'); }, 150);
+    setTimeout(() => { showCommit("${NEWEST}"); }, 500);
+    return;
+  }
+  setTimeout(() => {
+    if (mode === "newest") { select("${NEWEST}"); showCommit("${NEWEST}"); }
+    else if (mode === "older") { select("${OLDER}"); showCommit("${OLDER}"); }
+    else if (mode === "unselected") { select("${OLDER}"); showCommit("${NEWEST}"); }
+    else if (mode === "detailfail") { select("${NEWEST}"); history.replaceState(null, "", "/commit/${NEWEST}"); prompt("Could not load this commit."); }
+  }, 60);
+});
+</script></body></html>`;
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>recorder probe</title>
 <style>
@@ -124,6 +208,9 @@ const server = http.createServer((req, res) => {
   if (u.pathname === "/view/probe") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(PAGE);
+  } else if (u.pathname === "/view/landing") {
+    res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    res.end(LANDING_PAGE);
   } else if (u.pathname === "/slow.png") {
     setTimeout(() => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
@@ -161,12 +248,37 @@ const browser = await launchBrowser({
 const d = driver(browser);
 let checks = 0;
 
+// The recorder refuses a window whose median frame step is over 50 ms (`frame_clock`): a
+// machine too busy to draw at the display rate, which says nothing about whether the
+// recorder measures right. A CI runner has been that busy for one measurement while every
+// other check in the job took its usual time: the heavy page's frames stepped 366.6 and
+// 416.6 ms there. On a 10-core Mac it passed 15 runs of 15 with ten busy loops beside
+// it, and stepped 16.7 to 33.3 ms with Chrome's CPU throttled up to sevenfold. Throttled
+// eightfold, its first measurement was refused in 10 runs of 10 and its second passed in
+// 6 of 6; twelvefold, all three attempts were refused in 2 runs of 3.
+// So `check` takes an attempt again when it failed while a measurement in it was refused
+// for its frame clock alone, up to FRAME_CLOCK_ATTEMPTS in all, and says so on stderr in a
+// `retry:` line, which tests/test_transitions_instrument.py surfaces. An attempt that
+// failed any other way, and the last attempt, fail the check as before, so a wrong
+// measurement fails and a machine that cannot measure at all still fails.
+const FRAME_CLOCK_ATTEMPTS = 3;
+let frameClockRefusals = [];
+// Every measurement goes through here, so a check knows which of its attempts' windows the
+// recorder refused for the frame clock alone.
+async function take(spec) {
+  const r = await d.measure(spec);
+  if (r.refusals.length > 0 && r.refusals.every(([guard]) => guard === "frame_clock")) {
+    frameClockRefusals.push(`${spec.id}: ${r.refusals[0][1]}`);
+  }
+  return r;
+}
+
 const subjectReady = (name) =>
   `() => document.getElementById("view").dataset.subject === ${JSON.stringify(name)} && window.__tr.hasUseful(document.getElementById("view"))`;
 async function measure(name, extra = {}) {
   await d.click("#go-reset");
   await sleep(300);
-  const r = await d.measure({
+  const r = await take({
     id: name,
     subject: name,
     input: { kind: "click", selector: `#go-${name}` },
@@ -238,31 +350,51 @@ function assertPaintedByPresentation(r) {
 // TRANSITIONS_PROBE_ALL=1 runs every check and lists each failure, to show a recorder
 // failing them all; by default the first failure ends the run.
 const failures = [];
-async function check(name, fn) {
+// `retryable: false` is for a check whose second attempt cannot repeat its first, as when
+// it counts what the server answered.
+async function check(name, fn, { retryable = true } = {}) {
   // Progress on stderr, so a run cut off by its timeout says where it was.
   process.stderr.write(`check: ${name}\n`);
-  try {
-    await fn();
-  } catch (error) {
-    if (process.env.TRANSITIONS_PROBE_ALL !== "1") {
-      throw new Error(`${name}: ${error.message}`, { cause: error });
+  for (let attempt = 1; ; attempt++) {
+    frameClockRefusals = [];
+    try {
+      await fn();
+      break;
+    } catch (error) {
+      if (retryable && frameClockRefusals.length > 0 && attempt < FRAME_CLOCK_ATTEMPTS) {
+        process.stderr.write(
+          `retry: ${name}: attempt ${attempt} of ${FRAME_CLOCK_ATTEMPTS} was refused for its ` +
+            `frame clock alone (${frameClockRefusals.join("; ")})\n`,
+        );
+        await sleep(1000);
+        continue;
+      }
+      if (process.env.TRANSITIONS_PROBE_ALL !== "1") {
+        throw new Error(`${name}: ${error.message}`, { cause: error });
+      }
+      failures.push(`${name}: ${error.message.split("\n")[0]}`);
+      return;
     }
-    failures.push(`${name}: ${error.message.split("\n")[0]}`);
-    return;
   }
   checks += 1;
 }
 
 try {
-  await d.navigate(`${base}/view/probe`);
-  assert.ok(await d.waitFor("!!window.__tr && !!document.getElementById('go-reset')", 20000));
+  const landingGroup = group === "landing";
+  await d.navigate(`${base}/view/${landingGroup ? "landing" : "probe"}`);
+  assert.ok(
+    await d.waitFor(
+      `!!window.__tr && !!document.getElementById(${JSON.stringify(landingGroup ? "to-git" : "go-reset")})`,
+      20000,
+    ),
+  );
   await sleep(500);
 
   if (group === "frames") {
     await check("a subject shown during the hover, before the press, refuses", async () => {
       await d.click("#go-reset");
       await sleep(200);
-      const r = await d.measure({
+      const r = await take({
         id: "hoverShow",
         subject: "hoverShow",
         input: { kind: "hover-click", selector: "#go-hoverShow", hoverMs: 200 },
@@ -281,7 +413,7 @@ try {
       await d.click("#go-reset");
       await sleep(200);
       await d.evaluate(`document.getElementById("view").textContent = "already here"`);
-      const r = await d.measure({
+      const r = await take({
         id: "late",
         subject: "late",
         input: { kind: "click", selector: "#go-late" },
@@ -402,7 +534,7 @@ try {
       await sleep(200);
       await d.click("#go-prA");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "prRetain",
         subject: "#351",
         input: { kind: "click", selector: "#go-prRetain" },
@@ -421,7 +553,7 @@ try {
       await sleep(200);
       await d.click("#go-prA");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "prB",
         subject: "#351",
         input: { kind: "click", selector: "#go-prB" },
@@ -440,7 +572,7 @@ try {
     await check("an untrusted start event refuses", async () => {
       await d.click("#go-reset");
       await sleep(300);
-      const r = await d.measure({
+      const r = await take({
         id: "forged",
         subject: "forged",
         input: { kind: "hover-click", selector: "#go-forged", hoverMs: 150 },
@@ -457,7 +589,7 @@ try {
       await d.click("#go-reset");
       await sleep(300);
       await d.evaluate("window.keys = []");
-      const r = await d.measure({
+      const r = await take({
         id: "held",
         subject: "held",
         input: { kind: "key-repeat", key: "ArrowDown", count: 4, intervalMs: 40 },
@@ -473,57 +605,175 @@ try {
       assert.ok(r.inputSpanMs >= 100, `input span ${r.inputSpanMs}`);
     });
   } else if (group === "network") {
-    await check("cache disposition matches what the server answered", async () => {
-      const spec = (n) => ({
-        input: { kind: "click", selector: "#go-fetch" },
-        ready: subjectReady(`fetch${n}`),
-      });
-      const first = await d.measure({ id: "f1", subject: "f", converged: `() => ""`, ...spec(1) });
-      assert.equal(first.ok, true, JSON.stringify(first.refusals));
+    // Both count what the server answered over two measurements in a fresh browser cache,
+    // so a second attempt could not repeat the first and they are not taken again.
+    await check(
+      "cache disposition matches what the server answered",
+      async () => {
+        const spec = (n) => ({
+          input: { kind: "click", selector: "#go-fetch" },
+          ready: subjectReady(`fetch${n}`),
+        });
+        const first = await take({ id: "f1", subject: "f", converged: `() => ""`, ...spec(1) });
+        assert.equal(first.ok, true, JSON.stringify(first.refusals));
+        await sleep(300);
+        const second = await take({ id: "f2", subject: "f", converged: `() => ""`, ...spec(2) });
+        assert.equal(second.ok, true, JSON.stringify(second.refusals));
+        const by = Object.fromEntries(second.requests.list.map((x) => [x.u, x.d]));
+        // The server answered 200 then 304 to both conditional routes and once to the
+        // max-age file, which the browser then served from its own cache.
+        assert.deepEqual(hits["/static/revalidate.js"], [200, 304]);
+        assert.deepEqual(hits["/api/data"], [200, 304]);
+        assert.deepEqual(hits["/static/fresh.js"], [200]);
+        assert.deepEqual(by, {
+          "/static/revalidate.js": "revalidated",
+          "/static/fresh.js": "cache",
+          "/api/data": "revalidated",
+        });
+        assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
+      },
+      { retryable: false },
+    );
+    await check(
+      "a worker's requests answered by a 304 are revalidated",
+      async () => {
+        const spec = (n) => ({
+          id: `w${n}`,
+          subject: "w",
+          input: { kind: "click", selector: "#go-worker" },
+          ready: subjectReady(`worker${n}`),
+          converged: `() => ""`,
+          timeoutMs: 10000,
+        });
+        const first = await take(spec(1));
+        assert.equal(first.ok, true, JSON.stringify(first.refusals));
+        await sleep(300);
+        const second = await take(spec(2));
+        assert.equal(second.ok, true, JSON.stringify(second.refusals));
+        for (const p of ["/worker.js", "/worker-dep.js", "/static/worker-data.js"]) {
+          assert.deepEqual(hits[p], [200, 304], `${p} answered ${hits[p]}`);
+        }
+        const by = Object.fromEntries(
+          second.requests.list.map((x) => [x.u, `${x.k ?? "page"} ${x.d}`]),
+        );
+        assert.deepEqual(by, {
+          "/worker.js": "page revalidated",
+          "/worker-dep.js": "w revalidated",
+          "/static/worker-data.js": "w revalidated",
+        });
+      },
+      { retryable: false },
+    );
+  } else if (group === "landing") {
+    const L = COMMITS_LANDING;
+    // A switch from Files to Commits on the page in `mode`, measured with `spec`.
+    const landOn = async (mode, spec) => {
+      await d.click("#to-files");
       await sleep(300);
-      const second = await d.measure({ id: "f2", subject: "f", converged: `() => ""`, ...spec(2) });
-      assert.equal(second.ok, true, JSON.stringify(second.refusals));
-      const by = Object.fromEntries(second.requests.list.map((x) => [x.u, x.d]));
-      // The server answered 200 then 304 to both conditional routes and once to the
-      // max-age file, which the browser then served from its own cache.
-      assert.deepEqual(hits["/static/revalidate.js"], [200, 304]);
-      assert.deepEqual(hits["/api/data"], [200, 304]);
-      assert.deepEqual(hits["/static/fresh.js"], [200]);
-      assert.deepEqual(by, {
-        "/static/revalidate.js": "revalidated",
-        "/static/fresh.js": "cache",
-        "/api/data": "revalidated",
+      await d.evaluate(`window.mode = ${JSON.stringify(mode)}`);
+      const r = await take({
+        id: `landing.${mode}`,
+        subject: "Commits",
+        input: { kind: "click", selector: "#to-git" },
+        settleMs: 400,
+        timeoutMs: 5000,
+        ...spec,
       });
-      assert.deepEqual(second.requests.byFamily.static, { revalidated: 1, cache: 1 });
+      await sleep(200);
+      return r;
+    };
+    const toList = {
+      ready: L.ready(NEWEST),
+      converged: L.converged(NEWEST),
+      landing: L.kind(NEWEST),
+      emptyState: true,
+    };
+    const notReady = (r) =>
+      r.refusals.some(([guard, detail]) => guard === "converged" && /not ready/.test(detail));
+    await check("a switch to Commits that shows the prompt is the empty landing", async () => {
+      const r = await landOn("empty", toList);
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.landing, "empty");
     });
-    await check("a worker's requests answered by a 304 are revalidated", async () => {
-      const spec = (n) => ({
-        id: `w${n}`,
-        subject: "w",
-        input: { kind: "click", selector: "#go-worker" },
-        ready: subjectReady(`worker${n}`),
-        converged: `() => ""`,
-        timeoutMs: 10000,
-      });
-      const first = await d.measure(spec(1));
-      assert.equal(first.ok, true, JSON.stringify(first.refusals));
-      await sleep(300);
-      const second = await d.measure(spec(2));
-      assert.equal(second.ok, true, JSON.stringify(second.refusals));
-      for (const p of ["/worker.js", "/worker-dep.js", "/static/worker-data.js"]) {
-        assert.deepEqual(hits[p], [200, 304], `${p} answered ${hits[p]}`);
-      }
-      const by = Object.fromEntries(
-        second.requests.list.map((x) => [x.u, `${x.k ?? "page"} ${x.d}`]),
+    await check(
+      "a switch to Commits that shows the newest commit is the newest landing",
+      async () => {
+        const r = await landOn("newest", toList);
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        assert.equal(r.landing, "newest");
+      },
+    );
+    await check("the prompt alone, revision 4's test, refuses the newest landing", async () => {
+      const r = await landOn("newest", { ready: L.prompt, converged: `() => ""`, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+    });
+    await check("a switch to Commits that shows another commit is neither landing", async () => {
+      const r = await landOn("older", { ...toList, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+      assert.equal(r.landing, null);
+    });
+    await check("the newest landing converges only with the newest row selected", async () => {
+      const r = await landOn("unselected", toList);
+      assert.ok(
+        r.refusals.some(([guard, detail]) => guard === "converged" && /selected/.test(detail)),
+        JSON.stringify(r.refusals),
       );
-      assert.deepEqual(by, {
-        "/worker.js": "page revalidated",
-        "/worker-dep.js": "w revalidated",
-        "/static/worker-data.js": "w revalidated",
+    });
+    await check(
+      "a switch back to Commits lands on the commit read before or the newest",
+      async () => {
+        const spec = {
+          ready: L.subjectReady(OLDER, NEWEST),
+          converged: L.subjectConverged(OLDER, NEWEST),
+          landing: L.kind(NEWEST, OLDER),
+        };
+        const restored = await landOn("older", spec);
+        assert.equal(restored.ok, true, JSON.stringify(restored.refusals));
+        assert.equal(restored.landing, "restored");
+        const newest = await landOn("newest", spec);
+        assert.equal(newest.ok, true, JSON.stringify(newest.refusals));
+        assert.equal(newest.landing, "newest");
+      },
+    );
+    // Review A of #417.
+    const movedOn = (r, from, to) =>
+      r.refusals.some(
+        ([guard, detail]) =>
+          guard === "converged" && detail.includes(`ready on ${from}, converged on ${to}`),
+      );
+    await check("a prompt painted before the newest commit is refused, not timed", async () => {
+      const r = await landOn("flash", toList);
+      assert.ok(movedOn(r, "empty", "newest"), JSON.stringify(r.refusals));
+      assert.equal(r.landingAtReady, "empty");
+      assert.equal(r.landing, "newest");
+    });
+    await check("the commit read before, painted before the newest, is refused", async () => {
+      const r = await landOn("staleflash", {
+        ready: L.subjectReady(OLDER, NEWEST),
+        converged: L.subjectConverged(OLDER, NEWEST),
+        landing: L.kind(NEWEST, OLDER),
       });
+      assert.ok(movedOn(r, "restored", "newest"), JSON.stringify(r.refusals));
+    });
+    await check("the newest commit's failed detail is not the prompt", async () => {
+      const r = await landOn("detailfail", { ...toList, timeoutMs: 1500 });
+      assert.ok(notReady(r), JSON.stringify(r.refusals));
+      assert.match(await d.evaluate(`(${L.kind(NEWEST)})()`), /^other \/commit\//);
+    });
+    await check("an empty or failed history is never ready", async () => {
+      for (const mode of ["emptyhistory", "failedhistory"]) {
+        const r = await landOn(mode, { ...toList, timeoutMs: 1500 });
+        assert.ok(notReady(r), `${mode}: ${JSON.stringify(r.refusals)}`);
+      }
+    });
+    await check("a slow detail is ready when its diff has text, not when it mounts", async () => {
+      const r = await landOn("slowdetail", toList);
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.landing, "newest");
+      assert.ok(r.readyMs >= 450, `ready ${r.readyMs}`);
     });
   } else {
-    throw new Error(`unknown group ${group}; frames, frames2, content, or network`);
+    throw new Error(`unknown group ${group}; frames, frames2, content, network, or landing`);
   }
 } finally {
   await browser.close();
