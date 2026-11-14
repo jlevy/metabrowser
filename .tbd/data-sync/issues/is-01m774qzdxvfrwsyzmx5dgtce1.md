@@ -3,9 +3,9 @@ type: is
 id: is-01m774qzdxvfrwsyzmx5dgtce1
 title: Reserve toggling chrome and fix page header sections' boxes at first paint
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
@@ -18,8 +18,12 @@ parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:29.077Z
-updated_at: 2026-11-12T17:46:22.026Z
+updated_at: 2026-11-13T22:19:14.260Z
 started_at: 2026-11-12T06:11:46.298Z
+closed_at: 2026-11-13T22:19:14.259Z
+close_reason: "Landed in #370 (merge f4817752). exp-059 (H86) accepted: shell chrome region movement 11-37 px to 0 on all 27 transitions, PR header 8 px to 0, no guard wrong-way. Later review rounds D-G added: late stack badge/chip moving nothing (Pulls title-line column, header labels-row slot), the merge kept whole with long logins and avatars to 320 px, the state and run-status badges sized to their widest label, the tab column inert while held. Verified in a 1438-check headless Chrome session (7 bounded parts) with mutation tests."
+resolution: null
+duplicate_of: null
 ---
 Per the page-header audit in the research doc (Page Headers, Section by Section): filter bar slot on every main tab; Commits button in the shell; scrollbar-gutter on tree and preview panes; always-present view tab bar; print and badge slots kept; PR title reserved and clamped to two lines; one-line fixed 26 px state row with truncating branch chips and a reserved stack-chip slot; state badge min-width; labels in an always-present row; fixed 26 px status row with a permanent Refresh slot; loading skeleton at final heights; Pulls status and connection lines always present, counts with tabular numerals and min-width; folder Overview panel skeletons at final height. Measured as region movement per transition (0 px target) and shift.
 

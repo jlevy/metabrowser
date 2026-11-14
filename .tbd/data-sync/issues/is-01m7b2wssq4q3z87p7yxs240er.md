@@ -3,13 +3,13 @@ type: is
 id: is-01m7b2wssq4q3z87p7yxs240er
 title: "PR header: keep unchanged nodes across repaints (identity, badge, chips, icons)"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-11-13T18:32:07.734Z
-updated_at: 2026-11-13T18:44:58.288Z
+updated_at: 2026-11-14T00:49:47.367Z
 ---
 Found by the avatar-flicker sweep (#399). `paintStateRow` and `paintHeader` in `builtin_plugins/github/pull-page.js` rebuild unchanged nodes on every paint: the identity, the badge with #370's badge sizers, the branch chips with their copy buttons, the title's state-icon SVG, the GitHub mark, and the labels. Every paint includes tab switches and the 1 s polls while a refresh runs.
 
