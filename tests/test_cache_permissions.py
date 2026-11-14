@@ -2316,7 +2316,9 @@ finally:
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="bind mounts are a Linux mount namespace's"
 )
-def test_a_read_only_bind_mount_over_a_held_directory_is_honored() -> None:
+def test_a_read_only_bind_mount_over_a_held_directory_is_honored(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """A cold walk reaches the read-only bind mount; a warm one must too.
 
     It needs a private mount namespace: as root of a new user namespace where the kernel
@@ -2335,7 +2337,7 @@ def test_a_read_only_bind_mount_over_a_held_directory_is_honored() -> None:
             capture_output=True,
             text=True,
             check=False,
-            timeout=60,
+            timeout=30,
         )
         lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
         if not lines:
@@ -2352,6 +2354,9 @@ def test_a_read_only_bind_mount_over_a_held_directory_is_honored() -> None:
         assert results["unchecked"] == {"writable": True, "create": "created"}, report
         assert results["cold"] == refused, report
         assert results["warm"] == refused, report
+        with capsys.disabled():
+            # Which namespace this ran in, for a reader of the CI log.
+            print(f"\nbind-mount test ran as {route}: {' '.join(launcher)}")
         return
     pytest.skip(f"no private mount namespace could be made: {'; '.join(tried)}")
 
@@ -2518,7 +2523,7 @@ def _run_script(script: str, *arguments: object) -> dict[str, Any]:
         capture_output=True,
         text=True,
         check=False,
-        timeout=60,
+        timeout=30,
     )
     lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
     assert done.returncode == 0 and lines, done.stderr
