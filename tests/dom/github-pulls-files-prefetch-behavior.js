@@ -312,213 +312,242 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
   };
 }
 
-(async () => {
-  const panel = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pulls-panel.js")).href
-  );
-  const treeModule = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-files-tree.js"))
-      .href
-  );
-  const numbers = rows.map((row) => row.number);
-  // A list pane of twenty rows: the rows in view, top first.
-  const inView = numbers.slice(0, 20);
-  const facts = {};
-
+/** Each story, by name, with the facts it pins; `node <this> <name>` runs one alone. */
+const stories = {
   // ── A visible row's files are prefetched ─────────────────────
   // The panel shows its first twenty rows. Once they stay put, it names their files, up to
   // the sixteen one ask may name, and the lane reads them one at a time behind the reader.
-  const seen = rig();
-  const controller = panel.createPullsController(seen.deps, { filter: "open" });
-  await controller.start({ shown: true });
-  await seen.advance(0);
-  const shownAt = seen.now();
-  const shownMark = seen.mark();
-  controller.prepareVisible(inView);
-  await seen.advance(panel.FILES_DWELL_MS - 1);
-  facts.asksBeforeDwell = seen.asks(shownMark).length;
-  await seen.advance(1);
-  const visibleAsk = seen.asks(shownMark)[0];
-  assert(visibleAsk !== undefined, "the rows in view have their files asked for");
-  facts.visibleAsk = { afterMs: visibleAsk.at - shownAt, files: visibleAsk.files };
-  assert.equal(facts.asksBeforeDwell, 0);
-  assert.equal(visibleAsk.at - shownAt, panel.FILES_DWELL_MS);
-  assert.equal(visibleAsk.files.length, panel.PREFETCH_FILES);
-  assert(visibleAsk.files.every((number) => inView.includes(number)));
-  // The pointer rests on the eighteenth row, past what the first ask named: it is asked
-  // for at once, first, and read next.
-  await seen.advance(2 * LIST_MS);
-  const rested = inView[17];
-  const restedFrom = seen.now();
-  const restedMark = seen.mark();
-  // The lists started so far, the last of them still being read.
-  const startedBefore = seen.server.gh.length;
-  controller.peek(rested);
-  await seen.advance(0);
-  const restedAsk = seen.asks(restedMark)[0];
-  facts.restedAsk = { afterMs: restedAsk.at - restedFrom, first: restedAsk.files[0] };
-  assert.equal(restedAsk.files[0], rested);
-  await seen.advance(20 * LIST_MS);
-  facts.listed = seen.server.gh.map((read) => `${read.number} by ${read.by}`);
-  assert.deepEqual(
-    seen.server.gh.map((read) => read.by),
-    seen.server.gh.map(() => "prefetch"),
-  );
-  assert.equal(
-    seen.server.gh[startedBefore].number,
-    rested,
-    "the rested row is read as soon as the list being read ends",
-  );
-  assert.equal(seen.server.lane.running, null, "the lane ends with the rows asked for");
+  // The pointer then rests on the eighteenth row, past what that ask named: it is asked for
+  // at once, first, and read as soon as the list being read ends.
+  async visible({ panel, inView }, facts) {
+    const seen = rig();
+    const controller = panel.createPullsController(seen.deps, { filter: "open" });
+    await controller.start({ shown: true });
+    await seen.advance(0);
+    const shownAt = seen.now();
+    const shownMark = seen.mark();
+    controller.prepareVisible(inView);
+    await seen.advance(panel.FILES_DWELL_MS - 1);
+    facts.asksBeforeDwell = seen.asks(shownMark).length;
+    await seen.advance(1);
+    const visibleAsk = seen.asks(shownMark)[0];
+    assert(visibleAsk !== undefined, "the rows in view have their files asked for");
+    facts.visibleAsk = { afterMs: visibleAsk.at - shownAt, files: visibleAsk.files };
+    assert.equal(facts.asksBeforeDwell, 0);
+    assert.equal(visibleAsk.at - shownAt, panel.FILES_DWELL_MS);
+    assert.equal(visibleAsk.files.length, panel.PREFETCH_FILES);
+    assert(visibleAsk.files.every((number) => inView.includes(number)));
+    await seen.advance(2 * LIST_MS);
+    const rested = inView[17];
+    const restedFrom = seen.now();
+    const restedMark = seen.mark();
+    // The lists started so far, the last of them still being read.
+    const startedBefore = seen.server.gh.length;
+    controller.peek(rested);
+    await seen.advance(0);
+    const restedAsk = seen.asks(restedMark)[0];
+    assert(restedAsk !== undefined, "a row rested on has its files asked for");
+    facts.restedAsk = { afterMs: restedAsk.at - restedFrom, first: restedAsk.files[0] };
+    assert.equal(restedAsk.files[0], rested);
+    await seen.advance(20 * LIST_MS);
+    facts.listed = seen.server.gh.map((read) => `${read.number} by ${read.by}`);
+    assert.deepEqual(
+      seen.server.gh.map((read) => read.by),
+      seen.server.gh.map(() => "prefetch"),
+    );
+    assert.equal(
+      seen.server.gh[startedBefore].number,
+      rested,
+      "the rested row is read as soon as the list being read ends",
+    );
+    assert.equal(seen.server.lane.running, null, "the lane ends with the rows asked for");
+    controller.dispose();
+  },
 
   // ── An expansion after prefetch draws with no request ────────
-  // The reader expands the sixth row in view: its first read of the list finds it cached, so
-  // the tree opens with its rows at the click's own time, asks for no refresh, and GitHub is
-  // not read for it. A row out of view, never rested on, is the reader's own first read.
-  async function expand(rigged, number) {
-    const from = rigged.now();
-    const ghBefore = rigged.server.gh.length;
-    const tree = rigged.tree(treeModule, number);
-    tree.controller.expand();
-    controller.activate(number);
-    await rigged.advance(0);
-    for (let step = 0; step < 20 && tree.drawnAt === null; step += 1) {
-      await rigged.advance(250);
+  // The reader expands the sixth row in view once the lane has read the rows in view: its
+  // first read of the list finds it cached, so the tree opens with its rows at the click's own
+  // time, asks for no refresh, and GitHub is not read for it. A row out of view, never rested
+  // on, is still the reader's own first read: the tree asks, GitHub lists it, and the tree
+  // draws it at its next read after that.
+  async expansion({ panel, tree: treeModule, inView, numbers }, facts) {
+    const seen = rig();
+    const controller = panel.createPullsController(seen.deps, { filter: "open" });
+    await controller.start({ shown: true });
+    await seen.advance(0);
+    controller.prepareVisible(inView);
+    await seen.advance(panel.FILES_DWELL_MS + 20 * LIST_MS);
+    async function expand(number) {
+      const from = seen.now();
+      const ghBefore = seen.server.gh.length;
+      const tree = seen.tree(treeModule, number);
+      tree.controller.expand();
+      controller.activate(number);
+      await seen.advance(0);
+      for (let step = 0; step < 20 && tree.drawnAt === null; step += 1) {
+        await seen.advance(250);
+      }
+      const asked = seen.server.requests.filter(
+        (entry) => entry.at >= from && entry.route.startsWith(FILES),
+      );
+      const result = {
+        drawnAfterMs: tree.drawnAt === null ? null : tree.drawnAt - from,
+        rows: tree.model?.rows.length ?? 0,
+        refreshAsks: asked.filter((entry) => entry.route === FILES_REFRESH).length,
+        githubReads: seen.server.gh
+          .slice(ghBefore)
+          .filter((read) => read.number === number)
+          .map((read) => read.by),
+      };
+      tree.controller.dispose();
+      return result;
     }
-    const asked = rigged.server.requests.filter(
-      (entry) => entry.at >= from && entry.route.startsWith(FILES),
+    facts.expandedAfterPrefetch = await expand(inView[5]);
+    assert.deepEqual(facts.expandedAfterPrefetch, {
+      drawnAfterMs: 0,
+      // Two files, each in its folder.
+      rows: 4,
+      refreshAsks: 0,
+      githubReads: [],
+    });
+    const outOfView = numbers.find(
+      (number) => !inView.includes(number) && !seen.server.lists.has(number),
     );
-    const result = {
-      drawnAfterMs: tree.drawnAt === null ? null : tree.drawnAt - from,
-      rows: tree.model?.rows.length ?? 0,
-      refreshAsks: asked.filter((entry) => entry.route === FILES_REFRESH).length,
-      githubReads: rigged.server.gh
-        .slice(ghBefore)
-        .filter((read) => read.number === number)
-        .map((read) => read.by),
-    };
-    tree.controller.dispose();
-    return result;
-  }
-  facts.expandedAfterPrefetch = await expand(seen, inView[5]);
-  assert.deepEqual(facts.expandedAfterPrefetch, {
-    drawnAfterMs: 0,
-    // Two files, each in its folder.
-    rows: 4,
-    refreshAsks: 0,
-    githubReads: [],
-  });
-  const outOfView = numbers.find(
-    (number) => !inView.includes(number) && !seen.server.lists.has(number),
-  );
-  facts.expandedOutOfView = await expand(seen, outOfView);
-  assert.equal(facts.expandedOutOfView.refreshAsks, 1);
-  assert.deepEqual(facts.expandedOutOfView.githubReads, ["reader"]);
-  assert(facts.expandedOutOfView.drawnAfterMs >= LIST_MS);
-  controller.dispose();
+    facts.expandedOutOfView = await expand(outOfView);
+    assert.equal(facts.expandedOutOfView.refreshAsks, 1);
+    assert.deepEqual(facts.expandedOutOfView.githubReads, ["reader"]);
+    assert(facts.expandedOutOfView.drawnAfterMs >= LIST_MS);
+    controller.dispose();
+  },
 
   // ── Prefetch stops below the budget floor ───────────────────
   // The account is below the floor: the server refuses the first ask, the scan's, from
   // memory, and the panel asks nothing more for a slow poll, however the rows in view and the
   // pointer move. Once the budget is back and the hold is over, the next row rested on is
   // asked for and read.
-  const low = rig({ belowFloor: true });
-  const starved = panel.createPullsController(low.deps, { filter: "open" });
-  await starved.start({ shown: true });
-  await low.advance(0);
-  starved.prepareVisible(inView);
-  await low.advance(panel.FILES_DWELL_MS);
-  for (const number of inView.slice(0, 6)) {
-    starved.peek(number);
-    await low.advance(1000);
-  }
-  facts.belowFloor = {
-    asks: low.asks().length,
-    githubReads: low.server.gh.length,
-  };
-  assert.deepEqual(facts.belowFloor, { asks: 1, githubReads: 0 });
-  low.server.belowFloor = false;
-  await low.advance(30_000);
-  const back = low.mark();
-  starved.peek(inView[9]);
-  await low.advance(LIST_MS);
-  facts.afterFloor = {
-    asks: low.asks(back).length,
-    firstRead: low.server.gh[0]?.number ?? null,
-  };
-  assert.deepEqual(facts.afterFloor, { asks: 1, firstRead: inView[9] });
-  starved.dispose();
+  async floor({ panel, inView }, facts) {
+    const low = rig({ belowFloor: true });
+    const starved = panel.createPullsController(low.deps, { filter: "open" });
+    await starved.start({ shown: true });
+    await low.advance(0);
+    starved.prepareVisible(inView);
+    await low.advance(panel.FILES_DWELL_MS);
+    for (const number of inView.slice(0, 6)) {
+      starved.peek(number);
+      await low.advance(1000);
+    }
+    facts.belowFloor = { asks: low.asks().length, githubReads: low.server.gh.length };
+    assert.deepEqual(facts.belowFloor, { asks: 1, githubReads: 0 });
+    low.server.belowFloor = false;
+    await low.advance(30_000);
+    const back = low.mark();
+    starved.peek(inView[9]);
+    await low.advance(LIST_MS);
+    facts.afterFloor = {
+      asks: low.asks(back).length,
+      firstRead: low.server.gh[0]?.number ?? null,
+    };
+    assert.deepEqual(facts.afterFloor, { asks: 1, firstRead: inView[9] });
+    starved.dispose();
+  },
 
   // ── Prefetch never delays a reader's request ─────────────────
   // The rows in view lack their metadata, which GitHub reads for the reader while their titles
-  // breathe: no list is asked for, or read, until those batches settle.
-  const cold = rig({ coldCores: true });
-  const waiting = panel.createPullsController(cold.deps, { filter: "open" });
-  await waiting.start({ shown: true });
-  await cold.advance(0);
-  const coldFrom = cold.now();
-  const coldMark = cold.mark();
-  // The scan's own ask, before the rows came into view, named the anchored row's neighbour.
-  const readsBefore = cold.server.gh.length;
-  waiting.prepareVisible(inView.slice(0, 16));
-  await cold.advance(20_000);
-  const settled = cold.server.requests
-    .filter((entry) => entry.route === CORES && entry.body.numbers.length > 0)
-    .at(-1).at;
-  const firstFiles = cold.asks(coldMark)[0];
-  facts.behindMetadata = {
-    metadataSettledMs: settled - coldFrom,
-    filesAskedMs: firstFiles === undefined ? null : firstFiles.at - coldFrom,
-    listsBeforeSettled: cold.server.gh.slice(readsBefore).filter((read) => read.at < settled)
-      .length,
-  };
-  assert(firstFiles !== undefined, "the files are asked for once the metadata settles");
-  assert(facts.behindMetadata.filesAskedMs >= facts.behindMetadata.metadataSettledMs);
-  assert.equal(facts.behindMetadata.listsBeforeSettled, 0);
-  waiting.dispose();
+  // breathe: no list is asked for, or read, until those batches settle. A held key walks the
+  // rows past the moment the rows in view would be asked for: no files ask is sent while it
+  // walks, and the landing's, once it stops, names them too. A prefetch the server has not
+  // answered holds up none of the reader's reads: a click reads its tree's list and its record
+  // at once.
+  async reader({ panel, tree: treeModule, inView }, facts) {
+    const cold = rig({ coldCores: true });
+    const waiting = panel.createPullsController(cold.deps, { filter: "open" });
+    await waiting.start({ shown: true });
+    await cold.advance(0);
+    const coldFrom = cold.now();
+    const coldMark = cold.mark();
+    // The scan's own ask, before the rows came into view, named the anchored row's neighbour.
+    const readsBefore = cold.server.gh.length;
+    waiting.prepareVisible(inView.slice(0, 16));
+    await cold.advance(20_000);
+    const settled = cold.server.requests
+      .filter((entry) => entry.route === CORES && entry.body.numbers.length > 0)
+      .at(-1).at;
+    const firstFiles = cold.asks(coldMark)[0];
+    facts.behindMetadata = {
+      metadataSettledMs: settled - coldFrom,
+      filesAskedMs: firstFiles === undefined ? null : firstFiles.at - coldFrom,
+      listsBeforeSettled: cold.server.gh.slice(readsBefore).filter((read) => read.at < settled)
+        .length,
+    };
+    assert(firstFiles !== undefined, "the files are asked for once the metadata settles");
+    assert(facts.behindMetadata.filesAskedMs >= facts.behindMetadata.metadataSettledMs);
+    assert.equal(facts.behindMetadata.listsBeforeSettled, 0);
+    waiting.dispose();
 
-  // A held key walks the rows past the moment the rows in view would be asked for: no files
-  // ask is sent while it walks, and the landing's, once it stops, names them too. A prefetch the server has not answered holds up none of the reader's reads: a
-  // click reads its record and its tree's list at once.
-  const walked = rig({ holdPrefetch: true });
-  const walker = panel.createPullsController(walked.deps, { filter: "open" });
-  await walker.start({ shown: true });
-  await walked.advance(0);
-  await walked.release();
-  walked.server.holdPrefetch = false;
-  walker.prepareVisible(inView);
-  walker.setCurrent(inView[0]);
-  await walked.advance(panel.FILES_DWELL_MS - 100);
-  const walkFrom = walked.mark();
-  for (let step = 0; step < 8; step += 1) {
-    walker.move(1, { repeat: true });
-    await walked.advance(50);
+    const walked = rig({ holdPrefetch: true });
+    const walker = panel.createPullsController(walked.deps, { filter: "open" });
+    await walker.start({ shown: true });
+    await walked.advance(0);
+    await walked.release();
+    walked.server.holdPrefetch = false;
+    walker.prepareVisible(inView);
+    walker.setCurrent(inView[0]);
+    await walked.advance(panel.FILES_DWELL_MS - 100);
+    const walkFrom = walked.mark();
+    for (let step = 0; step < 8; step += 1) {
+      walker.move(1, { repeat: true });
+      await walked.advance(50);
+    }
+    facts.asksDuringWalk = walked.asks(walkFrom).length;
+    await walked.advance(panel.WALK_SETTLE_MS + panel.OPEN_WAIT_MS);
+    const landing = walked.asks(walkFrom);
+    facts.asksOnceStopped = landing.length;
+    assert.equal(facts.asksDuringWalk, 0);
+    assert.equal(landing.length, 1);
+    assert(
+      inView.slice(10, 16).every((number) => landing[0].files.includes(number)),
+      "the landing's ask names the rows in view",
+    );
+    walked.server.holdPrefetch = true;
+    walker.peek(inView[14]);
+    // A press follows the pointer's rest by about 200 ms.
+    await walked.advance(200);
+    assert.equal(walked.server.held.length, 1, "the rested row's ask is on its way, unanswered");
+    const clickAt = walked.now();
+    const tree = walked.tree(treeModule, inView[14]);
+    tree.controller.expand();
+    walker.activate(inView[14]);
+    await walked.advance(0);
+    facts.readerReadsWhileAskHeld = walked.server.requests
+      .filter((entry) => entry.at === clickAt && entry.method === "GET")
+      .map((entry) => `${entry.route.split("?")[0].replace("/api/plugin/github/", "")} +0 ms`);
+    assert.deepEqual(facts.readerReadsWhileAskHeld, ["pull-files +0 ms", "pull +0 ms"]);
+    tree.controller.dispose();
+    await walked.release();
+    walker.dispose();
+  },
+};
+
+(async () => {
+  const panel = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pulls-panel.js")).href
+  );
+  const tree = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-files-tree.js")).href
+  );
+  const numbers = rows.map((row) => row.number);
+  // A list pane of twenty rows: the rows in view, top first.
+  const context = { panel, tree, numbers, inView: numbers.slice(0, 20) };
+  const only = process.argv[2];
+  if (only !== undefined && !(only in stories)) {
+    throw new Error(`no story ${only}: ${Object.keys(stories).join(", ")}`);
   }
-  facts.asksDuringWalk = walked.asks(walkFrom).length;
-  await walked.advance(panel.WALK_SETTLE_MS + panel.OPEN_WAIT_MS);
-  const landing = walked.asks(walkFrom);
-  facts.asksOnceStopped = landing.length;
-  assert.equal(facts.asksDuringWalk, 0);
-  assert.equal(landing.length, 1);
-  assert(inView.slice(10, 16).every((number) => landing[0].files.includes(number)));
-  walked.server.holdPrefetch = true;
-  walker.peek(inView[14]);
-  // A press follows the pointer's rest by about 200 ms.
-  await walked.advance(200);
-  assert.equal(walked.server.held.length, 1, "the rested row's ask is on its way, unanswered");
-  const clickAt = walked.now();
-  const tree = walked.tree(treeModule, inView[14]);
-  tree.controller.expand();
-  walker.activate(inView[14]);
-  await walked.advance(0);
-  facts.readerReadsWhileAskHeld = walked.server.requests
-    .filter((entry) => entry.at === clickAt && entry.method === "GET")
-    .map((entry) => `${entry.route.split("?")[0].replace("/api/plugin/github/", "")} +0 ms`);
-  assert.deepEqual(facts.readerReadsWhileAskHeld, ["pull-files +0 ms", "pull +0 ms"]);
-  tree.controller.dispose();
-  await walked.release();
-  walker.dispose();
-
+  const facts = {};
+  for (const [name, story] of Object.entries(stories)) {
+    if (only === undefined || only === name) {
+      await story(context, facts);
+    }
+  }
   console.log(JSON.stringify(facts, null, 2));
 })().catch((error) => {
   console.error(error);

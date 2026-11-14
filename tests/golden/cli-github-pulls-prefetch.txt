@@ -197,7 +197,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {
@@ -382,7 +382,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {
@@ -481,7 +481,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {

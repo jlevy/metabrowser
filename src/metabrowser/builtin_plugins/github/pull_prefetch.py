@@ -9,7 +9,8 @@ A visible page names what it expects the reader to open, in its order of priorit
 - ``changed``: also the pull requests this server most recently answered ``GET pull`` for,
   when the catalog says they changed, which is what a scan that just published asks for;
 - ``files``: pull requests whose changed-files list to read when the files route would
-  start an automatic refresh, which a head or base that moved does at once.
+  start an automatic refresh, which a head or base that moved does at once: the rows the
+  pointer or focus rested on, the open row, its neighbours, and the rows in view.
 
 Nothing on the server starts this by itself, so it runs only while a page is visible and
 online, and a hidden or offline page asks for nothing. The request replaces the lane's
@@ -32,8 +33,8 @@ background record refresh asks for at most 8 core points when each part fits on 
 not), and a one-page files list for 3 (two account checks and the page). A part of more
 than 100 comments, reviews, or check runs costs a point a page more. The lanes are kept
 in memory, one per repository a server process serves, so at one page a part
-:data:`RECORDS_PER_HOUR` and :data:`FILES_PER_HOUR` spend at most 40 × 8 + 20 × 3 = 380 core
-points an hour for each repository in each process, 7.6% of a 5,000-point limit. What
+:data:`RECORDS_PER_HOUR` and :data:`FILES_PER_HOUR` spend at most 40 × 8 + 100 × 3 = 620
+core points an hour for each repository in each process, 12.4% of a 5,000-point limit. What
 bounds the account as a whole is the governor's floor, read from GitHub's own count of
 what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN` keeps one scan's changes from
 spending most of an hour's records at once; a scan is one publication of the catalog,
@@ -75,7 +76,10 @@ PREFETCH_ROUTE: Final = "/api/plugin/github/pulls-prefetch"
 MAX_PREFETCH_NUMBERS: Final = 16
 RECORDS_PER_SCAN: Final = 8
 RECORDS_PER_HOUR: Final = 40
-FILES_PER_HOUR: Final = 20
+# The lists of six panes of rows in view, at the 16 an ask names, with a few rested on: a
+# reader who reads that many panes in an hour has every first expansion drawn from the
+# cache. At 3 points a one-page list that is 300 points an hour, under the records' 320.
+FILES_PER_HOUR: Final = 100
 MAX_RECENT: Final = 16
 # The numbers ``GET pull`` most recently answered, which ``changed`` adds.
 MAX_VIEWED: Final = 16
