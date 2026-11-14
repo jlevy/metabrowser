@@ -902,6 +902,40 @@
     observerNotes.push("longtask");
   }
 
+  // "Idle Work" in docs/development.md.
+  var FRAME_GAP_MS = 50;
+  var FRAME_SAMPLE_WINDOW_MS = 10000;
+  var raf = { gaps: 0, max_ms: 0, over_200ms: 0, sampled_ms: 0 };
+  var rafOn = observerNotes.includes("longtask") && !!window.requestAnimationFrame;
+  var rafUntil = 0;
+  var rafLast = null;
+  var rafRunning = false;
+  function _rafFrame(at) {
+    rafRunning = at <= rafUntil;
+    var gap = Math.max(0, Math.round(at - rafLast));
+    if (rafRunning && rafLast !== null && document.visibilityState === "visible") {
+      raf.sampled_ms += gap;
+      if (gap > FRAME_GAP_MS) {
+        raf.gaps += 1;
+        raf.max_ms = Math.max(raf.max_ms, gap);
+        raf.over_200ms += gap > 200 ? 1 : 0;
+      }
+    }
+    rafLast = rafRunning ? at : null;
+    if (rafRunning) {
+      requestAnimationFrame(_rafFrame);
+    }
+  }
+  function _sampleFrames() {
+    rafUntil = _now() + FRAME_SAMPLE_WINDOW_MS;
+    if (rafOn && !rafRunning) {
+      rafRunning = true;
+      rafLast = _now();
+      requestAnimationFrame(_rafFrame);
+    }
+  }
+  _sampleFrames();
+
   // Long Animation Frames retain the browser's script attribution and forced
   // style/layout cost, which Long Tasks deliberately do not. Keep this as a
   // diagnostic alongside the portable Long Tasks total: it names the function
@@ -1051,12 +1085,14 @@
 
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", () => {
+      rafLast = null;
       if (document.visibilityState !== "visible") {
         everHidden = true;
       }
     });
     var recordInteractionInput = (event) => {
       if (event.isTrusted) {
+        _sampleFrames();
         var inputAtMs = _now();
         if (interactionInputFirstMs === null) {
           interactionInputFirstMs = inputAtMs;
@@ -1146,6 +1182,7 @@
       forced_style_layout_ms_max: frameAttributionSupported
         ? Math.round(forcedStyleLayoutMaxMs)
         : null,
+      raf_frame_gaps: rafOn ? { ...raf } : null,
     };
   }
 
@@ -1214,6 +1251,8 @@
     currentLayoutShiftWindowStart = null;
     currentLayoutShiftWindowLast = null;
     everHidden = typeof document !== "undefined" && document.visibilityState !== "visible";
+    raf = { gaps: 0, max_ms: 0, over_200ms: 0, sampled_ms: 0 };
+    _sampleFrames();
   }
 
   function setSlowThreshold(ms) {

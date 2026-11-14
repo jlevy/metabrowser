@@ -492,6 +492,35 @@ All notable changes to Metabrowser are documented here.
   a full name (the folder’s path with `~`, or the mirror’s origin and ref, such as
   `github.com/jlevy/tbd@main`), and whether it is a local folder or a cached mirror.
 
+- The plugin SDK adds `metabrowser.whenIdle(callback, {timeout})`, the one way the shell
+  and the built-in plugins schedule idle work.
+  In an engine without `requestIdleCallback`, as the app’s WebKit is, it waits for the
+  first view to settle and for input to pause instead of a fixed timer.
+  Where Long Tasks are not observable, `metabrowser.perf.responsiveness()` reports
+  `raf_frame_gaps`, animation-frame intervals over 50 ms, and leaves the Long Task
+  fields as they were.
+  `Server-Timing` names the phases a response spent before its headers (`read`,
+  `render`, `git`, `encode`) beside `srv`, and the request log gives each request’s time
+  to its first byte and its phases.
+
+- A reload no longer asks the server again for scripts, stylesheets, and fonts it
+  already holds. The shell’s `/static/<file>?v=<stamp>` addresses, and the plugin and
+  KPress assets now addressed under a stamp of their contents
+  (`/plugin-static/<name>/@<stamp>/…`, `/kpress-static/@<stamp>/v<version>/…`), are
+  answered `immutable` while the stamp is current, and revalidated otherwise.
+  A plugin’s relative imports, workers, and stylesheet references inherit the stamp; an
+  absolute `/plugin-static/<name>/<file>` URL still works and is revalidated, but a
+  module reached both that way and by a relative URL from a stamped module is two module
+  instances, each with its own module-level state.
+  A relative URL that climbs out of the plugin’s directory moved one level:
+  `../other/x.js` now resolves inside the plugin’s own namespace and is not found, and a
+  top-level directory named `@` and sixteen hexadecimal digits can no longer be
+  addressed. `/raw` is never kept as fresh, since its headers belong to the trust profile
+  that served it: it now answers a matching `If-None-Match` with `304` instead of
+  sending the file again, under a tag that names the profile, so a copy stored while one
+  profile served the folder is never reused by a new load under another (see
+  `SECURITY.md`).
+
 ## 0.12.0
 
 - Configuration and repository-cache contract names use `metabrowser.config` and

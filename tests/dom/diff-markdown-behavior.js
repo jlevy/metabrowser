@@ -313,6 +313,8 @@ async function main() {
   const calls = [];
   let assets = 0;
   let mutations = 0;
+  /** @type {string[][]} */
+  const styled = [];
   const inert = {
     sanitizeNodes: () => [],
     kpressProse: () => make("div"),
@@ -337,7 +339,9 @@ async function main() {
       assets += 1;
       return inert;
     },
-    async loadStyles() {},
+    async loadStyles(manifest) {
+      styled.push(manifest.assets.map((asset) => asset.public_url));
+    },
     mutate(change) {
       mutations += 1;
       change();
@@ -426,8 +430,28 @@ async function main() {
       { kind: "added", side: "new", html: "<p>Edited <ins>word</ins></p>", source_only: false },
     ],
   };
-  calls[0].resolve(ready);
+  // The server names KPress's stylesheets under the package's asset stamp
+  // (metabrowser.asset_stamps); only same-origin KPress CSS is kept.
+  const stamped = "/kpress-static/@0123456789abcdef/v0.3.5/css/document.css";
+  calls[0].resolve({
+    ...ready,
+    assets: {
+      schema_version: "kpress-asset-manifest-v2",
+      import_map: {},
+      assets: [
+        { loading: "stylesheet", public_url: stamped },
+        { loading: "stylesheet", public_url: "/kpress-static/v0.3.5/css/print.css" },
+        { loading: "stylesheet", public_url: "https://elsewhere.example/kpress-static/x.css" },
+        { loading: "module", public_url: "/kpress-static/@0123456789abcdef/v0.3.5/js/toc.js" },
+      ],
+    },
+  });
   await new Promise(setImmediate);
+  assert.deepEqual(
+    styled,
+    [[stamped, "/kpress-static/v0.3.5/css/print.css"]],
+    "a stamped KPress stylesheet loads; another origin's and a script do not",
+  );
   assert.deepEqual(
     calls.map(({ id }) => id),
     ["a", "b"],

@@ -198,7 +198,7 @@ const sandbox = {
     }
     return true;
   },
-  requestIdleCallback(run) { idle = run; },
+  metabrowser: { whenIdle(run) { idle = run; return () => {}; } },
 };
 sandbox.window = sandbox;
 vm.createContext(sandbox);

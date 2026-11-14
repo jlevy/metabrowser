@@ -44,6 +44,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections import OrderedDict
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
@@ -69,22 +70,30 @@ _STORE_TAGS: OrderedDict[Path, tuple[tuple[int, int, int, int] | None, str]] = O
 _MAX_STORE_TAGS = 64
 
 
+def editable_install(name: str) -> bool:
+    """Whether the installed distribution *name* is an editable install of a source tree.
+
+    Its files can then change while a process that imported it runs, which is what decides
+    whether anything derived from them may be computed once per process.
+    """
+    try:
+        direct = distribution(name).read_text("direct_url.json")
+    except PackageNotFoundError:
+        return False
+    if not direct:
+        return False
+    try:
+        return json.loads(direct).get("dir_info", {}).get("editable") is True
+    except (ValueError, AttributeError):
+        return False
+
+
 def _newest_source_change() -> str:
     """The newest change under this package's tree in an editable install, else nothing.
 
     Measured 2026-11-02: 317 files walked in 2.3 ms, once per process.
     """
-    try:
-        direct = distribution("metabrowser").read_text("direct_url.json")
-    except PackageNotFoundError:
-        return ""
-    if not direct:
-        return ""
-    try:
-        editable = json.loads(direct).get("dir_info", {}).get("editable") is True
-    except (ValueError, AttributeError):
-        return ""
-    if not editable:
+    if not editable_install("metabrowser"):
         return ""
     newest = 0
     for root, dirs, files in os.walk(Path(__file__).parent):
@@ -184,24 +193,69 @@ def immutable_headers(etag: str) -> dict[str, str]:
     store's body answers for another, or for a folder, on the same origin. ``private``
     because a body can hold a private repository's code.
     """
-    return {"ETag": etag, "Cache-Control": "private, max-age=31536000, immutable"}
+    return {"ETag": etag, "Cache-Control": f"private, {IMMUTABLE_CACHE_CONTROL}"}
 
 
-def matches_if_none_match(request: Request, etag: str) -> bool:
+# What a browser may keep without asking, for a year: the most HTTP allows.
+IMMUTABLE_CACHE_CONTROL = "max-age=31536000, immutable"
+
+
+def stamped_asset_cache_control(*, current: bool) -> str:
+    """``Cache-Control`` for one of the application's own assets at a stamped address.
+
+    A script, stylesheet, or font the application ships is addressed with a stamp that
+    names its content (:mod:`metabrowser.asset_stamps`), so a browser can keep it without
+    asking. *current* says the stamp in the request is the one the asset has now. Only
+    then is the answer ``immutable``: a page rendered before an edit asks with the old
+    stamp, and the bytes it gets are the new ones, which must not be kept under an
+    address that names the old. Such an answer, and one at an address with no stamp,
+    is revalidated instead. ``public`` because the same bytes serve every reader.
+    """
+    return f"public, {IMMUTABLE_CACHE_CONTROL}" if current else "no-cache"
+
+
+# One entity tag of an If-None-Match list, weak or strong (RFC 9110 section 8.8.3).
+_ENTITY_TAG = re.compile(r'\s*(?:W/)?("[^"]*")\s*(?:,|$)')
+
+
+def matches_if_none_match(request: Request, etag: str, *, wildcard: bool = True) -> bool:
     """Whether the client already holds ``etag``.
+
+    RFC 9110 section 13.1.2: the header is ``*`` or a list of tags, compared weakly, so
+    ``W/"x"`` matches ``"x"``. ``*`` matches, since every caller answers it only for a
+    representation it has, unless *wildcard* is false: a route whose copies differ by more
+    than the bytes, as ``/raw``'s differ by trust profile, compares tags only. A malformed
+    list matches nothing, the safe direction.
 
     Header names are case-insensitive and Starlette normalizes them, but the
     call sites did not agree on the spelling; reading it here means they no
     longer have to.
     """
-    return request.headers.get("if-none-match", "") == etag
+    header = request.headers.get("if-none-match", "").strip()
+    if not header:
+        return False
+    if header == "*":
+        return wildcard
+    ours = etag.removeprefix("W/")
+    position = 0
+    while position < len(header):
+        found = _ENTITY_TAG.match(header, position)
+        if found is None:
+            return False
+        if found.group(1) == ours:
+            return True
+        position = found.end()
+    return False
 
 
 __all__ = [
     "BUILD_TAG",
+    "IMMUTABLE_CACHE_CONTROL",
     "build_scoped_etag",
+    "editable_install",
     "etag_headers",
     "immutable_headers",
     "matches_if_none_match",
+    "stamped_asset_cache_control",
     "store_tag",
 ]
