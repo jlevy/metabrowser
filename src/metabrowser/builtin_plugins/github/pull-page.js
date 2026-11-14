@@ -4137,13 +4137,18 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** The menu most recently used chooses a stack when a PR has several memberships. */
+  /**
+   * The menu most recently used chooses a stack when a PR has several memberships. A header
+   * held over the loading page shows no stack menu yet, so N and P wait with it, as the tab
+   * keys do (`holdTabColumn`).
+   */
   function currentStack() {
     if (
       !active ||
       listening.signal.aborted ||
       shown === null ||
       shown.pull === null ||
+      headerWaits() ||
       document.visibilityState !== "visible" ||
       !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
     ) {
@@ -5227,7 +5232,7 @@ export function mountPullPage(container, ctx, mb) {
             { key, recordRevision: model.recordRevision },
           );
     const hold = action === "repaint" ? holdFirstPaint(model) : null;
-    const headerHeld = firstPaint?.mode === "hidden" && firstPaint.header;
+    const headerHeld = headerWaits();
     holdTabColumn(headerHeld);
     if (!headerHeld) {
       paintHeader(model);
@@ -5484,6 +5489,14 @@ export function mountPullPage(container, ctx, mb) {
     // Unavailable only for a text it waited for: one past the screen may fail unseen.
     const failedWaited = [...held.failed].some((part) => held.parts.has(part));
     releaseFirstPaint(failedWaited || held.plain ? "unavailable" : "met");
+  }
+
+  /**
+   * Whether the header waits with a held first paint, still the loading heading: what the
+   * record's header shows, its stack menu among it, is not on screen until the release.
+   */
+  function headerWaits() {
+    return firstPaint?.mode === "hidden" && firstPaint.header;
   }
 
   /**
@@ -5870,7 +5883,8 @@ export function mountPullPage(container, ctx, mb) {
   }
   const stacks = watchStacks((index) => {
     stackIndex = index;
-    if (shown !== null && !listening.signal.aborted) {
+    // A held header paints its stacks with the rest of it, at the release.
+    if (shown !== null && !listening.signal.aborted && !headerWaits()) {
       paintStacks(shown);
     }
   });

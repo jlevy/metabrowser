@@ -1376,8 +1376,9 @@ Arrow keys, Home, End, Escape, outside click, and focus return follow the menu p
 On a selected PR, `N` opens the next member toward the stack top and `P` the previous
 one toward its base, with or without Shift; Help lists them in its Pull request stack
 group. A focused Pulls row keeps `J` and `K` for its own rows.
-Editors, dialogs, unknown membership, and inactive pages keep their normal keyboard
-behavior. Stack endpoints consume the shortcut without moving.
+Editors, dialogs, unknown membership, a header still held over the loading page, and
+inactive pages keep their normal keyboard behavior.
+Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
@@ -2600,11 +2601,13 @@ Switching to Commits always selects the newest commit, the top row, and shows it
 detail, whether by a click, the tab’s shortcut, or a history step onto the tab’s own
 entry; a return after reading an older commit lands on the newest again.
 Only an address that names a commit, opened directly or reached by Back or Forward,
-selects another. The selection waits for the first page of history, and the pane keeps
-what it showed until the commit is ready, so the switch paints no prompt and no blank
-frame.
-The commit’s address replaces the tab’s entry, so Back returns to where the reader
-was. The list starts from its top, and the newest row becomes the list’s Tab stop.
+selects another. The selection waits for the first page of history, and for any check
+under way of whether HEAD moved, so after a checkout made while Commits was hidden it
+selects the newest commit of the history as it is now.
+The pane keeps what it showed until the commit is ready, so the switch paints no prompt
+and no blank frame. The commit’s address replaces the tab’s entry, so Back returns to
+where the reader was.
+The list starts from its top, and the newest row becomes the list’s Tab stop.
 A click leaves focus on the tab.
 The tab’s shortcut moves focus to the newest row without scrolling the list, so `H` then
 `↓` opens the next commit; when the newest row is not in the list yet, the tab holds

@@ -3371,6 +3371,184 @@ async function run() {
       );
     }
 
+    // A page of the old walk settles while a click's landing reads HEAD, which moved. The
+    // landing waits for the read, so the walk the refresh lays out answers it, not the old
+    // one: the list and the pane both show the new newest commit.
+    {
+      const oldWalk = [
+        commit(SHA_D, [SHA_C], "old newest"),
+        commit(SHA_C, [SHA_B], "old second"),
+        commit(SHA_B, [], "old third"),
+      ];
+      const old = internals.emptyState();
+      old.headRevision = SHA_D;
+      old.headRef = "refs/heads/main";
+      internals.setStateForTests(old);
+      const firstPage = historyPage(0, oldWalk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(oldWalk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      responses.set(`/api/git/commit/${SHA_D}`, detail(SHA_D));
+      responses.set(`/api/git/commit/${SHA_E}`, detail(SHA_E));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        return cursor === "history:1"
+          ? historyPage(1, oldWalk.slice(2), 3, SHA_D)
+          : historyPage(
+              0,
+              [commit(SHA_E, [SHA_D], "moved during the read"), commit(SHA_D, [], "under it")],
+              2,
+              SHA_E,
+            );
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_E));
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      await settle();
+      // The reader scrolls, and the old walk's next page settles while HEAD is read.
+      assertTrue("read: the old walk's next page loads", await internals.loadNextPage(false));
+      await settle();
+      assertEqual("read: the landing waits for HEAD", replacedRoutes.length, routesBefore);
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual("read: the new newest is selected", internals.stateForTests().selectedId, SHA_E);
+      assertEqual(
+        "read: its address replaces the entry",
+        replacedRoutes.at(-1),
+        `/commit/${SHA_E}`,
+      );
+      assertTrue(
+        "read: the new newest row is marked",
+        rowAt(0)?.classList.contains("selected") === true,
+      );
+      assertTrue("read: focus stays on the tab", document.activeElement === tab);
+    }
+
+    // HEAD did not move. The panel was showing and reading HEAD when the reader scrolled a
+    // page into loading and clicked the tab: the landing skips its own read behind the page,
+    // the page settles during the panel's read and leaves the landing to it, and the read
+    // answers it as it ends.
+    {
+      const walk = [
+        commit(SHA_D, [SHA_C], "still newest"),
+        commit(SHA_C, [SHA_B], "still second"),
+        commit(SHA_B, [], "still third"),
+      ];
+      const kept = internals.emptyState();
+      kept.headRevision = SHA_D;
+      kept.headRef = "refs/heads/main";
+      internals.setStateForTests(kept);
+      const firstPage = historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(walk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async () => {
+        await pageHeld;
+        return historyPage(1, walk.slice(2), 3, SHA_D);
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_D));
+      registeredPanel.onShow();
+      await settle();
+      const page = internals.loadNextPage(false);
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      releasePage();
+      assertTrue("unmoved: the next page loads", await page);
+      await landing;
+      await settle();
+      assertEqual(
+        "unmoved: the landing waits for the panel's read",
+        replacedRoutes.length,
+        routesBefore,
+      );
+      releaseRepo();
+      await settle();
+      assertEqual(
+        "unmoved: the read answers the landing",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertEqual(
+        "unmoved: its address replaces the entry",
+        replacedRoutes.at(-1),
+        `/commit/${SHA_D}`,
+      );
+    }
+
+    // As above, but the page answers that the history session expired, and recovery rebuilds
+    // the walk while the panel's read is still on its way. The rebuilt walk waits for that
+    // read too, which answers the landing from it as it ends.
+    {
+      const walk = [
+        commit(SHA_D, [SHA_C], "rebuilt newest"),
+        commit(SHA_C, [SHA_B], "rebuilt second"),
+        commit(SHA_B, [], "rebuilt third"),
+      ];
+      const expiring = internals.emptyState();
+      expiring.headRevision = SHA_D;
+      expiring.headRef = "refs/heads/main";
+      internals.setStateForTests(expiring);
+      const firstPage = historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(walk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        if (cursor === "history:1") {
+          await pageHeld;
+          return { httpStatus: 410 };
+        }
+        return historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      });
+      // Only the panel's read waits; recovery's own read answers at once.
+      let releaseRead = () => {};
+      const readHeld = new Promise((resolve) => (releaseRead = resolve));
+      let reads = 0;
+      responses.set("/api/git/repo", async () => {
+        reads += 1;
+        if (reads === 1) {
+          await readHeld;
+        }
+        return repoAt(SHA_D);
+      });
+      registeredPanel.onShow();
+      await settle();
+      const page = internals.loadNextPage(false);
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      releasePage();
+      await page;
+      await landing;
+      await settle();
+      assertEqual("expired: recovery read HEAD again", reads, 2);
+      assertEqual(
+        "expired: the landing waits for the panel's read",
+        replacedRoutes.length,
+        routesBefore,
+      );
+      releaseRead();
+      await settle();
+      assertEqual(
+        "expired: the read answers the landing",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertEqual(
+        "expired: its address replaces the entry",
+        replacedRoutes.at(-1),
+        `/commit/${SHA_D}`,
+      );
+      responses.set("/api/git/repo", repoAt(SHA_D));
+    }
+
     // Not mounted: the reader left a commit far down a history deep enough to evict its first
     // page. The tab holds focus while the landing replays that page, and the reveal hands it
     // to the newest row; the row left never takes it, so the list stays at its top.

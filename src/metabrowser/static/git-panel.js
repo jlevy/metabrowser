@@ -178,6 +178,10 @@
   /** @type {Promise<boolean> | null} */
   let viewHelpersPending = null;
   let refreshing = false;
+  // How many of ensureHistory's HEAD reads are on their way. While one is, the walk may be
+  // about to be replaced, so a waiting newest landing is not answered from it
+  // (selectNewestWhenReady).
+  let headReads = 0;
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
   let wantedRange = null;
@@ -2862,8 +2866,18 @@
     // cannot be repainted, only recomputed. Re-reading identity on every
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
-    const info = await fetchRepoInfo();
+    headReads += 1;
+    /** @type {MetabrowserGitRepoInfo | null} */
+    let info;
+    try {
+      info = await fetchRepoInfo();
+    } finally {
+      headReads -= 1;
+    }
     if (generation !== historyGeneration) {
+      // Another walk replaced this one during the read, and a page of it that settled then
+      // left a waiting landing to the read.
+      selectNewestWhenReady();
       return;
     }
     if (!info) {
@@ -2887,9 +2901,12 @@
       } else if (state.cursor) {
         await loadNextPage(false);
       }
-      return;
+    } else {
+      renderVirtualRows(true);
     }
-    renderVirtualRows(true);
+    // HEAD did not move, so the walk can answer a landing that a page settling during the
+    // read left to it.
+    selectNewestWhenReady();
   }
 
   function teardown() {
@@ -3027,9 +3044,12 @@
 
   /**
    * Answer a waiting newest landing once history can. It runs when the landing has caught
-   * up and whenever a page of history settles, so the first page selects the newest commit
-   * whichever arrives last, and nothing asks for history twice. Anything that took the pane
-   * or the address since, a file, a pull request, or a commit's own address, ends the wait.
+   * up, whenever a page of history settles, and as a HEAD read ends, so the first page
+   * selects the newest commit whichever arrives last, and nothing asks for history twice.
+   * While HEAD is being read it waits: a page of the walk that settles then must not answer
+   * from a walk the read may replace, or the refresh that follows would leave the list with
+   * no selection under the old newest commit. Anything that took the pane or the address
+   * since, a file, a pull request, or a commit's own address, ends the wait.
    */
   function selectNewestWhenReady() {
     const waiting = newestLanding;
@@ -3041,7 +3061,12 @@
       newestLanding = null;
       return;
     }
-    if (refreshing || viewHelpersPending !== null || (state.rowCount === 0 && state.loading)) {
+    if (
+      refreshing ||
+      headReads > 0 ||
+      viewHelpersPending !== null ||
+      (state.rowCount === 0 && state.loading)
+    ) {
       return;
     }
     if (state.rowCount === 0) {
