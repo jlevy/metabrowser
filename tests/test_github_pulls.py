@@ -3327,6 +3327,7 @@ def _visible_core_fixture(
     provider_stamp: str | None = None,
     untrustworthy: bool = False,
     hold_batch: Callable[[], Awaitable[None]] | None = None,
+    lane: Literal["visible", "background"] | None = None,
 ) -> tuple[dict[str, Any], dict[int, dict[str, Any]], list[tuple[int, ...]]]:
     from metabrowser.builtin_plugins.github import pull_cores
     from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -3365,7 +3366,9 @@ def _visible_core_fixture(
 
     monkeypatch.setattr(pull_cores, "gh_graphql", graph)
     owner = {"id": "visible-8", "generation": catalog.generation("all")}
-    ask = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
+    ask: dict[str, Any] = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
+    if lane is not None:
+        ask["lane"] = lane
     started = client.post(_PREPARE_CORES, json=ask)
     assert started.status_code == 202
     assert started.json() == {
@@ -3439,6 +3442,155 @@ def test_visible_core_running_window_survives_second_tab(
         release.set()
     _drain_visible_cores(client)
     assert _read(client, 8).json()["core_preview"]["number"] == 8 and calls == [(8,)]
+
+
+def _core_job_state() -> tuple[bool, object]:
+    """Whether a core job runs for the served source, and the window that owns its cores."""
+    from metabrowser.builtin_plugins.github.pull_cores import preparation_key
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    host = pull_host(app)
+    assert host is not None and host.coordinator is not None
+    window = host.pulls.core_window
+    running = host.coordinator.running(preparation_key(host.pulls.source))
+    return running, window.ask.owner if window is not None else None
+
+
+def test_visible_core_preempts_a_running_background_batch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stand, client = pinned_pull
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    batches = 0
+
+    async def hold_background_batch() -> None:
+        nonlocal batches
+        batches += 1
+        if batches > 1:
+            return
+        entered.set()
+        try:
+            assert await asyncio.to_thread(release.wait, 5)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    background, _rest, calls = _visible_core_fixture(
+        pinned_pull,
+        monkeypatch,
+        sibling=True,
+        visible=(8,),
+        hold_batch=hold_background_batch,
+        lane="background",
+    )
+    visible = {
+        **background,
+        "window": {**background["window"], "id": "viewport"},
+        "numbers": [9],
+        "lane": "visible",
+    }
+    assert client.portal is not None
+    try:
+        assert entered.wait(5)
+        assert client.portal.call(_core_job_state) == (True, "visible-8")
+        # The reader's rows are admitted at once, not after the walk's batch.
+        response = client.post(_PREPARE_CORES, json=visible)
+        assert response.status_code == 202 and response.json() == {
+            "preparation": "started",
+            "status_route": "/api/plugin/github/pull?number=9",
+        }
+        # The background job ended before the visible one started: its read was cancelled
+        # and its window revoked, so its owner neither joins nor releases another's window.
+        assert cancelled.is_set()
+        assert client.post(_PREPARE_CORES, json={**background, "numbers": []}).json() == {
+            "preparation": "not_owner"
+        }
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    assert _read(client, 9).json()["core_preview"]["number"] == 9
+    assert _read(client, 8).json()["core_preview"] is None
+    # The cancelled read keeps its attempt lease, so the walk's next ask does not read 8
+    # again before the lease ends.
+    walk = {**background, "window": {**background["window"], "id": "walk-again"}}
+    again = client.post(_PREPARE_CORES, json=walk).json()
+    assert again["preparation"] == "partial" and again["retry_numbers"] == [8]
+    assert calls == [(8,), (9,)]
+    # Nothing is left running, and only the visible owner releases its window.
+    assert client.portal.call(_core_job_state) == (False, "viewport")
+    assert client.post(_PREPARE_CORES, json={**walk, "numbers": []}).json() == {
+        "preparation": "not_owner"
+    }
+    assert client.post(_PREPARE_CORES, json={**visible, "numbers": []}).json() == {
+        "preparation": "released"
+    }
+    assert client.portal.call(_core_job_state) == (False, None)
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "numbers"),
+    [
+        # A background batch already reading a visible row is doing the reader's work.
+        ("background", "visible", [8, 9]),
+        # Only the reader's own demand preempts, and never another reader's.
+        ("visible", "background", [9]),
+        ("visible", "visible", [9]),
+    ],
+)
+def test_visible_core_preempts_only_a_background_batch_reading_other_rows(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    first: Literal["visible", "background"],
+    second: Literal["visible", "background"],
+    numbers: list[int],
+) -> None:
+    _stand, client = pinned_pull
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+
+    async def hold_batch() -> None:
+        entered.set()
+        try:
+            assert await asyncio.to_thread(release.wait, 5)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    running, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=hold_batch, lane=first
+    )
+    competitor = {
+        **running,
+        "window": {**running["window"], "id": "competitor"},
+        "numbers": numbers,
+        "lane": second,
+    }
+    try:
+        assert entered.wait(5)
+        response = client.post(_PREPARE_CORES, json=competitor)
+        assert response.status_code == 200 and response.json() == {"preparation": "busy"}
+        assert not cancelled.is_set()
+        assert client.post(_PREPARE_CORES, json=running).json()["preparation"] == "joined"
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert not cancelled.is_set() and calls == [(8,)]
+    assert _read(client, 8).json()["core_preview"]["number"] == 8
+
+
+def test_core_request_lane_is_visible_or_background(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    _stand, client = pinned_pull
+    ask = {"state": "all", "window": {"id": "lane", "generation": "g"}, "numbers": []}
+    for lane in ("viewport", None, 1):
+        refused = client.post(_PREPARE_CORES, json={**ask, "lane": lane})
+        assert refused.status_code == 400
+        assert refused.json()["code"] == "invalid_request"
+    for lane in ("visible", "background"):
+        assert client.post(_PREPARE_CORES, json={**ask, "lane": lane}).json() == {
+            "preparation": "not_owner"
+        }
 
 
 def test_visible_core_attempt_cooldown_ignores_owner_and_filter(
