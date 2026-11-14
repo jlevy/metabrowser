@@ -4451,7 +4451,7 @@ export function mountPullPage(container, ctx, mb) {
         children.push(
           stateRow,
           headerPart("opened placeholder", null, () =>
-            h("div", { class: "github-pull-quiet" }, [" "]),
+            h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
           labelsRow,
         );
