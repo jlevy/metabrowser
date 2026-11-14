@@ -1,0 +1,428 @@
+Pre-registration for exp-079, the campaign's closing round (epic mb-mpo0). Written 2026-11-14,
+before any exp-079 measurement. Registered, with amendment 1 below. Nothing has run.
+
+Id: exp-079 is reserved for the campaign summary in plan-2026-08-21-load-time-performance.md
+(lines 772 and 778 on main at 7e27e32b) and plan-2026-11-11-ui-apparent-performance.md (line 255). On
+2026-11-14 no exp-079 record file exists on any origin/* branch or in the local lane worktrees.
+
+Builds
+- Control: 09903292, the campaign control and the build exp-058 measured.
+  $CONTROL, clean.
+- Candidate: main at the commit after #368's merge, as an editable checkout, clean for the whole
+  series. Filled in before any run: the commit, the `metab --version` line, and the PRs it
+  contains.
+- Corpus: $CORPUS (7a02fed4), clean.
+- Harness: $HARNESS, scenario revision 5, frozen at 3a1ff25e (main's merge of #417), clean.
+  - Why revision 5: revision 4 cannot measure the Commits journeys on any build after main's
+    19a36c5b ("switching to Commits selects the newest commit"). Its readiness check waits for
+    the old empty-state prompt, so every run is refused (exp-086).
+  - Revision 5 counts either landing as ready, and each row records which landing it saw.
+  - Because rows of different revisions are never compared, exp-058's revision-3 rows are not
+    reused. The control is re-run, interleaved.
+The filled-in values are appended to this file as a dated amendment, with its new sha256,
+before the first timed run.
+
+Series
+- transitions.mjs run --exp exp-079 --runs 1, every journey (no --journeys), the standard
+  regime, one back-to-back pair per invocation, the leading condition alternating, and fresh
+  state directories for exp-079.
+- Pacing: a pair starts only after the one-minute load has stayed under 12 for 60 s and no other
+  transitions.mjs run is in progress (as in exp-087).
+- Lock: $(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock, taken through the same gate. It is held through every timed run and
+  released when the series ends, however it ends.
+- Load rule: as in exp-060 and exp-087 (exp-060-062-load-filter.mjs). A pair is excluded if any
+  run in it saw a load above 12 at its start or at any measured transition's start, or if it is
+  incomplete.
+- Power rule: as in exp-087 (lowpowermode and power source read before and after each pair; all
+  four must agree).
+  - The judged mode is the mode read before the first attempt. Low Power Mode off is preferred,
+    but the round runs in whatever the first attempt reads, and the record names it.
+  - Pairs in any other mode are excluded and never pooled.
+- Target: 6 judged pairs in the judged mode, at most 20 attempts. With fewer than 6 when the
+  attempts run out, the round is decided on at least 4; with fewer than 4 it is reported and not
+  decided.
+
+Commits landings
+- On the control, switching to Commits lands on the empty state. On final main it lands on the
+  newest commit.
+- Every transition whose recorded landing differs between a pair's two runs is reported as a
+  product behavior change and not judged. That is expected for the commits journey and for the
+  main-tab switches into Commits.
+- compare runs with revision 5's flag that allows pairing different landings. Its note goes in
+  the record.
+- All other transitions are judged as planned.
+
+Judged, per landed hypothesis
+- Method: the runbook's accept rule against the campaign control. Each hypothesis is judged on the
+  deciding metric(s) and guards named in the record cited below, by the same rules (pair rule at
+  1.3 for times and frames, ranges for counts). Its third clause sees only that record's own table
+  (plan-2026-08-21, line 764 on main at 7e27e32b).
+- Attribution: final main carries every change together. Each result belongs to the final head,
+  not to one hypothesis alone.
+- H86: exp-059 (deciding metrics and guards as declared there).
+- H91 (a), (b), (d): exp-064.
+- H91 (c): exp-085.
+- H92 (a): exp-065. H92 (c): exp-065, derived as there (exp-065-instruments/derive-h92-h106.mjs).
+- H106: exp-080, metric 1 and metric 2 and its guards, derived as there.
+- H87: exp-083, with its clause-3 reading as in exp-087. The later-frame share on
+  files.cold.json, files.cold.image and files.revisit.markdown_large uses exp-087's
+  definition and two-sided Fisher test at 0.05.
+- H88 (a), H88 (b), H90: each only if #368 lands with it accepted, on the criteria of the record
+  that accepted it (exp-086, or the record #368 names). Each is listed as included or not before
+  any run.
+- Not judged as hypotheses: H89 (rejected in exp-062; its code is kept on #389), and anything
+  #368 does not land as accepted.
+
+Not measurable by this series (recorded as not measured)
+- H92 (b): needs the pilot tree probe (exp-065-instruments/probe-tree-late.mjs: a fresh server
+  with an empty cache, so a file list can arrive late). The scenario's warm server cannot produce
+  a late tree.
+- H87's WebKit relaunch reading: needs the WKWebView probe (#378). In WebKit a control can hold
+  only the "fresh" regime, so H87's stamped /static/ saving reads 0 against 0 by construction.
+- H88 (b), if its accepting record decides on a route-timing instrument other than this
+  scenario's rows.
+- Any guard whose record names an instrument other than the transition scenario.
+
+Reported, not judged: the campaign summary
+- Per journey and transition, control against final main: painted_ready_ms (median, range, pair
+  ratios), shift_sum_no_input, and region_movement_net_px, from summarize and compare on the
+  judged pairs.
+- Plus compare's full list of wrong-way results.
+- This is a summary of the campaign, not a test of one hypothesis.
+
+Record: explorations/performance-loop/experiments/exp-079-<slug>.md with the samples, the power
+log, and the analysis output; report.md is not touched.
+
+AMENDMENT 1 (written 2026-11-14T12:05:00Z, before any exp-079 measurement). The registration
+above is unchanged except as stated here. Its text, every byte above this amendment, has sha256
+12671e40ab00ed9445013747ed10ef581ce4b65d1529c0f327dfe9f11367c823. Its one change from the draft
+is the sentence saying it is registered.
+
+Placeholders for machine paths
+  $WORKTREES  the directory that holds this checkout's worktrees and the corpus
+  $CONTROL    the control, an editable checkout detached at 09903292; its metab is
+              $CONTROL/.venv/bin/metab
+  $CANDIDATE  the candidate, an editable checkout detached at c74d0ef3; its metab is
+              $CANDIDATE/.venv/bin/metab
+  $HARNESS    the transition harness, a checkout detached at 3a1ff25e
+  $CORPUS     corpus v2, a standalone clone with 7a02fed4 checked out
+
+Builds, read at 2026-11-14T12:04:07Z
+  control    09903292812994561531d147e9aa90a07b2d9b8f, clean
+             metab 0.12.1.dev165+9903292 (+165 commits, 099032928)
+             the version line all 12 rows of exp-058 record
+  candidate  c74d0ef3d5095ebd463d56b900822c7aaf1f306b, main at #368's merge, clean
+             metab 0.12.1.dev991+c74d0ef3 (+991 commits, c74d0ef3d)
+- The candidate's environment was made for this round the way the control's was made: uv
+  0.12.8 and CPython 3.14.7, one interpreter for both, an editable install by
+  `uv --config-file "$PWD/uv.toml" sync --frozen --all-groups` in $CANDIDATE. The control's
+  environment holds the build group (hatchling, uv-dynamic-versioning) beside the dev group,
+  so --all-groups matches it; the server imports neither.
+- The two environments hold the same third-party distributions at the same versions. Only
+  metabrowser differs.
+- Before and after every pair the driver checks that each build is at its commit, clean,
+  and reports its version line.
+
+Candidate contents
+- `git log --first-parent --merges 09903292..c74d0ef3` lists 56 merges. The campaign's:
+  - Product lanes, each carrying judged hypotheses:
+      #370  claude/perf-layout    merged at f4817752   H86, H91
+      #369  claude/perf-prpage    merged at 597a7c70   H92, H106
+      #372  claude/perf-delivery  merged at 7e27e32b   H87 (H89 reverted before merging)
+      #368  claude/perf-caches    merged at c74d0ef3   H88 (H90 removed before merging)
+  - Instruments and research, which change no file under src/:
+      #364 the research (9fad3080); #373 the transition scenario (27ea216c); #381 and #415,
+      scenario fixes (b096f7e6, 34e94de5); #378 the WKWebView probe (a1347646); #417
+      scenario revision 5 (3a1ff25e, this round's harness).
+- The records also cite #361, #383, #388, #390, #391, #394, #400 and #425, each as a main
+  merge in a lane's base or in exp-086's corpus, not as campaign work.
+- The other 46 merges, those eight among them, are product and repository work outside the
+  campaign. Final main carries them too (Attribution, above). Some rewrote lines a product
+  lane had added: #418 (the PR header keeps its unchanged nodes across repaints,
+  pull-page.js), #406 (a row's file tree, pull-files-tree.js), #410 (a Pulls row's line,
+  pulls-panel.js) and #426 (one /raw header line, server.py). #395 merged 19a36c5b, which
+  makes a switch to Commits select the newest commit (Commits landings, above).
+
+Hypotheses on main at c74d0ef3. Each is checked by its pull request's merge and by its code
+at c74d0ef3, not by the registry, whose status column reads Open for H86, H88, H91, H92 and
+H106 at c74d0ef3.
+- Included:
+  - H86 (a) and (b). Accepted in exp-059 at 28e12fa2, which #370 merged. At c74d0ef3: the
+    navigation's one toolbar slot (main-tabs.js, nav-toolbar), stable scrollbar gutters
+    (styles.css), and the PR title's two-line clamp and its always-present quiet row
+    (github/styles.css, pull-page.js). #418 later rewrote how the header repaints.
+  - H91 (a), (b) and (d), accepted in exp-064, and H91 (c), accepted in exp-085, both at
+    28e12fa2 (#370). At c74d0ef3: FACE_WAIT_MS = 100 and settleFaces (view-composition.js);
+    _INLINE_LANDING_ROWS = 300 and _INLINE_LANDING_DEPTH = 8 (server.py); WALK_SETTLE_MS =
+    120 (tree-keyboard-navigation.js); PULL_RESULT_LIMIT = 20, after the file results
+    (search-controller.js).
+  - H92 (a), (b) and (c). Accepted in exp-065 at 5a56f0a8, which #369 merged. At c74d0ef3:
+    the selection's answer handed to the page as its first read (pulls-panel.js,
+    reader.initial; pull-page.js, firstRead); FILES_OPEN_HOLD_MS = 150 and LATE_ROWS_MS =
+    500 (pull-files-tree.js); CHANGES_FIRST_SCREEN_MS = 200 (pull-page.js). H92 (b) stays
+    not measured, as registered.
+  - H106. Accepted in exp-080 at 5a56f0a8 (#369). At c74d0ef3: DESCRIPTION_HOLD_MS = 200 and
+    the kept renders behind renderedText (pull-page.js).
+  - H87. Accepted: exp-083 at 10d659ae, its third clause met by exp-087. #372 merged
+    10d659ae. At c74d0ef3: IMMUTABLE_CACHE_CONTROL ("max-age=31536000, immutable") and
+    immutable_headers (http_caching.py), on addresses stamped by content (asset_stamps.py).
+  - H88 (a) and (b). Accepted in exp-086 at fc2a6d84, which #368 merged. #368's change at
+    its merge is 11 files under src/, 1,137 lines added and 116 removed, and those added and
+    removed lines are exactly the measured candidate's change to the same 11 files
+    (bfca78d4..fc2a6d84). At c74d0ef3: GIT_COMPARISON_CACHE_BYTES = 16 MiB (settings.py,
+    git-panel.js), and GitAnswerMemo (git/route_memo.py) keyed by the refs' state
+    (git/ref_state.py).
+    - H88 (a) is judged on exp-086's criteria: deciding, requests_data and painted_ready_ms
+      on commits.revisit.1 and .2, lower; guards, no unexplained wrong-way result on a
+      commits.* or main_subject.*commits* transition, and every run valid.
+    - H88 (b): exp-086 decided it with git-route-pairs.mjs, the server half, not with this
+      scenario's rows. Under "Not measurable by this series", above, it is recorded as not
+      measured.
+- Not included:
+  - H90. Unresolved in exp-086. #368 took it out before merging (bd971661), and #368's merge
+    changes no file of the Markdown plugin. Its code is kept at 6b876c54, the head of the
+    reference pull request #430. GitHub records #430 as merged (2026-11-14T11:42:13Z)
+    because #368's merge made that commit reachable from main; H90's code is not on main.
+  - H89. Rejected in exp-062. #372 reverted it (c30ee25c, add7edac, 8ce4a224), and
+    c74d0ef3 has none of c0c293bd's preloads. Its code is kept at 14150b84, the head of
+    #389, which GitHub likewise records as merged (2026-11-14T00:48:51Z) because #372 made
+    that commit reachable from main; H89's code is not on main.
+
+What the Commits landings clause leaves unjudged
+- Six transitions record a Commits landing (revision 5): commits.first_show,
+  main.files_to_commits.first and .again, main.pulls_to_commits, and
+  main_subject.files_to_commits and .pulls_to_commits. The control predates 19a36c5b and
+  lands on the prompt; the candidate lands on the newest commit. All six are reported and
+  not judged, as registered.
+- That leaves out four of the 27 transitions H86 (a) was decided on in exp-059
+  (commits.first_show, main.files_to_commits.first and .again,
+  main_subject.files_to_commits), and three of H88 (a)'s guard transitions
+  (commits.first_show and both main_subject.*_to_commits). Each is still reported.
+- On the candidate, the commits journey opens the newest commit before its visits, so when
+  commits.revisit.1 runs, its kept comparisons include that commit's: 7a02fed4, a 32-file
+  merge, on this trunk (exp-086, amendment 3). The control keeps no comparisons.
+
+Corpus
+- $CORPUS has 7a02fed4 checked out, clean. Its refs/remotes/origin/main is 083e78e4 again.
+  It was restored at 2026-11-14T11:42:29Z (reflog: "exp-079: restore the campaign trunk
+  after an unidentified fetch at 2026-11-14T09:09:50Z") from 115068f5, where an unidentified
+  `git fetch --quiet origin` had moved it at 09:09:50Z (exp-086, Deviation from the
+  Protocol). Its remote URL is unchanged; the GitHub plugin reads it for the Pulls tab.
+- 083e78e4 is the trunk, and 387f68dc4e8eb8e0 the refs digest, that every row of the
+  committed transition samples of exp-058 through exp-085 and of exp-087 records, exp-061's
+  pilot rows aside. exp-086's rows record 115068f5 and 0ee6df52c12d13da.
+- The 09:09:50Z fetch also created refs/remotes/origin/HEAD, a symbolic ref to origin/main;
+  its reflog's only entry is that fetch. It is still there. So the refs digest the harness
+  reports (provenance.mjs, corpusProvenance: the first 16 hex digits of the sha256 of
+  `git for-each-ref --format='%(objectname) %(refname)'`) reads 75902236651fa271 now.
+  Without that one ref it reads 387f68dc4e8eb8e0.
+- Both builds list every ref under refs/remotes in their Git answers (git/log.py,
+  PUBLIC_REF_NAMESPACES). On this corpus both show origin/HEAD beside origin/main on
+  083e78e4, which no earlier round's corpus had. This round's rows are compared only with
+  each other.
+- The per-pair check. Before every pair the driver reads the corpus as the harness does
+  (corpusProvenance from $HARNESS: commit, cleanliness, trunk, refs digest).
+  - The first pair starts only on 7a02fed4, clean, trunk 083e78e4, digest 75902236651fa271.
+  - Every later pair starts only on what the first pair started on.
+  - Otherwise the series stops before that pair, releases the lock, and is reported.
+  - After each pair the driver also checks the digest every new row records at its start
+    and end. The harness itself refuses a run whose corpus changed during it
+    (corpus_changed), and compare refuses rows on different refs.
+- A change to the corpus before the first pair, such as removing origin/HEAD, is made only
+  with a further amendment that names the new digest.
+
+Harness, series, lock
+- $HARNESS at 3a1ff25e77c47cd665ffec4df8a9d874defada2c, clean; transitions-stats.mjs reads
+  SCENARIO_REVISION = 5. Between 3a1ff25e and c74d0ef3, under explorations/performance-loop
+  outside experiments/, only README.md, catalog-contention-pairs.mjs and
+  git-route-pairs.mjs differ, so the scenario's files are main's. Node 24.19.0.
+- Every journey: landing, files, keyboard, views, maintabs, commits, pulls, tree, palette,
+  skim and reveal. Each pair is one invocation, run from $HARNESS:
+    node explorations/performance-loop/transitions.mjs run --exp exp-079 --corpus $CORPUS
+      --runs 1 --out .bench/transitions/exp-079/runs.jsonl
+      --condition <first>=<its metab> --condition <second>=<its metab>
+  The labels are control and candidate. The control is first in odd-numbered attempts and
+  the candidate in even ones.
+- The state directories are $HARNESS/.bench/transitions/exp-079/state/<label>. No exp-079
+  directory exists under $HARNESS/.bench/transitions at this amendment.
+- The driver unsets every METABROWSER_* variable before the series, so both builds'
+  servers run with the default environment, without the verbose request log.
+- The lock is $(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock,
+  read in this round's worktree. It is one directory for every worktree of this checkout,
+  $CONTROL, $CANDIDATE and $HARNESS among them. The driver takes it with one atomic mkdir
+  and an owner file naming its pid and start time, through the pacing gate, and releases
+  it from its exit trap. A lock whose owner is not running is reported as stale and never
+  removed by the driver. At this amendment the lock is free.
+- The driver is attic/exp079/exp079-paced.sh in this round's worktree. Its stopping count
+  (attic/exp079/exp079-count.mjs) runs the committed exp-060-062-load-filter.mjs as it is
+  and applies the power rule. It reads no metric and decides only when the series stops.
+  The record computes its exclusions from the committed samples and power log, by the same
+  rules.
+
+Power
+- At 2026-11-14T12:04:07Z, `pmset -g` reads lowpowermode 1, and `pmset -g batt` reads "Now
+  drawing from 'AC Power'". Low Power Mode is on.
+- As registered, the judged mode is the reading before the first attempt. As in exp-087, a
+  mode is the pair of lowpowermode and power source. The driver reads both before and after
+  each pair, one line per attempt in exp-079-power.jsonl, and a pair has a mode only if both
+  readings of each agree.
+- While it holds the lock, the driver also samples both every 15 s, as exp-086 did. Those
+  samples are reported and judge nothing.
+
+Operational stops. They exclude no pair and change no rule.
+- The series stops, releases the lock, and is reported if:
+  - the lock is not taken within 12 hours;
+  - no quiet window (60 s under 12, no other transitions.mjs run) comes within 60 minutes
+    while it waits to start a pair;
+  - a build, the harness or the corpus fails a check before or after a pair;
+  - it is interrupted.
+- After a stop, whether the round is judged as it stands or resumed is the coordinator's
+  decision, made and reported before any judgment. A resumed series needs a further
+  amendment.
+
+AMENDMENT 2 (written 2026-11-14T12:14:00Z, before any exp-079 measurement). It amends the
+registration and amendment 1, which together have sha256
+aac08aff6a70cfc4201ec802554aed77bc4df416d50566dc695bdb4b512bc72a (commit 7f643849). Everything
+there stands except as stated here.
+
+Corpus
+- The coordinator removed refs/remotes/origin/HEAD from $CORPUS at 2026-11-14T12:10:14Z, with
+  `git symbolic-ref --delete`. Its reflog's one entry was the 09:09:50Z fetch. No
+  configuration was set.
+- Read at 2026-11-14T12:11:21Z through $HARNESS's corpusProvenance: 7a02fed4, clean, trunk
+  083e78e4, refs digest 387f68dc4e8eb8e0. That is the state every row of the committed
+  transition samples of exp-058 through exp-085 and of exp-087 records.
+- The first pair must start on 387f68dc4e8eb8e0, so the driver runs with
+  CORPUS_REFS=387f68dc4e8eb8e0. Amendment 1's per-pair check is otherwise unchanged: every
+  later pair starts only on what the first pair started on, or the series stops and is
+  reported.
+- Amendment 1's last two points under Corpus no longer hold: neither build now shows an
+  origin/HEAD ref, and this round measures the corpus state those rounds measured. Rows of
+  different scenario revisions are still never pooled (Builds, above).
+
+Where H89's and H90's code lives
+- GitHub shows #389 and #430 as merged only because their heads became reachable from main.
+- H89's code is at 14150b84, #389's head; #372 reverted it before merging.
+- H90's code is at 6b876c54, #430's head; bd971661 reverted it before #368 merged.
+- Neither is on main at c74d0ef3, and neither is judged here.
+
+Records and registry
+- The registration's "report.md is not touched" is replaced. Following the runbook, the pull
+  request runs `run.py report` after the record is written, and commits the regenerated
+  report.md.
+- The pull request updates the hypothesis registry's status column to match the records, as
+  part of the final performance update. It changes no decision a record made.
+
+Not measured here
+- WebKit. The WKWebView probe needs a visible window and an unlocked screen with the user
+  present, so it cannot run unattended in a paced series. WebKit is recorded as a follow-up
+  and judges nothing here. This is the round's answer to line 255 of
+  plan-2026-11-11-ui-apparent-performance.md ("counts requests in WKWebView once the probe
+  ... is committed").
+- H88 (b), as registered and as amendment 1 states.
+
+Amendment 1's additions stand: the operational stops; the first pair matching the recorded
+digest, now 387f68dc4e8eb8e0; the power mode as the pair of lowpowermode and power source;
+the unset METABROWSER_* variables; and the candidate's environment made with --all-groups.
+
+Analysis committed before the first pair
+- exp-079-exclude.mjs, the registered load and power exclusion, sha256
+  e9003941e7e90dd09c2030442687f9134e07497260d0f57074df8bda54aa53ab. It runs the committed
+  exp-060-062-load-filter.mjs as it is and applies amendment 1's power mode, with the judged
+  mode taken from the first attempt's reading before its pair. It reads no metric. It
+  gives the same pairs as the driver's stopping count.
+- The driver runs under `caffeinate -i`, so the machine does not sleep while idle during the
+  series. That changes no power reading.
+
+AMENDMENT 3 (written 2026-11-14T12:25:00Z, during the series, before any exp-079 result was
+read). It amends the registration with amendments 1 and 2, sha256
+7dce509e1e1a53ee54f64194c54e9d3ba6cbaa6b16b845a5d3db5fcd798295ff (commit 1192929d). It changes
+no rule of measurement. It fixes, before any result is read, how the registered judgments are
+computed.
+- The series started at 2026-11-14T12:15:11Z (lock) and 12:16:13Z (attempt 1). No metric of any
+  attempt has been read. One glance at the running attempt's log showed three lines of the
+  first run's views journey (views.folder.revisit and .revisit_2), which no judgment reads.
+- Analysis committed beside the record, before any result is read:
+    exp-079-derive.mjs, sha256
+      92d4f862723a8b7a921a127d3a5d13411c8c7c990c7284399db85e9bc96db87d: from the judged
+      pairs' full rows, the skim evidence exp-085 declared for H91 (c)'s guard (E1 to E3).
+    exp-065-instruments/derive-h92-h106.mjs, unchanged, sha256
+      fbdf4a15d36e566deef4ea1edae5d760509cd6a0e9a9f07c9591f13283867713: on the same rows, the
+      per-run readings of H92 (a) and (c) and of H106. Its printed pair ratios match runs by
+      pair index, which is 1 in every one-pair invocation, so the record does not use them;
+      exp-079-analyze.mjs pairs runs by series.
+    exp-079-analyze.mjs, sha256
+      b09ab7c8dd47d67fe28df1f30e1b543e5d26e095584f615158a36ccf293b76d6: the judgments,
+      from the judged samples, the two derived files, and the harness's compareRuns with
+      the Commits landings allowed to differ.
+- The rules it applies, stated in its header:
+  - A transition whose recorded Commits landing differs between a judged pair's two runs is
+    reported and not judged, wherever it appears.
+  - A deciding metric passes when its median moved the predicted way and compare's outcome
+    is a result: for counts and values, ranges apart; for times and frames, ranges apart
+    with two or more pairs beyond 1.3x. A per-run derived count passes on its medians and
+    ranges. "Not higher" passes unless the metric is a result in the higher direction.
+  - In a guard or elsewhere in the record's table, a wrong-way result is compare's wrong-way
+    flag with a result or an explain outcome (two or more pairs beyond 1.3x under
+    overlapping ranges), as exp-086 states the rule. compare also flags a rerun (ranges
+    apart, one pair beyond), which it calls not yet a result. A rerun is listed and does not
+    block, as exp-065 read its guards.
+  - A wrong-way result is accounted for only in two ways:
+    - by a rule its record declared: exp-085's E1 to E3 for H91 (c)'s guard, and exp-087's
+      later-frame test for H87. The later-frame test accounts for painted_ready_ms,
+      ready_ms, ready_after_last_input_ms, frames_to_ready, settled_ms, blank_frames and
+      blank_ms on files.cold.json, files.cold.image and files.revisit.markdown_large, the
+      metrics exp-083 named one frame later there, for each view whose Fisher p is 0.05 or
+      more;
+    - where the record accepted the same metric on the same transitions moving the same
+      way, and said why. exp-065 did so for H92 (a)'s description guards and H92 (c)'s
+      Changes painted ready; exp-080 for H106's description and painted-ready guards. Both
+      named the first-paint hold, which is the change.
+    The output names every account, so a verdict that rests on one can be read apart.
+  - Verdict:
+    - accepted, when every judged deciding metric passes and every wrong-way result in the
+      table is accounted for;
+    - rejected, when a deciding metric is a result the other way, or a rule its record
+      declared rejects it (exp-085: the guard ranges apart, two or more pairs beyond);
+    - otherwise unresolved;
+    - not measured, when no deciding metric can be judged.
+    Clause 4, the complexity judgment, is the coordinator's.
+- What each third clause sees, per its record:
+  - H86 (a): the 27 transitions' region_movement_px, with painted_ready_ms and blank_frames
+    on each, and landing.reload's shift_sum_no_input.
+  - H86 (b): region_movement_px on its eight transitions, and on pulls.list_to_pr.cold and
+    pulls.pr_to_pr.*, which must not rise; painted_ready_ms and pr_header_ms on all of
+    them.
+  - H91 (a), (b) and (d): the deciding metric, and the guards exp-064 restates
+    (painted_ready_ms, styled_markdown_ms, blank_frames; painted_ready_ms, blank_frames;
+    painted_ready_ms).
+  - H91 (c), exp-085:
+    - deciding: file_envelope_requests;
+    - the guard: ready_after_last_input_ms, under exp-085's rule;
+    - painted_ready_ms on the skim;
+    - blank and placeholder frames, as E3 reads them;
+    - painted_ready_ms on keyboard.down_cold.1 to .3, exp-064's guards, which exp-085 did
+      not re-measure.
+  - H92 (a): the per-run duplicate reads over the five clicks; subject_duplicates on each,
+    not higher; pr_description_shown_ms and pr_description_final_ms on the four cold clicks
+    (pulls.list_to_pr.cold, pr_to_pr.cold, pr_to_pr.hover_click, pr_changes_to_pr).
+  - H92 (c): the per-run body shift after ready over the four Changes paints, and
+    painted_ready_ms on each.
+  - H106:
+    - metric 1, the per-run count of Conversation transitions whose description showed
+      before its final form;
+    - metric 2, not higher: the per-run Conversation body shift after ready, and
+      preview_top_replaced and shift_sum_no_input on every pull request transition;
+    - the guards: the two description milestones on the four cold clicks, and
+      painted_ready_ms on every Conversation transition.
+  - H87:
+    - deciding: landing.reload's revalidated requests over the five families, per run;
+    - the guard: painted_ready_ms on landing.reload;
+    - the declared check: long_task_max_ms on files.revisit.source_large;
+    - the cold Markdown prediction;
+    - every compare entry on a landing.* or files.* transition (exp-083).
+  - H88 (a): its four deciding metrics, and every compare entry on a commits.* or
+    main_subject.*commits* transition, with every judged run valid.
+- Not measured here, as registered: H92 (b), H88 (b) and WebKit. The hold-span guard of
+  exp-065 and exp-080 (probe-holds-corpus.mjs), an instrument other than this scenario, is
+  not measured either.
