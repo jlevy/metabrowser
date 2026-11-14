@@ -259,8 +259,9 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
     assert set(labels) == {"Open", "Draft", "Merged", "Closed"}, labels
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert 'const stateBadge = h("span", { class: "github-pull-state-slot" });' in page
-    # A sizer of every state's label, drawn beside the badge in its slot.
-    assert "...Object.values(PULL_STATES).map(({ label }) =>" in page
+    # A sizer of every state's label, drawn beside the badge in its slot, built once.
+    assert "const badgeSizers = Object.values(PULL_STATES).map(({ label }) =>" in page
+    assert "...badgeSizers," in page
     assert '"file-header-badge github-pull-badge github-pull-badge-sizer"' in page
     slot = _rule(css, ".github-pull-state-slot")
     assert "display: inline-grid;" in slot and "flex: none;" in slot
@@ -309,7 +310,9 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "refresh.hidden = !model.canRefresh;" in page
     assert "if (model.canRefresh) {" not in page
-    assert 'h("span", { class: "github-pull-status-end" }, [refresh])' in page
+    # Refresh is always the end's last child, after any offers.
+    assert 'h("span", { class: "github-pull-status-end" })' in page
+    assert "placeChildren(end, [...ending, refresh]);" in page
     assert 'status.append(h("span", { class: "github-pull-offer" }' not in page
     # A failure carries its remedy, so it is the one text the row lets wrap.
     failed = _rule(css, ".github-pull-status.github-pull-status-failed")

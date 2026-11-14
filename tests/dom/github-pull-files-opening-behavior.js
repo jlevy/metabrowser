@@ -42,9 +42,18 @@ const REFRESH_NOT_DUE = {
 };
 
 /**
+ * The offset a read of the list asks for, which the server's answer keeps.
+ *
+ * @param {string} route
+ */
+function offsetOf(route) {
+  return Number(new URLSearchParams(route.split("?")[1]).get("offset"));
+}
+
+/**
  * One tree; *answers* is what each read of the list answers, in order ("fail" for a read the
- * server does not answer, and `{afterMs, body}` for one it answers that long after it was
- * asked), and a refresh POST answers *refresh*, `REFRESH_STARTED` unless given. What the paint
+ * server does not answer, `{afterMs, body}` for one it answers that long after it was asked,
+ * and a function of the route read for an answer that depends on it), and a refresh POST answers *refresh*, `REFRESH_STARTED` unless given. What the paint
  * shows is sampled where a frame could paint: after the click's task and after each later
  * task the session runs.
  */
@@ -79,7 +88,8 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
         }
         reads.push(route);
         readTimes.push(now);
-        const answer = answers.shift();
+        const next = answers.shift();
+        const answer = typeof next === "function" ? next(route) : next;
         if (answer === "fail") {
           return Promise.reject(new Error("the server did not answer"));
         }
@@ -490,6 +500,91 @@ async function run() {
     facts.offerWithdrawn = { painted: returned.painted, spans: returned.spans };
   }
 
+  // A drawn list whose refresh, with no input since, lists no files at all: it is offered as
+  // any other change to drawn rows, and the drawn rows keep no line that contradicts them
+  // (mb-aw30). The reader's press draws the empty list and its line. The read past the rows
+  // held answers at the offset it asked for, as the server does, and a list of no files is
+  // the whole list from any offset, so the tree takes it then, rather than reading it again
+  // from its start, which here answers two seconds late (review A1).
+  {
+    const input = { at: 0 };
+    const none = {
+      ...structuredClone(recorded.comparison),
+      generation: `${"0".repeat(31)}7`,
+      fetched: 0,
+      rows: [],
+    };
+    const emptied = story(
+      tree,
+      [
+        structuredClone(recorded.comparison),
+        (route) => ({ ...none, offset: offsetOf(route) }),
+        { afterMs: 2000, body: none },
+      ],
+      input,
+    );
+    emptied.controller.expand();
+    emptied.frame();
+    await settle();
+    emptied.frame();
+    const window = recorded.comparison.fresh_for_s * 1000;
+    await emptied.advance(window);
+    const offered = emptied.last();
+    input.at = window + 400;
+    await emptied.advance(input.at);
+    emptied.controller.reveal();
+    emptied.frame();
+    const shown = emptied.last();
+    facts.refreshListsNone = {
+      painted: emptied.painted,
+      offered: {
+        rows: offered.rows.length,
+        line: offered.line,
+        offer: offered.offer,
+        floats: offered.offerFloats,
+      },
+      shown: { rows: shown.rows.length, line: shown.line, offer: shown.offer },
+      reads: emptied.reads,
+      spans: emptied.spans,
+    };
+
+    // The same list of no files, finished by another request and answered by the tree's
+    // refresh as not due, with no rows, as such an answer always carries (review A1): the
+    // tree takes it, since no read could add a row, and offers it rather than waiting a
+    // freshness window for its next read under a line that contradicts the rows drawn.
+    const notDue = story(
+      tree,
+      [
+        structuredClone(recorded.comparison),
+        (route) => ({
+          ...structuredClone(recorded.comparison),
+          state: "stale",
+          offset: offsetOf(route),
+          rows: [],
+        }),
+      ],
+      { at: 0 },
+      { status: 200, body: { refresh: "not_due", files: { ...none, limit: 0 } } },
+    );
+    notDue.controller.expand();
+    notDue.frame();
+    await settle();
+    notDue.frame();
+    await notDue.advance(window);
+    const answered = notDue.last();
+    await notDue.advance(window + 5 * tree.FILES_POLL_MS);
+    facts.refreshNotDueListsNone = {
+      painted: notDue.painted,
+      offered: {
+        rows: answered.rows.length,
+        line: answered.line,
+        offer: answered.offer,
+        floats: answered.offerFloats,
+      },
+      reads: notDue.reads,
+    };
+  }
+
   // A cached list that is stale, drawn at the click, whose refresh answers a second later with
   // the same files, as after a rebase that leaves the diff as it was: it would draw the same
   // rows, so it is drawn in place, and nothing is offered.
@@ -574,7 +669,8 @@ async function run() {
   // Held across every model any story's tree rendered, its refresh answering started or not
   // due: an offer stands in only for a change to rows already drawn, so an expanded tree with
   // none drawn never carries one, and once open it shows its files, its progress, a notice,
-  // or its line ("No changed files."), never nothing.
+  // or its line ("No changed files."), never nothing; and rows drawn never stand under that
+  // line, which would contradict them (mb-aw30).
   const empty = rendered.filter((model) => model.expanded && model.rows.length === 0);
   facts.invariants = {
     "an expanded tree with no rows drawn never offers": empty.every(
@@ -583,6 +679,9 @@ async function run() {
     "an open tree with no rows drawn shows progress, a notice, or its line": empty
       .filter((model) => !model.opening)
       .every((model) => model.loading || model.notice !== null || model.line !== null),
+    "rows drawn never stand under the line of a list with no files": rendered
+      .filter((model) => model.expanded && model.rows.length > 0)
+      .every((model) => model.line !== "No changed files."),
   };
   return facts;
 }
