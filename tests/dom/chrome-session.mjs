@@ -1,8 +1,8 @@
 // A headless Chrome over the DevTools Protocol, for the checks whose behavior is layout or
-// paint: one page, `send` for protocol commands, `evaluate` for page expressions, and a
-// `close` that waits for Chrome to exit before removing its profile, since removing it
-// while Chrome still writes there failed with ENOTEMPTY under load and left the process
-// open.
+// paint: one page, `send` for protocol commands, `on` for its events, `evaluate` for page
+// expressions, and a `close` that waits for Chrome to exit before removing its profile,
+// since removing it while Chrome still writes there failed with ENOTEMPTY under load and
+// left the process open.
 //
 // `profiles` is a directory the caller owns, under which each launch makes a profile of
 // its own. The caller runs the session in a process group of its own, stops that group
@@ -76,10 +76,22 @@ export async function launchChrome(bin, { profiles, width = 1280, height = 900 }
   }
   let next = 0;
   const pending = new Map();
+  /** @type {Map<string, Array<(params: any) => void>>} */
+  const listeners = new Map();
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
+    if (message.method) {
+      for (const listener of listeners.get(message.method) ?? []) {
+        listener(message.params);
+      }
+      return;
+    }
     pending.get(message.id)?.(message);
     pending.delete(message.id);
+  };
+  /** A protocol event: call *listener* with the params of each *method* event. */
+  const on = (method, listener) => {
+    listeners.set(method, [...(listeners.get(method) ?? []), listener]);
   };
   const send = (method, params = {}) =>
     new Promise((resolve, reject) => {
@@ -122,5 +134,5 @@ export async function launchChrome(bin, { profiles, width = 1280, height = 900 }
     clearTimeout(bound);
     fs.rmSync(profile, { force: true, recursive: true, maxRetries: 5, retryDelay: 200 });
   };
-  return { close, evaluate, send, waitFor };
+  return { close, evaluate, on, send, waitFor };
 }

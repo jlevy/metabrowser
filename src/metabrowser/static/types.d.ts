@@ -426,6 +426,8 @@ type KpressRenderPayload = {
   assets: KpressAssetManifest;
   diagnostics?: Array<unknown>;
   html: string;
+  /** The version of each served file the document embeds, by `/raw` identity. */
+  raw_versions?: Record<string, string>;
 };
 
 type DisposableHandle = {

@@ -1056,7 +1056,8 @@ status: 200
     "profile": "document",
     "headings": [],
     "widgets": {}
-  }
+  },
+  "raw_versions": {}
 }
 ? 0
 ```
@@ -1092,7 +1093,8 @@ status: 200
     "profile": "document",
     "headings": [],
     "widgets": {}
-  }
+  },
+  "raw_versions": {}
 }
 ? 0
 ```

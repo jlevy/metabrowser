@@ -3312,27 +3312,42 @@ the focus stays. WebKit’s hover after such a replacement was not measured.
 A Markdown document is built again each time its file is entered; switching between its
 Document and Source views keeps it.
 KPress writes its images lazy, and one far down a long document should wait for the
-reader. So an image whose served address has already loaded in this page is made eager
-before that address is set, and takes the copy the page holds; an image the page has not
-loaded stays lazy. The authored address is removed first: an eager image asks for its
-address at once, and the authored one, relative to the document, is not where the image
-is served.
+reader. So an image the page has already loaded, at an address that names its bytes, is
+made eager, and takes the copy the page holds; an image the page has not loaded stays
+lazy.
 
-A held image is one the page loaded after the last filesystem change it heard.
-The Markdown plugin hears every change through the SDK’s `onInventoryChange`, and any
-change forgets every held image, whatever its paths say: an image can be a link to a
-file elsewhere, and a change deeper than the shell’s event stream watches arrives only
-as a folder, so a path cannot tell which images a change touched.
-Every reconnect of the stream forgets them too, even one whose snapshot equals the last:
-a file too deep for the snapshot may have changed while the stream was down.
-A load the enhancer set the address of before a change, which finishes after it, may
-carry the old bytes, so it is not remembered.
-An image whose path has a hidden name in it, one starting with a dot, is never held: the
-shell’s watcher reports no change there.
-So reuse lasts while nothing changes, which is when a reader moves between files.
+A served file’s address names its bytes by a version.
+Each render answers, beside its HTML, `raw_versions`: for each served file the document
+embeds, a token of the file’s resolved path, size, modification and change times, inode,
+and device, of the trust profile and its sandbox policy, and of the build, read when the
+render is asked for, which is on every entry.
+The link enhancer puts the version in the file’s `/raw` address, so a replaced file is a
+new address. `/raw` keeps a raster image’s answer for a year at the version the file has
+now, and revalidates every other, an SVG’s included, since its sandbox differs by trust
+profile (`SECURITY.md`); a revalidated image the page holds is still taken from its
+copy. So the page reuses what it holds at an address without asking whether the file
+changed: an image whose file changed has a new address, which the page does not hold,
+and loads lazily there.
+That is true of a hidden file, a file behind a link, a file deeper than the shell’s
+event stream watches, and a replacement that keeps the file’s size and time, because the
+version is read from the file, not heard from the shell.
+On a pinned revision a file never changes at its address, and an image from another
+origin, a scheme-relative `//host/badge.svg` on another host included, is that host’s to
+keep fresh, as Chrome reuses one anyway, so both are held too.
+A served address without a version, which is any past the render’s first 256 files, and
+an absolute or scheme-relative address on the page’s own origin can change under the
+page, and are never held.
+
+A held served image is made eager before its address is set, its authored address
+removed first: an eager image asks for its address at once, and the authored one,
+relative to the document, is not where the image is served.
+A held image from another origin keeps the address its author wrote, so it has to be
+eager before the page adopts it: a trusted render is parsed in a template, whose
+document loads nothing, and the template’s images the page holds are made eager there.
 The page remembers `MAX_HELD_IMAGES`, 1,024, and past that forgets the image loaded
-least recently; the costs behind that number are beside the constant in the plugin’s
-`link-enhancer.js`.
+least recently. The costs behind that number are beside the constant in the plugin’s
+`place-rendered.js`, and the cost of a version beside `_MAX_RAW_VERSIONS` in
+`server.py`.
 
 Measured in the same WKWebView on 2026-11-13, on a document with three images in its
 first screen and one 4,800 px down, served by Metabrowser behind a proxy that delayed
@@ -3351,61 +3366,51 @@ Switching to Source and back built nothing, before and after: no request and no 
 frame. Headless Chrome 152 asked for nothing and had every image complete in its first
 frame, before and after, and neither engine asked for the image far down.
 
-A changed image was checked the same way, with the images dated six weeks earlier, as a
-repository’s are, each told apart by its natural size and by a pixel drawn from it:
-- Replace the first image, 240 by 120 and red, with one 360 by 90 and magenta at the
-  same path, edit the document, leave, come back, and reload.
-- Show `logo.png`, a link to `assets/logo.png`, and replace the file it links to.
-- Show an image four folders deep, drop the event stream, and while it is down replace
-  the image with one of the same size and time, so the stream’s snapshot after it
-  reconnects equals the one before.
+Measured again on 2026-11-14, in the same WKWebView (WebKit 21624.2.5.11.8, macOS
+26.5.2) and in headless Chrome 152, against the code before versions (7e27e32b), with
+the same document and an image from another origin added to its first screen, served
+with `max-age=300` and delayed 80 ms like the rest.
+Each return was read the same way, and the replaced image, 240 by 120 and red, became
+360 by 90 and magenta at the same path, told apart by its natural size and by a pixel
+drawn from it:
 
-| Engine | Code | Return after editing the document | Return after replacing the image | Reload after that |
-| --- | --- | --- | --- | --- |
-| WKWebView | main | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
-| WKWebView | held, never forgotten | eager, no request | eager, no request, old image | new image |
-| WKWebView | held, forgotten on any change | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
-| Chrome 152 | main | no request | no request, old image | no request, old image |
-| Chrome 152 | held, forgotten on any change | no request | no request, old image | no request, old image |
+| Engine | Code | 5 returns, nothing changed | Return after editing the document | Return after replacing the image | Reload after that |
+| --- | --- | --- | --- | --- | --- |
+| WKWebView | before | served images: no request, no blank frame; outside image: asked again each time, 3 or 4 blank frames | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
+| WKWebView | versions | no request, no blank frame, outside image included | no request, no blank frame | asked at its new address, 3 or 4 blank frames, new image | new image |
+| Chrome 152 | before | no request, no blank frame | no request | no request, old image | asked again, new image |
+| Chrome 152 | versions | no request, no blank frame | no request | asked at its new address, 6 blank frames at 60 a second, new image | no request, new image |
 
-The edited text was shown on every return.
-In WKWebView, with every change forgetting the held images, the file behind the link was
-asked for again and showed its new content, and the reconnect with the unchanged
-snapshot forgot the deep image, which was asked for again and read in its new color.
-Without the shell announcing that reconnect, the deep image stayed eager, with no
-request, in its old color.
-Returns with nothing changed still asked for nothing and had no blank frame, 5 of 5. So
-in WebKit a changed image is fetched again on the next return, and an unchanged one is
-not while nothing changes; editing the document costs its images one round trip, as it
-did before. Chrome showed the old image on main too, on the return and after the reload,
-without asking, and the same for the linked and the deep image: `/raw` sends no
-`Cache-Control`, so Chrome took its copy as fresh by the image’s age, and it reuses an
-image the page has loaded at the same address regardless.
-With `Cache-Control: no-cache` added to the image responses, Chrome’s reload asked again
-and got the new image, and its return still did not; WebKit’s held images were still
-eager with no request.
-A changed address is what Chrome’s return would need.
-Neither the header nor a changed address is part of this rule, and Chrome’s old image
-predates it.
+Before versions, Chrome showed the old image on the return without asking, because it
+reuses an image the page has loaded at the same address whatever its headers say; its
+reload asked again because `/raw` was `no-cache`. With versions a change to the document
+no longer costs its images a round trip in WebKit, since nothing forgets them, and a
+replaced image is asked for once, at its new address, in both engines.
+After the reload Chrome kept the new image from its cache without asking, the PNG’s
+answer at the current version being kept for a year; WebKit asked for it again.
+With an SVG added to the first screen, whose answer is revalidated, and an image from
+another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
+neither and had both complete in their first frame, as Chrome did for the SVG.
 
 The rule has its limits.
-An image that is a link into a hidden folder is held, and a change there is not heard.
-A replacement that keeps the file’s size and time may change nothing the inventory
-records, and one made while the shell’s watcher is stopped is not seen; either reports
-nothing, as it reports nothing to the shell’s file previews.
+A version is read when the document is rendered, so a document on screen keeps the image
+it has until it is entered again, as it did before.
+Which file an address names is decided in the page (`builtin_plugins/markdown/links.js`)
+and predicted by the server (`embedded_resources.py`); an address the prediction misses
+is left unversioned, and its image is not held.
+An image from another origin is held while the page lives, so a change on that host
+shows after a reload, as it already did in Chrome.
 
-An image from outside the served tree, such as a badge, keeps the address its author
-wrote, which it has, lazy, from the moment the document is parsed.
-WebKit still asks for it again: with one added to the first screen and served with
-`max-age=300`, each of 5 returns asked for it and left it blank for 3 frames, while
-Chrome asked for nothing and had it complete in its first frame.
 `test_a_reentered_document_takes_the_images_the_page_holds` checks, in a browserless
-DOM, with the shell’s stream handlers, the SDK, and the plugin’s wiring running as the
-page runs them, which images the production link enhancer makes eager, the order in
-which it sets their attributes, that a change, a reconnect with the same snapshot, and a
-late load leave nothing held, that a hidden image is never held, and the bound and which
-image goes past it: attributes and the record, not loading or paint.
-`tests/golden/cli-ui-markdown-image-reentry.tryscript.md` is its transcript.
+DOM, with the production placement and link enhancer running as a mount runs them, which
+images are eager, the order in which their attributes change and they are placed, that
+an outside image the page holds is eager before it is placed, that a replaced file’s new
+version loads lazily, that an unversioned address and one on the page’s own origin are
+never held, and the bound and which image goes past it: attributes and the record, not
+loading or paint. `tests/golden/cli-ui-markdown-image-reentry.tryscript.md` is its
+transcript. `tests/test_raw_versions.py` checks which files a render versions, that a
+replaced file gets a new version, and which `/raw` answers are kept and which
+revalidated.
 
 ## Text Selection
 
