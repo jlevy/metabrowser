@@ -168,6 +168,22 @@ sequentially in stable discovery order.
 A later plugin therefore wins a duplicate `registerView` key deterministically, matching
 the manifest view registry.
 
+The shell addresses a plugin’s files as `/plugin-static/<name>/@<stamp>/<file>`, where
+the stamp names the contents of the plugin’s directory, and a browser keeps them without
+asking until the stamp changes.
+Reach your plugin’s other files with relative URLs (`import "./part.js"`,
+`new URL("./worker.js", import.meta.url)`, `url(icon.svg)` in CSS), which inherit the
+stamp. An absolute `/plugin-static/<name>/<file>` URL still works, but is revalidated on
+every use, and a module reached both that way and by a relative URL is two module
+instances, each with its own module-level state, so use one form for a module.
+A relative URL that climbs out of your plugin moved one level: from a stamped module,
+`../other/x.js` resolves inside your own plugin’s namespace and is not found, while
+`../../other/x.js` reaches another plugin’s file at its unstamped, revalidated address.
+Plugins are not isolated from each other; reach another plugin through the SDK
+(`ensureKindAssets`), not by URL. A top-level directory named `@` and sixteen
+hexadecimal digits cannot be addressed.
+`src/metabrowser/asset_stamps.py` documents the policy.
+
 ### Kind Rules
 
 Each `[[kind]]` declares a stable `id`, a `match` table, and an optional `priority`.
@@ -527,6 +543,10 @@ Useful helpers include:
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
+- `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
+  than `timeout` milliseconds, and returns a function that cancels it; in an engine
+  without `requestIdleCallback`, as the app’s WebKit is, free means the first view has
+  settled and input has paused (see [Idle Work](development.md#idle-work));
 - `sourceKind()` for the served source (`filesystem` or `git_revision`);
 - `perf.measure` and `perf.measureAsync`.
 
@@ -659,6 +679,15 @@ Folder aggregate views can use these bounded inventory helpers:
   Supply `active` to gate hidden views and `onError` for a local failure state.
   Always call the returned handle’s `dispose()`; when `stale()` is true after
   activation, call `refresh()`.
+- `onInventoryChange(listener)` calls *listener* with each filesystem change the shell
+  observes, and returns an unsubscribe function to call when the view is disposed.
+  The listener receives the change’s inventory paths: each changed entry with every
+  ancestor whose totals it moved, down to the depth the shell watches, so a deeper
+  change arrives as its deepest watched ancestor.
+  It receives `null` when anything may have changed: the event stream reconnected,
+  whether or not its snapshot changed, or resynchronized, or the first crawl finished.
+  In a host with no event target, which has no inventory stream, the listener is never
+  called.
 - Each `ext_tallies` row is
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the distinct extensionless

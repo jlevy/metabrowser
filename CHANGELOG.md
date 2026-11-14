@@ -19,6 +19,25 @@ All notable changes to Metabrowser are documented here.
   calls, and with eight list windows reading at once a background preparation answer
   took about 400 ms instead of about 600 ms.
 
+- A Markdown document’s images no longer blink when you come back to its file in the
+  macOS app. Opening another file and returning built the document again with lazy
+  images, which WebKit fetched again before drawing them, so the images at the top were
+  blank for a moment. An image already loaded in the page now loads at once from that
+  copy; one you have not reached yet still waits until you scroll to it.
+  Any change to the folder’s files, and any reconnect of the page’s event stream, makes
+  the page forget every copy it holds, so in the macOS app the next return fetches the
+  images again, a replaced image or the file behind a link to one included.
+  In Chrome, before this change and after it, a replaced image can show its old copy,
+  even after a reload, until Chrome no longer treats its cached copy as fresh.
+  See [A Repaint Keeps Its Images](docs/design-system.md#a-repaint-keeps-its-images).
+
+- Plugins can call `onInventoryChange(listener)` to hear each filesystem change the
+  shell observes: the changed inventory paths with their ancestors, or `null` when
+  anything may have changed, as on every reconnect.
+  A reconnect whose snapshot equals the last one now tells listeners too, as one whose
+  snapshot changed does, so folder rollups also refresh after it.
+  See [the plugin guide](docs/plugins.md).
+
 - Shutting down no longer logs a file watcher traceback.
   A change the watcher picked up just as the server stopped used to be refused by the
   already-closed inventory, and the log showed an `InventoryClosedError` twice: as
@@ -46,6 +65,16 @@ All notable changes to Metabrowser are documented here.
   on each and asked again later.
   On a stand-in of 5,000 pull requests read by eight list windows at once, an answer now
   takes 460 ms instead of 1.25 s.
+
+- No slow or failing batch stops the Pulls tab’s preparation of pull requests.
+  The list now waits 10 s for a batch you are looking at and 30 s for one in the
+  background, instead of 2 s for both, so a busy server’s slow answers are used.
+  A batch that still goes unanswered twice is passed over and tried again after the rest
+  of the list, no sooner than 30 s later; it used to be asked for again and again, every
+  30 s, with nothing after it prepared.
+  The rows you scroll to no longer wait for a background batch already on its way: it is
+  abandoned, as one is when the tab is closed, hidden, or paused, and the server stops
+  working on an abandoned batch at its next step, before it reads anything from GitHub.
 
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
@@ -477,6 +506,35 @@ All notable changes to Metabrowser are documented here.
   head), then `• Metabrowser`. `GET /api/identity` reports that title with a short name,
   a full name (the folder’s path with `~`, or the mirror’s origin and ref, such as
   `github.com/jlevy/tbd@main`), and whether it is a local folder or a cached mirror.
+
+- The plugin SDK adds `metabrowser.whenIdle(callback, {timeout})`, the one way the shell
+  and the built-in plugins schedule idle work.
+  In an engine without `requestIdleCallback`, as the app’s WebKit is, it waits for the
+  first view to settle and for input to pause instead of a fixed timer.
+  Where Long Tasks are not observable, `metabrowser.perf.responsiveness()` reports
+  `raf_frame_gaps`, animation-frame intervals over 50 ms, and leaves the Long Task
+  fields as they were.
+  `Server-Timing` names the phases a response spent before its headers (`read`,
+  `render`, `git`, `encode`) beside `srv`, and the request log gives each request’s time
+  to its first byte and its phases.
+
+- A reload no longer asks the server again for scripts, stylesheets, and fonts it
+  already holds. The shell’s `/static/<file>?v=<stamp>` addresses, and the plugin and
+  KPress assets now addressed under a stamp of their contents
+  (`/plugin-static/<name>/@<stamp>/…`, `/kpress-static/@<stamp>/v<version>/…`), are
+  answered `immutable` while the stamp is current, and revalidated otherwise.
+  A plugin’s relative imports, workers, and stylesheet references inherit the stamp; an
+  absolute `/plugin-static/<name>/<file>` URL still works and is revalidated, but a
+  module reached both that way and by a relative URL from a stamped module is two module
+  instances, each with its own module-level state.
+  A relative URL that climbs out of the plugin’s directory moved one level:
+  `../other/x.js` now resolves inside the plugin’s own namespace and is not found, and a
+  top-level directory named `@` and sixteen hexadecimal digits can no longer be
+  addressed. `/raw` is never kept as fresh, since its headers belong to the trust profile
+  that served it: it now answers a matching `If-None-Match` with `304` instead of
+  sending the file again, under a tag that names the profile, so a copy stored while one
+  profile served the folder is never reused by a new load under another (see
+  `SECURITY.md`).
 
 ## 0.12.0
 

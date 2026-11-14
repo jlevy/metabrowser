@@ -1258,6 +1258,7 @@ type MetabrowserSdk = {
     opts: MetabrowserRollupOptions,
     onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
   ): MetabrowserRollupWatch;
+  onInventoryChange(listener: (paths: ReadonlyArray<string> | null) => void): () => void;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
     viewId?: string,
@@ -1287,6 +1288,8 @@ type MetabrowserSdk = {
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   ensureAsset(name: string): Promise<void>;
   ensureKindAssets(kind: string): Promise<void>;
+  /** Run *callback* when the page is idle, no later than *timeout* ms; returns its cancel. */
+  whenIdle(callback: () => void, options?: { timeout?: number }): () => void;
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   langForPath(pathOrName: string, ext?: string): string;

@@ -64,6 +64,7 @@ const SHELL_FUNCTIONS = [
   "parkInventoryEventStream",
   "_createInventoryEventSource",
   "startInventoryEventStream",
+  "announceUnchangedSnapshot",
 ];
 
 const shellSource = [
@@ -220,6 +221,22 @@ function createPage(sourceKind) {
     METABROWSER_SOURCE_KIND: sourceKind,
     addEventListener: (type, listener) =>
       listeners.set(type, [...(listeners.get(type) ?? []), listener]),
+    CustomEvent: class RecordingCustomEvent {
+      constructor(type, init) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
+    // What the shell tells SDK consumers; a reconnect with an unchanged snapshot still
+    // tells them anything may have changed.
+    dispatchEvent(event) {
+      did.push(
+        `event: ${event.type} ${event.detail?.kind} ${
+          event.detail?.paths === null ? "anything may have changed" : "paths"
+        }`,
+      );
+      return true;
+    },
     clearTimeout(handle) {
       if (timers.delete(handle)) {
         did.push(`timer ${handle}: cancelled`);

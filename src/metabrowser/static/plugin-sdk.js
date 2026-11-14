@@ -50,6 +50,11 @@
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     onInventoryChange(listener)         — each filesystem change the shell observes:
+//                                          listener(paths), the changed entries with
+//                                          their ancestors, or null when anything may
+//                                          have changed, as on every reconnect; returns
+//                                          an unsubscribe function
 //     sourceKind()                        — filesystem or git_revision served source
 //     repository                          — verified GitHub identity for the served tree
 //
@@ -873,6 +878,48 @@
     );
   }
 
+  /**
+   * Call *listener* with each filesystem change the shell observes.
+   *
+   * The paths are inventory paths: each changed entry with every ancestor whose totals it
+   * moved, down to the depth the shell watches, so a deeper change arrives as its deepest
+   * watched ancestor. Null means anything may have changed: the stream reconnected,
+   * whether or not its snapshot changed, or resynchronized, or the first crawl finished.
+   * Returns an unsubscribe function.
+   *
+   * A host with no event target, such as a page that is not the shell, has no inventory
+   * stream: the listener is never called, as the folder context's refresh is never
+   * scheduled there.
+   *
+   * @param {(paths: ReadonlyArray<string> | null) => void} listener
+   * @returns {() => void}
+   */
+  function onInventoryChange(listener) {
+    if (typeof listener !== "function") {
+      throw new TypeError("onInventoryChange: listener must be a function");
+    }
+    /** @param {Event} event */
+    const handleChange = (event) => {
+      const paths = /** @type {CustomEvent<{paths?: unknown}>} */ (event).detail?.paths;
+      listener(
+        Array.isArray(paths)
+          ? Object.freeze(paths.filter((path) => typeof path === "string"))
+          : null,
+      );
+    };
+    if (typeof global.addEventListener !== "function") {
+      return () => {};
+    }
+    global.addEventListener("metabrowser:inventory-change", handleChange);
+    let subscribed = true;
+    return () => {
+      if (subscribed) {
+        subscribed = false;
+        global.removeEventListener("metabrowser:inventory-change", handleChange);
+      }
+    };
+  }
+
   // Plugins can observe directory totals but cannot mutate the host-owned
   // inventory projection. The fallback keeps partial SDK harnesses usable
   // without weakening the production ownership boundary.
@@ -1176,6 +1223,51 @@
       }
       await _loadScript(url, asset.loading);
     }
+  }
+
+  // "Idle Work" in docs/development.md.
+  const IDLE_INPUT_QUIET_MS = 250;
+  let _lastInput = -Infinity;
+  const _viewSettled = new Promise((resolve) =>
+    global.addEventListener?.("metabrowser:first-view-settled", resolve),
+  );
+  if (!global.requestIdleCallback) {
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      global.addEventListener?.(type, () => (_lastInput = performance.now()), {
+        capture: true,
+        passive: true,
+      });
+    }
+  }
+  function whenIdle(callback, options) {
+    const timeout = options?.timeout;
+    if (global.requestIdleCallback) {
+      const id = global.requestIdleCallback(() => callback(), { timeout });
+      return () => global.cancelIdleCallback(id);
+    }
+    const deadline = performance.now() + (timeout ?? Infinity);
+    let waiting = true;
+    let timer;
+    const check = () => {
+      const now = performance.now();
+      const wait = Math.min(_lastInput + IDLE_INPUT_QUIET_MS - now, deadline - now);
+      timer = wait > 0 ? setTimeout(check, wait) : void callback();
+    };
+    const start = () => {
+      if (waiting) {
+        waiting = false;
+        clearTimeout(timer);
+        timer = setTimeout(check);
+      }
+    };
+    _viewSettled.then(start);
+    if (timeout !== undefined) {
+      timer = setTimeout(start, timeout);
+    }
+    return () => {
+      waiting = false;
+      clearTimeout(timer);
+    };
   }
 
   // On-demand vendored libraries. asset-loader.js owns the loading; the SDK
@@ -1623,6 +1715,7 @@
     fetchText: fetchText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
+    onInventoryChange: onInventoryChange,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
     directoryTotals: directoryTotals,
@@ -1640,6 +1733,7 @@
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
     ensureKindAssets: ensureKindAssets,
+    whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
     chart: chart,

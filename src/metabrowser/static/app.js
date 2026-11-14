@@ -2384,11 +2384,7 @@ function scheduleSubtreePrefetch(options) {
     setTimeout(run, SUBTREE_PREFETCH_AFTER_EXPAND_MS);
     return;
   }
-  if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
-  } else {
-    setTimeout(run, 200);
-  }
+  window.metabrowser.whenIdle(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
 }
 
 // Scrolling is what makes a folder next, so it is what re-arms the sweep. The
@@ -3477,6 +3473,20 @@ function announceScanCompletion() {
   window.dispatchEvent(
     new CustomEvent("metabrowser:inventory-change", {
       detail: { kind: "index-complete", paths: null },
+    }),
+  );
+}
+
+// A reconnect whose snapshot equals the last one skips parsing and repainting it, so
+// no file-store notice goes out. It still cannot prove deep files unchanged (see the
+// fs.snapshot listener): a file deeper than the stream watches may have changed while it
+// was down. Announce it as a changed snapshot is announced, with null paths -- "anything
+// may have changed" -- so SDK consumers such as the Markdown plugin's held images
+// (onInventoryChange) and rollup watches treat it as the reconnect it is.
+function announceUnchangedSnapshot() {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: "snapshot", paths: null },
     }),
   );
 }
@@ -7670,6 +7680,7 @@ function _createInventoryEventSource() {
           fileNeedsRevalidate.add(path);
         }
         retryFailedExpandedSubtrees(true);
+        announceUnchangedSnapshot();
       }
       _scheduleRecentRecompute();
       // Every depth-limited sentinel establishes a transport boundary. The
@@ -8579,10 +8590,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   // The selected preview and its on-demand plugin assets share the local
   // HTTP/1.1 connection pool with the tree. Start them after the first tree
   // request so a folder renderer cannot delay the navigation's usable rows.
-  navigationController.start().catch((error) => {
+  const started = navigationController.start().catch((error) => {
     console.error("Could not initialize browser navigation", error);
     settleUnclaimedPreview();
   });
+  // For metabrowser.whenIdle.
+  started.finally(() => window.dispatchEvent(new Event("metabrowser:first-view-settled")));
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree
   // request settles, so eleven unrelated scripts cannot delay the inline row,

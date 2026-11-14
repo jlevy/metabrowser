@@ -52,12 +52,10 @@ from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
-from urllib.parse import quote
 
 from starlette.applications import Starlette
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
-from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import (
     FileResponse,
     HTMLResponse,
@@ -70,12 +68,12 @@ from starlette.responses import (
     JSONResponse as _StarletteJSONResponse,
 )
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
-from metabrowser import __version__, kpress_adapter
+from metabrowser import __version__, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
+from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
@@ -113,8 +111,10 @@ from metabrowser.gz_io import (
 from metabrowser.http_caching import (
     BUILD_TAG,
     build_scoped_etag,
+    editable_install,
     etag_headers,
     matches_if_none_match,
+    stamped_asset_cache_control,
     store_tag,
 )
 from metabrowser.inventory_engine.contract import (
@@ -252,6 +252,7 @@ from metabrowser.view_routes import (
 )
 
 if TYPE_CHECKING:
+    from kpress.models import KPressAsset
     from starlette.requests import Request
 
 
@@ -556,13 +557,16 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 # ── Static asset directories ────────────────────────────────────
 #
-# CSS / JS bundles are served as plain static files (Starlette's
-# ``StaticFiles`` mount handles Last-Modified + If-Modified-Since for
-# 304s), not inlined into the index HTML. That way edits show up on a
-# normal browser refresh without restarting the server, and the
-# browser's HTTP cache does the work it's designed to do.
+# CSS / JS bundles are served as plain static files, not inlined into the
+# index HTML. The shell names each with a ``?v=`` stamp of the file
+# (``_static_asset_url``), and the mount answers that address immutable while
+# the stamp is current (``asset_stamps.StampedStaticFiles``), so a reload asks
+# for nothing it already holds, and an edit shows up on a normal refresh
+# without restarting the server because the next shell names a new stamp.
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
+# The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
+_STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -1006,6 +1010,11 @@ class _RawTrustHeaderMiddleware:
                 started = True
                 headers = MutableHeaders(scope=message)
                 headers["Content-Security-Policy"] = raw_sandbox_csp(active_content=active_content)
+                # Never kept as fresh, whichever branch answered: its headers are this
+                # profile's (SECURITY.md). raw_file sets it with its tag; this covers the
+                # rest -- the decompressed stream, a 404 or a 403 -- by construction.
+                if "cache-control" not in headers:
+                    headers["Cache-Control"] = "no-cache"
                 headers["X-Content-Type-Options"] = "nosniff"
                 if not active_content and _SCRIPT_CAPABLE.match(headers.get("content-type", "")):
                     # A browsed script or stylesheet is text to a reader, never code.
@@ -1085,26 +1094,30 @@ class _SlowRequestLogMiddleware:
         arrived = time.time()
         status: int | None = None
         body_bytes = 0
+        start_ms: float | None = None
+        record, token = server_timing.begin()
 
         async def send_wrapper(message: dict[str, Any]) -> None:
-            nonlocal body_bytes, status
+            nonlocal body_bytes, start_ms, status
             if message.get("type") == "http.response.start":
                 status = message.get("status")
                 # Inject Server-Timing so the browser's Network tab +
                 # perf.js can read the server-self-reported duration
-                # without an out-of-band channel. Format per RFC 8941
-                # / W3C Server-Timing: ``<name>;dur=<ms>``. The single
-                # ``srv`` metric reports the wall-clock from middleware
-                # entry to response-start; client subtracts to get the
-                # transit + queue portion. Done at response.start so
-                # the duration captures everything before the body
-                # streams (which is when downstream gzip / transport
-                # latency dominates). Re-encode the headers list to
-                # preserve any pre-existing Server-Timing value (no
-                # plugin sets one today, but be safe).
-                so_far_ms = (time.perf_counter() - started) * 1000
+                # without an out-of-band channel. Format per W3C
+                # Server-Timing: ``<name>;dur=<ms>``. ``srv`` is the
+                # wall-clock from middleware entry to response-start;
+                # client subtracts to get the transit + queue portion.
+                # Beside it go the named phases finished by then
+                # (metabrowser.server_timing): for a JSON answer that is
+                # its serialization and compression too, which happen
+                # before the headers; a streamed body's later reads and
+                # compression reach only the request log below. Re-encode
+                # the headers list to preserve any pre-existing
+                # Server-Timing value (no plugin sets one today).
+                start_ms = (time.perf_counter() - started) * 1000
+                timing = server_timing.header_value(record, start_ms)
                 hdrs = list(message.get("headers") or [])
-                hdrs.append((b"server-timing", f"srv;dur={so_far_ms:.1f}".encode("latin-1")))
+                hdrs.append((b"server-timing", timing.encode("latin-1")))
                 message = {**message, "headers": hdrs}
             elif message.get("type") == "http.response.body":
                 body = message.get("body") or b""
@@ -1114,7 +1127,11 @@ class _SlowRequestLogMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            server_timing.end(record, token)
+            # The time to the end of the body, which no header can carry.
             duration_ms = (time.perf_counter() - started) * 1000
+            first_byte = "-" if start_ms is None else f"{start_ms:.0f}"
+            phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
             if self.verbose:
@@ -1122,7 +1139,8 @@ class _SlowRequestLogMiddleware:
                 # epochs so correlation against browser-side perf.js
                 # records is mechanical (subtract for transit time).
                 LOG.info(
-                    "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s bytes=%s",
+                    "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
+                    "bytes=%s start_ms=%s phases=%s",
                     arrived,
                     arrived + duration_ms / 1000,
                     duration_ms,
@@ -1130,19 +1148,24 @@ class _SlowRequestLogMiddleware:
                     full_path,
                     status,
                     body_bytes,
+                    first_byte,
+                    phases,
                 )
             elif self.threshold_ms and duration_ms >= self.threshold_ms:
                 # Include the arrival epoch even in non-verbose mode so
                 # the line cross-references against perf.js slow_fetch
                 # records (which carry started_at as a UTC epoch ms).
                 LOG.warning(
-                    "metabrowser slow server request t=%.3f %.0f ms method=%s path=%s status=%s bytes=%s",
+                    "metabrowser slow server request t=%.3f %.0f ms method=%s path=%s status=%s "
+                    "bytes=%s start_ms=%s phases=%s",
                     arrived,
                     duration_ms,
                     scope.get("method", ""),
                     full_path,
                     status,
                     body_bytes,
+                    first_byte,
+                    phases,
                 )
 
 
@@ -1270,14 +1293,16 @@ def _display_root_str() -> str:
 
 
 def _static_asset_url(rel_path: str) -> str:
-    """Return a local static URL with an mtime-based cache buster."""
+    """A local static URL stamped with the digest of the file's bytes.
 
-    target = STATIC_DIR / rel_path
-    try:
-        version = quote(str(file_mtime_hash(target)), safe="")
-    except OSError:
-        return f"/static/{rel_path}"
-    return f"/static/{rel_path}?v={version}"
+    The digest is from the stamp :func:`_shell_asset_prefixes` took for this page, or, in a
+    process that has not rendered one, a stamp taken now. A file the stamp does not name
+    gets the unstamped address, which is revalidated.
+    """
+
+    stamp = _STATIC_TREE.latest() or _STATIC_TREE.stamp()
+    digest = stamp.digests.get(rel_path) if stamp is not None else None
+    return f"/static/{rel_path}" if digest is None else f"/static/{rel_path}?v={digest}"
 
 
 # Interface-font sets offered by the settings dropdown. The first entry is the
@@ -1351,16 +1376,17 @@ def page_preference_scripts() -> tuple[str, ...]:
     return (_PAGE_SETTINGS_SCRIPT, _DOCUMENT_WIDTH_SCRIPT, _THEME_BOOTSTRAP_SCRIPT)
 
 
-# Prefetched-tier scheduling. The chain waits for the first idle callback so it
+# Prefetched-tier scheduling. The chain waits for the page to be idle so it
 # does not compete with the tree render, and the timeout is the floor: on a
 # large tree the main thread is busy for seconds, and a source view that never
 # highlights is worse than one that highlights late. Two seconds is the same
 # bound the tree's own idle prefetch already uses
-# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js).
+# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js). "Idle" is
+# `metabrowser.whenIdle` in static/plugin-sdk.js: requestIdleCallback where the
+# engine has it, and where it does not -- the app's WebKit (WKWebView on macOS 26,
+# measured 2026-11-11; WebKit enabled it in February 2025 and backed it out, bug
+# 285049) -- the first view settled and input quiet, rather than a fixed timer.
 PREFETCH_IDLE_TIMEOUT_MS = 2000
-# requestIdleCallback is unavailable in Safari before 18.2, so the fallback is
-# a plain timer past first paint rather than no deferral at all.
-PREFETCH_FALLBACK_DELAY_MS = 200
 
 
 # Startup scripts only some shells carry, by static file name. A pin's page needs the
@@ -1390,6 +1416,9 @@ async def index(
     as a startup script. *pull_list* is set by the list's route. At either address a
     repository's shell draws the Pulls tab in front, so its first paint is not the Files tree.
     """
+    # Every asset address on the page names the stamps taken here, in a thread for a live
+    # tree, so this comes before the first one is written.
+    plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
 
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
@@ -1907,11 +1936,7 @@ async def index(
       );
     }}
     function schedule() {{
-      if (typeof window.requestIdleCallback === "function") {{
-        window.requestIdleCallback(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
-      }} else {{
-        setTimeout(start, {PREFETCH_FALLBACK_DELAY_MS});
-      }}
+      window.metabrowser.whenIdle(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
     }}
     if (document.readyState === "loading") {{
       document.addEventListener("DOMContentLoaded", schedule, {{ once: true }});
@@ -1925,18 +1950,20 @@ async def index(
     # should not wait for Markdown, structured-data, diff, and log modules
     # before its first tree row. The manifest remains the source of every URL;
     # core does not special-case plugin names.
-    plugin_asset_config = _build_plugin_asset_config_block()
+    plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
     # style-tokens.css (the @font-face source of truth) and preload the chrome's
-    # always-present Source Sans face, using the SAME version-keyed URLs the
+    # always-present Source Sans face, using the SAME stamped URLs the
     # embedded document requests so the woff2 downloads exactly once and is
-    # served from the immutable font cache (see kpress_static_asset). Preloading
+    # served from the immutable cache (see kpress_static_asset). Preloading
     # only the chrome face avoids an "unused preload" warning on tree-only views;
     # PT Serif (embedded prose) rides the same immutable cache + font-display:
     # block on first document open.
-    _sans_url = kpress_adapter.kpress_static_url("fonts/source-sans-3-latin-wght-normal.woff2")
-    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css")
+    _sans_url = kpress_adapter.kpress_static_url(
+        "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
+    )
+    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
     kpress_font_head = (
         f'<link rel="preload" as="font" type="font/woff2" crossorigin href="{_sans_url}">\n'
         f'  <link rel="stylesheet" href="{_tokens_url}">'
@@ -2762,14 +2789,16 @@ class JSONResponse(_StarletteJSONResponse):
     """
 
     def render(self, content: Any) -> bytes:
-        return _json.dumps(
-            content,
-            ensure_ascii=False,
-            allow_nan=False,
-            indent=None,
-            separators=(",", ":"),
-            default=_json_default_safe,
-        ).encode("utf-8")
+        # Serialization is the first half of the `encode` phase (metabrowser.server_timing).
+        with server_timing.phase("encode"):
+            return _json.dumps(
+                content,
+                ensure_ascii=False,
+                allow_nan=False,
+                indent=None,
+                separators=(",", ":"),
+                default=_json_default_safe,
+            ).encode("utf-8")
 
 
 # Every route in this module uses the safe variant. Plugin code that imports
@@ -3022,7 +3051,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
 
     try:
         # Validated compression scans must not run on the event loop.
-        logical_size = await asyncio.to_thread(lambda: artifact.logical_size)
+        with server_timing.phase("read"):
+            logical_size = await asyncio.to_thread(lambda: artifact.logical_size)
     except ArtifactCompressionError as exc:
         if artifact.is_gzip:
             # Caller-specific readers below can still return a bounded preview
@@ -3116,9 +3146,10 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 parse_jsonl_file_cached,
             )
 
-            parsed = await asyncio.to_thread(parse_jsonl_file_cached, target)
-            adapter = parsed.get("summary", {}).get("adapter")
-            kind = await asyncio.to_thread(_classify_with_plugins, target, ext, adapter)
+            with server_timing.phase("read"):
+                parsed = await asyncio.to_thread(parse_jsonl_file_cached, target)
+                adapter = parsed.get("summary", {}).get("adapter")
+                kind = await asyncio.to_thread(_classify_with_plugins, target, ext, adapter)
             views = _views_for_kind(kind)
             return JSONResponse(
                 {
@@ -3158,7 +3189,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
+    with server_timing.phase("read"):
+        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+    if text_body:
         try:
             content_has_more = False
             if (
@@ -3166,14 +3199,14 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 or text_offset > 0
                 or (logical_size is not None and logical_size > text_limit)
             ):
-                content, content_bytes, bytes_read, content_has_more = await asyncio.to_thread(
-                    _read_artifact_text_chunk,
-                    artifact,
-                    text_offset,
-                    text_limit,
-                )
+                with server_timing.phase("read"):
+                    chunk = await asyncio.to_thread(
+                        _read_artifact_text_chunk, artifact, text_offset, text_limit
+                    )
+                content, content_bytes, bytes_read, content_has_more = chunk
             else:
-                content = await asyncio.to_thread(target.read_text, errors="replace")
+                with server_timing.phase("read"):
+                    content = await asyncio.to_thread(target.read_text, errors="replace")
                 content_bytes = disk_size
                 bytes_read = disk_size
         except ArtifactCompressionError as exc:
@@ -3241,7 +3274,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             classified = _classify_with_plugins(target, ext, file_ctx=ctx)
             return classified, _views_for_kind(classified, target=target)
 
-        kind, views = await asyncio.to_thread(_classify_text_views)
+        with server_timing.phase("read"):
+            kind, views = await asyncio.to_thread(_classify_text_views)
 
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
@@ -3339,7 +3373,8 @@ async def api_kpress_render(request: Request) -> Response:
     source_override: str | None = None
     if getattr(request, "method", "GET") == "POST":
         try:
-            body = await _read_bounded_json_request(request, _KPRESS_RENDER_REQUEST_MAX_BYTES)
+            with server_timing.phase("read"):
+                body = await _read_bounded_json_request(request, _KPRESS_RENDER_REQUEST_MAX_BYTES)
         except _JsonRequestLimitError:
             return JSONResponse(
                 {
@@ -3446,11 +3481,12 @@ async def api_kpress_render(request: Request) -> Response:
 
     try:
         if artifact.is_compressed and source_override is None:
-            content, logical_size = await asyncio.to_thread(
-                _read_artifact_text,
-                artifact,
-                _TEXT_PREVIEW_MAX_CHUNK_BYTES,
-            )
+            with server_timing.phase("read"):
+                content, logical_size = await asyncio.to_thread(
+                    _read_artifact_text,
+                    artifact,
+                    _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                )
         else:
             logical_size = artifact.logical_size
     except _ArtifactTextLimitError:
@@ -3515,12 +3551,14 @@ async def api_kpress_render(request: Request) -> Response:
 
     try:
         if content is None:
-            content = await asyncio.to_thread(target.read_text, errors="replace")
+            with server_timing.phase("read"):
+                content = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
-    kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
+    with server_timing.phase("read"):
+        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
     frontmatter: dict[str, Any] | None = None
     frontmatter_error: str | None = None
     if ext == ".md":
@@ -3529,20 +3567,21 @@ async def api_kpress_render(request: Request) -> Response:
     mtime_hash = file_mtime_hash(target)
 
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            source_path=subpath,
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=mtime_hash,
-            size=logical_size,
-            frontmatter=frontmatter,
-            frontmatter_error=frontmatter_error,
-            profile=profile,
-            include_toc=include_toc,
-        )
+        with server_timing.phase("render"):
+            rendered = await asyncio.to_thread(
+                kpress_adapter.render_kpress_view,
+                source_text=content,
+                source_path=subpath,
+                kind=kind,
+                view=view,
+                ext=ext,
+                mtime_hash=mtime_hash,
+                size=logical_size,
+                frontmatter=frontmatter,
+                frontmatter_error=frontmatter_error,
+                profile=profile,
+                include_toc=include_toc,
+            )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
             {
@@ -3565,7 +3604,8 @@ async def api_kpress_render(request: Request) -> Response:
         )
     if not get_capabilities().active_content:
         # A document the reader does not trust renders inert (kpress_adapter.inert_render).
-        rendered = kpress_adapter.inert_render(rendered)
+        with server_timing.phase("render"):
+            rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
@@ -3782,39 +3822,40 @@ async def api_kpress_export(request: Request) -> JSONResponse:
 
 
 async def kpress_static_asset(request: Request) -> Response:
-    """Serve KPress package assets through Metabrowser's safe asset route."""
+    """Serve KPress package assets through Metabrowser's safe asset route.
 
-    rel = request.path_params.get("path", "")
+    Pages address them under ``@<digest>/``, a stamp of the KPress package's files
+    (:func:`kpress_adapter.kpress_asset_url_prefix`), which is removed before KPress
+    resolves the rest. Under the stamp that names the bytes served, CSS and JS are kept
+    a year without revalidation, which the version-keyed address alone could not allow;
+    see :mod:`metabrowser.asset_stamps`.
+    """
+
+    stamp_digest, rel = split_stamp(request.path_params.get("path", ""))
+
+    def read() -> tuple[KPressAsset, bool]:
+        asset = kpress_adapter.get_kpress_static_asset(rel)
+        return asset, kpress_adapter.kpress_stamp_is_current(stamp_digest, asset.content)
+
     try:
-        asset = await asyncio.to_thread(kpress_adapter.get_kpress_static_asset, rel)
+        asset, current = await asyncio.to_thread(read)
     except kpress_adapter.KPressAssetNotFoundError:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
     is_font = rel.rsplit(".", 1)[-1].lower() in {"woff2", "woff", "ttf", "otf"}
-    if is_font:
-        # Fonts are the one asset class we cache hard. They are large, stable
-        # for a given KPress version (the URL is version-keyed), and — unlike
-        # CSS/JS — are not edited during local development, so the staleness
-        # risk that drives `no-cache` below does not apply. Metabrowser is
-        # opened often, so an immutable cache means repeat visits pay zero font
-        # bytes and skip the revalidation round-trip before first paint.
-        headers = {
-            "ETag": asset.etag,
-            "Cache-Control": "public, max-age=31536000, immutable",
-        }
-    else:
-        headers = {
-            "ETag": asset.etag,
-            # The /kpress-static/ URL is keyed by the KPress *version* (e.g.
-            # v0.0.1), not by content, so the package's own long max-age would
-            # serve stale CSS/JS for a year whenever an asset changes without a
-            # version bump (the constant pain during local development — and
-            # these assets load dynamically, so a hard reload doesn't bust
-            # them). Force revalidation against the content-addressed ETag
-            # instead: a 304 when unchanged (cheap), fresh bytes the moment an
-            # asset changes.
-            "Cache-Control": "no-cache",
-        }
+    # Immutable at the current stamp, and revalidated at an old one against the
+    # content-addressed ETag: a 304 when unchanged, fresh bytes the moment an asset
+    # changes. A font at an address with no stamp at all, the version-keyed one a KPress
+    # past the stamping bound is named by, is still kept hard, as it always was: it is
+    # large, stable for a KPress version, and never edited in development. Under an old
+    # stamp it is not, or a page from before an in-place upgrade would keep the new font
+    # under the old stamp's address (review C of #372, C4).
+    headers = {
+        "ETag": asset.etag,
+        "Cache-Control": stamped_asset_cache_control(
+            current=current or (is_font and stamp_digest is None)
+        ),
+    }
     if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
@@ -3913,6 +3954,24 @@ def _raw_target_from_request(request: Request) -> Path | None:
     return resolve_session_identity(request.query_params.get("path", ""))
 
 
+def _raw_identity(mtime_hash: str, stat: os.stat_result, *, passthrough: bool) -> str:
+    """What a ``/raw`` validator names: the file, the representation, and the trust profile.
+
+    The file is named by its ``mtime_hash`` (name, size, modification time) with its change
+    time and inode, so a same-size rewrite that restores the modification time -- npm
+    unpacks every file at one fixed time -- still moves the tag. The response headers are
+    the trust profile's, so the profile and the sandbox policy are named too; the build,
+    which shapes both, is in every tag (``build_scoped_etag``).
+    """
+    active = get_capabilities().active_content
+    profile = "active" if active else "inert"
+    representation = "gzip" if passthrough else "identity"
+    return (
+        f"{mtime_hash}:{stat.st_ctime_ns}:{stat.st_ino}:{representation}:{profile}:"
+        f"{raw_sandbox_csp(active_content=active)}"
+    )
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -3933,6 +3992,7 @@ async def raw_file(request: Request) -> Response:
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
+    accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
     # Uncompressed path: stream the file as-is. ``FileResponse`` streams in
     # fixed-size chunks via aiofiles; the earlier ``read_bytes()`` +
@@ -3940,22 +4000,34 @@ async def raw_file(request: Request) -> Response:
     # hit the wire (a 100 MB image stalled and spiked memory). Streaming
     # keeps the event loop responsive and bounds memory regardless of
     # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
-    if not artifact.is_compressed:
-        return FileResponse(target, media_type=media_type)
-
-    accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
-
+    #
     # Passthrough: client accepts gzip → ship the on-disk bytes verbatim
     # with ``Content-Encoding: gzip`` so the browser decompresses
     # transparently. Zero server CPU. Starlette's ``GZipMiddleware``
     # skips responses with ``Content-Encoding`` already set, so we
     # don't double-wrap.
-    if artifact.is_gzip and accepts_gzip:
-        return FileResponse(
-            target,
-            media_type=media_type,
-            headers=artifact.passthrough_headers(),
-        )
+    passthrough = artifact.is_gzip and accepts_gzip
+    if not artifact.is_compressed or passthrough:
+        try:
+            stat = target.stat()
+            mtime_hash = file_mtime_hash(target)
+        except OSError:
+            return PlainTextResponse("Not found", status_code=404)
+        etag = _etag_for(_raw_identity(mtime_hash, stat, passthrough=passthrough))
+        # Revalidated on every use, never kept as fresh: the body is the reader's file and
+        # its headers are the trust profile's (_RawTrustHeaderMiddleware), so a response a
+        # browser keeps without asking could answer for another profile on the same host
+        # and port. A 304 answers only the tag, which names the profile; a date cannot,
+        # so If-Modified-Since alone is answered in full. See SECURITY.md.
+        headers = etag_headers(etag)
+        if passthrough:
+            headers["Vary"] = "Accept-Encoding"
+        # The tag alone: `*` names no profile, so it earns no 304 here.
+        if matches_if_none_match(request, etag, wildcard=False):
+            return Response(status_code=304, headers=headers)
+        if passthrough:
+            headers |= artifact.passthrough_headers()
+        return FileResponse(target, media_type=media_type, headers=headers, stat_result=stat)
 
     # Validate every compressed identity response before StreamingResponse sends
     # successful headers. Without this scan, malformed or over-limit gzip data
@@ -4011,6 +4083,8 @@ from metabrowser.plugin_loader.manifest import (
 )
 from metabrowser.plugin_loader.static_assets import (
     build_plugin_routes,
+    plugin_asset_prefix,
+    plugin_asset_trees,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -4039,6 +4113,9 @@ LOG.debug(
     len(_LOADED_PLUGINS),
     [p.name for p in _LOADED_PLUGINS],
 )
+# The stamps the shell addresses each plugin's files under, shared with the route that
+# serves them so it can tell a current stamp from an old one (metabrowser.asset_stamps).
+_PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 
 
 # Pre-compile plugin kind rules and view bindings for fast lookup at
@@ -4223,17 +4300,63 @@ def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[d
     return views
 
 
-def _build_plugin_asset_config_block() -> str:
+def _plugin_asset_prefixes() -> dict[str, str]:
+    """The path each plugin's assets are addressed under now, stamped where the tree is.
+
+    Touches the disk for a live tree (``asset_stamps.StampedTree.stamp``); see
+    :func:`_shell_asset_prefixes` for the caller on the event loop.
+    """
+    return {
+        plugin.name: plugin_asset_prefix(plugin.name, _PLUGIN_ASSET_TREES.get(plugin.name))
+        for plugin in _LOADED_PLUGINS
+    }
+
+
+def prepare_asset_stamps() -> None:
+    """Stamp the static tree and every plugin's, so the first page reads none of them.
+
+    Serve calls this before Uvicorn starts, beside ``kpress_adapter.prepare_browser_assets``.
+    """
+    _STATIC_TREE.stamp()
+    _plugin_asset_prefixes()
+
+
+async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
+    """The plugin and KPress asset prefixes a shell names, and the static tree's stamp,
+    without a walk on the event loop.
+
+    A released tree is stamped once and answers at once. A live one -- an editable install
+    or an operator's plugin directory -- takes its stamp again for every page, a ``stat``
+    per file, so that page names what is on disk now; that walk runs in a thread.
+    """
+
+    def prefixes() -> tuple[dict[str, str], str]:
+        _STATIC_TREE.stamp()
+        return _plugin_asset_prefixes(), kpress_adapter.kpress_asset_url_prefix()
+
+    settled = (
+        _STATIC_TREE.settled
+        and kpress_adapter.kpress_asset_prefix_settled()
+        and all(tree.settled for tree in _PLUGIN_ASSET_TREES.values())
+    )
+    return prefixes() if settled else await asyncio.to_thread(prefixes)
+
+
+def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
     """Configure manifest-owned assets by the kinds that consume them.
 
     No plugin asset is an eager shell dependency. The private plugin host
     loads one descriptor at most once when ``app.js`` selects any kind in its
     manifest. Extra classic scripts retain manifest order before ``index.js``;
     styles load in parallel and settle before the plugin renderer mounts.
+
+    Every URL is under the plugin's stamped prefix (*prefixes*, from
+    :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
+    relative imports, worker, and stylesheet references inherit the stamp.
     """
     assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
-        prefix = f"/plugin-static/{plugin.name}"
+        prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
         if plugin.static_root.joinpath("styles.css").is_file():
             styles.append(f"{prefix}/styles.css")
@@ -4400,7 +4523,9 @@ routes = [
     Route("/raw", raw_file),
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
-    Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
+    Mount(
+        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+    ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
     # modes, separate resource bounds.
@@ -4413,7 +4538,7 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
-    *build_plugin_routes(_LOADED_PLUGINS),
+    *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 
 # GZip every response above 1 KiB. This materially reduces tree and file
@@ -4430,7 +4555,8 @@ middleware = [
     # from is refused with a typed pin_changed rather than answered from the new pin.
     Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
-    Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
+    # Starlette's, with the compression counted as the `encode` phase of Server-Timing.
+    Middleware(server_timing.TimedGZipMiddleware, minimum_size=1024, compresslevel=6),
 ]
 
 # Lazy import: events_route.py pulls in the inventory + events
