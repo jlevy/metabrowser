@@ -61,6 +61,16 @@ All notable changes to Metabrowser are documented here.
   On a stand-in of 5,000 pull requests read by eight list windows at once, an answer now
   takes 460 ms instead of 1.25 s.
 
+- No slow or failing batch stops the Pulls tab’s preparation of pull requests.
+  The list now waits 10 s for a batch you are looking at and 30 s for one in the
+  background, instead of 2 s for both, so a busy server’s slow answers are used.
+  A batch that still goes unanswered twice is passed over and tried again after the rest
+  of the list, no sooner than 30 s later; it used to be asked for again and again, every
+  30 s, with nothing after it prepared.
+  The rows you scroll to no longer wait for a background batch already on its way: it is
+  abandoned, as one is when the tab is closed, hidden, or paused, and the server stops
+  working on an abandoned batch at its next step, before it reads anything from GitHub.
+
 - Chrome keeps its place.
   The top of the navigation is one toolbar row on every tab: the Files filters, the
   Commits tally of commits, or the Pulls filters, at one height, so what is under it
