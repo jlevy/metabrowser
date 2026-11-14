@@ -3345,7 +3345,7 @@ drawn from it:
 | Engine | Code | 5 returns, nothing changed | Return after editing the document | Return after replacing the image | Reload after that |
 | --- | --- | --- | --- | --- | --- |
 | WKWebView | before | served images: no request, no blank frame; outside image: asked again each time, 3 or 4 blank frames | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
-| WKWebView | versions | no request, no blank frame, outside image included | no request, no blank frame | asked at its new address, 4 blank frames, new image | new image |
+| WKWebView | versions | no request, no blank frame, outside image included | no request, no blank frame | asked at its new address, 3 or 4 blank frames, new image | new image |
 | Chrome 152 | before | no request, no blank frame | no request | no request, old image | asked again, new image |
 | Chrome 152 | versions | no request, no blank frame | no request | asked at its new address, 6 blank frames at 60 a second, new image | no request, new image |
 
