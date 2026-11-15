@@ -5,7 +5,7 @@ title: "PR Conversation: commit rows match comments in size and spacing, joined 
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:38:30.336Z
-updated_at: 2026-11-15T07:34:44.851Z
+updated_at: 2026-11-15T09:05:31.567Z
 started_at: 2026-11-15T07:10:30.142Z
 ---
 The user's request (2026-11-15), verbatim: "the lines ont he Conversation part of a PR rendering like this below are too small font, not enough space above them. see how github actually renders PRs e.g. https://github.com/jlevy/metabrowser/pull/438 and mnotice it creates a line joining the commits and the comments in a clearer way. And also, the font sizes should be more consistent. We shouldn't make the commits smaller just because they're commits on this page. They should be similar to comments in size and similarly consistently spaced, more like what GitHub does."
@@ -52,3 +52,11 @@ Tested (local, headless Chrome 152):
 - Screenshots: attic/shots/before/*.png and attic/shots/after/*.png in the worktree.
 
 Not verified: WebKit and the macOS app; the live app through tests/github_pull_fixture.py --serve; full make verify and CI.
+2026-11-15, restacked and opened:
+- Rebased once onto origin/claude/pulls-stack-groups (the coordinator's allowed rebase). Conflicts in CHANGELOG, docs/e2e-testing.md and tests/test_process_group.py were resolved keeping both sides. New head 48165b77e.
+- Re-checked locally: make -o install format (no changes), make -o install lint-check (parity: 140 aspects, 29 paint-exempt; goldens; flowmark), the timeline Chrome test, test_design_vocabulary, test_github_pull_page_session, test_pull_page_route, the process-group lifecycle test, and the first-paint, mount and timeline DOM scripts. All passed.
+- Pushed with --no-verify; local pre-push skipped, CI is the full gate. Draft PR #451 (https://github.com/jlevy/metabrowser/pull/451), base claude/pulls-stack-groups.
+- Linked with gh stack link 446 451. The stacks API lists stack 446 as 444, 445, 447, 448, 450, 451, in that order.
+- CI run 43695973255: all 9 checks pass (lint, distribution, stack-integration, admitted-git 2.43.7 and 2.50.1, test 3.12/3.13/3.14/3.14t). The Chrome tests were not skipped in test (3.12).
+- Follow-up for late commits appended after Review comments: mb-yp9p.
+- Not merged and not marked ready. Still not verified in WebKit, the macOS app, or the live --serve app.
