@@ -3,9 +3,9 @@ type: is
 id: is-01m3wjge2pn6nf3cvcvpbbdx2z
 title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
-status: open
+status: closed
 priority: 1
-version: 24
+version: 25
 spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -17,8 +17,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-14T18:49:03.684Z
+updated_at: 2026-11-15T06:35:42.790Z
 started_at: 2026-10-01T20:29:25.524Z
+closed_at: 2026-11-15T06:35:42.789Z
+close_reason: "H85 closed: v0.12.0 was tagged at 87b8ec81 on 2026-11-08 without exp-057. The release gate is a procedure for the runbook, not a registry row."
+resolution: canceled
+duplicate_of: null
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 

@@ -3,9 +3,9 @@ type: is
 id: is-01m6mpjbb70kg8tdwgznd5tdvx
 title: Test whether natural intent timing and request joining prepare navigation
 kind: task
-status: open
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m6mp811vf52jmazawykb3bw6
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:53:24.838Z
-updated_at: 2026-11-14T18:43:37.998Z
+updated_at: 2026-11-15T06:35:43.827Z
 started_at: 2026-11-05T01:53:25.753Z
+closed_at: 2026-11-15T06:35:43.826Z
+close_reason: "H75 merged into H94 on 2026-11-14: H92 (a) measured its join clause (exp-065), and H94 runs the dwell and keyboard sweep. exp-043 stays unused."
+resolution: duplicate
+duplicate_of: is-01m774r8p6ht39jjcf8sj2fejk
 ---
 H75 in the load-time plan. On current main, compare 0, 100, 200 and 450 ms pointer dwell and keyboard selection for identical cold selected subjects in Pulls and Commits. Record when preparation starts, held and in-flight reuse, exact matching data-request counts, request concurrency, cancellation, and click to correct painted ready. Reject timer or coordination changes unless missed preparation or duplicate selected work is measured, and distinguish intentional conditional revalidation from overlapping duplicate reads.
 

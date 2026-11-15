@@ -3,9 +3,9 @@ type: is
 id: is-01m0k5xgycxymyreh03tax0t1q
 title: Measure walk throughput and find where the ~50 us per file goes
 kind: task
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies:
@@ -13,7 +13,11 @@ dependencies:
     target: is-01m0k5xha8rmnc747e64g6a5wa
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-21T22:08:59.852Z
-updated_at: 2026-11-14T18:45:43.097Z
+updated_at: 2026-11-15T06:35:44.386Z
+closed_at: 2026-11-15T06:35:44.383Z
+close_reason: "H13 merged into H18 on 2026-11-14: H18's profile is the same attribution. Note: exp-026 already accepted H72's walk half (the walk builds the provider record directly); the read side remains under mb-kicj."
+resolution: duplicate
+duplicate_of: is-01m0m1f2x68pyajm7m6593hzmv
 ---
 Phase 3 of the load-time plan, H13: attribute the walk's per-file cost by layer before changing the walker or the 500,000-file cap. mb-s5p6 waits on this, because a cap is a claim about cost.
 

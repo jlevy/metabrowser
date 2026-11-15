@@ -5,7 +5,7 @@ title: "Residual: inventory walk still 28% slower than main after the perf fixes
 kind: bug
 status: open
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 child_order_hints:
   - is-01m2gwtgp8rs2e4x0e77f64y8f
 created_at: 2026-09-01T06:22:19.315Z
-updated_at: 2026-11-14T18:48:38.695Z
+updated_at: 2026-11-15T06:36:26.786Z
 ---
 After mb-0y68's fixes, the 60,000-file A/B on 2026-09-01 still showed the walk 28% slower than main before the provider refactor (2,652 ms against 2,071 ms median). The profile pointed at the double representation: each entry is built as a validated contract InventoryEntry, converted to the provider's retained FsEntry (_internal_entry, python_inventory.py:515), adjusted with dataclasses.replace on several walker and aggregate paths, and converted back on read. That is still the shape on main.
 
@@ -53,3 +53,5 @@ When this is fixed, lower the flat-stress ratchet to the new behavior.
 2026-09-20: status returned to open (was in_progress). Nobody is actively working this; as
 the notes above state, the residual is carried debt for v0.10.0 and the live work sits in
 the successor beads mb-qvw4, mb-qtgj and mb-zc3p. in_progress overstated it.
+
+2026-11-14: exp-026 accepted H72's walk half: the walk now builds the provider record directly (python_inventory.py:515-523). The read side, which converts per row (:483-512), remains, as the flat-tree plan's Tier 2 prototype. Loop 2 of plan-2026-11-14-performance-campaigns.md.

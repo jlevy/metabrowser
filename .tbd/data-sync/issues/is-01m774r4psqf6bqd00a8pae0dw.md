@@ -5,20 +5,18 @@ title: Parallel shell-tools and KPress asset loading
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
 dependencies:
-  - type: blocks
-    target: is-01m774r9n7z8bymhs94yjq67sw
   - type: blocks
     target: is-01m774rfn15h0t9ys9eg0nvgyx
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-12T05:47:34.487Z
-updated_at: 2026-11-14T00:50:26.170Z
+updated_at: 2026-11-15T06:35:45.427Z
 started_at: 2026-11-12T05:53:03.657Z
 closed_at: 2026-11-14T00:50:26.168Z
 close_reason: "Rejected (exp-062) and removed from #372 by revert commits: dependent request levels fell (shell tools 21 -> 5) but shell tools were not ready detectably sooner, and the cold Markdown landing painted later (311 -> 362 ms). The code is kept on reference draft #389 (do not merge); the follow-up with a preload cap or low fetch priority is mb-mjc0."

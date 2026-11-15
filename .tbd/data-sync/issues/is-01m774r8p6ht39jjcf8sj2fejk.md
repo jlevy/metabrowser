@@ -5,15 +5,17 @@ title: One prepare unit per subject with an addressable render GET and predictio
 kind: task
 status: open
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m7exbshjz1sx7r322nye458d
+  - type: blocks
+    target: is-01m774r9n7z8bymhs94yjq67sw
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 created_at: 2026-11-12T05:47:38.565Z
-updated_at: 2026-11-15T06:12:32.610Z
+updated_at: 2026-11-15T06:35:45.913Z
 ---
 Shared prepare promise per subject covering envelope, render, and assets; render GET by path, content identity, and options; driven by keyboard focus and next row, pointer-down, hover; Commits and Pulls warmed after first view. Measured as cold-neighbor painted-ready and subject request counts.
 
