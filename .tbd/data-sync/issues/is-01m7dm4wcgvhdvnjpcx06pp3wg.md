@@ -3,14 +3,18 @@ type: is
 id: is-01m7dm4wcgvhdvnjpcx06pp3wg
 title: "Files, Commits and Pulls: one consistent metadata line under the tabs"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-14T18:12:07.183Z
-updated_at: 2026-11-14T19:01:45.368Z
+updated_at: 2026-11-15T06:19:54.644Z
+closed_at: 2026-11-15T06:19:54.642Z
+close_reason: "Merged in #435 (23344b7f) at fe120b8b: one .nav-metadata line under the Files, Commits and Pulls toolbars; review A's A1-A11 addressed; all 9 CI checks green."
+resolution: null
+duplicate_of: null
 ---
 The user (2026-11-14): "under the files, commits, and pulls tabs, there is metadata below giving tallies of totals, when it was fetched, and so on. This small metadata section should always appear with the same amount of padding and styling on the text. It currently is inconsistent."
 
