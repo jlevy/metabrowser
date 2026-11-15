@@ -4973,7 +4973,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function reviewThreads(model) {
-    const threads = h("section", { class: "github-pull-section" }, [
+    // Review comments are spaced as the Conversation's events are (mb-w7rt).
+    const threads = h("section", { class: "github-pull-section github-pull-threads" }, [
       h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
     ]);
     for (const comment of model.reviewComments) {

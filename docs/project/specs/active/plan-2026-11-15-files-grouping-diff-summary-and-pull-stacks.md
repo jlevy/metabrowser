@@ -293,6 +293,16 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   its number ends on the right edge, over the stack chip, for every title length; a
   short title no longer sits centred.
 
+### Conversation Rhythm and Headings
+
+The owner’s follow-ups of 2026-11-15 to the Conversation, on
+`claude/conversation-rhythm` at the top of the stack:
+
+- **Rhythm** (`mb-w7rt`): every two consecutive events are one token apart, card to
+  card, card to commit, commit to card, and commit to commit alike, a card measured by
+  its border and a commit by its text, roomier than the 12 px cards had.
+  It replaces `mb-xz1r`’s “at least as far” with equal.
+
 ### Sans Headings
 
 - One scoped rule in the shell’s prose styles sets h2 upright (`font-style: normal`)
@@ -358,6 +368,10 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 
 - [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
   #438’s Chrome session.
+
+### Phase 8: Conversation Rhythm and Headings (`claude/conversation-rhythm`)
+
+- [ ] `mb-w7rt`: one rhythm between every two consecutive events.
 
 ## Testing Strategy
 

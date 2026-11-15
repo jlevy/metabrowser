@@ -2192,7 +2192,10 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
     commit = github[".github-pull-commit"]
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
-    assert commit["min-height"] == github[".github-pull-card-head"]["min-height"]
+    # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
+    assert "min-height" not in commit and commit["padding"].startswith("0 ")
+    assert github[".github-pull-body"]["gap"] == "var(--github-pull-rhythm)"
+    assert github[".github-pull-threads"]["gap"] == "var(--github-pull-rhythm)"
     assert ".github-pull-commit .git-commit-sha" not in github
     assert (
         github[".github-pull-commit .github-pull-age"]

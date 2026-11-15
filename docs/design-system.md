@@ -1544,9 +1544,9 @@ and commits, in the order the page places them
 A commit is an event of the same weight as a comment, so it is not set smaller for being
 a commit. It is said the way a card head says a comment:
 
-- **Type:** a commit row is a card head without its card.
-  It is set at `--body-font-size` on the head’s line, in a box of the head’s height and
-  inset, inside a 1 px frame as wide as a card’s that draws nothing.
+- **Type:** a commit row is set as a card head is.
+  It is set at `--body-font-size` on the head’s line, and its box is that line, with no
+  room of its own above or below, in a frame as wide as a card’s that draws nothing.
   Its subject is bold in text ink where a head’s author is, and starts where the
   author’s name does after the 18 px avatar.
   A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
@@ -1557,12 +1557,12 @@ a commit. It is said the way a card head says a comment:
   `--nav-font-size`, one step below the text beside it, as in the
   [Git Commit Summary](#git-commit-summary).
 
-- **Spacing:** two cards, or two commits, are `--github-pull-gap` apart.
-  A commit row keeps a room between its text and its edge (its 1 px frame, the head’s 3
-  px, and at least the line’s half-leading), so two commits’ glyphs are the gap and two
-  rooms apart. A run of commits keeps that room outside it too, past the gap, so the
-  space from a card’s edge, or Review comments’, to a run’s first commit, and from its
-  last commit to the card below, is at least the space between two commits.
+- **Spacing:** one rhythm (mb-w7rt). Every two consecutive events are
+  `--github-pull-rhythm` (20 px) apart, card to card, card to commit, commit to card,
+  and commit to commit alike, and so are two review comments under Review comments.
+  The space is what the reader sees: a card’s border, and a commit’s text, whose row is
+  its line. 20 px is the space between two commits’ text that the owner called good; the
+  12 px between cards read as crowded.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1575,14 +1575,17 @@ a commit. It is said the way a card head says a comment:
 
 This is the structure of GitHub’s own pull request page, a line down the timeline with a
 mark at each commit, drawn in the shell’s tokens and none of GitHub’s assets.
-It adds no token: its geometry is the avatar’s, the card head’s, and the page’s gap.
+Its one token is the rhythm; the rest of its geometry is the avatar’s and the card
+head’s.
 
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
 and the pixels painted, with one head drawn with only its slot.
-In Chrome 152 and in the app’s WebKit alike, a run’s first commit’s glyphs sit 23.5 px
-below the card above, and its last commit’s 23.5 px above the card below, against 20 px
-between two commits’; before the run kept its room outside it, both were 16 px.
+In Chrome 152 every pair of events is 20 px apart, card border or commit text, in both
+themes and at 980 and 420 px.
+Before the rhythm, two cards were 12 px apart, a card and a commit 23.5 px, and two
+commits 20 px; before a run of commits kept a room outside it (mb-xz1r), a card and a
+commit were 16 px apart.
 Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
 px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
 joined the events.
@@ -1594,7 +1597,8 @@ pixel reads, which the driver cannot make: an event card computes to `overflow-x
 and `overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
 line’s x to the following event’s connector, which it would not do for a clipped one,
 and 9 px beside it to the page.
-Each node sits 0.5 px below its first line’s middle there, as in Chrome.
+Each node sits 0.5 px below its first line’s middle there, as in Chrome, and every pair
+of events is 20 px apart, as in Chrome.
 
 ### Chrome
 

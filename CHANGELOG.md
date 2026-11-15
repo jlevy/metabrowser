@@ -25,8 +25,9 @@ All notable changes to Metabrowser are documented here.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and a run of commits stands at least as far from the comment above and
-  below it as one commit stands from the next.
+  header’s type. Every two events are now 20 px apart, comments, reviews, and commits
+  alike, and so are review comments: comments were 12 px apart and read as crowded, and
+  a commit stood 23.5 px from a comment.
   A line now joins the description, comments, reviews, and commits down the avatars’
   column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
