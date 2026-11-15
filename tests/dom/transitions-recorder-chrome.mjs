@@ -1004,6 +1004,8 @@ try {
           sparseBottomAfterBound: () => { st.innerHTML = lines(3000) + '<div style="height:900px;position:relative"><div data-target style="position:absolute;bottom:20px;left:40px">the only line on screen</div></div>'; st.scrollTop = st.scrollHeight; },
           sparseTopAfterBound: () => { st.innerHTML = lines(3000) + '<div style="height:900px"><h1 data-target style="margin:8px 40px;font-size:20px">A heading at the top</h1></div>'; st.scrollTop = st.scrollHeight; },
           pointerNoneAfterBound: () => { st.innerHTML = lines(3000) + '<div style="pointer-events:none">' + lines(60) + '</div>'; st.scrollTop = st.scrollHeight; },
+          blankAfterBound: () => { st.innerHTML = lines(40000) + '<div style="height:3000px"></div>'; st.scrollTop = st.scrollHeight; },
+          longText: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 200000 }, (_, i) => String(i)).join("\\n") + '</pre>'; st.scrollTop = window.__longTextScroll ?? 0; },
           overlayAfterBound: () => { st.innerHTML = lines(3000) + '<div data-target style="position:fixed;top:200px;left:40px;width:900px;height:300px;font-size:40px">fixed text under overlay</div>'; st.scrollTop = st.scrollHeight; const o = document.createElement("div"); o.className = "probe-overlay"; o.style.cssText = "position:fixed;inset:0;background:#fff;z-index:9"; document.body.appendChild(o); },
           // A root hidden by its own content-visibility, a zero-size box under paint
           // containment, and the shell's visually hidden label: none of them shows.
@@ -1067,6 +1069,22 @@ try {
         assert.deepEqual(wrong, []);
       },
     );
+    await check("a blank screen past a long list stops at the hit test's budget", async () => {
+      const r = await shapeFound("blankAfterBound");
+      assert.equal(r.found, false);
+      // Revision 6 tried 60 points there, 68 to 123 ms a call over 40,000 lines.
+      assert.ok(r.search.truncated && r.search.points < 60, JSON.stringify(r.search));
+    });
+    await check("a long text node is measured near the viewport, not whole", async () => {
+      // One text node of 200,000 lines, at its top and scrolled to its middle: found both
+      // times, without measuring every line's box (about 60 ms a call before the bound).
+      for (const scroll of [0, 2000000]) {
+        await d.evaluate(`window.__longTextScroll = ${scroll}`);
+        const r = await shapeFound("longText");
+        assert.ok(r.found, `scrolled ${scroll}: ${JSON.stringify(r.search)}`);
+        assert.ok(r.ms < 10, `scrolled ${scroll}: a call took ${r.ms} ms`);
+      }
+    });
     await check(
       "hidden roots, paint-contained boxes, and visually hidden labels show nothing",
       async () => {

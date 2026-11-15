@@ -8,6 +8,35 @@ import path from "node:path";
 export const SCENARIO = "transition-navigation/v1";
 export const SCENARIO_REVISION = 6;
 export const MIN_RUNS = 3;
+// A frame whose recorder read took longer than this may have been delayed by the
+// instrument rather than the product: about a quarter of a 60 Hz frame. Reads on the
+// product's views measured 0.4 to 2.5 ms a frame; the bounded search's worst case on the
+// synthetic pages, a blank screen past a long list (the walk's 1,500 visits, about 2 ms,
+// then the hit test's 3 ms budget and the point it started), is about 5 ms, so it is
+// named. compare and summarize name every transition that read longer (revision 6).
+export const READ_COST_CEILING_MS = 4;
+
+/**
+ * Transitions whose recorder read exceeded READ_COST_CEILING_MS in some frame, or whose
+ * content search stopped at its hit-test budget, from `collect` entries: "id (…)".
+ */
+export function instrumentDisturbed(entries) {
+  const out = { slow: [], truncated: [] };
+  for (const e of entries) {
+    const cost = (e.values.read_cost_max_ms ?? []).map((x) => x.v);
+    if (cost.length && Math.max(...cost) > READ_COST_CEILING_MS) {
+      out.slow.push(`${e.id} (longest read ${Math.max(...cost)} ms)`);
+    }
+    const cut = (e.values.search_truncated_frames ?? []).map((x) => x.v);
+    const total = cut.reduce((a, v) => a + v, 0);
+    if (total > 0) {
+      out.truncated.push(
+        `${e.id} (${total} frame(s) in ${cut.filter((v) => v > 0).length} run(s))`,
+      );
+    }
+  }
+  return out;
+}
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
 // one revision against each other, with this note, and refuses to mix revisions.
@@ -101,6 +130,7 @@ export const METRICS = [
   // when the instrument cost one condition more, and never judged.
   T("read_cost_max_ms", (t) => t.readCostMaxMs, null),
   T("read_cost_to_ready_ms", (t) => t.readCostToReadyMs, null),
+  C("search_truncated_frames", (t) => t.searchTruncatedFrames, null),
   ...[
     ["shell_tools_ready_ms", "shellToolsReady"],
     ["styled_markdown_ms", "styledMarkdown"],
@@ -599,6 +629,23 @@ export function compareRuns(
 
   const ca = collect(A);
   const cb = collect(B);
+  // Where the instrument may have disturbed what it measured (revision 6).
+  for (const [c, entries] of [
+    [A, ca],
+    [B, cb],
+  ]) {
+    const d = instrumentDisturbed([...entries.values()]);
+    if (d.slow.length) {
+      notes.push(
+        `INSTRUMENT COST: in condition ${c.label}, the recorder's read took longer than ${READ_COST_CEILING_MS} ms in a frame of ${d.slow.length} transition(s), which may have delayed those frames: ${d.slow.join("; ")}`,
+      );
+    }
+    if (d.truncated.length) {
+      notes.push(
+        `SEARCH TRUNCATED: in condition ${c.label}, the content search stopped at its hit-test budget in frames of ${d.truncated.length} transition(s), where on-screen content can have read as blank: ${d.truncated.join("; ")}`,
+      );
+    }
+  }
   const entries = [];
   const gaps = [];
   for (const id of new Set([...ca.keys(), ...cb.keys()])) {
@@ -909,6 +956,7 @@ const TABLES = [
     columns: [
       ["read_cost_max_ms", "Longest read ms"],
       ["read_cost_to_ready_ms", "Reads to ready ms"],
+      ["search_truncated_frames", "Truncated searches"],
     ],
   },
 ];
@@ -982,6 +1030,15 @@ export function summarize(rows, { condition = null, allowMixed = false } = {}) {
       );
     }
     const entries = [...collect(c).values()];
+    const disturbed = instrumentDisturbed(entries);
+    for (const x of disturbed.slow) {
+      out.push(
+        `- instrument cost over ${READ_COST_CEILING_MS} ms in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`,
+      );
+    }
+    for (const x of disturbed.truncated) {
+      out.push(`- content search truncated in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`);
+    }
     for (const e of entries.filter((x) => x.subjects.size > 1)) {
       out.push(`- subject drift in \`${e.id}\`: ${[...e.subjects].join(", ")}`);
     }
@@ -1081,6 +1138,7 @@ export function keepTransition(t) {
     memory: t.memory,
     readCostMaxMs: t.readCostMaxMs,
     readCostToReadyMs: t.readCostToReadyMs,
+    searchTruncatedFrames: t.searchTruncatedFrames,
     inputSpanMs: t.inputSpanMs,
     hoverDwellMs: t.hoverDwellMs,
     readyAfterLastInputMs: t.readyAfterLastInputMs,
