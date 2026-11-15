@@ -706,3 +706,88 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(killedRuns.count == 1)
     }
 }
+
+/// The stand-ins `scripts/check-setup-flows.sh old-metab` installs as `~/.local/bin/metab`
+/// (`scripts/setup-check`), copied as it copies them and run through `validate` and the
+/// app's command runner, so they answer whatever the app's check asks. They answered only
+/// a first argument of `--version` after the check had become `--exit-on-eof --version`:
+/// the 0.12.0 stand-in was rejected as broken rather than too old, and the 0.13.0 wrapper
+/// passed the check through to the real `metab`, so no restart was offered (mb-jeb5).
+@Suite struct SetupCheckStandInTests {
+    /// Copies `name` from `scripts/setup-check` into a fresh folder as `metab`, mode 0755,
+    /// with `beside` as further scripts in that folder, and returns the folder.
+    private func install(_ name: String, beside: [String: String] = [:]) throws -> URL {
+        let package = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directory = try temporaryDirectory()
+        let metab = directory.appending(path: "metab")
+        try Data(contentsOf: package.appending(path: "scripts/setup-check/\(name)")).write(to: metab)
+        chmod(metab.path(percentEncoded: false), 0o755)
+        for (file, body) in beside {
+            let url = directory.appending(path: file)
+            try Data(("#!/bin/sh\n" + body).utf8).write(to: url)
+            chmod(url.path(percentEncoded: false), 0o755)
+        }
+        return directory
+    }
+
+    /// `validate` on the installed `metab`, with the account's real trust check, and every
+    /// run's arguments and result.
+    private func validate(_ directory: URL) async -> (CandidateResult, [[String]], [CommandResult]) {
+        let metab = directory.appending(path: "metab").path(percentEncoded: false)
+        let ran = Recorder<[String]>()
+        let results = Recorder<CommandResult>()
+        let env = DiscoveryEnvironment(
+            home: directory.path(percentEncoded: false), environment: ProcessInfo.processInfo.environment,
+            saved: nil, shell: nil, isExecutable: FileChecks.isExecutableFile, canonicalPath: FileChecks.canonicalPath,
+            run: { spec, limit in
+                ran.append(spec.arguments)
+                let result = await CommandRunner.live(spec, limit)
+                results.append(result)
+                return result
+            })
+        let result = await RuntimeDiscovery.validate(metab, env, source: .localBin)
+        return (result, ran.all, results.all)
+    }
+
+    /// Runs the installed `metab` as the app starts a server, in a server's environment.
+    private func serve(_ directory: URL) async -> CommandResult {
+        let metab = directory.appending(path: "metab").path(percentEncoded: false)
+        let spec = LaunchSpec(
+            executable: metab, arguments: CLIServeLaunch().arguments(serving: URL(filePath: "/tmp/notes/")),
+            environment: ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: []))
+        return await CommandRunner.live(spec, .seconds(20))
+    }
+
+    /// Too old for its number, after refusing the flag as the measured old build does; and
+    /// no server starts from it.
+    @Test func theOldStandInIsTooOldAsMetab0120Is() async throws {
+        let directory = try install("metab-0.12.0")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (result, ran, results) = await validate(directory)
+        #expect(result == .tooOld(version: "0.12.0"))
+        #expect(ran == [[CLIServeLaunch.exitOnEOF, "--version"], ["--version"]])
+        let probe = try #require(results.first)
+        #expect(probe.status.map(ExitStatus.init(waitStatus:)) == .exited(2))
+        #expect(probe.output == clickUsageError)
+        let server = await serve(directory)
+        #expect(server.status.map(ExitStatus.init(waitStatus:)) != .exited(0))
+    }
+
+    /// Valid at 0.13.0 from the check itself, without reaching the `metab` it wraps, which
+    /// gets a server's run, every argument intact.
+    @Test func theUpgradeWrapperReports0130AndServesThroughTheCheckout() async throws {
+        let directory = try install("metab-0.13.0", beside: [
+            "metab-checkout": #"echo "metab 0.12.1.dev1"; for argument in "$@"; do echo "argument $argument"; done"#
+                + "\n",
+        ])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (result, ran, _) = await validate(directory)
+        #expect(result == .valid(version: "0.13.0"))
+        #expect(ran == [[CLIServeLaunch.exitOnEOF, "--version"]])
+        let server = await serve(directory)
+        #expect(server.status.map(ExitStatus.init(waitStatus:)) == .exited(0))
+        #expect(server.output == ["metab 0.12.1.dev1"]
+            + CLIServeLaunch().arguments(serving: URL(filePath: "/tmp/notes/")).map { "argument " + $0 })
+    }
+}
