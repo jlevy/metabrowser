@@ -8,7 +8,7 @@ an immutable pin under the forced untrusted profile.
 The served mirror refreshes from its origin in the background, and the pin can switch to
 another branch, tag, or commit of the same mirror; ssh stays closed.
 
-The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
+The [v0.12 alpha test plan](project/specs/done/plan-2026-09-22-v012-alpha-testing.md)
 defines the milestones, the manual browser matrix, and what remains before the release.
 This runbook holds the step-by-step checks those milestones run.
 
@@ -246,7 +246,7 @@ before going on. Run all checks on this same selected commit.
 - [End-to-end testing](e2e-testing.md)
 - [Development](development.md)
 - [Repository library and open from a Git URL](project/specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [CLI-first delivery map](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md)
+- [CLI-first delivery map](project/specs/done/plan-2026-08-28-cli-first-delivery-map.md)
 - [Views, models, and routes](project/architecture/arch-views-models-routes.md)
 
 ## Phase 0: Setup
@@ -1399,7 +1399,7 @@ traceback.
 
 Skip this phase when Phase 2.4 refused below-floor Git, and record the skip.
 It covers the rows of the
-[alpha manual matrix](project/specs/active/plan-2026-09-22-v012-alpha-testing.md) that a
+[alpha manual matrix](project/specs/done/plan-2026-09-22-v012-alpha-testing.md) that a
 `file://` pin can run without GitHub: M03 (links, reload, and history within one
 revision, and in 5.11 a changed file at either side of a diff), M05 (reopen with the
 origin gone), and M06 (hostile content with a populated cache), plus refresh and pin

@@ -39,8 +39,8 @@ links to the document that covers each in depth.
 
 ## Release Acceptance
 
-- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — current
-  integration, verified installation and remaining release gates
+- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — how
+  0.12.0 was qualified and published; its deferred checks are open beads under `mb-425f`
 
 ## Active Feature Plans
 
@@ -52,12 +52,6 @@ links to the document that covers each in depth.
   — retained surfaces, fixed boxes at first paint, prediction behind admission control,
   and a shorter landing chain, each a measured performance-loop round, tracked under
   epic `mb-mpo0`
-- [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
-  — the original mirror design and its delivery record; the checkout plan below extends
-  it with borrowed stores and explicit recovery
-- [v0.12 alpha testing and stack acceptance](specs/active/plan-2026-09-22-v012-alpha-testing.md)
-  — executable foundation quick start, manual end-to-end matrix, automated coverage, and
-  what remains before the release
 - [GitHub Pulls tab for mirrors and local checkouts](specs/active/plan-2026-10-01-github-pulls-tab.md)
   — implemented catalog, list, changed-file navigation, and numbered PR pages for
   managed repositories and existing checkouts; the revision sections describe the
@@ -79,7 +73,6 @@ links to the document that covers each in depth.
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
-- [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
 - [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
 
@@ -113,6 +106,8 @@ Once its questions are answered and its measurements are superseded, it moves to
 
 ## Reviews
 
+- [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md) —
+  every bead closed, updated, or held in the audit after 0.12.0, with its evidence
 - [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
   — the intended changes to what v0.11.0 already did, for sign-off: each with its
   changelog entry, its pull request, and how it was checked against the v0.11.0 wheel;
@@ -160,6 +155,14 @@ Once its questions are answered and its measurements are superseded, it moves to
 - [Shared file type taxonomy and bounded breakdowns](specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
 - [GitHub and Obsidian Markdown navigation](specs/done/plan-2026-08-13-markdown-link-navigation.md)
 - [Filter controls and fine-grained navigation filtering](specs/done/plan-2026-08-09-nav-filter-controls.md)
+- [v0.12 thin mirror for Git and GitHub browsing](specs/done/plan-2026-09-23-v012-thin-mirror.md)
+  — the mirror design and its delivery record, shipped in 0.12.0; the checkout plan
+  extends it with borrowed stores and explicit recovery
+- [v0.12 alpha testing and stack acceptance](specs/done/plan-2026-09-22-v012-alpha-testing.md)
+  — the 0.12.0 acceptance record; its deferred checks are open beads under `mb-425f`
+- [Watching GitHub pull requests](specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
+- [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md)
+- [CLI-first delivery: parity, Git status, and the repository cache](specs/done/plan-2026-08-28-cli-first-delivery-map.md)
 
 The [roadmap](../../TODO.md) is the concise status index.
 Draft architecture and plan documents record intent rather than compatibility

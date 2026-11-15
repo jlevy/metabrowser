@@ -228,10 +228,128 @@ function check(name, condition, detail = "failed") {
   // precedence or escaping drift without retaining the retired quadratic parser.
   // The digest was re-derived when literal masking was scoped to blocks; every
   // one of the 55 seeds that changed then matches the pre-worker parser exactly.
+  // It was re-derived again when heading anchors moved into the heading line: each
+  // of the 101 seeds that changed then differs only in where its one anchor sits,
+  // and moving it back onto a line of its own restores the previous output.
   check(
     "seeded intended-output differential corpus",
-    seededDigest === "5e5c2cd7ef10f04ec0efa3e38e061f483d39bca8052757c3d681dd75a7664fe5",
+    seededDigest === "8d0d18798f6718b11803bd293fcff8b0af27d806dffccab3d837787abb21b404",
     seededDigest,
+  );
+
+  // A heading's anchors open its inline content: after an ATX marker, or after a
+  // setext text line's indentation. They add no line, so nothing renders before the
+  // heading, and every hierarchical name keeps exactly one anchor.
+  const headingAnchor = (key) =>
+    `<span class="metabrowser-wiki-heading" id="obsidian-heading-${key}"></span>`;
+  const withoutHeadingAnchors = (text) =>
+    text.replace(/<span class="metabrowser-wiki-heading" id="[^"]*"><\/span>/g, "");
+  const lineCount = (text) => text.split(/\r\n|\n|\r/).length;
+  const headingSource = [
+    "# Title",
+    "Intro.",
+    "",
+    "## Part ##",
+    "",
+    "  Setext *Part*",
+    "  ---",
+    "",
+    "### Child `[[code]]` ^child",
+    "",
+    "## Part",
+    "",
+  ].join("\r\n");
+  const headings = module.preprocessObsidianWiki(headingSource);
+  const child = "Child [[code]]";
+  check(
+    "heading anchors open each heading's inline content",
+    headings.source ===
+      [
+        `# ${headingAnchor("Title")}Title`,
+        "Intro.",
+        "",
+        `## ${headingAnchor("Title#Part")}${headingAnchor("Part")}Part ##`,
+        "",
+        `  ${headingAnchor("Title#Setext Part")}${headingAnchor("Setext Part")}Setext *Part*`,
+        "  ---",
+        "",
+        `### ${headingAnchor(`Title#Setext Part#${child}`)}${headingAnchor(`Setext Part#${child}`)}${headingAnchor(child)}Child \`[[code]]\`<span class="metabrowser-wiki-block" id="obsidian-block-child" data-mb-wiki-block="child"></span>`,
+        "",
+        "## Part",
+        "",
+      ].join("\r\n"),
+    JSON.stringify(headings.source),
+  );
+  // The literal mask still lines up after the marker: the code span stays code.
+  check(
+    "a heading's code span stays literal after its anchors",
+    headings.targetCount === 0 && headings.blockCount === 1,
+    JSON.stringify({ blocks: headings.blockCount, targets: headings.targetCount }),
+  );
+  check(
+    "heading anchors add no line",
+    lineCount(headings.source) === lineCount(headingSource),
+    `${lineCount(headings.source)} lines for ${lineCount(headingSource)}`,
+  );
+
+  // A line the setext underline cannot underline -- an empty ATX heading, a column-4
+  // line, a list item, quote, table row, underline, definition, or container above
+  // `---` or `===` -- is no heading, so it gets no anchor. Each case pins its anchor
+  // count and that removing every anchor restores the source exactly, so no case
+  // gains a line. That no case changes a block is the render comparison in
+  // tests/test_markdown_obsidian_fixture.py, over the same fixture.
+  const headingLayout = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tests/fixtures/markdown_heading_layout.json"), "utf8"),
+  );
+  for (const { name, source: input, anchors } of headingLayout.cases) {
+    const actual = module.preprocessObsidianWiki(input);
+    const count = (actual.source.match(/metabrowser-wiki-heading/g) || []).length;
+    check(
+      name,
+      count === anchors && withoutHeadingAnchors(actual.source) === input,
+      JSON.stringify(actual.source),
+    );
+  }
+  check(
+    "a `|` in an anchor id is a character reference",
+    module
+      .preprocessObsidianWiki("a |\n---\n")
+      .source.startsWith(`${headingAnchor("a &#124;")}a |\n`),
+  );
+  check(
+    "an indented setext heading's anchors follow its indentation",
+    module.preprocessObsidianWiki("   Title\n   =====\n").source ===
+      `   ${headingAnchor("Title")}Title\n   =====\n`,
+  );
+
+  // The output budget is charged exactly the bytes the anchors add: anchors that
+  // bring a document to the transformed-source limit are kept, and one byte more
+  // refuses the whole preparation.
+  const transformedLimit = 8 * 1024 * 1024;
+  const budgetHeadings = Array.from({ length: 90_000 }, (_, index) => `h${index}`);
+  const budgetSource = budgetHeadings.map((text) => `# ${text}\n`).join("");
+  const budgetAnchorBytes = budgetHeadings.reduce(
+    (total, text) => total + headingAnchor(text).length,
+    0,
+  );
+  const filler = transformedLimit - budgetSource.length - budgetAnchorBytes;
+  const atLimit = module.preprocessObsidianWiki(`${budgetSource}${"x".repeat(filler)}`);
+  check(
+    "heading anchors fill the transformed-source limit exactly",
+    atLimit.complete === true &&
+      atLimit.changed === true &&
+      Buffer.byteLength(atLimit.source) === transformedLimit,
+    JSON.stringify({ bytes: Buffer.byteLength(atLimit.source), diagnostics: atLimit.diagnostics }),
+  );
+  const pastLimitSource = `${budgetSource}${"x".repeat(filler + 1)}`;
+  const pastLimit = module.preprocessObsidianWiki(pastLimitSource);
+  check(
+    "one byte past the limit refuses every heading anchor",
+    pastLimit.changed === false &&
+      pastLimit.complete === false &&
+      pastLimit.source === pastLimitSource &&
+      pastLimit.diagnostics[0]?.code === "transformed-source-byte-limit",
+    JSON.stringify({ changed: pastLimit.changed, diagnostics: pastLimit.diagnostics }),
   );
 
   const capped = module.preprocessObsidianWiki("[[Note]] ".repeat(4_100));

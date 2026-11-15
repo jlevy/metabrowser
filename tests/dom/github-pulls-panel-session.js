@@ -1320,14 +1320,19 @@ async function paintStory(panel, selection = false) {
       node.classList?.contains("github-pulls-status"),
     );
     const total = status.firstElementChild;
+    // The count is the shell's metadata line, set as the Files and Commits totals are: the
+    // number in the line's regular weight, and the repository name in its text role.
     assert(
-      total.childNodes[0].localName === "strong" && total.childNodes[0].textContent === "102",
-      "the exact repository number is strong",
+      status.classList.contains("nav-metadata") &&
+        total.childNodes[0].localName === "span" &&
+        total.childNodes[0].textContent === "102",
+      "the exact repository number keeps the line's weight",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
         total.childNodes[1].textContent === " PRs on " &&
         total.childNodes[2].localName === "strong" &&
+        total.childNodes[2].classList.contains("repository-name") &&
         total.childNodes[2].textContent === "octo/demo",
       "only the repository name is bold in the label",
     );
@@ -1337,7 +1342,7 @@ async function paintStory(panel, selection = false) {
       "ready action": reload.textContent,
       landing: pane.textContent,
       "filter tallies": filterTallies,
-      "the count and repository name are bold": total.childNodes.map((node) => ({
+      "only the repository name is bold": total.childNodes.map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),
