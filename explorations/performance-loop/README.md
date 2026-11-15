@@ -104,12 +104,13 @@ Then `run.py report` and commit.
 
 ### Picking up a round as a fresh agent
 
-Work the
-[ordering table](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#ordering-what-to-work-next),
-top down, not `tbd ready` — the ready queue is priority-sorted across the whole
-repository and will hand you nine P0s with no ranking between them.
-The ordering table is the ranking, and it carries the reason each row sits where it
-does.
+Work the lanes in
+[the campaign plan](../../docs/project/specs/active/plan-2026-11-14-performance-campaigns.md#order-of-work),
+in its order, not `tbd ready`: the ready queue is priority-sorted across the whole
+repository and gives no ranking between items of the same priority.
+The plan says which hypothesis each lane runs next and what blocks it; the
+[registry](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)
+defines each one.
 
 Rounds can run in parallel.
 Each takes one hypothesis, one branch, and one artifact, and the things that would
@@ -169,6 +170,15 @@ records. For a round, that means:
   after the round is recorded; a later correction goes in the record.
 - **Samples and analysis scripts are committed** beside the record, named in
   `method.record` or linked from the body.
+- **The analysis is registered before any result is read.** The protocol names the
+  exclusion and analysis scripts by sha256, committed before the first result is read.
+  A change to either after that is a deviation.
+  The record gives the change, which verdicts it moved, and the coordinator’s ruling,
+  and both versions stay in the branch’s history (exp-079). Its `method.analysis` names
+  each script with its sha256, which must be one the protocol registered.
+  A script changed afterwards gives its new sha256 together with `registered_sha256` and
+  a `deviation` reason, and the storage test then requires a Deviation section in the
+  record.
 
 ## Running a round
 
@@ -804,6 +814,10 @@ Under the newest landing these transitions measure something else than they did 
 `compare` refuses runs whose `commits_landing` differs, or in which any one transition
 landed differently, since the same transition then measures a different subject on each
 side; `--allow-mixed-landing` compares them anyway and notes which transitions differ.
+A round that needs the flag registers which transitions it reports and does not judge.
+Their results are listed but decide nothing, because a transition with a different
+subject on each side is not the same measurement (exp-079 left six such transitions
+out).
 `summarize` names each condition’s landing and any transition whose landing drifted
 between its runs.
 
@@ -986,6 +1000,51 @@ build (it needs six runs); it exits 1 only on a gap.
 `samples RUNS.jsonl --out FILE` keeps only the fields `summarize` and `compare` read,
 with paths reduced to their last component in identities and in refusal details, so a
 round can commit its samples beside its artifact and regenerate its tables from them.
+
+**A judged series.** A confirmatory round runs one pair at a time under
+[paced-series.sh](paced-series.sh), not one `run --runs 6`, so that load, power, and the
+corpus are checked before every pair rather than once.
+The driver reads a round’s values from a config file, kept in the round’s worktree as
+gitignored `attic/expNNN/series.env`, because it holds local paths; start one from
+[paced-series.example.env](paced-series.example.env).
+Run `paced-series.sh --config FILE --check` first.
+It takes no lock and times nothing, and reports each gate; `--self-test` shows on
+scratch fixtures that `--check` leaves the lock and the round’s files alone.
+Only the coordinator starts the series itself.
+The driver drives `transitions.mjs` only and needs macOS (`pmset`, `caffeinate`). The
+rules it enforces are the round’s registered ones:
+
+- **The lock.** The series lock under the git common dir, so no two `paced-series.sh`
+  series overlap on one machine.
+  `run.py`, `startup_pairs.py`, `wkprobe`, and a hand-run `transitions.mjs` take no
+  lock, and the driver waits only for a live `transitions.mjs` run, so start none of
+  them while a series holds the lock.
+- **Load.** The one-minute load stays under the registered bound for 60 s before each
+  pair.
+- **Power.** Low Power Mode and the power source are read before and after every pair,
+  and sampled every 15 s. The judged mode is the one read before the first attempt.
+  A pair measured in another mode, or with power unreadable, is excluded and not judged;
+  unreadable power before the first attempt stops the series, since there is no judged
+  mode.
+- **The corpus.** Never fetch, pull, or check out inside the corpus checkout.
+  The standing corpus v2 is `7a02fed4` checked out, trunk `083e78e4`, refs digest
+  `387f68dc4e8eb8e0` (`provenance.mjs`’s `corpusProvenance`). The driver refuses to
+  start a pair on any other digest.
+  On 2026-11-14 an unidentified `git fetch --quiet origin` moved its `origin/main`
+  during exp-086’s round (exp-079’s protocol records it); the trunk and the refs digest
+  both showed it, and the driver checks both.
+- **Order.** Which condition leads alternates by attempt.
+- **Stops.** The series stops at its target of judged pairs, or with a nonzero exit at
+  its cap on attempts, and an exit trap releases the lock.
+  A driver killed by SIGKILL, a crash, or a restart skips the trap and leaves its lock,
+  which `--check` reports as stale and nothing removes on its own.
+
+**A closing round** measures final `main` against the campaign’s control and judges
+every landed hypothesis on its own record’s criteria (exp-079). Final `main` is one
+build, so its results belong to all of it.
+One lane’s cost can leave another lane’s guard unresolved, as the pull request page’s
+first-paint holds did for H86 (b). Its record carries a **Final Performance Update**, a
+table with one row per hypothesis, since the schema holds one decision per record.
 
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
@@ -1510,6 +1569,10 @@ Anything the shell defers to idle is unmeasurable in that state, and two runs of
 same code will disagree depending on how long each waited.
 Request counts and transferred bytes do not care; scheduling does.
 Record which one a finding depends on.
+The same holds when debugging: in an agent’s hidden browser pane,
+`requestAnimationFrame` stalls and the viewport resizes, which looks like scroll and
+paint bugs that are not there.
+Reproduce a suspected one in headless Chrome before treating it as real.
 
 The normal browser path starts a visible Chrome profile, evaluates [probe.js](probe.js),
 and records the result:
@@ -1730,9 +1793,12 @@ later round is judged and deserves its own change:
   effect *harder* to confirm — exp-003 is the worked example, 342–413 at n=3 widening to
   342–561 at n=6 for the same effect.
   A fixed-percentile band or a rank test is stable in n.
-- **There is no measured noise floor** (`mb-ot8o`). An A/A control — the same build
-  under two labels — would measure the harness’s own resolution, so “the ranges do not
-  overlap” is judged against a known floor instead of an assumed one.
+- **The load-time probes have no measured noise floor** (`mb-ot8o`). An A/A control —
+  the same build under two labels — would measure the harness’s own resolution, so “the
+  ranges do not overlap” is judged against a known floor instead of an assumed one.
+  The transition scenario has one: `compare --aa` splits one condition’s runs, and
+  exp-058’s split is its reference.
+  `run.py` has none.
 - **A metric that cannot come out false is not a metric.** `skeleton_complete` asked
   whether each region was present, sized and non-empty *at probe time* — which is after
   settle — and returned true on all ten runs ever recorded, including every one carrying
@@ -1753,19 +1819,55 @@ later round is judged and deserves its own change:
 A candidate is accepted when all of these hold:
 
 - the median of the metric the hypothesis named moved in the predicted direction,
-- the two ranges do not overlap, at three or more runs per condition,
+- the two ranges do not overlap, at three or more runs per condition, and for a time or
+  frame count, two or more back-to-back pairs are beyond the tolerance (ranges apart
+  with every pair within the tolerance is not a result),
 - nothing else in the table moved the wrong way without being accounted for, and
 - the complexity is worth it.
 
 The first three are arithmetic.
 The fourth is a judgment and gets written as one.
 
+**Which tool applies the pair rule.** Only `judge()` in `transitions-stats.mjs` applies
+it, for the transition scenario’s `compare` and for `wkprobe-stats.mjs`: it computes
+each pair’s ratio and judges at 1.3x unless the protocol registers another
+`--tolerance`. `run.py compare` and `probe-server` compute no pair ratios, and
+`startup_pairs.py summarize --ratios` prints them but judges nothing.
+A round on those tools registers, in its protocol, the tolerance it judges at (careful
+or rough cut, as
+[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)
+defines them) and the script that applies the rule.
+
+**What the third clause sees, and what accounts for a result.** The table is the one the
+hypothesis’s own record declared: its deciding metrics and guards on its transitions.
+A wrong-way result there is accounted for in only two ways:
+
+- by a rule that record declared before it measured, such as exp-085’s E1 to E3 or
+  exp-087’s later-frame test;
+- by that record’s own account of the same metric, on the same transition, moving the
+  same way.
+
+An account never carries to a transition its record saw unchanged.
+Where a protocol can be read two ways, the reading that accounts for less governs.
+exp-079’s Deviation section is the worked example.
+
+**Who judges what.** The operator who runs a round computes clauses 1 to 3 with the
+analysis the protocol registered, mechanically, and reports the facts clause 4 needs:
+the diff size, the mechanism, and the failure modes from the record.
+The coordinator, the agent or person who owns the campaign, writes clause 4, one
+judgment per hypothesis, in the record.
+A round with several hypotheses keeps one schema decision, so its body carries a
+per-hypothesis verdict table.
+
 **Size n to the effect you are hunting.** Three runs per condition resolves a 5x effect;
 it does not resolve a 40% one — exp-003’s candidate band read as 342-413 at n=3 and
-widened to 342-561 at n=6. For an expected effect under 2x, interleave conditions (stash
-and restore the change between runs, the way exp-003’s drift check did) and take at
-least five runs per side, or use `probe-server`, which gets a dozen samples per run for
-free.
+widened to 342-561 at n=6. For an expected effect under 2x, measure each condition from
+its own clean, content-identified build, alternate them in back-to-back pairs, and take
+at least five runs per side, or use `probe-server`, which gets a dozen samples per run
+for free. A one-frame difference does not resolve at six pairs: frames are quantized, so
+a view that lands one frame later in some runs needs exp-087’s later-frame test
+([exp-087-analyze.mjs](experiments/exp-087-analyze.mjs)), a Fisher test on how often
+each side lands later, declared before the round.
 
 Two rules about honesty, both learned the expensive way:
 
