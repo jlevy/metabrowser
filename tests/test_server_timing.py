@@ -127,6 +127,36 @@ def test_a_streamed_body_reports_later_work_in_the_log_and_not_the_header() -> N
     assert float(logged.group(2)) > header["encode"]
 
 
+def test_the_verbose_log_gives_the_end_of_the_body_to_a_tenth_of_a_millisecond() -> None:
+    """The figure server-time.mjs sums over a page load, many answers of a millisecond or less."""
+
+    async def plain(_request: Request) -> Response:
+        return Response("x" * 4096)
+
+    capture = _Capture()
+    server.LOG.addHandler(capture)
+    try:
+        TestClient(_timed_app(plain)).get("/x", headers={"accept-encoding": "gzip"})
+    finally:
+        server.LOG.removeHandler(capture)
+    [line] = [message for message in capture.messages if "metabrowser request t=" in message]
+    logged = re.search(r"\((\d+) ms\) .* start_ms=(\d+) phases=\S+ end_ms=(\d+\.\d)$", line)
+    assert logged is not None, line
+    rounded, start, end = (float(group) for group in logged.groups())
+    assert end >= start - 0.5
+    assert abs(end - rounded) <= 0.5
+
+
+@pytest.mark.parametrize(
+    "address", ["/plugin-static/markdown/index.js", "/kpress-static/css/style-tokens.css"]
+)
+def test_a_plugin_or_kpress_asset_names_its_read(address: str, tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    answer = TestClient(server.app).get(address, headers={"accept-encoding": "gzip"})
+    assert answer.status_code == 200, address
+    assert "read" in _metrics(answer.headers["server-timing"]), address
+
+
 def test_a_streamed_body_past_any_entry_count_is_counted_in_full() -> None:
     """Review B of #372, B2: a list capped at 256 entries cut the total of a body gzipped
     in more chunks than that; per-name sums count every one."""

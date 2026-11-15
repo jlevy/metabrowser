@@ -34,6 +34,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 from strif import file_mtime_hash
 
+from metabrowser import server_timing
 from metabrowser.asset_stamps import StampedTree, split_stamp
 from metabrowser.http_caching import (
     build_scoped_etag,
@@ -123,7 +124,8 @@ def _make_plugin_static_handler(
         media_type, _ = mimetypes.guess_type(str(resolved))
         # Off the event loop: the largest built-in asset is a few hundred KB, an operator's
         # plugin directory has no bound.
-        body = await asyncio.to_thread(resolved.read_bytes)
+        with server_timing.phase("read"):
+            body = await asyncio.to_thread(resolved.read_bytes)
         return Response(
             content=body,
             status_code=200,

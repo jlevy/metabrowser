@@ -7,7 +7,8 @@
 context, and the record in it is the same list. The phases are:
 
 ``read``
-    Reading what the answer is made from: a request body, a file, its classification.
+    Reading what the answer is made from: a request body, a file, its classification, a
+    plugin's or KPress's asset.
 ``render``
     Turning a document into the answer, as KPress does.
 ``git``
@@ -27,7 +28,9 @@ and gzip compresses it, before the headers go. A streamed body, such as a static
 is read and compressed after them, which no header can report. The request log records
 the rest: with ``METABROWSER_REQUEST_LOG=verbose``, or for a request slower than the
 slow-request threshold, a line gives the time to the end of the body, the time to the
-start of the response, and every phase's total.
+start of the response, and every phase's total. The verbose line also gives the end of
+the body as ``end_ms``, to a tenth of a millisecond, which
+``explorations/performance-loop/server-time.mjs`` sums over a page load.
 """
 
 from __future__ import annotations

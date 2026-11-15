@@ -1170,9 +1170,13 @@ class _SlowRequestLogMiddleware:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
                 # records is mechanical (subtract for transit time).
+                # `end_ms` is the time to the end of the body again, to the
+                # tenth of a millisecond the phases have, for a reader that
+                # sums many small answers (server-time.mjs); the rounded
+                # figure in parentheses stays where older readers find it.
                 LOG.info(
                     "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
-                    "bytes=%s start_ms=%s phases=%s",
+                    "bytes=%s start_ms=%s phases=%s end_ms=%.1f",
                     arrived,
                     arrived + duration_ms / 1000,
                     duration_ms,
@@ -1182,6 +1186,7 @@ class _SlowRequestLogMiddleware:
                     body_bytes,
                     first_byte,
                     phases,
+                    duration_ms,
                 )
             elif self.threshold_ms and duration_ms >= self.threshold_ms:
                 # Include the arrival epoch even in non-verbose mode so
@@ -3880,7 +3885,8 @@ async def kpress_static_asset(request: Request) -> Response:
         return asset, kpress_adapter.kpress_stamp_is_current(stamp_digest, asset.content)
 
     try:
-        asset, current = await asyncio.to_thread(read)
+        with server_timing.phase("read"):
+            asset, current = await asyncio.to_thread(read)
     except kpress_adapter.KPressAssetNotFoundError:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
