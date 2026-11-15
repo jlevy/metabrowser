@@ -406,8 +406,11 @@ def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
     assert 'queryHtml(".tree-summary-count")' in helper_block
     assert 'queryHtml(".tree-summary-size")' in helper_block
     assert 'queryHtml(".header-path")' in helper_block
-    assert "countHtml(totalFiles)" in helper_block
-    assert "sizeHtml(totalSize)" in helper_block
+    # The fallback's own words, "4 files (38 B)", which the split row says too: the
+    # line's figures are navigation.js's (tests/dom/tree-summary-line-session.js).
+    assert "window.MetabrowserNavigationRoute.treeSummaryCountHtml(" in helper_block
+    assert "window.MetabrowserNavigationRoute.treeSummarySizeHtml(" in helper_block
+    assert "totalFiles," in helper_block and "totalSize," in helper_block
     assert "pathEl.dataset.tipFiles" in helper_block
     assert "pathEl.dataset.tipSize" in helper_block
 
@@ -518,9 +521,14 @@ def test_load_tree_renders_single_file_tally() -> None:
         in fn_block
     )
     assert "treeSummaryHtml(stableSummary, summaryFiles, summarySize)" in fn_block
-    assert '"tree-summary"' in summary_block
-    assert "tree-summary-count" in summary_block
-    assert "tree-summary-size" in summary_block
+    # The line's markup is navigation.js's, which app.js hands its text helpers.
+    assert "window.MetabrowserNavigationRoute.treeSummaryHtml(" in summary_block
+    navigation = proc_browser.STATIC_DIR.joinpath("navigation.js").read_text(encoding="utf-8")
+    line = navigation[navigation.index("  function treeSummaryHtml(") :]
+    line = line[: line.index("\n  }\n")]
+    assert '"tree-summary nav-metadata"' in line
+    assert "tree-summary-count" in line
+    assert "tree-summary-size" in line
     # The duplicate header tally must not come back.
     assert "updateHeaderStats" not in js
     assert "header-stats" not in js

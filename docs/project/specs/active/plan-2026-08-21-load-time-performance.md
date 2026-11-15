@@ -96,6 +96,17 @@ work: H57, H42, and H11 respectively.
 Targets to validate and adjust in Phase 1, not settled numbers.
 They exist so a later change has something to fail against.
 
+The budgets the loop enforces are in
+`explorations/performance-loop/performance-budgets.toml`, and its comments name the
+experiment behind each ceiling.
+First row is a 350 ms gate, calibrated on the repository-shaped project-10 corpus in
+exp-035. Startup scripts are gated at 25 requests, from exp-014 on a 111,590-file
+corpus, and at 220 KB, from exp-084 on a 468-file folder page.
+First contentful paint is a 200 ms target.
+`performance-budgets-flat-stress.toml` holds the flat shape.
+The table below is the August proposal; no 10k, 100k, or 1M baseline has replaced it row
+by row.
+
 | Measure | Budget | Today, 100k | Today, 1M |
 | --- | --- | --- | --- |
 | First contentful paint | ≤ 200 ms | 92 ms | 176 ms |
@@ -126,6 +137,9 @@ and
 - Persisting an index across runs.
   Worth its own investigation once the progressive path exists; a cache that hides a
   slow path is not a fix for it.
+  H21 (`mb-omhf`) reopens it now that the progressive path exists, and the
+  [native macOS app plan](plan-2026-11-10-native-macos-app.md) carries it as a measured
+  follow-up.
 
 ## Background
 
@@ -275,6 +289,8 @@ against the same corpus it already builds, reporting first contentful paint,
 DOMContentLoaded, time to first tree row, rendered row count, DOM node count, and
 transferred bytes into the same result JSON, so one `--baseline` comparison covers
 serving and page load together.
+Superseded: this phase was not added, and `explorations/performance-loop/run.py`
+measures page load instead (`mb-pwnw`, Phase 1).
 
 **`static/asset-loader.js` (new).** One loader with `ensureAsset(name)` and
 `prefetchAssets()`, generalizing the loaded-set and in-flight-promise semantics that
@@ -332,13 +348,13 @@ one paint per load to three, which is the flicker
 [the objective](#what-we-are-optimizing-for) is about.
 
 Rows 1–6 are the reader-facing block and are new to the top.
-Rows 7–19 are the scan and walker work, unchanged in content and in relative order.
+Rows 7–19 are the scan and walker work, unchanged in relative order.
 
-The v0.7.0 stabilization gate preempts that backlog.
-It begins with H59’s failing installed-build comparison, then makes the navigation-tally
-freshness lookup nonblocking, versions the deferred plugin lifecycle as SDK 0.5,
-preserves manifest order when several plugins own one kind, and re-runs both backend and
-visible-browser comparisons before the changelog is finalized.
+The v0.7.0 stabilization gate preempted that backlog and is complete; see Phase 4. It
+began with H59’s failing installed-build comparison, then made the navigation-tally
+freshness lookup nonblocking, versioned the deferred plugin lifecycle as SDK 0.5,
+preserved manifest order when several plugins own one kind, and re-ran both backend and
+visible-browser comparisons before the changelog was finalized.
 The release comparison is the source of the release numbers; an intermediate regression
 introduced and corrected within this cycle is part of the final behavior, not a shipped
 fix.
@@ -346,16 +362,16 @@ fix.
 | # | Next | Why here |
 | --- | --- | --- |
 | 1 | **H51** — establish the visible LCP and CLS baseline (`mb-qf2p`) | **Complete in exp-014.** Four admissible harness-14 runs per installed build stayed visible at 1600×900 and captured non-null LCP and CLS. The candidate median LCP is 146 ms against 212 ms; CLS is 0 in every candidate run. Direct frame and summary measurements retain the visual debts that CLS alone does not express |
-| 2 | **H11** — patch the panel instead of replacing it (`mb-izxl`) | The largest remaining flicker source, and exp-010 reclassified it from a standing cost to a regression this campaign introduced: 1 paint before the performance work, 2 after. Not blocked on H51 — `tree_region_repaints` is measurable today — so it is the first row an agent can both do and score |
+| 2 | **H11** — patch the panel instead of replacing it (`mb-izxl`) | **Complete in exp-014.** The fetched snapshot reconciles into keyed visible containers instead of replacing the inline tree, and `tree_region_repaints` is 1 per load. exp-010 had found it a regression this campaign introduced: 1 paint before the performance work, 2 after |
 | 3 | **H52** — ship a skeleton, not placeholders (`mb-rxst`) | At first paint the files panel is a spinner at 80 px where 612 px of rows belong. exp-009 stopped the frame moving; this is what makes the frame exist. The obstacle is duplication: the chip and row markup lives only in JavaScript, so a server-side counterpart needs a shared source or it drifts |
-| 4 | **H57** — attribute the shell’s own boot (`mb-emhr`) | 6 ms of server against 276 ms to first row. That gap is the ceiling on “instant” and nobody has broken it down. Measurement only; H9, H10 and H17 are the candidate fixes and this says which one is worth doing |
+| 4 | **H57** — attribute the shell’s own boot (`mb-emhr`) | **Attributed in exp-014; optimization remains open.** Startup rows split into response wait, Server-Timing work, and download. 6 ms of server against 276 ms to first row was the gap; H9, H10 and H17 are the candidate fixes, and H26 owns whether server-side concatenation earns its complexity |
 | 5 | **H54** — the tally row’s remaining 23 px (`mb-w3va`) | Small and nearly free. The exp-009 audit found the better fix: the row is already wrapped at 14,826 files mid-scan, so the server has a usable partial count long before the walk ends and could inline it with the rows it already inlines |
 | 6 | **H42** — client-side tree replica (`mb-6rdn`) | Promoted from 12. The only row that makes a *revisit* instant, which is half of what “like a desktop app” means, and it is independent of every walker row so it can run in parallel with them |
-| 7 | **H56** — replace the loop’s primary metric (`mb-unt6`) | No longer blocked on a visible driver, but still needs H51’s baseline and an instrument for distinct visible states rather than the current repaint proxy. This is what stops the loop steering itself wrong again |
+| 7 | **H56** — replace the loop’s primary metric (`mb-unt6`) | No longer blocked on a visible driver, and H51’s baseline is recorded (exp-014); it still needs an instrument for distinct visible states rather than the current repaint proxy. This is what stops the loop steering itself wrong again |
 | 8 | **H31 remainder** — re-measure the loop (`mb-jalf`) | exp-007 took the attached walk from 70.2 s to 50.0 s. Unattached it is 21 s, so amplification is now roughly 2.4x rather than 12x. Measure with a real browser, which is heavier than the probe, before deciding whether serving needs an explicit CPU bound during a scan |
 | 9 | **H39** — price the gitignore matcher (`mb-8yqt`) | One run, and it redirects the three largest rows below it. H21, H40, and H35 all attack the same 50 s from different sides; knowing whether matching or traversal dominates says which is the bigger bite |
 | 10 | **H49** — measure the four unrecorded regimes (`mb-609b`) | Scaffolding, ordered here because H21 cannot be scored without the warm-reopen distinction, and because interaction latency is where a reader actually spends their time |
-| 11 | **H32** — inline without a warm index (`mb-vih2`) | Cheap, and it makes exp-004’s win unconditional. Ordered after H30, which may remove the empty-index window that causes it |
+| 11 | **H32** — inline without a warm index (`mb-vih2`) | **Resolved by H30.** With no pre-walk the root is indexed within one `scandir` of the walk starting, so the inline carries rows on a first open |
 | 12 | **H21** — persist the index (`mb-omhf`) | A 44 s cold open repeated every session is exactly the case persistence exists for. Larger than everything above it and worth doing once they are done |
 | 13 | **H28** — build the tree from the SSE stream (`mb-ap6p`) | The streamed-delivery centerpiece. Still right, but on a real tree the reader’s problem is that rows do not *exist* yet, not that they are delivered in snapshots |
 | 14 | **H18 → H22** — profile the walk, then batch it (`mb-nbc6`, `mb-tip8`) | Demoted by measurement: the clean walk is 21 s at 104 µs per directory. Worth attributing, but it is not what makes this tree slow |
@@ -363,12 +379,11 @@ fix.
 | 16 | **H47** — right-size the executor (`mb-squq`) | Cheap, and it is the other half of H31’s remaining question about serving under a scan |
 | 17 | **H41** — columnar index (`mb-od5n`) | With H34 this deletes the tally apparatus rather than tuning it. Ordered after the measurement rows so the pass cost is attributed before it is engineered away |
 | 18 | **H40** — native parallel walker (`mb-nbvk`) | Blocked on H39. The largest scan win available if matching is what costs, and it retires the negation bug rather than guarding it |
-| 19 | **H42** — client-side tree replica (`mb-6rdn`) | The frontend path to a revisit with nothing on the network critical path. Independent of every walker row, so it can run in parallel |
-| 20 | **H44** — the remote-link regime (`mb-ycf2`) | Measurement first. If batching wins at 120 ms RTT the way it should, it reorders much of this table |
+| 19 | **H44** — the remote-link regime (`mb-ycf2`) | Measurement first. If batching wins at 120 ms RTT the way it should, it reorders much of this table |
 
 Three orderings are load-bearing.
-The measurement row comes first (1) because the objective it serves is currently
-invisible; attribution comes before the walker change (13), because a structural rewrite
+The measurement row comes first (1) because the objective it serves was invisible until
+it ran; attribution comes before the walker change (14), because a structural rewrite
 without a profile is a guess; and the walk attribution comes before the file cap (H15),
 because a cap is a claim about cost and there is no measurement of that cost yet.
 
@@ -396,13 +411,23 @@ reader spends their attention elsewhere rather than re-deriving them:
 - [ ] Add a page-load phase to `devtools/bench_serving.py`: headless Chromium against
   the corpus it already builds, reporting FCP, DOMContentLoaded, time to first tree row,
   rendered rows, DOM nodes, and transferred bytes into the existing result JSON and
-  `--baseline` diff
+  `--baseline` diff. Superseded by `explorations/performance-loop/run.py`, whose
+  `capture` and `capture-browser.js` measure first row and paint in a real browser
+  against `performance-budgets.toml` (`mb-pwnw`)
 - [ ] Record a baseline at 10,000, 100,000, and 1,000,000 files and check the numbers
-  into this document, replacing the proposed budgets with validated ones
-- [ ] Add `static/asset-loader.js` with eager, prefetched, and on-demand tiers, under
-  the strict `tsconfig.json` gate
-- [ ] Publish a tiered asset descriptor from `server.py` in place of the inline chain,
-  keeping the `metabrowser:optional-asset*` re-enhance events firing
+  into this document, replacing the proposed budgets with validated ones.
+  Not done as written: after H16 the loop gates project-10 through
+  `performance-budgets.toml`, plus `build_corpus` shape 2 at 300,000 files through
+  `performance-budgets-flat-stress.toml`, rather than these three sizes; see
+  [Proposed Budgets](#proposed-budgets) (`mb-o2hk`)
+- [x] Add `static/asset-loader.js` for the on-demand tier, under the strict
+  `tsconfig.json` gate.
+  Planned with eager, prefetched, and on-demand tiers, it owns only the on-demand tier,
+  through `ensureAsset`; the prefetched tier is the idle chain below (`mb-sn1i`)
+- [x] Publish a tiered asset descriptor from `server.py` in place of the inline chain,
+  keeping the `metabrowser:optional-asset*` re-enhance events firing.
+  `server.py` publishes the on-demand bundles as `window.METABROWSER_ASSET_BUNDLES`
+  beside the prefetched `optional_script_assets` chain (`mb-nytk`)
 - [x] Move the Chart.js stack to on demand.
   `static/asset-loader.js` owns the loading, `plugin-sdk.js` publishes it as
   `ensureAsset`, and the agent-log charts view awaits it.
@@ -419,20 +444,27 @@ reader spends their attention elsewhere rather than re-deriving them:
   Time to first tree row did not measurably change — 854 ms against 999 ms, on ranges of
   678-1,591 ms and 690-1,106 ms that overlap almost completely.
   Accepted on the tier policy and the `load` result, not on a first-row win
-- [ ] Re-measure and record the comparison
+- [x] Re-measure and record the comparison: H55 in exp-010, and H51 and H9 in exp-014
+  (`mb-3jt8`)
 
 ### Phase 2: Time to First Row
 
 - [ ] Render nav rows from partial index state as it arrives, instead of gating on scan
-  completion; the first `/api/tree` already answers in under 10 ms at every corpus size
+  completion; the first `/api/tree` already answers in under 10 ms at every corpus size.
+  Not needed as stated: H6 did not reproduce, because `renderFilesFromTree` runs as soon
+  as `/api/tree` resolves, and H20 inlines the first rows (`mb-op70`)
 - [x] Inline the root’s depth-1 rows into the shell so the first paint does not wait for
   a fetch: 1,604 ms to 242 ms at 300,000 files —
   [exp-004](../../../../explorations/performance-loop/experiments/exp-004-the-shell-carries-the-first-rows.md)
-- [ ] Show scan progress in place rather than as an empty tree, so an incomplete tree
-  reads as incomplete — [degrade visibly](../../../large-content-rendering.md)
+- [x] Show scan progress in place rather than as an empty tree, so an incomplete tree
+  reads as incomplete — [degrade visibly](../../../large-content-rendering.md).
+  `#index-progress` and `renderIndexProgress` show a scan count in place of an empty
+  tree (`mb-s8yx`)
 - [ ] Window the rendered rows so the count follows the viewport, keeping find-in-page
-  and selection working or recording what is traded
+  and selection working or recording what is traded (`mb-z7zb`)
 - [ ] Move `/api/catalog` to the on-demand tier, fetched when the finder first opens
+  (`mb-296z`). `catalog-feed.js` already holds the fetch on a pull-request page until
+  its palette or a file releases it
 - [x] Collapse the per-folder `/api/tree?path=…&depth=2` burst into what the viewport
   needs. Candidates are now the lazy stubs whose folder row is on screen plus one screen
   of lookahead, and the sweep re-arms on scroll and on folder expansion.
@@ -445,12 +477,13 @@ reader spends their attention elsewhere rather than re-deriving them:
 
 - [ ] Attribute start-to-serving: find what scales with the tree before binding, and
   what the fixed cost is beyond the 113 ms module import and 56 ms interpreter start
+  (`mb-kp6c`)
 - [ ] Reduce the whole-tree `/api/tree` cost, which is 4,990 ms and 3.68 MB at a million
-  files on the route that answers in 9 ms while scanning
-- [ ] Measure walk throughput per file and find where the roughly 50 µs goes
+  files on the route that answers in 9 ms while scanning (`mb-r4bm`)
+- [ ] Measure walk throughput per file and find where the roughly 50 µs goes (`mb-migx`)
 - [ ] Decide what replaces `INVENTORY_MAX_FILES = 500_000`: a higher measured cap, or a
   progressive index with no cap and a visible frontier.
-  Silent truncation is not an option either way.
+  Silent truncation is not an option either way (`mb-s5p6`).
 - [ ] Re-measure and record the comparison
 
 ### Phase 4: v0.7.0 Release Stabilization
@@ -634,7 +667,7 @@ nothing that moves after it.
 | H1 | The prefetched libraries start on `DOMContentLoaded`, which is the same window as the first `/api/tree` fetch and the tree render, so they compete with the tree and hold the `load` event open behind them. Starting them on the first idle callback removes both. | `load_ms` down; `first_row_ms` down | **Half confirmed** (exp-001). `load_ms` 3,883 ms to 750 ms on ranges that do not overlap. `first_row_ms` did not move: 854 ms against 999 ms on ranges that overlap almost completely. Accepted on the tier policy and `load`, not on the row |
 | H2 | The idle sweep that warms collapsed folders is not viewport-bounded and re-arms on every index refresh, so on a wide tree it requests folders the reader cannot see, for as long as the scan runs. Bounding it to the viewport ends the tail. | `last_resource_ms` and `subtree_requests` down sharply; `first_row_ms` unchanged or down | **Confirmed** (exp-002). 32 requests and 1,566 KB to 0 and 517 KB per cold load at 300,000 files, on ranges that do not overlap. Expanding a folder still warms exactly its newly visible children, and the click after that costs no fetch and paints in 93 ms. Time to first row did not measurably change and is not claimed |
 | H3 | That sweep issues one request per ~800 ms, which does not follow from `SUBTREE_PREFETCH_MAX_CONCURRENT = 3` over a 32-path sweep. Something serializes it, and the policy should not be changed before that is known. | A counted sweep: paths per sweep and sweeps per second | **Unresolved** (exp-002), and the bound landed without it because H2 does not depend on it. Instrumented, the sweep does what it says: one sweep, 32 paths, all issued inside 545-690 ms — against a settled index, against a scan with 12.9 s left, and on both sides of the prefetch-tier change. The trickle was recorded when the corpus had not been served for a while and its walk took ~29 s against 2.7 s warm, so reproducing it needs a cold page cache, which needs root on macOS |
-| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Untestable as stated** on this corpus. `/api/catalog` is 62 bytes at 300,000 `build_corpus` files, not 4.5 MB — the catalog fills from recognized file kinds, and a synthetic tree of stub `.py`/`.ts`/`.png` files produces almost none. A real repository corpus has to reproduce the size before the tier change can be measured at all. The known trap stands: `pendingChanges` in `catalog-feed.js` is unbounded, so a deferred first fetch needs a buffering policy (`mb-296z`) |
+| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Untestable as stated** on this corpus. `/api/catalog` is 62 bytes at 300,000 `build_corpus` files, not 4.5 MB — the catalog fills from recognized file kinds, and a synthetic tree of stub `.py`/`.ts`/`.png` files produces almost none. A real repository corpus has to reproduce the size before the tier change can be measured at all; exp-034 later measured a 15.9 MB body at 300,000 rows on the flat shape-2 corpus (`mb-qtgj`), which can. The buffering policy a deferred first fetch needs exists: `hold()` in `catalog-feed.js` journals nothing while held and `release()` starts an authoritative fetch. It is applied on a pull-request page; applying it to the finder is `mb-296z` |
 | H5 | The root `/api/tree` answers in single-digit milliseconds when idle but took 620-721 ms while the walk was running, and it is the largest single component of time to first row. The cost is contention with the walker, not response size. | `load_tree_ms` down with server-side attribution | **Open**. Phase 3, and blocked behind H2 for the reason the ordering table gives |
 | H6 | Nav rows are gated on scan completion, so the first row waits seconds for data the browser already has. | `first_row_ms` down several-fold | **Not reproduced** as stated. On `build_corpus` at 100,000 files the first row lands at a median of 854 ms, not the 4,525 ms this plan’s Background reports from a different corpus. `renderFilesFromTree` runs as soon as `/api/tree` resolves, so the gate is that request rather than scan completion. `mb-op70` should be re-scoped to H5 unless a corpus reproduces the original number |
 | H7 | The tree renders every row it knows about, so DOM node count follows the corpus rather than the viewport. | `dom_nodes` bounded as corpus grows | **Open** (`mb-z7zb`). **The fix is a windowed renderer** over a flattened visible-rows array, capping the DOM at about three screens permanently; `TREE_PAGE_SIZE` caps only the *initial* mount, so a reader who expands and pages still accumulates unbounded nodes. `content-visibility: auto` on subtree containers is the cheap intermediate. Pairing either with a Web Worker that owns JSON parsing and the tree merge moves the remaining main-thread blocking off the interaction path. 3,735 nodes at 100,000 files on `build_corpus`, well under the ceiling — the shape that produced 276,789 nodes needs a wider corpus to reproduce |
@@ -647,11 +680,11 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | # | Hypothesis | Metric that would show it | Status |
 | --- | --- | --- | --- |
 | H8 | During a scan, every root `/api/tree` pays a full navigation-tally pass. Measured: 1,567 ms scanning against 15 ms settled for the same 7,537-byte answer, and `?depth=1` (987 bytes) costs the same — so it is not payload, depth, or aggregation. The mechanism is in the code: `navigation_tallies` memoizes on the index revision (`inventory.py`), the walker moves that revision with every write, so while scanning the memo can never hit and each root request redoes the O(index) pass (~486 ms/100k per its own comment, plus an `entries()` snapshot copy per request). Serving slightly stale tallies during a scan — recompute at most every N ms, or only when files-indexed has moved by a threshold — removes ~85% of time to first row in that regime. | `load_tree_ms` and `tree_reprobe_ms` while `index_status_at_probe` is `scanning`; floor 15 ms | **Partly resolved** (exp-003). H23 was the mechanism and it landed: root `/api/tree` fell from 650 ms to 394 ms scanning and 12 ms to 6 ms settled. What the split never described, and what exp-003 makes explicit, is the *first* request of a page load — its memo is cold by construction, so `load_tree_ms` did not move. That is H20’s job, not this one. What is left for H8 itself is the GIL share taken by per-entry stores (H22) |
-| H9 | The shell fetches **74 separate JavaScript files** on every load — 33 from `static/`, 41 from built-in plugins — over HTTP/1.1, so they queue six at a time, and `app.js` cannot ask for the tree until its own chain has run. | Shell boot, as `first_row_ms` minus `load_tree_ms`; about 180 ms today | **Fixed and gated** (exp-014). Manifest-owned plugin assets load for the selected kind; search, keyboard Help, and Git tools load after the first usable tree. The directory scenario fell from 74 startup scripts / 337 KB to 33 / 214 KB and then 22 / 154 KB. Hard ceilings of 25 / 175 prevent either eager tier from returning, `shell_tools_missing = 0` proves the deferred controls initialized, and `file_catalog_incomplete = 0` proves their delayed feed converged after any stream-ordering race. No bundler was added |
+| H9 | The shell fetches **74 separate JavaScript files** on every load — 33 from `static/`, 41 from built-in plugins — over HTTP/1.1, so they queue six at a time, and `app.js` cannot ask for the tree until its own chain has run. | Shell boot, as `first_row_ms` minus `load_tree_ms`; about 180 ms today | **Fixed and gated** (exp-014). Manifest-owned plugin assets load for the selected kind; search, keyboard Help, and Git tools load after the first usable tree. The directory scenario fell from 74 startup scripts / 337 KB to 33 / 214 KB and then 22 / 154 KB. Hard ceilings of 25 / 220 (raised from 175 in exp-084) prevent either eager tier from returning, `shell_tools_missing = 0` proves the deferred controls initialized, and `file_catalog_incomplete = 0` proves their delayed feed converged after any stream-ordering race. No bundler was added |
 | H10 | Twelve render-blocking stylesheets, eight of them per-plugin, sit between the HTML and first paint. | First contentful paint | **The asset mechanism is fixed; the literal FCP comparison remains open** (exp-014). Plugin styles load with their selected kind, reducing stylesheet transfer from 80 KB to 73 KB. The final candidate FCP is nevertheless 146 ms (124–172), against 114 ms (96–116) for the installed release. H57 now attributes the remaining cold-start queue instead of calling the asset count a complete FCP result |
 | H11 | The tree re-render replaces the whole `#tab-files` panel with `innerHTML` rather than patching it, so every refresh rebuilds every row. | A long-task measure around `renderTreeNodes:root`; 52 ms at 334 rows today | **Fixed and gated** (exp-014, `mb-izxl`). The first fetched snapshot reconciles through keyed visible containers instead of replacing the inline tree. Collapsed descendants stay in `subtreeCache` rather than hidden DOM. A 250-entry root reconciled its maximum mounted page in 9 ms; the project-shaped 111,590-file corpus recorded one root build and a 1–2 ms reconciliation |
 | H12 | `/api/recent` is 68,748 bytes and 86 ms settled, and a recency filter puts it on the load path. | `first_row_ms` with a recency filter active | Open, low. Nothing measures the filtered load path yet |
-| H13 | The walk runs at about **43 µs per file** — 300,000 files in 12,871 ms — and nobody has attributed that number. | Walk elapsed per file, by layer | Open (`mb-kp6c`). Attribution before any change: a cap is a claim about cost |
+| H13 | The walk runs at about **43 µs per file** — 300,000 files in 12,871 ms — and nobody has attributed that number. | Walk elapsed per file, by layer | Open (`mb-migx`). Attribution before any change: a cap is a claim about cost |
 | H14 | Start-to-serving scales with the tree rather than with the code. | CLI start to first served request, across corpus sizes | Open (`mb-kp6c`). Ordered after H8, because a client that waits 1.5 s on a lock makes every server cost look like scan cost |
 | H15 | `INVENTORY_MAX_FILES = 500_000` truncates a larger tree and says so only in a banner. | Correctness, not speed | Open (`mb-s5p6`). Needs H13 first: replacing a cap means knowing what the cap was buying |
 | H16 | Time to first row on a real repository does not behave like time to first row on `build_corpus`, whose 972 directories are uniformly wide and whose files are stubs. | Every metric, against a checked-out repository of comparable size | **Confirmed, and worse than stated** (exp-005). A real tree has 2.4 files per directory against `build_corpus`’s 309 — a 128× difference in how often every per-directory cost is paid, invisible to every measurement before it. It surfaced H30, H31, and H32, and it showed exp-004’s headline result to be conditional on a warm index |
@@ -673,7 +706,7 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H32 | exp-004’s inline fires only when `inventory_has_data()`, and on a first open of a real tree the index is empty at page-render time — behind H30’s twenty seconds. The probe recorded `inline_rows: null`. So a result measured as 1,604 ms to 242 ms is conditional on a warm index: it helps a second load and not a first open, which is the case it was built for. | `inline_rows` non-null, and `first_row_ms`, on a *first* open of a real tree | **Resolved** by H30 (`mb-mnj1`). With no pre-walk, the root’s children are indexed within one `scandir` of the walk starting, so the inline carries rows on a first open (0.1-0.3 s after the server answers) |
 | H33 | Ignored subtrees are usually the bulk of a real tree and the least interesting: one keeps 232,190 files under two `target` directories. Crawling everything but ordering the frontier so tracked entries are discovered and published first would give a reader a usable tree in a fraction of the total scan. Flags still control what is revealed; only the order changes. | Time until all *tracked* entries are indexed, against total walk; `first_row_ms` unchanged or better | Open, **P0** (`mb-6yh2`). Sized after exp-006: 48% of files and 59% of directory yields are ignored, and the last *tracked* file is seen at 29.94 s of a 30.06 s walk — level order interleaves the two completely, so the tracked tree is never ready early. BFS already yields a directory placeholder before enqueueing it, so the nav’s *shape* is complete long before its contents; only the descent needs reordering, into a secondary queue drained after the tracked frontier |
 | H34 | The tallies are sums over per-entry attributes, and every mutation already funnels through `_replace_index_entry` / `_pop_index_entry` under one lock. Maintaining them incrementally there makes the pass O(1) amortized and retires the whole staleness apparatus: no memo, no bound, no derived-cost heuristic, no residual GIL contention with the walker. | `srv_scanning_ms` at its floor with the memo deleted entirely | Open, **P1** (`mb-0cmt`). exp-003 and exp-007 both work around this cost; this is the fix the bound is standing in for |
-| H35 | On a git working tree, `git ls-files -co --exclude-standard -z` returns the visible set directly, in C, with git’s exact semantics — including the negation cases the current `rel_dir` prefixing gets wrong. | Time from process start to the first entry existing; and the negation cases the prefixing mis-answers | Open, **P2** (`mb-9ge2`). The first-rows half is resolved by H30 without git; hierarchical matching also fixed the negation and nested-pattern mismatches. What remains is walk speed, which H39 should price first |
+| H35 | On a git working tree, `git ls-files -co --exclude-standard -z` returns the visible set directly, in C, with git’s exact semantics — including the negation cases the current `rel_dir` prefixing gets wrong. | Time from process start to the first entry existing; and the negation cases the prefixing mis-answers | **Superseded** by H30 (`mb-mnj1`; `mb-9ge2` is closed). The first-rows half is resolved by H30 without git; hierarchical matching also fixed the negation and nested-pattern mismatches. What remains is walk speed, which H39 (`mb-8yqt`) should price first and H40 (`mb-nbvk`) would change |
 | H36 | The tally pass still runs in a thread that is GIL-bound Python competing with the walker, just less often. Serving the last memo regardless of age while the status reports scanning — recomputing once on completion — removes the rest, and the client is already told those numbers are provisional. | `walk_elapsed_ms` attached against unattached | Open (`mb-26ey`). The cheap half of H34 |
 | H37 | `os.path.relpath(str(here / name), str(root))` builds two `Path` objects and normalizes a path for every directory the prune considers. `os.walk` is top-down, so the parent’s relative path is in hand and the child’s is a string concat. | `gitignore_build_ms` on a tree with hundreds of thousands of directories | **Obsolete** (`mb-n3is`). The prune loop was removed with the pre-walk (H30) |
 | H38 | Scroll and expand cover the two ways a reader *acts* a row into view. A window resize or a pane-splitter drag also reveals rows and re-arms nothing, so enlarging the window leaves the newly revealed folders cold until the reader scrolls. | `subtree_requests` after a resize that reveals rows | Open (`mb-r391`) |
@@ -686,15 +719,15 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H45 | Serialization is a measurable share of large tree and rollup responses, and `orjson` would show it. | Server time on `/api/tree` and `/api/rollup` at 300,000 entries | Open (`mb-0l4a`) |
 | H46 | Bulk-attribute syscalls cut the verification sweep that H21’s persisted index would depend on: `getattrlistbulk` on macOS returns attributes for many directory entries in one call, `io_uring` batches `statx` on Linux, and on Windows the USN journal replaces the sweep with a change feed. | Verify-sweep duration on an unchanged 241,000-file tree | Open (`mb-19em`). Only matters once H21 exists |
 | H47 | A 64-worker executor sized for I/O waiters hurts the CPU-bound work now routed through it: under one GIL, more workers is more contention, not more throughput. | Tally and encode latency, and walk time, against pool size | Open (`mb-squq`) |
-| H48 | A free-threaded build makes the existing thread offloads actually parallel — and would surface every shared-state assumption the GIL is currently hiding, including the one the F2 finding exposed. | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 | Open (`mb-ltm2`) |
+| H48 | A free-threaded build makes the existing thread offloads actually parallel — and would surface every shared-state assumption the GIL is currently hiding, including the one the F2 finding exposed. | Attached `walk_elapsed_ms` and tally latency on 3.14t against 3.14 | **Shared state audited; speed unmeasured** (`mb-ltm2`). The release-readiness audit exercised shared inventory, rollup, watcher, catalog, HTTP teardown, and task ownership paths on CPython 3.14.7t. The 3.14t-against-3.14 timing comparison has not been run |
 | H49 | The four unmeasured regimes hide regressions the cold-load metric cannot see: interaction latency, churn recovery, resident size, and warm reopen. | Interaction latency, churn recovery, resident size, warm reopen | Open, **P0** (`mb-609b`). Harness 4 now records Event Timing, bounded retention, optional JS heap, and names progressive, steady-interaction, endurance, and warm-reopen loops in the reusable framework. The scenario runs and churn/reopen adapters remain; having fields is not the same as collecting their baselines |
 | H50 | Two regions are rendered before they have content and grow when it arrives: the filter bar, shipped empty for `filter-controls.js` to fill, and the tally row, which paints with the inlined rows and gets its numbers from a later request. The page moves under the reader on every load. | `reserved_region_shift_px`, measured directly as populated height minus empty height | **Confirmed** (exp-009). 67 px together, now 23. Both reserve a line box of the type they hold rather than a measured constant, because the shell offers a choice of font sets. The filter bar is settled at zero; the tally row keeps 23 px because its settled height depends on its own content, which is H54 |
 | H51 | The two metrics a browser would actually report — largest-contentful-paint and cumulative layout shift — were unmeasured because the old pane was hidden and collapsed to 0×0 on navigation. | `lcp_ms` and `cls`, non-null, from a visible window | **Confirmed and complete** (exp-014, `mb-qf2p`). Four admissible harness-14 runs per installed build stayed visible at 1600×900. Candidate LCP is 146 ms (124–172) against 212 ms (208–216); candidate CLS is 0 in every run. The direct frame and summary targets remain open because a good CLS is not proof of one final visual state |
 | H52 | The shell ships placeholders, not a skeleton: the filter bar is empty, the files panel is “Loading files…”, the preview pane is one line of text. First paint is chrome plus three placeholders, each later replaced wholesale. Server-rendering resting-state chips and placeholder rows would make the structure look complete at first paint. | `frame_missing_px`, target 0. Baseline **532 px** on the fixed corpus at 1280×900, n=3 and identical across all three, all of it the files panel: 612 px settled against the 80 px the shell ships | Open, **P1** (`mb-rxst`). exp-009 stopped the page *moving*; this is what would stop it *assembling*. The obstacle is duplication — the chip markup lives only in `filter-controls.js`, so a server-side counterpart needs a shared source or it drifts. Two metrics have been retired from this row for being unfalsifiable. `skeleton_complete` asked whether each region was non-empty *at probe time*, which is after settle, and returned true on all ten runs ever recorded. `regions_non_empty` replaced it and repeated the mistake in subtler form: it read `textContent`, and the files panel ships a spinner and an `.sr-only` label, so the gap passed a floor check written to catch it. What remains is a distance rather than a predicate |
-| H53 | The tree region is painted twice per load — inlined rows, then fetched rows — each a wholesale replacement of the whole panel. | Whole-region builds per load, target 1 | **Fixed for the tree region** (exp-014, `mb-t5x3`). The fetched answer now patches the standing keyed tree; `tree_region_repaints` remains 1 on both the project-shaped corpus and a 250-entry wide root. The metric deliberately counts whole-region builds, not ordinary cell updates. Extending visual-state coverage to the preview pane and filter bar remains separate work |
+| H53 | The tree region is painted twice per load — inlined rows, then fetched rows — each a wholesale replacement of the whole panel. | Whole-region builds per load, target 1 | **Fixed for the tree region** (exp-014, `mb-t5x3`). The fetched answer now patches the standing keyed tree; `tree_region_repaints` remains 1 on both the project-shaped corpus and a 250-entry wide root. The metric deliberately counts whole-region builds, not ordinary cell updates, and is in `run.py compare` and `performance-budgets.toml`. Extending visual-state coverage to the preview pane and filter bar is H56’s viewport-wide `visual_states` |
 | H54 | The tally row’s settled height depends on its own text: `.tree-summary-split` reports tracked and ignored files separately and wraps to a second line in a 300 px navigation pane, so no fixed reservation fits both states. A one-line floor leaves the wrap uncovered; a two-line floor leaves dead space whenever the row does not wrap. | `summary_shift_px` at 300 px and at a pane wide enough not to wrap, both zero, with no idle gap in either | Open, **P2** (`mb-w3va`). The remainder of exp-009: 23 px of the original 67. The fix is to make the pending row the same shape as the settled one — same classes, same cell count, placeholder glyphs sized like digits — so it wraps identically, rather than to raise the floor |
 | H55 | The campaign’s numbers span seven corpora and none of them compare, so nothing says what all of it bought. Each round measured its own control against its own candidate, which is sound per round and is why the verdicts stand, but it leaves the campaign itself unmeasured. | Every checkpoint’s standing metrics against one corpus with one harness, in one table | **Confirmed** (exp-010, `mb-3a3h`). Answered by holding the corpus and the harness fixed and moving only `src/metabrowser`: first row 1,473 ms to 276, server share of the first tree fetch 1,099 ms to 6, tail 28.9 s to 12.3. It also surfaced two regressions no round could see from inside itself — repaints 1 to 2, and shift 42 px to 67 on main before this branch took it to 23 |
-| H56 | `first_row_ms` rewards painting *something* early and says nothing about how many states follow it. The campaign drove it from 1,473 ms to 276 while repaints went 1 to 2, so the loop’s own primary metric is what steered it into placeholder-then-replace. The objective is one visual state in the viewport, and nothing measures that. | `visual_states`, the count of distinct painted viewport layouts between navigation and settle, target 1; `time_to_final_state` beside it | Open, **P1** (`mb-unt6`). The visible driver removes the environment blocker. It still needs H51’s three-run baseline and an instrument for distinct visible states; `tree_region_repaints` is today’s partial proxy and covers one region |
+| H56 | `first_row_ms` rewards painting *something* early and says nothing about how many states follow it. The campaign drove it from 1,473 ms to 276 while repaints went 1 to 2, so the loop’s own primary metric is what steered it into placeholder-then-replace. The objective is one visual state in the viewport, and nothing measures that. | `visual_states`, the count of distinct painted viewport layouts between navigation and settle, target 1; `time_to_final_state` beside it | Open, **P1** (`mb-unt6`). The visible driver removes the environment blocker, and H51’s baseline is recorded (exp-014). It still needs an instrument for distinct visible states; `tree_region_repaints` is today’s partial proxy and covers one region |
 | H57 | The server is no longer the bottleneck and the shell’s own boot is, but nothing has attributed it. On the fixed corpus this branch answers the first tree request in 6 ms and paints no row until 276 ms; the ~270 ms in between is 126 requests and 742 KB of shell, unexamined. | Navigation to first row broken into connect, HTML, blocking CSS, JS parse, JS execute, and the inline render | **Attributed; optimization remains open** (exp-014, `mb-emhr`). The directory shell is now 22 startup scripts / 154 KB and the first-row ranges overlap the release, but FCP does not. A representative slow `app.js` fetch spends 130 ms to response start: 48.5 ms server work and roughly 81 ms local HTTP/1.1 queue, followed by 9 ms download. Bounded startup rows now retain this split. H26 owns measuring whether server-side concatenation earns its complexity remotely; the local FCP delta keeps the same mechanism relevant here |
 | H58 | Main-thread work during load is bounded by the data, not by a budget. The UI thread should never be blocked by backend work: responsiveness independent of server latency, bandwidth, and tree size, tuned for a local server but not *depending* on one, so `--remote` over a tunnel shows content later rather than freezing. The invariant is constant-bounded synchronous slices however much data arrives — preserve exact operations across boundaries, coalesce events into one render of the latest state per frame, deadline-slice any inventory-sized loop, aggregate in a worker, and let speculation yield to interaction. | `long_task_max_ms` and `interaction_max_ms` between navigation and settle, from instrumentation attached at navigation, **measured visible**; target no task over 200 ms | **Confirmed, fixed, and gated** (exp-012, exp-014, and exp-016, `mb-y2ft`). The first record was void because `ever_hidden` was true. A visible run then named two versions of the same O(N) mistake: passive ignored-file sightings and live ignored-file updates were routed through directory-prefix removal, scanning the complete Quick File catalog once per exact leaf. The wire had combined exact ignored-file eviction with filesystem subtree removal, so the client could not choose correctly. `catalog.change.remove_files` now preserves exact semantics and both paths use `Map.delete`; only removals that may name a directory scan prefixes. Harness 15 continuously drives exact-count trusted input through client settle, freezes the product window before diagnostics, and separately gates readiness, final catalog authority, rendered errors, and page exceptions. Across four final installed-candidate profiles, inventory delivery totals 28–29 ms, its longest callback is 1–2 ms, its window share is 0.1%–0.5%, and every hard gate passes |
 | H59 | `navigation_tallies_fresh_within` waits on the same lock an off-thread O(index) tally pass holds, so an overlapping tally request can stop the server event loop even though the expensive pass itself was offloaded. | `tally_overlap_progress_max_ms` while two depth-0 tally requests overlap, target less than 200 ms; plus a 1 ms in-process heartbeat under a controlled 350 ms lock hold, target less than 50 ms | **Confirmed and fixed** (exp-016, `mb-09xv`, `mb-gicx`). The controlled lookup took 352 ms. Across ten exact installed pairs on the unchanged 123,658-file fingerprinted project corpus, `c123ae6` takes 363.8–547.3 ms and the final candidate takes 52.4–156.0 ms, with identical ordered rows and tallies |
@@ -756,12 +789,12 @@ Its work order is the phase order of
 
 It follows the [November 4 iteration](#pr-and-git-navigation) and the provider prefetch
 lane that landed with #355
-([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)), and five of
-its rows revisit their results: H88 generalizes H78; H92 measures H75’s join clause for
-the Pulls selection; H94 covers file navigation, which H74 to H76 did not; H104 revises
-H84’s walk; and H106 revisits the description readiness of H77, H81, and H84. Each of
-these rows carries the metrics its predecessors were accepted on as guards, because the
-accept rule’s third clause sees only the metrics in a round’s own table.
+([PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md)), and
+five of its rows revisit their results: H88 generalizes H78; H92 measures H75’s join
+clause for the Pulls selection; H94 covers file navigation, which H74 to H76 did not;
+H104 revises H84’s walk; and H106 revisits the description readiness of H77, H81, and
+H84. Each of these rows carries the metrics its predecessors were accepted on as guards,
+because the accept rule’s third clause sees only the metrics in a round’s own table.
 A row that bundles mechanisms keeps one identifier and records a lettered verdict for
 each mechanism, each decided by its own named metric.
 
@@ -789,7 +822,7 @@ summary is exp-079.
 | H93 | Saturated background work inflates a cheap foreground request 3.3–26x. A cap on background requests in flight and a low-priority server lane keep a cheap foreground route near its quiet latency. The cap starts at two, a value the research did not measure; this round sets it. | Foreground route p50 and p95 under background warm-up; guards: background completion time, the prepared hit rate, and the provider lane’s outcomes | **Open** (`mb-16d7`, reserved exp-066) |
 | H94 | A file click waits for the envelope, the worker, and the render in series. One prepare unit per subject, driven by keyboard, pointer-down, and hover, makes a predicted transition as fast as a revisit. H74 and H75 measured PR and Git navigation, and H76 found that a held PR description paints in 42–53 ms, a render floor more prefetch cannot remove. What is new is the file chain (envelope, worker preparation, render, kind assets) and keyboard prediction; H75’s dwell sweep becomes this row’s sweep for files. | Cold-neighbor and hovered painted-ready at 0, 100, 200, and 450 ms dwell and on keyboard selection; selected-subject requests (one cold, none prepared); cost: wasted prepare requests and bytes per transition | **Open** (`mb-fejb`, reserved exp-067) |
 | H95 | Main tabs destroy the preview on every switch. Retaining each tab’s surface makes a switch one frame with no request and no blank frame. | Main-tab switch painted-ready, blank frames, requests; retained memory and DOM nodes as guards | **Open** (`mb-88mp`, reserved exp-068) |
-| H96 | The cold landing is about 23 dependent request levels deep. Concatenated startup scripts, preloads after them, and an early content request shorten it. The early content request depends on the render `GET`, served from the server’s render cache (the plan’s API Changes). | Request levels; cold and reload ready; guards: first contentful paint and first tree rows, which the tree-first order (`app.js:8374-8378`) protects and which preloads ahead of the startup scripts slowed | **Open** (`mb-a1nu`, reserved exp-069) |
+| H96 | The cold landing is about 23 dependent request levels deep. Concatenated startup scripts, preloads after them, and an early content request shorten it. The early content request depends on the render `GET`, served from the server’s render cache (the plan’s API Changes). | Request levels; cold and reload ready; guards: first contentful paint and first tree rows, which the tree-first order (`await loadTree()` before `navigationController.start()`, `app.js:8629-8633`) protects and which preloads ahead of the startup scripts slowed | **Open** (`mb-a1nu`, reserved exp-069) |
 | H97 | A hidden page never finishes its first view, because readiness waits on animation frames. Readiness that does not depend on visibility lets a prewarmed web view show ready content at once. | Show-to-ready and hidden first-view completion in `WKWebView` | **Blocked** on a committed `WKWebView` probe (`mb-fevz`), a measurement instrument under `explorations/`, not app code; not to be read in Chrome instead (`mb-touu`, reserved exp-070) |
 | H98 | A file revisit rebuilds the pane. A detached LRU of surfaces with suspend and resume makes revisits a re-attach. | Revisit and history painted-ready; requests; retained memory | **Open** (`mb-d1uo`, reserved exp-071) |
 | H99 | View tabs hidden with `display: none` lose their layout, so a heavy view costs a full layout on every return. (a) Keeping shown views laid out under `content-visibility: hidden` removes that layout. (b) Chunking long source with `content-visibility: auto` cuts its first layout; this half is inferred from measured costs, not prototyped. | (a) Heavy view-tab revisit painted-ready and longest task, with retained memory and DOM nodes as guards. (b) First layout time and longest task on a large source view, with find-in-page and anchor scrolling checked | **Open** (`mb-1bh1`, reserved exp-072) |
@@ -856,8 +889,9 @@ tracked under `mb-kicj`.
 
 ## Reproducing the Measurements
 
-Every number in this document was taken by hand, outside the repository, because the
-page-load phase this plan asks for does not exist yet.
+Every number in [Background](#background) was taken by hand, outside the repository,
+before the [performance loop](../../../../explorations/performance-loop/README.md)
+existed; the loop’s own rounds are reproduced from their experiment write-ups.
 That is a limitation of the evidence, not of the conclusions: the gaps are large enough
 that corpus shape moves them by percentages, not by orders.
 Still, a reader reproducing them needs to know exactly what was done, and a reader
@@ -913,8 +947,10 @@ Three things cost time to discover and are worth stating once.
 Every phase reports through `devtools/bench_serving.py` with `--label` and `--baseline`,
 taken back to back on one machine, as
 [the existing guidance](../../../development.md#benchmarking-scan-and-serve) requires.
-A uniform shift across every row is machine noise; a real change moves the rows its
-mechanism touches.
+Page load is the exception: its planned `bench_serving.py` phase was superseded by
+`explorations/performance-loop/run.py` (`mb-pwnw`), which records and compares page-load
+runs itself. A uniform shift across every row is machine noise; a real change moves the
+rows its mechanism touches.
 
 Beyond the harness:
 
@@ -948,9 +984,10 @@ comparison says so before the change ships.
 ## Open Questions
 
 - What is the honest budget for first usable rows?
-  500 ms is proposed from the shape of the waterfall, not from a measurement of the
-  progressive path, which does not exist yet.
-  Phase 1’s baseline settles it.
+  500 ms was proposed from the shape of the waterfall, not from a measurement of the
+  progressive path. exp-035 answered it for repository-shaped trees: a 350 ms gate on
+  project-10 in `performance-budgets.toml`, with a 450 ms ratchet for the flat shape in
+  `performance-budgets-flat-stress.toml`.
 - Does row windowing cost find-in-page and select-all across the whole tree?
   [Rendering large content](../../../large-content-rendering.md) measures that trade for
   document content; the tree is a different surface and needs its own measurement.

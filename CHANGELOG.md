@@ -38,6 +38,55 @@ All notable changes to Metabrowser are documented here.
   ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
   [Menu Height](docs/design-system.md#menu-height)).
 
+- A Markdown file in a pull request’s Changes now reads in your reading font, serif
+  unless you chose Sans, as the same file does in its Document view.
+  It was always sans, because the rule that keeps the pull request’s description,
+  comments, and reviews sans covered the whole page.
+  Those messages stay sans under either reading font, as a commit message does.
+  The Markdown text of a plugin’s view that renders into `md-body` without KPress also
+  reads in the reading font now; it was always sans, and the rest of such a view stays
+  sans. Plugin authors: put the new `chrome-prose` class on the element that holds a
+  message, plain or Markdown, and never on a page.
+  See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
+
+- A Markdown document’s title sits at the top of its card again, and an Obsidian link to
+  a heading scrolls that heading to the top of the view.
+  The anchors an Obsidian link such as `[[Note#Heading]]` or `[[Note#A#B]]` lands on
+  were written on a line of their own before each heading, so a heading written with `#`
+  usually had an empty paragraph in front of it: the title kept its 32 px top margin
+  inside the card, and a link scrolled to that paragraph, as much as 20 px above the
+  heading. The anchors now open the heading’s own text, so the title starts at the card’s
+  top in both reading fonts and the space between later headings is unchanged.
+  An image alone on the line above such a heading is a figure again, and a heading
+  directly after a table no longer adds an empty row to it: each used to take in the
+  anchors’ line. A setext heading (text over a line of `===` or `---`) also gets back its
+  usual id, so a link such as `[Part](#part)` reaches it again: each anchor’s line break
+  used to add a leading hyphen, as in `--part`. A list item, quote, definition, or table
+  row that starts with `|`, directly above a `---`, is no longer mistaken for a heading,
+  so it gets no heading anchor, and embedding a section through `![[Note#Heading]]` no
+  longer stops at it.
+
+- The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
+  and the pull request count with how fresh it is — now looks the same on every tab.
+  It was three styles: on Pulls it was smaller, gray, and hard against the filters with
+  no space above it, so a notice such as “Run gh auth login --hostname github.com to
+  connect” sat right under the toolbar’s rule.
+  All three are now one component, `.nav-metadata`, with the same type, inset, space
+  above and below, and spacing between items.
+  While its text fits the pane, each keeps one height from the first paint through
+  loading, counting, and refresh failures; a Pulls remedy longer than the pane, or the
+  Files totals in a narrow pane, still wrap to a second line.
+  The Commits tally’s loading placeholder now sits where the count will, as the Files
+  one does. The Files totals read “N files (size)” while the index is still being
+  counted, as they do once it finishes, instead of switching from blue figures to plain
+  text, and the Pulls count is no longer bold.
+
+- A size of a gigabyte or more now reads in gigabytes.
+  The Files tree, the totals line under the Files toolbar, and the binary preview wrote
+  10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
+  The shell had its own copy of the size formatter, which stopped at megabytes; it now
+  uses the shared one, and smaller sizes read exactly as before.
+
 - Command-R always reloads.
   In the macOS app, View > Reload Page was disabled while the window showed its status
   view, and did nothing in a tab still loading or reloading its page.

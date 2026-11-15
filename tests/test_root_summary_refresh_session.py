@@ -108,7 +108,7 @@ def test_the_last_ask_is_answered_after_the_writes_stop(
     assert stopped["after"]["requests"] == busy["after"]["requests"] + 1, (
         "asks made while a request was in flight need one more request"
     )
-    assert stopped["did"][-1].endswith("files") and "painted" in stopped["did"][-1]
+    assert re.search(r'painted "\d+ files \([\d.]+ KB\)"$', stopped["did"][-1])
 
 
 def test_an_isolated_change_waits_only_for_the_debounce(

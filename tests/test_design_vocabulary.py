@@ -1075,7 +1075,7 @@ def test_git_commit_summary_is_one_component() -> None:
         'class="git-commit-file-statuses"',
         'class="git-commit-change-stats"',
         'class="git-commit-refs"',
-        'class="git-commit-body page-card"',
+        'class="git-commit-body page-card chrome-prose"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
@@ -1093,7 +1093,8 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "display: grid" in change_stats
     assert "white-space: nowrap" in change_stats
     assert "display: inline-flex" in stats_rows
-    assert "font-family: var(--prose-sans-font)" in summary_body
+    # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
+    assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
@@ -1973,7 +1974,8 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # Ages, filters, buttons, and the spinner are the shell's.
     assert "mb.formatAge(" in panel
     assert "controls.groupHtml(" in panel
-    assert 'class: "github-pulls-connection"' in panel
+    assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
+    assert 'class: "github-pulls-status nav-metadata"' in panel
     assert 'class: "btn github-pulls-reload"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
@@ -2304,38 +2306,114 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
 
 
-# A serif face, named directly or through the token KPress reads it from.
-_SERIF = re.compile(r"--kpress-(?:host-)?font-prose\b|--app-serif-system\b|(?<!sans-)\bserif\b")
+# A serif face, named directly, as a family, or through the token KPress reads it from.
+_SERIF = re.compile(
+    r"--kpress-(?:host-)?font-prose\b|--app-serif-system\b|(?<!sans-)\bserif\b|\bgeorgia\b",
+    re.IGNORECASE,
+)
+# A face token: KPress's resolved families and the hooks it reads them from.
+_FACE_TOKEN = re.compile(r"--kpress-(?:host-)?font-")
+# A rule on KPress's own elements, which would set a document's face around its hooks.
+_KPRESS_CLASS = re.compile(r"\.kpress(?:-[\w-]+)?\b")
+# The rules on <html> that hold the reading font and the font sets, and the face tokens
+# each declares; every face rule outside them is refused.
+_FACE_ROOTS = {
+    ":root": {
+        "--font-sans": "var(--app-sans-clean)",
+        "--prose-sans-font": "var(--app-sans-clean)",
+        "--kpress-host-font-size-base": "var(--document-body-font-size)",
+    },
+    'html[data-app-font="system"]': {
+        "--font-sans": "var(--app-sans-system)",
+        "--prose-sans-font": "var(--app-sans-system)",
+        "--kpress-host-font-sans": "var(--app-sans-system)",
+        "--kpress-host-font-body": "var(--app-sans-system)",
+        "--kpress-host-font-prose": "var(--app-serif-system)",
+    },
+    'html[data-prose-font="sans"]': {"--kpress-host-font-prose": "var(--prose-sans-font)"},
+}
+# The one rule that sets a face by context.
+_CHROME_PROSE = {
+    "font-family": "var(--prose-sans-font)",
+    "--kpress-host-font-prose": "var(--prose-sans-font)",
+}
+# A plugin's Markdown view without KPress: its text, not the view, reads the reading font,
+# through the prose hook first so that it follows chrome prose.
+_DOCUMENT_FACES = {
+    f".md-body:not(.metabrowser-kpress-host) {element}": (
+        "var(--kpress-host-font-prose, var(--kpress-font-prose))"
+    )
+    for element in ("h1", "h2", "h3", "h4", "h5", "h6", "p", "ul", "ol", "blockquote")
+}
+# Every element that holds chrome prose, by the file that builds it.
+_CHROME_PROSE_BUILDERS = {
+    "static/git-panel.js": 1,  # a commit's body
+    "builtin_plugins/github/pull-page.js": 1,  # textBlock: a pull request's every text
+}
 
 
 def test_serif_is_only_for_documents() -> None:
-    """Chrome and messages are sans; serif is a committed document's, as "Serif Is for Documents" says.
+    """Chrome prose is sans; serif is a document's, as "Serif Is for Documents" says.
 
     A pull request's description and comments read in the serif of a Markdown file, so a
-    conversation about the content looked like part of it.
+    conversation about the content looked like part of it. Then a rule on the whole pull
+    request page made them sans, and the Markdown files in its Changes with them. So one
+    class says a text is chrome prose, the element that holds the text carries it, and no
+    other rule sets a face by context: not through KPress's hooks or its resolved tokens,
+    and not on KPress's own elements. The faces themselves are computed in Chrome by
+    tests/test_prose_faces_chrome.py.
     """
 
     styles = STATIC / "styles.css"
+    source = REPO_ROOT / "src" / "metabrowser"
+    roots: dict[str, dict[str, str]] = {}
+    documents: dict[str, str] = {}
     for path in sorted([*STATIC.glob("*.css"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]):
         for selector, declarations in _rules_of(path):
             family = declarations.get("font-family", "")
-            assert _SERIF.search(family) is None, f"{path.name} {selector} sets a serif: {family}"
-            for name, value in declarations.items():
-                if path == styles and selector.startswith(("html[data-", ":root")):
-                    continue  # the reading font and the font sets, which only documents read
-                if name == "--kpress-host-font-prose":
-                    assert value == "var(--prose-sans-font)", (
-                        f"{path.name} {selector} points the prose face at {value}"
-                    )
+            faces = {name: value for name, value in declarations.items() if _FACE_TOKEN.match(name)}
+            where = f"{path.relative_to(REPO_ROOT).as_posix()} {selector}"
+            if path == styles and selector in _FACE_ROOTS:
+                roots.setdefault(selector, {}).update(
+                    {
+                        name: value
+                        for name, value in declarations.items()
+                        if name in ("--font-sans", "--prose-sans-font") or _FACE_TOKEN.match(name)
+                    }
+                )
+                assert not family, f"{where} sets a face"
+                continue
+            if path == styles and selector == ".chrome-prose":
+                assert declarations == _CHROME_PROSE, where
+                continue
+            if path == styles and selector in _DOCUMENT_FACES:
+                if family:
+                    documents[selector] = family
+            else:
+                assert _SERIF.search(family) is None, f"{where} sets a serif: {family}"
+                assert "--prose-sans-font" not in family, f"{where} sets chrome prose's face"
+                assert not (family and _KPRESS_CLASS.search(selector)), (
+                    f"{where} sets a face on KPress's own element: {family}"
+                )
+            # Only chrome prose sets a face by context, so no rule on a page reaches a
+            # document it shows.
+            assert not faces, f"{where} sets a face token: {sorted(faces)}"
+    assert roots == _FACE_ROOTS
+    assert documents == _DOCUMENT_FACES
+    builders = {
+        path.relative_to(source).as_posix(): path.read_text(encoding="utf-8").count("chrome-prose")
+        for path in sorted([*STATIC.glob("*.js"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js")])
+    }
+    assert {name: count for name, count in builders.items() if count} == _CHROME_PROSE_BUILDERS
     assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
         "var(--sans-char-advance)"
     )
-    # The pull request page uses the sans prose face.
-    page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
-    assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
-    assert "test_serif_is_only_for_documents" in doc
+    for name in ("test_serif_is_only_for_documents", "test_prose_faces_chrome.py", "chrome-prose"):
+        assert name in doc
+    # The plugin-facing contract names the class too.
+    assert "`chrome-prose`" in (REPO_ROOT / "docs/plugins.md").read_text(encoding="utf-8")
 
 
 def test_file_status_ink_is_shared_and_legible() -> None:

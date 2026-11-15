@@ -731,7 +731,8 @@ def test_background_recent_failure_retries_with_visible_stale_state() -> None:
     assert 'note.setAttribute("role", "status")' in status
     assert "Recent files may be out of date; retrying…" in status
     assert "Change the filter or refresh to try again." in status
-    assert ".recent-stale-note" in _read_styles_css()
+    # A muted remark of the metadata band under the totals, as the filtered count is.
+    assert 'note.className = "recent-stale-note nav-metadata nav-metadata-note";' in status
 
 
 def test_recent_context_changes_cancel_retry_and_stale_state() -> None:
