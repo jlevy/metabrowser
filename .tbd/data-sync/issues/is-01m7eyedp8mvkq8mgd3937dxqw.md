@@ -5,7 +5,7 @@ title: "Diff summary: one collapsible changed-files tree with folder roll-ups, r
 kind: feature
 status: in_progress
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T08:24:34.607Z
+updated_at: 2026-11-15T09:01:53.423Z
 started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -87,3 +87,18 @@ Fourth commit, 56790847a fix(diff): a Diff summary shows paths by the server's r
 - Chrome: the Pulls tab's production tree paint, under a Pulls row with the real stylesheets in a served stand-in checkout, fed the recorded pull-files answer for #106 (249 files): folder rows show roll-ups (src/app +1,086 −479, plugins/github +1,076 −478) at the row's end in the status colors, with aria-labels. Screenshot attic/shots/after-pulls-tab-folder-rollups.png. A pull request's Changes could not fetch its comparison in that stand-in, so the address change is pinned browserlessly only. The tab click had to wait for the shell's tools; before that the panel was mounted hidden and its trees never polled (same on main).
 - Local: make -o install lint-check passes; 260 focused tests (incl. the two Chrome tests) and 59 related goldens pass.
 PR (2026-11-15): https://github.com/jlevy/metabrowser/pull/448, draft, base claude/diff-fold-inline, PR 4 of native stack #446 (#444 -> #445 -> #447 -> #448, checked through the stacks API). The four commits were rebased once onto origin/claude/diff-fold-inline (f90db64f8): 565d3679a, e2609fe9c, 6a4213ab5, 7ca394856 (head). The only conflict was CHANGELOG.md, resolved by keeping both sides; check_parity passed after. Locally after the rebase: make -o install format and lint-check pass, 260 focused tests and 59 goldens pass. Pushed with --no-verify (local pre-push skipped); CI run 43692809964 passed all nine checks (lint, distribution, test 3.12/3.13/3.14/3.14t, admitted-git 2.43.7/2.50.1, stack-integration). Not merged, not marked ready.
+Review A round (2026-11-15): review https://github.com/jlevy/metabrowser/pull/448#pullrequestreview-5909894490 ("approve with fixes"; 3 Medium, 9 Low, 1 suggestion). Commit 25eb9d424 (head 25eb9d42473da281086ba1754630240da0863f7f) fixes A1 to A12 per the coordinator's choices and re-measures for A13. Dispositions: https://github.com/jlevy/metabrowser/pull/448#issuecomment-6892044772.
+- A1: buildFileTree folds repeated paths (mergeRows/mergedStatus); jumpToFirstFile.
+- A2: the file bars show paths by displayPath; every diff loads the tree.
+- A3: a totals-line fallback; aria-disabled plus tooltip on a failed import, which retries at ?retry=N.
+- A4, A5: the guard is dropped, and there are loader failure and retry tests.
+- A6: a backslash path falls back to an in-place jump.
+- A7, A9: rowLabel/missingCounts; per-side unknowns.
+- A8: the baseline.
+- A10: diffSummaryOf and rowsToDraw are in the session.
+- A11: warm() loads the tree; 8,715 bytes compressed, 4.1-4.6 ms cold.
+- A12: the plan text.
+- A13: at load 5-7.5, the 2,000-file open is 39.4/41.2 ms median, max 46 (one 104.1).
+- Design alternative filed as mb-0qpr (P3, under mb-eevh).
+- Local: lint-check passes; 261 focused tests and 59 goldens pass.
+- API for PR 5: added missingCounts, rowLabel, additionsUnknown/deletionsUnknown; buildFileTree folds repeats; nothing renamed or removed.
