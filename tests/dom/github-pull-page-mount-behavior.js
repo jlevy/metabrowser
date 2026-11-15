@@ -1087,8 +1087,9 @@ async function checkRows(page) {
 async function headerAges(page) {
   const said = async (name, ageLabel) => {
     const { container, handle } = await mountOn(page, recorded[name].body, "", ageLabel);
+    // The ages follow the state's badge on their row (mb-4ydo).
     const line = container
-      .querySelector(".github-pull-header")
+      .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
     const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
     const link = line.children.find((node) => node.tag === "a");
@@ -1207,7 +1208,7 @@ async function headerShape(page) {
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta branches quiet labels status"]),
+    new Set(["title meta branches opened labels status"]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1365,13 +1366,22 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The state row is the badge, the details, and a strut; the stack's slot is not on it,
-    // so a late chip takes no room from the sentence or the merge.
-    const [stateBadgeSlot, details, stateStrut] = meta.children;
-    const stateBadge = stateBadgeSlot.children[0];
+    // The author's row is the details and a strut; the stack's slot is not on it, so a late
+    // chip takes no room from the sentence.
+    const [details, stateStrut] = meta.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
     assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
-    assert.equal(meta.children.length, 3);
+    assert.equal(meta.children.length, 2);
+    // The state's badge leads the row of ages, under the branches (mb-4ydo).
+    const opened = container.querySelector(".github-pull-opened");
+    assert.equal(
+      title.parentNode.children.indexOf(opened),
+      title.parentNode.children.indexOf(meta) + 2,
+    );
+    const [stateBadgeSlot, ages] = opened.children;
+    assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
+    assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    const stateBadge = stateBadgeSlot.children[0];
     assert.equal(
       container.querySelector(".github-pull-labels").children.at(-1),
       container.querySelector(".github-pull-stacks"),

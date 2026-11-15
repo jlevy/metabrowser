@@ -95,8 +95,22 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+/* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
+   widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
+   closed. One line in every state: the badge's box and the ages' line are both 18 px in
+   Chrome 152, and a page with no record yet holds the line with no badge. */
+.github-pull-opened {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
 /* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. */
-.github-pull-header > .github-pull-quiet {
+.github-pull-opened > .github-pull-quiet {
+  flex: 0 1 auto;
+  min-width: 0;
   height: 1lh;
   overflow: hidden;
   text-overflow: ellipsis;

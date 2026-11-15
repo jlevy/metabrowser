@@ -283,7 +283,9 @@ const MEASURE = `async (name, change, tab, width) => {
     height: Math.round(box(row).height * 100) / 100,
   }));
   const meta = header.querySelector(".github-pull-meta");
-  const badge = meta?.querySelector(".github-pull-badge");
+  // The state badge leads the row of ages (mb-4ydo).
+  const opened = header.querySelector(".github-pull-opened");
+  const badge = opened?.querySelector(".github-pull-badge");
   const strut = meta?.querySelector(".github-pull-stack-strut");
   const centre = (r) => r.top + r.height / 2;
   const result = {
@@ -292,7 +294,7 @@ const MEASURE = `async (name, change, tab, width) => {
     rows,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strut ? Math.round(box(strut).height * 100) / 100 : null,
-    badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(meta))) * 100) / 100 : null,
+    badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
     offers: header.querySelectorAll(".github-pull-offer").length,
     mergeShown,
     chipMoves,

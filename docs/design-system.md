@@ -1418,19 +1418,20 @@ icon at the title’s font size.
 The text wraps under its first line while the icon stays beside the first line, to two
 lines at most: the title holds two lines from first paint, and one cut short there
 carries the whole of it in its tooltip.
-The colored badge below the title gives the state in text and the title icon is
-decorative. The header’s box is decided at first paint, in every state and on every tab,
-so the tab bar under it never moves between pull requests or tabs: the state row is one
-line, the badge as wide as the widest state, then the author and the sentence, the
-sentence cut short first and then the author; the branches have the line under it to
-themselves (mb-fon5), one line in every state, their names cut short rather than
-wrapping it; the labels row is always there, a line of labels or none, and ends in the
-stack chip’s slot, so a chip that arrives late moves nothing: it takes its width from
-the labels, which the row then cuts shorter at the slot, a label that showed whole among
-them; the status row is one line that ends in Refresh’s slot, held hidden on a tab with
-nothing to refresh, its text and then its offers’ sentences cut short, never their
-controls, and a rate limit’s hold on the line too; and a cold page keeps every row,
-empty, at its height.
+The colored badge that leads the row of ages gives the state in text and the title icon
+is decorative. The header’s box is decided at first paint, in every state and on every
+tab, so the tab bar under it never moves between pull requests or tabs: the author’s row
+is one line, the author and the sentence, the sentence cut short first and then the
+author; the branches have the line under it to themselves (mb-fon5), one line in every
+state, their names cut short rather than wrapping it; the row of ages begins with the
+state’s badge (mb-4ydo), as wide as the widest state, then “Opened”, the ages, View on
+GitHub, and Browse code, one line cut short at its end; the labels row is always there,
+a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
+moves nothing: it takes its width from the labels, which the row then cuts shorter at
+the slot, a label that showed whole among them; the status row is one line that ends in
+Refresh’s slot, held hidden on a tab with nothing to refresh, its text and then its
+offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
+too; and a cold page keeps every row, empty, at its height.
 Only a failure, which says what to do, wraps the status row.
 A tab switch or a poll builds again only the header’s parts whose inputs changed: the
 title, the badge, the author, the branch chips, the row of ages, the labels, and each

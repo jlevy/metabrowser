@@ -258,7 +258,13 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
     # The state row ends in a strut, not in the stack's slot: a late chip there took its
     # width from the sentence and the merge (review E3 on #370).
-    assert "[stateBadge, stateDetails, strut()]" in page
+    assert "[stateDetails, strut()]" in page
+    # The state badge leads the row of ages (mb-4ydo), one line in every state.
+    opened = _rule(css, ".github-pull-opened")
+    assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
+    ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
+    assert "height: 1lh;" in ages and "text-overflow: ellipsis;" in ages
+    assert "placeChildren(openedRow, [stateBadge, opened.row]);" in page
     assert 'h("div", { class: "github-pull-branches" })' in page
 
 

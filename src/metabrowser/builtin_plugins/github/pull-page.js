@@ -3545,10 +3545,13 @@ export function mountPullPage(container, ctx, mb) {
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateDetails, strut()]);
   // The head and base branches, on a line of their own under the author's sentence: a line
   // tall, the merge's arrow's, while no record is shown too.
   const branchesRow = h("div", { class: "github-pull-branches" });
+  // The pull request's state leads the row of its ages: its badge, then when it was
+  // opened, updated, merged, or closed.
+  const openedRow = h("div", { class: "github-pull-opened" });
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4476,7 +4479,8 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      children.push(title, paintStateRow(pull), branchesRow, opened.row);
+      placeChildren(openedRow, [stateBadge, opened.row]);
+      children.push(title, paintStateRow(pull), branchesRow, openedRow);
       // A row that is always there, so a pull request with labels is as tall as one without.
       placeChildren(
         labelList,
@@ -4497,15 +4501,14 @@ export function mountPullPage(container, ctx, mb) {
         placeChildren(stateBadge, []);
         placeChildren(stateDetails, []);
         placeChildren(branchesRow, []);
-        placeChildren(labelList, []);
-        children.push(
-          stateRow,
-          branchesRow,
+        placeChildren(openedRow, [
+          stateBadge,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
-          labelsRow,
-        );
+        ]);
+        placeChildren(labelList, []);
+        children.push(stateRow, branchesRow, openedRow, labelsRow);
       }
     }
     status.dataset.status = model.status;

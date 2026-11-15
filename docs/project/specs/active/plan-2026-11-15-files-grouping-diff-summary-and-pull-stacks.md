@@ -266,6 +266,8 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 
 - **Branches** (`mb-fon5`): the head and base branches leave the author’s sentence for a
   line of their own under it, one line in every state.
+- **State** (`mb-4ydo`): the state badge (Draft, Open, Merged, Closed) leads the row of
+  ages, “[Draft] Opened 9h ago · updated …”, instead of the author’s row.
 
 ### Sans Headings
 
@@ -320,6 +322,7 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - [ ] `mb-xz1r`: a run of commits stands at least as far from a comment as one commit
   from the next.
 - [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
+- [ ] `mb-4ydo`: the state badge leads the row of ages.
 
 ### Phase 7: Sans Headings (pull request 7)
 
