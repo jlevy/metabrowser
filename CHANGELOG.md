@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A browser on the same machine is no longer sent gzipped answers, and the application’s
+  own scripts, stylesheets, and fonts are compressed once rather than on every request.
+  Compressing cost the server time on every answer, on the thread every request waits
+  for, to save bytes that never left the machine.
+  A server on a loopback address now answers a loopback client uncompressed, unless the
+  request carries a proxy’s `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
+  `X-Real-IP`, or `Via` header; every other client is sent gzip as before.
+  The new `--compress` flag gzips for every client, for a server reached through an SSH
+  tunnel or a proxy you set up yourself, which arrives from loopback too.
+  `--remote` passes it to the server it starts, so the remote host needs this version.
+  An asset at the address the page names is kept in memory, up to 16 MiB, read and
+  compressed once, and sent with a `Content-Length`; its bytes and other headers are
+  unchanged.
+
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote
   10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.

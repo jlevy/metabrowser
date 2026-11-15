@@ -1349,6 +1349,16 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
+**What loopback is sent.** A server started for local use sends a loopback browser its
+answers uncompressed (H115, [Compression](../../docs/command-line.md#compression)), so
+on one the bytes this probe reports are the scripts’ decoded size, and an emulated link
+(`--network`) carries them uncompressed too: the emulation is in the browser, and the
+server still sees a loopback peer.
+To measure what `metab --remote` sends, start the build with `--compress`, as `--remote`
+starts its far server.
+`run.py record` reads `startup_script_transfer_kb` that way whatever the server sent the
+page; see the note beside it in `performance-budgets.toml`.
+
 It also splits what the startup scripts cost, from the load’s trace: when their last
 byte arrived, their parse on a worker while they streamed in, their compile and
 evaluation on the main thread, and the main thread’s busy time to the first tree row.
@@ -1430,9 +1440,10 @@ logged time: the serial server time for the landing’s assets, free of the cont
 page’s parallel requests put on one event loop.
 A build from before `end_ms` logs the end of a body only to the millisecond; the table
 says how many rows that is.
-`--server-arg ARG`, repeatable, passes `ARG` to `metab`. The record also keeps the
-build’s provenance, Chrome’s version, the load average before and after, and the
-server’s resident memory at the end.
+`--server-arg ARG`, repeatable, passes `ARG` to `metab`: `--server-arg --compress`
+measures the server as `metab --remote` starts it, gzipping for its loopback peer.
+The record also keeps the build’s provenance, Chrome’s version, the load average before
+and after, and the server’s resident memory at the end.
 
 It is untimed by design: one landing, no pairs, no comparison.
 A round that judges a change runs it under its own protocol on both builds, back to

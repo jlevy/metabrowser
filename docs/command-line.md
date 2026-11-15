@@ -169,6 +169,24 @@ server that is gone.
 A stderr too full to take the notice at once, because nothing is reading it, gets no
 notice, and the stop goes on without it; so does one Ctrl-C’s.
 
+### Compression
+
+```shell
+# On the far side of a tunnel or proxy you set up yourself.
+metab ./notes --no-open --compress
+```
+
+A server on a loopback address (`127.0.0.1`, the default, `::1`, or `localhost`) sends a
+browser on the same machine its answers uncompressed: nothing crosses a network, and
+gzip costs the server time on every answer.
+Every other client is sent gzip as before, and so is any request that carries a proxy’s
+`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, or `Via` header.
+A server bound to a wildcard or network address compresses for everyone.
+An SSH tunnel such as `ssh -L`, or a proxy that adds none of those headers, reaches the
+server from its own loopback, and the server cannot tell it from a local browser.
+Start such a server with `--compress`, which gzips for every client that accepts it.
+`--remote` passes it to the server it starts.
+
 ### Serving a Git source
 
 ```shell
@@ -979,7 +997,9 @@ metab --remote example-host --path /srv/shared-files
 
 `metab` starts itself on the remote host over SSH and tunnels the port back, so the
 browser stays local.
-`ROOT` is not used in this mode; the remote directory is `--path`.
+`ROOT` is not used in this mode; the remote directory is `--path`. The remote server is
+started with `--compress`, so what crosses the tunnel is gzipped
+([Compression](#compression)), and the remote host needs a Metabrowser that accepts it.
 
 ## Why the Data Modes Exist
 

@@ -5,14 +5,35 @@ ordinary answer, and :mod:`metabrowser.encoded_assets` for an asset it holds alr
 compressed. Were they to decide differently, one client would be sent some answers
 compressed and others not for no reason it could see.
 
+**Who is not sent gzip (H115).** Compression buys a client fewer bytes on the wire and
+costs the server CPU on the event loop, and a browser on the same machine has no wire to
+save: a level-6 gzip of a 311 KB render took 12.3 ms of a 14.8 ms answer. So an answer
+is sent uncompressed when both of these hold:
+
+- **the server was started for local use**: ``metab`` serving on a loopback address and
+  not given ``--compress`` (:func:`serve_locally`). ``metab --remote`` starts the far
+  server with ``--compress``, because its client arrives through an SSH tunnel and so
+  from the far host's own loopback;
+- **the request comes from this machine and names no proxy**: the peer is a loopback
+  address, and the request carries none of the headers a reverse proxy adds
+  (:data:`PROXY_HEADERS`).
+
+The start mode leads, because the peer address cannot tell a tunnel from a browser: an
+``ssh -L`` or a proxy on the serving host connects from loopback too. A proxy that adds
+its headers is caught by the second test; one that adds none, or a tunnel, is the case
+``--compress`` is for. Everything else is compressed as before: a wildcard or LAN bind,
+any peer elsewhere, and any process that never called :func:`serve_locally`, such as
+``--api``, ``--check-api``, and the tests' in-process clients.
+
 The level and the floor are Starlette's middleware settings, kept here so the startup
 budget's check (``devtools/check_startup_scripts.py``) and the performance loop's
-``run.py`` compress as the server does.
+``run.py`` compress as the server does for a client it gzips for.
 """
 
 from __future__ import annotations
 
 import gzip
+import ipaddress
 from typing import TYPE_CHECKING
 
 from starlette.datastructures import Headers
@@ -27,6 +48,50 @@ GZIP_LEVEL = 6
 # it saves.
 GZIP_MINIMUM_SIZE = 1024
 
+# Headers a reverse proxy adds to say who the client really is. A request carrying any of
+# them did not come from a browser on this machine, whatever its peer address.
+PROXY_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip", "via")
+
+_serving_locally = False
+
+
+def serve_locally(enabled: bool) -> None:
+    """Say whether this process serves for local use, which leaves a loopback client's
+    answers uncompressed. ``metab``'s serve modes call it once, before serving."""
+    global _serving_locally
+    _serving_locally = enabled
+
+
+def serving_locally() -> bool:
+    """Whether :func:`serve_locally` said this process serves for local use."""
+    return _serving_locally
+
+
+def loopback_host(host: str) -> bool:
+    """Whether binding *host* listens on this machine's loopback interface alone."""
+    if host.strip().lower() == "localhost":
+        return True
+    return _loopback_address(host)
+
+
+def _loopback_address(text: str) -> bool:
+    try:
+        address = ipaddress.ip_address(text.strip().strip("[]"))
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped.is_loopback
+    return address.is_loopback
+
+
+def loopback_peer(scope: Scope) -> bool:
+    """Whether the request arrived from a loopback address and names no proxy."""
+    client = scope.get("client")
+    if not client or not _loopback_address(str(client[0])):
+        return False
+    headers = Headers(scope=scope)
+    return not any(name in headers for name in PROXY_HEADERS)
+
 
 def accepts_gzip(scope: Scope) -> bool:
     """Whether the request's ``Accept-Encoding`` names gzip, tested as Starlette tests it."""
@@ -35,7 +100,9 @@ def accepts_gzip(scope: Scope) -> bool:
 
 def gzip_wanted(scope: Scope) -> bool:
     """Whether an answer of at least :data:`GZIP_MINIMUM_SIZE` bytes to *scope* is gzipped."""
-    return accepts_gzip(scope)
+    if not accepts_gzip(scope):
+        return False
+    return not (_serving_locally and loopback_peer(scope))
 
 
 def gzip_bytes(content: bytes) -> bytes:
@@ -57,8 +124,13 @@ def sent_size(content: bytes) -> int:
 __all__ = [
     "GZIP_LEVEL",
     "GZIP_MINIMUM_SIZE",
+    "PROXY_HEADERS",
     "accepts_gzip",
     "gzip_bytes",
     "gzip_wanted",
+    "loopback_host",
+    "loopback_peer",
     "sent_size",
+    "serve_locally",
+    "serving_locally",
 ]

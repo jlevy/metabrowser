@@ -42,8 +42,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
-from starlette.datastructures import Headers
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder, IdentityResponder
+
+from metabrowser import delivery
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
@@ -142,7 +143,10 @@ class TimedGZipMiddleware(GZipMiddleware):
     93 ms for a cold landing's 3.1 MB, and ``Server-Timing`` showed none of it. The choice
     of responder is Starlette's own, copied from ``GZipMiddleware.__call__`` in Starlette
     1.3.1 so the gzip one can be the timed one; ``tests/test_server_timing.py`` fails when
-    that method changes, so an upgrade re-reads this copy.
+    that method changes, so an upgrade re-reads this copy. One test differs from
+    Starlette's: whether a request is sent gzip is :func:`metabrowser.delivery.gzip_wanted`,
+    which leaves a loopback client of a server started for local use uncompressed (H115)
+    and otherwise is Starlette's own test of ``Accept-Encoding``.
     """
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -150,7 +154,7 @@ class TimedGZipMiddleware(GZipMiddleware):
             await self.app(scope, receive, send)
             return
         responder: ASGIApp
-        if "gzip" in Headers(scope=scope).get("Accept-Encoding", ""):
+        if delivery.gzip_wanted(scope):
             responder = _TimedGZipResponder(
                 self.app, self.minimum_size, compresslevel=self.compresslevel
             )
