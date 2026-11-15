@@ -179,8 +179,16 @@ _CATALOG_COOPERATIVE_YIELD_S = 0.000_001
 # reacquire the GIL before a provider-read worker gets a turn.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
 _WALKER_COOPERATIVE_YIELD_S = 0.000_001
+# The shortest time a root-summary read reuses a retained boundary while the revision
+# moves. The bound is the greater of this and the last pass's cost
+# (`navigation_tallies_fresh_within`), so this floor matters only for a tree small
+# enough that the pass is nearly free.
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
+# Multi-page projections retained for their continuations, oldest evicted first, with
+# their rows also bounded by `MAX_ASSEMBLED_ROWS` (`_retain_page_memo_locked`). A reader
+# whose memo was evicted gets `VersionUnavailableError` and restarts its assembly.
 _PAGE_MEMO_CAPACITY = 64
+# The provider contract this store implements, as diagnostics report it.
 _CONTRACT_ID = "inventory-provider-v1"
 
 
@@ -3149,7 +3157,7 @@ class _PythonInventoryStore:
         tells the merge to refuse it. Files are skipped so the epoch map stays
         proportional to the directory count rather than the entry count.
 
-        Cost is one chain walk per stored entry, bounded by ``INVENTORY_MAX_DEPTH``.
+        Cost is one chain walk per stored entry, bounded by the entry's depth.
         """
 
         self._aggregate_epoch += 1

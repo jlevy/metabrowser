@@ -78,20 +78,13 @@ class InventoryRuntime:
         if not change.facts_changed:
             return
         # The coordinator publishes every entry it discovers, so this listener sees the
-        # whole first walk. That used to cost `invalidate_projection_path` once per
-        # entry against caches that were empty, and each call resolved the path -- a
-        # syscall -- once per projection cache: 45,516 resolves for 22,758 entries on
-        # this repository, about 2s of a 4.9s walk.
-        #
-        # That cost is now removed in `MtimeCache.delete`, which returns before
-        # resolving anything when the cache is empty. Removing it there rather than
-        # here is what makes it free of semantics: an earlier version of this code
-        # skipped the whole loop while the phase was DISCOVERING, which also skipped
-        # real watcher and `refresh()` invalidations arriving during the initial walk
-        # -- the watcher starts before the walk, so those exist. They were harmless
-        # only because these caches are mtime keyed and revalidate on read, an
-        # invariant living in another module with nothing binding the two together.
-        # The membership check gets the same walk back without resting on it.
+        # whole first walk, against projection caches that are still empty. Resolving
+        # each path, a syscall, once per cache measured 45,516 resolves for 22,758
+        # entries on this repository, about 2s of a 4.9s walk. `MtimeCache.delete`
+        # returns before resolving anything when its cache is empty, which removes that
+        # cost without changing what is invalidated. Skipping this loop during discovery
+        # instead would also skip real watcher and `refresh()` invalidations that arrive
+        # during the first walk, since the watcher starts before it.
         for relative_path in change.dirty_paths:
             # Dirty paths are canonical identities; the projection caches are keyed by
             # resolved filesystem paths, so this crosses back to the platform spelling.

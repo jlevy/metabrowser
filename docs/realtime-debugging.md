@@ -1,160 +1,137 @@
 # Real-Time Debugging
 
-Metabrowser reports timing on both sides of the HTTP boundary so a slow preview can be
+**Status:** Current for the built server and browser.
+A standard for contributors diagnosing a slow preview or a live update that did not
+arrive; what a user sees while files change is in [Browsing Files](browsing-files.md).
+
+Metabrowser reports timing on both sides of the HTTP boundary, so a slow preview can be
 classified as server work, transport delay, event-loop queueing, or browser rendering.
+The live path is described in
+[Live Delivery](project/architecture/arch-live-delivery.md); this document is how to
+observe it.
 
-## Default Signals
+## Timing Signals
 
-Every response includes a `Server-Timing` entry for measured server duration.
-Browser developer tools display it alongside the request waterfall.
+Every response except the long-lived event streams (`_LONG_LIVED_PATHS` in `server.py`)
+carries a `Server-Timing` header with the server’s duration to the response start and
+the named phases finished by then (`server_timing.py`); those streams are neither timed
+nor reported as slow.
+Browser developer tools show the header beside the request waterfall.
 
-Slow server requests log a warning.
-The default threshold can be overridden with `METABROWSER_SLOW_SERVER_MS`. Routine
-request timings, lifecycle events, and skipped protected directories stay quiet unless
-`--log-level debug` is set.
+A request slower than `METABROWSER_SLOW_SERVER_MS` logs a warning with its arrival time,
+duration, status, size, time to first byte, and phases.
+`METABROWSER_REQUEST_LOG=verbose` logs one line for every request instead, with arrival
+and completion times that line up with the browser’s `perf.js` records.
+Routine request timings, lifecycle events, and skipped protected directories appear only
+with `--log-level debug`.
 
-The browser performance helper measures fetches and render spans.
-A slow fetch message includes total, server, and transit time.
-Interpret it as follows:
+The browser’s performance helper (`static/perf.js`) measures fetches and render spans,
+and a slow fetch message includes total, server, and transit time:
 
-- server time close to total: inspect parsing, filesystem access, or data hooks;
-- transit time close to total on localhost: inspect event-loop blocking or request
-  queueing;
-- fetch fast but render span slow: inspect DOM volume, syntax highlighting, charts, or
+- **Server time close to total:** inspect parsing, filesystem access, or data hooks.
+- **Transit time close to total on localhost:** inspect event-loop blocking or request
+  queueing.
+- **Fetch fast but render slow:** inspect DOM volume, syntax highlighting, charts, or
   plugin rendering.
 
-## Verbose Request Logging
-
-Enable one line for every request when correlation is more useful than log volume:
-
-```shell
-METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
-```
-
-The events and tail routes are intentionally long-lived and are excluded from ordinary
-slow-request warnings.
-
-## Navigation API Check
-
-Run the navigation scenario directly against the ASGI application:
-
-```shell
-metab ./path/to/directory --check-api
-```
-
-The command starts the normal inventory lifecycle in-process, requests the initial tree,
-enables the Live filter, clears it, waits for the index to finish, and requests the
-final tree. It does not open a browser or bind a network port.
-The normalized output includes HTTP status codes, an explicit index outcome, and the
-final row, file, byte, and index counts.
-The command exits nonzero if a route or response contract fails.
-For an unusually large or slow root, extend the default 60-second wait:
-
-```shell
-metab ./path/to/directory --check-api --index-timeout 180
-```
-
-This scenario is suitable for reproducing navigation failures on a large local directory
-and for a deterministic golden test on a checked-in fixture.
-It complements focused concurrency tests, which can force a mutation at an exact
-inventory operation that a filesystem timing test cannot reproduce reliably.
-
-## Task Snapshot
-
-Enable the debug endpoint only for local investigation:
+## Debug Endpoints
 
 ```shell
 METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
-During a stall, request `/_debug/tasks` and `/_debug/inventory` from another terminal.
-A rapidly growing task count suggests queueing or a producer that is not applying
-backpressure. The inventory response identifies the selected provider and contract,
-lifecycle phase, coverage, version, read count, entries and directories visited, rows
+With `METABROWSER_DEBUG` set, `/_debug/tasks` lists the running asyncio tasks and
+`/_debug/inventory` reports the provider and contract, lifecycle phase, coverage,
+version, read count, and cumulative work: entries and directories visited, rows
 returned, binding-copy bytes, lock wait, CPU time, and wall time.
-Compare those cumulative work counters before and after one slow request to distinguish
-provider work from queueing or browser time.
-Treat the response as diagnostic data; do not expose the debug server on an untrusted
-network.
+A task count that grows during a stall suggests queueing or a producer that is not
+applying backpressure.
+Compare the work counters before and after one slow request to separate provider work
+from queueing or browser time.
+Do not expose a debug server on an untrusted network.
 
-## Live-Update Problems
+## Following a Live Update
+
+A change travels watcher, provider, coordinator, event bus, stream, and browser store.
+Each layer has a `--log-level debug` line that proves it ran:
+
+| Layer | Debug line |
+| --- | --- |
+| Watcher selection | `watcher starting at … mode=… reason=…` |
+| Watcher batch | `watcher: batch n=…`, then `watcher: submitted rel=… kind=…` per path |
+| Watcher drop | `watcher: drop (hidden segment)`, `(outside root)`, or `root metadata` |
+| Event bus | `events bus: forwarded id=… type=… conns=…` |
+| Connection | `sse: attached client=… scope=…`, then `sse: yielded id=…` |
 
 For a tree row that does not update:
 
-1. Confirm the file path is beneath the served root and is not ignored.
-2. Check `/_debug/inventory` for provider state, version, and work growth, then query
-   the affected entry through its normal API route.
-3. Inspect the `/api/events` stream for a snapshot, change, or resynchronization event.
-4. Confirm the browser file store applied the operation.
-5. Verify the relevant panel subscribes to the shared store instead of a stale local
-   copy.
+1. Confirm the path is beneath the served root and not under a hidden segment.
+   The Python engine’s watcher also ignores what `watchfiles`’ default filter ignores,
+   such as `node_modules` and `__pycache__`; see
+   [Python Inventory Engine](project/architecture/arch-inventory-engine-python.md#the-watcher).
+2. Read `/api/capabilities`: the watcher’s mode (`native` or `polling`), its state, and
+   `events.stream`. A failed watch reports `failed` there and in the server log.
+3. Check `/_debug/inventory` for the provider’s state and version, then request the
+   entry through its ordinary route, such as `/api/tree?path=…`.
+4. Read the `/api/events` stream for the snapshot, a change naming the path, or a
+   resynchronization. Only paths within two segments of the root arrive as rows on the
+   browser’s `root-depth-2` stream; a deeper change arrives through its ancestors’
+   totals and `catalog.change`.
+5. Confirm the browser’s `fileStore` applied the operation, and that the panel reads the
+   shared store rather than a stale copy.
 
-If an event buffer gap occurs, the client should replace state from a fresh snapshot.
-Do not repair a gap by replaying operations whose order is no longer known.
+A gap is repaired by a fresh snapshot, never by replaying operations whose order is no
+longer known. The warning
+`events bus: refreshing N slow browser connection(s) after queue overflow` means a
+connection’s bounded queue filled during a burst; the server replaced its backlog with
+`fs.resync_required` and the browser reconnected for a snapshot.
+One is self-healing.
+Repeated ones mean filesystem events arrive faster than the stream drains; report them
+with the root size, filesystem type, and the slow operations around them.
 
-A message that Metabrowser is refreshing browser connections after queue overflow means
-the bounded event buffer filled during a producer burst.
-The server discards the incomplete delta backlog, sends a resynchronization marker, and
-the browser reconnects for a fresh snapshot.
-One refresh is self-healing.
-Repeated refreshes are worth reporting with the root size, filesystem type, and
-surrounding slow-operation messages because they indicate that filesystem events are
-arriving faster than the browser stream can consume them.
+## Pending Folder Totals
 
-### Pending Folder Totals
+A folder total that stays pending for `PENDING_TALLY_DIAGNOSTIC_DELAY_MS`
+(`settings.py`) produces one correlated record per unresolved episode: a browser console
+warning, and a `POST /api/diagnostics/pending-tallies` that logs a server warning with
+the same diagnostic ID. The browser record holds the active filters and data source, the
+pending rows, cached tree values, `fileStore` values, scan progress, and event-stream
+state.
+The server record adds the inventory status, provider, version, and per-path state
+for at most `PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT` paths, and the event bus’s
+connection count and latest event ID. When the server’s index is already complete, the
+browser then reloads the authoritative tree, which repairs a stale rendering while
+keeping the evidence of how it went stale.
 
-A folder count, size, or modification time that remains pending for five seconds emits
-one warning in the browser console and one correlated warning in the server log.
-The warning is reported once per unresolved episode, so a long scan does not repeat the
-same message.
+## Navigation Check
 
-Use the shared diagnostic ID to compare the two records.
-The browser record includes the active filters and data source, visible pending rows,
-cached tree values, file-store values, scan progress, and event-stream state.
-The server record adds the inventory and walker status, pending-directory count,
-subscriber and connection counts, event position, and aggregate and generation state for
-a bounded sample of affected paths.
-
-When the server inventory is already complete, the browser reloads the authoritative
-tree after recording the warning.
-This safety refresh repairs a stale rendered snapshot while preserving the diagnostic
-evidence needed to find how it became stale.
+`metab PATH --check-api` runs the navigation scenario in process, with no browser or
+port: it requests the initial tree, applies and clears the Live filter, waits for the
+index, and requests the final tree.
+Its normalized transcript has the status codes, an explicit index outcome, and the final
+counts, and it exits nonzero when a route or envelope contract fails, so it reproduces
+navigation failures on a large local tree and pins them in a golden on a checked-in
+fixture. `--index-timeout` extends the wait for a slow root.
+It complements focused concurrency tests, which can force a mutation at an exact
+inventory operation that a filesystem timing test cannot reproduce.
 
 ## Plugin Problems
 
-Start with the registry:
-
-```shell
-uv --config-file uv.toml run --frozen metab --plugins --json
-uv --config-file uv.toml run --frozen metab --doctor
-```
-
-Then verify:
-
-- the installed wheel contains `manifest.toml`, `index.js`, and every declared extra
-  asset;
-- the classifier chose the expected kind in `/api/file`;
-- the manifest declared the expected view;
-- `index.js` registered the same `(kind, view)` pair;
-- data-hook requests use the plugin and route names from the manifest;
-- the renderer uses SDK methods instead of private shell functions.
-
-For a renderer that works once and then fails, inspect disposal and retained module
-state.
-Views persist across tab switches but must release resources when the preview pane
-is replaced.
+`metab --plugins --json` and `metab --doctor` show what discovery loaded and whether
+each manifest, handler, and asset is sound.
+Then check that `/api/file` chose the expected kind, the manifest declares the view,
+`index.js` registered the same `(kind, view)` pair, and data-hook requests use the
+manifest’s plugin and route names.
+A renderer that works once and then fails usually retains state its disposer does not
+release; views survive tab switches and are disposed when the preview pane is replaced.
+See [Plugins](plugins.md).
 
 ## Reporting a Performance Defect
 
-Include:
-
-- Metabrowser version and Python version;
-- operating system and filesystem type;
-- file size and kind, with sensitive content removed;
-- total, server, transit, and render durations;
-- whether the issue reproduces with optional plugins disabled;
-- a minimal fixture or generator when possible.
-
+Include the Metabrowser and Python versions, the operating system and filesystem type,
+the file’s size and kind with sensitive content removed, the total, server, transit, and
+render durations, whether it reproduces with optional plugins disabled, and a minimal
+fixture or generator when possible.
 Do not attach private logs or absolute local paths to a public issue.
 
 <!-- This document follows common-doc-guidelines.md.
