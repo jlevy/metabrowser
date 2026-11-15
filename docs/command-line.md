@@ -1,9 +1,10 @@
 # Using the Metabrowser Command Line
 
 `metab` serves a folder, a file, or a repository to your browser, and its data modes
-answer the same questions without a browser.
-Each data mode runs the server the browser talks to, in process, so what it reports is
-what the browser would draw.
+answer the same questions without one.
+`--api`, `--show`, and `--check-api` run the server the browser talks to in process, and
+`--walk` and `--diff` print the data the browser draws, so what a mode reports is what
+the browser would show.
 `metab` and `metabrowser` are the same command.
 
 `metab --help` lists every option of the build you have, with its defaults.
@@ -66,9 +67,9 @@ An empty argument is refused; write `.` for the current directory.
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 
-Most modes only read.
-`--no-serve` writes a cache entry for a Git source, and `--api` writes when the route it
-names does, such as a refresh.
+On a local folder every mode only reads.
+A Git source is cloned into the cache by whichever mode opens it first, and `--api`
+writes when the route it names does, such as a refresh.
 
 ## Serving
 
