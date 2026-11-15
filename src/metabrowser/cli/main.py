@@ -77,7 +77,6 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "host",
             "no_open",
             "exit_on_eof",
-            "compress",
             "plugins_dir",
             "log_level",
             "untrusted",
@@ -165,7 +164,6 @@ _OPTION_LABELS: dict[str, str] = {
     "host": "--host",
     "no_open": "--no-open",
     "exit_on_eof": "--exit-on-eof",
-    "compress": "--compress",
     "plugins_dir": "--plugins-dir",
     "log_level": "--log-level",
     "fmt": "--format",
@@ -660,15 +658,6 @@ def _metab(
         "started the server and holds its stdin exits, even by crashing.",
         rich_help_panel=_PANEL_SERVE,
     ),
-    compress: bool = typer.Option(
-        False,
-        "--compress",
-        help="Gzip answers to a browser on this machine too. A server on a loopback "
-        "address sends them uncompressed, since nothing crosses a wire; pass this "
-        "when a tunnel or proxy carries them elsewhere, as --remote does for the "
-        "server it starts.",
-        rich_help_panel=_PANEL_SERVE,
-    ),
     # ── Walk options ───────────────────────────────────────────────
     fmt: str = typer.Option(
         "text",
@@ -855,6 +844,10 @@ def _metab(
     _check_format_applicability(ctx, mode, fmt, explicit)
 
     if mode == "serve":
+        # A server that opens its own browser, or that the macOS app starts and holds by
+        # its stdin, serves a client on this machine; one started --no-open alone, as
+        # every release's --remote starts the far one, may not (metabrowser.delivery).
+        local_client = not no_open or exit_on_eof
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
@@ -873,7 +866,7 @@ def _metab(
                 port=port,
                 host=host,
                 no_open=no_open,
-                compress=compress,
+                local_client=local_client,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 untrusted=untrusted,
@@ -889,7 +882,7 @@ def _metab(
                 port=port,
                 host=host,
                 no_open=no_open,
-                compress=compress,
+                local_client=local_client,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 no_active_content=no_active_content,

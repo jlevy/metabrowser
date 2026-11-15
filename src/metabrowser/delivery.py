@@ -7,23 +7,28 @@ compressed and others not for no reason it could see.
 
 **Who is not sent gzip (H115).** Compression buys a client fewer bytes on the wire and
 costs the server CPU on the event loop, and a browser on the same machine has no wire to
-save: a level-6 gzip of a 311 KB render took 12.3 ms of a 14.8 ms answer. So an answer
-is sent uncompressed when both of these hold:
+save: a level-6 gzip of a 311 KB render took 12.3 ms of a 14.8 ms answer. Compression is
+still the default, and an answer is sent uncompressed only when both of these hold:
 
-- **the server was started for local use**: ``metab`` serving on a loopback address and
-  not given ``--compress`` (:func:`serve_locally`). ``metab --remote`` starts the far
-  server with ``--compress``, because its client arrives through an SSH tunnel and so
-  from the far host's own loopback;
+- **the command line started the server for a client on this machine**, for local use
+  (:func:`serve_locally`): ``metab`` serving on a loopback address and either opening
+  the browser itself, or started with ``--exit-on-eof``, as the macOS app starts it,
+  holding its stdin;
 - **the request comes from this machine and names no proxy**: the peer is a loopback
   address, and the request carries none of the headers a reverse proxy adds
   (:data:`PROXY_HEADERS`).
 
-The start mode leads, because the peer address cannot tell a tunnel from a browser: an
-``ssh -L`` or a proxy on the serving host connects from loopback too. A proxy that adds
-its headers is caught by the second test; one that adds none, or a tunnel, is the case
-``--compress`` is for. Everything else is compressed as before: a wildcard or LAN bind,
-any peer elsewhere, and any process that never called :func:`serve_locally`, such as
-``--api``, ``--check-api``, and the tests' in-process clients.
+The start is the first test because the server's own command line decides it, from
+flags every release already has, and the peer address cannot tell a tunnel from a
+browser: ``metab --remote`` reaches the far server through SSH, from that host's own
+loopback. Every release's ``--remote`` starts the far server with ``--port N --host
+127.0.0.1 --no-open`` after its root (and ``serve`` before the flat CLI of 2026-07-27),
+with neither of the local starts' marks. So a far server of this version compresses for
+a client of any version, and nothing new is passed to a far server of an older one. A hand-made tunnel
+or a proxy in front of a ``--no-open`` server is compressed for the same reason.
+Everything else is compressed as before: a wildcard or LAN bind, any peer elsewhere, and
+any process that never calls :func:`serve_locally`, such as ``--api``, ``--check-api``,
+and the tests' in-process clients.
 
 The level and the floor are Starlette's middleware settings, kept here so the startup
 budget's check (``devtools/check_startup_scripts.py``) and the performance loop's
@@ -56,14 +61,14 @@ _serving_locally = False
 
 
 def serve_locally(enabled: bool) -> None:
-    """Say whether this process serves for local use, which leaves a loopback client's
-    answers uncompressed. ``metab``'s serve modes call it once, before serving."""
+    """Say whether this process serves a client on this machine, which leaves a loopback
+    client's answers uncompressed. ``metab``'s serve modes call it once, before serving."""
     global _serving_locally
     _serving_locally = enabled
 
 
 def serving_locally() -> bool:
-    """Whether :func:`serve_locally` said this process serves for local use."""
+    """Whether :func:`serve_locally` said this process serves a client on this machine."""
     return _serving_locally
 
 

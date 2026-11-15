@@ -3,7 +3,7 @@
 //
 //   node explorations/performance-loop/server-time.mjs --metab /path/to/metab \
 //     --tree /path/to/folder [--path /view/README.md] [--warmup 1] \
-//     [--server-arg --compress] [--out result.json] [--work .bench/server-time/run-1]
+//     [--server-arg --exit-on-eof] [--out result.json] [--work .bench/server-time/run-1]
 //   node explorations/performance-loop/server-time.mjs --summarize result.json
 //
 // It starts the build's `metab` on the tree with the verbose request log on, waits for
@@ -130,7 +130,9 @@ async function startServer({ metab, tree, work, serverArgs }) {
       {
         cwd: home,
         detached: true,
-        stdio: ["ignore", fd, fd],
+        // A pipe this process holds, as the macOS app holds its server's: a server given
+        // --exit-on-eof stops when it closes, and any other ignores it.
+        stdio: ["pipe", fd, fd],
         env: {
           ...process.env,
           METABROWSER_REQUEST_LOG: "verbose",
@@ -144,6 +146,7 @@ async function startServer({ metab, tree, work, serverArgs }) {
     fs.closeSync(fd);
   }
   children.add(child);
+  child.stdin?.on("error", () => {});
   child.on("exit", () => children.delete(child));
   const stop = async () => {
     if (child.exitCode !== null || child.signalCode !== null) {

@@ -120,8 +120,9 @@ def test_remote_inner_command_uses_flat_cli_form(monkeypatch) -> None:
     assert "metab /runs" in inner, f"remote command should call 'metab <path> …', got: {inner!r}"
     assert "metab serve" not in inner
     assert "--port 8412 --host 127.0.0.1 --no-open" in inner
-    # The far server sees the tunnel arrive from its own loopback; it must still compress.
-    assert "--no-open --compress" in inner
+    # Nothing an older far server cannot parse, and no mark of a local start, so the far
+    # server compresses for the tunnel whatever its version (tests/test_delivery.py).
+    assert "--exit-on-eof" not in inner and "--compress" not in inner
 
 
 def test_ssh_tunnel_helper_unchanged() -> None:

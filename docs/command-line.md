@@ -171,21 +171,19 @@ notice, and the stop goes on without it; so does one Ctrl-C’s.
 
 ### Compression
 
-```shell
-# On the far side of a tunnel or proxy you set up yourself.
-metab ./notes --no-open --compress
-```
+The server gzips its answers for every client that accepts gzip, with one exception: a
+server started for a browser on this machine sends that browser its answers
+uncompressed, since nothing crosses a network and gzip costs the server time on every
+answer. A server is started for this machine when it is on a loopback address
+(`127.0.0.1`, the default, `::1`, or `localhost`) and either opens the browser itself,
+as `metab ./notes` does, or is started with `--exit-on-eof`, as the macOS app starts it.
+Even then a request from another address, or one that carries a proxy’s `Forwarded`,
+`X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, or `Via` header, is sent gzip.
 
-A server on a loopback address (`127.0.0.1`, the default, `::1`, or `localhost`) sends a
-browser on the same machine its answers uncompressed: nothing crosses a network, and
-gzip costs the server time on every answer.
-Every other client is sent gzip as before, and so is any request that carries a proxy’s
-`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, or `Via` header.
-A server bound to a wildcard or network address compresses for everyone.
-An SSH tunnel such as `ssh -L`, or a proxy that adds none of those headers, reaches the
-server from its own loopback, and the server cannot tell it from a local browser.
-Start such a server with `--compress`, which gzips for every client that accepts it.
-`--remote` passes it to the server it starts.
+A server started `--no-open` without `--exit-on-eof` compresses for every client.
+That is how `--remote` starts the remote server, and how a server behind an SSH tunnel
+or a proxy you set up yourself is usually started: such a client reaches the server from
+its own loopback, and the server cannot tell it from a local browser.
 
 ### Serving a Git source
 
@@ -998,8 +996,8 @@ metab --remote example-host --path /srv/shared-files
 `metab` starts itself on the remote host over SSH and tunnels the port back, so the
 browser stays local.
 `ROOT` is not used in this mode; the remote directory is `--path`. The remote server is
-started with `--compress`, so what crosses the tunnel is gzipped
-([Compression](#compression)), and the remote host needs a Metabrowser that accepts it.
+started with `--no-open`, so what crosses the tunnel is gzipped
+([Compression](#compression)), whichever release either host runs.
 
 ## Why the Data Modes Exist
 

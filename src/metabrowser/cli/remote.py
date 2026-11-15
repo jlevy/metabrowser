@@ -133,12 +133,14 @@ def run_remote(
         ssh_options=ssh_options,
     )
 
-    # `--compress`: the far server sees the tunnel arrive from its own loopback, and
-    # would otherwise leave every answer uncompressed for the trip over SSH.
+    # The far host may run another release, so this names no flag an older metab cannot
+    # parse. Started --no-open, without --exit-on-eof, the far server compresses what
+    # crosses the tunnel whatever its version (metabrowser.delivery);
+    # tests/test_delivery.py runs this exact command line through the CLI.
     inner_cmd = (
         'export PATH="$HOME/.local/bin:$PATH" && '
         f"metab {shlex.quote(path)}"
-        f" --port {remote_port} --host 127.0.0.1 --no-open --compress"
+        f" --port {remote_port} --host 127.0.0.1 --no-open"
     )
     # Wrap so the remote server dies when the SSH channel closes; this
     # prevents orphan servers from accumulating on the remote host.

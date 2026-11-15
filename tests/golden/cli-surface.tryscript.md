@@ -190,16 +190,6 @@ $ metab --help
 │                                                  process that started the    │
 │                                                  server and holds its stdin  │
 │                                                  exits, even by crashing.    │
-│ --compress                                       Gzip answers to a browser   │
-│                                                  on this machine too. A      │
-│                                                  server on a loopback        │
-│                                                  address sends them          │
-│                                                  uncompressed, since nothing │
-│                                                  crosses a wire; pass this   │
-│                                                  when a tunnel or proxy      │
-│                                                  carries them elsewhere, as  │
-│                                                  --remote does for the       │
-│                                                  server it starts.           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Walk (--walk) ──────────────────────────────────────────────────────────────╮
 │ --stream       --all-at-once                          Streaming emits one    │

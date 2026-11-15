@@ -1467,15 +1467,19 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
-**What loopback is sent.** A server started for local use sends a loopback browser its
-answers uncompressed (H115, [Compression](../../docs/command-line.md#compression)), so
-on one the bytes this probe reports are the scripts’ decoded size, and an emulated link
-(`--network`) carries them uncompressed too: the emulation is in the browser, and the
-server still sees a loopback peer.
-To measure what `metab --remote` sends, start the build with `--compress`, as `--remote`
-starts its far server.
-`run.py record` reads `startup_script_transfer_kb` that way whatever the server sent the
-page; see the note beside it in `performance-budgets.toml`.
+**What loopback is sent.** A server started for a browser on this machine sends that
+browser its answers uncompressed (H115,
+[Compression](../../docs/command-line.md#compression)): one that opened the browser
+itself, or one started with `--exit-on-eof`, as the macOS app starts it, holding its
+stdin. A build started `--no-open` alone, as every harness here starts one and as
+`metab --remote` starts its far server, still compresses, so its bytes are the remote
+path’s, under `--network` too.
+To measure the local path, start the build as the app does: `--exit-on-eof`, with the
+harness holding the server’s stdin open, since a closed stdin stops it.
+An emulated link (`--network`) does not change which: the emulation is in the browser,
+and the server sees a loopback peer either way.
+`run.py record` reads `startup_script_transfer_kb` as the remote path sends it whatever
+the server sent the page; see the note beside it in `performance-budgets.toml`.
 
 It also splits what the startup scripts cost, from the load’s trace: when their last
 byte arrived, their parse on a worker while they streamed in, their compile and
@@ -1558,8 +1562,10 @@ logged time: the serial server time for the landing’s assets, free of the cont
 page’s parallel requests put on one event loop.
 A build from before `end_ms` logs the end of a body only to the millisecond; the table
 says how many rows that is.
-`--server-arg ARG`, repeatable, passes `ARG` to `metab`: `--server-arg --compress`
-measures the server as `metab --remote` starts it, gzipping for its loopback peer.
+`--server-arg ARG`, repeatable, passes `ARG` to `metab`. The server is started
+`--no-open`, so by default it compresses as `metab --remote`’s far server does;
+`--server-arg --exit-on-eof` starts it as the macOS app does, for a client on this
+machine, and the instrument holds its stdin open for as long as it runs.
 The record also keeps the build’s provenance, Chrome’s version, the load average before
 and after, and the server’s resident memory at the end.
 

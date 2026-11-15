@@ -199,7 +199,7 @@ def run_serve(
     port: int,
     host: str = "127.0.0.1",
     no_open: bool = False,
-    compress: bool = False,
+    local_client: bool = False,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     untrusted: bool = False,
@@ -281,7 +281,7 @@ def run_serve(
         host=host,
         port=port,
         no_open=no_open,
-        compress=compress,
+        local_client=local_client,
         attach=attach_root,
     )
 
@@ -314,17 +314,16 @@ def serve_until_interrupted(
     no_open: bool,
     attach: Callable[[], None],
     banner: Sequence[str] = (),
-    compress: bool = False,
+    local_client: bool = False,
 ) -> None:
     """Print the banner and serve until the process is stopped.
 
     The caller has installed the interrupt handler and applied dotenv, the
     capability block, the log level, and plugin directories. *attach* selects
     what the server serves once its module is loaded; *served* names it in the
-    banner, followed by any *banner* lines. A server on a loopback address serves
-    for local use, and leaves a loopback client's answers uncompressed, unless
-    *compress* says a tunnel or proxy carries them elsewhere
-    (:mod:`metabrowser.delivery`).
+    banner, followed by any *banner* lines. *local_client* says the command line
+    started this server for a client on this machine; on a loopback address it
+    then leaves a loopback client's answers uncompressed (:mod:`metabrowser.delivery`).
     """
 
     # Server import performs logging setup and plugin discovery. Keep it after
@@ -356,7 +355,7 @@ def serve_until_interrupted(
     # (which the allowlist always permits) instead of an unroutable
     # 0.0.0.0-style name.
     server._register_allowed_host(host)
-    delivery.serve_locally(delivery.loopback_host(host) and not compress)
+    delivery.serve_locally(local_client and delivery.loopback_host(host))
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
     url = f"http://{display_host}:{actual_port}{view_href}"
 
