@@ -1782,9 +1782,10 @@ def test_hostile_bounded_rows_round_trip_without_dropped_rows(repository: Listed
     state = _seed(repository, items)
     loaded, rows, _ = catalog_window(repository.home, repository.slug, "all", limit=100)
     assert loaded == state and len(rows) == 100
-    # Every text at its bound, 100 labels among them, still fits the 32 KiB the catalog lets
-    # SQLite store in a row.
+    # Every text at its bound, 100 labels among them, fits the 32 KiB the catalog lets SQLite
+    # store in a row, and a label's description is the record's, not the row's.
     assert all(len(json.dumps(row).encode()) < 32 * 1024 for row in rows)
+    assert all(set(label) == {"name", "color"} for row in rows for label in row["labels"])
 
 
 def test_closed_includes_merged_and_duplicate_pages_do_not_inflate_cached(
@@ -2111,7 +2112,7 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
         # The checkpoint bounds its projection_version by CATALOG_PROJECTION, so its digest
         # moves with that version too, which names the change.
         "checkpoint, CHECKPOINT_SCHEMA": (1, "4977874619334438"),
-        "rows, CATALOG_PROJECTION": (3, "094443fc5922c230"),
+        "rows, CATALOG_PROJECTION": (3, "0d6fbac3228ea579"),
     }
     # A checkpoint writes the version it names, or an older release cannot see it.
     assert CatalogState.model_fields["schema_version"].default == pull_catalog.CHECKPOINT_SCHEMA
@@ -2225,8 +2226,8 @@ def test_rows_of_bare_label_names_are_neutral_until_the_projection_upgrade_color
 ) -> None:
     """A projection 2 catalog, which names each label alone, as 0.12.0's projection 1 does.
 
-    Its rows read as they are, each label without a color or a description, and the
-    upgrade's one ALL scan rewrites them with GitHub's colors and descriptions.
+    Its rows read as they are, each label without a color, and the upgrade's one ALL scan
+    rewrites them with GitHub's colors. A row keeps no description: the record does.
     """
 
     labels = [
@@ -2249,9 +2250,7 @@ def test_rows_of_bare_label_names_are_neutral_until_the_projection_upgrade_color
     _state, rows, _after = catalog_window(repository.home, repository.slug, "all", limit=10)
     assert [len(row["labels"]) for row in rows] == [3, 3, 3]
     assert all(
-        label == {"name": label["name"], "color": None, "description": None}
-        for row in rows
-        for label in row["labels"]
+        label == {"name": label["name"], "color": None} for row in rows for label in row["labels"]
     )
     calls = _provider(monkeypatch, items)
     final = asyncio.run(refresh_pull_list(repository, "all"))
@@ -2260,9 +2259,9 @@ def test_rows_of_bare_label_names_are_neutral_until_the_projection_upgrade_color
     row = catalog_row(repository.home, repository.slug, 1)
     assert row is not None
     assert [label.model_dump() for label in row.labels] == [
-        {"name": "bug", "color": "d73a4a", "description": "Something isn't working"},
-        {"name": "invalid", "color": "e4e669", "description": None},
-        {"name": "odd", "color": None, "description": None},
+        {"name": "bug", "color": "d73a4a"},
+        {"name": "invalid", "color": "e4e669"},
+        {"name": "odd", "color": None},
     ]
 
 

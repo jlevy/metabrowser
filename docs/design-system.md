@@ -1705,7 +1705,9 @@ alone and holds that every color they write is computed from a `--label-` proper
 ground, text, and border in both themes to the formula and to what github.com’s own
 stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
 label, a colorless or malformed one to the neutral chip, and every chip to the neutral
-chip’s box.
+chip’s box. A label a core cached before label colors names alone is drawn neutral
+without a tooltip until the record arrives, and the same check holds that its colors and
+tooltip arriving move no chip and no row.
 
 ## The Pulls Tab
 

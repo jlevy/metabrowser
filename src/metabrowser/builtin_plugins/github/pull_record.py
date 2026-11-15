@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import stat
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -140,22 +141,26 @@ def label_description(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def bare_labels(value: object) -> object:
-    """Labels as an earlier projection wrote them, each its bare name, as names alone.
+def bare_labels(*fields: str) -> Callable[[object], object]:
+    """A reader of labels an earlier projection wrote as bare names, each given *fields*.
 
     A record of projection 1 or earlier and a catalog row of projection 2 or earlier, what
     Metabrowser 0.12.0 and the builds since wrote, hold a label as its name. Each reads as
-    a label without a color or a description, drawn neutral, until the projection's
-    upgrade rewrites it. Anything else is left for the model to validate.
+    a label whose *fields*, its color and, in a record, its description, are ``None``, so
+    it is drawn neutral until the projection's upgrade rewrites it. Anything else is left
+    for the model to validate.
     """
 
-    if not isinstance(value, list | tuple):
-        return value
-    items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
-    return [
-        {"name": item, "color": None, "description": None} if isinstance(item, str) else item
-        for item in items
-    ]
+    def read(value: object) -> object:
+        if not isinstance(value, list | tuple):
+            return value
+        items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
+        return [
+            {"name": item, **dict.fromkeys(fields)} if isinstance(item, str) else item
+            for item in items
+        ]
+
+    return read
 
 
 class PullLabel(_Model):
@@ -202,9 +207,9 @@ class PullRequest(_Model):
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
-    labels: Annotated[tuple[PullLabel, ...], BeforeValidator(bare_labels)] = Field(
-        max_length=MAX_LABELS
-    )
+    labels: Annotated[
+        tuple[PullLabel, ...], BeforeValidator(bare_labels("color", "description"))
+    ] = Field(max_length=MAX_LABELS)
     author: Login | None
     author_avatar_url: AvatarUrl = None
     created_at: Timestamp

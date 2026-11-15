@@ -279,8 +279,7 @@ status: 200
       "labels": [
         {
           "name": "enhancement",
-          "color": "2700af",
-          "description": "A label's description is its chip's tooltip"
+          "color": "2700af"
         }
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
@@ -440,8 +439,7 @@ status: 200
       "labels": [
         {
           "name": "enhancement",
-          "color": "2700af",
-          "description": "A label's description is its chip's tooltip"
+          "color": "2700af"
         }
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
@@ -506,8 +504,7 @@ status: 200
       "labels": [
         {
           "name": "invalid",
-          "color": "e4e669",
-          "description": null
+          "color": "e4e669"
         }
       ],
       "head_oid": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",

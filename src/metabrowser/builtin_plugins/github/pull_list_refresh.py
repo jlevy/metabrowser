@@ -54,7 +54,6 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
-    MAX_ROW_LABEL_DESCRIPTION_BYTES,
     MAX_ROW_REF_BYTES,
     MAX_ROW_TITLE_BYTES,
     ListedRepository,
@@ -69,7 +68,6 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRefreshStamp,
     cut_escaped,
     label_color,
-    label_description,
 )
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import PullListName
@@ -85,10 +83,11 @@ _COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # A page remains 100 rows and at most 100 bounded labels on each row.
 # ``headRefOid`` lets a cached record or file list be checked against its row; on
 # cli/cli's 100 newest rows it took a page from 58,811 to 64,410 bytes (9.5%), at the
-# same cost of 1 (2026-11-11). Each label's ``color`` and ``description``, which its chip
-# is painted and titled by, took cli/cli's newest page (105 labels) from 63,097 to 69,951
-# bytes (10.9%) and kubernetes/kubernetes's (981 labels) from 84,666 to 174,997 (107%),
-# both still at a cost of 1 (2026-11-15).
+# same cost of 1 (2026-11-11). Each label's ``color``, which its chip is painted by, took
+# cli/cli's newest page (105 labels) from 63,097 to 64,882 bytes (2.8%) and
+# kubernetes/kubernetes's (981 labels) from 84,678 to 101,355 (19.7%), both still at a
+# cost of 1 (2026-11-15). Its ``description`` is the record's alone: an earlier read that
+# day took the kubernetes page from 84,666 to 174,997 bytes with it, for what no row shows.
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
   repository(owner:$owner,name:$name) {
@@ -102,7 +101,7 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
       nodes {
         number title state isDraft mergedAt createdAt updatedAt closedAt
         author { login avatar_url:avatarUrl(size:40) } baseRefName headRefName headRefOid headRepository { nameWithOwner }
-        labels(first:100) { nodes { name color description } pageInfo { hasNextPage } }
+        labels(first:100) { nodes { name color } pageInfo { hasNextPage } }
       }
     }
   }
@@ -169,7 +168,7 @@ def _row(value: object) -> tuple[PullListRow, bool]:
 
 
 def _label(value: object) -> tuple[PullListLabel, bool] | None:
-    """A row's label and whether a bound cut it, or ``None`` for one without a name.
+    """A row's label and whether its bound cut its name, or ``None`` for one without one.
 
     A color that is not six hex digits is left out, and the label is drawn neutral.
     """
@@ -178,16 +177,8 @@ def _label(value: object) -> tuple[PullListLabel, bool] | None:
     name = label.get("name")
     if not isinstance(name, str):
         return None
-    name, name_cut = cut_escaped(name, MAX_ROW_LABEL_BYTES)
-    description = label_description(label.get("description"))
-    description, description_cut = (
-        cut_escaped(description, MAX_ROW_LABEL_DESCRIPTION_BYTES)
-        if description is not None
-        else (None, False)
-    )
-    return PullListLabel(
-        name=name, color=label_color(label.get("color")), description=description
-    ), name_cut or description_cut
+    name, cut = cut_escaped(name, MAX_ROW_LABEL_BYTES)
+    return PullListLabel(name=name, color=label_color(label.get("color"))), cut
 
 
 def _rows(values: Sequence[object]) -> tuple[tuple[PullListRow, ...], bool]:

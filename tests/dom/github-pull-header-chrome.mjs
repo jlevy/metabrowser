@@ -418,6 +418,8 @@ const MEASURE = `async (name, change, tab, width) => {
           style.fontSize, style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
           style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
         ].join(" "),
+        left: Math.round(box(chip).left * 100) / 100,
+        width: Math.round(box(chip).width * 100) / 100,
       };
     }),
     neutral: (() => {
@@ -1074,6 +1076,29 @@ async function main() {
               JSON.stringify({ chip, github: computed }),
             );
           }
+          // A label an earlier cache names alone, without a color or a description, as a core
+          // or record cached before label colors draws it, until the record that colors it
+          // arrives: each chip starts and ends where the colored one does, and the rows hold.
+          const bare = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              theme,
+            })}, "", 980)`,
+          );
+          const places = (measured) =>
+            measured.labels.map((chip) => [chip.name, chip.left, chip.width]);
+          check(
+            `${theme}: a label's color and tooltip arriving move no chip and no row`,
+            bare.labels.every((chip) => chip.color === null && chip.tip === null) &&
+              JSON.stringify(places(bare)) === JSON.stringify(places(shape)) &&
+              JSON.stringify(bare.rows) === JSON.stringify(shape.rows) &&
+              bare.tabBar === shape.tabBar,
+            JSON.stringify({
+              bare: places(bare),
+              colored: places(shape),
+              rows: [bare.rows, shape.rows],
+            }),
+          );
           check(
             `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,
             shape.header === empty.header &&

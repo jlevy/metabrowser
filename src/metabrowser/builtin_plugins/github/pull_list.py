@@ -69,13 +69,11 @@ log = logging.getLogger(__name__)
 MAX_ROW_TITLE_BYTES: Final = 1024
 MAX_ROW_REF_BYTES: Final = 256
 MAX_ROW_LABEL_BYTES: Final = 64
-# A label's description: GitHub refuses one past 100 characters, and the longest of the
-# 2,082 descriptions among the 2,846 labels of six public repositories (pull_record.py,
-# LabelColor) was 101 bytes (2026-11-15). 160 bytes keeps every one measured, and a row
-# with every text at its bound, 100 labels among them, is 28,379 bytes, inside the 32 KiB
-# the catalog lets SQLite store in one row (pull_catalog._database's SQLITE_LIMIT_LENGTH);
-# at 400 bytes such a row was refused, and its page with it.
-MAX_ROW_LABEL_DESCRIPTION_BYTES: Final = 160
+# A row with every text at its bound, 100 labels with their colors among them, is 11,079
+# bytes as written (8,479 with names alone), well inside the 32 KiB the catalog lets SQLite
+# store in one row (pull_catalog._database's SQLITE_LIMIT_LENGTH; 2026-11-15). A label's
+# description, which the record keeps, would have taken it to 28,379 bytes at 160 bytes
+# each and past that limit at 400.
 
 # What ``gh_api`` will send as ``If-None-Match``, the same as ``gh.py``'s, which this module
 # does not load. It raises on anything else, which is no failure a job names, so a file
@@ -85,9 +83,6 @@ ETAG_PATTERN: Final = r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$'
 type PullNumber = Annotated[int, Field(ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 type _RowText = Annotated[str, StringConstraints(max_length=MAX_ROW_REF_BYTES)]
 type _LabelName = Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
-type _LabelDescription = Annotated[
-    str, StringConstraints(max_length=MAX_ROW_LABEL_DESCRIPTION_BYTES)
-]
 
 
 _UNWRITTEN_STAMPS: dict[str, PullRefreshStamp] = {}
@@ -110,11 +105,14 @@ class _Model(BaseModel):
 
 
 class PullListLabel(_Model):
-    """A label as a row carries it: the record's :class:`.pull_record.PullLabel`, bounded."""
+    """A label as a row carries it: its name, bounded, and GitHub's color for it.
+
+    Not its description, which the record keeps (:class:`.pull_record.PullLabel`): no row
+    draws labels, and the pull request header's tooltips come from the record or its core.
+    """
 
     name: _LabelName
     color: LabelColor | None
-    description: _LabelDescription | None
 
 
 class PullListRow(_Model):
@@ -124,7 +122,7 @@ class PullListRow(_Model):
     ``head_oid`` is the head commit GitHub reported with the row, or ``None`` for a row
     written before the catalog read it, which the next projection upgrade rewrites. A row
     written before projection 3 names its labels alone, which read as labels without a
-    color or a description (:func:`.pull_record.bare_labels`) until that upgrade too.
+    color (:func:`.pull_record.bare_labels`) until that upgrade too.
     """
 
     number: PullNumber
@@ -140,7 +138,7 @@ class PullListRow(_Model):
     base_ref: _RowText
     head_ref: _RowText
     head_repository: _RowText | None
-    labels: Annotated[tuple[PullListLabel, ...], BeforeValidator(bare_labels)] = Field(
+    labels: Annotated[tuple[PullListLabel, ...], BeforeValidator(bare_labels("color"))] = Field(
         max_length=MAX_LABELS
     )
     head_oid: Sha | None = None
@@ -536,7 +534,6 @@ __all__ = [
     "MAX_PULL_FILES",
     "MAX_PULL_FILES_BYTES",
     "MAX_ROW_LABEL_BYTES",
-    "MAX_ROW_LABEL_DESCRIPTION_BYTES",
     "MAX_ROW_REF_BYTES",
     "MAX_ROW_TITLE_BYTES",
     "PULL_FILES_SCHEMA",

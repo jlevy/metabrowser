@@ -13,8 +13,9 @@ All notable changes to Metabrowser are documented here.
   refresh, which fetches it in full once, and a repository’s cached list of pull
   requests reads its rows again once, keeping the rows it holds meanwhile.
   `metab --api` answers each label as its name, color, and description rather than its
-  name alone, in `/api/plugin/github/pull`, `/api/plugin/github/pull-cores-prepare`, and
-  `/api/plugin/github/pulls`. See [Label Colors](docs/design-system.md#label-colors).
+  name alone in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`,
+  and as its name and color in `/api/plugin/github/pulls`. See
+  [Label Colors](docs/design-system.md#label-colors).
 
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
