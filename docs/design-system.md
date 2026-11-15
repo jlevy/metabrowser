@@ -1418,10 +1418,13 @@ icon at the title’s font size.
 The text wraps under its first line while the icon stays beside the first line, to two
 lines at most: the title holds two lines from first paint, and one cut short there
 carries the whole of it in its tooltip.
-The colored badge that leads the row of ages gives the state in text and the title icon
-is decorative. The header’s box is decided at first paint, in every state and on every
-tab, so the tab bar under it never moves between pull requests or tabs: the author’s row
-is one line, the author and the sentence, then at its right end the stack chip’s slot
+The icon and the text start at the header’s left edge, and the number, outside the
+clamped text, ends on the header’s right edge, level with the title’s last line, over
+the stack chip that ends the author’s row, whatever the title’s length (mb-z416). The
+colored badge that leads the row of ages gives the state in text and the title icon is
+decorative. The header’s box is decided at first paint, in every state and on every tab,
+so the tab bar under it never moves between pull requests or tabs: the author’s row is
+one line, the author and the sentence, then at its right end the stack chip’s slot
 (mb-cf0l), whose right edge is the header’s content edge, where a title that fills its
 lines ends with its number; a chip that arrives late lands in the row’s empty end and
 moves nothing, and where the row has no room left for it the sentence is cut short at

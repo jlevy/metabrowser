@@ -10,6 +10,9 @@ All notable changes to Metabrowser are documented here.
   ago · updated …”. The stack button moves from the end of the labels row to the right
   end of the author’s row, under the end of the title, and its menu opens from there;
   arriving after the page, it still moves nothing.
+  A short title now starts at the header’s left edge with its icon, instead of sitting
+  centred, and the pull request’s number ends at the right edge, above the stack button,
+  for every title.
 
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text

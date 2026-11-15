@@ -2152,7 +2152,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert 'class: "page-heading github-pull-title' in page
     assert (
         github[".github-pull-title-with-state"]["grid-template-columns"]
-        == "auto minmax(0, max-content) auto"
+        == "auto minmax(0, 1fr) auto"
     ), "the number is a track of its own, after the title it is never clamped with"
     title_icon = github[".github-pull-title > .github-pull-state-icon"]
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")

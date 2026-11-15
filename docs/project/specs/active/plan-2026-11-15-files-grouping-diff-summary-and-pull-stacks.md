@@ -273,6 +273,9 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   row’s empty end: no author shift and no reserved gap.
   Where the row has no room left, the sentence is cut short at its end rather than moved
   or wrapped.
+- **Title** (`mb-z416`): the title’s icon and text start at the header’s left edge and
+  its number ends on the right edge, over the stack chip, for every title length; a
+  short title no longer sits centred.
 
 ### Sans Headings
 
@@ -329,6 +332,7 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
 - [ ] `mb-4ydo`: the state badge leads the row of ages.
 - [ ] `mb-cf0l`: the stack chip at the right end of the author’s row.
+- [ ] `mb-z416`: the title’s number at the header’s right edge, over the stack chip.
 
 ### Phase 7: Sans Headings (pull request 7)
 

@@ -27,11 +27,17 @@
 .github-pull-title {
   min-height: 2lh;
 }
-/* The icon, the title cut short at two lines, and the number after the title's last line:
-   the number is outside the clamp, so a title cut short keeps it. */
+/* The icon, the title cut short at two lines, and the number at the content edge, level
+   with the title's last line: the number is outside the clamp, so a title cut short keeps
+   it. The text's track takes the spare width, so the icon and the text start at the
+   header's left edge and the number ends on its right edge, over the stack chip that ends
+   the author's row (mb-z416), whatever the title's length. With the spare width shared by
+   the icon's and the number's tracks, a short title sat centred with its icon alone at the
+   left: at 980 px in Chrome 152, "Count to two in the app" spanned 361 to 608 px and "#7"
+   started at 616. */
 .github-pull-title-with-state {
   display: grid;
-  grid-template-columns: auto minmax(0, max-content) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-content: start;
   column-gap: 0.35em;
 }

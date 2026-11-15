@@ -132,6 +132,10 @@ const MEASURE = `async (name, change, tab, width) => {
     body.pin = null;
     body.pin_ref = null;
   }
+  // A title of two lines and more, cut short at two.
+  if (change.longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
   if (change.lastRefresh) {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
@@ -331,7 +335,33 @@ const MEASURE = `async (name, change, tab, width) => {
   const opened = header.querySelector(".github-pull-opened");
   const badge = opened?.querySelector(".github-pull-badge");
   const centre = (r) => r.top + r.height / 2;
+  // The title's icon and text start at the header's left edge and its number ends on the
+  // right one, over the stack's slot that ends the author's row (mb-z416).
+  const heading = header.querySelector(".github-pull-title-with-state");
+  const edges = (() => {
+    if (!heading) return null;
+    const left = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const right = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const icon = box(heading.querySelector(".github-pull-state-icon"));
+    const range = document.createRange();
+    range.selectNodeContents(heading.querySelector(".github-pull-title-text"));
+    const text = range.getBoundingClientRect();
+    const numberRange = document.createRange();
+    numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
+    const number = numberRange.getBoundingClientRect();
+    const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
+    const r = (v) => Math.round(v * 100) / 100;
+    return {
+      iconLeft: r(icon.left - left),
+      textAfterIcon: r(text.left - icon.right),
+      gap: r(parseFloat(getComputedStyle(heading).columnGap)),
+      numberRight: r(number.right - right),
+      numberOverSlot: slot ? r(number.right - box(slot).right) : null,
+      numberBelowText: r(number.bottom - text.bottom),
+    };
+  })();
   const result = {
+    edges,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
@@ -390,6 +420,7 @@ const RECORDS = [
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
   ["current", { avatar: true }],
+  ["current", { longTitle: true }],
   ["current", { longNames: true }],
   ["current", { longNames: true, avatar: true }],
   ["merged", { longNames: true, avatar: true }],
@@ -757,6 +788,21 @@ async function main() {
                 `${where}: the state badge is centred on its row`,
                 Math.abs(shape.badgeOffset) <= 1,
                 String(shape.badgeOffset),
+              );
+            }
+            if (shape.edges !== null) {
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverSlot } = shape.edges;
+              check(
+                `${where}: the title's icon starts on the header's left edge, its text just after it`,
+                Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
+                JSON.stringify(shape.edges),
+              );
+              check(
+                `${where}: the title's number ends on the header's right edge, over the stack slot's end`,
+                Math.abs(numberRight) <= 0.5 &&
+                  numberOverSlot !== null &&
+                  Math.abs(numberOverSlot) <= 0.5,
+                JSON.stringify(shape.edges),
               );
             }
             check(
