@@ -69,6 +69,27 @@ def test_a_filter_number_opens_its_menu_through_the_triggers_path() -> None:
     assert ".click()" not in open_menu
 
 
+def test_group_by_rows_declare_the_letters_the_keymap_reads() -> None:
+    """Group by's rows declare N, A, and T beside their labels, as the session's stand-in
+    renders them; the keymap reads `data-menu-key` from the filter bar and runs each row
+    through `filterControls.activateMenuRow`, never a synthesized click (mb-ibo4)."""
+
+    js = _read_app_js()
+    options = _function_source(js, "filterGroupOptions")
+    assert '{ value: "age", label: "By age", key: "a" }' in options
+    assert '{ value: "type", label: "By file type", key: "t" }' in options
+    render = _function_source(js, "renderNavFilterBar")
+    group = render[render.index('key: "group"') : render.index('menuId: "filter-group-menu"')]
+    assert 'anyLabel: "No grouping",' in group
+    assert 'anyKey: "n",' in group
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    letters = keymap[keymap.index("function syncMenuLetters(") :]
+    letters = letters[: letters.index("\n    }\n")]
+    assert '".chip-menu-item[data-menu-key]"' in letters
+    assert "filterControls?.activateMenuRow(target)" in letters
+    assert ".click()" not in letters
+
+
 def test_the_branch_switcher_handle_is_kept_by_its_module() -> None:
     """The selector's module keeps what it mounted, and the keymap reads it there, so the
     eager app.js keeps no handle: it mounts the selector and reports it."""

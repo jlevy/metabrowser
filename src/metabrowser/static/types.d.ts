@@ -883,6 +883,8 @@ type MetabrowserFilterOption = {
   count?: number;
   icon?: string;
   iconClass?: string;
+  /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
+  key?: string;
   label: string;
   title?: string;
   value: string;
@@ -932,6 +934,8 @@ type MetabrowserFilterPreset = {
 };
 
 type MetabrowserFilterControls = {
+  /** Choose a dropdown row as a click on it does; false when no bound container holds it. */
+  activateMenuRow(row: HTMLElement): boolean;
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -954,6 +958,8 @@ type MetabrowserFilterControls = {
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
   menuGroupHtml(spec: {
+    /** The any-row's letter, as an option's `key` is its row's. */
+    anyKey?: string;
     anyLabel: string;
     anyValue?: string;
     key: string;

@@ -1957,6 +1957,9 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   up, and `S` is Source.
 - **Numbers are scoped to the screen.** The live numbered controls, the navigation
   pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
+- **An open menu’s letters are its own.** While a menu whose rows have letters is open
+  and has focus, those letters choose its rows, ahead of the shell’s; everywhere else
+  the shell’s letters hold ([Keys in a Menu](#keys-in-a-menu)).
 
 ### The Keymap
 
@@ -2597,7 +2600,8 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Keys.** The drawer’s filters keep their numbers while it is closed.
   Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
   the order the triggers take when it opens, and a filter’s number opens the drawer with
-  its menu.
+  its menu. Group by’s rows take `N`, `A`, and `T` while its menu is open and has focus
+  ([Keys in a Menu](#keys-in-a-menu)).
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
@@ -3451,6 +3455,44 @@ Measured in headless Chrome on the Files type filter: every row is 29 px and the
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.
+
+### Keys in a Menu
+
+**An open menu that has focus can give each of its rows a letter, and the letter chooses
+the row.** Group by’s rows are the first to have them: `N` for No grouping, `A` for By
+age, and `T` for By file type.
+
+- **Which letter.** A row’s letter is the first letter of the word that names its value:
+  No, age, and type. It is declared beside the row’s label, as `key` on an option and
+  `anyKey` for the any-row, rather than derived, so renaming a row never moves its key.
+  Two rows of one menu never share a letter; when two declare one, the first keeps it.
+  A menu that gives one row a letter gives every row one, its any-row included.
+- **When it is live.** Only while the menu is open and focus is in it, on its trigger or
+  a row. The rows’ commands sit in the menu’s own scope, active while it is open and
+  above the shell’s, so there a row’s letter outranks the shell’s, as a text field’s
+  typing does: in Group by’s menu `T` chooses By file type and `N` No grouping, where
+  elsewhere they are Quick Search and the next item.
+  Quick Search keeps `/` there, a letter the menu does not declare still reaches the
+  shell, and every letter is the shell’s again once the menu closes or focus leaves it.
+- **What it does.** A letter runs the row’s click path,
+  `filterControls.activateMenuRow`, never a synthesized click, so it does what a click
+  on the row does: a single-select menu closes on the choice, and a multi-select menu
+  stays open.
+- **How it is shown.** As every other key is: the row carries the letter as its
+  `aria-keyshortcuts`; holding Shift badges each row with its keycap and lists the
+  letters in the revealed strip, which then shows only the keys that still reach another
+  command, Quick Search by `/` alone; and Help lists them in its Menus group, “Available
+  while the menu is open and has focus.”, each by the row’s label and the menu it is in.
+- **Where.** The shell’s keymap reads the letters from the navigation pane’s filter bar
+  (`syncMenuLetters` in `static/shell-keymap.js`), so only its menus take them.
+
+`tests/dom/key-reveal-session.js` runs the letters on the production registry, keymap,
+and filter controls: the Help group, the badges and the strip, each letter’s choice, and
+`T` as Quick Search with the menu closed or focus outside it.
+`tests/dom/filter-controls-behavior.js` pins the rows’ markup and the click path a
+letter shares, and `tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and
+what the live surfaces show; `tests/test_files_tab_chrome.py` presses the letters in
+Chrome.
 
 ## Structured Data and Tables
 

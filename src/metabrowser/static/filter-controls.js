@@ -68,9 +68,22 @@
   }
 
   /**
+   * The attribute that carries a dropdown row's letter, lowercase, or nothing when the row
+   * declares none or one that is not a single letter. A row's letter chooses it while its
+   * menu is open and has focus (docs/design-system.md, "Keys in a Menu").
+   * @param {unknown} key
+   */
+  function rowKeyAttr(key) {
+    const letter = typeof key === "string" ? key.toLowerCase() : "";
+    return /^[a-z]$/.test(letter) ? ` data-menu-key="${letter}"` : "";
+  }
+
+  /**
+   * `key`, on a dropdown's option, is the letter that chooses its row while the menu is
+   * open and has focus; the shell's keymap gives it to the shortcut registry.
    * @typedef {{value: string, label: string, tip?: string, className?: string,
    *            count?: number, icon?: string, iconClass?: string,
-   *            ageClass?: string}} ChipOption
+   *            ageClass?: string, key?: string}} ChipOption
    * @typedef {{key: string, select?: string, layout?: string, label: string,
    *            options: ChipOption[], value: string | string[] | null,
    *            className?: string}} ChipGroupSpec
@@ -184,9 +197,13 @@
    * `bind` fits it when its trigger opens it, and a consumer that renders it
    * open another way calls `fitOpenMenus(root)` after rendering.
    *
+   * An option's `key`, and `anyKey` for the any-row, is the letter that chooses
+   * that row while the menu is open and has focus. A menu that gives one row a
+   * letter gives every row one (docs/design-system.md, "Keys in a Menu").
+   *
    * @param {{key: string, label: string, options: ChipOption[],
    *          value: string[] | string | null, anyLabel: string,
-   *          anyValue?: string, select?: string, open?: boolean,
+   *          anyValue?: string, anyKey?: string, select?: string, open?: boolean,
    *          menuId: string,
    *          presets?: Array<{id: string, label: string, values: string[], count?: number}>,
    *          presetSections?: Array<{id: string, label?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
@@ -256,7 +273,8 @@
           `<button type="button" class="menu-item chip-menu-item${extra}${age}"` +
           `${tip}` +
           ` role="${rowRole}" aria-checked="${on}"` +
-          ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}">` +
+          ` data-chip-key="${esc(spec.key)}" data-chip-value="${esc(opt.value)}"` +
+          `${rowKeyAttr(opt.key)}>` +
           `<span class="chip-menu-check" aria-hidden="true">${on ? "✓" : ""}</span>` +
           `${icon}<span class="menu-item-label">${esc(opt.label)}</span>${count}</button>`
         );
@@ -268,7 +286,7 @@
     const anyRow =
       `<button type="button" class="menu-item chip-menu-item"` +
       ` role="${rowRole}" aria-checked="${selected.length === 0}"` +
-      ` data-chip-key="${esc(spec.key)}" data-chip-any>` +
+      ` data-chip-key="${esc(spec.key)}" data-chip-any${rowKeyAttr(spec.anyKey)}>` +
       `<span class="chip-menu-check" aria-hidden="true">${selected.length === 0 ? "✓" : ""}</span>` +
       `<span class="menu-item-label">${esc(spec.anyLabel)}</span></button>`;
 
@@ -440,6 +458,35 @@
     );
   }
 
+  /** Each bound container's row path, so a row's letter runs what a click on it runs.
+   * @type {WeakMap<Element, (row: HTMLElement) => void>} */
+  const boundRows = new WeakMap();
+
+  /**
+   * Choose a dropdown row as a click on it does, through the handlers of the container
+   * `bind` wired around it. The shell's keymap runs it for a row's letter
+   * (docs/design-system.md, "Keys in a Menu"). Returns whether a bound container held
+   * the row.
+   * @param {HTMLElement} row
+   */
+  function activateMenuRow(row) {
+    if (
+      !row ||
+      typeof row.matches !== "function" ||
+      !row.matches(".chip-menu-item[data-chip-key]")
+    ) {
+      return false;
+    }
+    for (let node = row.parentElement; node; node = node.parentElement) {
+      const pick = boundRows.get(node);
+      if (pick) {
+        pick(row);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Wire one container. `onChange(key, value, select)` fires for group
    * segments, `onToggle(key, nextPressed)` for standalone chips, and
@@ -461,6 +508,30 @@
     function openMenuKey() {
       const open = root.querySelector('.chip-menu[aria-expanded="true"]');
       return open ? open.getAttribute("data-chip-menu") : null;
+    }
+
+    /**
+     * Choose one dropdown row: what a click on it runs, and what its letter runs
+     * (`activateMenuRow`), so a key never synthesizes the click.
+     * @param {HTMLElement} menuItem
+     */
+    function pickRow(menuItem) {
+      const key = menuItem.getAttribute("data-chip-key") || "";
+      const preset = menuItem.getAttribute("data-chip-preset");
+      if (preset !== null) {
+        if (opts.onMenuPreset) {
+          opts.onMenuPreset(key, preset, menuItem.getAttribute("aria-checked") === "true");
+        }
+        return;
+      }
+      if (opts.onMenuPick) {
+        opts.onMenuPick(
+          key,
+          menuItem.hasAttribute("data-chip-any")
+            ? null
+            : menuItem.getAttribute("data-chip-value") || "",
+        );
+      }
     }
 
     /** @param {Event} event */
@@ -495,22 +566,7 @@
         target.closest(".chip-menu-item[data-chip-key]")
       );
       if (menuItem && root.contains(menuItem)) {
-        const key = menuItem.getAttribute("data-chip-key") || "";
-        const preset = menuItem.getAttribute("data-chip-preset");
-        if (preset !== null) {
-          if (opts.onMenuPreset) {
-            opts.onMenuPreset(key, preset, menuItem.getAttribute("aria-checked") === "true");
-          }
-          return;
-        }
-        if (opts.onMenuPick) {
-          opts.onMenuPick(
-            key,
-            menuItem.hasAttribute("data-chip-any")
-              ? null
-              : menuItem.getAttribute("data-chip-value") || "",
-          );
-        }
+        pickRow(menuItem);
         return;
       }
       // Not `.chip[data-chip-key]`: a standalone toggle may render as
@@ -694,7 +750,11 @@
     doc?.addEventListener("pointerdown", onDocumentPointerDown);
     doc?.addEventListener("keydown", onDocumentEscape);
     view?.addEventListener("resize", onWindowResize);
+    boundRows.set(root, pickRow);
     return () => {
+      if (boundRows.get(root) === pickRow) {
+        boundRows.delete(root);
+      }
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
       root.removeEventListener("keydown", onKeyDown);
@@ -705,6 +765,7 @@
   }
 
   const api = {
+    activateMenuRow,
     escapeHtml: esc,
     nextSelection,
     isSelected,

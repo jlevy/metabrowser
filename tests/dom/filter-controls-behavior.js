@@ -690,6 +690,78 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   }
 }
 
+// ── A menu's row letters ───────────────────────────────────────
+// A dropdown row carries the letter its option declares, and the any-row the menu's
+// `anyKey`; a letter is one letter a-z, lowercase, and anything else is no letter. A
+// row's letter runs `activateMenuRow`, which is what a click on the row runs, through the
+// handlers of the container `bind` wired around it (docs/design-system.md, "Keys in a
+// Menu").
+{
+  const { FakeDocument } = require("./key-reveal-dom.js");
+  const keyed = fc.menuGroupHtml({
+    key: "group",
+    select: "one",
+    label: "Group by",
+    options: [
+      { value: "age", label: "By age", key: "A" },
+      { value: "type", label: "By file type", key: "t" },
+      { value: "odd", label: "Odd", key: "tt" },
+    ],
+    value: "none",
+    anyLabel: "No grouping",
+    anyKey: "n",
+    anyValue: "none",
+    menuId: "filter-group-menu",
+  });
+  assertContains("the any-row carries its letter", keyed, 'data-chip-any data-menu-key="n"');
+  assertContains(
+    "a row carries its letter, lowercase",
+    keyed,
+    'data-chip-value="age" data-menu-key="a"',
+  );
+  assertContains("each row has its own", keyed, 'data-chip-value="type" data-menu-key="t"');
+  assertMissing("a key that is not one letter is no letter", keyed, 'data-menu-key="tt"');
+  assertMissing("a menu with no letters renders none", menuClosed, "data-menu-key");
+
+  const doc = new FakeDocument();
+  const root = doc.createElement("div");
+  doc.body.append(root);
+  root.innerHTML = keyed;
+  const picked = [];
+  const unbind = fc.bind(root, {
+    onMenuPick(key, value) {
+      picked.push(`${key}:${value}`);
+    },
+  });
+  const row = (selector) => root.querySelector(`#filter-group-menu ${selector}`);
+  assertEqual(
+    "a row's letter runs the row's click path",
+    [
+      fc.activateMenuRow(row('[data-chip-value="type"]')),
+      fc.activateMenuRow(row("[data-chip-any]")),
+    ],
+    [true, true],
+  );
+  assertEqual("and the consumer hears the picks a click makes", picked, [
+    "group:type",
+    "group:null",
+  ]);
+  row('[data-chip-value="age"]').click();
+  assertEqual("a click runs the same path", picked.at(-1), "group:age");
+  assertEqual(
+    "a trigger is not a row",
+    fc.activateMenuRow(root.querySelector('[data-chip-menu-toggle="group"]')),
+    false,
+  );
+  unbind();
+  assertEqual(
+    "once unbound, no container holds the row",
+    fc.activateMenuRow(row('[data-chip-value="type"]')),
+    false,
+  );
+  assertEqual("and nothing is picked", picked.length, 3);
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

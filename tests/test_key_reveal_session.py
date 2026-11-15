@@ -257,6 +257,44 @@ def test_the_session_runs_on_the_recording() -> None:
         "open": "true",
     }
 
+    # Group by's rows take N, A, and T, in its own scope, while its menu is open and has
+    # focus; Help lists them under Menus; each runs the row's click path; and T is Quick
+    # Search's whenever the menu is closed or focus is outside it (mb-ibo4).
+    assert by_name["Help lists Group by's letters under Menus"]["menus"] == [
+        ["N", "No grouping", "Choose No grouping in the Group by menu."],
+        ["A", "By age", "Choose By age in the Group by menu."],
+        ["T", "By file type", "Choose By file type in the Group by menu."],
+    ]
+    group_open = by_name["1 opens Group by and focuses its checked row, whose letters are live"]
+    assert [key for key in group_open["keys"] if key[1].startswith("menu.")] == [
+        ["N", "menu.group.n", "No grouping row"],
+        ["A", "menu.group.a", "By age row"],
+        ["T", "menu.group.t", "By file type row"],
+    ]
+    revealed = by_name["Shift held in the open menu badges its rows' letters"]
+    for badge in (["N", "No grouping row"], ["A", "By age row"], ["T", "By file type row"]):
+        assert badge in revealed["badges"], badge
+    # T reaches the row, so the strip offers Quick Search by / alone.
+    assert "/ Quick Search" in revealed["strip"]["items"]
+    assert "T By file type" in revealed["strip"]["items"]
+    age = by_name["A chooses By age and closes the menu"]
+    assert age["pressed"] == {"key": "a", "handled": True}
+    assert age["did"] == ["chose age in the group menu"]
+    assert age["trigger"] == "By age"
+    for quick in (
+        "with the menu closed, T is Quick Search",
+        "with focus outside the open menu, T is Quick Search",
+    ):
+        assert by_name[quick]["pressed"] == {"key": "t", "handled": True}, quick
+        assert by_name[quick]["focus"] == "combobox", quick
+    by_type = by_name["1 focuses By age, the checked row, and T chooses By file type"]
+    assert by_type["focus"]["row"] == "By age" and by_type["focus"]["checked"] == "true"
+    assert by_type["trigger"] == "By file type"
+    assert by_name["with focus outside the open menu, T is Quick Search"]["trigger"] == (
+        "By file type"
+    )
+    assert by_name["N chooses No grouping"]["trigger"] == "No grouping"
+
     # What a navigation and a key cost: one publication, and while revealed one pass.
     same_kind = by_name["a move between two files of one kind registers nothing"]["cost"]
     assert same_kind == {"publications": ["batch(target)"], "targetReads": 0, "keycapsCreated": 0}

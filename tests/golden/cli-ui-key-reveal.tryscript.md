@@ -21,7 +21,10 @@ Letters name known meanings, as “Keyboard Shortcuts” in `docs/design-system.
 out: `F`, `R`, and `H` for the Files, Pulls, and Commits tabs, `V` and `S` for a file’s
 rendered view and its source, and `N` and `P` for the next and previous item one level
 up. The filters are situational, so they take numbers from the registry’s one numbering,
-1 to 9 in reading order: `numbers` lists what each number reaches, the first being 1.
+1 to 9 in reading order: `numbers` lists what each number reaches, the first being 1. An
+open menu’s rows take the letters they declare, in the menu’s own scope and only while
+it has focus: in Group by’s, `T` chooses By file type, and the revealed strip offers
+Quick Search by `/` alone.
 Copying is ancillary, so no copy control carries a key, and Help lists the numbers as
 one positional row and gives no digit a fixed meaning; the session fails if either
 breaks.
@@ -47,10 +50,12 @@ reads of targets, and the keycaps built for badges and the strip.
 
 ## A Folder’s Files
 
-The keymap of a plain folder: the file type filter’s number and menu, the root and a
-folder below it, a Markdown file and a move to another of its kind, its Copy path with
-no key, an agent log, structured data, and HTML without active content, and the view tab
-letters following the committed bar through a cancelled stage.
+The keymap of a plain folder: the file type filter’s number and menu, Group by’s menu
+and its rows’ letters, N, A, and T, which are live only while it is open and has focus
+and which Help lists under Menus, the root and a folder below it, a Markdown file and a
+move to another of its kind, its Copy path with no key, an agent log, structured data,
+and HTML without active content, and the view tab letters following the committed bar
+through a cancelled stage.
 
 ```console
 $ node tests/dom/key-reveal-session.js
@@ -75,7 +80,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "3 opens the closed drawer and the file type filter, and focuses its checked row",
@@ -95,7 +100,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "drawerBefore": false,
       "pressed": {
         "key": "3",
@@ -128,7 +133,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "next": {
         "menu": "filter-type-menu",
         "row": ".md",
@@ -136,6 +141,226 @@ $ node tests/dom/key-reveal-session.js
         "open": "true"
       },
       "did": ["closed the types menu"]
+    },
+    {
+      "step": "Help lists Group by's letters under Menus",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "menus": [
+        ["N","No grouping","Choose No grouping in the Group by menu."],
+        ["A","By age","Choose By age in the Group by menu."],
+        ["T","By file type","Choose By file type in the Group by menu."]
+      ]
+    },
+    {
+      "step": "1 opens Group by and focuses its checked row, whose letters are live",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null],
+        ["N","menu.group.n","No grouping row"],
+        ["A","menu.group.a","By age row"],
+        ["T","menu.group.t","By file type row"]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "focus": {
+        "menu": "filter-group-menu",
+        "row": "No grouping",
+        "checked": "true",
+        "open": "true"
+      },
+      "did": ["opened the group menu"]
+    },
+    {
+      "step": "Shift held in the open menu badges its rows' letters",
+      "reveal": "revealed",
+      "rootMarked": true,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null],
+        ["N","menu.group.n","No grouping row"],
+        ["A","menu.group.a","By age row"],
+        ["T","menu.group.t","By file type row"]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [
+        ["F","Files tab"],
+        ["1","Group by"],
+        ["N","No grouping row"],
+        ["A","By age row"],
+        ["T","By file type row"],
+        ["2","Modified within"],
+        ["3","File type"],
+        ["O","Overview tab"],
+        ["M","Treemap tab"]
+      ],
+      "strip": {
+        "surface": "reveal",
+        "items": ["? Help","/ Quick Search","F Files","N No grouping","A By age","T By file type"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
+    },
+    {
+      "step": "A chooses By age and closes the menu",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "pressed": {
+        "key": "a",
+        "handled": true
+      },
+      "trigger": "By age",
+      "focus": "a replaced element",
+      "did": ["chose age in the group menu"]
+    },
+    {
+      "step": "with the menu closed, T is Quick Search",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["↑","quick-file.previous",null],
+        ["↓","quick-file.next",null],
+        ["Enter","quick-file.activate",null],
+        ["Esc","quick-file.close",null]
+      ],
+      "numbers": [],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "pressed": {
+        "key": "t",
+        "handled": true
+      },
+      "focus": "combobox"
+    },
+    {
+      "step": "1 focuses By age, the checked row, and T chooses By file type",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "focus": {
+        "menu": "filter-group-menu",
+        "row": "By age",
+        "checked": "true",
+        "open": "true"
+      },
+      "pressed": {
+        "key": "t",
+        "handled": true
+      },
+      "trigger": "By file type",
+      "did": ["opened the group menu","chose type in the group menu"]
+    },
+    {
+      "step": "with focus outside the open menu, T is Quick Search",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["↑","quick-file.previous",null],
+        ["↓","quick-file.next",null],
+        ["Enter","quick-file.activate",null],
+        ["Esc","quick-file.close",null]
+      ],
+      "numbers": [],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "pressed": {
+        "key": "t",
+        "handled": true
+      },
+      "focus": "combobox",
+      "trigger": "By file type"
+    },
+    {
+      "step": "N chooses No grouping",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "pressed": {
+        "key": "n",
+        "handled": true
+      },
+      "trigger": "No grouping",
+      "did": ["opened the group menu","chose the any-row in the group menu"]
     },
     {
       "step": "a Markdown file has Document and Source",
@@ -156,7 +381,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "s",
         "handled": true
@@ -182,7 +407,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "cost": {
         "publications": ["batch(target)"],
         "targetReads": 0,
@@ -208,7 +433,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "y",
         "handled": false
@@ -234,7 +459,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "U opens the folder above",
@@ -255,7 +480,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["opened the folder \"\""]
     },
     {
@@ -276,7 +501,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "u",
         "handled": false
@@ -300,7 +525,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["selected the treemap tab"]
     },
     {
@@ -323,7 +548,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "V follows the committed bar, and a cancelled stage changes nothing",
@@ -344,7 +569,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "v": {
         "structured": "Tree",
         "agentLog": "Log",
@@ -370,7 +595,7 @@ $ node tests/dom/key-reveal-session.js
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","quick-file","help"]
     }
   ],
   "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","r","t","u"],
@@ -409,7 +634,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "Shift held past the threshold reveals",
@@ -438,7 +663,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "a navigation while revealed moves the badges in one pass",
@@ -467,7 +692,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "cost": {
         "publications": ["batch(target,registration)"],
         "targetReads": 6,
@@ -493,7 +718,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "a capital typed within the threshold never reveals",
@@ -514,7 +739,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "Z",
         "handled": false
@@ -533,7 +758,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "Shift+wheel never reveals",
@@ -554,7 +779,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "Shift with the pointer travelling to a click never reveals",
@@ -575,7 +800,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "a resting hand within the slop still reveals",
@@ -604,7 +829,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "a pointer press while revealed dismisses it",
@@ -625,7 +850,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "Shift during a press that moved focus never reveals",
@@ -653,7 +878,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focusedRow": "docs"
     },
     {
@@ -690,7 +915,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "ArrowUp",
         "handled": true
@@ -737,7 +962,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","U Up"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focusedRow": "docs",
       "repeats": {
         "publications": [],
@@ -765,7 +990,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "a key without Shift ends a reveal whose keyup was lost",
@@ -793,7 +1018,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "the page going hidden ends the reveal",
@@ -821,7 +1046,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "Shift in Quick Search's field never reveals",
@@ -839,7 +1064,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focus": "combobox"
     },
     {
@@ -855,7 +1080,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "reveal",
         "items": []
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "the keymap after a pageshow rebuild",
@@ -876,7 +1101,7 @@ $ node tests/dom/key-reveal-session.js gestures
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "sameAsBefore": true
     }
   ],
@@ -918,7 +1143,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
@@ -943,7 +1168,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","H Commits"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "h",
         "handled": true
@@ -986,7 +1211,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","H Commits"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "f",
         "handled": true
@@ -1020,7 +1245,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
     {
       "step": "J on a commit row ends the reveal, since the row handles it itself",
@@ -1040,7 +1265,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["address /view/","the commit row moved down from a1"]
     },
     {
@@ -1059,7 +1284,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "y",
         "handled": false
@@ -1084,7 +1309,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "whileDown": {
         "threw": null,
         "tab": true,
@@ -1118,7 +1343,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "h",
         "handled": false
@@ -1145,7 +1370,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "tabs": ["Files","Pulls","Commits"]
     },
     {
@@ -1169,7 +1394,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "v",
         "handled": true
@@ -1197,7 +1422,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "r",
         "handled": true
@@ -1222,7 +1447,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "focus": "#7",
       "pressed": {
         "key": "n",
@@ -1252,7 +1477,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","R Pulls","H Commits","N or P Stack"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "n",
         "handled": true
@@ -1278,7 +1503,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
         "key": "p",
         "handled": true
@@ -1304,7 +1529,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "nav",
         "items": ["? Help","T Quick Search"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
         "key": "w",
         "handled": true
@@ -1338,7 +1563,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "surface": "reveal",
         "items": ["? Help","T or / Quick Search","F Files","W Branch"]
       },
-      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "helpDigits": [
         {
           "keys": "1–9",
@@ -1357,8 +1582,9 @@ $ node tests/dom/key-reveal-session.js tabs
 ## Command, Control, and Option Are the Browser’s
 
 Every chord is left to the browser and the platform, so Command-R reloads wherever focus
-is: on the page, on a tree row, in Quick Search’s field, in Help, and in an open filter
-menu. In each place the session presses every letter, digit, and named key with Command,
+is: on the page, on a tree row, in Quick Search’s field, in Help, in an open filter
+menu, and in Group by’s open menu, whose rows have letters.
+In each place the session presses every letter, digit, and named key with Command,
 Shift-Command, Control, and Option, and fails if any is taken, runs a command, or moves
 focus.
 `presses` counts them; Option-Tab is left out, since a modal’s focus trap keeps it
@@ -1409,7 +1635,16 @@ $ node tests/dom/key-reveal-session.js modified
     },
     {
       "place": "the file type filter's open menu",
-      "focus": "✓Any type",
+      "focus": "Any type row",
+      "presses": 199,
+      "commandR": "left to the browser",
+      "taken": [],
+      "did": [],
+      "focusMoved": null
+    },
+    {
+      "place": "the Group by menu, whose rows have letters",
+      "focus": "No grouping row",
       "presses": 199,
       "commandR": "left to the browser",
       "taken": [],

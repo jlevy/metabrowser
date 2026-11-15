@@ -1183,6 +1183,82 @@ batched.dispose();
   check("disposal leaves no attribute", !rebuilt.hasAttribute("aria-keyshortcuts"));
 }
 
+// ── A menu's letters over the shell's ────────────────────────────
+// An open menu's row letters sit in its own scope, activated while it is open, so its T
+// outranks Quick Search's while the row's command is available; the live surfaces then
+// show Quick Search by `/` alone, and both its keys again once the menu has gone
+// (docs/design-system.md, "Keys in a Menu").
+{
+  const menuDocument = new FakeDocument();
+  const menuRegistry = shortcuts.create({ document: menuDocument });
+  const chose = [];
+  let focused = true;
+  menuRegistry.register(
+    command({
+      bindings: [{ key: "t" }, { key: "/" }],
+      copy: { action: "Quick Search", description: "Find a file.", hint: "Quick Search" },
+      group: "anywhere",
+      handler: () => chose.push("Quick Search") > 0,
+      id: "quick-file.open",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  menuRegistry.register(
+    command({
+      available: () => focused,
+      bindings: [{ key: "t" }],
+      copy: {
+        action: "By file type",
+        description: "Choose By file type in the Group by menu.",
+        hint: "By file type",
+      },
+      group: "menus",
+      handler: () => chose.push("By file type") > 0,
+      id: "menu.group.t",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  /** Each live command's keys, as the reveal strip shows them. */
+  const revealed = () =>
+    menuRegistry
+      .snapshot("reveal")
+      .flatMap((group) => group.commands)
+      .map((presented) => `${presented.bindings.visible.join(" or ")} ${presented.copy.action}`);
+  const pressT = () => menuDocument.dispatch(keyboardEvent("t"));
+  equal("with the menu closed the strip shows T or / for Quick Search", revealed(), [
+    "T or / Quick Search",
+  ]);
+  pressT();
+  const closeMenu = menuRegistry.activateScope("menu:group");
+  equal("while the menu is open and focused, the strip shows T for its row only", revealed(), [
+    "/ Quick Search",
+    "T By file type",
+  ]);
+  pressT();
+  focused = false;
+  equal("with focus outside the open menu, T is Quick Search's again", revealed(), [
+    "T or / Quick Search",
+  ]);
+  pressT();
+  focused = true;
+  closeMenu();
+  pressT();
+  equal("T reaches the row only while the menu is open and focused", chose, [
+    "Quick Search",
+    "By file type",
+    "Quick Search",
+    "Quick Search",
+  ]);
+  check(
+    "Help lists the menu's letter under Menus whether or not it is open",
+    menuRegistry
+      .snapshot("help", { includeInactive: true })
+      .some((group) => group.id === "menus" && group.commands[0].id === "menu.group.t"),
+  );
+  menuRegistry.dispose();
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;

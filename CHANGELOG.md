@@ -60,6 +60,18 @@ All notable changes to Metabrowser are documented here.
   When files change, the sections refresh in place, keeping the open folders, the scroll
   position, and the focused row.
 
+- With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
+  No grouping, as a click on the row does.
+  The letters work only while the menu is open and has focus; anywhere else `T` is still
+  Quick Search and `N` the next item, and `/` opens Quick Search from the menu too.
+  Holding Shift shows each row’s letter on it, and Help lists them in a new Menus group.
+  While a menu’s letter takes `T`, the strip Shift reveals offers Quick Search by `/`
+  alone, since `T` no longer reaches it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.menuGroupHtml` options take a `key` and the menu
+  an `anyKey`, the letter of each row, and `filterControls.activateMenuRow(row)` runs a
+  row’s click path; the shell reads the letters in the Files filter bar only.
+
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.
   The type registry keeps its own order, which is the File Rollup Format’s; for plugin

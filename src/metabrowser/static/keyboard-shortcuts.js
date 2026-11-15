@@ -156,6 +156,13 @@
       label: "Navigation",
       order: 20,
     }),
+    // A menu's row letters, each live only in its open menu (docs/design-system.md, "Keys
+    // in a Menu").
+    menus: Object.freeze({
+      context: "Available while the menu is open and has focus.",
+      label: "Menus",
+      order: 21,
+    }),
     "pull-requests": Object.freeze({
       context: "Available while a pull-request row has focus.",
       label: "Pull requests",
@@ -1374,8 +1381,9 @@
     /**
      * A surface's commands by group. `live` keeps only the commands that would run
      * now (`isLive`), which the `reveal` surface always does: it shows what the keys
-     * under a held Shift reach. Help never reads live, because opening it makes
-     * every target behind it `inert`.
+     * under a held Shift reach, so a key a live command above holds (`heldAbove`) is
+     * left off the command it does not reach. Help never reads live, because opening it
+     * makes every target behind it `inert`.
      *
      * @param {string} surface
      * @param {{includeInactive?: boolean, live?: boolean}} [snapshotOptions]
@@ -1385,6 +1393,9 @@
       const live = snapshotOptions.live === true || surface === "reveal";
       /** @type {Map<string, ShortcutEntry[]>} */
       const grouped = new Map();
+      /** The bindings a live surface shows for each command, where they are fewer than
+       * its own. @type {Map<string, readonly Readonly<ShortcutBinding>[]>} */
+      const reached = new Map();
       for (const entry of commands.values()) {
         const mode = entry.presentation.surfaces[surface];
         if (
@@ -1396,17 +1407,40 @@
         ) {
           continue;
         }
+        // A live surface shows what each key reaches now: a key a live command in a layer
+        // above holds reaches that one, as an open menu's letters do the shell's, so this
+        // command shows without it, and a command left with none is not shown.
+        if (live && !entry.descriptor.situational) {
+          const own = entry.descriptor.bindings;
+          const reachable = own.filter(
+            (binding) => !heldAbove(entry.descriptor.scope, binding.key),
+          );
+          if (reachable.length === 0) {
+            continue;
+          }
+          if (reachable.length < own.length) {
+            reached.set(entry.descriptor.id, reachable);
+          }
+        }
         const values = grouped.get(entry.descriptor.group) || [];
         values.push(entry);
         grouped.set(entry.descriptor.group, values);
       }
+      /** @param {string} commandId */
+      const shownBindings = (commandId) =>
+        reached.get(commandId) || commands.get(commandId)?.descriptor.bindings || [];
       return Object.freeze(
         Array.from(grouped.entries())
           .sort(([left], [right]) => GROUP_DEFINITIONS[left].order - GROUP_DEFINITIONS[right].order)
           .map(([groupId, entries]) => {
             const presentations = entries
               .sort((left, right) => left.order - right.order)
-              .map((entry) => entry.presentation);
+              .map((entry) => {
+                const bindings = reached.get(entry.descriptor.id);
+                return bindings
+                  ? Object.freeze({ ...entry.presentation, bindings: describeBindings(bindings) })
+                  : entry.presentation;
+              });
             /** @type {Readonly<ShortcutPresentation>[]} */
             const rendered = [];
             for (const presentation of presentations) {
@@ -1423,12 +1457,8 @@
                 rendered[rendered.length - 1] = Object.freeze({
                   ...previous,
                   bindings: describeBindings([
-                    ...previous.commandIds.flatMap(
-                      (commandId) => commands.get(commandId)?.descriptor.bindings || [],
-                    ),
-                    ...presentation.commandIds.flatMap(
-                      (commandId) => commands.get(commandId)?.descriptor.bindings || [],
-                    ),
+                    ...previous.commandIds.flatMap(shownBindings),
+                    ...presentation.commandIds.flatMap(shownBindings),
                   ]),
                   commandIds: Object.freeze([...previous.commandIds, ...presentation.commandIds]),
                 });

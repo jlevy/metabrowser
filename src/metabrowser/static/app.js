@@ -5197,12 +5197,13 @@ function filterKeySlotsHtml() {
 }
 
 // Group by's choices beside "No grouping", each read the same on its row and on the closed
-// trigger. A Git revision has no mtime, so it offers no By age, as it offers no Modified
-// within.
+// trigger, and each with the letter that chooses it while the menu is open: the first of
+// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
+// no mtime, so it offers no By age, as it offers no Modified within.
 function filterGroupOptions() {
   var options = [
-    { value: "age", label: "By age" },
-    { value: "type", label: "By file type" },
+    { value: "age", label: "By age", key: "a" },
+    { value: "type", label: "By file type", key: "t" },
   ];
   return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
 }
@@ -5344,6 +5345,7 @@ function renderNavFilterBar() {
       options: filterGroupOptions(),
       value: treeFilterModel.groupBy(st),
       anyLabel: "No grouping",
+      anyKey: "n",
       anyValue: "none",
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",

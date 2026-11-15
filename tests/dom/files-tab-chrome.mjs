@@ -265,8 +265,9 @@ try {
   const NAMED_KEYS = { Escape: 27, ArrowLeft: 37, ArrowRight: 39 };
   const press = async (key) => {
     const named = key in NAMED_KEYS;
-    const code = named ? key : `Digit${key}`;
-    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.charCodeAt(0);
+    const letter = /^[a-z]$/.test(key);
+    const code = named ? key : letter ? `Key${key.toUpperCase()}` : `Digit${key}`;
+    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.toUpperCase().charCodeAt(0);
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key,
@@ -339,6 +340,40 @@ try {
   );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  // Group by's rows take N, A, and T while its menu is open and has focus, each running
+  // the row's click path; with the menu closed, T is Quick Search (docs/design-system.md,
+  // "Keys in a Menu").
+  const GROUP_STATE = `({
+    trigger: document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim(),
+    open: document.querySelector('.chip-menu[aria-expanded="true"]')?.dataset.chipMenu ?? null,
+    sections: document.querySelectorAll(".tree-section").length,
+  })`;
+  result.letters = {};
+  for (const [letter, trigger, sections] of [
+    ["a", "By age", "> 0"],
+    ["t", "By file type", "> 1"],
+    ["n", "No grouping", "=== 0"],
+  ]) {
+    await press("1");
+    await press(letter);
+    await browser.waitFor(
+      `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim() === ${JSON.stringify(trigger)} && document.querySelectorAll(".tree-section").length ${sections}`,
+      30000,
+    );
+    result.letters[letter] = await browser.evaluate(GROUP_STATE);
+  }
+  await browser.evaluate("document.activeElement?.blur(), true");
+  await press("t");
+  await browser.waitFor(`document.activeElement?.getAttribute("role") === "combobox"`);
+  result.closedT = await browser.evaluate(
+    `({ focus: document.activeElement.getAttribute("role"), ...${GROUP_STATE} })`,
+  );
+  await press("Escape");
+  await browser.waitFor(`document.activeElement?.getAttribute("role") !== "combobox"`);
+  await browser.waitFor(
+    `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
+    30000,
+  );
   // 3 is File type: it opens the closed drawer with its menu.
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);

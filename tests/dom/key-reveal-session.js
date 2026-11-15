@@ -112,6 +112,9 @@ function describe(target) {
   if (target.classList.contains("folder-crumb")) {
     return `${labelOf(target)} crumb`;
   }
+  if (target.classList.contains("chip-menu-item")) {
+    return `${target.querySelector(".menu-item-label")?.textContent} row`;
+  }
   return target.getAttribute("aria-label") || labelOf(target);
 }
 
@@ -287,6 +290,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let palette = null;
   let selector = null;
   let filterOpenMenu = null;
+  // Group by's value, which its menu's rows choose.
+  let groupBy = "none";
   // The filter drawer starts closed, as the shell's does, and a filter's number opens it.
   let filterDrawerOpen = false;
   const stack = { inStack: false };
@@ -319,8 +324,20 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       did.push(`${open ? "opened" : "closed"} the ${key} menu`);
     },
   });
-  // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu.
-  context.metabrowser.filterControls.bind(filterBar, { onMenuToggle: shell.toggleFilterMenu });
+  // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu; a
+  // row's click, and its letter through filterControls.activateMenuRow, run onMenuPick, which
+  // for Group by sets the value and closes the menu, as a single-select pick does.
+  context.metabrowser.filterControls.bind(filterBar, {
+    onMenuPick(key, value) {
+      did.push(`chose ${value ?? "the any-row"} in the ${key} menu`);
+      if (key === "group") {
+        groupBy = value ?? "none";
+        filterOpenMenu = null;
+        renderFilters();
+      }
+    },
+    onMenuToggle: shell.toggleFilterMenu,
+  });
 
   /** The end of every install of main-pane content: app.js finishRetainedPullPage. */
   function installed() {
@@ -499,6 +516,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       value: null,
     });
     const group = controls.menuGroupHtml({
+      anyKey: "n",
       anyLabel: "No grouping",
       anyValue: "none",
       key: "group",
@@ -506,11 +524,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       menuId: "filter-group-menu",
       open: filterOpenMenu === "group",
       options: [
-        { label: "By age", value: "age" },
-        { label: "By file type", value: "type" },
+        { key: "a", label: "By age", value: "age" },
+        { key: "t", label: "By file type", value: "type" },
       ],
       select: "one",
-      value: "none",
+      value: groupBy,
     });
     // The row end's stand-ins number the closed, inert drawer's filters (app.js,
     // filterKeySlotsHtml).
@@ -730,7 +748,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       .flatMap((command) => command.commandIds);
     for (const id of ids) {
       const { bindings, copy, scope } = shortcuts.present(id);
-      if (scope !== "view-tabs" && scope !== "help" && scope !== "quick-file") {
+      // A menu's row letters are its own, in its own scope, and never the shell's.
+      if (
+        scope !== "view-tabs" &&
+        scope !== "help" &&
+        scope !== "quick-file" &&
+        !scope.startsWith("menu:")
+      ) {
         // A run, the situational numbers, is written by its ends and binds every key
         // between them.
         const labels = bindings.range
@@ -891,6 +915,41 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     };
   }
 
+  /**
+   * Where focus is, for the filter bar's keys: a menu row as `menuFocus` says, a trigger by
+   * its menu, the body, or an element no longer in the page, which a browser would report
+   * as the body.
+   */
+  function filterFocus() {
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      return "body";
+    }
+    if (!active.isConnected) {
+      return "a replaced element";
+    }
+    const trigger = active.getAttribute("data-chip-menu-toggle");
+    return menuFocus() ?? (trigger ? `the ${trigger} trigger` : describe(active));
+  }
+
+  /** One Help group's rows, each as its keys, action, and description. */
+  function helpGroup(id) {
+    return (
+      shortcuts
+        .snapshot("help", { includeInactive: true })
+        .find((group) => group.id === id)
+        ?.commands.map((command) => [
+          command.bindings.visible.join(" or "),
+          command.copy.action,
+          command.copy.description,
+        ]) ?? null
+    );
+  }
+
+  /** The words on Group by's closed trigger. */
+  const groupTrigger = () =>
+    filterBar.querySelector('[data-chip-menu-toggle="group"]')?.textContent.trim() ?? null;
+
   // ── Input ─────────────────────────────────────────────────────
   const focused = () => document.activeElement ?? document.body;
   function key(type, name, init = {}) {
@@ -927,6 +986,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     measure,
     menuFocus,
     drawerOpen,
+    filterFocus,
+    groupTrigger,
+    helpGroup,
     mountSelector,
     open,
     openCommit,
@@ -1024,6 +1086,69 @@ const PARTS = {
     plain.press("Escape");
     plain.document.body.focus();
     steps.push(plain.record("↓ moves to the next row, and Escape closes the menu", { next }));
+
+    // Group by's rows take the letters they declare, N, A, and T, while its menu is open
+    // and has focus, and Help lists them under Menus (docs/design-system.md, "Keys in a
+    // Menu"). Each runs the row's click path.
+    steps.push(
+      plain.record("Help lists Group by's letters under Menus", {
+        menus: plain.helpGroup("menus"),
+      }),
+    );
+    plain.press("1");
+    steps.push(
+      plain.record("1 opens Group by and focuses its checked row, whose letters are live", {
+        focus: plain.filterFocus(),
+      }),
+    );
+    revealOn(plain);
+    steps.push(plain.record("Shift held in the open menu badges its rows' letters"));
+    plain.shiftUp();
+    const chooseAge = { key: "a", handled: plain.press("a") };
+    steps.push(
+      plain.record("A chooses By age and closes the menu", {
+        pressed: chooseAge,
+        trigger: plain.groupTrigger(),
+        focus: plain.filterFocus(),
+      }),
+    );
+    plain.document.body.focus();
+    const closedT = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("with the menu closed, T is Quick Search", {
+        pressed: closedT,
+        focus: plain.document.activeElement.getAttribute("role"),
+      }),
+    );
+    plain.press("Escape");
+    plain.press("1");
+    const checkedAge = plain.filterFocus();
+    const chooseType = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("1 focuses By age, the checked row, and T chooses By file type", {
+        focus: checkedAge,
+        pressed: chooseType,
+        trigger: plain.groupTrigger(),
+      }),
+    );
+    // Focus outside the open menu: its letters wait, and T is Quick Search's.
+    plain.press("1");
+    plain.document.body.focus();
+    const outsideT = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("with focus outside the open menu, T is Quick Search", {
+        pressed: outsideT,
+        focus: plain.document.activeElement.getAttribute("role"),
+        trigger: plain.groupTrigger(),
+      }),
+    );
+    plain.press("Escape");
+    plain.press("1");
+    const chooseNone = { key: "n", handled: plain.press("n") };
+    plain.document.body.focus();
+    steps.push(
+      plain.record("N chooses No grouping", { pressed: chooseNone, trigger: plain.groupTrigger() }),
+    );
 
     plain.open(files["README.md"]);
     steps.push(
@@ -1272,6 +1397,7 @@ const PARTS = {
       ["Quick Search's field", () => page.press("t")],
       ["Help", () => page.press("?", { shiftKey: true })],
       ["the file type filter's open menu", () => page.press("3")],
+      ["the Group by menu, whose rows have letters", () => page.press("1")],
     ];
     const steps = [];
     for (const [place, enter] of places) {
