@@ -4,9 +4,10 @@
 // Every surface that names a stack names it here, so the page's stack button and menu, a
 // Pulls row's place, and the Pulls tab's stack groups say one thing one way
 // (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
-// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row;
-// `stackPositionHint` is the tip that names both; and `stackMenuOrder` is the one member
-// order, top of the stack first. `groupByStack` is the Pulls tab's grouping of its rows.
+// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
+// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
+// the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
+// first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
 /** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
@@ -42,6 +43,15 @@ export function stackLabel(number) {
  */
 export function stackPosition(at, length) {
   return `${at + 1}/${length}`;
+}
+
+/** A position as a badge reads it where it must say which stack it is in: the stack's
+ * number before it, "300 2/2", drawn after the Layers glyph. A position whose stack goes
+ * without saying, its pull request's only one or the one its row sits under, is bare.
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ */
+export function namedStackPosition(position, stack) {
+  return stack === null ? position : `${stack} ${position}`;
 }
 
 /** The tip that names a member's stack and place: "Stack #286, position 2 of 4".
@@ -86,9 +96,7 @@ function caption(memberships, number, first = null) {
     stack: index === 0 ? null : stack.number,
   }));
   return {
-    text: parts
-      .map((part) => (part.stack === null ? part.position : `${part.stack} ${part.position}`))
-      .join(" · "),
+    text: parts.map((part) => namedStackPosition(part.position, part.stack)).join(" · "),
     hint: places.map(({ stack, at }) => stackPositionHint(stack, at)).join("; "),
     parts,
   };

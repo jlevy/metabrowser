@@ -1182,9 +1182,11 @@
   display: block;
   min-width: 0;
 }
+/* A stack's position takes the pull request number's weight, through its one token, so
+   "1/6 · #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
 .github-pull-stack-position,
 .github-pull-stack-member-position {
-  font-weight: var(--weight-bold);
+  font-weight: var(--pull-number-weight);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
@@ -1227,8 +1229,14 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-.github-pull-stack-member[aria-current="page"] {
-  background: var(--hover-bg);
+/* The current member is marked as the Pulls list marks its current row
+   (`.github-pulls-row.selected`): the highlight's tint and its 2px bar at the row's left
+   edge, hovered or not. A menu row has no border to color, so the bar is drawn inset and
+   moves nothing. Focus on it shows as on every member, by the header's link ring
+   (`.github-pull-header a:focus-visible`). */
+.menu-item.github-pull-stack-member[aria-current="page"] {
+  background: var(--highlight-bg);
+  box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
 
 /* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
