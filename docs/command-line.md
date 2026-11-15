@@ -172,18 +172,21 @@ notice, and the stop goes on without it; so does one Ctrl-C’s.
 ### Compression
 
 The server gzips its answers for every client that accepts gzip, with one exception: a
-server started for a browser on this machine sends that browser its answers
-uncompressed, since nothing crosses a network and gzip costs the server time on every
-answer. A server is started for this machine when it is on a loopback address
-(`127.0.0.1`, the default, `::1`, or `localhost`) and either opens the browser itself,
-as `metab ./notes` does, or is started with `--exit-on-eof`, as the macOS app starts it.
-Even then a request from another address, or one that carries a proxy’s `Forwarded`,
-`X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, or `Via` header, is sent gzip.
+server the macOS app starts sends the app’s window its answers uncompressed, since
+nothing crosses a network and gzip costs the server time on every answer.
+That server is the one started on a loopback address (`127.0.0.1`, the default, `::1`,
+or `localhost`) with `--exit-on-eof`, from an environment that names no remote session:
+no `SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY`, `CODESPACES`, or `REMOTE_CONTAINERS`. Even
+then a request from another address, or one that carries a proxy’s or a CDN’s
+`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`,
+`X-Forwarded-Port`, `X-Forwarded-Server`, `X-Real-IP`, `Via`, `CF-Connecting-IP`, or
+`True-Client-IP` header, is sent gzip.
 
-A server started `--no-open` without `--exit-on-eof` compresses for every client.
-That is how `--remote` starts the remote server, and how a server behind an SSH tunnel
-or a proxy you set up yourself is usually started: such a client reaches the server from
-its own loopback, and the server cannot tell it from a local browser.
+Every other server compresses for every client, `metab ./notes` opening a browser
+included: on a remote host that browser can be another machine’s, through `$BROWSER`. So
+does the server `--remote` starts, and one behind an SSH tunnel, a port forward, or a
+proxy: such a client reaches the server from its own loopback, and the server cannot
+tell it from a local one.
 
 ### Serving a Git source
 

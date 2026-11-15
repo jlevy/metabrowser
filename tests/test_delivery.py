@@ -1,8 +1,9 @@
 """Who is sent gzip (H115): not a browser on this machine of a server started for one.
 
-The start leads and the peer follows. Compression is the default; a server on a loopback
-address that opened its own browser, or that the macOS app started with ``--exit-on-eof``,
-leaves a loopback client's answers uncompressed and compresses for every other client.
+The start leads and the peer follows. Compression is the default; only a server on a
+loopback address that the macOS app started, with ``--exit-on-eof``, outside a remote
+session, leaves a loopback client's answers uncompressed, and it compresses for every
+other client.
 The far server ``--remote`` starts, from a client of this version or an older one, keeps
 compressing for the tunnel that reaches it from its own loopback; and a request a proxy
 names is compressed.
@@ -125,7 +126,9 @@ def test_the_application_answers_as_the_mode_says(
             assert here.headers["content-encoding"] == "gzip", address
 
 
-def _serves_locally(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> bool:
+def _serves_locally(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], environ: dict[str, str] | None = None
+) -> bool:
     """Run *argv* through the CLI with uvicorn stubbed, and say what the server was told."""
     seen: list[bool] = []
 
@@ -139,6 +142,11 @@ def _serves_locally(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> bool:
     # Opening a browser, and the stdin watch --exit-on-eof starts, are not under test.
     monkeypatch.setattr(serve_module, "_wait_for_http_ok_then_open", lambda *_args: None)
     monkeypatch.setattr(cli_main, "stop_when_stdin_closes", lambda: None)
+    # The suite may itself run in an SSH session or a Codespace.
+    for name in delivery.REMOTE_SESSION_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in (environ or {}).items():
+        monkeypatch.setenv(name, value)
     result = CliRunner().invoke(_app, argv)
     assert result.exit_code == 0, f"{result.output}{result.exception!r}"
     assert len(seen) == 1
@@ -157,20 +165,39 @@ APP = ["--no-open", "--exit-on-eof", "--host", "127.0.0.1", "--port", "8411"]
 @pytest.mark.parametrize(
     ("args", "local"),
     [
-        ([], True),
-        (["--host", "localhost"], True),
         (APP, True),
+        (["--no-open", "--exit-on-eof", "--host", "::1"], True),
+        (["--exit-on-eof", "--host", "localhost"], True),
+        # A browser metab opens can be a laptop's, through $BROWSER on a remote host.
+        ([], False),
+        (["--host", "localhost"], False),
         (["--host", "0.0.0.0"], False),
         (["--host", "0.0.0.0", "--exit-on-eof"], False),
         (["--no-open"], False),
         (OLD_REMOTE_SIDE, False),
     ],
 )
-def test_only_a_start_for_this_machine_on_loopback_serves_locally(
+def test_only_the_apps_start_on_loopback_serves_locally(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: list[str], local: bool
 ) -> None:
     delivery.serve_locally(not local)
     assert _serves_locally(monkeypatch, [str(tmp_path), *args]) is local
+
+
+@pytest.mark.parametrize("variable", delivery.REMOTE_SESSION_VARIABLES)
+def test_the_apps_start_in_a_remote_session_compresses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, variable: str
+) -> None:
+    # `ssh host 'metab ROOT --no-open --exit-on-eof'`, a Codespace, a Dev Container.
+    delivery.serve_locally(True)
+    environ = {variable: "203.0.113.9 50000 10.0.0.2 22"}
+    assert _serves_locally(monkeypatch, [str(tmp_path), *APP], environ) is False
+
+
+def test_a_remote_session_is_read_from_the_environment() -> None:
+    assert not delivery.remote_session({})
+    assert not delivery.remote_session({"SSH_CONNECTION": ""})
+    assert delivery.remote_session({"SSH_TTY": "/dev/ttys004"})
 
 
 def test_the_far_server_this_remote_starts_compresses(

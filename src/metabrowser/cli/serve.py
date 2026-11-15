@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import threading
 import webbrowser
@@ -322,8 +323,9 @@ def serve_until_interrupted(
     capability block, the log level, and plugin directories. *attach* selects
     what the server serves once its module is loaded; *served* names it in the
     banner, followed by any *banner* lines. *local_client* says the command line
-    started this server for a client on this machine; on a loopback address it
-    then leaves a loopback client's answers uncompressed (:mod:`metabrowser.delivery`).
+    started this server as the macOS app does, for a client on this machine; on a
+    loopback address, outside a remote session, it then leaves a loopback client's
+    answers uncompressed (:mod:`metabrowser.delivery`).
     """
 
     # Server import performs logging setup and plugin discovery. Keep it after
@@ -355,7 +357,9 @@ def serve_until_interrupted(
     # (which the allowlist always permits) instead of an unroutable
     # 0.0.0.0-style name.
     server._register_allowed_host(host)
-    delivery.serve_locally(local_client and delivery.loopback_host(host))
+    delivery.serve_locally(
+        local_client and delivery.loopback_host(host) and not delivery.remote_session(os.environ)
+    )
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
     url = f"http://{display_host}:{actual_port}{view_href}"
 

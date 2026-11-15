@@ -10,25 +10,28 @@ costs the server CPU on the event loop, and a browser on the same machine has no
 save: a level-6 gzip of a 311 KB render took 12.3 ms of a 14.8 ms answer. Compression is
 still the default, and an answer is sent uncompressed only when both of these hold:
 
-- **the command line started the server for a client on this machine**, for local use
-  (:func:`serve_locally`): ``metab`` serving on a loopback address and either opening
-  the browser itself, or started with ``--exit-on-eof``, as the macOS app starts it,
-  holding its stdin;
+- **the server was started as the macOS app starts it**, for local use
+  (:func:`serve_locally`): ``metab`` on a loopback address with ``--exit-on-eof``, its
+  stdin held by the parent that started it, in a process whose environment names no
+  remote session (:data:`REMOTE_SESSION_VARIABLES`);
 - **the request comes from this machine and names no proxy**: the peer is a loopback
-  address, and the request carries none of the headers a reverse proxy adds
+  address, and the request carries none of the headers a proxy or CDN adds
   (:data:`PROXY_HEADERS`).
 
-The start is the first test because the server's own command line decides it, from
-flags every release already has, and the peer address cannot tell a tunnel from a
-browser: ``metab --remote`` reaches the far server through SSH, from that host's own
-loopback. Every release's ``--remote`` starts the far server with ``--port N --host
-127.0.0.1 --no-open`` after its root (and ``serve`` before the flat CLI of 2026-07-27),
-with neither of the local starts' marks. So a far server of this version compresses for
-a client of any version, and nothing new is passed to a far server of an older one. A hand-made tunnel
-or a proxy in front of a ``--no-open`` server is compressed for the same reason.
-Everything else is compressed as before: a wildcard or LAN bind, any peer elsewhere, and
-any process that never calls :func:`serve_locally`, such as ``--api``, ``--check-api``,
-and the tests' in-process clients.
+The start is the first test because the server's own command line and environment
+decide it, from a flag every release already has, and the peer address cannot tell a
+tunnel from a browser: ``metab --remote``, a hand-made ``ssh -L``, a VS Code or
+Codespaces port forward, ``kubectl port-forward``, and a default nginx ``proxy_pass`` all
+reach the server from its host's own loopback. A browser ``metab ROOT`` opens itself is
+not enough either: on a remote host it can be the laptop's, through ``$BROWSER``.
+Every release's ``--remote`` starts the far server with ``--port N --host 127.0.0.1
+--no-open`` after its root (and ``serve`` before the flat CLI of 2026-07-27), without
+``--exit-on-eof``, so a far server of this version compresses for a client of any
+version, and nothing new is passed to a far server of an older one. One started with
+``--exit-on-eof`` over ``ssh`` has ``SSH_CONNECTION`` in its environment and compresses
+too. Everything else is compressed as before: a wildcard or LAN bind, any peer
+elsewhere, and any process that never calls :func:`serve_locally`, such as ``--api``,
+``--check-api``, and the tests' in-process clients.
 
 The level and the floor are Starlette's middleware settings, kept here so the startup
 budget's check (``devtools/check_startup_scripts.py``) and the performance loop's
@@ -39,6 +42,7 @@ from __future__ import annotations
 
 import gzip
 import ipaddress
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from starlette.datastructures import Headers
@@ -53,9 +57,32 @@ GZIP_LEVEL = 6
 # it saves.
 GZIP_MINIMUM_SIZE = 1024
 
-# Headers a reverse proxy adds to say who the client really is. A request carrying any of
-# them did not come from a browser on this machine, whatever its peer address.
-PROXY_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip", "via")
+# Headers a reverse proxy or a CDN adds to say who the client really is, or how it
+# connected. A request carrying any of them did not come from a browser on this machine,
+# whatever its peer address.
+PROXY_HEADERS = (
+    "forwarded",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "x-forwarded-port",
+    "x-forwarded-server",
+    "x-real-ip",
+    "via",
+    "cf-connecting-ip",
+    "true-client-ip",
+)
+
+# Variables that say the process runs in a session reached from another machine: an SSH
+# login (OpenSSH sets the first three), a GitHub Codespace, and a VS Code Dev Container. Its
+# loopback is then the far end of a forward, whatever started the server.
+REMOTE_SESSION_VARIABLES = (
+    "SSH_CONNECTION",
+    "SSH_CLIENT",
+    "SSH_TTY",
+    "CODESPACES",
+    "REMOTE_CONTAINERS",
+)
 
 _serving_locally = False
 
@@ -65,6 +92,11 @@ def serve_locally(enabled: bool) -> None:
     client's answers uncompressed. ``metab``'s serve modes call it once, before serving."""
     global _serving_locally
     _serving_locally = enabled
+
+
+def remote_session(environ: Mapping[str, str]) -> bool:
+    """Whether *environ* names a session reached from another machine."""
+    return any(environ.get(name) for name in REMOTE_SESSION_VARIABLES)
 
 
 def serving_locally() -> bool:
@@ -130,11 +162,13 @@ __all__ = [
     "GZIP_LEVEL",
     "GZIP_MINIMUM_SIZE",
     "PROXY_HEADERS",
+    "REMOTE_SESSION_VARIABLES",
     "accepts_gzip",
     "gzip_bytes",
     "gzip_wanted",
     "loopback_host",
     "loopback_peer",
+    "remote_session",
     "sent_size",
     "serve_locally",
     "serving_locally",

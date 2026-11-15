@@ -844,10 +844,10 @@ def _metab(
     _check_format_applicability(ctx, mode, fmt, explicit)
 
     if mode == "serve":
-        # A server that opens its own browser, or that the macOS app starts and holds by
-        # its stdin, serves a client on this machine; one started --no-open alone, as
-        # every release's --remote starts the far one, may not (metabrowser.delivery).
-        local_client = not no_open or exit_on_eof
+        # Only the macOS app's start, held by its stdin, says the client is on this machine;
+        # a browser metab opens can be a laptop's through $BROWSER, and every release's
+        # --remote starts the far server without it (metabrowser.delivery).
+        local_client = exit_on_eof
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
