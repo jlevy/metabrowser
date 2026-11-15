@@ -14,7 +14,8 @@ on the row beside Group by, counts for Clear only), that Clear resets Show ignor
 keeps the grouping, which band a file’s age falls in, and that a malformed answer is
 refused. It also pins the shell’s Group by decisions, held as pure functions: each
 section’s share of the first paint’s rows, the order a revealed row is looked for in,
-the reopen plan after a refresh, and the prefetch’s keep, abort, take, and clear.
+the reopen plan after a refresh, which grouping a pressed row, or one the arrow keys
+reach, asks for ahead, and the prefetch’s keep, abort, take, and clear.
 The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
 first one.
 
@@ -183,70 +184,63 @@ $ node tests/dom/files-group-by-session.js
       "src/lib"
     ]
   },
+  "prefetchFor": {
+    "No grouping, ungrouped": null,
+    "By age, ungrouped": "/api/tree?group_by=age&depth=2",
+    "By file type, grouped by type": null,
+    "By age, grouped by type, under a filter": "/api/tree?group_by=age&types=.md&depth=2"
+  },
   "prefetch": [
     {
-      "step": "open the menu",
+      "step": "press By age",
       "started": [
-        "age",
-        "type"
+        "age"
       ],
       "aborted": [],
-      "kept": 2
-    },
-    {
-      "step": "open it again",
-      "started": [],
-      "aborted": [],
-      "kept": 2
-    },
-    {
-      "step": "open it while grouped by type",
-      "started": [],
-      "aborted": [
-        "type"
-      ],
       "kept": 1
+    },
+    {
+      "step": "press it again",
+      "started": [],
+      "aborted": [],
+      "kept": 1
+    },
+    {
+      "step": "move to By file type",
+      "started": [
+        "type"
+      ],
+      "aborted": [],
+      "kept": 2
     },
     {
       "step": "choose By age",
       "started": [],
       "aborted": [],
-      "kept": 0,
+      "kept": 1,
       "took": true
     },
     {
       "step": "choose By age again",
       "started": [],
       "aborted": [],
-      "kept": 0,
+      "kept": 1,
       "took": false
     },
     {
-      "step": "open the menu",
+      "step": "press By file type after the TTL",
       "started": [
-        "age",
-        "type"
-      ],
-      "aborted": [],
-      "kept": 2
-    },
-    {
-      "step": "open it after the TTL",
-      "started": [
-        "age",
         "type"
       ],
       "aborted": [
-        "age",
         "type"
       ],
-      "kept": 2
+      "kept": 1
     },
     {
       "step": "a file changes",
       "started": [],
       "aborted": [
-        "age",
         "type"
       ],
       "kept": 0

@@ -1367,13 +1367,14 @@ async function loadGroupedTreeInner(state, key, serial, options) {
   return true;
 }
 
-// Grouping asks the server for every group at once, which on a large folder takes a pass
-// over the index per group: 0.7 s for File type on 100,000 files, where the ungrouped tree
-// took 0.12 s (measured in headless Chrome, 2026-11-15). So opening the Group by menu asks
-// for the groupings it offers ahead of the choice, and the choice takes the answer already
-// on its way (tree-filter-model.js, createGroupsPrefetch). An answer is kept only until a
-// file changes or GROUPS_PREFETCH_TTL_MS passes, and a refresh after a change always asks
-// again.
+// Grouping asks the server for every group at once, one pass over the index
+// (`GroupedTreeQuery`): about 0.1 s on 100,000 files, where the ungrouped tree's rows take
+// a few milliseconds (docs/design-system.md, "Grouping the Files Tree"). So the grouping a
+// reader is about to choose is asked for ahead, when the pointer presses its row or the
+// keyboard moves to it, and the choice takes the answer already on its way
+// (tree-filter-model.js, groupPrefetchUrl and createGroupsPrefetch). An answer is kept only
+// until a file changes or GROUPS_PREFETCH_TTL_MS passes, and a refresh after a change always
+// asks again.
 var GROUPS_PREFETCH_TTL_MS = 10000;
 
 /**
@@ -1410,16 +1411,35 @@ function fetchGroups(url, options) {
   return kept ?? groupsRequest(url);
 }
 
-// Ask for each grouping the menu offers that the panel is not already showing.
-function prefetchGroupings() {
-  var state = currentFilterSnapshot();
-  groupsPrefetch.prefetch(
-    filterGroupOptions()
-      .filter((option) => option.value !== treeFilterModel.groupBy(state))
-      .map((option) =>
-        treeFilterModel.groupsUrl({ ...state, group: option.value }, treeFilterSizeFloors(), 2),
-      ),
+// The keys that move focus between a menu's rows (filter-controls.js, onKeyDown).
+var MENU_ROW_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
+
+/**
+ * Ask ahead for the grouping whose Group by row the pointer pressed or the keyboard moved
+ * to. Focus alone is not intent: a rebuild of the bar puts focus back on the row that had
+ * it, which is no reader's move.
+ *
+ * @param {Event} event
+ */
+function prefetchChosenGrouping(event) {
+  var origin =
+    event.type === "keydown"
+      ? MENU_ROW_KEYS.has(/** @type {KeyboardEvent} */ (event).key)
+        ? document.activeElement
+        : null
+      : /** @type {Element | null} */ (event.target);
+  var row = origin?.closest?.('#filter-group-menu .chip-menu-item[data-chip-key="group"]');
+  if (!row) {
+    return;
+  }
+  var url = treeFilterModel.groupPrefetchUrl(
+    row.hasAttribute("data-chip-any") ? "none" : row.getAttribute("data-chip-value") || "",
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
   );
+  if (url) {
+    groupsPrefetch.want(url);
+  }
 }
 
 function failGroupedTree(reason) {
@@ -5516,9 +5536,6 @@ function toggleFilterMenu(key, open) {
   if (open && key !== "group") {
     filterDrawerOpen = true;
   }
-  if (open && key === "group") {
-    prefetchGroupings();
-  }
   renderNavFilterBar();
   if (key === "recency" && open) {
     scheduleRootSummaryRefresh();
@@ -5622,6 +5639,17 @@ function initFilterBar() {
       filterState.clear();
     },
   });
+  // The grouping a reader is about to choose is asked for ahead (prefetchChosenGrouping).
+  const intentRoot = bar;
+  var unbindControls = filterBarUnbind;
+  intentRoot.addEventListener("pointerdown", prefetchChosenGrouping);
+  // After the filter controls' own keydown, which moves focus between the rows.
+  intentRoot.addEventListener("keydown", prefetchChosenGrouping);
+  filterBarUnbind = () => {
+    unbindControls?.();
+    intentRoot.removeEventListener("pointerdown", prefetchChosenGrouping);
+    intentRoot.removeEventListener("keydown", prefetchChosenGrouping);
+  };
   // Seed the source tracking from the persisted state so the first
   // user change is compared against reality, not against null.
   _filterCursor = currentRecentFilterCursor();

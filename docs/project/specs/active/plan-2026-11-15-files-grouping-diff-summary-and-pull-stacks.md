@@ -10,7 +10,8 @@
 
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, and the Conversation’s rhythm and headings, from the same
-day. They land as one native GitHub stack of twelve pull requests on `main`:
+day, and Group by’s speed on a large folder.
+They land as one native GitHub stack of thirteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -38,6 +39,7 @@ day. They land as one native GitHub stack of twelve pull requests on `main`:
 12. **Conversation rhythm and headings:** every two consecutive events are one token
     apart (`mb-w7rt`), and every event’s heading reads “author verb age”, with a chip
     only for a review state the verb does not say (`mb-novh`).
+13. **Group by speed:** every group is read from one pass over the index (`mb-navs`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -155,6 +157,7 @@ it:
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
 | 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
 | 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
+| 13 | `claude/group-by-speed` | `mb-navs` | On pull request 12; changes Group by’s server read and its prefetch, which pull requests 2 and 10 made |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -387,6 +390,20 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   rules in `styles.css`, for the Pulls toolbar without the Stacks chip that pull request
   5 removed.
 
+### Group By Speed
+
+The owner’s report of 2026-11-15 on pull request 12: choosing a grouping “does nothing”.
+On a folder of 270,000 files, `/api/tree?group_by=type&depth=2` took 4.5 to 5.6 s warm,
+against 5 ms for the ungrouped tree.
+
+- **One pass** (`mb-navs`): the provider reads every group from one pass over the index
+  at one version, through a `grouped_tree` query (`GroupedTreeQuery`) whose groups each
+  answer exactly as their own filtered tree; `/api/tree?group_by=` makes one such read,
+  so its output, and its golden, are unchanged.
+- **Prefetch** (`mb-navs`): opening the menu asks for nothing; pressing a row, or moving
+  to it with the arrow keys, asks for that grouping alone.
+  Two passes at once each took twice as long as one.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -481,6 +498,13 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - [ ] `mb-w7rt`: one rhythm between every two consecutive events.
 - [ ] `mb-novh`: every event’s heading reads alike.
 
+### Phase 13: Group By Speed (pull request 13)
+
+- [ ] `mb-navs`: the provider’s one-pass grouped read, its conformance test against each
+  group’s filtered tree, a route test that a grouping costs one read, and the prefetch
+  on a pressed row or one the arrow keys reach; the measurements in the design system’s
+  “Grouping the Files Tree”.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -525,7 +549,7 @@ This plan moves to `docs/project/specs/done/` when pull request 12 merges.
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
   `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
-  follow-ups on the Group by menu.
+  follow-ups on the Group by menu; `mb-navs`, Group by’s speed on a large folder.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

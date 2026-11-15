@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Group by in the Files tab answers quickly on a large folder: the server now reads
+  every group from one pass over the index, where it made one pass per group.
+  On a 100,000-file folder By file type takes about 0.1 s instead of 0.7 s, and on a
+  folder of 270,000 files and 110,000 folders about 0.4 s instead of 4.5 s. Filtered
+  trees under Modified within, File type, or Minimum file size are faster too, by a
+  quarter to a half on the 100,000-file folder.
+  Opening the Group by menu no longer asks for both groupings ahead of the choice.
+  Pressing a row, or moving to it with the keyboard, asks for that grouping alone, and
+  the choice uses that answer when it comes.
+
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one

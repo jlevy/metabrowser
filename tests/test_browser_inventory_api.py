@@ -27,6 +27,8 @@ from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.inventory_engine.contract import (
+    DiagnosticsProjection,
+    DiagnosticsQuery,
     DirectoryQuery,
     EntryPresence,
     EntryProjection,
@@ -198,6 +200,44 @@ def test_api_tree_tallies_share_one_provider_read(tmp_path: Path) -> None:
     body = asyncio.run(run())
     assert body["summary"]["files"] == 5
     assert body["tally_cache_status"] == "done"
+
+
+def test_api_tree_group_by_reads_every_group_in_one_pass(tmp_path: Path) -> None:
+    """Group by is one provider read over the index, whatever the number of groups: the
+    same reads and rows visited as one filtered tree, where asking for each group alone
+    paid one read and one pass per group (mb-navs)."""
+
+    _build_fixture(tmp_path)
+
+    async def work(harness: Any) -> tuple[int, int]:
+        read = await harness.runtime.coordinator.read(
+            ReadRequest(queries=(DiagnosticsQuery(query_id="diagnostics"),))
+        )
+        diagnostics = read.result.completed_projection("diagnostics")
+        assert isinstance(diagnostics, DiagnosticsProjection)
+        payload = diagnostics.payload
+        return payload.read_requests, payload.cumulative_work.rows_visited
+
+    async def run() -> dict[str, tuple[int, int]]:
+        paths_safe._set_root_dir(tmp_path)
+        costs: dict[str, tuple[int, int]] = {}
+        async with inventory_harness(tmp_path) as harness:
+            for label, query in (
+                ("filtered", {"types": ".md", "depth": "2"}),
+                ("type", {"group_by": "type", "depth": "2"}),
+                ("age", {"group_by": "age", "depth": "2"}),
+            ):
+                before = await work(harness)
+                response = await proc_browser.api_tree(
+                    cast(Any, _FakeRequest(query, app=harness.app))
+                )
+                assert response.status_code == 200
+                after = await work(harness)
+                costs[label] = (after[0] - before[0], after[1] - before[1])
+        return costs
+
+    costs = asyncio.run(run())
+    assert costs["type"] == costs["age"] == costs["filtered"]
 
 
 def test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth(

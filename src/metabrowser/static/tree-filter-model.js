@@ -286,6 +286,29 @@
   }
 
   /**
+   * The request to make ahead for the Group by row a reader is about to choose: the one the
+   * pointer presses or the keyboard moves to. No grouping, and the grouping already shown,
+   * need none.
+   *
+   * Opening the menu once asked for every grouping it offered, a pass over the index each,
+   * though a reader chooses at most one and often none; and the passes it ran at once
+   * slowed the one chosen: on a 380,000-entry folder each took 856-863 ms beside the
+   * other, against about 420 ms alone (measured in headless Chrome, 2026-11-15).
+   *
+   * @param {string} value the row's grouping: "none", "age", or "type"
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string | null}
+   */
+  function groupPrefetchUrl(value, state, sizeFloors) {
+    if (!GROUP_BY_VALUES.includes(value) || value === "none" || value === groupBy(state)) {
+      return null;
+    }
+    const unfiltered = { recency: "all", types: null, size: "all", showIgnored: true };
+    return groupsUrl({ ...(state || unfiltered), group: value }, sizeFloors, 2);
+  }
+
+  /**
    * One group's tree under *path*: how a folder inside a group opens.
    *
    * @param {string} path
@@ -431,10 +454,10 @@
    */
 
   /**
-   * The Group by prefetch: the groupings the menu offers are asked for when it opens, and a
-   * choice takes its answer. An answer younger than `ttlMs` is kept for the same request
-   * rather than asked for again, a request no longer offered is aborted, an answer is taken
-   * once, and a change to the files clears them all.
+   * The Group by prefetch: a grouping the reader is about to choose is asked for ahead
+   * (`groupPrefetchUrl`), and the choice takes its answer. An answer younger than `ttlMs` is
+   * kept for the same request rather than asked for again, an older one is asked for again,
+   * an answer is taken once, and a change to the files clears them all.
    *
    * @param {GroupsPrefetchDeps} deps
    */
@@ -444,20 +467,15 @@
     /** @param {{at: number}} entry */
     const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
     return Object.freeze({
-      /** @param {string[]} urls */
-      prefetch(urls) {
-        for (const [url, entry] of entries) {
-          if (!urls.includes(url) || !fresh(entry)) {
-            entry.abort();
-            entries.delete(url);
-          }
+      /** @param {string} url */
+      want(url) {
+        const kept = entries.get(url);
+        if (kept && fresh(kept)) {
+          return;
         }
-        for (const url of urls) {
-          if (!entries.has(url)) {
-            const started = deps.start(url);
-            entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
-          }
-        }
+        kept?.abort();
+        const started = deps.start(url);
+        entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
       },
       /** @param {string} url @returns {Promise<unknown> | null} */
       take(url) {
@@ -1732,6 +1750,7 @@
     ageGroupFor,
     createGroupsPrefetch,
     graftOpenedFolders,
+    groupPrefetchUrl,
     likelySectionKey,
     revealSectionOrder,
     sectionRowBudget,

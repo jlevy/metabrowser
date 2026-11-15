@@ -2719,9 +2719,10 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
-  breathes as refreshing text does once the wait passes `--loading-state-delay`. Opening
-  the Group by menu asks ahead of the choice for each grouping it offers that is not
-  already shown.
+  breathes as refreshing text does once the wait passes `--loading-state-delay`.
+  Pressing a grouping’s row, or moving to it with the arrow keys, asks for that grouping
+  ahead of the choice; opening the menu asks for nothing, since a reader chooses at most
+  one grouping and often none.
 - **Refresh.** When files change, the sections refresh in place, in one frame: each
   keeps its heading and updates its count, a group that fills or empties appears or
   goes, the folders open in a section stay open, and the scroll position and the focused
@@ -2742,15 +2743,28 @@ browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
 the row, the drawer, the numbers, the sections’ headings, and a refresh after a write in
 Chrome.
 
-Measured in headless Chrome on a served folder (2026-11-15), grouping costs the server a
-pass over the index per group: on 22,104 files File type answered in 106 ms where the
-ungrouped tree took 34 ms, and on 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19
-s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown. Computing every group in one pass over the index is tracked as `mb-navs`.
-On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
-two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
-position, the focused row inside that folder, and the open folders held through all of
-them.
+The server reads every group from one pass over the index, at one index version
+(`GroupedTreeQuery` in `inventory_engine/contract.py`). Measured in process, warm, on
+2026-11-15, against the read per group it replaced, with identical answers:
+
+| Folder | Ungrouped rows | By file type | By age |
+| --- | --- | --- | --- |
+| 100,000 files (the bench corpus) | 2 ms | 92–96 ms, was 622–688 ms | 72–98 ms, was 404–505 ms |
+| 270,000 files and 110,000 folders | 3–4 ms | 0.42–0.48 s, was 4.0–4.5 s | 0.34–0.47 s, was 3.3–3.6 s |
+
+In headless Chrome on the 100,000-file corpus, a click on By file type painted its
+sections 130–132 ms later when the press asked for nothing ahead, and 27–47 ms later
+after a 100 ms press had asked for it; By age took 98–116 ms and 29–32 ms; No grouping
+painted its tree in 29–49 ms.
+On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
+and No grouping 41–95 ms.
+Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
+s, which is why opening the menu no longer asks for both.
+Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
+spinner shown. On a folder of 112 files, a file written every 250 ms for 6 s into a
+folder open one or two levels down gave four paced refreshes of at most 8 ms of paint
+each, and the scroll position, the focused row inside that folder, and the open folders
+held through all of them.
 
 ### Filters Say What They Do Not Know
 

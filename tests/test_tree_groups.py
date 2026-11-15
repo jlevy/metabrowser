@@ -10,8 +10,16 @@ from __future__ import annotations
 
 import pytest
 
+from metabrowser.inventory_engine.contract import TreeGroupFilter
 from metabrowser.settings import RECENT_WINDOW_SECONDS
-from metabrowser.tree_groups import AgeBand, age_band, groups_for, parse_group, parse_group_by
+from metabrowser.tree_groups import (
+    AgeBand,
+    age_band,
+    groups_for,
+    inventory_group_filter,
+    parse_group,
+    parse_group_by,
+)
 
 HOUR = 60 * 60
 DAY = 24 * HOUR
@@ -102,3 +110,20 @@ def test_age_groups_say_the_recency_filter_s_words() -> None:
     assert pairs, "FILTER_RECENCY_OPTIONS was not found"
     bands = [(group.id, group.label) for group in groups_for("age") if group.id != "older"]
     assert pairs == bands
+
+
+def test_each_group_reaches_the_provider_as_its_own_fields() -> None:
+    """A grouped read names each group by the fields its filtered tree would set: a type
+    group's id, and an age group's band before any recency window cuts it."""
+
+    assert [inventory_group_filter(group) for group in groups_for("type")][:2] == [
+        TreeGroupFilter(key="docs", type_group="docs"),
+        TreeGroupFilter(key="code", type_group="code"),
+    ]
+    for group in groups_for("age"):
+        band = age_band(group, 0)
+        assert inventory_group_filter(group) == TreeGroupFilter(
+            key=group.id,
+            band_within_seconds=band.within_seconds,
+            older_than_seconds=band.older_than_seconds,
+        )

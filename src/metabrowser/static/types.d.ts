@@ -1615,10 +1615,15 @@ type MetabrowserTreeFilterModel = {
     ttlMs: number;
   }): {
     clear(): void;
-    prefetch(urls: Array<string>): void;
     size(): number;
     take(url: string): Promise<unknown> | null;
+    want(url: string): void;
   };
+  groupPrefetchUrl(
+    value: string,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string | null;
   graftOpenedFolders(
     nodes: Array<Record<string, unknown>>,
     opened: Array<string>,

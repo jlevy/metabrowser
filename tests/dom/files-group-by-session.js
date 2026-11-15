@@ -315,9 +315,34 @@ check(
   transcript.reopen,
 );
 
-// The prefetch: opening the menu asks for what it offers, opening it again within the
-// TTL asks for nothing new, a request no longer offered is aborted, a choice takes its
-// answer once, a stale one is refetched, and a change to the files clears them.
+// The prefetch asks only for what the reader is about to choose: the grouping whose row the
+// pointer presses or the keyboard moves to, never No grouping or the grouping shown, and
+// nothing when the menu opens (mb-navs).
+transcript.prefetchFor = Object.fromEntries(
+  [
+    ["No grouping, ungrouped", "none", { group: "none" }],
+    ["By age, ungrouped", "age", { group: "none" }],
+    ["By file type, grouped by type", "type", { group: "type" }],
+    ["By age, grouped by type, under a filter", "age", { group: "type", types: [".md"] }],
+  ].map(([label, value, patch]) => [
+    label,
+    model.groupPrefetchUrl(value, { ...filter.get(), ...patch }, floors),
+  ]),
+);
+check(
+  "No grouping and the grouping shown ask for nothing",
+  transcript.prefetchFor["No grouping, ungrouped"] === null &&
+    transcript.prefetchFor["By file type, grouped by type"] === null,
+  transcript.prefetchFor,
+);
+check(
+  "a prefetch is the request the choice makes",
+  transcript.prefetchFor["By age, ungrouped"] ===
+    model.groupsUrl({ ...filter.get(), group: "age" }, floors, 2),
+  transcript.prefetchFor,
+);
+// An answer asked for again within the TTL is not asked for twice, a choice takes it once,
+// an older one is asked for again, and a change to the files clears them.
 {
   let clock = 0;
   const started = [];
@@ -342,29 +367,36 @@ check(
       ...(result === undefined ? {} : { took: result !== null }),
     });
   };
-  step("open the menu", () => prefetch.prefetch(["age", "type"]));
+  step("press By age", () => prefetch.want("age"));
   clock = 2_000;
-  step("open it again", () => prefetch.prefetch(["age", "type"]));
-  step("open it while grouped by type", () => prefetch.prefetch(["age"]));
+  step("press it again", () => prefetch.want("age"));
+  step("move to By file type", () => prefetch.want("type"));
   step("choose By age", () => prefetch.take("age"));
   step("choose By age again", () => prefetch.take("age"));
-  step("open the menu", () => prefetch.prefetch(["age", "type"]));
   clock = 20_000;
-  step("open it after the TTL", () => prefetch.prefetch(["age", "type"]));
+  step("press By file type after the TTL", () => prefetch.want("type"));
   step("a file changes", () => prefetch.clear());
   transcript.prefetch = steps;
   check(
-    "a reopened menu within the TTL asks for nothing",
+    "a press within the TTL asks for nothing new",
     steps[1].started.length === 0 && steps[1].aborted.length === 0,
     steps[1],
   );
-  check("a dropped offer is aborted", steps[2].aborted.join() === "type", steps[2]);
+  check(
+    "another row asks for its grouping and keeps the first",
+    steps[2].started.join() === "type" && steps[2].kept === 2,
+    steps[2],
+  );
   check("an answer is taken once", steps[3].took === true && steps[4].took === false, steps);
-  check("a stale answer is asked again", steps[6].started.length === 2, steps[6]);
+  check(
+    "an answer past the TTL is asked for again",
+    steps[5].started.join() === "type" && steps[5].aborted.join() === "type",
+    steps[5],
+  );
   check(
     "a change clears every answer",
-    steps[7].kept === 0 && steps[7].aborted.length === 2,
-    steps[7],
+    steps[6].kept === 0 && steps[6].aborted.length === 1,
+    steps[6],
   );
 }
 
