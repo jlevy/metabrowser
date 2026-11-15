@@ -9,9 +9,10 @@ The keymap check below is the build-time gate the Shift key reveal plan asks for
 reads every kind's views as the server merges them and fails on a duplicate letter or a
 reserved one, rather than letting the server drop a key quietly at run time.
 
-The design system's "Keyboard Shortcuts" section is the one reference for the scheme, and
-the last checks here hold its table to what the registry, the manifests, and the
-built-in plugins bind, so the documentation cannot drift from the keys.
+``docs/keyboard-shortcuts.md`` is the users' reference for the keys, and the last checks
+here hold its table to what the registry, the manifests, and the built-in plugins bind,
+so the documentation cannot drift from the keys. The design system's "Keyboard
+Shortcuts" section keeps the rules a new key follows.
 """
 
 from __future__ import annotations
@@ -268,17 +269,16 @@ def test_letters_never_collide_on_one_screen() -> None:
     assert len(page) == len(set(page)), sorted(page)
 
 
-_DESIGN_SYSTEM = Path(__file__).parents[1] / "docs" / "design-system.md"
+_KEYBOARD_SHORTCUTS = Path(__file__).parents[1] / "docs" / "keyboard-shortcuts.md"
 
 
 def _documented_keymap(text: str | None = None) -> list[tuple[list[str], str]]:
-    """The design system's keymap table: each row's keys, lowercase, and its meaning."""
+    """The keyboard reference's keymap table: each row's keys, lowercase, and its meaning."""
     if text is None:
-        text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
-    start = text.index("\n## Keyboard Shortcuts\n")
+        text = _KEYBOARD_SHORTCUTS.read_text(encoding="utf-8")
+    start = text.index("\n## Letters and Numbers\n")
     section = text[start : text.index("\n## ", start + 1)]
-    table = section[section.index("### The Keymap") :]
-    table = table[: table.index("\n\n", table.index("| Key |"))]
+    table = section[section.index("| Key |") :].split("\n\n", 1)[0]
     rows = []
     for line in table.splitlines()[2:]:
         if not line.startswith("| `"):
@@ -300,7 +300,7 @@ def _manifest_views() -> list[tuple[str, str, str]]:
     return views
 
 
-def test_the_design_system_keymap_is_the_keys_the_app_binds() -> None:
+def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     """The documented table and the bound keys are one set, and each row names its targets.
 
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
@@ -395,7 +395,7 @@ def test_the_documented_shell_letters_mean_their_commands() -> None:
 
 def test_swapping_two_documented_shell_letters_fails_the_meaning_check() -> None:
     """The check is red for a table that swaps Files and Pulls, or J and K, or N and P."""
-    text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
+    text = _KEYBOARD_SHORTCUTS.read_text(encoding="utf-8")
     commands = _golden_shell_commands()
     files_row = "| `F` | The Files tab |"
     pulls_row = "| `R` | The Pulls tab: pull Requests |"
