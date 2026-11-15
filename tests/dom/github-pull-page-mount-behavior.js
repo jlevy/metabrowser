@@ -662,7 +662,7 @@ async function tabKeys(page) {
     HTMLElement: LiveElement,
     // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py, as the shell serves it.
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjkuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;

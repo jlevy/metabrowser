@@ -265,6 +265,109 @@ for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
     ),
   );
 }
+
+// ── Control chords (mb-lnqj) ────────────────────────────────────
+// Control is the one modifier a binding declares, `control: true`, and only with N or P,
+// next and previous (docs/design-system.md, "Control Chords").
+equal("the Control chord letters", Array.from(shortcuts.CONTROL_CHORD_KEYS), ["n", "p"]);
+equal(
+  "a Control chord normalizes its letter and keeps its Control",
+  [
+    shortcuts.normalizeBinding({ control: true, key: "N" }),
+    shortcuts.normalizeBinding({ control: true, key: "p" }),
+  ],
+  [
+    { control: true, key: "n" },
+    { control: true, key: "p" },
+  ],
+);
+for (const [label, binding] of [
+  ["Control with another letter", { control: true, key: "f" }],
+  ["Control with a digit", { control: true, key: "1" }],
+  ["Control with a named key", { control: true, key: "ArrowUp" }],
+  ["Control with punctuation", { control: true, key: "/" }],
+  ["a Control that is not true", { control: "require", key: "n" }],
+  ["a false Control, which is no binding's", { control: false, key: "n" }],
+  ["Control beside a modifier policy", { control: true, key: "n", modifiers: { alt: "forbid" } }],
+]) {
+  rejects(`the formatter rejects ${label}`, () => shortcuts.describeBindings([binding]));
+}
+check(
+  "a Control chord's signature is not its letter's",
+  shortcuts.bindingSignature({ control: true, key: "n" }) === "Control+n" &&
+    shortcuts.bindingSignature({ key: "n" }) === "n",
+);
+const controlN = { control: true, key: "n" };
+// The platform decides how a chord is written; this sandbox starts with no navigator.
+const writtenChord = () => {
+  const described = shortcuts.describeBindings([controlN, { control: true, key: "p" }]);
+  return [described.visible, described.spoken, described.ariaKeyshortcuts];
+};
+const written = {};
+for (const [platform, navigator] of [
+  ["no navigator", undefined],
+  ["macOS", { platform: "MacIntel" }],
+  ["macOS, by its client hints", { platform: "", userAgentData: { platform: "macOS" } }],
+  ["an iPad", { platform: "iPad" }],
+  ["Windows", { platform: "Win32" }],
+  ["Linux", { platform: "Linux x86_64" }],
+  [
+    "Windows, by its client hints",
+    { platform: "MacIntel", userAgentData: { platform: "Windows" } },
+  ],
+]) {
+  sandbox.navigator = navigator;
+  written[platform] = writtenChord();
+}
+delete sandbox.navigator;
+const glyph = [["⌃N", "⌃P"], "Control N or Control P", "Control+N Control+P"];
+const ctrl = [["Ctrl+N", "Ctrl+P"], "Control N or Control P", "Control+N Control+P"];
+equal("each platform writes Control its own way", written, {
+  "no navigator": ctrl,
+  macOS: glyph,
+  "macOS, by its client hints": glyph,
+  "an iPad": glyph,
+  Windows: ctrl,
+  Linux: ctrl,
+  "Windows, by its client hints": ctrl,
+});
+for (const [label, values, matches] of [
+  ["Control-N", { ctrlKey: true }, true],
+  [
+    "Control-Shift-N, since Shift changes nothing",
+    { ctrlKey: true, key: "N", shiftKey: true },
+    true,
+  ],
+  ["N alone", {}, false],
+  ["Shift-N", { key: "N", shiftKey: true }, false],
+  ["Control-Alt-N, as AltGr reports it", { altKey: true, ctrlKey: true }, false],
+  ["Control-Command-N", { ctrlKey: true, metaKey: true }, false],
+  ["Command-N", { metaKey: true }, false],
+  ["Option-N", { altKey: true }, false],
+  ["Control-N in a text field, whose caret it moves", { ctrlKey: true, target: field }, false],
+  [
+    "Control-N in an editable region",
+    { ctrlKey: true, target: Object.assign(new FakeElement("div"), { isContentEditable: true }) },
+    false,
+  ],
+  ["Control-M, another letter", { ctrlKey: true, key: "m" }, false],
+]) {
+  check(
+    `${label} ${matches ? "matches" : "does not match"} Control-N`,
+    shortcuts.eventMatchesBinding(keyboardEvent(values.key ?? "n", values), controlN) === matches,
+  );
+}
+check(
+  "a Control chord takes no physical pass",
+  !shortcuts.eventMatchesBinding(keyboardEvent("т", { code: "KeyN", ctrlKey: true }), controlN, {
+    physical: true,
+  }),
+);
+check(
+  "a plain N never matches with Control held",
+  !shortcuts.eventMatchesBinding(keyboardEvent("n", { ctrlKey: true }), { key: "n" }),
+);
+
 check(
   "? and / stay distinct on the key they share",
   !shortcuts.eventMatchesBinding(keyboardEvent("?", { code: "Slash", shiftKey: true }), {
@@ -603,8 +706,8 @@ typed(
 closeResults();
 
 // The permanent view-tabs scope sits below global, so a letter both use keeps
-// one meaning at a time: the stack's P while a stack is open, the Preview
-// tab's P otherwise.
+// one meaning at a time: a global P while its command is available, a view tab's
+// P otherwise. The commands are stand-ins: the shell reserves P, so no view takes it.
 let stackOpen = false;
 layouts.register(
   command({
@@ -702,6 +805,80 @@ check(
     .some((presented) => presented.id === "view-tabs.p"),
 );
 closeLayoutHelp();
+
+// A Control chord is another key than its letter (mb-lnqj): a global Control-N and a
+// plugin N register together, each runs on its own key, the chord holds no N above the
+// plugin scope, and AltGr runs neither.
+layouts.register(
+  command({
+    bindings: [{ control: true, key: "n" }],
+    group: "pull-stack",
+    handler: record("chord next"),
+    id: "test.chord.next",
+    repeat: false,
+    surfaces: { help: "always", reveal: "always" },
+  }),
+);
+layouts.register(
+  command({
+    bindings: [{ key: "n" }],
+    group: "controls",
+    handler: record("plugin n"),
+    id: "plugin.demo.n",
+    scope: "plugin",
+    surfaces: { help: "always" },
+  }),
+);
+typed("Control-N runs the chord", { code: "KeyN", ctrlKey: true, key: "n" }, "chord next");
+typed("N alone runs the plugin's N", { code: "KeyN", key: "n" }, "plugin n");
+typed(
+  "Control-Alt-N, as AltGr reports it, runs neither",
+  { altKey: true, code: "KeyN", ctrlKey: true, key: "n" },
+  null,
+);
+check("the chord holds no N above the plugin scope", !layouts.heldAbove("plugin", "n"));
+rejects("two Control-N bindings in one scope still fail", () =>
+  layouts.register(
+    command({
+      bindings: [{ control: true, key: "N" }],
+      group: "pull-stack",
+      id: "test.chord.other",
+    }),
+  ),
+);
+// A command that opts into text fields still leaves Control-P to the field.
+layouts.register(
+  command({
+    allowInEditable: true,
+    bindings: [{ control: true, key: "p" }],
+    group: "pull-stack",
+    handler: record("chord previous"),
+    id: "test.chord.previous",
+    repeat: false,
+    surfaces: { help: "always" },
+  }),
+);
+typed(
+  "Control-P in a text field is the field's, even for a command that opts in",
+  { code: "KeyP", ctrlKey: true, key: "p", target: new FakeElement("textarea") },
+  null,
+);
+typed(
+  "Control-P outside a text field runs",
+  { code: "KeyP", ctrlKey: true, key: "p" },
+  "chord previous",
+);
+typed(
+  "a held Control-P does not repeat a command that does not",
+  { code: "KeyP", ctrlKey: true, key: "p", repeat: true },
+  null,
+);
+const chordHelp = layouts.present("test.chord.next").bindings;
+equal(
+  "Help writes the chord as the platform does, here with no navigator",
+  [chordHelp.visible, chordHelp.spoken, chordHelp.ariaKeyshortcuts],
+  [["Ctrl+N"], "Control N", "Control+N"],
+);
 layouts.dispose();
 
 // A batch coalesces the publications it contains into one, at its outermost end.
@@ -903,6 +1080,35 @@ batched.dispose();
   );
   lateHandle.detach();
   check("detaching removes the badge", late.querySelector(".kbd-badge") === null);
+
+  // A targeted Control chord badges its target with the chord as the platform writes it,
+  // here macOS, and names Control in its aria-keyshortcuts.
+  sandbox.navigator = { platform: "MacIntel" };
+  const chordTarget = tab("chord", "Next");
+  bar.append(chordTarget);
+  const releaseChord = targetRegistry.register(
+    command({
+      bindings: [{ control: true, key: "n" }],
+      copy: { action: "Next", description: "Open the next one.", hint: "Next" },
+      group: "controls",
+      id: "test.chord.next",
+      targeted: true,
+    }),
+  );
+  const chordHandle = targetRegistry.attachTarget("test.chord.next", chordTarget);
+  equal(
+    "a chord's badge and aria-keyshortcuts name its Control",
+    [
+      chordTarget.querySelector(".kbd-badge")?.textContent ?? null,
+      chordTarget.getAttribute("aria-keyshortcuts"),
+      targetRegistry.present("test.chord.next").bindings.visible,
+    ],
+    ["⌃N", "Control+N", ["⌃N"]],
+  );
+  delete sandbox.navigator;
+  chordHandle.detach();
+  releaseChord();
+  chordTarget.remove();
 
   // Beside placement: the badge sits in the nearest anchor, measured from it.
   const header = element(tree, "div", { class: "file-header", "data-kbd-badge-anchor": true });

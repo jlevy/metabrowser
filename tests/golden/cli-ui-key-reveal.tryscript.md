@@ -19,12 +19,12 @@ does nothing at the root, and a view tab’s letter follows the bar the main pan
 never one still staged.
 Letters name known meanings, as “Keyboard Shortcuts” in `docs/design-system.md` sets
 out: `F`, `R`, and `H` for the Files, Pulls, and Commits tabs, `V` and `S` for a file’s
-rendered view and its source, and `N` and `P` for the next and previous item one level
-up. The filters are situational, so they take numbers from the registry’s one numbering,
-1 to 9 in reading order: `numbers` lists what each number reaches, the first being 1.
-Copying is ancillary, so no copy control carries a key, and Help lists the numbers as
-one positional row and gives no digit a fixed meaning; the session fails if either
-breaks.
+rendered view and its source, and Control-N and Control-P for the next and previous item
+one level up. The filters are situational, so they take numbers from the registry’s one
+numbering, 1 to 9 in reading order: `numbers` lists what each number reaches, the first
+being 1. Copying is ancillary, so no copy control carries a key, and Help lists the
+numbers as one positional row and gives no digit a fixed meaning; the session fails if
+either breaks.
 
 This browserless session loads the production registry, `static/key-reveal.js`,
 `static/shell-keymap.js`, Help with the real overlay layer, the file tree’s keys, Quick
@@ -37,8 +37,8 @@ listener on the window hears an element’s `blur`. It plays the server’s side
 `tests/test_key_reveal_session.py` records and replays.
 `tests/test_keymap.py` holds `shellKeys`, the keys each part’s registry registered for
 the shell, to the reserved table in `src/metabrowser/keymap.py`, and `shellCommands`,
-each shell letter with the command it is bound to and that command’s Help action, to the
-meanings the design system’s keymap table gives those letters.
+each shell letter and Control chord with the command it is bound to and that command’s
+Help action, to the meanings the design system’s keymap table gives those letters.
 Each step records the reveal’s state, whether the root is marked, the live keymap as
 key, command, and target, the badges mounted, the strip’s surface and items, and Help’s
 groups; `did` is what the shell’s stand-in activation paths were asked.
@@ -890,9 +890,11 @@ $ node tests/dom/key-reveal-session.js gestures
 
 `H` and `F` under a held Shift, a commit view’s Copy revision with no key, Commits
 registered while the registry is down, Pulls drawn before Git discovery and the tab
-order Files, Pulls, Commits, the Preview tab’s `V` with `P` left to the stack, a pull
-request in and outside a stack, a mirror’s pin with its branch switcher, Group by
-numbered 1 and its one filter 2, and Help’s one positional row for the numbers.
+order Files, Pulls, Commits, the Preview tab’s `V` with Control-P left to the stack, a
+pull request in and outside a stack, where Control-N and Control-P walk it, a chord ends
+a reveal, and the letters alone and AltGr’s Control-Alt walk nothing, a mirror’s pin
+with its branch switcher, Group by numbered 1 and its one filter 2, and Help’s one
+positional row for the numbers.
 
 ```console
 $ node tests/dom/key-reveal-session.js tabs
@@ -1149,7 +1151,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "tabs": ["Files","Pulls","Commits"]
     },
     {
-      "step": "the Preview tab is V, and P outside a stack does nothing",
+      "step": "the Preview tab is V, and Control-P outside a stack does nothing",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -1174,7 +1176,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "key": "v",
         "handled": true
       },
-      "p": false,
+      "controlP": false,
       "did": ["selected the preview tab"]
     },
     {
@@ -1206,7 +1208,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "did": ["address /pulls"]
     },
     {
-      "step": "a pull request outside a stack has no N or P",
+      "step": "a pull request outside a stack has no Control-N or Control-P",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -1225,12 +1227,12 @@ $ node tests/dom/key-reveal-session.js tabs
       "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "focus": "#7",
       "pressed": {
-        "key": "n",
+        "key": "Control-n",
         "handled": false
       }
     },
     {
-      "step": "a pull request in a stack lists N or P on the strip",
+      "step": "a pull request in a stack lists Control-N or Control-P on the strip",
       "reveal": "revealed",
       "rootMarked": true,
       "keys": [
@@ -1239,8 +1241,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["R","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["N","pulls.stack.top",null],
-        ["P","pulls.stack.base",null]
+        ["Ctrl+N","pulls.stack.top",null],
+        ["Ctrl+P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [
@@ -1250,17 +1252,12 @@ $ node tests/dom/key-reveal-session.js tabs
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","F Files","R Pulls","H Commits","N or P Stack"]
+        "items": ["? Help","T or / Quick Search","F Files","R Pulls","H Commits","Ctrl+N or Ctrl+P Stack"]
       },
-      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
-      "pressed": {
-        "key": "n",
-        "handled": true
-      },
-      "did": ["moved toward the stack's top"]
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"]
     },
     {
-      "step": "P walks the stack toward its base",
+      "step": "Control-N with Shift held walks the stack and ends the reveal",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -1269,8 +1266,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["R","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["N","pulls.stack.top",null],
-        ["P","pulls.stack.base",null]
+        ["Ctrl+N","pulls.stack.top",null],
+        ["Ctrl+P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [],
@@ -1280,10 +1277,60 @@ $ node tests/dom/key-reveal-session.js tabs
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
-        "key": "p",
+        "key": "Control-n",
+        "handled": true
+      },
+      "did": ["moved toward the stack's top"]
+    },
+    {
+      "step": "Control-P walks the stack toward its base",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
+        ["Ctrl+N","pulls.stack.top",null],
+        ["Ctrl+P","pulls.stack.base",null]
+      ],
+      "numbers": [],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "pressed": {
+        "key": "Control-p",
         "handled": true
       },
       "did": ["moved toward its base"]
+    },
+    {
+      "step": "N and P alone, and Control-Alt-N as AltGr reports it, walk nothing",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["R","main-tabs.pulls","Pulls tab"],
+        ["H","main-tabs.git","Commits tab"],
+        ["Ctrl+N","pulls.stack.top",null],
+        ["Ctrl+P","pulls.stack.base",null]
+      ],
+      "numbers": [],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","controls","numbered","navigation","pull-requests","pull-stack","quick-file","help"],
+      "n": false,
+      "p": false,
+      "altGr": false
     },
     {
       "step": "a mirror's pin has W, Group by is 1, and its one filter is 2",
@@ -1348,8 +1395,8 @@ $ node tests/dom/key-reveal-session.js tabs
       ]
     }
   ],
-  "shellKeys": ["1","2","3","4","5","6","7","8","9","f","h","j","k","n","p","r","t","u","w"],
-  "shellCommands": ["f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j pulls.files.next: Next changed file","j pulls.next: Next pull request","j tree.next: Next item","k pulls.files.previous: Previous changed file","k pulls.previous: Previous pull request","k tree.previous: Previous item","n pulls.stack.top: Next in stack","p pulls.stack.base: Previous in stack","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder","w source.switch-ref: Branch or tag"]
+  "shellKeys": ["1","2","3","4","5","6","7","8","9","control-n","control-p","f","h","j","k","r","t","u","w"],
+  "shellCommands": ["control-n pulls.stack.top: Next in stack","control-p pulls.stack.base: Previous in stack","f main-tabs.files: Open Files","h main-tabs.git: Open Commits","j pulls.files.next: Next changed file","j pulls.next: Next pull request","j tree.next: Next item","k pulls.files.previous: Previous changed file","k pulls.previous: Previous pull request","k tree.previous: Previous item","r main-tabs.pulls: Open Pulls","t quick-file.open: Quick Search","u header.parent: Parent folder","w source.switch-ref: Branch or tag"]
 }
 ? 0
 ```
@@ -1358,11 +1405,14 @@ $ node tests/dom/key-reveal-session.js tabs
 
 Every chord is left to the browser and the platform, so Command-R reloads wherever focus
 is: on the page, on a tree row, in Quick Search’s field, in Help, and in an open filter
-menu. In each place the session presses every letter, digit, and named key with Command,
-Shift-Command, Control, and Option, and fails if any is taken, runs a command, or moves
-focus.
-`presses` counts them; Option-Tab is left out, since a modal’s focus trap keeps it
-for Safari, which moves focus with it.
+menu. The registry’s two Control chords, Control-N and Control-P, are the exception on a
+pull request in a stack, where they walk the stack and are the only chords taken; Quick
+Search’s field keeps them there too.
+In each place the session presses every letter, digit, and named key with Command,
+Shift-Command, Control, and Option, and fails if a chord other than those is taken, runs
+a command, or moves focus.
+`presses` counts them; Option-Tab is left out, since a modal’s focus trap keeps it for
+Safari, which moves focus with it.
 
 ```console
 $ node tests/dom/key-reveal-session.js modified
@@ -1410,6 +1460,24 @@ $ node tests/dom/key-reveal-session.js modified
     {
       "place": "the file type filter's open menu",
       "focus": "✓Any type",
+      "presses": 199,
+      "commandR": "left to the browser",
+      "taken": [],
+      "did": [],
+      "focusMoved": null
+    },
+    {
+      "place": "a pull request in a stack",
+      "focus": "body",
+      "presses": 199,
+      "commandR": "left to the browser",
+      "taken": ["Control-n","Control-p"],
+      "did": ["moved toward the stack's top","moved toward its base"],
+      "focusMoved": null
+    },
+    {
+      "place": "Quick Search's field on a pull request in a stack",
+      "focus": "Find a known file",
       "presses": 199,
       "commandR": "left to the browser",
       "taken": [],

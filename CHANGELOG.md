@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
+  top, and Control-P, to the previous one toward its base, so `N` and `P` alone are
+  free. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
+  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
+  AltGr with `N` or `P` still types its character.
+  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
+  the stack. For plugin authors, a manifest view may now take `N` or `P` as its key.
+  See [Control Chords](docs/design-system.md#control-chords).
+
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
   description, comments, and reviews, and in any document when you chose the Sans
   reading font. It was italic under either reading font, an accent of the serif that read

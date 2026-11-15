@@ -2270,8 +2270,12 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   }): MetabrowserSearchPaletteApi;
 }>;
 
-/** One key: a binding states no modifier policy, and Shift never changes a key. */
+/**
+ * One key, or Control with `n` or `p` (`control: true`): a binding states no other
+ * modifier policy, and Shift never changes a key.
+ */
 type MetabrowserShortcutBinding = Readonly<{
+  control?: true;
   key: string;
 }>;
 
@@ -2295,7 +2299,7 @@ type MetabrowserBindingPresentation = Readonly<{
   /** The keycaps are a run's two ends, the situational numbers 1 to 9, not alternatives. */
   range?: boolean;
   spoken: string;
-  /** One keycap label per alternative: every binding is a single key. */
+  /** One keycap label per alternative: a single key, or a Control chord such as `⌃N`. */
   visible: ReadonlyArray<string>;
 }>;
 
@@ -2378,7 +2382,7 @@ type MetabrowserShortcutRegistry = Readonly<{
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
   describeKey(key: string): MetabrowserKeyDefinition;
-  /** Whether a live command in an active layer above `scope` is bound to `key`. */
+  /** Whether a live command in an active layer above `scope` is bound to `key` alone. */
   heldAbove(scope: string, key: string): boolean;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
   /** Whether a command would run now: active scope, `available()`, and a live target. */
@@ -2406,6 +2410,8 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
+  /** The letters a binding may hold with Control: `n` and `p`. */
+  CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
   >;

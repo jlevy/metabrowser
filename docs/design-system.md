@@ -263,10 +263,14 @@ glyph itself.
 | `Delete` | `Delete` | Delete | `Delete` |
 | `F2` | `F2` | F2 | `F2` |
 | `Shift`, a single key only | `Shift` | Shift | `Shift` |
+| Control with `N` or `P` | `⌃N` on macOS and iOS, `Ctrl+N` elsewhere | Control N | `Control+N` |
 
 `Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
 `appendKey()`, which renders a key that is not a binding, such as one named in a
 sentence. No binding may use it.
+A [Control chord](#control-chords) is one keycap, written as its platform writes it; the
+formatter reads the platform from the page’s navigator, and without one, as in a
+browserless session, writes `Ctrl+N`.
 
 The `.kbd` text transform produces the visible caps treatment; source markup keeps the
 mixed-case label in this table.
@@ -293,8 +297,10 @@ A missing tab has no target, so its letter does nothing and stays reserved.
 
 #### Binding Grammar and Accessibility
 
-- Every shortcut is a single key.
-  No binding uses Ctrl, Alt, or Meta, and the registry rejects a binding that states any
+- Every shortcut is a single key, but for the two [Control chords](#control-chords),
+  Control-N and Control-P. A binding declares Control with `control: true`, and the
+  registry rejects it with any other key.
+  No binding uses Alt or Meta, and the registry rejects a binding that states any other
   modifier policy, Shift included.
 - Shift never changes what a key means: a letter matches in either case, a named key
   such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
@@ -1480,11 +1486,11 @@ The menu shows titles, ordinals, and PR numbers, ordered from stack top to base,
 the current member marked.
 Its links are created only when opened.
 Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
-On a selected PR, `N` opens the next member toward the stack top and `P` the previous
-one toward its base, with or without Shift; Help lists them in its Pull request stack
-group. A focused Pulls row keeps `J` and `K` for its own rows.
-Editors, dialogs, unknown membership, a header still held over the loading page, and
-inactive pages keep their normal keyboard behavior.
+On a selected PR, Control-N opens the next member toward the stack top and Control-P the
+previous one toward its base, with or without Shift; Help lists them in its Pull request
+stack group ([Control Chords](#control-chords)). A focused Pulls row keeps `J` and `K`
+for its own rows. Editors, dialogs, unknown membership, a header still held over the
+loading page, and inactive pages keep their normal keyboard behavior.
 Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
@@ -1775,7 +1781,7 @@ Space toggles the focused pull request’s changed files in place.
 Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
 Space, Right, and Left open, close, enter, and leave it as a folder’s
 ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
-rows with or without Shift; walking a pull request’s stack is `N` and `P`
+rows with or without Shift; walking a pull request’s stack is Control-N and Control-P
 ([The Pull Request Page](#the-pull-request-page)). Help reads the `pull-requests` and
 `pull-stack` groups of the shortcut registry, and no surface here names a key.
 
@@ -1909,11 +1915,12 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 - **Reusable semantics.** Some letters are verbs that apply wherever their meaning does,
   as Vim’s motions do.
   `J` and `K` move down and up a row in every row list.
-  `N` and `P` go to the next and previous item one level up: today the pull requests of
-  a stack, and on any later page with its own next and previous, that page’s. `V` and
-  `S` switch a file between its rendered view and its source, whatever its tabs are
-  called. A page with a natural next and previous uses `N` and `P`, a rendered view is
-  always `V`, and no other meaning takes those letters.
+  Control-N and Control-P go to the next and previous item one level up: today the pull
+  requests of a stack, and on any later page with its own next and previous, that
+  page’s. `V` and `S` switch a file between its rendered view and its source, whatever
+  its tabs are called.
+  A page with a natural next and previous uses Control-N and Control-P, a rendered view
+  is always `V`, and no other meaning takes those keys.
 - **Numbers for situational items.** Links and one-off actions that depend on what the
   screen shows, such as the Files tab’s filters or a pull request’s Refresh, take `1`,
   `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no `0`,
@@ -1928,15 +1935,17 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   chooser, of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button.
-- **One key and no modifier.** Every shortcut is a single key, Shift changes nothing,
-  and Ctrl, Alt, and Meta stay the browser’s
+- **One key, and Control only for next and previous.** Every shortcut is a single key
+  but Control-N and Control-P ([Control Chords](#control-chords)), Shift changes
+  nothing, and Command, Option, and every other Control chord stay the browser’s
   ([Binding Grammar and Accessibility](#binding-grammar-and-accessibility)).
 
 ### Scopes and Collisions
 
-- **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`,
-  `U`, and `W` keep their meaning even where they do nothing, so a letter never means
-  one thing on one screen and another elsewhere.
+- **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `U`, and `W`
+  keep their meaning even where they do nothing, so a letter never means one thing on
+  one screen and another elsewhere.
+  Control-N and Control-P reserve no letter: a view’s key is one letter alone.
   A manifest whose view takes one is refused: the loader rejects it, the plugin does not
   load, and `metab --doctor` reports why.
   The plugin shortcut surface refuses one too, with a console warning, and the control
@@ -1968,7 +1977,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 | `R` | The Pulls tab: pull Requests | The tab is drawn: a hosted origin | Letter, main tab |
 | `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
-| `N` or `P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open | Reusable |
+| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields | Reusable, Control chord |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown | Letter |
 | `W` | The branch or tag switcher | A mirror’s pin is served | Letter, GitHub’s convention |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown | Reusable, view tab |
@@ -2001,12 +2010,13 @@ Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
 ### Browser and App Keys
 
 A key held with Command, Control, or Option belongs to the browser, and in the macOS app
-to the app’s menus. No shortcut above uses one, and no page handler takes one: a handler
-that cancelled a chord would keep it from the browser, and the app’s web view hands
-every key to the page before its menus.
-`tests/test_modified_keys.py` lists each `keydown` handler and what leaves chords alone
-in it. The one exception is Option-Tab inside a dialog or an open menu: its focus trap
-keeps it, because Safari moves focus with Option-Tab.
+to the app’s menus, but for the two [Control chords](#control-chords) the keymap lists.
+No other shortcut uses one, and no page handler takes one: a handler that cancelled a
+chord would keep it from the browser, and the app’s web view hands every key to the page
+before its menus. `tests/test_modified_keys.py` lists each `keydown` handler and what
+leaves chords alone in it.
+The other exception is Option-Tab inside a dialog or an open menu: its focus trap keeps
+it, because Safari moves focus with Option-Tab.
 
 | Key | Meaning | Where |
 | --- | --- | --- |
@@ -2022,6 +2032,40 @@ waits for the start under way, or, after the server failed, restarts it as Retry
 ([apps/macos/README.md](../apps/macos/README.md#the-window) has each case).
 The app’s other keys are the standard ones of its menus: Back and Forward are Command-\[
 and Command-\], and Restart Server is Command-Option-R.
+
+### Control Chords
+
+Control-N and Control-P are the only chords the registry binds.
+They walk a pull request’s stack: Control-N to the next member toward the stack’s top,
+Control-P to the previous one toward its base.
+
+- **Why these two.** The letters alone are worth more to the keymap than one walk
+  through a stack, so `N` and `P` are left free.
+  With Control they mean next and previous in Emacs, readline, and the macOS text
+  system, which moves a field’s caret down and up a line with them, so the chords keep
+  the meaning they have elsewhere.
+- **Why Control, and where it reaches the page.** On macOS, Command is the command key:
+  the macOS app’s menus and the browsers there give Control with `N` or `P` no command,
+  so both chords reach the page.
+  On Windows and Linux, Control is the browser’s command key.
+  Chrome keeps Ctrl+N for a new window, and a page never sees it, so there only Ctrl+P
+  walks the stack, in place of the browser’s Print while a stack’s pull request is open;
+  Print stays in the browser’s menu.
+- **What the registry allows.** A binding declares Control with `control: true`, and
+  only with `N` or `P` (`CONTROL_CHORD_KEYS` in `static/keyboard-shortcuts.js`). The
+  chord matches Control held alone: Alt or Meta with it makes another chord, and AltGr,
+  which reports Control and Alt, types its character.
+  It never matches in a text field, even for a command that opted in, since the field
+  moves its caret with it.
+  Shift changes nothing, as for every key.
+  A chord reserves no letter, since a view’s key is one letter alone.
+- **How it is written.** Help, the Shift strip, and a badge write a chord as its
+  platform does, `⌃N` on macOS and iOS and `Ctrl+N` elsewhere; it is spoken “Control N”
+  and announced as `Control+N` ([Canonical Key Names](#canonical-key-names)).
+- **Another chord** is a design decision made here first.
+  It must keep the meaning its chord has elsewhere and take no command from the
+  platform, on macOS at least.
+  Command and Option stay the browser’s and the app’s.
 
 ### Help and the Reveal
 
@@ -2067,9 +2111,11 @@ menu or radiogroup, stays on that component’s root.
 If that behavior is advertised in Help or another hint surface, its presentation still
 comes from a registered descriptor.
 Document-level commands ignore editable controls, composition, and previously handled
-events. They never match while Ctrl, Alt, or Meta is held, and inside a text field Shift
-with an arrow, `Home`, or `End` belongs to the field, where it extends the selection.
-They prevent browser behavior only after an enabled handler reports that it acted.
+events. They never match while Alt or Meta is held, nor while Ctrl is unless the binding
+is a [Control chord](#control-chords), which never matches in a text field; and inside a
+text field Shift with an arrow, `Home`, or `End` belongs to the field, where it extends
+the selection. They prevent browser behavior only after an enabled handler reports that
+it acted.
 
 A command may opt back into an editable target only for a key that field does not
 already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
@@ -2119,13 +2165,14 @@ Holding Shift alone outside a text field for the hold threshold reveals the keys
 root gains `data-key-reveal`, each live command’s first live target carries one
 `.kbd.kbd-badge` keycap, hidden from assistive technology, and the shortcut strip shows
 a second layer listing the `reveal` surface’s live commands, with every binding of an
-item that combines several, such as `N` or `P`. A key the registry handles keeps the
-reveal and moves the badges to what is live after it; any other key, a modifier, a
-pointer press, a wheel, the window losing focus, a hidden page, focus entering a text
-field, or a lost `keyup` ends it.
-Another key within the threshold, or pointer travel past the slop, keeps the reveal from
-starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without a
-flash. The reveal never calls `preventDefault()` and never announces itself; badges and
+item that combines several, such as Control-N or Control-P. A key the registry handles
+keeps the reveal and moves the badges to what is live after it; any other key, a chord,
+even a Control chord the registry handles, a modifier, a pointer press, a wheel, the
+window losing focus, a hidden page, focus entering a text field, or a lost `keyup` ends
+it. Another key within the threshold, or pointer travel past the slop, keeps the reveal
+from starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without
+a flash.
+The reveal never calls `preventDefault()` and never announces itself; badges and
 the revealed strip exist only while it shows.
 `static/key-reveal.js` is the state machine, and `static/shell-keymap.js` holds the
 shell’s targeted commands.
@@ -2241,8 +2288,8 @@ its Tab order and vertical navigation cannot silently fork this contract.
 Every presented command declares:
 
 - a stable identifier and scope;
-- semantic bindings, each one key with no modifier policy, and an explicit repeat
-  policy;
+- semantic bindings, each one key, or a [Control chord](#control-chords) declared with
+  `control: true`, with no other modifier policy, and an explicit repeat policy;
 - a group identifier whose heading, context sentence, and order come from one group
   registry;
 - one sentence-case action label with no terminal punctuation;

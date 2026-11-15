@@ -8,8 +8,8 @@
 
 ## Overview
 
-Seven changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of seven pull requests on `main`:
+Eight changes from the owner’s requests of 2026-11-15. They land as one native GitHub
+stack of eight pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -25,6 +25,8 @@ stack of seven pull requests on `main`:
    spacing, with a timeline line joining them.
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
+8. **Stack keys:** Control-N and Control-P walk a pull request’s stack, freeing `N` and
+   `P`.
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -67,6 +69,10 @@ request must prove.
 - **Sans headings** (`mb-l4vm`): KPress italicizes `.kpress-prose h2`. That italic stays
   in serif documents, and an h2 in any sans context is upright.
   The h4 and h6 italics are unchanged.
+- **Stack keys** (`mb-lnqj`): next and previous in a stack move from `N` and `P` to
+  Control-N and Control-P, so the letters are free.
+  The registry accepts a declared Control chord, Control alone and never from a text
+  field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
 
 ## Non-Goals
 
@@ -128,6 +134,7 @@ it:
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
+| 8 | `claude/keymap-ctrl-np` | `mb-lnqj` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -271,6 +278,16 @@ it:
 - An h2 keeps its size, weight and spacing; serif documents keep KPress’s italic.
 - The rule is stated once in `docs/design-system.md`, beside “Serif Is for Documents”.
 
+### Stack Keys
+
+- Control-N and Control-P are the registry’s only chords (`CONTROL_CHORD_KEYS`). A chord
+  matches Control alone, so AltGr’s Control and Alt types its character, and never in a
+  text field, where macOS moves the caret with it.
+- Help, the Shift strip, and badges write the chord as the platform does, read from the
+  page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
+  Ctrl+N for a new window), is stated once, in “Control Chords” in
+  `docs/design-system.md`.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -318,6 +335,12 @@ it:
 - [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
   #438’s Chrome session.
 
+### Phase 8: Stack Keys (pull request 8)
+
+- [ ] `mb-lnqj`: Control-N and Control-P walk the stack; the registry’s Control chord,
+  its guards, its platform naming, and the keymap goldens, sessions, Help copy, and
+  docs.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -343,7 +366,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 7 merges.
+This plan moves to `docs/project/specs/done/` when pull request 8 merges.
 
 ## Open Questions
 
@@ -361,7 +384,7 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

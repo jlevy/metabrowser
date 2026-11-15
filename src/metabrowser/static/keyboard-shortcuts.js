@@ -2,12 +2,13 @@
 
 (() => {
   /**
-   * One key, and nothing else: no shortcut uses a modifier, so a binding
-   * states no modifier policy (docs/design-system.md, "Binding Grammar and
-   * Accessibility").
+   * One key, or Control with one of the letters `CONTROL_CHORD_KEYS` names. A binding
+   * states no other modifier policy (docs/design-system.md, "Binding Grammar and
+   * Accessibility" and "Control Chords").
    *
    * @typedef {object} ShortcutBinding
    * @property {string} key
+   * @property {true} [control] Control is held with the key, and Alt and Meta are not.
    */
   /** @typedef {"digit" | "letter" | "named" | "punctuation"} KeyClass */
   /** @typedef {Readonly<{kind: string, commandId?: string, kinds?: readonly string[], scope?: string}>} ShortcutEvent */
@@ -84,12 +85,20 @@
    * @property {Readonly<ShortcutPresentation>} presentation
    */
 
-  // A key event with any of these held never matches a shortcut: the chords
+  // A key event with any of these held never matches a single-key binding: the chords
   // belong to the browser and the platform. Shift is ignored instead, so
   // holding it never changes what a key means. AltGr reports Ctrl and Alt, so
   // punctuation typed with it stays outside the shortcuts too.
   /** @type {readonly ("altKey" | "ctrlKey" | "metaKey")[]} */
   const DISQUALIFYING_MODIFIERS = Object.freeze(["altKey", "ctrlKey", "metaKey"]);
+  // The letters a binding may hold with Control, the one chord the registry binds: N and
+  // P, next and previous, as in Emacs, readline, and the macOS text system. On macOS no
+  // browser or app command is Control with a letter, so the chord reaches the page;
+  // elsewhere Control is the browser's command key, and Chrome keeps Ctrl+N for a new
+  // window (docs/design-system.md, "Control Chords"). Adding a letter is a design
+  // decision, made there first.
+  /** @type {readonly string[]} */
+  const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);
   // Scopes that are always active below the activated ones, in order. `plugin` holds the
   // keys plugin views attach through static/plugin-shortcuts.js, below every shell key.
   const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs", "plugin"]);
@@ -243,12 +252,56 @@
     // resolved again at presentation time.
     keyDefinition(binding.key);
     const key = /^[a-z]$/i.test(binding.key) ? binding.key.toLowerCase() : binding.key;
-    return Object.freeze({ key });
+    const control = /** @type {{control?: unknown}} */ (binding).control;
+    if (control === undefined) {
+      return Object.freeze({ key });
+    }
+    // Control is declared, never implied, and only with the letters the rule names.
+    if (control !== true || !CONTROL_CHORD_KEYS.includes(key)) {
+      throw new TypeError(`Shortcut bindings take Control only with N or P: ${binding.key}`);
+    }
+    return Object.freeze({ control: true, key });
   }
 
   /** @param {ShortcutBinding} binding */
   function bindingSignature(binding) {
-    return normalizeBinding(binding).key;
+    const normalized = normalizeBinding(binding);
+    return normalized.control ? `Control+${normalized.key}` : normalized.key;
+  }
+
+  /**
+   * Whether the platform writes Control as `⌃`, as macOS and iOS do. Read from the page's
+   * navigator as a chord is described; without one, as in a browserless session, it is
+   * the `Ctrl+` of every other platform.
+   */
+  function writesControlAsGlyph() {
+    const navigator =
+      /** @type {{platform?: unknown, userAgentData?: {platform?: unknown}} | undefined} */ (
+        window.navigator
+      );
+    const platform = navigator?.userAgentData?.platform || navigator?.platform;
+    return typeof platform === "string" && /^(mac|iphone|ipad|ipod)/i.test(platform);
+  }
+
+  /**
+   * A binding's names: its key's, or for a Control chord the platform's way of writing
+   * it, `⌃N` on macOS and `Ctrl+N` elsewhere, spoken "Control N", and `Control+N` for
+   * `aria-keyshortcuts`.
+   *
+   * @param {ShortcutBinding} binding
+   * @returns {Readonly<{aria: string, spoken: string, visible: string}>}
+   */
+  function bindingDefinition(binding) {
+    const normalized = normalizeBinding(binding);
+    const key = keyDefinition(normalized.key);
+    if (!normalized.control) {
+      return key;
+    }
+    return Object.freeze({
+      aria: `Control+${key.aria}`,
+      spoken: `Control ${key.spoken}`,
+      visible: writesControlAsGlyph() ? `⌃${key.visible}` : `Ctrl+${key.visible}`,
+    });
   }
 
   /** @param {string} key */
@@ -261,7 +314,12 @@
    * class, except that inside a text field Shift with a selection key (an
    * arrow, Home, or End) belongs to the field, where it extends the text
    * selection. Shift+Enter and Shift+Escape still act. Ctrl, Alt, and Meta
-   * always disqualify the event.
+   * disqualify the event for a single-key binding.
+   *
+   * A Control chord matches its letter with Control held and neither Alt nor
+   * Meta: AltGr reports Control and Alt, so the character it types stays text.
+   * It never matches in a text field, even for a command that opted in, since
+   * macOS moves the caret with Control+N and Control+P there.
    *
    * The physical pass matches a digit binding by its digit-row key, for an
    * event whose character is not a digit: US Shift+1 types `!`, and AZERTY's
@@ -275,6 +333,17 @@
    */
   function eventMatchesBinding(event, binding, matchOptions = {}) {
     const normalized = normalizeBinding(binding);
+    if (normalized.control) {
+      return (
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !matchOptions.physical &&
+        typeof event.key === "string" &&
+        event.key.toLowerCase() === normalized.key &&
+        !isEditableTarget(event.target)
+      );
+    }
     if (DISQUALIFYING_MODIFIERS.some((field) => event[field])) {
       return false;
     }
@@ -380,7 +449,7 @@
     if (!Array.isArray(bindings) || bindings.length === 0) {
       throw new TypeError("Presented commands require at least one binding");
     }
-    const alternatives = bindings.map((binding) => keyDefinition(normalizeBinding(binding).key));
+    const alternatives = bindings.map((binding) => bindingDefinition(binding));
     const preferred = alternatives[0];
     return Object.freeze({
       ariaKeyshortcuts: alternatives
@@ -410,7 +479,7 @@
    */
   function describeRange(bindings) {
     const ends = [bindings[0], bindings[bindings.length - 1]].map((binding) =>
-      keyDefinition(normalizeBinding(binding).key),
+      bindingDefinition(binding),
     );
     const visible = Object.freeze(ends.map((end) => end.visible));
     const spoken = `${ends[0].spoken} to ${ends[1].spoken}`;
@@ -420,9 +489,9 @@
 
   /**
    * One keycap per alternative, joined by "or", or a run's two ends joined by a dash.
-   * Every binding is a single key, so an alternative is one keycap; a group of them is
-   * spoken as one visually hidden phrase, such as "T or slash" or "1 to 9", with its
-   * keycaps and separators hidden.
+   * An alternative is one keycap, a Control chord's included, written as the platform
+   * writes it, `⌃N`; a group of them is spoken as one visually hidden phrase, such as
+   * "T or slash" or "1 to 9", with its keycaps and separators hidden.
    *
    * @param {Document} hostDocument
    * @param {HTMLElement} container
@@ -808,7 +877,7 @@
             : null;
         for (const record of records) {
           if (record === chosen && entry) {
-            mountBadge(record, entry.descriptor.bindings[0].key);
+            mountBadge(record, entry.descriptor.bindings[0]);
           } else {
             unmountBadge(record);
           }
@@ -820,7 +889,7 @@
       const shown =
         revealed && numbers && activeScopes.has(numbers.descriptor.scope) ? liveNumbered() : [];
       for (const [index, record] of shown.entries()) {
-        mountBadge(record, String(index + 1));
+        mountBadge(record, { key: String(index + 1) });
       }
       for (const record of numbered) {
         if (!shown.includes(record)) {
@@ -878,9 +947,10 @@
      * not fade in again when the badges move after a key.
      *
      * @param {{badge: HTMLElement | null, element: HTMLElement, placement: BadgePlacement}} record
-     * @param {string} key
+     * @param {ShortcutBinding} binding
      */
-    function mountBadge(record, key) {
+    function mountBadge(record, binding) {
+      const label = bindingDefinition(binding).visible;
       const anchor =
         record.placement === "beside"
           ? /** @type {HTMLElement | null} */ (record.element.closest(BADGE_ANCHOR_SELECTOR)) ||
@@ -893,12 +963,13 @@
       if (
         record.badge?.isConnected &&
         record.badge.parentElement === anchor &&
-        record.badge.textContent === describeKey(key).visible
+        record.badge.textContent === label
       ) {
         return;
       }
       unmountBadge(record);
-      const badge = appendKey(hostDocument, anchor, key);
+      const badge = createKeycap(hostDocument, label);
+      anchor.append(badge);
       badge.className = "kbd kbd-badge";
       badge.setAttribute("aria-hidden", "true");
       badge.dataset.kbdPlacement = record.placement;
@@ -1347,9 +1418,10 @@
     }
 
     /**
-     * Whether a live command in an active layer above `scope` is bound to `key`, so the
-     * key would reach that command first. The plugin facade asks it, so that a shell
-     * key outranks a plugin key on the badges and the strip as it does at dispatch.
+     * Whether a live command in an active layer above `scope` is bound to `key` alone, so
+     * the key would reach that command first. The plugin facade asks it, so that a shell
+     * key outranks a plugin key on the badges and the strip as it does at dispatch. A
+     * Control chord on the same letter is another key and holds nothing.
      *
      * @param {string} scope
      * @param {string} key
@@ -1362,7 +1434,9 @@
       for (const entry of commands.values()) {
         if (
           above.has(entry.descriptor.scope) &&
-          entry.descriptor.bindings.some((binding) => binding.key === wanted) &&
+          entry.descriptor.bindings.some(
+            (binding) => binding.key === wanted && binding.control !== true,
+          ) &&
           entryIsLive(entry, above)
         ) {
           return true;
@@ -1515,6 +1589,7 @@
   }
 
   window.MetabrowserKeyboardShortcuts = Object.freeze({
+    CONTROL_CHORD_KEYS,
     GROUP_DEFINITIONS,
     KEY_DEFINITIONS,
     NUMBERED_LIMIT,

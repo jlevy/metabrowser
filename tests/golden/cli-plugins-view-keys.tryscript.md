@@ -87,21 +87,19 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
 ? 1
 ```
 
-## Test: a view keyed N is refused at load, since N means next everywhere
+## Test: a view keyed N loads, since Control-N, not N, means next
 
-`N` and `P` are reusable next and previous keys, reserved in every kind, so the loader
-refuses the manifest as it refuses `T` below.
+Next and previous one level up are Control-N and Control-P, chords no view can declare,
+so `N` alone is free in every kind, a pull request’s included, and the plugin loads.
 
 ```console
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
-  "ok": false,
-  "plugin_count": 11,
-  "problems": [
-    "[CWD]/stack/prnotes/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'N' is reserved for the shell's next item [type=value_error, input_value='N', input_type=str]\n    For further information visit [PYDANTIC_URL]"
-  ]
+  "ok": true,
+  "plugin_count": 12,
+  "problems": []
 }
-? 1
+? 0
 ```
 
 ## Test: a key the shell reserves everywhere is refused at load
