@@ -3,14 +3,18 @@ type: is
 id: is-01m7dm3bhd09bs34sbqbs4mjf5
 title: Cmd-R always reloads, in the app and the browser, and is documented
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-14T18:11:17.164Z
-updated_at: 2026-11-14T18:43:45.662Z
+updated_at: 2026-11-15T05:20:14.333Z
+closed_at: 2026-11-15T05:20:14.332Z
+close_reason: "Merged in #433 (eab4b817) at 899fa5d7: review A's A1-A9 addressed, all 10 CI checks green."
+resolution: null
+duplicate_of: null
 ---
 The user (2026-11-14): "we should make sure cmd-R always reloads and that this is documented."
 
