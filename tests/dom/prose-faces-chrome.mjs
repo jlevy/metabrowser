@@ -51,6 +51,13 @@ const MARK = `async (probes) => {
   while (probes.some((probe) => holder(probe) === null) && performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+  // A text just placed has a style but no layout yet, and Chrome reports the faces of laid
+  // out text only: a commit's body read on the frame it was placed in reported none, in CI.
+  // So lay it out, then let the faces it asks for load.
+  for (const probe of probes) {
+    holder(probe)?.getBoundingClientRect();
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await document.fonts.ready;
   const reference = (token) => {
     const span = document.createElement("span");
@@ -178,15 +185,25 @@ async function main() {
     for (const domain of ["Page", "DOM", "CSS", "Network"]) {
       await browser.send(`${domain}.enable`);
     }
-    // The faces Chrome drew the probe's text with: its own text nodes' platform fonts.
+    // The faces Chrome drew the probe's text with: its own text nodes' platform fonts. Asked
+    // again for up to 2 s while Chrome reports none, as it does for text not laid out yet.
     const drawn = async (name) => {
-      const { root } = await browser.send("DOM.getDocument", { depth: -1 });
-      const { nodeId } = await browser.send("DOM.querySelector", {
-        nodeId: root.nodeId,
-        selector: `[data-face-probe="${name}"]`,
-      });
-      const { fonts } = await browser.send("CSS.getPlatformFontsForNode", { nodeId });
-      return fonts.map((font) => font.familyName).join(" + ");
+      const deadline = Date.now() + 2000;
+      for (;;) {
+        const { root } = await browser.send("DOM.getDocument", { depth: -1 });
+        const { nodeId } = await browser.send("DOM.querySelector", {
+          nodeId: root.nodeId,
+          selector: `[data-face-probe="${name}"]`,
+        });
+        if (!nodeId) {
+          return "(the text left the page)";
+        }
+        const { fonts } = await browser.send("CSS.getPlatformFontsForNode", { nodeId });
+        if (fonts.length > 0 || Date.now() > deadline) {
+          return fonts.map((font) => font.familyName).join(" + ") || "(no face reported)";
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
     };
     for (const prose of ["serif", "sans"]) {
       for (const set of ["clean", "system"]) {
