@@ -25,6 +25,10 @@
 // pull request page and the diff view put it in, with their stylesheets. A plugin's
 // Markdown view without KPress is the `md-body` convention: its text is a document, the
 // host's message in such a view is chrome, and its text inside `.chrome-prose` is chrome.
+//
+// Each Markdown text also holds an h2. KPress sets its h2 italic, which a serif document
+// keeps and a sans text does not: upright in chrome prose and under the sans reading font,
+// with the size, weight, and margins it has under the serif one.
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base, commit] = process.argv.slice(2);
@@ -61,8 +65,15 @@ const MARK = `async (probes, waitMs, pollMs) => {
       ),
     ) ?? null;
   };
+  // The probe's h2, by its text, when the probe names one.
+  const heading = (probe) =>
+    [...document.querySelectorAll(probe.selector + " h2")].find((node) =>
+      node.textContent.includes(probe.heading),
+    ) ?? null;
+  const shown = (probe) =>
+    holder(probe) !== null && (probe.heading === undefined || heading(probe) !== null);
   const deadline = performance.now() + waitMs;
-  while (probes.some((probe) => holder(probe) === null) && performance.now() < deadline) {
+  while (probes.some((probe) => !shown(probe)) && performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   // A text just placed has a style but no layout yet, and Chrome reports the faces of laid
@@ -94,7 +105,18 @@ const MARK = `async (probes, waitMs, pollMs) => {
       const node = holder(probe);
       if (node === null) return { name: probe.name, missing: true };
       node.setAttribute("data-face-probe", probe.name);
-      return { name: probe.name, family: getComputedStyle(node).fontFamily };
+      const found = { name: probe.name, family: getComputedStyle(node).fontFamily };
+      if (probe.heading !== undefined) {
+        const h2 = heading(probe);
+        if (h2 === null) return { ...found, h2: null };
+        const style = getComputedStyle(h2);
+        found.h2 = {
+          style: style.fontStyle,
+          // What the h2 keeps under either face: its size, weight and spacing.
+          box: [style.fontSize, style.fontWeight, style.marginTop, style.marginBottom].join(" "),
+        };
+      }
+      return found;
     }),
   };
 }`;
@@ -128,6 +150,11 @@ const PLACE = `(async () => {
       node.textContent = "A message about the content.";
     }
   }
+  for (const node of article.querySelectorAll("h2")) {
+    if (node.textContent.includes("A document section")) {
+      node.textContent = "A message section";
+    }
+  }
   place("chrome-prose", [["div", "github-pull-text chrome-prose"], ["div", "metabrowser-kpress-host"]], article);
   // A Markdown file in Changes: diff-markdown.js's article and block rows, in its section
   // of the diff view, in the pull request page.
@@ -137,7 +164,10 @@ const PLACE = `(async () => {
   const template = document.createElement("template");
   appendBlocks(
     blocks,
-    [{ kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" }],
+    [
+      { kind: "added", html: "<h2>A section among the changes</h2>" },
+      { kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" },
+    ],
     (html) => sanitizeBlock(html, inert, template, document, () => false),
   );
   rendered.append(blocks);
@@ -159,14 +189,18 @@ const PLACE = `(async () => {
     node.innerHTML = html;
     return node;
   };
-  place("md-body", [], view("<p>A plugin's Markdown view.</p>"));
+  place("md-body", [], view("<h2>A plugin's section</h2><p>A plugin's Markdown view.</p>"));
   // What view-composition.js writes into a view whose render threw.
   place(
     "md-body-message",
     [],
     view('<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>'),
   );
-  place("md-body-chrome-prose", [["div", "chrome-prose"]], view("<p>A message in a plugin's Markdown.</p>"));
+  place(
+    "md-body-chrome-prose",
+    [["div", "chrome-prose"]],
+    view("<h2>A message's section</h2><p>A message in a plugin's Markdown.</p>"),
+  );
 })()`;
 
 const DOCUMENT = "document";
@@ -181,24 +215,30 @@ const PAGES = [
         kind: DOCUMENT,
         selector: ".metabrowser-markdown-document",
         text: "A paragraph of document prose",
+        heading: "A document section",
       },
       {
         name: "chrome prose's KPress Markdown",
         kind: CHROME,
         selector: '[data-face-place="chrome-prose"]',
         text: "A message about the content.",
+        heading: "A message section",
       },
       {
         name: "a Markdown file in a pull request's Changes",
         kind: DOCUMENT,
         selector: '[data-face-place="changes"]',
         text: "A Markdown file among",
+        heading: "A section among the changes",
       },
       {
         name: "a plugin's md-body Markdown",
         kind: DOCUMENT,
         selector: '[data-face-place="md-body"]',
         text: "A plugin's Markdown view.",
+        heading: "A plugin's section",
+        // The md-body fallback's own h2, which no rule sets italic.
+        fallback: true,
       },
       {
         name: "the host's message in a plugin's md-body view",
@@ -213,6 +253,8 @@ const PAGES = [
         kind: CHROME,
         selector: '[data-face-place="md-body-chrome-prose"]',
         text: "A message in a plugin's Markdown.",
+        heading: "A message's section",
+        fallback: true,
       },
     ],
   },
@@ -224,6 +266,7 @@ const PAGES = [
         kind: DOCUMENT,
         selector: ".folder-overview-panel .metabrowser-markdown-document",
         text: "A paragraph of README prose",
+        heading: "A README section",
       },
     ],
   },
@@ -271,6 +314,8 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, FACE_POLL_MS));
       }
     };
+    // Each h2's size, weight and margins under the serif reading font, by font set.
+    const serifBoxes = new Map();
     for (const prose of ["serif", "sans"]) {
       for (const set of ["clean", "system"]) {
         await browser.send("Network.clearBrowserCookies");
@@ -307,6 +352,28 @@ async function main() {
               continue;
             }
             const serif = probe.kind === DOCUMENT && prose === "serif";
+            if (probe.heading !== undefined) {
+              // KPress's h2 italic stays in the serif and goes in the sans. The md-body
+              // fallback sets none.
+              const italic = serif && !probe.fallback;
+              const h2 = found.h2;
+              check(
+                `${label}: its h2 is ${italic ? "italic" : "upright"}`,
+                h2 !== null && h2.style === (italic ? "italic" : "normal"),
+                h2 === null ? "no h2 shown" : h2.style,
+              );
+              // Measured in the serif pass, which runs first, and held in the sans one.
+              const key = `${set} ${probe.name}`;
+              if (prose === "serif") {
+                serifBoxes.set(key, h2?.box);
+              } else {
+                check(
+                  `${label}: its h2 keeps its size, weight and spacing`,
+                  h2 !== null && h2.box === serifBoxes.get(key),
+                  `${h2?.box}, not ${serifBoxes.get(key)}`,
+                );
+              }
+            }
             const faces = set === "clean" ? await drawn(probe.name) : null;
             if (serif && set === "clean") {
               // KPress's vendored reading face, which it names itself.

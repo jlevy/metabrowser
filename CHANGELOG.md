@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
+  description, comments, and reviews, and in any document when you chose the Sans
+  reading font. It was italic under either reading font, an accent of the serif that read
+  as slanted sans. Serif documents keep the italic, and the heading’s size, weight, and
+  spacing are unchanged.
+  See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
+
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.

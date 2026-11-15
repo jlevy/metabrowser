@@ -205,9 +205,18 @@ Each context has one mechanism, and no other rule sets a face by context:
   Markdown, whose text reads the hook before KPress’s token.
   A plugin that shows a message puts the class on the message’s element.
 
+An h2 is upright wherever the prose face is sans.
+KPress sets its h2 italic, an accent of its serif that reads as slanted sans in the sans
+face. So a serif document keeps the italic, and an h2 in chrome prose or in a document
+under the Sans reading font is upright, with KPress’s size, weight, and spacing.
+The one rule in `static/styles.css` keys on the two places that point the prose hook at
+sans, `.chrome-prose` and `html[data-prose-font="sans"]`, not on each surface.
+KPress’s h4 and h6 italics are unchanged, and the `md-body` fallback sets no italic in
+either face.
+
 `test_serif_is_only_for_documents` holds which rules may set a face and which builders
-mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, in
-Chrome, under both reading fonts and both font sets.
+mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, and
+each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets.
 
 ### Keyboard Keys
 

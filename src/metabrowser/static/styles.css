@@ -2687,6 +2687,16 @@ html[data-prose-font="sans"] {
   font-family: var(--prose-sans-font);
   --kpress-host-font-prose: var(--prose-sans-font);
 }
+/* An h2 is upright wherever the prose face is sans (docs/design-system.md, "Serif Is for
+   Documents"): KPress 0.3.5's document.css sets `.kpress-prose h2` italic, an accent of
+   its serif that reads as a slanted sans in the sans face. The two places the hook is
+   pointed at sans, above, are the two selectors here, so a serif document keeps the
+   italic. Only the style changes: the h2 keeps KPress's size, weight, and spacing, and h4
+   and h6 keep their italic. The `md-body` fallback sets no italic, in either face. */
+html[data-prose-font="sans"] .kpress-prose h2,
+.chrome-prose .kpress-prose h2 {
+  font-style: normal;
+}
 /* The frame: KPress's `.kpress-frame`, a non-scrolling wrapper of the scroll
    pane (server.py). Its transform makes it the containing block for KPress's
    `position: fixed` floating UI (TOC drawer, toggle, and backdrop, tooltips,
