@@ -8,8 +8,8 @@
 
 ## Overview
 
-Six changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of six pull requests on `main`:
+Seven changes from the owner’s requests of 2026-11-15. They land as one native GitHub
+stack of seven pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -23,6 +23,8 @@ stack of six pull requests on `main`:
    toggle.
 6. **Conversation:** a pull request’s commit rows match its comments in size and
    spacing, with a timeline line joining them.
+7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
+   reading font) is upright; serif documents keep the italic.
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -62,6 +64,9 @@ request must prove.
     them.
   - A timeline line joins the commits, comments and reviews, the way GitHub’s pull
     request page does.
+- **Sans headings** (`mb-l4vm`): KPress italicizes `.kpress-prose h2`. That italic stays
+  in serif documents, and an h2 in any sans context is upright.
+  The h4 and h6 italics are unchanged.
 
 ## Non-Goals
 
@@ -121,6 +126,7 @@ it:
 | 4 | `claude/diff-summary` | `mb-epw2` | Shares the Pulls tree model with pull request 5 |
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
+| 7 | `claude/sans-h2-upright` | `mb-l4vm` | Extends #438’s prose-face rule and Chrome session |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -240,6 +246,15 @@ it:
   following the structure of GitHub’s pull request page but not its assets or brand.
 - **Docs:** the rule is stated once in `docs/design-system.md`, using existing tokens.
 
+### Sans Headings
+
+- One scoped rule in the shell’s prose styles sets h2 upright (`font-style: normal`)
+  wherever the prose face is sans.
+  It keys on the same hooks #438 uses (`.chrome-prose`, the sans reading-font
+  preference, and the `md-body` fallback), not on each surface.
+- An h2 keeps its size, weight and spacing; serif documents keep KPress’s italic.
+- The rule is stated once in `docs/design-system.md`, beside “Serif Is for Documents”.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -282,6 +297,11 @@ it:
 - [ ] `mb-g3ao`: commit rows on the timeline’s type scale and spacing, and the timeline
   line joining every event.
 
+### Phase 7: Sans Headings (pull request 7)
+
+- [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
+  #438’s Chrome session.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -303,7 +323,7 @@ it:
 
 The pull requests ship as drafts in one native stack and merge in order at the owner’s
 word. Each bead closes when its pull request merges, with the merge commit in its close
-reason. This plan moves to `docs/project/specs/done/` when pull request 6 merges.
+reason. This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 
 ## Open Questions
 
@@ -319,7 +339,7 @@ reason. This plan moves to `docs/project/specs/done/` when pull request 6 merges
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`).
   - In flight: #437 (`mb-a9be`), #438 (`mb-k838`).
