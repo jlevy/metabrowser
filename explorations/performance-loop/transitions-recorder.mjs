@@ -817,8 +817,8 @@ function recorderMain(config) {
   // includes whatever the input's handlers did, and the read itself is after the input;
   // a predicate that holds in an earlier frame is recorded as `readyBeforeInput`.
   // A frame is logged as [begin time, state, read time, the read's own cost in ms, 1 when
-  // the read saw the input]: the last places the input's own frame in its transition's
-  // window even when Chrome stamps the frame's begin before the input (revision 6).
+  // the read saw the input]: the last places it in its transition's window or before it,
+  // whatever Chrome stamped its begin time (`inWindow`, revision 6).
   const read = (frame) => {
     R.readCache = new Map();
     try {
@@ -1482,12 +1482,15 @@ export function presentedAt(frameAt, readAt, loafs, interval) {
 }
 
 /**
- * Whether a logged frame belongs to a transition's window, from its start: it began at or
- * after the input, or its read saw the input (`seen`, revision 6). Chrome can stamp the
- * frame that draws an input a fraction of a millisecond before the input's own time
- * stamp; placed by its begin time alone, that frame fell outside the window.
+ * Whether a logged frame belongs to a transition's window, from its start: its read saw
+ * the input (`seen`, revision 6), whatever its begin time. Chrome stamps frames on its
+ * own clock, so the frame that draws an input can begin, by its stamp, a fraction of a
+ * millisecond before the input's own time stamp, and a frame read before the input can
+ * begin after it; placed by begin time, as revision 5 placed them, the first fell outside
+ * the window and the second inside. An entry without the flag (a frame whose read never
+ * came) is placed by its begin time.
  */
-export const inWindow = (t, seen, origin) => t >= origin || seen === 1;
+export const inWindow = (t, seen, origin) => seen === 1 || (seen == null && t >= origin);
 
 /**
  * Frame accounting for one transition window, from the per-frame states.
