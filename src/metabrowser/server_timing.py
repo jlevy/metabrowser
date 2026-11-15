@@ -37,7 +37,9 @@ the rest: with ``METABROWSER_REQUEST_LOG=verbose``, or for a request slower than
 slow-request threshold, a line gives the time to the end of the body, the time to the
 start of the response, and every phase's total. The verbose line also gives the end of
 the body as ``end_ms``, to a tenth of a millisecond, which
-``explorations/performance-loop/server-time.mjs`` sums over a page load.
+``explorations/performance-loop/server-time.mjs`` reads over a page load. Both are taken
+when the application returns, so they include a response's background tasks and the
+waits for the client to drain the body, which grow with the bytes sent.
 """
 
 from __future__ import annotations

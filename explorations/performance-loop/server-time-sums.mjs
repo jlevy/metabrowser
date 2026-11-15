@@ -1,4 +1,4 @@
-// Sums of server time over one page load, by phase: the pure half of server-time.mjs.
+// The server's time over one page load, by phase: the pure half of server-time.mjs.
 //
 // The server names the phases of every request's time (`metabrowser.server_timing`):
 // `read`, `render`, `git`, `encode`, and any other a route adds. `Server-Timing` can carry
@@ -9,7 +9,10 @@
 // tests/dom/server-time-behavior.mjs drives each of them.
 import { requestClass, routeFamily } from "./transitions-recorder.mjs";
 
-export const INSTRUMENT = "server-time/1";
+// Revision 2 reports the time the server was busy, the union of the requests' spans, and
+// calls revision 1's sum of every request's time to the end of its body what it is, the
+// summed latency: on one event loop each waiter counts the others' work again (#455 M2).
+export const INSTRUMENT = "server-time/2";
 
 /** Route families whose answers are the application's own assets. */
 export const ASSET_FAMILIES = ["static", "plugin_static", "kpress_static"];
@@ -124,10 +127,39 @@ export function logPathOf(url) {
 }
 
 /**
- * The server's time over *rows*: how many, the time to the end of every body and to the
- * start of every response, each phase's total, and the rest. `unattributed_ms` is the
- * end-of-body total less every phase's, and phases that ran side by side are each counted
- * in full, so it can be negative. `coarse` counts rows whose end was logged only to the
+ * How long at least one of *rows* was being answered: the union of each request's span,
+ * from its arrival to the end of its body, in milliseconds. This is the server's time over
+ * a window; the sum of the spans counts every request's wait for the others again. The
+ * arrival is logged to the millisecond, so a span is placed to within one.
+ */
+export function busyMs(rows) {
+  const spans = rows
+    .filter((row) => Number.isFinite(row.arrived_s))
+    .map((row) => [row.arrived_s * 1000, row.arrived_s * 1000 + row.end_ms])
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let open = null;
+  for (const [from, to] of spans) {
+    if (open === null || from > open[1]) {
+      if (open !== null) {
+        total += open[1] - open[0];
+      }
+      open = [from, to];
+    } else {
+      open[1] = Math.max(open[1], to);
+    }
+  }
+  return open === null ? total : total + open[1] - open[0];
+}
+
+/**
+ * The server's time over *rows*: how many; `busy_ms`, the union of their spans
+ * ({@link busyMs}), which is the server time a window cost; `latency_ms`, the sum of every
+ * request's time to the end of its body, which counts concurrent requests' waits for each
+ * other and so measures contention, not work; the time to the start of every response;
+ * each phase's total, which is work wherever it ran; and `unattributed_ms`, the summed
+ * latency less every phase's, which can be negative because phases that ran side by side
+ * are each counted in full. `coarse` counts rows whose end was logged only to the
  * millisecond, by a build from before `end_ms`.
  */
 export function sumRows(rows) {
@@ -150,7 +182,8 @@ export function sumRows(rows) {
   const phased = Object.values(phases).reduce((a, b) => a + b, 0);
   return {
     count: rows.length,
-    end_ms: round1(end),
+    busy_ms: round1(busyMs(rows)),
+    latency_ms: round1(end),
     start_ms: round1(start),
     phases: Object.fromEntries(
       Object.entries(phases)
@@ -372,7 +405,8 @@ export function formatWindow(title, account) {
   const head = [
     "".padEnd(14),
     cell("n", 4),
-    cell("end_ms", 9),
+    cell("busy", 8),
+    cell("latency", 9),
     ...columns.map((name) => cell(name, 8)),
     cell("other", 8),
   ].join(" ");
@@ -382,7 +416,8 @@ export function formatWindow(title, account) {
       [
         name.padEnd(14),
         cell(sum.count, 4),
-        cell(sum.end_ms.toFixed(1), 9),
+        cell(sum.busy_ms.toFixed(1), 8),
+        cell(sum.latency_ms.toFixed(1), 9),
         ...columns.map((c) => cell((sum.phases[c] ?? 0).toFixed(1), 8)),
         cell(sum.unattributed_ms.toFixed(1), 8),
       ].join(" "),
@@ -409,7 +444,9 @@ export function formatWindow(title, account) {
 export function formatRecord(record) {
   const out = [
     `${record.instrument} ${record.build?.version ?? "?"} at ${record.address}` +
-      (record.server_args?.length ? ` (server ${record.server_args.join(" ")})` : ""),
+      (record.server_args?.length ? ` (server ${record.server_args.join(" ")})` : "") +
+      `, ${record.warmup ? `warm server: ${record.warmup} unrecorded landing(s) first` : "cold server"}`,
+    "busy is the server's time (the union of the requests' spans); latency sums every request's time to its last byte, so it counts each concurrent request's wait for the others again",
   ];
   for (const [name, landing] of Object.entries(record.landings ?? {})) {
     out.push(
@@ -422,8 +459,9 @@ export function formatRecord(record) {
   if (record.serial) {
     const s = record.serial;
     out.push(
-      `serial: ${s.requested} assets one at a time: ${s.totals.end_ms.toFixed(1)} ms ` +
-        `(${s.before_dcl.count} before DOMContentLoaded: ${s.before_dcl.end_ms.toFixed(1)} ms); ` +
+      `serial, warm (each asset the landing fetched, fetched again): ${s.requested} assets, ` +
+        `${s.totals.busy_ms.toFixed(1)} ms busy ` +
+        `(${s.before_dcl.count} before DOMContentLoaded: ${s.before_dcl.busy_ms.toFixed(1)} ms); ` +
         Object.entries(s.totals.phases)
           .map(([name, ms]) => `${name} ${ms.toFixed(1)}`)
           .join(", "),

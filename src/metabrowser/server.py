@@ -1175,6 +1175,8 @@ class _SlowRequestLogMiddleware:
                 # tenth of a millisecond the phases have, for a reader that
                 # sums many small answers (server-time.mjs); the rounded
                 # figure in parentheses stays where older readers find it.
+                # Taken when the application returns, it includes a response's
+                # background tasks and the waits for the client to drain the body.
                 LOG.info(
                     "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
                     "bytes=%s start_ms=%s phases=%s end_ms=%.1f",

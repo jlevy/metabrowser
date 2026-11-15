@@ -9,6 +9,7 @@ import path from "node:path";
 const HERE = import.meta.dirname;
 const LOOP = path.resolve(HERE, "../../explorations/performance-loop");
 const {
+  busyMs,
   formatRecord,
   inFlight,
   landingAssets,
@@ -37,7 +38,7 @@ const check = (name, fn) => {
 
 const PREFIX = "23:32:42 metabrowser.server | ";
 const line = (fields, end = "") =>
-  `${PREFIX}metabrowser request t=1794727962.321 -> 1794727962.324 (${fields.rounded} ms) ` +
+  `${PREFIX}metabrowser request t=${fields.t ?? "1794727962.321"} -> 1794727962.324 (${fields.rounded} ms) ` +
   `method=${fields.method ?? "GET"} path=${fields.path} status=${fields.status ?? 200} ` +
   `bytes=${fields.bytes ?? 100} start_ms=${fields.start ?? 1} phases=${fields.phases ?? "-"}${end}`;
 
@@ -139,7 +140,8 @@ check("rows are summed by phase, with the rest unattributed and the coarse ones 
   const sum = sumRows(rows);
   assert.deepEqual(sum, {
     count: 2,
-    end_ms: 6.5,
+    busy_ms: 0,
+    latency_ms: 6.5,
     start_ms: 3,
     phases: { encode: 1, git: 0.5, read: 1 },
     unattributed_ms: 4,
@@ -238,14 +240,17 @@ const TIMING = [
 check("a window is summed in full, without the background work, and over its assets", () => {
   const account = windowAccount(parseLog(LOG), TIMING);
   assert.equal(account.totals.count, 6);
-  assert.equal(account.totals.end_ms, 24);
+  assert.equal(account.totals.latency_ms, 24);
+  // Every line arrived at once, so the server was busy as long as the longest answer.
+  assert.equal(account.totals.busy_ms, 9);
+  assert.equal(account.assets.busy_ms, 4);
   assert.equal(account.foreground.count, 5);
-  assert.equal(account.foreground.end_ms, 19);
+  assert.equal(account.foreground.latency_ms, 19);
   assert.equal(account.assets.count, 3);
-  assert.equal(account.assets.end_ms, 9);
+  assert.equal(account.assets.latency_ms, 9);
   assert.deepEqual(account.assets.phases, { encode: 6, read: 0.5 });
   assert.equal(account.assets_before_dcl.count, 1);
-  assert.equal(account.assets_before_dcl.end_ms, 4);
+  assert.equal(account.assets_before_dcl.latency_ms, 4);
   assert.deepEqual(Object.keys(account.by_family), [
     "background",
     "data",
@@ -286,8 +291,8 @@ check("the serial pass counts the assets it fetched and sets any other request a
   );
   assert.equal(serial.requested, 2);
   assert.equal(serial.totals.count, 2);
-  assert.equal(serial.totals.end_ms, 1.3);
-  assert.equal(serial.before_dcl.end_ms, 0.8);
+  assert.equal(serial.totals.latency_ms, 1.3);
+  assert.equal(serial.before_dcl.latency_ms, 0.8);
   assert.equal(serial.log_unpaired, 1);
 });
 
@@ -295,17 +300,39 @@ check("a record prints as tables, saying when a build logged its ends coarsely",
   const coarse = parseLog(LOG.replace(/ end_ms=[\d.]+/g, ""));
   const account = windowAccount(coarse, TIMING);
   const text = formatRecord({
-    instrument: "server-time/1",
+    instrument: "server-time/2",
     build: { version: "metab 1" },
     address: "/view/a.md",
-    server_args: ["--compress"],
+    server_args: ["--exit-on-eof"],
     landings: { cold: { settled: true, load_ms: 100, account } },
     serial: serialAccount([{ path: "/static/app.js?v=1", before_dcl: true }], coarse),
   });
-  assert.match(text, /^server-time\/1 metab 1 at \/view\/a\.md \(server --compress\)/);
-  assert.match(text, /\nassets +3 +9\.0 +0\.5 +0\.0 +0\.0 +6\.0 +2\.5\n/);
+  assert.match(
+    text,
+    /^server-time\/2 metab 1 at \/view\/a\.md \(server --exit-on-eof\), cold server/,
+  );
+  assert.match(text, /\nassets +3 +4\.0 +9\.0 +0\.5 +0\.0 +0\.0 +6\.0 +2\.5\n/);
   assert.match(text, /6 of 6 rows logged their end only to the ms/);
-  assert.match(text, /serial: 1 assets one at a time: 4\.0 ms/);
+  assert.match(text, /serial, warm \(.*\): 1 assets, 4\.0 ms busy/);
+  assert.match(
+    formatRecord({ instrument: "x", warmup: 1, address: "/" }),
+    /warm server: 1 unrecorded/,
+  );
+});
+
+check("the server's time is the union of the requests' spans, not their sum", () => {
+  const rows = parseLog(
+    [
+      line({ path: "/static/a.js", rounded: 10, t: "100.000" }, " end_ms=10.0"),
+      line({ path: "/static/b.js", rounded: 10, t: "100.005" }, " end_ms=10.0"),
+      line({ path: "/static/c.js", rounded: 2, t: "100.030" }, " end_ms=2.0"),
+    ].join("\n"),
+  );
+  const sum = sumRows(rows);
+  assert.equal(sum.latency_ms, 22);
+  // [0, 10] and [5, 15] are one span of 15 ms; [30, 32] is another of 2.
+  assert.equal(sum.busy_ms, 17);
+  assert.equal(busyMs([]), 0);
 });
 
 check(

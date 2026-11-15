@@ -1,21 +1,23 @@
 #!/usr/bin/env node
-// server-time/1: the server's time over one landing, by phase.
+// server-time/2: the server's time over one landing, by phase.
 //
 //   node explorations/performance-loop/server-time.mjs --metab /path/to/metab \
-//     --tree /path/to/folder [--path /view/README.md] [--warmup 1] \
-//     [--server-arg --exit-on-eof] [--out result.json] [--work .bench/server-time/run-1]
+//     --tree /path/to/folder [--path /view/README.md] [--warmup 0] \
+//     [--out result.json] [--work .bench/server-time/run-1] [-- METAB_ARG...]
 //   node explorations/performance-loop/server-time.mjs --summarize result.json
 //
-// It starts the build's `metab` on the tree with the verbose request log on, waits for
-// the inventory, and loads the address in headless Chrome: `--warmup` unrecorded cold
-// landings (default 1, so the server's own caches are warm and the browser's are not),
-// then one measured cold landing in a fresh profile and one reload of it. Every request
-// the server answered in each window is summed to the end of its body, by phase, from
-// the log, which is the one place the end of a streamed body is recorded; the
-// `Server-Timing` headers the browser saw are summed beside it as the start-of-response
-// view. Then the cold landing's asset requests are fetched again, one at a time, with the
-// Accept-Encoding Chrome sends, and their logged time is the serial server time for the
-// landing's assets. See README.md, "Server Time over a Landing".
+// It starts the build's `metab` on the tree with the verbose request log on, with
+// --no-open and any arguments after `--` (`-- --exit-on-eof` starts it as the macOS app
+// does), waits for the inventory, and loads the address in headless Chrome: `--warmup`
+// unrecorded landings first (default 0, a cold server; a warm reading is labelled so),
+// then one measured landing in a fresh profile and one reload of it. For every request
+// the server answered in a window it reports the time the server was busy (the union of
+// the requests' spans), each phase's total, and the summed latency, from the log, which
+// is the one place the end of a streamed body is recorded; the `Server-Timing` headers
+// the browser saw are summed beside it as the start-of-response view. Then the measured
+// landing's asset requests are fetched again, one at a time, with the Accept-Encoding
+// Chrome sends: a warm serial reading, since the server has answered each once already.
+// See README.md, "Server Time over a Landing".
 //
 // Untimed by design: nothing here repeats, pairs, or compares. A round that judges a
 // change runs it under its own protocol, back to back on both builds.
@@ -60,7 +62,7 @@ function usage(message) {
   }
   console.error(
     "usage: server-time.mjs --metab PATH --tree DIR [--path ADDRESS] [--warmup N] " +
-      "[--server-arg ARG]... [--out FILE] [--work DIR]\n" +
+      "[--out FILE] [--work DIR] [-- METAB_ARG...]\n" +
       "       server-time.mjs --summarize FILE...",
   );
   process.exit(2);
@@ -356,7 +358,7 @@ async function run(options) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const work = path.resolve(options.work ?? path.join(REPO, ".bench", "server-time", stamp));
   fs.mkdirSync(work, { recursive: true, mode: 0o700 });
-  const warmup = Number(options.warmup ?? "1");
+  const warmup = Number(options.warmup ?? "0");
   if (!Number.isInteger(warmup) || warmup < 0) {
     usage(`--warmup is a whole number, not ${JSON.stringify(options.warmup)}`);
   }
@@ -367,7 +369,7 @@ async function run(options) {
     build: buildProvenance(metab),
     tree,
     address: options.path,
-    server_args: options["server-arg"],
+    server_args: options.serverArgs,
     warmup,
     loadavg_start: loadavg(),
   };
@@ -375,7 +377,7 @@ async function run(options) {
     metab,
     tree,
     work,
-    serverArgs: options["server-arg"],
+    serverArgs: options.serverArgs,
   });
   try {
     const url = `${server.base}${options.path}`;
@@ -390,16 +392,16 @@ async function run(options) {
     const browser = await freshBrowser(work, "measured");
     try {
       record.chrome = browser.version.product;
-      const cold = await measureWindow(server, browser, () =>
+      const landing = await measureWindow(server, browser, () =>
         browser.page.send("Page.navigate", { url }),
       );
       const reload = await measureWindow(server, browser, () => browser.page.send("Page.reload"));
-      record.landings = { cold, reload };
+      record.landings = { landing, reload };
     } finally {
       await browser.close();
     }
     // With the page closed, so none of its timers adds a request to the pass.
-    const assets = landingAssets(record.landings.cold.account.rows);
+    const assets = landingAssets(record.landings.landing.account.rows);
     record.serial = await serialPass(server, assets, options["accept-encoding"]);
     record.server_rss_kb = await residentKb(server.child.pid);
   } finally {
@@ -413,13 +415,18 @@ async function run(options) {
 }
 
 async function main() {
+  // Arguments for metab follow `--`: as an option's value, `--exit-on-eof` would read as
+  // an option of this command.
+  const argv = process.argv.slice(2);
+  const split = argv.indexOf("--");
+  const serverArgs = split < 0 ? [] : argv.slice(split + 1);
   const { values, positionals } = parseArgs({
+    args: split < 0 ? argv : argv.slice(0, split),
     options: {
       metab: { type: "string" },
       tree: { type: "string" },
       path: { type: "string", default: "/view/" },
-      warmup: { type: "string", default: "1" },
-      "server-arg": { type: "string", multiple: true, default: [] },
+      warmup: { type: "string", default: "0" },
       "accept-encoding": { type: "string", default: CHROME_ACCEPT_ENCODING },
       out: { type: "string" },
       work: { type: "string" },
@@ -442,7 +449,7 @@ async function main() {
   if (!values.path.startsWith("/")) {
     usage("--path is an address on the server, starting with /");
   }
-  await run(values);
+  await run({ ...values, serverArgs });
 }
 
 await main();

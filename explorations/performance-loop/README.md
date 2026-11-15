@@ -594,8 +594,8 @@ profile and records the result.
 If headed capture is unavailable, use `run.py probe` and paste its exact output into the
 visible page rather than retyping it.
 
-**`server-time.mjs`** sums what the server did for one landing, by phase, to the end of
-every body, and the serial time for its assets; see
+**`server-time.mjs`** reports the time the server was busy over one landing, by phase,
+to the end of every body, and a warm serial time for its assets; see
 [Server Time over a Landing](#server-time-over-a-landing).
 Use it to say where a landing’s server time went before choosing which of the two above
 to time.
@@ -1467,13 +1467,11 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
-**What loopback is sent.** A server started for a browser on this machine sends that
-browser its answers uncompressed (H115,
-[Compression](../../docs/command-line.md#compression)): one that opened the browser
-itself, or one started with `--exit-on-eof`, as the macOS app starts it, holding its
-stdin. A build started `--no-open` alone, as every harness here starts one and as
-`metab --remote` starts its far server, still compresses, so its bytes are the remote
-path’s, under `--network` too.
+**What loopback is sent.** Only a server started as the macOS app starts it, with
+`--exit-on-eof` and its stdin held, sends a loopback client its answers uncompressed
+(H115, [Compression](../../docs/command-line.md#compression)). A build started
+`--no-open` alone, as every harness here starts one and as `metab --remote` starts its
+far server, still compresses, so its bytes are the remote path’s, under `--network` too.
 To measure the local path, start the build as the app does: `--exit-on-eof`, with the
 harness holding the server’s stdin open, since a closed stdin stops it.
 An emulated link (`--network`) does not change which: the emulation is in the browser,
@@ -1529,43 +1527,67 @@ is its write-up.
 
 ### Server Time over a Landing
 
-`server-time.mjs` sums the server’s own time over one landing, by phase.
-It starts the named build’s `metab` on a tree with the verbose request log on, waits for
-the inventory, and loads one address in headless Chrome through the transition harness’s
-launcher (`launchBrowser` in `transitions-recorder.mjs`):
+`server-time.mjs` reports the server’s own time over one landing, by phase.
+It starts the named build’s `metab` on a tree, `--no-open` with the verbose request log
+on and any arguments after `--`, waits for the inventory, and loads one address in
+headless Chrome through the transition harness’s launcher (`launchBrowser` in
+`transitions-recorder.mjs`):
 
 ```shell
 node explorations/performance-loop/server-time.mjs --metab "$CONTROL/.venv/bin/metab" \
   --tree "$CORPUS" --path /view/docs/design-system.md --out .bench/server-time/control.json
+# The same build started as the macOS app starts it, for a client on this machine:
+node explorations/performance-loop/server-time.mjs --metab "$CANDIDATE/.venv/bin/metab" \
+  --tree "$CORPUS" --path /view/docs/design-system.md --out .bench/server-time/app.json \
+  -- --exit-on-eof
 node explorations/performance-loop/server-time.mjs --summarize .bench/server-time/control.json
 ```
 
-One run is `--warmup` unrecorded cold landings (default 1, so the server’s caches are
-warm and the browser’s are not), then one measured cold landing in a fresh profile and
-one reload of it, each window ending when the load event has fired and the network has
-been quiet for 750 ms.
-For every request the server answered in a window it sums the time to the end of the
-body and each phase of `metabrowser.server_timing` (`read`, `render`, `git`, `encode`,
-and any other a route names), and what no phase covers, by route family and over the
-landing’s assets (`/static`, `/plugin-static`, `/kpress-static`), with the assets
-requested before `DOMContentLoaded` apart, as the startup budgets’ probe selects them.
+A run loads the address once in a fresh profile on a fresh server, then reloads it, each
+window ending when the load event has fired and the network has been quiet for 750 ms.
+That first landing is a cold reading: the app runs one server per folder, and a browser
+keeps every stamped asset, so each asset usually reaches a server once per process.
+`--warmup N` loads the address N times first, unrecorded; the record and its table say
+“warm server”, and a warm reading is never read as a cold one.
+
+For every request the server answered in a window it reports, by route family, over the
+landing’s assets (`/static`, `/plugin-static`, `/kpress-static`), and over the assets
+requested before `DOMContentLoaded`, as the startup budgets’ probe selects them:
+
+- **`busy`, the server’s time**: the union of the requests’ spans, from arrival to the
+  end of the body. This is the figure that says what a landing cost the server.
+- **Each phase’s total** of `metabrowser.server_timing` (`read`, `render`, `git`,
+  `encode`, and any other a route names): work, wherever it ran, which attributes the
+  busy time and is what a change to one phase is judged on.
+- **`latency`, the summed latency**: every request’s time to its last byte, added up.
+  Requests run side by side on one event loop, so each counts the others’ work again
+  while it waits; it measures contention, and decides nothing on its own.
+  `other` is the summed latency less the phases.
+
 The end of a body comes from the request log’s `end_ms`, because `Server-Timing` is sent
 before a body and holds only what was done by then; the headers the browser saw are
 summed beside it as that start-of-response view, counting only the responses the server
 sent in the window, since a cached answer keeps the header it was stored with.
-The Pulls catalog’s timer-driven work is its own family, `background`, and `foreground`
-is the total without it; a landing does not wait for it.
-
-Then, with the page closed, it fetches the cold landing’s assets again one at a time in
-the order the browser asked for them, with Chrome’s `Accept-Encoding`, and sums their
-logged time: the serial server time for the landing’s assets, free of the contention a
-page’s parallel requests put on one event loop.
+`end_ms` is taken when the application returns, so it includes a route’s background
+tasks and the wait for the client to drain the body.
+On loopback the second grows with the bytes sent, which counts against an uncompressed
+answer. The Pulls catalog’s timer-driven work is its own family, `background`, and
+`foreground` is the total without it; a landing does not wait for it.
 A build from before `end_ms` logs the end of a body only to the millisecond; the table
 says how many rows that is.
-`--server-arg ARG`, repeatable, passes `ARG` to `metab`. The server is started
-`--no-open`, so by default it compresses as `metab --remote`’s far server does;
-`--server-arg --exit-on-eof` starts it as the macOS app does, for a client on this
-machine, and the instrument holds its stdin open for as long as it runs.
+
+Then, with the page closed, it fetches the landing’s assets again one at a time in the
+order the browser asked for them, with Chrome’s `Accept-Encoding`, and reports their
+busy time. That is a warm serial reading: the server has answered each asset once
+already, so a build that holds assets in memory (H115) is measured holding them.
+
+**Isolating H115’s two halves.** The default start, `--no-open`, compresses for every
+client, as `metab --remote`’s far server does.
+So the encoded asset store, H115 (a), is read as the branch against the control, both
+started that way; leaving loopback answers uncompressed, H115 (b), is read as the branch
+started `-- --exit-on-eof` against the branch started as it is.
+With `--exit-on-eof` the instrument holds the server’s stdin open for as long as it
+runs, as the app does, since a closed stdin stops that server.
 The record also keeps the build’s provenance, Chrome’s version, the load average before
 and after, and the server’s resident memory at the end.
 
