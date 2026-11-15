@@ -5,7 +5,7 @@ title: "PR Conversation: commit rows match comments in size and spacing, joined 
 kind: bug
 status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:38:30.336Z
-updated_at: 2026-11-15T07:10:30.144Z
+updated_at: 2026-11-15T07:34:44.851Z
 started_at: 2026-11-15T07:10:30.142Z
 ---
 The user's request (2026-11-15), verbatim: "the lines ont he Conversation part of a PR rendering like this below are too small font, not enough space above them. see how github actually renders PRs e.g. https://github.com/jlevy/metabrowser/pull/438 and mnotice it creates a line joining the commits and the comments in a clearer way. And also, the font sizes should be more consistent. We shouldn't make the commits smaller just because they're commits on this page. They should be similar to comments in size and similarly consistently spaced, more like what GitHub does."
@@ -35,3 +35,20 @@ Done when:
 - CHANGELOG is updated.
 
 Pull request 6 of the plan's stack.
+
+## Notes
+
+2026-11-15 (claude/pull-timeline, commit 5cc282ccb, not pushed; the coordinator stacks it):
+
+Changed:
+- pull-page.js: the description, comment and review cards and the commit rows carry `github-pull-event`; a commit row's "committed <age>" lost `.github-pull-quiet` (muted, 12 px) and takes the row's type.
+- github/styles.css: a commit row is a card head without its card (14 px body size, 21 px line, the head's 3 px padding and min-height, a transparent 1 px frame, the subject starting where an author name does after the 18 px avatar). The 12 px hash override is gone, so the hash takes `.git-commit-sha`'s 13 px. The age rule covers commit rows. A 2 px `--border` line joins adjacent events at the avatars' center, drawn by ::before on each following event; each commit gets an 8 px `--muted` dot (::after). Event cards use overflow-x: clip with overflow-y: visible so the connector can leave them above. No new design token; the order of events is unchanged.
+- docs/design-system.md gains "Conversation Timeline", and the Chrome table's commit-hash row is updated. Also CHANGELOG, a paint-exempt row `github.pull-timeline-paint` in arch-views-models-routes.md, and the new Chrome test in e2e-testing.md and test_process_group.py.
+
+Tested (local, headless Chrome 152):
+- New tests/test_github_pull_timeline_chrome.py with tests/dom/github-pull-timeline-chrome.mjs: the production page on recorded PR 7, commits placed late and held, light and dark, 980 and 420 px. 209 of its 307 checks fail on main; all 307 pass after. The updated test_the_pull_request_page_carries_the_shells_primitives fails on main and passes after.
+- Measured: commit row 12px/18px became 14px/21px; hash 12 px became 13 px; glyphs 13 px below the event above became 16 px, the same as card heads; text 1 px above and 6 px below in a 24 px row became 4 and 5 in a 29 px row, the same as a head-only card; line x 46 = avatar center; each node within 0.5 px of its first line's middle.
+- Passing: focused pytest (design vocabulary, pull page route, chrome typography, process-group lifecycle, pull page sessions), the pull-page DOM sessions under node, and make -o install lint-check (parity, goldens, flowmark).
+- Screenshots: attic/shots/before/*.png and attic/shots/after/*.png in the worktree.
+
+Not verified: WebKit and the macOS app; the live app through tests/github_pull_fixture.py --serve; full make verify and CI.
