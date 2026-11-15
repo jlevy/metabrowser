@@ -5,7 +5,7 @@ title: "Rendered Markdown: chrome always sans, documents serif unless the sans p
 kind: task
 status: in_progress
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-14T18:21:18.188Z
-updated_at: 2026-11-15T05:46:08.477Z
+updated_at: 2026-11-15T06:20:18.018Z
 started_at: 2026-11-14T18:21:23.995Z
 ---
 The user (2026-11-14): "Let's make sure we have a clear system about when we use serif and sans-serif for rendered markdown. chrome and PR descriptions etc are always sans. but document rendering is by default serif, unless we have preferences settings set to sans serif, and then they are sans serif too. for documents, when we render them in rendered view, they should use document rendering, so be serif unless sans is enabled in preferences."
@@ -28,7 +28,7 @@ Done when every surface that renders Markdown is inventoried with its context (c
 
 ## Notes
 
-Draft PR #438 (branch claude/markdown-font-rule), head 37063f43, CI green on every job (lint, distribution, stack-integration, admitted-git x2, test 3.12/3.13/3.14/3.14t; test_prose_faces_chrome ran and passed in all four test jobs). Commits: 5708e456 (the change); 6cae1afd (merge of origin/main 4310f5ac, #432); edfea5ce (the Chrome session lays a text out and waits two frames and the font set before reading its drawn face, and retries for up to 2 s, after test (3.13) on 6cae1afd got no platform face for the commit body in one of four combinations); 37063f43 (merge of origin/main 079a3ec0, #433 and #436; CHANGELOG kept both sides).
+Draft PR #438 (branch claude/markdown-font-rule), head now 48a12946 (review A round, below). Earlier head 37063f43 had CI green on every job (lint, distribution, stack-integration, admitted-git x2, test 3.12/3.13/3.14/3.14t; test_prose_faces_chrome ran and passed in all four test jobs). Commits: 5708e456 (the change); 6cae1afd (merge of origin/main 4310f5ac, #432); edfea5ce (the Chrome session lays a text out and waits two frames and the font set before reading its drawn face, and retries for up to 2 s, after test (3.13) on 6cae1afd got no platform face for the commit body in one of four combinations); 37063f43 (merge of origin/main 079a3ec0, #433 and #436; CHANGELOG kept both sides).
 
 Mechanism: one host class, `.chrome-prose` (static/styles.css), on the element that holds a message, never on a page. It sets `font-family: var(--prose-sans-font)` and `--kpress-host-font-prose: var(--prose-sans-font)`. Carried by pull-page.js textBlock (PR description, comments, reviews, and review-thread comments, plain and rendered) and by the git-panel.js commit body. Documents keep the html[data-prose-font] path; the md-body fallback reads --kpress-font-prose. Removed: the page-wide .github-pull bridge, .github-pull-plain font-family, and .git-commit-body font-family. The rule is stated once in docs/design-system.md, "Serif Is for Documents"; docs/plugins.md tells plugin authors to use the class.
 
@@ -41,3 +41,10 @@ Inventory, measured in headless Chrome, clean font set, reading font serif / san
 The system font set follows the same pattern: ui-serif (Georgia) against system-ui. Probe and outputs: attic/font-probe.mjs, attic/inventory-before.txt, attic/inventory-after.txt.
 
 Tests: test_serif_is_only_for_documents (which rules may set a face; chrome-prose builder registry); tests/dom/github-pull-first-paint-behavior.js (production PR texts carry the class); tests/test_prose_faces_chrome.py with tests/dom/prose-faces-chrome.mjs (computed and drawn faces, 2 reading fonts x 2 font sets, 44 checks; failed on main's CSS in exactly the 3 broken cases); parity row shell.prose-faces.
+Review A (https://github.com/jlevy/metabrowser/pull/438#pullrequestreview-5909379904), answered at head 48a12946, after a merge of origin/main e0a8e547 (#439). Dispositions: https://github.com/jlevy/metabrowser/pull/438#issuecomment-6890281556
+- A1, fixed: md-body sets the reading font on its prose-flow elements (h1-h6, p, ul, ol, blockquote) as var(--kpress-host-font-prose, var(--kpress-font-prose)), not on the view. New Chrome probes check the host message (.preview-empty) in an md-body view and md-body Markdown inside .chrome-prose. On the pre-fix CSS the session failed 7 of 56 checks.
+- A2, fixed: the static test exempts only the exact :root and two html[data-*] rules and asserts what they declare. It refuses --kpress-font-* and --kpress-host-font-* elsewhere except on .chrome-prose, and refuses font-family on a .kpress class. The serif check is case-insensitive and includes Georgia. All 5 example rules from the review now fail it.
+- A3, fixed: the Changes probe renders the diff plugin's own appendBlocks/sanitizeBlock output in section.diff-file under the PR containers. A diff-scoped sans rule now fails it.
+- A4, adopted: the waits are named constants, each failure is printed as it is found, and CHECKS = 56 is pinned.
+- A5, deferred to mb-o11s (P2, under mb-eevh).
+- Docs: the md-body and chrome-prose wording is narrowed, the parity row now credits the commit-body evidence, and the test checks that docs/plugins.md names chrome-prose.
