@@ -4,6 +4,9 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- `Server-Timing` counts the Git processes a request started, in its `git` entry’s
+  description: `git;dur=41.2;desc="2 processes"`.
+
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote
   10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
