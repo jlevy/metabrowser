@@ -1513,7 +1513,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
+| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base after the verb: “forker wants to merge 2 commits: forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
@@ -1572,8 +1572,9 @@ A pull request’s title is always bold in normal text ink, wherever it appears:
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
 A row or menu item is a link, so the title sets its own ink and weight, and no visited,
 hover, focus, selected, or current state changes them.
-The PR number beside a title keeps its regular weight.
-The metadata line gives the PR number normal row size and text ink.
+A pull request’s number is bold wherever it names the pull request
+([Pull Request Numbers](#pull-request-numbers)). The metadata line gives the PR number
+normal row size and text ink.
 Usernames use the same small metadata size and bold normal text ink; the repository
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
 A row names no branches: the pull request’s page names them, head → base, as
@@ -1653,6 +1654,28 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
+### Pull Request Numbers
+
+A pull request’s number, “#455”, is bold wherever it names the pull request, at the
+weight of a stack’s position, so a member’s “1/6 · #455” reads as one identifier
+(`mb-vrvs`). One token sets it, `--pull-number-weight` in the shell’s stylesheet, and
+every surface that shows a number takes it:
+
+| Surface | Class |
+| --- | --- |
+| The pull request page’s title | `.github-pull-number`, after the title |
+| A Pulls row | `.github-pulls-number`, on the metadata line |
+| A stack menu’s member | `.github-pull-stack-member-number` |
+| A Quick Search result | `.search-palette-pull-number` |
+| The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
+
+The GitHub plugin’s three are one rule.
+A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
+A stack’s own number, in “Stack #286”, is part of the stack’s label, in the label
+register ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds
+the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
+`tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
+
 ### Rows
 
 | Part | Primitive | Why |
@@ -1662,7 +1685,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
-| PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
+| PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
 | Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in the tooltip ([Stacks](#stacks)); the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
@@ -1712,7 +1735,7 @@ surface keeps a copy of either.
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, bold and tabular; on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s place, before its number, with no icon (`mb-dzsi`) |
-| Member row | Its position, bold; its title, bold in normal text ink; its `#number`; and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
+| Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -2230,7 +2253,8 @@ while the control is shown.”, and “Available while the Files tab is shown.�
 
 Quick Search uses one option list for files and pull requests.
 File rows show the filename and path.
-Pull request rows show the title first, with the PR number and state below it.
+Pull request rows show the title first, with the PR number, bold
+([Pull Request Numbers](#pull-request-numbers)), and state below it.
 The accessible option name includes that context.
 In a GitHub repository, a leading `#` scopes results to PRs.
 The empty prefix lists recent PRs, digits match number prefixes, and words match titles.

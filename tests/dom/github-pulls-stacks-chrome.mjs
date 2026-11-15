@@ -613,6 +613,21 @@ try {
           text,
         };
       })(),
+      // A pull request's number where it names the pull request, and a stack's position:
+      // their computed weights (mb-vrvs).
+      weights: (() => {
+        const weight = (selector) => {
+          const el = document.querySelector(selector);
+          return el === null ? null : getComputedStyle(el).fontWeight;
+        };
+        return {
+          row: weight(".github-pulls-row .github-pulls-number"),
+          member: weight(".github-pull-stack-menu .github-pull-stack-member-number"),
+          title: weight(".github-pull-title .github-pull-number"),
+          position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),
+          place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
+        };
+      })(),
     };
   })()`);
   measured.menu = menu;
@@ -655,6 +670,11 @@ try {
         menu.ink.title === menu.ink.number &&
         menu.ink.position === menu.ink.text,
       JSON.stringify(menu.ink),
+    );
+    check(
+      "a pull request's number is bold in a Pulls row, a stack member, and the page's title, as a stack's position is",
+      ["row", "member", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
+      JSON.stringify(menu.weights),
     );
     check(
       "a Pulls row's place is in its number's ink, the row's text",

@@ -7,6 +7,9 @@ All notable changes to Metabrowser are documented here.
 - A Pulls row no longer names its branches, so its title has more room; the pull
   request’s page still names them, head → base.
 
+- A pull request’s number is bold wherever it names the pull request: a Pulls row, the
+  pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
 - The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
   one width for a chevron and a file type icon alike, so names start 2px sooner and a
   pull request’s title is 4px wider.

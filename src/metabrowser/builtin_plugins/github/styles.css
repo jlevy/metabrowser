@@ -44,7 +44,14 @@
 }
 .github-pull-number {
   color: var(--text);
-  font-weight: var(--weight-normal);
+}
+/* A pull request's number is bold wherever it names the pull request: the page's title, a
+   Pulls row, and a stack menu's member, at the shell's one weight for it
+   (`--pull-number-weight`; docs/design-system.md, "Pull Request Numbers"). */
+.github-pull-number,
+.github-pulls-number,
+.github-pull-stack-member-number {
+  font-weight: var(--pull-number-weight);
 }
 .github-pull-title-with-state > .github-pull-number {
   align-self: end;

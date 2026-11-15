@@ -391,6 +391,13 @@
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  /* A pull request's number, "#N", wherever it names the pull request:
+     bold, the weight of a stack's position, so "1/6 · #N" reads as one
+     identifier. Every surface that shows one takes this token: a Pulls row,
+     a stack menu's member, the pull request's title, a Quick Search result,
+     and the ref selector (docs/design-system.md, "Pull Request Numbers";
+     mb-vrvs). */
+  --pull-number-weight: var(--weight-bold);
 
   /* Small-caps label style (shared by tabs, table headers, stat labels,
      section labels, and the embedded-document TOC title). Same size as
@@ -2489,6 +2496,9 @@ html.theme-anim .menu {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.source-ref-selector-pull-number {
+  font-weight: var(--pull-number-weight);
 }
 .source-ref-selector-panel {
   position: absolute;
@@ -5320,6 +5330,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-pull-number {
   color: var(--text);
+  font-weight: var(--pull-number-weight);
 }
 .search-palette-option mark {
   color: inherit;

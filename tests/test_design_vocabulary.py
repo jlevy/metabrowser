@@ -2039,16 +2039,30 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
         if selector not in titles and any(title in selector for title in titles):
             assert not {"color", "font-weight"} & declarations.keys(), selector
-    # The page's heading and a search result's label already are; the number beside a
-    # title keeps its regular weight.
+    # The page's heading and a search result's label already are.
     assert 'class: "page-heading github-pull-title' in page
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-heading"]["font-weight"] == "var(--weight-bold)"
     label = shell[".search-palette-label"]
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
-    assert github[".github-pull-number"]["font-weight"] == "var(--weight-normal)"
-    for number in (".github-pulls-number", ".github-pull-stack-member-number"):
-        assert "font-weight" not in github[number], number
+    # A pull request's number is bold wherever it names the pull request, the weight of a
+    # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
+    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
+    # and ref selector; no other rule sets a number's weight. In headless Chrome each
+    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    assert "### Pull Request Numbers" in doc
+    shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert shell_css.count("--pull-number-weight:") == 1
+    assert "--pull-number-weight: var(--weight-bold);" in shell_css
+    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
+    weighted = [
+        (selector, declarations["font-weight"])
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if "font-weight" in declarations and any(number in selector for number in numbers)
+    ]
+    assert weighted == [(number, "var(--pull-number-weight)") for number in numbers], weighted
+    for number in (".search-palette-pull-number", ".source-ref-selector-pull-number"):
+        assert shell[number]["font-weight"] == "var(--pull-number-weight)", number
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
