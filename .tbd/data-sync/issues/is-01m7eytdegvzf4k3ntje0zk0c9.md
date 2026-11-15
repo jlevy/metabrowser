@@ -5,7 +5,7 @@ title: "Pulls tab: group a native stack's pull requests under a Stack #N toggle"
 kind: feature
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:37:52.961Z
-updated_at: 2026-11-15T07:41:28.230Z
+updated_at: 2026-11-15T08:34:34.762Z
 started_at: 2026-11-15T07:41:28.229Z
 ---
 The user's request (2026-11-15), verbatim: "Feature is that within the Pulls tab, there is an option to group all PRs in a stack in a recursive toggle for the stack itself, so that if there are say 4 PRs in the stack, the stack itself (which github gives a number) woudl be somethig like Stack #1234  and then it would be pre-opened but include all PRs in that stack."
@@ -53,3 +53,11 @@ Added to Done when:
 - **The Pulls stack group row** uses that label for its header text. Its hover, focus and link behaviour match the member rows' wherever the two do the same thing.
 - **Anything that labels a stack its own way** (the menu, the badge tip, the group row) moves onto the shared classes and tokens, with no per-surface copies.
 - **A test** pins that the stack menu's heading and the group row's header resolve to the same label tokens, and that member order matches the stack menu's.
+
+Built (2026-11-15, sub-agent, branch claude/pulls-stack-groups, local only, not pushed): commits 6ced50c7 (merge of claude/menu-group-pattern, since claude/diff-summary did not hold pull request 1's .group-heading; a restack onto PR 1 makes it empty), 16d8f32d (feat), 4404e1ad (docs).
+- Model: pull-stacks.js groupByStack, stackLabel/stackPosition/stackPositionHint/stackMenuOrder, stackCaption(..., under); pulls-panel.js describeStackGrouping and the controller's grouping (setStacks, setGroupByStack, setStackOpen, enterStack, leaveToStack). Stacks ordered by their first listed member; shared member once under the first, badge names the other ("4/4 · #300 2/2", also in flat mode); stack with no unplaced members gets no row; stale-but-retained snapshot still groups (consistent with badges and the menu); identity mismatch, absent, gh_stack_missing, or no listed member in a stack keep it flat with the reason in the chip's tip and aria-description.
+- UI: .chip.chip-toggle "Group by stack" (Layers glyph, --chip-height, numbered 4 before Reload 5), on by default, choice in mb.prefs github.pulls.groupByStack. Stack row: div treeitem, .group-heading.github-pull-stack-label, count where the age is; members aria-level 2 and one --tree-indent in (files follow). Keys: J/K stop on stack rows, Enter/Space toggle, Right open/enter, Left close/leave to stack.
+- Stack menu: heading .group-heading.github-pull-stack-label, members via stackMenuOrder, trigger data-tip-text; member position ink was link blue by inheritance, now --text.
+- Tests (each red on the pre-change source): tests/dom/github-pulls-stack-groups-session.js + golden cli-ui-github-pulls-stack-groups.tryscript.md; tests/test_github_pulls_stacks_chrome.py (+ tests/dom/github-pulls-stacks-chrome.mjs, live server, fake gh stack with #286 [7..10] and #300 [5,10]); tests/test_github_stack_design.py; updated github-pull-stacks-behavior.js, panel session number story, pulls-nav golden copy, keymap/vocabulary/process-group registries; stack fixture gained a recorded "shared" answer.
+- Measured (headless Chrome, 1280x900, load 8-19): first Pulls row 964-1094 ms after vs 1006-1013 ms before (one before outlier 2199 ms); stacks grouped 1068-1186 ms after the tab press; toggle 8-36 ms. Label tokens identical on both headers; stack row 24 px; member inset +16 px.
+- Local: make -o install lint-check passed; cli-ui goldens 74 passed; focused pytest set passed incl. Chrome. Not run: full make test / make verify, macOS app, light theme screenshots.
