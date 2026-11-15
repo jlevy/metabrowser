@@ -5,7 +5,7 @@ title: "PR page: the stack chip leads the author's row, under the title"
 kind: task
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:00:19.895Z
-updated_at: 2026-11-15T18:18:15.493Z
+updated_at: 2026-11-15T18:29:30.474Z
 started_at: 2026-11-15T18:00:53.720Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -39,3 +39,4 @@ Measured in headless Chrome 152 on the production header (recorded PR 7, author 
 - D. Chip first when membership is known at first paint; a chip that arrives later takes today's slot at the end of the labels row, and moves to the front on the next mount. 0 shift and no gap, but the chip's place depends on timing. Today's behavior covers the late half.
 
 Decision, the user (2026-11-15), verbatim: "on the stack then let's find a way to avoid the problem altogether, e.g. put it right aligned below the right aligned PR number, on same line as author". So the stack chip sits at the right end of the author's row, aligned under the title's right-aligned PR number. A chip that arrives late lands in the row's empty end and moves nothing: no shift of the author, no reserved gap. This supersedes options A to D.
+2026-11-15, implemented as decided (chip at the right end of the author's row): commit 5efb99b78, pushed --no-verify. A late chip lands in the row's empty end at the header's content edge. In headless Chrome 152 at 980 to 320 px, one stack (54.75 px) and two (113.5 px), no part's start, row or tab bar moved; the chip keeps 8 px from the sentence. Where room runs out, the sentence is cut at its end: 34.88 px at 560 px (long names, two stacks), 38.04 px at 360 px (short name, two stacks). The details element is not taller there, so no fix was needed. Title finding: the title grid (auto | minmax(0, max-content) | auto) does not right-align the number. A title that fills its lines ends with the number at the content edge; with a short title the two auto tracks split the free space, so at 980 px the text sits centered (361 to 608 px) after a lone icon and '#7' follows it at 616 px. The chip aligns to the content edge.
