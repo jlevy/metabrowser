@@ -27,7 +27,8 @@ They land as one native GitHub stack of eight pull requests on `main`:
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
 8. **Group by menu:** its rows read “By age” and “By file type”, as its closed trigger
-   does (`mb-4mir`), and `A`, `T`, and `N` choose them while it is open (`mb-ibo4`).
+   does (`mb-4mir`); `A`, `T`, and `N` choose them while it is open (`mb-ibo4`); and
+   every key that opens a menu puts focus in it (`mb-spqw`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -132,7 +133,7 @@ it:
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
-| 8 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4` | Changes the Group by menu that pull request 2 adds, on the Files filter row as pull request 4 left it |
+| 8 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | Changes the Group by menu that pull request 2 adds, on the Files filter row as pull request 4 left it |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -178,6 +179,9 @@ it:
   With the menu open and focused, `N`, `A`, and `T` choose No grouping, By age, and By
   file type (`mb-ibo4`), in the menu’s own scope, so `T` is Quick Search everywhere
   else; the convention is one section of `docs/design-system.md`, “Keys in a Menu”.
+  Every way a filter menu opens, a number or a key on its trigger, focuses its checked
+  row through one path in the filter controls, and Escape gives focus back to the
+  trigger (`mb-spqw`).
 - **Section semantics:** a Files section takes the `.group-heading` look and names its
   section and its tree through `aria-labelledby`; it keeps the tree’s own semantics, a
   `role="tree"` per section, and takes no `role="group"`, which in a tree means a tree
@@ -340,6 +344,10 @@ it:
 - [ ] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
   shown by the Shift reveal and in Help’s Menus group, with one menu-key convention in
   the design system; the key reveal session and its golden, and a Chrome check.
+- [ ] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
+  the filter controls, and Escape gives focus back to the trigger; the key reveal
+  session and the filter controls behavior test, and a Chrome check of
+  `document.activeElement`.
 
 ## Testing Strategy
 
@@ -384,8 +392,8 @@ This plan moves to `docs/project/specs/done/` when pull request 8 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`; `mb-4mir` and
-  `mb-ibo4`, follow-ups on the Group by menu.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`; `mb-4mir`,
+  `mb-ibo4`, and `mb-spqw`, follow-ups on the Group by menu.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

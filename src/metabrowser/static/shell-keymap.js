@@ -251,22 +251,19 @@
 
     /**
      * A filter number's activation: open the dropdown through its trigger's own path, the
-     * shell's, then focus its checked row, or else its first, so the menu's arrow keys
-     * work next. The focus half lives here, on demand, rather than in app.js.
+     * shell's, then focus its checked row, or else its first, through the filter controls'
+     * one path for every way a dropdown opens (`filterControls.focusMenu`), so the menu's
+     * arrow keys, Enter, Escape, and its rows' letters work next
+     * (docs/design-system.md, "Keys in a Menu").
      *
      * @param {string} key `group`, `recency`, or `types`
      */
     function openFilterMenu(key) {
       shell.toggleFilterMenu(key, true);
-      const menu = filterBar()?.querySelector(
-        `.chip-menu[data-chip-menu="${key}"] .chip-menu-panel`,
-      );
-      const row = /** @type {HTMLElement | null} */ (
-        menu?.querySelector('.chip-menu-item[aria-checked="true"]') ??
-          menu?.querySelector(".chip-menu-item") ??
-          null
-      );
-      row?.focus();
+      const bar = filterBar();
+      if (bar) {
+        window.metabrowser?.filterControls?.focusMenu(bar, key);
+      }
       return true;
     }
 

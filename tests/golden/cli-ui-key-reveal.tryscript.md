@@ -50,12 +50,13 @@ reads of targets, and the keycaps built for badges and the strip.
 
 ## A Folder’s Files
 
-The keymap of a plain folder: the file type filter’s number and menu, Group by’s menu
-and its rows’ letters, N, A, and T, which are live only while it is open and has focus
-and which Help lists under Menus, the root and a folder below it, a Markdown file and a
-move to another of its kind, its Copy path with no key, an agent log, structured data,
-and HTML without active content, and the view tab letters following the committed bar
-through a cancelled stage.
+The keymap of a plain folder: the file type filter’s number and menu; where focus lands
+for each way a filter menu opens, on its checked row, and closes, on its trigger, and
+through a pick and a rebuild; Group by’s menu and its rows’ letters, N, A, and T, which
+are live only while it is open and has focus and which Help lists under Menus, the root
+and a folder below it, a Markdown file and a move to another of its kind, its Copy path
+with no key, an agent log, structured data, and HTML without active content, and the
+view tab letters following the committed bar through a cancelled stage.
 
 ```console
 $ node tests/dom/key-reveal-session.js
@@ -116,7 +117,7 @@ $ node tests/dom/key-reveal-session.js
       "did": ["opened the types menu"]
     },
     {
-      "step": "↓ moves to the next row, and Escape closes the menu",
+      "step": "↓ moves to the next row, a pick or a rebuild keeps focus there, and Escape closes the menu onto its trigger",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -140,7 +141,62 @@ $ node tests/dom/key-reveal-session.js
         "checked": "false",
         "open": "true"
       },
-      "did": ["closed the types menu"]
+      "picked": {
+        "menu": "filter-type-menu",
+        "row": ".md",
+        "checked": "false",
+        "open": "true"
+      },
+      "rebuilt": {
+        "menu": "filter-type-menu",
+        "row": ".md",
+        "checked": "false",
+        "open": "true"
+      },
+      "escaped": "the types trigger",
+      "did": ["chose .md in the types menu","closed the types menu"]
+    },
+    {
+      "step": "each way a menu opens focuses its checked row, and each way it closes its trigger",
+      "reveal": "idle",
+      "rootMarked": false,
+      "keys": [
+        ["?","help.open",null],
+        ["T or /","quick-file.open",null],
+        ["F","main-tabs.files","Files tab"],
+        ["O","view-tabs.o","Overview tab"],
+        ["M","view-tabs.m","Treemap tab"],
+        ["1–9","numbered",null]
+      ],
+      "numbers": ["Group by","Modified within","File type"],
+      "badges": [],
+      "strip": {
+        "surface": "nav",
+        "items": ["? Help","T Quick Search"]
+      },
+      "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
+      "byNumber": {
+        "menu": "filter-recency-menu",
+        "row": "Any age",
+        "checked": "true",
+        "open": "true"
+      },
+      "byNumberEscaped": "the recency trigger",
+      "byArrow": {
+        "menu": "filter-group-menu",
+        "row": "No grouping",
+        "checked": "true",
+        "open": "true"
+      },
+      "byArrowEscaped": "the group trigger",
+      "byClick": {
+        "menu": "filter-group-menu",
+        "row": "No grouping",
+        "checked": "true",
+        "open": "true"
+      },
+      "byClickClosed": "the group trigger",
+      "did": ["opened the recency menu","closed the recency menu","opened the group menu","closed the group menu","opened the group menu","closed the group menu"]
     },
     {
       "step": "Help lists Group by's letters under Menus",
@@ -254,7 +310,7 @@ $ node tests/dom/key-reveal-session.js
         "handled": true
       },
       "trigger": "By age",
-      "focus": "a replaced element",
+      "focus": "the group trigger",
       "did": ["chose age in the group menu"]
     },
     {
@@ -334,7 +390,8 @@ $ node tests/dom/key-reveal-session.js
         "handled": true
       },
       "focus": "combobox",
-      "trigger": "By file type"
+      "trigger": "By file type",
+      "did": ["opened the group menu"]
     },
     {
       "step": "N chooses No grouping",

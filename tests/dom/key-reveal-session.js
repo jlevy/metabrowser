@@ -326,15 +326,17 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   });
   // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu; a
   // row's click, and its letter through filterControls.activateMenuRow, run onMenuPick, which
-  // for Group by sets the value and closes the menu, as a single-select pick does.
+  // for Group by sets the value and closes the menu, as a single-select pick does, and for
+  // File type leaves it open, as a multi-select one does. Either renders the bar again,
+  // as the filter state's subscriber does in app.js.
   context.metabrowser.filterControls.bind(filterBar, {
     onMenuPick(key, value) {
       did.push(`chose ${value ?? "the any-row"} in the ${key} menu`);
       if (key === "group") {
         groupBy = value ?? "none";
         filterOpenMenu = null;
-        renderFilters();
       }
+      renderFilters();
     },
     onMenuToggle: shell.toggleFilterMenu,
   });
@@ -539,11 +541,14 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           ` aria-label="${key === "recency" ? "Modified within" : "File type"}"></span>`,
       )
       .join("");
+    // The rebuild keeps focus on the control that had it, as app.js's does.
+    const restoreFocus = controls.keepFocus(filterBar);
     filterBar.innerHTML =
       `<div class="nav-filter-bar-main">${group}<span class="nav-filter-bar-end">${slots}</span></div>` +
       `<div class="filter-drawer" id="filter-drawer" data-open="${filterDrawerOpen}"${filterDrawerOpen ? "" : " inert"}>` +
       `<div class="filter-drawer-row">${recency}${types}</div></div>`;
     keymap?.syncFilters();
+    restoreFocus();
   }
 
   /** startSourceRefSelector: a mirror's pin mounts the selector and keeps its handle. */
@@ -946,6 +951,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     );
   }
 
+  /** A filter dropdown's trigger. */
+  const trigger = (key) => filterBar.querySelector(`[data-chip-menu-toggle="${key}"]`);
+
   /** The words on Group by's closed trigger. */
   const groupTrigger = () =>
     filterBar.querySelector('[data-chip-menu-toggle="group"]')?.textContent.trim() ?? null;
@@ -989,6 +997,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     filterFocus,
     groupTrigger,
     helpGroup,
+    trigger,
     mountSelector,
     open,
     openCommit,
@@ -1083,9 +1092,54 @@ const PARTS = {
     );
     plain.press("ArrowDown");
     const next = plain.menuFocus();
+    // A pick in the multi-select menu renders the bar again and leaves the menu open:
+    // focus stays on the row picked, so the next key still works.
+    plain.document.activeElement.click();
+    const picked = plain.filterFocus();
+    // So does any other rebuild while a row has focus, as a tally refresh is.
+    plain.renderFilters();
+    const rebuilt = plain.filterFocus();
     plain.press("Escape");
+    const escaped = plain.filterFocus();
     plain.document.body.focus();
-    steps.push(plain.record("↓ moves to the next row, and Escape closes the menu", { next }));
+    steps.push(
+      plain.record(
+        "↓ moves to the next row, a pick or a rebuild keeps focus there, and Escape closes the menu onto its trigger",
+        { next, picked, rebuilt, escaped },
+      ),
+    );
+
+    // Every way a dropdown opens puts focus in it the same way, through the filter
+    // controls' one path: a number, a trigger's click (Enter and Space click it), and ↓ on
+    // the trigger; Escape, a second click, and a choice that closes it give focus back to
+    // the trigger (docs/design-system.md, "Keys in a Menu").
+    plain.press("2");
+    const byNumber = plain.filterFocus();
+    plain.press("Escape");
+    const byNumberEscaped = plain.filterFocus();
+    plain.trigger("group").focus();
+    plain.press("ArrowDown");
+    const byArrow = plain.filterFocus();
+    plain.press("Escape");
+    const byArrowEscaped = plain.filterFocus();
+    plain.trigger("group").click();
+    const byClick = plain.filterFocus();
+    plain.trigger("group").click();
+    const byClickClosed = plain.filterFocus();
+    plain.document.body.focus();
+    steps.push(
+      plain.record(
+        "each way a menu opens focuses its checked row, and each way it closes its trigger",
+        {
+          byNumber,
+          byNumberEscaped,
+          byArrow,
+          byArrowEscaped,
+          byClick,
+          byClickClosed,
+        },
+      ),
+    );
 
     // Group by's rows take the letters they declare, N, A, and T, while its menu is open
     // and has focus, and Help lists them under Menus (docs/design-system.md, "Keys in a

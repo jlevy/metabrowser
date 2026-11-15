@@ -431,6 +431,12 @@ class FakeElement extends FakeNode {
     return null;
   }
 
+  /** No boxes: this stand-in lays nothing out, so a filter menu is never fitted here, as
+   * filter-controls.js leaves a panel with no box alone. */
+  getClientRects() {
+    return [];
+  }
+
   getBoundingClientRect() {
     const rect = this.rect ?? { left: 0, top: 0, width: 0, height: 0 };
     return {

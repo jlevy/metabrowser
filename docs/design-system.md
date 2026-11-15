@@ -2460,8 +2460,10 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
-The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
-rotated downward; do not substitute a text caret or shrink it to fit the label.
+Opening one puts focus on its checked row, and closing it gives focus back to the
+trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+disclosure chevron at the standard chrome glyph size, rotated downward; do not
+substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
@@ -3458,9 +3460,27 @@ window, through a resize and a reopen, and the age menu at both.
 
 ### Keys in a Menu
 
-**An open menu that has focus can give each of its rows a letter, and the letter chooses
-the row.** Group by’s rows are the first to have them: `N` for No grouping, `A` for By
-age, and `T` for By file type.
+**Opening a menu puts focus in it, so its keys work at once.** Every way a filter
+dropdown opens comes to one path, `filterControls.focusMenu`: its trigger’s click,
+Enter, and Space, `↓` or `↑` on its trigger, and a filter’s number, which opens the
+drawer that holds it too.
+Focus lands on the checked row, or on the first row when none is checked, so `↑`, `↓`,
+`Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
+`W`’s branch list is the precedent: it opens with focus in its filter box.
+
+- **Closing.** Escape, a second click on the trigger, and a choice that closes a
+  single-select menu give focus back to the trigger.
+  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
+  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
+  topmost closes first.
+- **Staying.** A pick in a multi-select menu leaves it open with focus on the row
+  picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
+  refresh, puts focus back on the same control, or on the trigger of a menu the rebuild
+  closed: the bar calls `filterControls.keepFocus` around every rebuild.
+
+**An open menu that has focus can also give each of its rows a letter, and the letter
+chooses the row.** Group by’s rows are the first to have them: `N` for No grouping, `A`
+for By age, and `T` for By file type.
 
 - **Which letter.** A row’s letter is the first letter of the word that names its value:
   No, age, and type. It is declared beside the row’s label, as `key` on an option and
@@ -3486,13 +3506,16 @@ age, and `T` for By file type.
 - **Where.** The shell’s keymap reads the letters from the navigation pane’s filter bar
   (`syncMenuLetters` in `static/shell-keymap.js`), so only its menus take them.
 
-`tests/dom/key-reveal-session.js` runs the letters on the production registry, keymap,
-and filter controls: the Help group, the badges and the strip, each letter’s choice, and
-`T` as Quick Search with the menu closed or focus outside it.
-`tests/dom/filter-controls-behavior.js` pins the rows’ markup and the click path a
-letter shares, and `tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and
-what the live surfaces show; `tests/test_files_tab_chrome.py` presses the letters in
-Chrome.
+`tests/dom/key-reveal-session.js` runs both on the production registry, keymap, and
+filter controls: where focus lands for each way a menu opens and closes, through a pick
+and a rebuild, and for the letters the Help group, the badges and the strip, each
+letter’s choice, and `T` as Quick Search with the menu closed or focus outside it.
+`tests/dom/filter-controls-behavior.js` pins the focus path on a rendered bar, the rows’
+markup, and the click path a letter shares, and
+`tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and what the live
+surfaces show. `tests/test_files_tab_chrome.py` reads `document.activeElement` in Chrome
+after each number, `↓` and Enter on a trigger, each letter, Escape, and a pick in File
+type as the bar rebuilds.
 
 ## Structured Data and Tables
 

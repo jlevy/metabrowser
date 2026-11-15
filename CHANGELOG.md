@@ -72,6 +72,21 @@ All notable changes to Metabrowser are documented here.
   an `anyKey`, the letter of each row, and `filterControls.activateMenuRow(row)` runs a
   row’s click path; the shell reads the letters in the Files filter bar only.
 
+- Every way a Files filter menu opens now puts focus in it, as its number already did: a
+  click on its trigger, Enter or Space on it, and `↓` or `↑` on it.
+  Focus lands on the checked row, or the first, so the arrow keys, Enter, Escape, and
+  the menu’s letters work at once.
+  Escape, a second click, or a choice that closes the menu gives focus back to its
+  trigger, where it used to fall to the page.
+  A pick in File type keeps focus on its row while the bar refreshes, and so does any
+  refresh of the bar, where focus also used to fall to the page and the next arrow key
+  did nothing. An Escape that closes Quick Search or Help no longer also closes a filter
+  menu open behind it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.focusMenu(root, key)` focuses an open dropdown’s
+  checked row, and `filterControls.keepFocus(root)`, called before a rebuild, returns
+  the function that puts focus back after it.
+
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.
   The type registry keeps its own order, which is the File Rollup Format’s; for plugin

@@ -458,6 +458,112 @@
     );
   }
 
+  // ── Focus in a dropdown ──────────────────────────────────────
+  // One path for every dropdown (docs/design-system.md, "Keys in a Menu"): opening one, by
+  // its trigger or by a key, focuses its checked row or else its first; Escape, or a
+  // choice that closes it, gives focus back to its trigger; and a consumer's rebuild of
+  // the markup keeps focus on the same control.
+
+  /** @param {string} value A value for a double-quoted attribute selector. */
+  const quoted = (value) => value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+  // The attributes that name a filter control, so it can be found again after a rebuild.
+  const CONTROL_ATTRIBUTES = [
+    "data-chip-menu-toggle",
+    "data-chip-key",
+    "data-chip-value",
+    "data-chip-any",
+    "data-chip-preset",
+    "data-chip-check",
+    "data-chip-clear",
+  ];
+  const CONTROL_SELECTOR = CONTROL_ATTRIBUTES.map((name) => `[${name}]`).join(", ");
+
+  /**
+   * A selector for the control `element` is or is in, which finds the same control in
+   * rebuilt markup: each naming attribute it carries, by value, and each it lacks, absent.
+   * @param {Element} element
+   */
+  function controlSelector(element) {
+    const control = element.closest(CONTROL_SELECTOR);
+    if (!control) {
+      return null;
+    }
+    return CONTROL_ATTRIBUTES.map((name) => {
+      const value = control.getAttribute(name);
+      return value === null ? `:not([${name}])` : `[${name}="${quoted(value)}"]`;
+    }).join("");
+  }
+
+  /**
+   * Focus an open dropdown's checked row, or else its first row, so its arrow keys,
+   * Enter, Escape, and its rows' letters work at once. Every way a dropdown opens comes
+   * here: its trigger's click, Enter, and Space, the arrow keys on its trigger, and the
+   * shell's filter numbers. Returns the row, or null when the menu is not open.
+   * @param {Element} root
+   * @param {string} key
+   */
+  function focusMenu(root, key) {
+    const menu = root.querySelector(`.chip-menu[data-chip-menu="${quoted(key)}"]`);
+    if (menu?.getAttribute("aria-expanded") !== "true") {
+      return null;
+    }
+    const panel = menu.querySelector(".chip-menu-panel");
+    const row = /** @type {HTMLElement | null} */ (
+      panel?.querySelector('.chip-menu-item[aria-checked="true"]') ??
+        panel?.querySelector(".chip-menu-item") ??
+        null
+    );
+    row?.focus();
+    return row;
+  }
+
+  /**
+   * Put focus back where it belongs after a change to `root`: on the control `selector`
+   * names, as rebuilt, or on its menu's trigger when it is a row of a menu now closed.
+   * Focus that has moved on to a live element outside `root` is left there.
+   * @param {Element} root
+   * @param {string | null} selector
+   */
+  function settleFocus(root, selector) {
+    const doc = root.ownerDocument;
+    if (!selector || !doc) {
+      return;
+    }
+    const now = doc.activeElement;
+    if (now && now !== doc.body && now.isConnected !== false && !root.contains(now)) {
+      return;
+    }
+    let target = /** @type {HTMLElement | null} */ (root.querySelector(selector));
+    const menu = target?.closest(".chip-menu");
+    if (
+      target &&
+      menu &&
+      menu.getAttribute("aria-expanded") !== "true" &&
+      target.closest(".chip-menu-panel")
+    ) {
+      target = /** @type {HTMLElement | null} */ (menu.querySelector("[data-chip-menu-toggle]"));
+    }
+    if (target && target !== now) {
+      target.focus();
+    }
+  }
+
+  /**
+   * Keep focus across a rebuild of `root`'s markup: call it before the rebuild and the
+   * function it returns after, and the control that had focus has it again, or its
+   * menu's trigger when the rebuild closed that menu (`settleFocus`). Nothing happens
+   * when focus was outside `root`.
+   * @param {Element} root
+   * @returns {() => void}
+   */
+  function keepFocus(root) {
+    const active = root.ownerDocument?.activeElement;
+    const selector =
+      active && active !== root && root.contains(active) ? controlSelector(active) : null;
+    return () => settleFocus(root, selector);
+  }
+
   /** Each bound container's row path, so a row's letter runs what a click on it runs.
    * @type {WeakMap<Element, (row: HTMLElement) => void>} */
   const boundRows = new WeakMap();
@@ -512,25 +618,46 @@
 
     /**
      * Choose one dropdown row: what a click on it runs, and what its letter runs
-     * (`activateMenuRow`), so a key never synthesizes the click.
+     * (`activateMenuRow`), so a key never synthesizes the click. Focus then stays on the
+     * row while its menu stays open, as a multi-select one does, and goes back to the
+     * trigger when the choice closed it.
      * @param {HTMLElement} menuItem
      */
     function pickRow(menuItem) {
       const key = menuItem.getAttribute("data-chip-key") || "";
+      const row = controlSelector(menuItem);
       const preset = menuItem.getAttribute("data-chip-preset");
       if (preset !== null) {
         if (opts.onMenuPreset) {
           opts.onMenuPreset(key, preset, menuItem.getAttribute("aria-checked") === "true");
         }
-        return;
-      }
-      if (opts.onMenuPick) {
+      } else if (opts.onMenuPick) {
         opts.onMenuPick(
           key,
           menuItem.hasAttribute("data-chip-any")
             ? null
             : menuItem.getAttribute("data-chip-value") || "",
         );
+      }
+      settleFocus(root, row);
+    }
+
+    /**
+     * Open a dropdown from its trigger, as a click or an arrow key on it does, and focus
+     * its checked row; or close it and leave focus on the trigger.
+     * @param {Element} menuToggle
+     * @param {boolean} open
+     */
+    function toggleMenu(menuToggle, open) {
+      const key = menuToggle.getAttribute("data-chip-menu-toggle") || "";
+      const trigger = controlSelector(menuToggle);
+      if (opts.onMenuToggle) {
+        opts.onMenuToggle(key, open);
+      }
+      // The consumer has rendered the menu open: fit it to its rows and the window.
+      fitOpenMenus(root);
+      if (!open || !focusMenu(root, key)) {
+        settleFocus(root, trigger);
       }
     }
 
@@ -550,14 +677,8 @@
       // Dropdown trigger.
       const menuToggle = target.closest("[data-chip-menu-toggle]");
       if (menuToggle && root.contains(menuToggle)) {
-        const key = menuToggle.getAttribute("data-chip-menu-toggle") || "";
         const wrap = menuToggle.closest(".chip-menu");
-        const isOpen = wrap?.getAttribute("aria-expanded") === "true";
-        if (opts.onMenuToggle) {
-          opts.onMenuToggle(key, !isOpen);
-        }
-        // The consumer has rendered the menu open: fit it to its rows and the window.
-        fitOpenMenus(root);
+        toggleMenu(menuToggle, wrap?.getAttribute("aria-expanded") !== "true");
         return;
       }
       // A row inside the dropdown. Checked before the generic .chip
@@ -657,6 +778,17 @@
         );
         return;
       }
+      // On a dropdown's trigger, Up and Down open it, as Enter and Space do through the
+      // click, and focus its checked row; on an open one's, they move focus into it.
+      const menuToggle = target.closest("[data-chip-menu-toggle]");
+      if (menuToggle && root.contains(menuToggle) && (key === "ArrowDown" || key === "ArrowUp")) {
+        ev.preventDefault();
+        const menuKey = menuToggle.getAttribute("data-chip-menu-toggle") || "";
+        if (!focusMenu(root, menuKey)) {
+          toggleMenu(menuToggle, true);
+        }
+        return;
+      }
       if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "Home" && key !== "End") {
         return;
       }
@@ -717,9 +849,18 @@
       if (ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey) {
         return;
       }
+      // An Escape that closed a surface above the bar, such as Quick Search or Help, is
+      // that surface's: the topmost closes first (docs/design-system.md, "Shared Overlay
+      // Lifecycle"), and the menu waits for the next.
+      if (ev.defaultPrevented) {
+        return;
+      }
       const openKey = openMenuKey();
       if (openKey !== null && opts.onMenuToggle) {
+        const trigger = root.querySelector(`[data-chip-menu-toggle="${quoted(openKey)}"]`);
         opts.onMenuToggle(openKey, false);
+        // Back to the trigger, unless focus had already left the bar for the page.
+        settleFocus(root, trigger ? controlSelector(trigger) : null);
       }
     }
 
@@ -773,6 +914,8 @@
     menuGroupHtml,
     menuMaxHeight,
     fitOpenMenus,
+    focusMenu,
+    keepFocus,
     toggleHtml,
     checkHtml,
     clearHtml,

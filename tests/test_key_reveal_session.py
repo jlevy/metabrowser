@@ -257,6 +257,35 @@ def test_the_session_runs_on_the_recording() -> None:
         "open": "true",
     }
 
+    # Every way a menu opens focuses its checked row, through the filter controls' one
+    # path; Escape, a second click, and a choice that closes it give focus to the trigger;
+    # and a pick or a rebuild while a row has focus keeps it on that row (mb-spqw).
+    kept = by_name[
+        "↓ moves to the next row, a pick or a rebuild keeps focus there, and Escape closes "
+        "the menu onto its trigger"
+    ]
+    next_row = {"menu": "filter-type-menu", "row": ".md", "checked": "false", "open": "true"}
+    assert kept["next"] == kept["picked"] == kept["rebuilt"] == next_row
+    assert kept["escaped"] == "the types trigger"
+    ways = by_name[
+        "each way a menu opens focuses its checked row, and each way it closes its trigger"
+    ]
+    group_checked = {
+        "menu": "filter-group-menu",
+        "row": "No grouping",
+        "checked": "true",
+        "open": "true",
+    }
+    assert ways["byNumber"] == {
+        "menu": "filter-recency-menu",
+        "row": "Any age",
+        "checked": "true",
+        "open": "true",
+    }
+    assert ways["byArrow"] == ways["byClick"] == group_checked
+    assert ways["byNumberEscaped"] == "the recency trigger"
+    assert ways["byArrowEscaped"] == ways["byClickClosed"] == "the group trigger"
+
     # Group by's rows take N, A, and T, in its own scope, while its menu is open and has
     # focus; Help lists them under Menus; each runs the row's click path; and T is Quick
     # Search's whenever the menu is closed or focus is outside it (mb-ibo4).
@@ -279,6 +308,8 @@ def test_the_session_runs_on_the_recording() -> None:
     assert "T By file type" in revealed["strip"]["items"]
     age = by_name["A chooses By age and closes the menu"]
     assert age["pressed"] == {"key": "a", "handled": True}
+    # The choice closed the menu, so focus is back on its trigger (mb-spqw).
+    assert age["focus"] == "the group trigger"
     assert age["did"] == ["chose age in the group menu"]
     assert age["trigger"] == "By age"
     for quick in (

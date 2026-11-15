@@ -563,6 +563,9 @@ assertEqual(
       order.push("fit");
       return [];
     },
+    // No menu here opened, so there is no row to focus (the focus path is checked below,
+    // on a rendered bar).
+    querySelector: () => null,
   };
   fc.bind(clicked, {
     onMenuToggle(key, open) {
@@ -760,6 +763,148 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     false,
   );
   assertEqual("and nothing is picked", picked.length, 3);
+}
+
+// ── Focus in a dropdown ─────────────────────────────────────────
+// One path for every way a dropdown opens and closes (docs/design-system.md, "Keys in a
+// Menu"): opening focuses its checked row or else its first; Escape, a second click, and
+// a choice that closes it give focus back to the trigger; a pick or a rebuild while a row
+// has focus keeps it there; and focus outside the bar is never taken. The consumer here
+// renders from its own state on every change, as the Files filter bar does.
+{
+  const { FakeDocument, keyEvent } = require("./key-reveal-dom.js");
+  const doc = new FakeDocument();
+  const root = doc.createElement("div");
+  const outside = doc.createElement("button");
+  doc.body.append(root, outside);
+  const state = { open: null, group: "age", types: [] };
+  const render = () => {
+    const restore = fc.keepFocus(root);
+    root.innerHTML =
+      fc.menuGroupHtml({
+        key: "group",
+        select: "one",
+        label: "Group by",
+        options: [
+          { value: "age", label: "By age", key: "a" },
+          { value: "type", label: "By file type", key: "t" },
+        ],
+        value: state.group,
+        anyLabel: "No grouping",
+        anyKey: "n",
+        anyValue: "none",
+        open: state.open === "group",
+        menuId: "filter-group-menu",
+      }) +
+      fc.menuGroupHtml({
+        key: "types",
+        label: "File type",
+        options: [
+          { value: ".md", label: ".md" },
+          { value: ".py", label: ".py" },
+        ],
+        value: state.types,
+        anyLabel: "Any type",
+        open: state.open === "types",
+        menuId: "filter-type-menu",
+      });
+    restore();
+  };
+  render();
+  fc.bind(root, {
+    onMenuToggle(key, open) {
+      state.open = open ? key : null;
+      render();
+    },
+    onMenuPick(key, value) {
+      if (key === "group") {
+        state.group = value ?? "none";
+        state.open = null;
+      } else {
+        state.types = fc.nextSelection("many", state.types, value) || [];
+      }
+      render();
+    },
+  });
+  const trigger = (key) => root.querySelector(`[data-chip-menu-toggle="${key}"]`);
+  const focused = () => {
+    const active = doc.activeElement;
+    if (active === outside) {
+      return "outside";
+    }
+    if (!active || active === doc.body) {
+      return "body";
+    }
+    if (!active.isConnected) {
+      return "a replaced element";
+    }
+    const key = active.getAttribute("data-chip-menu-toggle");
+    return key ? `${key} trigger` : `${active.querySelector(".menu-item-label").textContent} row`;
+  };
+  const press = (key, init = {}) =>
+    doc.activeElement.dispatchEvent(
+      keyEvent("keydown", key, { target: doc.activeElement, ...init }),
+    );
+  const steps = [];
+  const step = (label, work) => {
+    work();
+    steps.push(`${label}: ${focused()}`);
+  };
+
+  steps.push(`a closed menu takes no focus: ${fc.focusMenu(root, "group")}`);
+  step("a click opens Group by", () => trigger("group").click());
+  step("a second click closes it", () => trigger("group").click());
+  step("↓ on its trigger opens it", () => press("ArrowDown"));
+  step("↓ in it moves a row", () => press("ArrowDown"));
+  step("Escape closes it", () => press("Escape"));
+  step("an Escape a surface above took leaves it open", () => {
+    trigger("group").click();
+    press("Escape", { defaultPrevented: true });
+  });
+  step("the next Escape closes it", () => press("Escape"));
+  step("a click opens File type, on its first row with none checked", () =>
+    trigger("types").click(),
+  );
+  step("↓ moves to .md", () => press("ArrowDown"));
+  step("picking .md keeps the menu open and focus on .md", () => doc.activeElement.click());
+  step("a rebuild keeps focus on .md", render);
+  step("Escape closes File type", () => press("Escape"));
+  step("a letter's choice closes Group by", () => {
+    trigger("group").click();
+    fc.activateMenuRow(root.querySelector('#filter-group-menu [data-chip-value="type"]'));
+  });
+  step("a rebuild while focus is outside leaves it there", () => {
+    outside.focus();
+    render();
+  });
+  step("Escape with focus outside the open menu leaves focus outside", () => {
+    trigger("group").click();
+    outside.focus();
+    press("Escape");
+  });
+  assertEqual("focus follows each way a dropdown opens and closes", steps, [
+    "a closed menu takes no focus: null",
+    "a click opens Group by: By age row",
+    "a second click closes it: group trigger",
+    "↓ on its trigger opens it: By age row",
+    "↓ in it moves a row: By file type row",
+    "Escape closes it: group trigger",
+    "an Escape a surface above took leaves it open: By age row",
+    "the next Escape closes it: group trigger",
+    "a click opens File type, on its first row with none checked: Any type row",
+    "↓ moves to .md: .md row",
+    "picking .md keeps the menu open and focus on .md: .md row",
+    "a rebuild keeps focus on .md: .md row",
+    "Escape closes File type: types trigger",
+    "a letter's choice closes Group by: group trigger",
+    "a rebuild while focus is outside leaves it there: outside",
+    "Escape with focus outside the open menu leaves focus outside: outside",
+  ]);
+  assertEqual(
+    "the picks reached the consumer",
+    [state.group, state.types, state.open],
+    ["type", [".md"], null],
+  );
 }
 
 if (failures.length > 0) {

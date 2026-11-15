@@ -14,8 +14,10 @@ opens the Modified within menu in both. This judges what it measured against
   the row fits the default pane at its widest, under every Group by value with Clear and
   the chevron's badge showing, and the badge leaves Show ignored out; Group by's rows read
   as its trigger does, and its open menu's letters choose them while T stays Quick
-  Search's with the menu closed ("Keys in a Menu"); and the keyboard numbers follow what
-  is on screen ("Grouping the Files Tree");
+  Search's with the menu closed; every key that opens a menu focuses its checked row,
+  Escape and a choice that closes it give focus back to its trigger, and a pick in File
+  type keeps focus on its row through the bar's rebuilds ("Keys in a Menu"); and the
+  keyboard numbers follow what is on screen ("Grouping the Files Tree");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
@@ -235,6 +237,33 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "open": None,
         "sections": 0,
     }
+    # Every key that opens a menu focuses its checked row: the numbers, and ↓ and Enter on
+    # a trigger. Escape, and a letter's choice that closes the menu, give focus back to the
+    # trigger (mb-spqw).
+    assert measured["focus"] == {
+        "one": "group: No grouping, checked",
+        "oneEscaped": "group trigger",
+        "one before a": "group: No grouping, checked",
+        "a": "group trigger",
+        "one before t": "group: By age, checked",
+        "t": "group trigger",
+        "one before n": "group: By file type, checked",
+        "n": "group trigger",
+        "three": "types: Any type, checked",
+        "threeEscaped": "types trigger",
+        "two": "recency: Any age, checked",
+        "twoEscaped": "recency trigger",
+        "arrowDown": "group: No grouping, checked",
+        "arrowDownEscaped": "group trigger",
+        "enter": "group: No grouping, checked",
+        "enterEscaped": "group trigger",
+    }, measured["focus"]
+    # Enter on a File type row picks it and the menu stays open; through the bar's rebuilds
+    # as the filter answers, focus stays on that row, checked, and unchecked again.
+    row = measured["typesRow"]
+    assert row.startswith("types: ") and not row.endswith("checked"), row
+    assert measured["typesPicked"] == f"{row}, checked", measured
+    assert measured["typesUnpicked"] == row, measured
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at

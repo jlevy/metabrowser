@@ -947,6 +947,8 @@ type MetabrowserFilterControls = {
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
   fitOpenMenus(root: Element): void;
+  /** Focus an open dropdown's checked row, or else its first; null when it is not open. */
+  focusMenu(root: Element, key: string): HTMLElement | null;
   groupHtml(spec: {
     className?: string;
     key: string;
@@ -957,6 +959,11 @@ type MetabrowserFilterControls = {
     value: MetabrowserFilterSelection;
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  /**
+   * Call before rebuilding `root`'s markup, and the returned function after: focus goes
+   * back to the control that had it, or to the trigger of a menu the rebuild closed.
+   */
+  keepFocus(root: Element): () => void;
   menuGroupHtml(spec: {
     /** The any-row's letter, as an option's `key` is its row's. */
     anyKey?: string;
