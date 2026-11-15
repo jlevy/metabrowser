@@ -4,6 +4,21 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls tab can group a native GitHub stack’s pull requests under a “Stack #N” row,
+  open by default, with the stack’s pull requests under it top of the stack first, as
+  the pull request page’s stack menu lists them, and the pull requests in no stack after
+  the stacks. Group by stack is a chip with the stack icon in the Pulls toolbar; it is on
+  once the repository’s stacks are known, and your choice is kept.
+  A pull request in two stacks appears once, under the first, and its badge names the
+  other, as in “4/4 · #300 2/2”: a badge with two positions now names the second stack’s
+  number everywhere. Until the stacks are known, or when GitHub CLI’s stack extension is
+  missing, the list stays as it was and the chip says why.
+  A stack’s row opens and closes like a folder: J and K stop on it, Enter, Space, and
+  the arrow keys open, close, enter, and leave it.
+  The stack row’s header and the stack menu’s heading are now one label, gray, all caps,
+  and tracked, and the menu’s positions are in the row’s ink rather than link blue
+  ([Stacks](docs/design-system.md#stacks)).
+
 - The Files tab has a Group by menu, the one control on its filter row: No grouping,
   Age, or File type. Grouped, the tree splits into sections, each headed like a menu
   group with the group’s file count and holding a full tree of the group’s files after

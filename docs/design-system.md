@@ -1439,8 +1439,9 @@ fetched, never a spinner or a sentence; Changes with nothing cached shows the de
 shared spinner, because its shape is unknown.
 Idle and failed sections use static notices.
 
-Native stack navigation uses the repository snapshot’s verified membership and order.
-A Layers icon and position/total, such as 5/23, open a menu in the reading column.
+Native stack navigation uses the repository snapshot’s verified membership and order, in
+the one stack design ([Stacks](#stacks)). A Layers icon and position/total, such as
+5/23, open a menu in the reading column.
 The menu shows titles, ordinals, and PR numbers, ordered from stack top to base, with
 the current member marked.
 Its links are created only when opened.
@@ -1574,9 +1575,10 @@ Branch names use the remote [ref chip](#branch-chips), slightly smaller than the
 head → base, as [Merge Direction](#merge-direction) sets them.
 Known native stack membership uses a small Layers icon and bold position in a column of
 the title line, before the age, in all the room the title and it share but 4ch of the
-title, and cut short with an ellipsis past that; the tooltip names the stack and every
-position. Their shared repository snapshot is indexed once by PR number; rows make no
-stack requests, and enrichment updates retain the row and any focused changed-file tree.
+title, and cut short with an ellipsis past that; a second stack’s position is named by
+its number, and the tooltip names the stack and every position ([Stacks](#stacks)).
+Their shared repository snapshot is indexed once by PR number; rows make no stack
+requests, and enrichment updates retain the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1652,7 +1654,9 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
-| Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
+| Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip ([Stacks](#stacks)) |
+| Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
+| Group by stack | A standalone `.chip.chip-toggle` with the Layers glyph, at `--chip-height`, before Reload; unavailable, its tip says why | Off and on are the reader’s, and persist |
 | Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1680,10 +1684,102 @@ History follows the rule all three collections share: a key’s open replaces th
 as the file tree’s arrow keys and Git’s K and J do.
 Clicking a different row or pressing Enter on it pushes a history entry.
 Space toggles the focused pull request’s changed files in place.
-`J` and `K` move the rows with or without Shift; walking a pull request’s stack is `N`
-and `P` ([The Pull Request Page](#the-pull-request-page)). Help reads the
-`pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
-names a key.
+Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
+Space, Right, and Left open, close, enter, and leave it as a folder’s
+([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
+rows with or without Shift; walking a pull request’s stack is `N` and `P`
+([The Pull Request Page](#the-pull-request-page)). Help reads the `pull-requests` and
+`pull-stack` groups of the shortcut registry, and no surface here names a key.
+
+## Stacks
+
+**A native GitHub stack is named, placed, and listed one way wherever it appears:** the
+pull request page’s stack button and menu, a Pulls row’s position badge, and the Pulls
+tab’s stack groups. The words come from one place,
+`builtin_plugins/github/pull-stacks.js` (`stackLabel`, `stackPosition`,
+`stackPositionHint`, `stackMenuOrder`), and the look from one set of classes in the
+GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
+
+| Part | Primitive | Where |
+| --- | --- | --- |
+| Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
+| Position, “2/4” | `.github-pull-stack-position`, bold and tabular, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s badge |
+| Member row | Its position, bold; its title, bold in normal text ink; its `#number`; and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
+| Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests listed, “4” or “3 of 4” | The Pulls tab |
+
+- **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
+  the register the menu’s heading has, so the menu’s heading and a stack group’s row are
+  one class, and nothing in the GitHub plugin restyles its type or ink.
+  In a menu it starts on the menu’s row inset, as every group heading does; in the Pulls
+  list a stack’s row starts on the list’s row inset, where every first-level row starts,
+  so its label sits in the title’s column.
+- **Position.** A member’s place is its position counted from the stack’s base, as
+  GitHub numbers it, over the stack’s size: “2/4”. A pull request in more than one stack
+  shows each position, separated by a middle dot, and names every stack but its own:
+  “3/4 · #300 2/2”. Its own is its only stack, the one a group places it under, or else
+  the first GitHub lists.
+- **Ink.** The position takes the ink of what holds it: muted in a Pulls row’s badge,
+  which is passive, and normal text ink on the stack button and in a member row.
+  A member row is a link, so its position, title, and number each set their own ink, and
+  no link, visited, hover, focus, or current state changes them; the position once
+  inherited the link’s blue.
+- **Order.** A stack’s members are listed top of the stack first, the order of
+  `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
+  order.
+- **Links, hover, and focus.** A member row is a link to its pull request and a menu
+  item, with the menu’s hover and the current member’s hover ground.
+  A stack group’s row is a row of the Pulls tree, not a link, since no page stands for a
+  stack: it hovers, takes the focus ring, and takes the pointer as a pull request’s row
+  does, and a press opens or closes it as a folder’s does.
+- **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
+  4”, every stack of a pull request in two, joined by semicolons.
+  The stack button carries it, and its accessible name is “Navigate” before it.
+  A stack group’s row says its size and, when the list holds fewer, how many: “Stack
+  #286, 4 pull requests, 3 in this list”.
+
+### Stack Groups in the Pulls Tab
+
+**Group by stack** is a standalone boolean [filter chip](#filter-controls) in the Pulls
+toolbar, the Layers glyph and no word, at a chip’s height, before Reload.
+It is on by default once the stacks are known, and the reader’s choice persists in the
+shell’s preferences (`metabrowser.prefs`). Its name is always “Group by stack”;
+unavailable, its description and its tip say why.
+Like the filters beside it, it takes a number among the screen’s situational controls
+([Keyboard Shortcuts](#keyboard-shortcuts)), which turns it as a click does.
+
+- **Rows.** Each stack with a pull request in the list has a row, open by default, and
+  under it, one tree level in, the stack’s pull requests that the list holds, in the
+  stack’s order. Each keeps its own changed-files toggle, a level further in.
+- **Stack order.** The stacks come in the order of their first pull request in the list,
+  so the list’s own order, newest first, still decides which comes first.
+  The pull requests in no stack follow the stacks, in the list’s order.
+- **Shared membership.** A pull request in two stacks sits once, under the first of them
+  in that order, and its badge names the other.
+  A stack all of whose listed pull requests sit under earlier stacks has no row; their
+  badges name it.
+- **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
+  them. Until a snapshot is known for the list’s own GitHub account, while none of the
+  list’s pull requests is in a stack, or when the gh stack extension is missing, the
+  list stays flat and the chip, unavailable, says why in its tip and its name.
+  A snapshot kept through a failed or expired refresh still groups, as the badges and
+  the stack menu still show it.
+- **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
+  and open nothing; Enter and Space open or close it; Right opens it, or goes to its
+  first pull request; Left closes it, or from a pull request in it whose files are
+  closed, goes to it. An address that names a pull request in a closed stack opens the
+  stack. A grouped list’s Tab stop, until the reader moves it, is its first row.
+
+`tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the option, and the
+keys against the production code on the server’s recorded answers, and mounts the page’s
+stack menu to hold that the groups list its order.
+`tests/test_github_pulls_stacks_chrome.py` measures in headless Chrome, against a
+running server with two native stacks, that a stack row’s header and the stack menu’s
+heading resolve to the same label tokens, where a stack’s row and its pull requests
+start, that the two kinds of row hover and focus alike, that the chip is a chip’s
+height, that the keys move real focus, that the menu lists the group’s order with its
+positions in text ink, and that the choice survives a reload.
+`tests/test_github_stack_design.py` holds the source to one label class and one place
+for every stack word.
 
 ## Keyboard Shortcuts
 
