@@ -10,9 +10,9 @@
 
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
-pull request titles, navigation that reveals the item, label colors, and Group by’s
-speed on a large folder, from the same day.
-They land as one native GitHub stack of sixteen pull requests on `main`:
+pull request titles, navigation that reveals the item, label colors, Group by’s speed on
+a large folder, and a design-system consistency pass over all of them, from the same
+day. They land as one native GitHub stack of eighteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -22,10 +22,15 @@ They land as one native GitHub stack of sixteen pull requests on `main`:
    border.
 4. **Diff summary:** one collapsible tree of changed files with folder roll-ups,
    replacing the count line at the top of a multi-file diff.
-5. **Pulls:** an option to group the pull requests of a native stack under a “Stack #N”
-   toggle.
-6. **Conversation:** a pull request’s commit rows match its comments in size and
-   spacing, with a timeline line joining them.
+5. **Pulls:** the pull requests of each native stack grouped under a “Stack #N” row,
+   always on (`mb-vmwh`); rows that name no branches (`mb-ghff`) and put a member’s
+   place before its number (`mb-dzsi`); one tighter slot for a row’s chevrons and icons
+   (`mb-hmv7`); and pull request numbers in bold (`mb-vrvs`).
+6. **Conversation and header:** a pull request’s commit rows match its comments in size
+   and spacing, with a timeline line joining them (`mb-xz1r`); and its page header gives
+   the branches a line of their own (`mb-fon5`), leads the row of ages with the state
+   badge (`mb-4ydo`), ends the author’s row with the stack chip (`mb-cf0l`), and starts
+   the title at the left edge with its number at the right (`mb-z416`).
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
 8. **Stack keys:** Control-N and Control-P walk a pull request’s stack, freeing `N` and
@@ -49,6 +54,11 @@ They land as one native GitHub stack of sixteen pull requests on `main`:
     our chip’s size, with a label’s description as its tooltip (`mb-9qob`).
 16. **Group by speed:** every group is read from one pass over the index (`mb-navs`),
     and a choice shows at once and while it waits (`mb-75l5`).
+17. **Consistency in code:** what a design-system review of changes 1 to 16 found in
+    their code and stylesheets, fixed in place (`mb-xlla`, under `mb-r5jr`).
+18. **Consistency in docs:** what the same review found in the design system, the user
+    docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
+    from 0.12.0 (`mb-vg55`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -80,8 +90,8 @@ request must prove.
     −3,423”.
   - Opened, it is the tree of changed files the Pulls tab shows under a pull request,
     and a closed folder shows its rolled-up line counts.
-- **Pull stack groups** (`mb-cm61`): the Pulls tab can group the pull requests of each
-  native stack under a “Stack #N” row.
+- **Pull stack groups** (`mb-cm61`, `mb-vmwh`): the Pulls tab groups the pull requests
+  of each native stack under a “Stack #N” row, whenever the stacks are known.
   The row is open by default and holds the stack’s pull requests, each of which still
   opens to its changed files.
 - **Conversation timeline** (`mb-g3ao`):
@@ -107,6 +117,10 @@ request must prove.
 - **Navigation reveals the item** (`mb-6y0g`): going to a file, a pull request, or a
   commit by any route switches the nav to its tab, opens the folders or stack that hold
   it, and selects and scrolls to its row.
+- **Consistency** (`mb-r5jr`): every change above uses the design system’s tokens and
+  shared classes, each rule is stated once in its section, no section describes a
+  replaced layout, and the CHANGELOG’s Unreleased block describes each feature in its
+  final state.
 
 ## Non-Goals
 
@@ -165,8 +179,8 @@ it:
 | 2 | `claude/menu-groups-height` | `mb-sogv`, `mb-x1h6` | Reuses the heading pattern for the Files tree’s group headings |
 | 3 | `claude/diff-fold-inline` | `mb-m5dd` | Stacked to serialize merges, with no code dependency on the layer below; shares `diff/styles.css` with pull request 4 |
 | 4 | `claude/diff-summary` | `mb-epw2` | Shares the Pulls tree model with pull request 5 |
-| 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
-| 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
+| 5 | `claude/pulls-stack-groups` | `mb-cm61`, `mb-vmwh`, `mb-ghff`, `mb-dzsi`, `mb-hmv7`, `mb-vrvs` | Groups the Pulls rows that pull request 4’s model serves |
+| 6 | `claude/pull-timeline` | `mb-g3ao`, `mb-xz1r`, `mb-fon5`, `mb-4ydo`, `mb-cf0l`, `mb-z416` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
 | 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
@@ -177,6 +191,8 @@ it:
 | 14 | `claude/reveal-on-navigate` | `mb-6y0g` | On pull request 13; reveals items in the Files tree pull request 2 groups and the Pulls stack groups pull request 5 adds, and notes beside the Pulls rows pull requests 11 and 13 change |
 | 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors in the Pulls catalog’s rows and their descriptions in the records |
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
+| 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
+| 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -279,7 +295,7 @@ it:
   - Pull requests in no stack follow the stacks, in the list’s own order.
 
 - **Shared membership:** a pull request in more than one stack appears once, under the
-  first stack that lists it, and its badge names the others.
+  first stack that lists it, and its place names the others.
 
 - **Missing or stale stack data:** the list stays flat, and nothing waits for the stack
   poller.
@@ -310,7 +326,8 @@ it:
   - member rows: title, position, number, and the current pull request’s mark;
   - member order;
   - links and their hover and focus states;
-  - the hover tip text.
+  - the stack button’s tip, and the accessible names that stand in for tips in the Pulls
+    column, which has none (`mb-8mpo`).
 
   The stack group row’s header uses that label, and its hover, focus and link behavior
   match the member rows’ wherever the two do the same thing.
@@ -323,8 +340,8 @@ it:
 - **Type:** commit rows use the timeline’s type scale, not a smaller size of their own.
   Their metadata ("committed 1d ago", the short SHA) takes the same quiet treatment as a
   comment’s.
-- **Spacing:** commits and comments are spaced consistently, with room above each run of
-  commits.
+- **Spacing:** commits and comments are spaced by one rhythm
+  ([Conversation Rhythm and Headings](#conversation-rhythm-and-headings)).
 - **The line:** a timeline line runs down the Conversation tab and joins every two
   adjacent events, following the structure of GitHub’s pull request page but not its
   assets or brand. It breaks wherever something that is not an event, such as Review
@@ -353,7 +370,7 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 ### Conversation Rhythm and Headings
 
 The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
-`claude/conversation-rhythm` at the top of the stack:
+`claude/conversation-rhythm`:
 
 - **Rhythm** (`mb-w7rt`): every two consecutive events are one token apart, card to
   card, card to commit, commit to card, and commit to commit alike, a card measured by
@@ -538,8 +555,16 @@ against 5 ms for the ungrouped tree.
 
 ### Phase 5: Pull Stack Groups (pull request 5)
 
-- [ ] `mb-cm61`: the option, stack rows, ordering, shared membership, fallbacks and
-  keys, with the model’s session and golden.
+- [ ] `mb-cm61`: stack rows, ordering, shared membership, fallbacks and keys, with the
+  model’s session and golden.
+- [ ] `mb-vmwh`: grouping always on, with no toolbar control.
+- [ ] `mb-ghff`: a Pulls row names no branches; the pull request’s page keeps them.
+- [ ] `mb-dzsi`: a member’s place before its number on the metadata line, with no stack
+  icon on its row.
+- [ ] `mb-hmv7`: one tighter slot, `--tree-icon-slot`, for a tree row’s chevrons and
+  icons.
+- [ ] `mb-vrvs`: a pull request’s number in bold wherever it names the pull request,
+  through `--pull-number-weight`.
 
 ### Phase 6: Conversation Timeline (pull request 6)
 
@@ -627,6 +652,20 @@ against 5 ms for the ungrouped tree.
   the sections paint; in the Group by session and its golden, and in the Files Chrome
   test with the grouped requests held.
 
+### Phase 17: Consistency in Code (pull request 17)
+
+- [ ] `mb-xlla`: each code finding of the consistency review (`mb-r5jr`) fixed in the
+  layer’s code or stylesheet: existing tokens and shared classes in place of local
+  literals and copies, and the menu, stack, and loading behavior the design system
+  states, each with its test.
+
+### Phase 18: Consistency in Docs (pull request 18)
+
+- [ ] `mb-vg55`: the CHANGELOG’s Unreleased block reads as one change from 0.12.0, with
+  each feature in its final state; the design system, the user docs, and this plan
+  describe the stack as pull request 17 leaves it, each rule stated once with links from
+  the other sections, and with no bead IDs in the design system.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -652,7 +691,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 16 merges.
+This plan moves to `docs/project/specs/done/` when pull request 18 merges.
 
 ## Open Questions
 
@@ -662,17 +701,19 @@ This plan moves to `docs/project/specs/done/` when pull request 16 merges.
   than once under the first?
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts
   too, as a Files folder keeps its size whichever way it is turned.
-  The question was: should an open folder also show its line counts?
-  This plan leaves that to the implementer, kept consistent with the Files tab’s folder
-  tallies.
 
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
-  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
-  follow-ups on the Group by menu; `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and
-  `mb-75l5`, Group by’s speed and feedback on a large folder.
+  `mb-sogv`; `mb-vmwh`, `mb-ghff`, `mb-dzsi`, `mb-hmv7`, and `mb-vrvs`, follow-ups on
+  pull request 5; `mb-xz1r`, `mb-fon5`, `mb-4ydo`, `mb-cf0l`, and `mb-z416`, follow-ups
+  on pull request 6; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and
+  `mb-spqw`, follow-ups on the Group by menu; `mb-8mpo`, the tooltips; `mb-w7rt` and
+  `mb-novh`, the Conversation’s rhythm and headings; `mb-z57p`, the title prefixes;
+  `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and `mb-75l5`, Group by’s speed and
+  feedback on a large folder; and `mb-r5jr`, the consistency pass, with `mb-xlla` and
+  `mb-vg55`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).
