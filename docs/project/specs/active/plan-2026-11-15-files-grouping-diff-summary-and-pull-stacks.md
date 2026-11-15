@@ -75,6 +75,9 @@ request must prove.
   field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
 - **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
   mechanism, as `F` opens Files and `H` Commits; `R` is freed.
+- **Title prefixes** (`mb-z57p`): a conventional-commit prefix such as `feat(ledger):`
+  that starts a commit’s or a pull request’s title is regular weight and the rest of the
+  title keeps its weight, everywhere a title appears; any other title is unchanged.
 
 ## Non-Goals
 
@@ -325,6 +328,28 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
+### Title Prefixes
+
+- **The split** (`mb-z57p`): one pure function, `titlePrefix` in `static/formatters.js`,
+  finds a type of lowercase letters, an optional scope of one or more characters other
+  than parentheses, an optional `!`, and the colon, at most 16 code points, followed by
+  whitespace and more of the title.
+  Anything else has no prefix and is drawn as before.
+- **One markup, one rule:** `titleNodes` and `titleHtml` beside it put the prefix in a
+  `span.title-prefix`, the SDK’s `metabrowser.titleNodes` hands its title to the same
+  function, and one rule in the shell’s stylesheet sets the span’s weight from
+  `--weight-normal`. No new token: the one rule is the one place the weight is set.
+- **Surfaces:** a Pulls row, the pull request page’s title, its stack menu, its
+  Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
+  commit’s page, and its tooltip.
+  Quick Search has no commit results.
+  A Commits tab row’s subject is regular, and keeps that weight: the prefix there looks
+  as the rest does, which is reported to the owner rather than changed.
+- **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
+  “Pull Request Numbers”.
+  The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
+  `shell.title-prefix-weight`, read in Chrome.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -387,6 +412,11 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   docs.
 - [ ] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
   sessions, goldens, and docs say so.
+
+### Title Prefixes (`claude/title-prefix-weight`)
+
+- [ ] `mb-z57p`: the split and its golden session, the shared helper on every title
+  surface, the one weight rule, the Chrome weights, and the docs.
 
 ## Testing Strategy
 

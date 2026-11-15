@@ -3533,7 +3533,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function patchRow(entry, row, key) {
     const before = entry.info;
     if (row.title !== before.title) {
-      entry.title.textContent = row.title;
+      entry.title.replaceChildren(...mb.titleNodes(row.title));
     }
     if (row.state !== before.state) {
       const icon = pullStateIcon(row.state);
@@ -3573,7 +3573,9 @@ export function mountPullsPanel(container, ctx, mb) {
   function buildRow(row, key) {
     const when = rowAge(row);
     const { at } = when;
-    const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
     const updated = h(
       "span",
       {

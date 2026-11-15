@@ -1608,7 +1608,7 @@ Each node sits 0.5 px below its first line’s middle there, as in Chrome.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
+| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
@@ -1665,8 +1665,9 @@ stay open.
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
-A row or menu item is a link, so the title sets its own ink and weight, and no visited,
-hover, focus, selected, or current state changes them.
+A conventional-commit prefix that starts it is regular ([Titles](#titles)). A row or
+menu item is a link, so the title sets its own ink and weight, and no visited, hover,
+focus, selected, or current state changes them.
 A pull request’s number is bold wherever it names the pull request
 ([Pull Request Numbers](#pull-request-numbers)). The metadata line gives the PR number
 normal row size and text ink.
@@ -1770,6 +1771,52 @@ A stack’s own number, in “Stack #286”, is part of the stack’s label, in 
 register ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds
 the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
+
+### Titles
+
+A commit’s or a pull request’s title that starts with a conventional-commit prefix sets
+the prefix at regular weight and the rest of the title at the title’s own weight, so in
+“feat(ledger): chart strategies, range bands and Extended default” only “feat(ledger):”
+is regular (`mb-z57p`). The prefix is a type, an optional scope in parentheses, an
+optional `!`, and the colon:
+
+- The type is lowercase ASCII letters, as commitlint’s conventional config holds types
+  to. A capitalized word before a colon, as in “Docs:” or “WIP:”, is the title’s own
+  text.
+- The scope is one or more characters other than parentheses, so a list such as
+  `fix(ui, git):` counts, as conventional-changelog’s parser reads one, and an empty
+  `()` does not.
+- It counts only at 16 characters or fewer, colon included, counted in code points:
+  `refactor(stack):` counts, and `refactor(stacks):` is part of the title.
+- Whitespace and more of the title follow the colon.
+  `fix:keep` and a title that ends at its colon have no prefix.
+
+A merge commit, a `Revert "…"` title, and every title that does not match are drawn
+exactly as before: the same element holding the same text.
+
+One function splits a title, `titlePrefix` in `static/formatters.js`, and `titleNodes`
+and `titleHtml` beside it draw the prefix in a `span.title-prefix`; plugins draw with
+`metabrowser.titleNodes`. One rule, `.title-prefix` in the shell’s stylesheet, sets the
+prefix’s weight from `--weight-normal`, so no surface sets a weight or writes markup of
+its own, and the prefix keeps the title’s face, size, and ink.
+The title’s element still holds the whole title, so an ellipsis, a two-line clamp, and a
+tooltip that gives the whole of a title cut short all work on all of it.
+
+| Surface | Title element | The rest |
+| --- | --- | --- |
+| A Pulls row | `.github-pulls-title` | Bold |
+| The pull request page’s title | `.github-pull-title-text` | Bold |
+| A stack menu’s member | `.github-pull-stack-member-title` | Bold |
+| A Conversation commit | `.github-pull-commit-subject` | Bold |
+| A Quick Search pull request | `.search-palette-label` | Bold; a match in the prefix is marked bold, as a match in a path is |
+| A Commits tab row | `.git-graph-subject` | Regular, the row’s own weight, so the prefix looks as the rest does |
+| A commit’s page | `.git-commit-subject.page-heading` | Bold |
+| A commit’s tooltip | `.git-commit-summary-compact .git-commit-subject` | Bold |
+
+A plain-text tooltip, such as the whole of a title cut short, has no weights.
+`tests/dom/title-prefix-session.js` pins the split, and
+`tests/test_title_prefix_chrome.py` reads each surface’s computed weights in Chrome and
+holds the one helper and the one rule in source.
 
 ### Rows
 

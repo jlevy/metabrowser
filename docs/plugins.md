@@ -519,6 +519,10 @@ Useful helpers include:
   `sizeHtml`. `formatAge(epochSeconds, {style: "relative"})` returns labels such as
   `2h ago`, `just now`, or `in 2h`; its default compact style suits dense navigation.
   Both styles return the same freshness-class vocabulary;
+- `titleNodes(title)` for a commit’s or a pull request’s title, as the nodes its element
+  holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
+  which the host draws at regular weight, then the rest, which keeps the element’s
+  weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and

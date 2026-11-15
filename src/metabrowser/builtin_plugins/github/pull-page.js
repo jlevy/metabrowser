@@ -3131,10 +3131,11 @@ let stackMenuSerial = 0;
  * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
  * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
  * position badge, the menu's heading is the stack's label, and its members come in
- * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in. A member's title
+ * is the SDK's `titleNodes` (docs/design-system.md, "Titles").
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -3196,8 +3197,11 @@ export function createStackMenu(initial, number, deps) {
       const target = stack.pulls[at];
       const row = rows.get(target);
       if (row) {
-        row.title.textContent =
-          stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+        row.title.replaceChildren(
+          ...deps.titleNodes(
+            stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`),
+          ),
+        );
         row.position.textContent = stackPosition(at, stack.pulls.length);
         row.number.textContent = `#${target}`;
       }
@@ -4188,6 +4192,7 @@ export function mountPullPage(container, ctx, mb) {
         link: (target) => pageLink(memberRoute(target, model.tab), "", []),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
+        titleNodes: mb.titleNodes,
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
@@ -4398,7 +4403,9 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
       const title = headerPart("title", [pull.state, pull.title, pull.number], () => {
-        const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
+        // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+        // "Titles").
+        const titleText = h("span", { class: "github-pull-title-text" }, mb.titleNodes(pull.title));
         // The number is outside the clamped text, so a title cut short keeps it.
         const heading = h(
           "h1",
@@ -4669,7 +4676,7 @@ export function mountPullPage(container, ctx, mb) {
     // subject where the author is, then when, in the head's type (docs/design-system.md,
     // "Conversation Timeline").
     return h("div", { class: "github-pull-commit github-pull-event" }, [
-      h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+      h("span", { class: "github-pull-commit-subject" }, mb.titleNodes(event.subject || "Commit")),
       event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
         ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
