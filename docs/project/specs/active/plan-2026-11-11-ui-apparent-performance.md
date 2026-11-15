@@ -109,9 +109,9 @@ current. Each tier takes its invalidation from a source that already exists:
   file: keyed by path, envelope ETag, and active view.
   They are flagged by the same sources that flag `fileCache` today: a change event marks
   the path in `fileNeedsRevalidate`, and a snapshot replacement flags every cached path
-  (`app.js:6676-6678`). A flagged surface is revalidated with `If-None-Match` before it
+  (`app.js:6658-6660`). A flagged surface is revalidated with `If-None-Match` before it
   is shown, as a flagged `fileCache` entry is (the cache-state check at
-  `app.js:5481-5496`, and the `304` path at `app.js:5531-5559`): a `304` re-attaches it
+  `app.js:5463-5478`, and the `304` path at `app.js:5513-5541`): a `304` re-attaches it
   and a `200` renders the new envelope.
   Active, appending files are never retained, as `fileCache` already excludes them.
 - **The Commits surface:** a comparison named by a full commit ID cannot change, so a
@@ -290,7 +290,7 @@ final round.
 ## Open Questions
 
 - Whether the tree-first startup order still pays for itself once assets are cached
-  (`app.js:8641-8645`); Phase 2 re-measures it before changing it.
+  (`app.js:8629-8633`); Phase 2 re-measures it before changing it.
 - How many laid-out surfaces the memory budget allows inside one web view; the
   retained-surface rounds measure it.
 - Whether the render `GET` from the server’s cache meets the cold-landing budget, or
