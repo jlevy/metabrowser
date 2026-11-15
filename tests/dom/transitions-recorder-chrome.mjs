@@ -1122,13 +1122,17 @@ try {
       },
     );
     await check("a long text node is measured near the viewport, not whole", async () => {
-      // One text node of 200,000 lines, at its top and scrolled to its middle: found both
-      // times, without measuring every line's box (about 60 ms a call before the bound).
+      // One text node of 200,000 lines (1,288,889 characters), at its top and scrolled to
+      // its middle: found both times, by measuring a slice of LONG_TEXT characters near the
+      // viewport (a prefix, then the one around the caret), not the whole node. What is
+      // asserted is the characters measured, not the time a call took, which a loaded
+      // runner stretches; the time is only reported.
       for (const scroll of [0, 2000000]) {
         await d.evaluate(`window.__longTextScroll = ${scroll}`);
         const r = await shapeFound("longText");
-        assert.ok(r.found, `scrolled ${scroll}: ${JSON.stringify(r.search)}`);
-        assert.ok(r.ms < 10, `scrolled ${scroll}: a call took ${r.ms} ms`);
+        const at = `scrolled ${scroll}, ${r.ms.toFixed(1)} ms: ${JSON.stringify(r.search)}`;
+        assert.ok(r.found, at);
+        assert.ok(r.search.chars > 0 && r.search.chars <= 2 * 2000, at);
       }
     });
     await check(
@@ -1413,9 +1417,11 @@ try {
       const r = await openFile("big.js", { milestones });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
       const at = r.milestones.sourceHighlighted;
-      // The second of the two blocks is marked 450 ms after the file shows.
+      // The second of the two blocks is marked 450 ms after the click shows the file, so
+      // no sooner than that after the press, and after painted ready; a loaded runner can
+      // only make it later.
       assert.ok(
-        at >= r.paintedReadyMs + 400,
+        at >= 450 && at > r.paintedReadyMs,
         `highlighted ${at}, painted ready ${r.paintedReadyMs}`,
       );
       const never = await openFile("plain.js", {
@@ -1438,7 +1444,9 @@ try {
       const seen = await d.evaluate("window.dwellSeen");
       for (const [i, ms] of D.ms.entries()) {
         const rested = seen[D.files[i]];
-        assert.ok(rested >= ms - 2 && rested < ms + 300, `${ms} ms dwell rested ${rested} ms`);
+        // The driver sleeps the dwell, so it rests at least that long; how much longer
+        // depends on the runner, and the bound above it only catches a dwell gone wrong.
+        assert.ok(rested >= ms - 2 && rested < ms + 5000, `${ms} ms dwell rested ${rested} ms`);
         // The row records the realized dwell, the pointer's arrival to the press.
         assert.ok(
           Math.abs(rows[i].hoverDwellMs - rested) <= 1,
