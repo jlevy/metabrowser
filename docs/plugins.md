@@ -560,9 +560,10 @@ position them but does not restyle them; see
 A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
 host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
 `.group-heading`, which draws its own divider and starts on the menu’s row inset.
-A `filterControls` dropdown sizes itself to its rows and the window: call
-`filterControls.fitOpenMenus(root)` after rendering one open, and `filterControls.bind`
-fits it again when the window resizes.
+A menu whose rows are all one group is named from that heading instead, through the
+menu’s own `aria-labelledby`. `filterControls.bind` fits a dropdown to its rows and the
+window when its trigger opens it and when the window resizes; a view that renders one
+open another way calls `filterControls.fitOpenMenus(root)` after rendering.
 See [Groups in a Menu](design-system.md#groups-in-a-menu) and
 [Menu Height](design-system.md#menu-height).
 

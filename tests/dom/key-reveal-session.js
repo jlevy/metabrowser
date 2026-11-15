@@ -287,6 +287,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let palette = null;
   let selector = null;
   let filterOpenMenu = null;
+  // The filter drawer starts closed, as the shell's does, and a filter's number opens it.
+  let filterDrawerOpen = false;
   const stack = { inStack: false };
 
   const committedBar = () => keymap?.committedBar() ?? null;
@@ -309,6 +311,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     // bar again, which reports the new triggers to the keymap.
     toggleFilterMenu(key, open) {
       filterOpenMenu = open ? key : null;
+      // The filters live in the drawer: opening one opens the drawer with it.
+      if (open && key !== "group") {
+        filterDrawerOpen = true;
+      }
       renderFilters();
       did.push(`${open ? "opened" : "closed"} the ${key} menu`);
     },
@@ -506,10 +512,19 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       select: "one",
       value: "none",
     });
+    // The row end's stand-ins number the closed, inert drawer's filters (app.js,
+    // filterKeySlotsHtml).
+    const slots = (pin ? ["types"] : ["recency", "types"])
+      .map(
+        (key) =>
+          `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
+          ` aria-label="${key === "recency" ? "Modified within" : "File type"}"></span>`,
+      )
+      .join("");
     filterBar.innerHTML =
-      `<div class="nav-filter-bar-main">${group}</div>` +
-      `<div class="filter-drawer" data-open="true"><div class="filter-drawer-row">` +
-      `${recency}${types}</div></div>`;
+      `<div class="nav-filter-bar-main">${group}<span class="nav-filter-bar-end">${slots}</span></div>` +
+      `<div class="filter-drawer" id="filter-drawer" data-open="${filterDrawerOpen}"${filterDrawerOpen ? "" : " inert"}>` +
+      `<div class="filter-drawer-row">${recency}${types}</div></div>`;
     keymap?.syncFilters();
   }
 
@@ -537,6 +552,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const mainTabs = context.MetabrowserMainTabs.create({
     cancelPreview() {},
     filesShown() {},
+    filesHidden() {},
     flushPull() {},
     focusFilesRow: () => tree?.focusCurrent() ?? false,
     isGitHistoryLanding: () => false,
@@ -856,6 +872,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   }
 
   /** The filter menu row that has focus, as its menu, label, and checked state. */
+  /** Whether the filter drawer is open, as its markup says. */
+  function drawerOpen() {
+    return filterBar.querySelector("#filter-drawer")?.getAttribute("data-open") === "true";
+  }
+
   function menuFocus() {
     const row = document.activeElement;
     const panel = row?.closest(".chip-menu-panel");
@@ -905,6 +926,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     mainTabs,
     measure,
     menuFocus,
+    drawerOpen,
     mountSelector,
     open,
     openCommit,
@@ -982,13 +1004,20 @@ const PARTS = {
     steps.push(plain.record("a plain folder shows Files only"));
     // The trigger's own path opens the menu, and focus goes to its checked row, so the
     // menu's arrow keys work next; Escape closes it through the same path.
-    // The filters are situational, numbered by their place: Group by is 1 on the row, and
-    // in the open drawer Any age is 2 and Any type is 3.
+    // The filters are situational, numbered by their place: Group by is 1 on the row,
+    // Any age 2 and Any type 3, on stand-ins beside the chevron while the drawer is closed.
+    // A filter's number opens the drawer with its menu.
+    const drawerBefore = plain.drawerOpen();
     steps.push(
-      plain.record("3 opens the file type filter and focuses its checked row", {
-        pressed: { key: "3", handled: plain.press("3") },
-        focus: plain.menuFocus(),
-      }),
+      plain.record(
+        "3 opens the closed drawer and the file type filter, and focuses its checked row",
+        {
+          drawerBefore,
+          pressed: { key: "3", handled: plain.press("3") },
+          drawerAfter: plain.drawerOpen(),
+          focus: plain.menuFocus(),
+        },
+      ),
     );
     plain.press("ArrowDown");
     const next = plain.menuFocus();

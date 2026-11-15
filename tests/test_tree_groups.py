@@ -85,3 +85,20 @@ def test_unknown_groupings_mean_none() -> None:
     group = parse_group("type:docs")
     assert group is not None
     assert group.key == "type:docs"
+
+
+def test_age_groups_say_the_recency_filter_s_words() -> None:
+    """The age bands and Modified within name the same windows the same way; the shell
+    states its labels in static/app.js (FILTER_RECENCY_OPTIONS), and this holds the two
+    vocabularies to one."""
+
+    import re
+    from pathlib import Path
+
+    app = (Path(__file__).parents[1] / "src/metabrowser/static/app.js").read_text("utf-8")
+    block = app[app.index("var FILTER_RECENCY_OPTIONS = [") :]
+    block = block[: block.index("];")]
+    pairs = re.findall(r'value: "([^"]+)",\s*label: "([^"]+)"', block)
+    assert pairs, "FILTER_RECENCY_OPTIONS was not found"
+    bands = [(group.id, group.label) for group in groups_for("age") if group.id != "older"]
+    assert pairs == bands

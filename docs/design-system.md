@@ -1746,13 +1746,13 @@ What is numbered, in reading order, each only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, then, while the filter drawer is open, Modified within (Any age) and File type (Any type); a Git pin has no Modified within |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), open or closed as the filter drawer is; a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
-beside the Pulls tab, at `2` beside the Files tab with its drawer closed, and at `4`
-with it open.
+beside the Pulls tab and at `4` beside the Files tab, its drawer open or closed (`3` on
+a Git pin).
 
 The keys and buttons that have no key, and why: every copy control, ancillary; a changed
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
@@ -2344,24 +2344,43 @@ Clear sits beside the chevron and undoes the filters, keeping the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
+- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
+  Other, since a link has no file type, and Age places it by its own modification time.
+  A file filter set beside the grouping leaves links out, as it does without one.
+  On a Git pin a link is a blob, counted and grouped by its name as a file is.
+- **Keys.** The drawer’s filters keep their numbers while it is closed.
+  Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
+  the order the triggers take when it opens, and a filter’s number opens the drawer with
+  its menu.
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
   breathes as refreshing text does once the wait passes `--loading-state-delay`. Opening
-  the Group by menu asks for both groupings ahead of the choice.
+  the Group by menu asks ahead of the choice for each grouping it offers that is not
+  already shown.
+- **Refresh.** When files change, the sections refresh in place, in one frame: each
+  keeps its heading and updates its count, a group that fills or empties appears or
+  goes, the folders open in a section stay open, and the scroll position and the focused
+  row are kept. A folder whose cached children a write dropped is fetched before the
+  paint. A refresh that fails keeps what is shown and retries with a backoff.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
 `tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
-browserlessly in `tests/dom/files-group-by-session.js`; and
-`tests/test_files_tab_chrome.py` measures the row, the drawer, the numbers, and the
-sections’ headings in Chrome.
+browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
+`tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
+the row, the drawer, the numbers, the sections’ headings, and a refresh after a write in
+Chrome.
 
 Measured in headless Chrome on a served folder (2026-11-15), grouping costs the server a
 pass over the index per group: on 22,104 files File type answered in 106 ms where the
 ungrouped tree took 34 ms, and on 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19
 s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown.
+spinner shown. Computing every group in one pass over the index is tracked as `mb-navs`.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
 
 ### Filters Say What They Do Not Know
 
@@ -3123,51 +3142,62 @@ and a plugin’s use the same markup:
 
 - **Heading.** A `.group-heading` is the quiet small-caps label register, and it starts
   on the menu’s row inset, `--menu-row-inset`: the edge a row’s first column starts on,
-  a check or an icon, and the edge the menu’s `.menu-title` and `.menu-version` start
-  on. It is not indented to the rows’ labels.
-  The type filter’s headings once were, and read as rows of the group rather than its
-  name.
+  a check or an icon, and the edge the menu’s `.menu-title`, a labelled `.menu-row`, and
+  `.menu-version` start on.
+  It is not indented to the rows’ labels: a heading on the label column reads as a row
+  of its group rather than its name.
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
   `.menu-separator` geometry (4 px, a 1 px rule, 4 px), unless it is the menu’s first
-  child, where the menu’s edge already sets it off.
+  child, where the menu’s edge already sets it off, or follows a `.menu-separator`,
+  which already draws the rule.
   So a heading never lacks a divider or gets two.
   Rows that no heading names, such as the type filter’s raw extensions after its groups,
   are set off with a plain `.menu-separator`.
 - **Semantics.** The group carries `role="group"` and `aria-labelledby` naming its
   heading, so a screen reader announces the group as the eye reads it.
   The heading is the group’s first child.
-- **Title.** A heading that names the whole menu rather than a part of it is the menu’s
-  `.menu-title`, as the gear menu’s wordmark is.
-  A menu whose rows are all one named group, as a pull request’s stack menu is, uses one
-  `.menu-group`.
+- **Title or one group.** A heading names the whole menu when nothing else in the menu
+  needs a name: the menu’s own `.menu-title`, as the gear menu’s wordmark is, or a menu
+  whose rows are all one group, as a pull request’s stack menu is.
+  That one group keeps the `.menu-group` and `.group-heading` look, but the menu is
+  named from the heading through `aria-labelledby`, with no `aria-label` of its own and
+  no `role="group"` on the wrapper, so the name is read once.
+  A menu with two or more groups names each one, as above.
 
 `tests/test_files_tab_chrome.py` and the stack part of
 `tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
-starts on its rows’ inset and names its group; `tests/test_browser_filter_ui.py` pins
-that every inset reads the one token.
+starts on its rows’ inset and names its group or its menu;
+`tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
+heading all read the one token.
 
 ### Menu Height
 
-**A dropdown takes its rows’ natural height, up to 16 rows, and never reaches past the
-window.** Its `max-height` is the smaller of 16 rendered rows plus its padding and
-border, and the room from its top edge to the window’s bottom edge less 8 px, the
+**A filter dropdown takes its rows’ natural height, up to 16 rows, and never reaches
+past the window.** Its `max-height` is the smaller of 16 rendered rows plus its padding
+and border, and the room from its top edge to the window’s bottom edge less 8 px, the
 tooltip’s viewport margin.
 Past that it scrolls inside itself.
 The rule is stated from the rendered row, not in pixels, so it follows the row if the
 row’s type or padding changes.
 
 The room depends on where the trigger sits and on the window, so the height is measured,
-not declared: `filterControls.fitOpenMenus(root)` fits every open filter dropdown when
-its consumer renders it open, and `filterControls.bind` fits them again when the window
-resizes.
-The rule applies to every filter dropdown, not only the type filter: a menu with
-few rows, such as Modified within or Minimum file size, is shorter than both caps in any
-window it can open in, so it keeps its natural height, and a short window is the one
-place either would have run off the screen.
+not declared: `filterControls.bind` fits a dropdown when its trigger opens it and again
+when the window resizes, and a consumer that renders one open another way calls
+`filterControls.fitOpenMenus(root)` after rendering.
+Until it is fitted, the panel’s CSS keeps it inside the window.
+A panel with no box, its toolbar hidden, is not fitted, and the Files toolbar closes an
+open filter menu when it is hidden.
+
+The rule applies to every filter dropdown, not only the type filter.
+A dropdown with few rows, such as Modified within or Minimum file size, keeps its
+natural height unless the window is shorter than its top, plus that height, plus the 8
+px margin; then it scrolls like the others.
+Other menus are out of scope and keep their own caps: a pull request’s stack menu at
+`min(60vh, 480px)`, the branch and tag list at `min(50vh, 320px)`, and Quick Search at
+`min(70vh, 640px)`.
 
 Measured in headless Chrome on the Files type filter: every row is 29 px and the frame
-10 px, so the cap is 474 px, where the fixed 320 px it replaced held 8 rows; in a 413 px
-viewport the 320 px menu ran 12 px past the window’s bottom edge.
+10 px, so the cap is 474 px.
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.

@@ -470,7 +470,9 @@ class _CompiledInventoryFilter:
     filenames: frozenset[str]
     type_families: frozenset[str]
     cutoff_ns: int | None
-    # Entries modified at or after this instant are newer than an age band's far edge.
+    # An age band: entries modified before `band_cutoff_ns` are older than its near edge,
+    # and entries modified at or after `floor_ns` are newer than its far edge.
+    band_cutoff_ns: int | None
     floor_ns: int | None
     type_group: str | None
     # The group each extension classifies into, filled as this query meets them: a name
@@ -485,6 +487,10 @@ class _CompiledInventoryFilter:
 # resolves it through the enum machinery -- four Python calls -- on every row every read
 # returns, where a dictionary lookup is one.
 _ENTRY_TYPES: dict[str, EntryType] = {kind.value: kind for kind in EntryType}
+
+# The registry's fallback display group, which takes every file it does not recognize,
+# and, under Group by, every symlink.
+_OTHER_GROUP = "other"
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
@@ -2256,12 +2262,18 @@ class _PythonInventoryStore:
         ):
             return False
         if entry.type == "symlink":
-            return not selection.rejects_symlinks
+            if selection.rejects_symlinks:
+                return False
+            # A group places a symlink as it places a file: an age band by the link's
+            # own mtime, and File type in Other, since a link is no kind of file.
+            if selection.type_group is not None and selection.type_group != _OTHER_GROUP:
+                return False
+            return self._in_age_band(entry, selection)
         if selection.minimum_size is not None and entry.size < selection.minimum_size:
             return False
         if selection.cutoff_ns is not None and entry.mtime_ns < selection.cutoff_ns:
             return False
-        if selection.floor_ns is not None and entry.mtime_ns >= selection.floor_ns:
+        if not self._in_age_band(entry, selection):
             return False
         if selection.extensions or selection.filenames:
             # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
@@ -2304,6 +2316,11 @@ class _PythonInventoryStore:
                 if selection.as_of_ns is not None and selection.recency_seconds is not None
                 else None
             ),
+            band_cutoff_ns=(
+                selection.as_of_ns - int(selection.band_within_seconds * _NANOSECONDS_PER_SECOND)
+                if selection.as_of_ns is not None and selection.band_within_seconds is not None
+                else None
+            ),
             floor_ns=(
                 selection.as_of_ns - int(selection.older_than_seconds * _NANOSECONDS_PER_SECOND)
                 if selection.as_of_ns is not None and selection.older_than_seconds is not None
@@ -2312,16 +2329,24 @@ class _PythonInventoryStore:
             type_group=selection.type_group,
             group_by_extension={},
             minimum_size=selection.minimum_size,
+            # The filters drop symlinks, which are no file of any type, size, or age; a
+            # group keeps them (`_filter_matches`).
             rejects_symlinks=bool(
                 selection.extensions
                 or selection.filenames
                 or selection.type_families
                 or selection.recency_seconds
                 or selection.minimum_size
-                or selection.older_than_seconds
-                or selection.type_group
             ),
         )
+
+    @staticmethod
+    def _in_age_band(entry: FsEntry, selection: _CompiledInventoryFilter) -> bool:
+        """Whether *entry*'s mtime is inside the filter's age band, if it has one."""
+
+        if selection.band_cutoff_ns is not None and entry.mtime_ns < selection.band_cutoff_ns:
+            return False
+        return selection.floor_ns is None or entry.mtime_ns < selection.floor_ns
 
     def _registry_group_id(self, entry: FsEntry, by_extension: dict[str, str]) -> str:
         """The display group the registry classifies *entry* into (`other` when it does
