@@ -121,8 +121,7 @@ These files open in **Source**:
 
 - files with raw HTML other than comments, such as `<br>` or `<details>`
 - files with task lists (`- [ ]`) or footnotes
-- files past the rendered view’s bounds, `MARKDOWN_DIFF_MAX_BYTES` and the limits beside
-  it in `src/metabrowser/diff/markdown_projection.py`
+- files too large for the rendered view
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
@@ -136,8 +135,8 @@ Ordinary text matches files and pull-request titles together.
 Each result shows its title, number, and state, and Enter opens its Conversation.
 
 Search reads the cached catalog, so it works offline.
-Number completion covers the whole catalog, and a title search reads the newest entries
-up to `_SEARCH_TITLE_ROWS` in `src/metabrowser/builtin_plugins/github/pull_catalog.py`.
+Number completion covers the whole catalog, and a title search reads only its newest
+entries.
 
 ## Staying Current
 
@@ -145,12 +144,11 @@ The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`. While the Pulls tab or a pull request’s page is
 visible, Metabrowser rescans the repository’s list of pull requests, so new pull
 requests, state changes, and edits arrive by themselves.
-A record counts as current within the freshness window, `FRESHNESS_WINDOW_S` in
-`src/metabrowser/mirror_refresh.py`, and for as long after it as that list says GitHub
-has not changed the pull request; the page then reads
-`Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track checks,
-statuses, or mergeability, so an open pull request’s page reads those again on their own
-once a window.
+A record counts as current for 60 seconds after its fetch, the freshness window, and for
+as long after that as the list says GitHub has not changed the pull request; the page
+then reads `Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track
+checks, statuses, or mergeability, so an open pull request’s page reads those again on
+their own once a window.
 
 A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
 behind you, the pull requests you are likely to open next, within hourly limits and
@@ -203,11 +201,8 @@ measures them. No command removes a clone: to reclaim the space, stop every serv
 delete the cache directory, and the next run clones again.
 
 A first clone is refused before it starts when GitHub reports the repository over the
-size limit, `MAX_FIRST_CLONE_KB` in
-`src/metabrowser/builtin_plugins/github/provider.py`, whose comment records the
-measurements behind it.
-The refusal gives the repository’s size, the limit, and the deadline every clone must
-meet. If your network is fast enough, set a larger limit in kilobytes:
+size limit. The refusal gives the repository’s size, the limit, and the deadline every
+clone must meet. If your network is fast enough, set a larger limit in kilobytes:
 
 ```shell
 METABROWSER_MAX_FIRST_CLONE_KB=<size> metab https://github.com/owner/repo/pull/123
@@ -259,10 +254,8 @@ The record names why in `unavailable.comparison`:
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
 | `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
-The complete lists are `PullDataState` in
-`src/metabrowser/builtin_plugins/github/gh_lists.py`, `RemoteFailureState` in
-`src/metabrowser/cache/origin.py`, and `PullFetchFailure` in
-`src/metabrowser/cache/pull_refs.py`.
+Every reason comes with a message that says more, and a rarer one, such as a failed TLS
+security check or a proxy that requires authentication, is named in its message.
 [GitHub pull requests](project/architecture/arch-github-pull-requests.md) describes how
 records are prepared and how the cache refuses, and
 [mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)

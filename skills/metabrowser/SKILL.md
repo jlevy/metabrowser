@@ -90,7 +90,9 @@ Addresses on that server, after its origin:
 
 - `/view/<path>` for a file or folder, and `/view/` for the root
 - `/view/<path>#<anchor>` for a heading, using GitHub’s slug of the heading text
-- `/commit/<rev>` for a commit’s changes, and `/commit/<rev>/<path>` for one file’s
+- `/commit/<full-id>` for a commit’s changes, and `/commit/<full-id>/<path>` for one
+  file’s; the page takes only a full commit ID, so resolve a ref or short ID with
+  `git rev-parse` first
 - `/pulls` for a GitHub repository’s pull requests, and `/pull/<n>`, `/pull/<n>/files`,
   or `/pull/<n>/checks` for one of them
 
@@ -113,9 +115,9 @@ The page updates as files change, so the user can keep watching while you work.
 
 ## Read Commits and Diffs
 
-The **Commits** tab (`H`) shows the history graph of the repository holding the served
-folder; `/commit/<rev>` shows one commit’s changes against its first parent.
-From a terminal:
+The **Commits** tab (`H`) shows the history graph when the served folder is a
+repository’s root; `/commit/<full-id>` shows one commit’s changes against its first
+parent. From a terminal:
 
 - `<invocation> <repo> --diff <rev>`: one commit against its first parent
 - `<invocation> <repo> --diff <base>..<target>`: any range

@@ -14,7 +14,7 @@ on the control it reaches now.
 | `T` or `/` | Quick Search, the file finder | Always |
 | `F` | The Files tab | Always |
 | `R` | The Pulls tab: pull Requests | The Pulls tab is shown, for a GitHub repository |
-| `H` | The Commits tab: commit History | The served folder is in a Git repository |
+| `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
 | `N` or `P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
@@ -30,8 +30,6 @@ on the control it reaches now.
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |
 
-`tests/test_keymap.py` checks this table against the keys the shell, the plugin
-manifests, and the built-in plugins bind.
 A letter that appears twice, such as `C`, belongs to two screens never shown together.
 
 ## Numbered Controls
@@ -43,7 +41,7 @@ Each control is numbered only while it is shown:
 | --- | --- |
 | The Files tab | Modified within (Any age), then File type (Any type); a Git pin has only File type |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
-| A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
+| A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.
@@ -80,9 +78,8 @@ keeps it, because Safari moves focus with Option-Tab.
 
 Command-R (Control-R or F5 elsewhere) always reloads, whatever has focus.
 In the macOS app it is View > Reload Page, which also restarts a folder whose server
-failed. The app’s other keys are the ones its menus show, built in
-`apps/macos/Sources/Metabrowser/MainMenu.swift`; [the app guide](macos-app.md) describes
-the menus.
+failed. The app’s other keys are the ones its menus show, which
+[the app guide](macos-app.md) describes.
 
 ## For Plugin Authors
 

@@ -83,9 +83,9 @@ metab ./notes --no-open                    # serve, and leave the browser closed
 The server prints `Serving <ROOT> at <address>` and the loaded plugins, then serves
 until Ctrl-C.
 
-- **`--port`:** the first port to try.
-  When it is taken, the server tries the next ones, up to `DEFAULT_PORT_SEARCH_COUNT` in
-  `src/metabrowser/server_utils.py`, and prints the one it took.
+- **`--port`:** the first port to try, 8411 by default.
+  When it is taken, the server tries a bounded run of the ports after it and prints the
+  one it took.
 - **`--host`:** the address to bind, the loopback address by default.
   Do not bind a served folder to an untrusted network; see the
   [security policy](../SECURITY.md).
@@ -177,7 +177,8 @@ GitHub-specific failures, private repositories, and large repositories are in
 This is the reference for the commands; for the workflow in a browser, see
 [reviewing pull requests](reviewing-pull-requests.md).
 A repository URL and a checkout whose `origin` is on github.com both offer the Pulls
-tab. A pull-request URL pins the pull request’s head commit:
+tab. A pull-request URL pins the pull request’s head commit; a `/pull/<n>/files` or
+`/pull/<n>/checks` URL opens that tab, and `/pull/<n>/commits/<id>` pins that commit.
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
@@ -188,20 +189,11 @@ metab "$URL" --show README.md                            # one file at the head
 metab "$URL" --api '/api/plugin/github/pull?number=123'  # the whole record
 ```
 
-The first `--show` or `--api` of a pull request reads it through `gh`, fetches its
-commits, a fork’s included, and caches the record.
-Later ones answer from the cache without `gh` or the network, so they work offline.
-`--no-serve` refreshes the record, sending the ETags it holds, so an unchanged part
-costs nothing against GitHub’s rate limit.
-
-The `pull` route reports the record with a `state`: `current` within the freshness
-window (`FRESHNESS_WINDOW_S` in `src/metabrowser/mirror_refresh.py`), `stale` after it,
-or `absent` with a reason.
-Its `comparison_route` serves the Changes diff, from the merge base to the head, as a
-[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document.
-Its `snapshot_route` opens one file at either end: append `&side=base` or `&side=head`,
-`&path=` with the path’s wire form, and `&mode=download` for its bytes alone.
-`--format json` prints the answer alone, for a tool such as `jq`:
+The first `--show` or `--api` of a pull request reads it through `gh` and caches the
+record; later ones answer from the cache, offline too, and `--no-serve` refreshes it.
+The record’s `comparison_route` serves the Changes diff as a
+[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document,
+and `--format json` prints the answer alone, for a tool such as `jq`:
 
 ```shell
 ROUTE=$(metab "$URL" --api '/api/plugin/github/pull?number=123' --format json |
@@ -217,40 +209,24 @@ To read a file at the head, run Git in the mirror with `pin` and `location` from
 git -C <location> show <pin>:README.md
 ```
 
-A refresh is a POST with a JSON body, which `--data` sends; the command waits for it,
-prints its outcome under `after:`, and exits 1 when it failed.
-Without `"retry": true` it starts nothing for a number with no record or one refreshed
-inside its window, and `"comparison": true` also prepares Changes, which a checkout
-needs before its first Changes:
+A refresh and the catalog job are POST routes that take a JSON body through `--data`;
+the command waits for a refresh and exits 1 when it failed:
 
 ```shell
 echo '{"number": 123, "retry": true}' > refresh.json
 metab "$URL" --api /api/plugin/github/pull-refresh --data refresh.json
-```
-
-A `/pull/<n>/files` or `/pull/<n>/checks` URL selects the same pull request, and a
-server opens at that tab; `/pull/<n>/commits/<id>` pins that commit, a fork’s included.
-Other pull-request pages and the `/pulls` list are refused.
-
-The repository’s catalog of pull requests is available from any URL of it, and the first
-command below starts or joins a resumable job that fills it:
-
-```shell
 echo '{"state": "open", "target": 500}' > catalog.json
 metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data catalog.json
 metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&limit=100'
 ```
 
-`state` is `open`, `closed` (merged included), or `all`, and `limit` and `after` page
-through the cached catalog, offline too.
-With the optional [gh-stack extension](installation.md#git-and-github-setup),
-`/api/plugin/github/stacks` reads native stack membership and
-`/api/plugin/github/stacks-refresh` refreshes it.
-
-A pull request that cannot be read does not fail the command, so a script reads the
-`pull_request` line or the route’s `state`, not the exit status.
+[GitHub Pull Requests](project/architecture/arch-github-pull-requests.md#routes) lists
+every route, the stack routes among them, which need the optional
+[gh-stack extension](installation.md#git-and-github-setup); each handler’s docstring
+holds its contract. A pull request that cannot be read does not fail the command, so a
+script reads the `pull_request` line or the route’s `state`, not the exit status.
 [When something does not open](reviewing-pull-requests.md#when-something-does-not-open)
-lists every reason and what to do.
+lists the reasons and what to do.
 
 ### Beside a Checkout
 
@@ -332,8 +308,7 @@ status: 200
 
 - **`--format json` or `yaml`:** stdout is the answer alone, so it parses.
 - **`--data FILE`:** sends `FILE`, or stdin for `-`, as a POST body.
-  A body larger than any route accepts (`MAX_REQUEST_BODY_BYTES` in
-  `src/metabrowser/server.py`) is refused before anything is sent.
+  A body larger than any route accepts is refused before anything is sent.
 - **Following work:** a POST that starts background work, such as a refresh, waits for
   it and prints how it ended under `after:`.
 - **Exit status:** non-zero when the route answers outside 2xx.
@@ -343,9 +318,8 @@ status: 200
 
 Each command runs its own server in process for the life of the command, so nothing is
 left running and a `metab` already serving the folder is neither needed nor consulted.
-Routes whose answer depends on the whole file inventory, `_INDEX_DEPENDENT` in
-`src/metabrowser/cli/api_cli.py`, wait for the scan to finish, at most `--index-timeout`
-seconds; the rest answer at once.
+Routes whose answer depends on the whole file inventory, such as `/api/tree`, wait for
+the scan to finish, at most `--index-timeout` seconds; the rest answer at once.
 To script several such routes over a large tree, one `--walk` is cheaper than repeated
 `/api/tree` calls, because each command scans again.
 
@@ -525,25 +499,25 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_PLUGINS_DIRS` | Plugin directories, separated by `:`, loaded before any `--plugins-dir` |
 | `METABROWSER_LOG_LEVEL` | Log verbosity, as `--log-level`, which overrides it |
 | `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |
-| `METABROWSER_SLOW_SERVER_MS` | The time past which a request is logged as slow; the default is `SLOW_OPERATION_LOG_SECONDS` in `src/metabrowser/settings.py` |
+| `METABROWSER_SLOW_SERVER_MS` | The time, in milliseconds, past which a request is logged as slow, 2,000 by default |
 | `METABROWSER_DEBUG` | `1` enables the `/_debug/tasks` and `/_debug/inventory` diagnostics |
-| `METABROWSER_MAX_FIRST_CLONE_KB` | The size limit, in kilobytes, on a first clone from GitHub, instead of `MAX_FIRST_CLONE_KB` in `src/metabrowser/builtin_plugins/github/provider.py` |
+| `METABROWSER_MAX_FIRST_CLONE_KB` | The size limit, in kilobytes, on a first clone from GitHub; a refused clone names the default |
 | `METABROWSER_GCP_PROJECT` | The default `--project` for `--remote --gcp` |
-| `METABROWSER_INVENTORY_PROVIDER` | The inventory engine, one of `InventoryProvider` in `src/metabrowser/inventory_engine/factory.py` |
-| `METABROWSER_TEXT_PREVIEW_BYTES`, `METABROWSER_TEXT_PREVIEW_MAX_BYTES`, `METABROWSER_HIGHLIGHT_MAX_BYTES` | Text loading and highlighting budgets, `TEXT_PREVIEW_CHUNK_BYTES`, `TEXT_PREVIEW_REQUEST_MAX_BYTES`, and `SYNTAX_HIGHLIGHT_MAX_BYTES` in `src/metabrowser/settings.py` |
-| `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, defined in `src/metabrowser/builtin_plugins/binary/sidekick.py` |
-| `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets, defined in `src/metabrowser/builtin_plugins/structured/parser.py` |
+| `METABROWSER_INVENTORY_PROVIDER` | The inventory engine; this build ships `python` alone, the default |
+| `METABROWSER_TEXT_PREVIEW_BYTES`, `METABROWSER_TEXT_PREVIEW_MAX_BYTES`, `METABROWSER_HIGHLIGHT_MAX_BYTES` | Text loading and highlighting budgets, in bytes |
+| `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, in bytes |
+| `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets: the largest file parsed, in bytes, and how many parses are kept |
 | `METABROWSER_METAB` | Read by the [macOS app](macos-app.md), not by `metab`: the `metab` the app runs |
 
-[Rendering large content](large-content-rendering.md) explains the rendering budgets.
-Git and `gh` read their own environment, as
+[Rendering large content](large-content-rendering.md) explains the rendering budgets and
+what sets each one. Git and `gh` read their own environment, as
 [installation](installation.md#git-and-github-setup) describes.
 
 ### `.env` Files
 
 `metab` looks for `.env` and `.env.local` in the current directory and each directory
-above it, and takes only `METABROWSER_LOG_LEVEL` and `METABROWSER_REQUEST_LOG` from them
-(`ALLOWED_KEYS` in `src/metabrowser/dotenv.py`); an exported value wins.
+above it, and takes only `METABROWSER_LOG_LEVEL` and `METABROWSER_REQUEST_LOG` from
+them; an exported value wins.
 A repository you browse can hold its own `.env`, so a file cannot change trust, plugins,
 hosts, budgets, or what runs; Metabrowser warns when it ignores one of its own names
 there.

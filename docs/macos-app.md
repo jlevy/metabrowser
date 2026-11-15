@@ -51,12 +51,10 @@ reads it.
   in a new tab of that folder’s window.
   A clicked link to another site opens in your default browser; a page cannot open one
   by itself.
-- **Background tabs:** the tab each window shows keeps its page, and so do the
-  background tabs shown most recently, up to
-  `TabDiscardPolicy.defaultLiveBackgroundTabs` in
-  `apps/macos/Sources/ShellCore/Web/TabDiscardPolicy.swift`. Any other background tab
-  gives up its page to save memory and reloads it when shown, at the top of the page and
-  without its Back and Forward history.
+- **Background tabs:** the tab each window shows keeps its page, and so do the three
+  background tabs shown most recently.
+  Any other background tab gives up its page to save memory and reloads it when shown,
+  at the top of the page and without its Back and Forward history.
 
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
@@ -75,8 +73,7 @@ Opening a file adds the folder it opened in.
 
 The app saves its folder windows as you work and once more at quit: each window’s frame,
 tabs, and shown tab, and each tab’s folder and page.
-It keeps the file in its folder under `~/Library/Application Support` (`SessionStore` in
-`apps/macos/Sources/ShellCore/Folders/SavedSession.swift`).
+It keeps the file in its folder under `~/Library/Application Support`.
 
 At the next launch the windows and tabs come back, and only each window’s shown tab
 loads its page. The servers start one at a time, the front tab’s first.
@@ -87,8 +84,7 @@ loads its page. The servers start one at a time, the front tab’s first.
   no prompt for a folder nobody is looking at.
 - **A moved folder:** a saved folder that now leads somewhere else through a symbolic
   link waits for its tab, then opens where the link leads.
-- **The budget:** a launch rebuilds at most the front windows and tabs that
-  `RestoreBudget.standard` in the same file allows.
+- **The budget:** a launch rebuilds at most the front 20 windows and 50 tabs.
 - **Turning it off:** clear Settings > “Reopen the last session’s folders when
   Metabrowser opens”. The session is still saved.
 
@@ -103,16 +99,16 @@ Its buttons are **Find Again**, **Choose metab…**, **Run Doctor** (`metab --do
 and **Reveal Logs**; **Places looked** lists each place the last search tried and what
 it found; and below them are Open folders in and the session setting.
 
-At first launch, and again on Find Again, the app looks for `metab`: the one it used
-last, `METABROWSER_METAB`, where uv and Homebrew install commands, and last your login
-shell’s `PATH`, in the order `RuntimeDiscovery` in
-`apps/macos/Sources/ShellCore/Runtime/RuntimeDiscovery.swift` sets.
-The login shell runs only when the other places miss `metab`, `git`, or `gh`; it runs
-your shell’s startup files in the app’s name, which can take seconds.
+At first launch, and again on Find Again, the app looks for `metab` in several places,
+among them the one it used last, `METABROWSER_METAB`, and where uv and Homebrew install
+commands; Places looked lists them in the order tried.
+Your login shell’s `PATH` comes last: the login shell runs only when the other places
+miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the app’s name,
+which can take seconds.
 
-- **The version:** the app runs a `metab` at least as new as `MetabRequirement.minimum`,
-  and checks each candidate by running `metab --exit-on-eof --version`. A build from
-  before `--exit-on-eof` is too old whatever its number says.
+- **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
+  running `metab --exit-on-eof --version`. A build from before `--exit-on-eof` is too
+  old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
   A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
   names each file it would not run, and why.
@@ -144,9 +140,8 @@ Once a release meets it, the steps end in uv:
 - with uv, `uv tool install metabrowser`;
 - with a `metab` in uv’s tool directory that does not run,
   `uv tool install --reinstall metabrowser`;
-- with an older `metab`, the upgrade command `MetabRequirement.upgradeCommand` builds,
-  which asks for the minimum or later rather than an exact version, so a later
-  `uv tool upgrade` can move past it.
+- with an older `metab`, an upgrade command that asks for the minimum or later rather
+  than an exact version, so a later `uv tool upgrade` can move past it.
 
 The app keeps watching, and when a usable `metab` appears, it opens the folders you
 asked for by itself.

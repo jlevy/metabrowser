@@ -91,9 +91,10 @@ See [the Mac app](docs/macos-app.md) for using it and
 ## Scale
 
 Metabrowser indexes a tree in the background, so the first view does not wait for a full
-crawl. [The scale benchmark](docs/scale-benchmark.md) has the figures and how to
-reproduce them. Indexing stops at `INVENTORY_MAX_FILES` files, set in
-`src/metabrowser/settings.py`; browsing larger trees is planned (see Direction).
+crawl. [The scale benchmark](docs/scale-benchmark.md) measures how soon a large tree
+shows counts, how long its scan takes, and the server’s memory, on a corpus anyone can
+regenerate. Indexing stops at 500,000 files; browsing larger trees is planned (see
+Direction).
 
 ## Extend It
 
@@ -142,7 +143,7 @@ Using Metabrowser:
 - [The Mac app](docs/macos-app.md): windows, tabs, recent folders, and restore
 - [Keyboard shortcuts](docs/keyboard-shortcuts.md): every shortcut
 - [Command line](docs/command-line.md): every mode, option, and environment variable
-- [Scale benchmark](docs/scale-benchmark.md): what it measures and its results
+- [Scale benchmark](docs/scale-benchmark.md): what it measures and how to run it
 - [Changelog](CHANGELOG.md) and [roadmap](TODO.md)
 
 Extending it:
@@ -161,10 +162,10 @@ Working on it:
 - [End-to-end testing](docs/e2e-testing.md): which test layer proves what
 - [Publishing](docs/publishing.md): the tag-driven release path
 - [Building the Mac app](apps/macos/README.md): build, test, and release the app
-- [Rendering large content](docs/large-content-rendering.md): limits for content views
-- [Web performance framework](docs/web-performance-framework.md): browser measurement
-- [Real-time debugging](docs/realtime-debugging.md): timing signals and transcripts
-- [Engine performance model](docs/engine-performance-model.md): per-entry engine costs
+- Standards: [rendering large content](docs/large-content-rendering.md),
+  [web performance](docs/web-performance-framework.md),
+  [real-time debugging](docs/realtime-debugging.md), and the
+  [engine performance model](docs/engine-performance-model.md)
 - [Project records](docs/project/README.md): specs, research, and architecture
 
 Policies:

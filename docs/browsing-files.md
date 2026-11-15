@@ -26,9 +26,8 @@ The Files tab is a tree of the served folder beside the selected file or folder.
 
 Large trees are indexed in the background: the first view does not wait for the whole
 walk, and counts fill in as it goes.
-The index stops at `INVENTORY_MAX_FILES` in `src/metabrowser/settings.py`; past it, the
-tree and Quick Search say that the index is incomplete.
-[Keyboard shortcuts](keyboard-shortcuts.md) lists every key.
+The index stops at 500,000 files; past it, the tree and Quick Search say that the index
+is incomplete. [Keyboard shortcuts](keyboard-shortcuts.md) lists every key.
 
 ### Folders: Overview and Treemap
 
@@ -51,18 +50,16 @@ colored by the same families.
 Click a folder’s rectangle to go into it and a file’s to open it.
 The Files or Bytes choice and Show ignored apply to Treemap too.
 
-The families and their extensions come from
-`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`, which the
+The Details table lists each family’s extensions; the
 [File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
-specifies.
+defines the families.
 
 ### Filters and the Recent View
 
 The bar above the tree narrows it:
 
 - **Modified within** keeps files changed within a window, from Live to the past month.
-  Live means changed in the last `LIVE_FILE_WINDOW_S` seconds
-  (`src/metabrowser/settings.py`).
+  Live means changed in the last 90 seconds.
 - **File type** keeps the categories, families, or exact extensions you choose.
 - The **More filters** chevron opens **Minimum file size** and **Show ignored**, which
   is on by default and shows gitignored files dimmed; turn it off to hide them.
@@ -76,8 +73,8 @@ Setting **Modified within** turns the tree into the **Recent** view: only the ma
 files, grouped by folder and sorted newest first.
 A chain of folders that each hold one folder shows as one row, and a folder whose files
 were all written at about the same time starts collapsed.
-The view holds at most `RECENT_DEFAULT_LIMIT` files (`src/metabrowser/settings.py`);
-when more match, it leaves out gitignored files first and says how many matched.
+The view holds at most 5,000 files; when more match, it leaves out gitignored files
+first and says how many matched.
 A pinned Git revision has no modification times, so it offers only File type and Minimum
 file size.
 
@@ -102,9 +99,8 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Other binary files | Bytes, a view of the file’s bytes |
 
 A patch file also expands in the tree like a folder, with one row per changed file.
-A compressed copy of a supported file (`GZIP_SUFFIX` or `ZLIB_SUFFIX` in
-`src/metabrowser/gz_io.py`) opens as the file it holds.
-A large source file opens with its beginning and a **Load more** button.
+A compressed copy of a supported file, whose name ends in `.gz` or `.zlib`, opens as the
+file it holds. A large source file opens with its beginning and a **Load more** button.
 Plugins add views for other formats ([plugin authoring](plugins.md)).
 
 ### Markdown
@@ -136,8 +132,7 @@ Obsidian wiki links work too:
   picking one.
 - `![[note]]`, `![[note#heading]]`, and `![[note#^block]]` embed that note, heading, or
   block in the document.
-  Embeds nest, within the limits in
-  `src/metabrowser/builtin_plugins/markdown/transclusion.js`; past them, or in a cycle,
+  Embeds nest, within limits on depth, count, size, and time; past them, or in a cycle,
   the embed says why it stopped.
 - `![[image.png]]` and other media embed the file.
 
@@ -146,14 +141,13 @@ Obsidian wiki links work too:
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
   only the rows in view.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
-  text, tool calls, and tool results, and each row expands to its raw JSON. For
-  coding-agent session logs, Metabrowser recognizes the agents the `agent_log` built-in
-  plugin’s manifest lists (`src/metabrowser/builtin_plugins/agent_log/manifest.toml`),
-  shows the agent in the header, and adds **Charts**.
+  text, tool calls, and tool results, and each row expands to its raw JSON. For the
+  session logs of Claude Code, Gemini CLI, and Pi, Metabrowser shows the agent in the
+  header and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
-- **Code and text:** Source highlights the languages `SYNTAX_LANGUAGE_BY_EXTENSION` in
-  `src/metabrowser/file_extensions.py` maps, and shows plain text for the rest, `.log`
-  files among them.
+- **Code and text:** Source highlights common programming, markup, and configuration
+  languages by file extension, and shows plain text for the rest, `.log` files among
+  them.
 
 ### HTML
 
@@ -173,13 +167,9 @@ The server watches the served folder and streams changes to the page.
 - **An open file** shows its new content the next time you open it, or when you reload.
 
 Files that a running process writes get more.
-Metabrowser watches files in a folder named `.logs` or `.state` (`LOGS_DIR` and
-`STATE_DIR` in `src/metabrowser/constants.py`) whose extension is in
-`BROWSER_TRACKABLE_EXTS` (`src/metabrowser/file_extensions.py`). One that is being
-written shows an activity dot in the tree, and when it stops, an open view of it
-reloads.
-How long a file counts as being written is `ACTIVE_TRACKER_QUIET_POLLS` polls of
-`ACTIVE_TRACKER_INTERVAL_S` (`src/metabrowser/settings.py`).
+Metabrowser watches the files in a folder named `.logs` or `.state` whose names end in
+`.csv`, `.json`, `.jsonl`, `.md`, `.pid`, `.yaml`, or `.yml`. One that is being written
+shows an activity dot in the tree, and when it stops, an open view of it reloads.
 
 ### Tailing a JSONL Log
 
@@ -191,8 +181,7 @@ and **Run ended** when the tail closes because the file was removed or replaced.
 
 - A `.pid` file beside the log names its writer; when that process has exited, the log
   is not tailed.
-- Compressed logs, and logs larger than `_LARGE_FILE_BYTES` in
-  `src/metabrowser/jsonl_view.py`, open but are not tailed.
+- Compressed logs, and very large ones, open but are not tailed.
 - Charts count the events there were when they loaded; they do not grow with the tail.
 
 ### When a Live Update Is Missing

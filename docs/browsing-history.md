@@ -19,7 +19,7 @@ covers files outside what that folder serves.
 The graph lists, newest first in topological order:
 
 - **For a folder:** the commits reachable from `HEAD`, its upstream, and the trunk
-  branches that `trunk_refs()` in `src/metabrowser/git/log.py` names.
+  branches `main` and `master`, locally and on `origin`.
 - **For a repository URL:** the history of the commit the server is pinned to.
 
 Each row is the graph, the commit’s branch and tag chips, its subject, its author, and

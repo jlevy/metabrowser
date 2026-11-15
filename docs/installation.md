@@ -5,22 +5,6 @@ uv installs and runs it.
 The native macOS app and the agent skill are optional; each runs a `metab` you install
 here.
 
-## Release Status
-
-- **`metab`:** these guides describe the code on `main`. The newest release on
-  [PyPI](https://pypi.org/project/metabrowser/) can trail it: the Unreleased section of
-  the [changelog](../CHANGELOG.md) lists what `main` has that the release lacks, and
-  `metab --version` names the version you have.
-- **The macOS app:** an alpha preview that you build from source.
-  Its release pipeline builds a disk image and a Homebrew cask but has published
-  neither, so there is no signed, notarized download.
-- **The `metab` the app runs:** the app needs a `metab` at least as new as
-  `MetabRequirement.minimum` in `apps/macos/Sources/ShellCore/Setup/MetabVersion.swift`,
-  and no release on PyPI meets it yet (`MetabRequirement.isReleased` in the same file
-  changes with the release that does).
-  Until then the app runs the `metab` of a source checkout, as
-  [The macOS App](#the-macos-app) describes.
-
 ## Requirements
 
 | To | You need |
@@ -29,9 +13,6 @@ here.
 | Read commits, open repositories, and review pull requests | Git, and the GitHub CLI for GitHub, as [Git and GitHub Setup](#git-and-github-setup) describes |
 | Run the macOS app | A Mac with Apple silicon, on macOS 26 or later |
 | Build the macOS app | Xcode 26.6 or later, with Swift 6.3 or later |
-
-`tests/test_installation_requirements.py` holds each figure here to the file that sets
-it.
 
 ## Install uv
 
@@ -96,6 +77,19 @@ make install
 uv --config-file uv.toml run --frozen metab ./path/to/directory
 ```
 
+## Release Status
+
+- **`metab`:** these guides describe the code on `main`, and the newest release on
+  [PyPI](https://pypi.org/project/metabrowser/) can trail it.
+  The Unreleased section of the [changelog](../CHANGELOG.md) lists what `main` has that
+  the release lacks, and `metab --version` names the version you have.
+- **The macOS app:** an alpha preview that you build from source.
+  Its release pipeline can build a disk image and a Homebrew cask, but neither is
+  published, so there is no signed, notarized download.
+- **The `metab` the app runs:** the app needs `metab` 0.12.1 or later, and no release on
+  PyPI has it yet. Until one does, the app runs the `metab` of a source checkout, as
+  [The macOS App](#the-macos-app) describes.
+
 ## Git and GitHub Setup
 
 Git and the GitHub CLI (`gh`) are separate tools; installing Metabrowser installs
@@ -117,9 +111,9 @@ brew install git gh
 
 Elsewhere, follow the [Git](https://git-scm.com/install/) and
 [GitHub CLI](https://github.com/cli/cli#installation) instructions.
-Metabrowser refuses to clone or fetch with a Git below its security floor
-(`ACQUISITION_MINIMUM` and `ACQUISITION_PATCHED_TRACKS` in
-`src/metabrowser/git/process.py`) and names the versions it accepts.
+Metabrowser refuses to clone or fetch with a Git older than 2.43.7, or with a release of
+a later series that lacks that series’ security fixes, and says which versions it
+accepts.
 
 Check the tools and the signed-in account in the terminal that runs `metab`:
 
@@ -212,6 +206,21 @@ agent runs: set `exclude-newer` in the uv configuration of the agent’s environ
 `UV_EXCLUDE_NEWER` in that environment, as the
 [supply-chain policy](../SUPPLY-CHAIN-SECURITY.md) requires.
 [Working with agents](working-with-agents.md) describes what the skill does.
+
+## Uninstall
+
+```shell
+uv tool uninstall metabrowser
+```
+
+That removes both commands.
+The cache of cloned repositories and pull-request records, and `config.yml`, stay in the
+directories [storage locations](command-line.md#storage-locations) names; delete them,
+with no server running, to remove those too.
+To remove the macOS app, quit it and move it to the Trash; Help > Reveal Logs Folder
+shows the logs it leaves, and it keeps its saved session in its folder under
+`~/Library/Application Support`. Remove the agent skill with the installer that added
+it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

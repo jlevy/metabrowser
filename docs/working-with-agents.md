@@ -40,8 +40,7 @@ Each prints the page it serves:
 Serving /path/to/repo at http://127.0.0.1:<port>/view/docs/plan.md
 ```
 
-The port is the first free one from the default (`DEFAULT_BROWSER_PORT` in
-`src/metabrowser/settings.py`), so the agent reads it from that line.
+The port is the first free one from 8411, so the agent reads it from that line.
 `--no-open` leaves the choice of browser and window to you: the agent may run headless,
 in a sandbox, or on another machine.
 
@@ -52,8 +51,8 @@ addresses on the same port:
 | --- | --- |
 | `/view/<path>` | A file or folder; `/view/` is the served folder |
 | `/view/<path>#<heading>` | A heading in a document, by its GitHub-style anchor |
-| `/commit/<rev>` | What one commit changed |
-| `/commit/<rev>/<path>` | One file’s change in that commit |
+| `/commit/<full-id>` | What one commit changed, by its full ID from `git rev-parse` |
+| `/commit/<full-id>/<path>` | One file’s change in that commit |
 | `/pulls` | The repository’s pull requests |
 | `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request, its changes, and its checks |
 
@@ -70,14 +69,12 @@ Phase 3).
 
 Coding-agent session logs are JSONL files, and Metabrowser opens them as timelines.
 
-- **Recognized agents:** the `agent_log` built-in plugin’s manifest
-  (`src/metabrowser/builtin_plugins/agent_log/manifest.toml`) lists the agents whose
-  logs open with three views: **Log**, a timeline of messages, tool calls, and results
-  with filter chips; **Charts**, the session’s events by kind over time; and **Raw
-  JSON**. The header names the agent and the run’s state.
-- **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON. The parser also
-  reads the adapters in `_BUILTIN_ADAPTERS` (`src/metabrowser/logutil/parsing.py`) that
-  have no manifest entry, so their timelines are parsed too, without Charts.
+- **Recognized agents:** the session logs of Claude Code, Gemini CLI, and Pi open with
+  three views: **Log**, a timeline of messages, tool calls, and results with filter
+  chips; **Charts**, the session’s events by kind over time; and **Raw JSON**. The
+  header names the agent and the run’s state.
+- **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON. Codex logs are
+  parsed into the same timeline, without Charts.
 - **While the agent runs:** a log under a `.logs` or `.state` folder that is being
   written tails in the Log view as events arrive
   ([tailing a JSONL log](browsing-files.md#tailing-a-jsonl-log)).
