@@ -632,6 +632,60 @@ It also records time to a double-animation-frame ready boundary, frames without 
 commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
 mounted comparison count.
 
+### Git Route Pairs
+
+`git-route-pairs.mjs` times Git routes back to back on two servers serving the same
+corpus, the server half of a Git hypothesis:
+
+```shell
+node explorations/performance-loop/git-route-pairs.mjs \
+  --control http://127.0.0.1:8910 --candidate http://127.0.0.1:8911 \
+  --n 15 --out .bench/git-routes.json \
+  --comparison <full commit ID> --comparison <another>
+```
+
+Start each server first with its own `--cache-dir` and `--config-dir`, and wait for
+`/api/index/progress` to say done.
+For each route there is one unrecorded warm-up request a server, then `n` pairs, odd
+pairs asking the control first and even pairs the candidate.
+Every request sends `accept-encoding: gzip` and reads the whole body.
+
+The routes are `/api/git/log?limit=250`, `/api/git/summary`, and `/api/git/refs`. Each
+`--comparison REV` adds `/api/plugin/diff/comparison?revision=REV`, the diff of a commit
+with its first parent that a click in the Commits list asks for, and
+`--comparisons-only` times those alone.
+Before a comparison’s pairs, one unrecorded request to each build without gzip records
+whether the two answer it byte for byte (`answer.answers_equal`). A comparison of a
+folder is computed for every request; a store’s, named by full commit IDs, is kept after
+the first, so on a store the pairs time the kept answer.
+
+A sample records its client time, start offset, status, body bytes, whether an ETag came
+back, and `Server-Timing`, and from that header’s `git` entry the `git` time (`git_ms`)
+and the Git processes the request started (`git_processes`). The entry counts them in
+its description, `git;dur=41.2;desc="2 processes"`, from H116 on; an older build’s
+samples hold null. To count an older build’s processes, start each server with
+`GIT_TRACE2_EVENT` naming an empty directory, where Git writes one file a process, and
+pass the directories as `--control-trace` and `--candidate-trace`. A sample then records
+the files that appeared while its request ran (`trace_processes`) and the commands they
+name (`trace_commands`), which show any process the server started on its own in that
+window.
+Only a folder’s reads are traced: a store’s Git runs with every inherited `GIT_*`
+variable dropped.
+Tracing writes as Git runs, so a traced pass counts and is never timed;
+the timed round runs untraced and reads `git_processes`. The summary gives, per build,
+each route’s median and range, the pair ratios, and the counts each build reported.
+
+H116’s untimed count (2026-11-14) on a four-commit folder, the branch against the build
+it was cut from: a commit within `MAX_LISTED_PATCH_BYTES` took 4 processes before and 2
+after (`rev-parse`, `diff`), a 450 KB commit past it 4 and 3, and the root commit 6 and
+6; every answer was byte-equal, and the candidate’s own count matched its trace on every
+sample.
+
+`--check-repo` with `--check-control` and `--check-candidate` adds a correctness check
+between pairs, untimed: a scratch clone the timed servers never serve, whose refs it
+moves before asking both builds for the refs, the summaries, and the first log page,
+which must agree. exp-061 is the round that used it.
+
 ### File View Navigation Scenario
 
 Use the parallel file scenario to measure ordinary connected plugin views rather than
