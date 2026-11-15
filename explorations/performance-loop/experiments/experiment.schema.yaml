@@ -38,9 +38,21 @@ properties:
       viewport:
         type: string
         description: Browser viewport the run was measured at, e.g. 1280x900. The tree pages rows against it.
-      cold: 
+      cold:
         type: boolean
         description: Fresh port (empty HTTP cache) and fresh server (scan running).
+      power:
+        type: object
+        additionalProperties: false
+        required: [low_power_mode, source]
+        description: >-
+          The judged power mode: the pair of Low Power Mode (`pmset -g` lowpowermode) and
+          power source (`pmset -g batt`), as read before the series' first attempt. The
+          mode decides a series' regime, so a pair read in another mode judges nothing.
+          Older records keep this in host_system.
+        properties:
+          low_power_mode: {type: integer, enum: [0, 1]}
+          source: {type: string, enum: [AC, battery]}
   method:
     type: object
     additionalProperties: false
@@ -63,6 +75,21 @@ properties:
         properties:
           path: {type: string}
           sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+      analysis:
+        type: array
+        minItems: 1
+        description: >-
+          The exclusion and analysis scripts the protocol registered by sha256, committed
+          before the first result was read: each a path beside the record and the sha256 of
+          that file as committed with the record. A change after a result was read is a
+          deviation the record rules on. tests/test_experiment_storage.py checks both.
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, sha256]
+          properties:
+            path: {type: string}
+            sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
       bytecode:
         type: string
         enum: [cached, uncached]

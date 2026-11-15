@@ -4,8 +4,9 @@ The checks behind docs/development.md, "Durable Storage", for experiment records
 
 - no record points its evidence at a session scratchpad, or, outside a fenced recipe, at an
   operating system temporary directory;
-- every file a record names is in the repository: its protocol, with the sha256
-  `method.protocol` gives, the files `method.record` names, and every relative link;
+- every file a record names is in the repository: its protocol and registered analysis
+  scripts, with the sha256 `method.protocol` and `method.analysis` give, the files
+  `method.record` names, and every relative link;
 - a record that cites a pre-registration by sha256, or is dated from the rule on, names its
   committed protocol in `method.protocol`.
 """
@@ -99,9 +100,34 @@ def _transient_lines(text: str) -> list[str]:
     ]
 
 
-def _protocol_schema() -> dict[str, Any]:
+def _method_schema(field: str) -> dict[str, Any]:
     schema = yaml.safe_load(SCHEMA.read_text(encoding="utf-8"))
-    return schema["properties"]["method"]["properties"]["protocol"]
+    return schema["properties"]["method"]["properties"][field]
+
+
+def _check_committed_beside(name: str, field: str, entry: dict[str, Any]) -> None:
+    """A `{path, sha256}` entry names a file beside the records, committed with that hash."""
+    target = (EXPERIMENTS / str(entry["path"])).resolve()
+    assert target.parent == EXPERIMENTS, f"{name}: {field} {entry['path']} is not beside the record"
+    assert target.is_file(), f"{name}: {field} {target.name} is not committed"
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    assert digest == entry["sha256"], (
+        f"{name}: {field} {target.name} hashes to {digest}, not the {entry['sha256']} the "
+        "record cites; a file a recorded round registered is not edited again"
+    )
+
+
+def _check_method_files(name: str, method: dict[str, Any]) -> None:
+    """The committed protocol and registered analysis scripts a record's method names."""
+    protocol = method.get("protocol")
+    if protocol is not None:
+        jsonschema.validate(protocol, _method_schema("protocol"))
+        _check_committed_beside(name, "method.protocol", protocol)
+    analysis = method.get("analysis")
+    if analysis is not None:
+        jsonschema.validate(analysis, _method_schema("analysis"))
+        for entry in analysis:
+            _check_committed_beside(name, "method.analysis", entry)
 
 
 @pytest.mark.parametrize("path", _records(), ids=_id)
@@ -139,19 +165,7 @@ def test_known_lost_records_exist_and_are_dated_before_the_rule() -> None:
 def test_every_file_a_record_names_is_in_the_repository(path: Path) -> None:
     front, body = _split(path)
     method = front.get("method") or {}
-    protocol = method.get("protocol")
-    if protocol is not None:
-        jsonschema.validate(protocol, _protocol_schema())
-        target = (EXPERIMENTS / str(protocol["path"])).resolve()
-        assert target.parent == EXPERIMENTS, (
-            f"{path.name}: protocol {protocol['path']} is not beside the record"
-        )
-        assert target.is_file(), f"{path.name}: protocol {target.name} is not committed"
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        assert digest == protocol["sha256"], (
-            f"{path.name}: {target.name} hashes to {digest}, not the {protocol['sha256']} "
-            "the record cites; a recorded round's protocol is not edited again"
-        )
+    _check_method_files(path.name, method)
     record = method.get("record")
     if isinstance(record, str):
         for name in NAMED_FILE.findall(record):
@@ -211,6 +225,24 @@ def test_the_transient_check_sees_what_it_must() -> None:
     )
     flagged = [line.split(":", 1)[0] for line in _transient_lines(sample)]
     assert flagged == ["1", "2", "3", "4", "5", "6"]
+
+
+def test_the_analysis_check_refuses_what_it_must() -> None:
+    script = "exp-079-exclude.mjs"
+    digest = hashlib.sha256((EXPERIMENTS / script).read_bytes()).hexdigest()
+    _check_method_files("synthetic", {"analysis": [{"path": script, "sha256": digest}]})
+    wrong = "0" * 64 if digest != "0" * 64 else "1" * 64
+    refused = {
+        "hashes to": [{"path": script, "sha256": wrong}],
+        "is not committed": [{"path": "exp-999-analyze.mjs", "sha256": digest}],
+        "is not beside": [{"path": "../README.md", "sha256": digest}],
+    }
+    for message, analysis in refused.items():
+        with pytest.raises(AssertionError, match=message):
+            _check_method_files("synthetic", {"analysis": analysis})
+    for malformed in ([], {"path": script, "sha256": digest}, [{"path": script}]):
+        with pytest.raises(jsonschema.ValidationError):
+            _check_method_files("synthetic", {"analysis": malformed})
 
 
 def test_an_unclosed_fence_is_refused() -> None:
