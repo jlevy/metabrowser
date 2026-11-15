@@ -700,7 +700,8 @@ Each run records the corpus’s commit, cleanliness, trunk, and a hash of all it
 its start and end, and refuses itself (`corpus_changed`) if any moved.
 
 `--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup`
-measures a cold server, and `--keep-going` continues past refusals to list them all.
+measures a cold server, `--keep-going` continues past refusals to list them all, and
+`--memory-after ID,...` reads retained memory after the named transitions (below).
 None of them is the standard regime: such a run says so when it starts, records
 `regime_flags`, and writes to `diagnostic.jsonl` instead of `runs.jsonl` unless `--out`
 names a file, and `compare` refuses to mix it with standard runs.
@@ -757,6 +758,7 @@ main-tab Pulls rows land on.
 | `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
 | `skim` | ArrowDown held over six rows: one `keyDown`, five more flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
 | `reveal` | A landing on a file three folders down, its ancestors collapsed |
+| `dwell` | A hover of each length in `SUBJECTS.dwell.ms` (0, 100, 200, and 450 ms) over its own cold Markdown file of 23 to 32 KB, then a click (H94, since revision 6) |
 
 **The Commits landing.** Main’s `19a36c5b` made every switch to Commits select the
 newest commit and show it, on that commit’s address.
@@ -823,6 +825,9 @@ ResizeObserver on the document element, and Chrome delivers a new observation in
 same frame’s rendering steps, after layout and after every ResizeObserver the page
 created earlier. The read forces no layout, and a later task cannot change what a frame
 was recorded as showing.
+Since revision 6 each frame’s entry also records the read’s own duration and whether the
+read came after the input reached the page, and a root asked about twice in one read, by
+the frame’s state and by the ready predicate, is searched once.
 
 **Useful content** is visible, laid-out content in the preview’s active view: a text
 node on screen (its parent rendered, not at zero opacity or hidden, with a non-empty
@@ -830,10 +835,58 @@ text box that no clipping ancestor or the viewport cuts away) outside a placehol
 prompt, or screen-reader-only label; or an `<img>` once it has loaded and its `decode()`
 has resolved, a `<video>` with a current frame, or a canvas, iframe, or large SVG laid
 out at a useful size.
-The search skips, without counting them, the subtrees of elements with no box and of
-elements wholly outside the viewport, so a view that hides or scrolls away its first
-lines is still found; it tests at most 400 text nodes.
-Canvas and iframe pixels are not read.
+A root that is, or is inside, a placeholder, prompt, or label has none, so a pane-level
+placeholder with text of its own reads `P`, not `UP` (revision 6). Canvas and iframe
+pixels are not read.
+
+**How content is found.** The search walks the root’s subtree in document order and
+stops at the first hit (`hasUseful` in `transitions-recorder.mjs`). It does not enter
+the subtree of a placeholder, prompt, or label; of an element with `display: none`,
+`content-visibility: hidden`, or zero opacity, none of whose descendants can show; or of
+an element with an empty box that clips its overflow, such as a block collapsed to
+height 0. A box-less element (an inline whose only child is positioned) and an empty one
+that does not clip (a windowed list’s zero-height anchor) are entered, so their
+descendants are tested by their own boxes.
+An element wholly outside the viewport is not entered unless its scrollable overflow,
+which holds content and positioned descendants laid out outside its box, reaches the
+viewport. Text under a hidden parent is visited but neither measured nor counted toward
+the 400. The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes
+measured.
+When it stops at a bound, or found nothing after passing over an element on its
+own box, it hit-tests points across the area where the root can paint (the viewport, cut
+by the root and every ancestor that clips): rows coarse to fine at four columns, up to
+60 points, or 8 after a bound, since a hit test costs more the more siblings its point
+lands among, and the content of a large subtree, when it has any, is dense.
+Each element there inside the root is tested as media and by its first 32 child text
+nodes. Media are tested as the walk reaches them, not by a separate pass over the whole
+subtree.
+
+The bounds come from [transitions-search-cost.mjs](transitions-search-cost.mjs), which
+times one call on synthetic documents in headless Chrome.
+Median of 20 calls in ms, revision 5 against revision 6, at a load average of about 10
+(read the ratios, not the values):
+
+| Document | Lines | End, rev. 5 | End, rev. 6 | Past the end, rev. 5 | Past the end, rev. 6 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| one `<div>` per line | 2,000 | 2.80 | 2.00 | 2.80 | 2.00 |
+| one `<div>` per line | 10,000 | 13.50 | 1.70 | 13.50 | 2.80 |
+| one `<div>` per line | 40,000 | 54.60 | 1.70 | 55.90 | 13.30 |
+| lines of 8 highlighted spans | 2,000 | 3.40 | 2.20 | 4.10 | 2.30 |
+| lines of 8 highlighted spans | 10,000 | 16.40 | 2.00 | 21.30 | 4.00 |
+| lines of 8 highlighted spans | 40,000 | 69.70 | 2.20 | 85.80 | 27.90 |
+| table rows of 3 cells | 2,000 | 2.70 | 2.00 | 0.40 | 0.10 |
+| table rows of 3 cells | 10,000 | 15.40 | 1.90 | 1.90 | 0.10 |
+| table rows of 3 cells | 40,000 | 60.10 | 2.10 | 7.50 | 0.10 |
+| sections of 50 lines | 2,000 | 0.10 | 0.10 | 0.10 | 0.20 |
+| sections of 50 lines | 10,000 | 0.30 | 0.30 | 0.80 | 0.50 |
+| sections of 50 lines | 40,000 | 1.20 | 1.40 | 3.60 | 1.90 |
+
+At the top of every document both cost under 0.01 ms, and both found the lines at the
+end. A long document scrolled to its end now costs what a short one does, because the
+walk is bounded and the first hit-test point finds a line.
+Scrolled past every line onto blank space, a flat list of 40,000 lines still costs 13 to
+28 ms, against 56 to 86 ms in revision 5: each of the 8 points walks the list’s
+siblings.
 
 **Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
 mix revisions but judges two sets of rows of one older revision against each other,
@@ -846,6 +899,64 @@ off-screen subtrees when it looks for useful content.
 Revision 5 accepts a switch to Commits that lands on the newest commit as well as one
 that lands on the prompt, and records the landing; revision 4 refused every build since
 main’s `19a36c5b`, which lands on the newest commit (**The Commits landing**, above).
+Revision 6 fixes three recorder defects and adds the readings Phases 2 and 3 need
+(**Revision 6**, below).
+**A round must not compare a revision 5 run with a revision 6 run**: `compare` refuses
+to, and a series that spans the change is rerun on one revision.
+
+**Revision 6.** What changed from revision 5, and why; everything not listed here is
+defined as in revision 5, so rounds on the two revisions differ by this list only.
+
+- **The input’s own frame is in its window** (`mb-s0e4`). Chrome can stamp the frame
+  that draws an input a fraction of a millisecond before the input’s own `timeStamp`.
+  Revision 5 placed frames in a window by their begin time alone, so it left that frame
+  out: a valid transition read `framesToReady` 0 and could drop a blank frame from its
+  counts. A frame is now in the window when it began at or after the input, as before, or
+  when its read came after the input reached the page.
+  `accountFrames` and `regionMovement` use the same rule, so a region’s box logged by
+  that frame moves it, and one logged by a frame read before the input, which revision 5
+  counted from 1 ms before the input, is where the region stood.
+- **The content search finds what is on screen, at a bounded cost** (`mb-86b9`, review
+  C’s C1 on #373). Revision 5 rejected a subtree on its ancestor’s own box, so it missed
+  text on screen under a box-less inline, a zero-height parent at the viewport’s top
+  edge, a container of floats, a windowed list’s zero-height anchor, a parent whose
+  content overflows into view, a fixed or a translated element under a scrolled-away
+  parent: a windowed list scrolled after ready read blank frames with its rows on
+  screen. It also measured every off-screen sibling without counting it, about 15 ms a
+  call at the end of 10,000 lines.
+  **How content is found** (above) is revision 6’s search.
+  Media are now found by the walk and the hit test, not by a pass over the whole
+  subtree, so an image after the walk’s bound is found only where a hit-test point lands
+  on it. Review C found revision 5’s search agreeing with an uncapped reference on 52
+  readings of the product’s file and commit views; revision 6’s has been checked on the
+  synthetic pages only, since no series was run.
+- **Hidden and parked retained surfaces read as hidden** (`mb-5xzz`, C2). Text under
+  `visibility: hidden`, at zero opacity, or in a collapsed block no longer uses up the
+  search’s 400 text nodes.
+  A region is the first rendered match whose box is reachable: it survives every
+  ancestor that clips its overflow, a scroll container taken to all it can scroll to and
+  any other clipper to its client box, and the document’s scrollable area.
+  A retained page collapsed to height 0 with its overflow hidden, which revision 5 read
+  as 0, 0, 0 for a 66 px move, and one parked at `left: -10000px`, which it read as
+  10,000 px, are now passed over like one hidden with `display: none`.
+- **Four reporting fixes** (`mb-5xzz`, C3). `compare` marks a settle time that either
+  side reached after the other side’s shortest window closed (revision 5 marked only a
+  control that settled after the candidate’s window); equal medians with as many pairs
+  beyond the tolerance each way name the pairs of both ways (revision 5 printed one pair
+  as “same beyond”); `blankFramesOriginPrompt` runs until the pane shows anything other
+  than the prompt, by the `U` and `E` letters alone, so the pending modifier or a
+  placeholder appearing beside the prompt no longer ends it; and a placeholder root
+  reads `P` (above).
+- **New readings.** The recorder’s own read cost per frame; retained memory at every
+  journey’s end and, with `--memory-after`, after named transitions; a
+  `sourceHighlighted` milestone on `files.cold.source_large` and
+  `files.revisit.source_large`; and the `dwell` journey, last in the default order.
+  The two source transitions’ predicate is evaluated in each of their frames until it
+  holds, so their read cost includes it, and the wait for it comes out of the gap after
+  them as every milestone’s does.
+  The end-of-journey reading runs after a journey’s last transition and before its
+  browser closes, so it changes nothing measured but adds a garbage collection and a few
+  protocol calls between journeys.
 
 **What each transition records.** The clock starts at the input event’s own `timeStamp`
 (the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
@@ -878,11 +989,11 @@ start for a landing).
 - the movement of each named region (`REGIONS` in `transitions-recorder.mjs`) over the
   window, per tracked component of its post-layout box: the largest single step, the net
   displacement, and the path length (every step summed), for the page and for each group
-  (`tree`, `palette`). A region is its selector’s first rendered match, not an element:
-  one the product re-creates, or that is absent for some frames, is still the same
-  region, a hidden surface kept mounted ahead of it is passed over, and its next box is
-  measured from where it last was, so a pull request page replaced by one with a taller
-  header moves the tab bar below it.
+  (`tree`, `palette`). A region is its selector’s first rendered match whose box is
+  reachable (revision 6, above), not an element: one the product re-creates, or that is
+  absent for some frames, is still the same region, a hidden surface kept mounted ahead
+  of it is passed over, and its next box is measured from where it last was, so a pull
+  request page replaced by one with a taller header moves the tab bar below it.
   A tree row is identified by its `data-path`, so a different row is a replacement, not
   a movement;
 - Layout Instability entries with value, `hadRecentInput`, and their sources;
@@ -909,8 +1020,32 @@ start for a landing).
 - milestones, each timed like painted ready and waited for after the window closes, so
   no other field’s window moves: on a landing, `shellToolsReady` and `styledMarkdown`;
   on every pull request transition, `prHeader`, and on a Conversation,
-  `prDescriptionShown` and `prDescriptionFinal`. A milestone that never arrives is
-  `null` and named in `milestonesMissing`;
+  `prDescriptionShown` and `prDescriptionFinal`; and since revision 6, on the large
+  source file’s cold visit and revisit, `sourceHighlighted` (H101), when its syntax
+  highlighting is complete: the file is shown, every code block the shell highlights
+  (`pre code` that is not `.no-highlight`) carries highlight.js’s `hljs` mark, which it
+  sets as it writes the token markup, and the view holds a token span.
+  A build that highlights another way must set the same mark, or the milestone never
+  arrives. A milestone that never arrives is `null` and named in `milestonesMissing`;
+- the recorder’s own read (revision 6): `readCostMaxMs`, the longest read of a frame in
+  the window, and `readCostToReadyMs`, the reads summed up to the ready frame.
+  A read includes the frame’s state, its regions, and the ready and milestone
+  predicates, so a condition whose page makes the search work harder shows it here;
+- retained memory (revision 6), after a full garbage collection, at every journey’s end
+  (`journey.memory`, compared as `<journey>.end`) and, with `--memory-after`, after
+  named transitions (`memory`): the page’s main-thread V8 heap (`Runtime.getHeapUsage`,
+  `jsHeapUsedKb`, and where Chrome reports it the embedder heap, Blink’s own objects
+  with DOM nodes among them, `embedderHeapUsedKb`), the renderer’s live DOM nodes,
+  documents, and event listeners (`Memory.getDOMCounters`, attached and detached nodes
+  alike, so a surface kept off the document still counts), the elements attached to the
+  document, and the summed V8 heaps of the page’s dedicated workers, each collected
+  first. It does not count GPU memory, decoded images, compositor tiles, layout and style
+  objects outside those heaps, the HTTP and memory caches, the browser process, or any
+  other renderer. `performance.measureUserAgentSpecificMemory()` is not used: it needs a
+  cross-origin isolated page, which the product is not.
+  The collection is not something the page does on its own, so a reading between two
+  transitions changes what the later one measures, which is why `--memory-after` is not
+  the standard regime; the reading at a journey’s end follows its last transition;
 - `inputSpanMs` and `readyAfterLastInputMs` for gestures of several events, a watched
   list’s row replacements (the palette’s results), request body bytes of every POST,
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
@@ -968,26 +1103,33 @@ two pairs beyond under overlapping ranges must be explained.
 One pair beyond under overlapping ranges is listed with the pair to rerun but is not a
 wrong-way result: at three runs a side it is common under load (88 of the 4,199
 comparisons of the exp-058 A/A split), and the runbook’s rerun of that pair is for a
-release. When the medians are equal, the pairs beyond the tolerance give the direction.
+release. When the medians are equal, the pairs beyond the tolerance give the direction;
+when as many are beyond each way, there is none, and the pairs of both ways are named.
 A zero control median against a non-zero candidate with separated ranges is a result on
 the ranges alone, so a transition that gains its first long task in every run is a
 result; under overlapping ranges it goes through the pair rule, where a pair whose
 control is 0 and whose candidate is not is beyond any tolerance.
-A settle time the control reached after the candidate’s window closed (the window ends a
-settle time after the ready frame, so a build that is ready sooner is watched for less
-time) is marked, since a lower candidate value may only be a shorter window.
-Counts (requests, replacements, movement, shifts) are judged on their ranges.
-Every line shows the pooled medians and ranges beside the pair ratios, and the report
-ends with the chance that two identical builds separate on one comparison at the n in
-hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how many
-comparisons that predicts.
+A settle time one side reached after the other side’s shortest window closed (the window
+ends a settle time after the ready frame, so a build that is ready sooner is watched for
+less time) is marked, since a lower candidate value may only be a shorter window, and a
+higher one only a longer window.
+Counts (requests, replacements, movement, shifts, and retained memory) are judged on
+their ranges. Every line shows the pooled medians and ranges beside the pair ratios, and
+the report ends with the chance that two identical builds separate on one comparison at
+the n in hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how
+many comparisons that predicts.
 It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
 wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
 the wrong direction), a gap, or an expectation not met.
 Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
 `next_frame_ms`, `window_ms`, `nav_settled_ms`, `uncredited_frames`,
-`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`, and the
-`revalidated` counts.
+`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`,
+`read_cost_max_ms`, `read_cost_to_ready_ms`, `memory_listeners`, `memory_documents`, and
+the `revalidated` counts.
+The memory heaps and DOM nodes (`memory_js_heap_kb`, `memory_embedder_heap_kb`,
+`memory_dom_nodes`, `memory_worker_heap_kb`) are judged lower at each `<journey>.end`,
+the guard H95, H98, and H99 (a) name; their values vary from run to run, so at three
+runs a side about one in ten separates by chance (the closing chance line counts them).
 Write the verdict with the accept rule below, and say what did not move.
 
 `compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
@@ -1036,6 +1178,14 @@ table with one row per hypothesis, since the schema holds one decision per recor
 
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
+Each of revision 6’s changes has a check that fails under revision 5’s logic: the
+`search` group’s seven shapes, windowed lists, hidden text ahead, long document,
+placeholder root, and collapsed and parked retained pages; the `window` group’s page,
+which wraps `requestAnimationFrame` to stamp every frame 34 ms early, so the frames
+drawn after a press begin, by their stamps, before it, as Chrome’s did once by 0.2 ms;
+the `readings` group’s memory, time to highlighted, and dwell journey on a stand-in
+Files tab; and the browserless checks of the frame window, the region log, the origin’s
+prompt, and `compare`’s marks.
 A check that can be repeated, and that failed while the recorder refused one of its
 measurements for its frame clock alone, is taken again, up to three attempts in all.
 A pass that needed another attempt is reported as a pytest warning.
@@ -1058,12 +1208,28 @@ subject, as on the recorder’s synchronous test pages; a transition that become
 later, on a response or a timer, is ready some frames after that paint.
 On the synchronous long-frame page, Chrome presented 9 to 12 ms after painted ready in
 five CI runs and 23 to 43 ms after it with the renderer’s CPU throttled fourfold.
-Frames are placed in a transition’s window by their begin time (the rAF timestamp),
-which Chrome can set before the input’s own `timeStamp` for a frame it draws after the
-input: a probe page’s ready frame began 0.2 ms before the press and showed what the
-press’s handler did.
-Such a ready frame is outside the window, so its transition reads `framesToReady` 0 and
-leaves that frame out of the blank and placeholder counts.
+Chrome can set a frame’s begin time (the rAF timestamp) before the input’s own
+`timeStamp` for a frame it draws after the input: a probe page’s ready frame began 0.2
+ms before the press and showed what the press’s handler did (`mb-s0e4`, 1 run in 8).
+Revision 5 placed frames in a window by their begin time alone, so such a frame was
+outside it: its transition read `framesToReady` 0 and left that frame out of the blank
+and placeholder counts.
+Since revision 6 a frame whose read came after the input is in the window whatever its
+begin time, so the edge no longer drops a frame; the frame’s times are still its own, so
+`paintedReadyMs` can be under a frame interval there.
+exp-058’s 462 transitions have no `framesToReady` 0, and whether any revision 5 round
+dropped a blank frame cannot be told from its samples.
+The content search’s hit test passes over elements with `pointer-events: none`, and
+content smaller than its grid that escapes a pruned ancestor (a short fixed-position
+label) can fall between its points; neither revision weighs what covers content.
+A long text node still costs its rectangles: the source view’s line-number gutter is one
+text node, which a search that reaches it measures whole.
+The search reads an off-screen element’s scroll size to see whether its overflow reaches
+the viewport. Whether that makes Chrome lay out content that `content-visibility: auto`
+skips, the chunking H99 (b) proposes, has not been measured; that round checks the
+recorder’s read cost on its chunks first.
+The memory reading is Chrome’s own accounting after a forced collection, so it is
+comparable between builds in one series, not a size a reader’s machine would report.
 A ResizeObserver round after the first (the product’s own observers of content deeper
 than the document element) can change a frame after the recorder read it.
 The Pulls catalog walk runs for about the first minute of every page load and overlaps
