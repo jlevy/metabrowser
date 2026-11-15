@@ -948,9 +948,9 @@
   grid-column: 3;
 }
 /* The registry's chevron, at the tree's 12px glyph in the tree's icon slot; `.collapsed` and
-   `.expanded` on the row turn it, as they turn a folder's. */
-.github-pulls-toggle,
-.github-pull-files-toggle {
+   `.expanded` on the row turn it, as they turn a folder's (a changed folder's is the shell's
+   `.changed-file-toggle`). */
+.github-pulls-toggle {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -980,78 +980,21 @@
   font-size: var(--ui-small-font-size);
   line-height: var(--ui-row-height);
 }
+/* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
+   `.changed-file-row`), the Diff summary's too. Here is only where a row sits: its depth's
+   indent, one level in from the pull request's row, and the room the sticky filters keep. */
 .github-pull-file-row,
 .github-pull-folder-row {
-  position: absolute;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--ui-row-height);
-  padding: 2px 12px 2px
-    calc(
-      10px +
-      var(--github-pulls-indent, 0px) +
-      var(--github-pull-file-depth, 1) *
-      var(--tree-indent)
-    );
-  border-left: 2px solid transparent;
-  gap: 6px;
-  color: var(--text);
-  font-size: var(--nav-font-size);
-  text-decoration: none;
-  cursor: pointer;
-  -webkit-user-select: var(--toggle-user-select);
-  user-select: var(--toggle-user-select);
+  --changed-file-indent: calc(
+    var(--github-pulls-indent, 0px) +
+    var(--github-pull-file-depth, 1) *
+    var(--tree-indent)
+  );
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
-.github-pull-file-row:hover,
-.github-pull-folder-row:hover {
-  background: var(--hover-bg);
-}
-.github-pull-file-row:focus-visible,
-.github-pull-folder-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-  background: var(--hover-bg);
-}
-.github-pull-file-row.selected {
-  background: var(--highlight-bg);
-  border-left-color: var(--highlight-bar);
-}
 /* A row the comparison does not hold: it is listed, and the diff has nothing to show of it. */
-.github-pull-file-muted {
+.changed-file-row.github-pull-file-muted {
   color: var(--muted);
-}
-.github-pull-file-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the end of the row. */
-.github-pull-file-stats {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 4px;
-  margin-left: auto;
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: tabular-nums;
-}
-.github-pull-file-stats > .diff-stat-add {
-  color: var(--status-success);
-  font-weight: var(--weight-bold);
-}
-.github-pull-file-stats > .diff-stat-del {
-  color: var(--status-error);
-  font-weight: var(--weight-bold);
-}
-.github-pull-file-row
-  > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
-.github-pull-folder-row > :is(.github-pull-file-name, .github-pull-file-stats) {
-  align-self: baseline;
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
    its list refreshes its name breathes as a muted line does (docs/design-system.md,

@@ -5745,6 +5745,88 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 
+/* ── Changed-file rows ───────────────────────────────────────────
+   A change set's files as a tree, the model static/changed-files-tree.js holds, are drawn
+   by two plugins: a pull request's changed files under its Pulls row
+   (github/pull-files-view.js) and a multi-file diff's Diff summary (diff/diff-summary.js).
+   Their rows are this one class set, beside the Files tree's rows whose contract they
+   follow (`.tree-item`), so the two trees cannot drift apart: one row tall, the 10px
+   padding and the 2px bar that put a row's content on the 12px inset, the square hover,
+   the -2px focus ring, and the current row's highlight. A plugin sets only how far in a
+   row's depth puts it, `--changed-file-indent`. The rows are drawn a window at a time,
+   each placed at its index. These are the shell's rules, in its eager stylesheet, because
+   they are a few declarations; the tree's model loads on demand. Before the shared set the
+   Diff summary's rows started 2px left of the Pulls tree's (8px padding against 10px).
+     .changed-file-row     a folder's or a file's row (a folder's also .disclosure-toggle)
+     .changed-file-toggle  a folder's chevron, in the tree's icon slot
+     .changed-file-name    the name, cut short at the row's end
+     .changed-file-stats   the inline change stats at the row's end (docs/design-system.md,
+                           "Inline Change Stats")
+   A file's change letter is the shell's `.tree-container-badge`. */
+.changed-file-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ui-row-height);
+  padding: 2px 12px 2px calc(10px + var(--changed-file-indent, 0px));
+  border-left: 2px solid transparent;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
+  user-select: var(--toggle-user-select);
+}
+.changed-file-row:hover {
+  background: var(--hover-bg);
+}
+.changed-file-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+.changed-file-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.changed-file-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+.changed-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changed-file-stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+.changed-file-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+.changed-file-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+.changed-file-row > :is(.tree-container-badge, .changed-file-name, .changed-file-stats) {
+  align-self: baseline;
+}
+
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
   width: var(--toggle-chevron-size);

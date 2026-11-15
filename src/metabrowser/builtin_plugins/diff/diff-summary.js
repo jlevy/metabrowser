@@ -17,7 +17,8 @@
 // reader sees, the row that takes Tab, and what a key or a press does; activating a file
 // jumps the diff to it. tests/dom/diff-summary-session.js runs it from the command line.
 // `mountSummaryTree` is the paint: the nav panel's tree rows adapted to the page, in a box
-// of its own that scrolls, drawn a window at a time as the Pulls tab's tree is.
+// of its own that scrolls, drawn a window at a time as the Pulls tab's tree is, and on the
+// same rows, the shell's `.changed-file-row` class set (static/styles.css).
 //
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
@@ -299,7 +300,7 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "diff-summary-row-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats diff-summary-row-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -308,13 +309,13 @@ export function mountSummaryTree(host) {
 
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
-    const name = h("span", { class: "diff-summary-row-name" }, [row.name]);
+    const name = h("span", { class: "changed-file-name diff-summary-row-name" }, [row.name]);
     if (row.kind === "folder") {
       const chevron = host.chevron();
       return [
         h(
           "span",
-          { class: "diff-summary-row-toggle", "aria-hidden": "true" },
+          { class: "changed-file-toggle diff-summary-row-toggle", "aria-hidden": "true" },
           chevron === null ? [] : [chevron],
         ),
         name,
@@ -350,14 +351,14 @@ export function mountSummaryTree(host) {
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
-      // The tooltip says what the folder's sums leave out, as its accessible name does, and
-      // nothing when they leave nothing out: its name is on the row (docs/design-system.md,
-      // "Tooltips Add Information").
+      // The tooltip says what the folder's sums leave out, the counts alone, as its
+      // accessible name does, and nothing when they leave nothing out: its name is on the row
+      // already (docs/design-system.md, "Tooltips Add Information").
       const missing = host.tree.missingCounts(row, host.formatCount);
       if (missing === "") {
         delete element.dataset.tipText;
       } else {
-        element.dataset.tipText = `${row.name}, ${missing}`;
+        element.dataset.tipText = missing;
       }
     } else {
       element.dataset.tipText =
@@ -372,8 +373,8 @@ export function mountSummaryTree(host) {
       {
         class:
           row.kind === "folder"
-            ? "diff-summary-row diff-summary-folder disclosure-toggle"
-            : "diff-summary-row diff-summary-file",
+            ? "changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"
+            : "changed-file-row diff-summary-row diff-summary-file",
         role: "treeitem",
       },
       partsOf(row),
