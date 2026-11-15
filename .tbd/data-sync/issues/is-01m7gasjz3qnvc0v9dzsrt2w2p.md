@@ -3,9 +3,9 @@ type: is
 id: is-01m7gasjz3qnvc0v9dzsrt2w2p
 title: Tooltips only when they add information; none on Pulls nav rows
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:23.202Z
-updated_at: 2026-11-15T19:27:09.432Z
+updated_at: 2026-11-15T19:39:25.434Z
 started_at: 2026-11-15T19:27:09.431Z
+closed_at: 2026-11-15T19:39:25.433Z
+close_reason: null
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 
@@ -27,3 +31,7 @@ Done when:
 - The app's other tooltips are audited against that rule (data-tip-text, title, and the shared tip machinery). Each one that only repeats visible text is removed. Each kept one has its reason recorded, and borderline ones are listed for the user rather than decided silently.
 - Ideally, a check in tests/test_design_vocabulary.py (or the tip machinery's own tests) keeps a tip from equalling its element's visible text.
 - Chrome or browserless checks pin that Pulls rows have no tip. The CHANGELOG says so.
+
+## Notes
+
+Done in bd90edd32 on claude/tooltips-substantive (cut from ebc2e03d1, pushed, no PR). Removed: every tip on Pulls rows and stack rows (state icon name, age exact time, stack place hint, stack row hint, title/meta cut-short tips); changed-files folder tips that only repeat the folder name (Pulls files tree and diff summary); 'Load more of this file' on Load more. Shell guard: app.js tipAddsInformation shows a data-tip-text equal to its element's own text only while cut short. devtools/check_tooltips.py fails a literal tip equal to its element's literal text. Principle stated in docs/design-system.md, 'Tooltips Add Information'. Chrome: tests/dom/github-pulls-stacks-chrome.mjs (no tip on any Pulls row or part), tests/dom/github-pull-header-chrome.mjs (the rule on whole, spaced, cut, glyph anchors). Borderline tips kept and listed for the user in the report: Pulls changed-file rows' tips, 'Show ignored' tips, treemap parent button, merge arrow, html 'Open as full page', source ref toggle, crumbs.
