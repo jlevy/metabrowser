@@ -39,6 +39,12 @@ SERVER_KILL_S = 2
 # 60 s per-test timeout, which ends the whole run when it fires.
 LIFECYCLE_S = RUN_BUDGET_S + GROUP_STOP_S + SERVER_TERM_S + SERVER_KILL_S + PROFILE_TEARDOWN_S
 _METAB = Path(sys.executable).with_name("metab")
+# The session's checks, pinned so a probe or a pass that stops running is seen. Each of its
+# four passes, a reading font and a font set, checks <html> on each of its 3 pages and the
+# face of each of its 8 probes; in the clean set it also checks the face Chrome drew for
+# each probe set in the sans, which is all 8 under the sans reading font and the 4 chrome
+# probes under the serif one: 4 * (3 + 8) + 8 + 4.
+CHECKS = 56
 
 
 def _repository(root: Path) -> str:
@@ -140,8 +146,7 @@ def test_documents_read_in_the_reading_font_and_chrome_prose_in_sans(
             f"the session ran past the test's {RUN_BUDGET_S} s: {result.stderr or result.stdout}"
         )
         assert result.returncode == 0, result.stderr or result.stdout
-        passed = re.fullmatch(r"prose faces in Chrome: (\d+) checks passed\n", result.stdout)
-        assert passed is not None and int(passed.group(1)) > 0, result.stdout
+        assert result.stdout == f"prose faces in Chrome: {CHECKS} checks passed\n", result.stdout
     finally:
         server.terminate()
         try:

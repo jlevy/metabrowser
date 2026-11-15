@@ -193,13 +193,16 @@ Each context has one mechanism, and no other rule sets a face by context:
 - **A document takes the reading font from `<html>`.** The pre-paint script and the
   settings menu set `data-prose-font` there, and `static/styles.css` points KPress’s
   `--kpress-host-font-prose` hook at the reading face.
-  A plugin’s `md-body` view reads the same face as `--kpress-font-prose`. Nothing
-  between `<html>` and a document sets a face, so a document keeps the reading font
-  inside any page that shows it.
+  A plugin’s `md-body` view sets the same face on its text, its headings, paragraphs,
+  lists, and quotes, and not on the view, so what the host or the plugin draws in the
+  view keeps the chrome face, as KPress keeps `.kpress` sans around `.kpress-prose`.
+  Nothing between `<html>` and a document sets a face, so a document keeps the reading
+  font inside any page that shows it.
 
 - **Chrome prose carries `.chrome-prose`** on the element that holds the text, never on
   a page or a pane. The class sets the text’s own face and points KPress’s prose hook at
-  `--prose-sans-font`, so Markdown inside it is sans too.
+  `--prose-sans-font`, so a KPress article inside it is sans too, and so is `md-body`
+  Markdown, whose text reads the hook before KPress’s token.
   A plugin that shows a message puts the class on the message’s element.
 
 `test_serif_is_only_for_documents` holds which rules may set a face and which builders

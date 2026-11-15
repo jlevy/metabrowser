@@ -9,10 +9,10 @@ All notable changes to Metabrowser are documented here.
   It was always sans, because the rule that keeps the pull request’s description,
   comments, and reviews sans covered the whole page.
   Those messages stay sans under either reading font, as a commit message does.
-  A plugin’s Markdown view that renders into `md-body` without KPress also reads in the
-  reading font now; it was always sans.
-  Plugin authors: put the new `chrome-prose` class on the element that holds a message,
-  plain or Markdown, and never on a page.
+  The Markdown text of a plugin’s view that renders into `md-body` without KPress also
+  reads in the reading font now; it was always sans, and the rest of such a view stays
+  sans. Plugin authors: put the new `chrome-prose` class on the element that holds a
+  message, plain or Markdown, and never on a page.
   See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
 
 - A size of a gigabyte or more now reads in gigabytes.

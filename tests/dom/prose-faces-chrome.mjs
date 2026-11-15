@@ -20,24 +20,38 @@
 // README. The chrome prose is a commit's body. A pull request's texts are the same KPress
 // article inside `.chrome-prose`, which the page puts on each text
 // (tests/dom/github-pull-first-paint-behavior.js checks that on the production page); here
-// the document's own article is placed in one. The same article in the pull request page's
-// containers, with its plugins' stylesheets, is a Markdown file in its Changes, which keeps
-// the reading font. A plugin's Markdown view without KPress is the `md-body` convention.
+// the document's own article is placed in one. A Markdown file in a pull request's Changes
+// is the diff plugin's rendered Markdown, built by its own exports, in the containers the
+// pull request page and the diff view put it in, with their stylesheets. A plugin's
+// Markdown view without KPress is the `md-body` convention: its text is a document, the
+// host's message in such a view is chrome, and its text inside `.chrome-prose` is chrome.
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base, commit] = process.argv.slice(2);
+// How long a page has to show what it is probed for. A page took 72 to 305 ms from its
+// navigation to its last probe, in CI and on a Mac at a load average of 7, so this is
+// generous; a probe that never shows fails by name well inside the test's 30 s run budget.
+const PROBE_WAIT_MS = 4000;
+const PROBE_POLL_MS = 25;
+// How long Chrome is asked again for the faces of a text it reports none for, as it does
+// for text not laid out yet.
+const FACE_RETRY_MS = 2000;
+const FACE_POLL_MS = 50;
 const failures = [];
 let checks = 0;
+// A failure is written as it is found, so a run cut short still says what failed.
 const check = (label, ok, detail = "") => {
   checks += 1;
   if (!ok) {
-    failures.push(`${label}${detail ? `: ${detail}` : ""}`);
+    const failure = `${label}${detail ? `: ${detail}` : ""}`;
+    failures.push(failure);
+    console.error(`FAILED ${failure}`);
   }
 };
 
 // In the page: wait for every probe's text, then mark the element that holds it directly
 // and return its computed family, and the families the font set's tokens compute to.
-const MARK = `async (probes) => {
+const MARK = `async (probes, waitMs, pollMs) => {
   const holder = (probe) => {
     const scope = document.querySelector(probe.selector);
     if (!scope) return null;
@@ -47,9 +61,9 @@ const MARK = `async (probes) => {
       ),
     ) ?? null;
   };
-  const deadline = performance.now() + 20000;
+  const deadline = performance.now() + waitMs;
   while (probes.some((probe) => holder(probe) === null) && performance.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   // A text just placed has a style but no layout yet, and Chrome reports the faces of laid
   // out text only: a commit's body read on the frame it was placed in reported none, in CI.
@@ -73,6 +87,8 @@ const MARK = `async (probes) => {
       "sans clean": reference("--app-sans-clean"),
       "sans system": reference("--app-sans-system"),
       "serif system": reference("--app-serif-system"),
+      // What the rest of the chrome reads, whatever it resolves to.
+      chrome: reference("--font-sans"),
     },
     probes: probes.map((probe) => {
       const node = holder(probe);
@@ -83,38 +99,74 @@ const MARK = `async (probes) => {
   };
 }`;
 
-// In the page: a Markdown file's article placed where chrome prose and a pull request's
-// Changes put KPress Markdown, with the stylesheets of the plugins that draw that page, and
-// a plugin's Markdown view without KPress.
+// In the page: text placed where the app puts it, each under an element whose
+// `data-face-place` the probes find it by; every other class is the production markup's.
 const PLACE = `(async () => {
-  await window.metabrowser.ensureKindAssets("pull-request");
-  await window.metabrowser.ensureKindAssets("diff");
-  const article = document.querySelector(".metabrowser-markdown-document > article.kpress");
-  const place = (classes, text) => {
+  const mb = window.metabrowser;
+  await mb.ensureKindAssets("pull-request");
+  await mb.ensureKindAssets("diff");
+  await mb.ensureAsset("inert-html");
+  const inert = window.MetabrowserInertHtml;
+  const { appendBlocks, sanitizeBlock } = await import("/plugin-static/diff/diff-markdown.js");
+  const place = (name, chain, content) => {
     const outer = document.createElement("div");
+    outer.setAttribute("data-face-place", name);
     let inner = outer;
-    for (const name of classes) {
-      const next = document.createElement("div");
-      next.className = name;
+    for (const [tag, className] of chain) {
+      const next = document.createElement(tag);
+      next.className = className;
       inner.append(next);
       inner = next;
     }
-    const copy = article.cloneNode(true);
-    for (const node of copy.querySelectorAll("p")) {
-      if (node.textContent.includes("A paragraph of document prose")) node.textContent = text;
-    }
-    inner.append(copy);
+    inner.append(content);
     document.body.append(outer);
   };
-  place(["chrome-prose", "metabrowser-kpress-host"], "A message about the content.");
-  place(
-    ["content-body pull-request-host github-pull", "github-pull-body", "github-pull-diff metabrowser-diff-host"],
-    "A Markdown file among a pull request's changes.",
+  // A pull request's text: kpressHost's host and article in textBlock's element.
+  const article = document.querySelector(".metabrowser-markdown-document > article.kpress").cloneNode(true);
+  for (const node of article.querySelectorAll("p")) {
+    if (node.textContent.includes("A paragraph of document prose")) {
+      node.textContent = "A message about the content.";
+    }
+  }
+  place("chrome-prose", [["div", "github-pull-text chrome-prose"], ["div", "metabrowser-kpress-host"]], article);
+  // A Markdown file in Changes: diff-markdown.js's article and block rows, in its section
+  // of the diff view, in the pull request page.
+  const rendered = document.createElement("article");
+  rendered.className = "kpress kpress-inert diff-markdown";
+  const blocks = document.createDocumentFragment();
+  const template = document.createElement("template");
+  appendBlocks(
+    blocks,
+    [{ kind: "added", html: "<p>A Markdown file among a pull request's changes.</p>" }],
+    (html) => sanitizeBlock(html, inert, template, document, () => false),
   );
-  const view = document.createElement("div");
-  view.className = "content-body md-body";
-  view.innerHTML = "<p>A plugin's Markdown view.</p>";
-  document.body.append(view);
+  rendered.append(blocks);
+  place(
+    "changes",
+    [
+      ["div", "content-body pull-request-host github-pull"],
+      ["div", "github-pull-body"],
+      ["div", "github-pull-diff metabrowser-diff-host"],
+      ["div", "diff-root"],
+      ["section", "diff-file"],
+    ],
+    rendered,
+  );
+  // A plugin's view with the manifest's md-body container.
+  const view = (html) => {
+    const node = document.createElement("div");
+    node.className = "content-body md-body";
+    node.innerHTML = html;
+    return node;
+  };
+  place("md-body", [], view("<p>A plugin's Markdown view.</p>"));
+  // What view-composition.js writes into a view whose render threw.
+  place(
+    "md-body-message",
+    [],
+    view('<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>'),
+  );
+  place("md-body-chrome-prose", [["div", "chrome-prose"]], view("<p>A message in a plugin's Markdown.</p>"));
 })()`;
 
 const DOCUMENT = "document";
@@ -131,22 +183,36 @@ const PAGES = [
         text: "A paragraph of document prose",
       },
       {
-        name: "chrome prose's Markdown",
+        name: "chrome prose's KPress Markdown",
         kind: CHROME,
-        selector: ".chrome-prose",
+        selector: '[data-face-place="chrome-prose"]',
         text: "A message about the content.",
       },
       {
         name: "a Markdown file in a pull request's Changes",
         kind: DOCUMENT,
-        selector: ".github-pull",
+        selector: '[data-face-place="changes"]',
         text: "A Markdown file among",
       },
       {
-        name: "a plugin's md-body view",
+        name: "a plugin's md-body Markdown",
         kind: DOCUMENT,
-        selector: ".md-body:not(.metabrowser-kpress-host)",
+        selector: '[data-face-place="md-body"]',
         text: "A plugin's Markdown view.",
+      },
+      {
+        name: "the host's message in a plugin's md-body view",
+        kind: CHROME,
+        selector: '[data-face-place="md-body-message"]',
+        text: "Could not display this view.",
+        // The host's own chrome, not chrome prose: it reads the chrome's face.
+        face: "chrome",
+      },
+      {
+        name: "md-body Markdown inside chrome prose",
+        kind: CHROME,
+        selector: '[data-face-place="md-body-chrome-prose"]',
+        text: "A message in a plugin's Markdown.",
       },
     ],
   },
@@ -185,10 +251,10 @@ async function main() {
     for (const domain of ["Page", "DOM", "CSS", "Network"]) {
       await browser.send(`${domain}.enable`);
     }
-    // The faces Chrome drew the probe's text with: its own text nodes' platform fonts. Asked
-    // again for up to 2 s while Chrome reports none, as it does for text not laid out yet.
+    // The faces Chrome drew the probe's text with: its own text nodes' platform fonts,
+    // asked again while Chrome reports none.
     const drawn = async (name) => {
-      const deadline = Date.now() + 2000;
+      const deadline = Date.now() + FACE_RETRY_MS;
       for (;;) {
         const { root } = await browser.send("DOM.getDocument", { depth: -1 });
         const { nodeId } = await browser.send("DOM.querySelector", {
@@ -202,7 +268,7 @@ async function main() {
         if (fonts.length > 0 || Date.now() > deadline) {
           return fonts.map((font) => font.familyName).join(" + ") || "(no face reported)";
         }
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, FACE_POLL_MS));
       }
     };
     for (const prose of ["serif", "sans"]) {
@@ -219,14 +285,17 @@ async function main() {
           const path = typeof page.path === "function" ? page.path() : page.path;
           const started = Date.now();
           await browser.send("Page.navigate", { url: `${base}${path}` });
-          await browser.waitFor("document.readyState === 'complete'");
+          await browser.waitFor("document.readyState === 'complete'", PROBE_WAIT_MS);
           if (page.place) {
             await browser.waitFor(
               "!!document.querySelector('.metabrowser-markdown-document > article.kpress .kpress-prose')",
+              PROBE_WAIT_MS,
             );
             await browser.evaluate(PLACE);
           }
-          const read = await browser.evaluate(`(${MARK})(${JSON.stringify(page.probes)})`);
+          const read = await browser.evaluate(
+            `(${MARK})(${JSON.stringify(page.probes)}, ${PROBE_WAIT_MS}, ${PROBE_POLL_MS})`,
+          );
           const where = `${prose} reading font, ${set} fonts`;
           console.error(`${where}, ${path}: ${Date.now() - started} ms`);
           check(`${where}: <html> says so`, read.html.join(" ") === `${prose} ${set}`, read.html);
@@ -248,7 +317,7 @@ async function main() {
               );
               continue;
             }
-            const want = read.stacks[serif ? "serif system" : `sans ${set}`];
+            const want = read.stacks[probe.face ?? (serif ? "serif system" : `sans ${set}`)];
             check(
               `${label} is set in the ${serif ? "serif" : "sans"} of the ${set} fonts`,
               found.family === want,
@@ -273,10 +342,11 @@ async function main() {
 main()
   .catch((error) => {
     failures.push(`prose faces session threw: ${error?.stack || error}`);
+    console.error(`FAILED ${failures.at(-1)}`);
   })
   .then(() => {
     if (failures.length > 0) {
-      console.error(failures.join("\n"));
+      console.error(`${failures.length} of ${checks} checks failed`);
       process.exitCode = 1;
     } else {
       console.log(`prose faces in Chrome: ${checks} checks passed`);

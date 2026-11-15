@@ -4654,11 +4654,7 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* ── Markdown rendering ──────────────────────────────────────── */
 
-/* A plugin's Markdown view is a document (docs/design-system.md, "Serif Is for
-   Documents"). KPress's style tokens, linked in the shell's <head>, declare
-   --kpress-font-prose on :root from the reading-font hook set there. */
 .md-body:not(.metabrowser-kpress-host) {
-  font-family: var(--kpress-font-prose);
   line-height: 1.55;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
@@ -4699,7 +4695,15 @@ pre.code-block.metabrowser-source-lines > code {
    `md-body` without KPress (the convention plugin_loader/manifest.py
    documents). It reads --doc-measure like every other prose surface, so the
    "Max text width" setting governs a plugin's markdown view too rather than
-   only the built-in one. */
+   only the built-in one.
+
+   The same elements are a document's text, so they, and not the view, take the
+   reading font (docs/design-system.md, "Serif Is for Documents"): the view keeps the
+   chrome face for what the host or the plugin draws in it, such as the host's
+   "Could not display this view", as KPress keeps .kpress sans and .kpress-prose in
+   the reading font. The face reads the prose hook first, so it follows .chrome-prose
+   around Markdown set this way, and then KPress's --kpress-font-prose, which KPress's
+   style tokens declare on :root from the hook set there. */
 .md-body:not(.metabrowser-kpress-host) h1,
 .md-body:not(.metabrowser-kpress-host) h2,
 .md-body:not(.metabrowser-kpress-host) h3,
@@ -4711,6 +4715,7 @@ pre.code-block.metabrowser-source-lines > code {
 .md-body:not(.metabrowser-kpress-host) ol,
 .md-body:not(.metabrowser-kpress-host) blockquote {
   max-width: var(--doc-measure);
+  font-family: var(--kpress-host-font-prose, var(--kpress-font-prose));
 }
 /* The markdown plugin's container carries md-body (for prose-styling
    compatibility) alongside metabrowser-kpress-host, so these legacy chrome
