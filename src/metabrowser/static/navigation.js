@@ -714,6 +714,90 @@
   }
 
   /**
+   * One figure of the Files totals: nothing for a fact the source does not have (a Git
+   * listing has no sizes), the pending tally for one still being counted, and the figure
+   * in the line's own words once it is known.
+   *
+   * @param {number | null | undefined} value
+   * @param {string} pendingClass
+   * @param {(value: number) => string} known
+   */
+  function treeSummaryFigureHtml(value, pendingClass, known) {
+    if (value === undefined) {
+      return "";
+    }
+    return value === null || Number.isNaN(value)
+      ? `<span class="${pendingClass} tally-pending"></span>`
+      : known(value);
+  }
+
+  /**
+   * The Files tab's totals: a navigation metadata line (`.nav-metadata` in styles.css),
+   * the component the Commits tally and the Pulls lines share.
+   *
+   * Tracked and ignored files are counted separately — "12,582 files, 189.8 MB" hides
+   * that almost all of it is node_modules — and the ignored half is muted to match how
+   * those rows read in the tree. Without the server's split (a subtree request, or an
+   * index still being counted) the line gives the combined figure, in the same words,
+   * "4 files (38 B)", so it reads the same when the split arrives; it once set the
+   * figure in the tree rows' count and size chips, and changed colour on arrival.
+   *
+   * The fallback's figures are `.tree-summary-count` and `.tree-summary-size`, which the
+   * shell patches as the walker's root aggregate changes (app.js,
+   * `updateRootAggregatePresentation`). The split line deliberately has neither: that
+   * aggregate cannot tell tracked from ignored, and the split refreshes by asking again.
+   *
+   * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
+   * @param {number | null | undefined} fallbackFiles
+   * @param {number | null | undefined} fallbackSize
+   * @param {{esc(value: unknown): string, formatCount(n: number): string, formatSize(bytes: number): string}} format
+   * @returns {string}
+   */
+  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format) {
+    if (!summary || typeof summary.files !== "number") {
+      return (
+        '<div class="tree-summary nav-metadata">' +
+        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span>` +
+        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span>` +
+        "</div>"
+      );
+    }
+    const tracked =
+      `<span class="tree-summary-tracked">${format.esc(format.formatCount(summary.files))}</span>` +
+      `<span class="tree-summary-bytes">(${format.esc(format.formatSize(summary.size))})</span>`;
+    let ignored = "";
+    if ((summary.ignored_files ?? 0) > 0) {
+      ignored =
+        '<span class="tree-summary-ignored">' +
+        '<span class="tree-summary-plus">+</span>' +
+        `${format.esc((summary.ignored_files ?? 0).toLocaleString())} ignored` +
+        `<span class="tree-summary-bytes">(${format.esc(format.formatSize(summary.ignored_size ?? 0))})</span>` +
+        "</span>";
+    }
+    return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
+  }
+
+  /**
+   * The fallback's file count, as the live root aggregate patches it.
+   *
+   * @param {number | null | undefined} files
+   * @param {{esc(value: unknown): string, formatCount(n: number): string}} format
+   */
+  function treeSummaryCountHtml(files, format) {
+    return treeSummaryFigureHtml(files, "count", (n) => format.esc(format.formatCount(n)));
+  }
+
+  /**
+   * The fallback's size, as the live root aggregate patches it.
+   *
+   * @param {number | null | undefined} bytes
+   * @param {{esc(value: unknown): string, formatSize(bytes: number): string}} format
+   */
+  function treeSummarySizeHtml(bytes, format) {
+    return treeSummaryFigureHtml(bytes, "size", (n) => `(${format.esc(format.formatSize(n))})`);
+  }
+
+  /**
    * Attach both fulfillment and rejection handlers immediately when an
    * independent navigation dependency begins. The caller may await an HTTP
    * result first without creating an unhandled-rejection window.
@@ -1296,5 +1380,8 @@
     responseBodyFailure,
     settleFileSelectionFailure,
     settleNavigationDependency,
+    treeSummaryCountHtml,
+    treeSummaryHtml,
+    treeSummarySizeHtml,
   });
 })();

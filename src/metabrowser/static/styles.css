@@ -278,7 +278,9 @@
        --body-font-size      14px  primary chrome text (default, inputs,
                                    empty states, stat values)
        --nav-font-size       13px  dense navigation rows + path
-                                   breadcrumbs (tree items, header path)
+                                   breadcrumbs (tree items, header path),
+                                   and the .nav-metadata line under each
+                                   main tab's toolbar that totals them
        --ui-small-font-size  12px  secondary chrome (metadata, chips,
                                    tooltips, notes, filters, summaries)
        --label-font-size     =ui-small  small-caps section labels (tabs,
@@ -490,6 +492,26 @@
      bottom border. Every main tab's toolbar is this tall, so what is under it starts
      at one y on every tab. */
   --nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);
+  /* The metadata line under a main tab's toolbar (`.nav-metadata`): one line of it is the
+     toolbar slot's height, its own line box, this padding above and below, and its bottom
+     border. So on Commits, where the line stands in the slot, its text sits exactly where
+     it sits under the Files and Pulls toolbars, as far from either rule (8.25px at the
+     default sizes). */
+  --nav-metadata-line-height: 1.5;
+  --nav-metadata-rule-width: 1px;
+  --nav-metadata-padding-y: calc(
+    (
+      var(--nav-toolbar-height) -
+      var(--nav-metadata-rule-width) -
+      var(--nav-metadata-line-height) *
+      var(--nav-font-size)
+    ) /
+    2
+  );
+  /* Between a metadata line's items, and between the words of an item built of spans:
+     about a word space and a half, so "4 files (38 B)" and "5 commits begun 3mo ago" read
+     as the phrases they are. */
+  --nav-metadata-gap: 4px;
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -2041,53 +2063,15 @@ html.theme-anim .menu {
 }
 /* Tree summary row — first child of .tree-content, scrolls with the
    listing. Holds the served-root file count + total size. Rendered by
-   loadTree() in app.js; the inner .size / .count chips inherit the
-   shared sizeHtml() / countHtml() conventions. */
-/* Same vertical rhythm as the filter bar above it: both are one-line
-   bordered rows of chrome, so they get the same 6px and the column
-   reads as evenly spaced bands rather than one band and one gap.
-   .tree-content contributes no top padding, so this is the whole
-   distance between the bar's border and the tally text. */
-/* Sized at --nav-font-size, not --ui-small-font-size: this row states the
-   totals for the rows directly beneath it, and the two sat one step apart
-   on the ramp, which read as the header being an afterthought rather than
-   as a heading. The spans inside it inherit; they carry colour only. */
-.tree-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--nav-font-size);
-}
-/* This row is rendered before it has numbers -- the tree paints from the
-   inlined rows, and the tallies arrive on a later request -- and empty cells
-   give it no content height, so it stood 13px tall and then grew as the counts
-   landed, pushing every row below it down.
+   loadTree() in app.js as a navigation metadata line (`.nav-metadata`, under
+   "Navigation metadata line" below), which owns its box, type, and spacing;
+   the spans inside it carry colour only.
 
-   One line box is reserved, not the settled height, because the settled height
-   is not a constant: `.tree-summary-split` reports tracked and ignored files
-   separately and wraps to a second line in a narrow pane. A two-line floor
-   would fit that case and leave dead space in every other one, so the wrap is
-   tracked as H54 instead -- shape the pending row like the settled one. Same
-   derivation as `--chip-height`: the 1.5 line box of the type inside -- which
-   is this row's own `--nav-font-size` -- plus its padding and bottom border.
-
-   Scoped away from the joined state below, which drops this row's bottom
-   padding and border: a floor derived from a box the row no longer has would
-   hold 7px open between the totals and the filtered count, which is the gap
-   that rule exists to close. Nothing is pending there in any case -- the
-   inline first paint is skipped whenever a filter is set. */
-.tree-summary:not(:has(+ .tree-summary-filtered)):not(:has(+ .tree-selection-note)) {
-  min-height: calc(1.5 * var(--nav-font-size) + 13px);
-}
-.tree-summary-split {
-  flex-wrap: wrap;
-  gap: 4px 5px;
-}
-.tree-summary-tracked {
-  color: var(--text);
-}
+   The settled height is not a constant: `.tree-summary-split` reports tracked
+   and ignored files separately and wraps to a second line in a narrow pane.
+   The line reserves one line box, not two, which would leave dead space in
+   every other case, so the wrap is tracked as H54 instead -- shape the pending
+   row like the settled one. */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2097,8 +2081,8 @@ html.theme-anim .menu {
 }
 .tree-summary-ignored {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: var(--nav-metadata-gap);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
@@ -2897,7 +2881,9 @@ html[data-prose-font="sans"] {
    bolder stop of the same hue above the shared threshold (see
    MetabrowserFormatters.sizeClass() in formatters.js). Callers add a
    site-specific class for positioning (.tree-item-size,
-   .file-header-size, .tree-summary-size) but NEVER for weight/color. */
+   .file-header-size) but NEVER for weight/color. The one exception is
+   the navigation metadata line (`.nav-metadata`), whose totals are a
+   phrase in its own type, "4 files (38 B)", not a column of chips. */
 .size {
   color: var(--size-color);
   font-variant-numeric: tabular-nums;
@@ -3495,6 +3481,66 @@ a.tab-btn {
 .nav-toolbar[hidden] {
   display: none;
 }
+
+/* ── Navigation metadata line ─────────────────────────────────
+   The tallies and freshness under each main tab's toolbar: the Files totals and
+   the filter's remarks under them, the Commits tally, and the Pulls count and
+   connection lines (docs/design-system.md, "Navigation Metadata Line"). They were
+   three recipes: 13px text 6px under the Files filters, 13px text centred in the
+   Commits slot, and 12px muted text hard against the Pulls filters' rule. Now
+   they are this one, and a use site adds only what its own spans say: a muted
+   half, an age, a spinner.
+
+   Its own line box is reserved before any content arrives (content-box, so the
+   reservation is the line whatever padding a joined line keeps): the Files and
+   Commits tallies paint pending and the Pulls lines paint before the list
+   answers, and a line with no content height grew when its counts landed. */
+.nav-metadata {
+  box-sizing: content-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--nav-metadata-gap);
+  min-height: 1lh;
+  margin: 0;
+  padding: var(--nav-metadata-padding-y) var(--pane-header-padding-x);
+  border-bottom: var(--nav-metadata-rule-width) solid var(--border);
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-normal);
+  font-variant-numeric: var(--tabular-numerals);
+  line-height: var(--nav-metadata-line-height);
+}
+.nav-metadata[hidden] {
+  display: none;
+}
+/* A remark on the line above it — what a filter narrowed the tree to, how fresh a
+   list is, why it cannot be refreshed — in the same type, muted, as the gitignored
+   half of the Files totals is. */
+.nav-metadata-note {
+  color: var(--muted);
+}
+/* Consecutive lines are one band: the padding above the first and below the last,
+   and one rule, under the last. The totals are what a remark reads against, and a
+   rule between them made them look like two unrelated bands. */
+.nav-metadata:has(+ .nav-metadata) {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.nav-metadata + .nav-metadata {
+  padding-top: 0;
+}
+/* On a tab with no toolbar of its own, Commits, the line is the toolbar: in the
+   slot, which supplies the inset and the rule. One line of it is the slot's height
+   (`--nav-metadata-padding-y`), so its text sits where it sits under a toolbar; it
+   keeps to that one line, and the slot scrolls along it. */
+.nav-toolbar > .nav-metadata {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  padding-inline: 0;
+  border-bottom: none;
+}
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
 }
@@ -3603,56 +3649,24 @@ a.tab-btn {
   font-size: var(--ui-small-font-size);
   text-align: center;
 }
-.recent-stale-note {
-  padding: 3px 12px 6px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  border-bottom: 1px solid var(--border);
-}
-/* Second line under the tally: what the filter narrowed the tree to.
-   Muted, because the totals above are the constant a reader orients
-   against and this is the delta from them. */
-.tree-summary-filtered {
-  padding: 3px 12px 6px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  border-bottom: 1px solid var(--border);
-}
-/* A filter can exclude the folder the reader is standing in, and the tree
-   then legitimately has no row to select. Same muted register as the
-   filtered count directly above it — this is the same kind of remark about
-   what the filter did, not a warning. Paths break anywhere rather than
-   widening the pane. */
+/* The lines under the tally — what the filter narrowed the tree to
+   (`.tree-summary-filtered`), that the selected folder is outside the filter
+   (`.tree-selection-note`), that recent files may be out of date
+   (`.recent-stale-note`) — are remarks on the totals above them, the
+   constant a reader orients against: `.nav-metadata-note` lines of the same
+   band, joined to it under one rule. A selected path breaks anywhere rather
+   than widening the pane. */
 .tree-selection-note {
-  padding: 3px 12px 6px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  font-style: italic;
   overflow-wrap: anywhere;
-  border-bottom: 1px solid var(--border);
-}
-.tree-summary-filtered:has(+ .tree-selection-note) {
-  border-bottom: none;
-}
-/* The tally and its filtered count are one block, so the rule belongs
-   under the pair rather than between them: the totals are what the
-   filtered figure reads against, and a border in between made them
-   look like two unrelated bands. */
-.tree-summary:has(+ .tree-summary-filtered),
-.tree-summary:has(+ .tree-selection-note) {
-  border-bottom: none;
-  padding-bottom: 0;
 }
 /* Everything above the list is a band: its padding sits inside its own
-   border, and 6px is the rhythm they all keep. A tree row is not a
-   band — its 2px is sized for the distance between rows, not for the
-   distance from a rule — so the first one landed hard against the
-   tally's border. This makes up the difference, both when the tally
-   leads the pane and when rows do (a recency window renders no tally
-   of its own). Margin, not padding, so the row's hover fill and its
-   selected border stay the height of every other row. */
-.tree-summary + .tree-root > .tree-item:first-child,
-.tree-summary-filtered + .tree-root > .tree-item:first-child,
+   border. A tree row is not a band — its 2px is sized for the distance
+   between rows, not for the distance from a rule — so the first one landed
+   hard against the tally's border. This makes up the difference, both when
+   the metadata band leads the pane and when rows do (a recency window
+   renders no tally of its own). Margin, not padding, so the row's hover fill
+   and its selected border stay the height of every other row. */
+.nav-metadata + .tree-root > .tree-item:first-child,
 .tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
@@ -5844,43 +5858,18 @@ pre.code-block.metabrowser-source-lines > code {
    git-graph.js, and each row's SVG is drawn to exactly that height.
    Changing one without the other misaligns every lane against its row. */
 
-/* Header tally above the graph — the same recipe as .tree-summary on the
-   Files tab so the two tabs read identically, but under its own class:
-   app.js live-patches the document's first .tree-summary with file
-   totals, and this row must never be that target. Same one-line-box
-   floor too, for the same reason: the row paints pending and must not
-   grow when the numbers land. */
-.git-history-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--nav-font-size);
-  color: var(--text);
-  min-height: calc(1.5 * var(--nav-font-size) + 13px);
-}
-
+/* Header tally above the graph: a navigation metadata line (`.nav-metadata`),
+   as the Files totals are, so the two tabs read identically, but under its own
+   class: app.js live-patches the document's first .tree-summary with file
+   totals, and this row must never be that target. It stands in the toolbar
+   slot, at the slot's height, so the tally landing in it changes no box. */
 /* "begun 3mo ago": word gaps only — the age value inside carries the
    shared age primitive (hue, weight, size, numerals), the words keep
    the row's own type, and baseline alignment joins the two sizes. */
-/* In the toolbar slot, the slot is the row: its padding, border, and height. It fills
-   the slot's height, so the tally landing in it changes no box. */
-.nav-toolbar > .git-history-summary {
-  flex: 1 1 auto;
-  align-self: stretch;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border-bottom: 0;
-}
-.git-history-summary-failed {
-  color: var(--muted);
-}
 .git-history-summary-first {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--nav-metadata-gap);
 }
 
 .git-graph-list {

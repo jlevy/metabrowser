@@ -4,6 +4,21 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
+  and the pull request count with how fresh it is — now looks the same on every tab.
+  It was three styles: on Pulls it was smaller, gray, and hard against the filters with
+  no space above it, so a notice such as “Run gh auth login --hostname github.com to
+  connect” sat right under the toolbar’s rule.
+  All three are now one component, `.nav-metadata`, with the same type, inset, space
+  above and below, and spacing between items.
+  While its text fits the pane, each keeps one height from the first paint through
+  loading, counting, and refresh failures; a Pulls remedy longer than the pane, or the
+  Files totals in a narrow pane, still wrap to a second line.
+  The Commits tally’s loading placeholder now sits where the count will, as the Files
+  one does. The Files totals read “N files (size)” while the index is still being
+  counted, as they do once it finishes, instead of switching from blue figures to plain
+  text, and the Pulls count is no longer bold.
+
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote
   10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
