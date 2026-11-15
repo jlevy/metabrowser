@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqraqkhmybm70qscw1hrzy
 title: "Docs: working-with-agents guide and skill update"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:10.194Z
-updated_at: 2026-11-15T05:56:37.819Z
+updated_at: 2026-11-15T08:17:01.328Z
+closed_at: 2026-11-15T08:17:01.327Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 1, PR 6.
 

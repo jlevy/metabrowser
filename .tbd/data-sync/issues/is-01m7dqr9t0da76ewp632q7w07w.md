@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqr9t0da76ewp632q7w07w
 title: "Docs: browsing-files and keyboard-shortcuts guides"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:09.247Z
-updated_at: 2026-11-15T05:56:36.956Z
+updated_at: 2026-11-15T08:17:00.407Z
+closed_at: 2026-11-15T08:17:00.405Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 1, PR 4. The only phase-1 editor of docs/design-system.md and docs/realtime-debugging.md.
 

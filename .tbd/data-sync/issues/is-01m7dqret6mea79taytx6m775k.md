@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqret6mea79taytx6m775k
 title: "Architecture: the map, parity registry, entry point, large-content rendering"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:14.373Z
-updated_at: 2026-11-15T05:56:41.340Z
+updated_at: 2026-11-15T08:17:04.556Z
+closed_at: 2026-11-15T08:17:04.555Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 2, PR 7: the map, the parity registry, the entry point, and large-content rendering.
 

@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqrb66rkmcc23eqhx4g8vj
 title: "Docs: SECURITY policy, trust model to arch-server-and-content, CONTRIBUTING and TODO"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:10.661Z
-updated_at: 2026-11-15T05:56:38.209Z
+updated_at: 2026-11-15T08:17:01.720Z
+closed_at: 2026-11-15T08:17:01.719Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 1, PR 7.
 

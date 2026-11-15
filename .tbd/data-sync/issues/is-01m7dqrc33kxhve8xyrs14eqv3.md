@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqrc33kxhve8xyrs14eqv3
 title: "Architecture: CLI, server, inventory provider, Python engine, live delivery"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:11.586Z
-updated_at: 2026-11-15T05:56:38.985Z
+updated_at: 2026-11-15T08:17:02.125Z
+closed_at: 2026-11-15T08:17:02.124Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 2, PR 1: CLI, server, inventory, and delivery (spec: Architecture Documents).
 

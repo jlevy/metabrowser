@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqrczwe5g7q2c8ja0vbz94
 title: "Architecture: repository cache, mirrors, GitHub pull requests"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:12.507Z
-updated_at: 2026-11-15T05:56:39.765Z
+updated_at: 2026-11-15T08:17:02.977Z
+closed_at: 2026-11-15T08:17:02.975Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 2, PR 3: repository cache, mirrors, and GitHub.
 

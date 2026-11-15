@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqr8dg594qf7mjq3hdr9xd
 title: "Docs checks: links resolve, documents reachable, no tracker IDs in guides"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:07.824Z
-updated_at: 2026-11-15T05:56:35.769Z
+updated_at: 2026-11-15T08:16:59.059Z
+closed_at: 2026-11-15T08:16:59.058Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 1, PR 1 (spec: New Checks 1-3). Lands first; the rest of the stack rebases on it.
 

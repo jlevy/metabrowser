@@ -3,15 +3,19 @@ type: is
 id: is-01m7dqr9b4de8qgej36syy3a1s
 title: "Docs: installation owns requirements; new macOS app user guide"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:08.772Z
-updated_at: 2026-11-15T05:56:36.535Z
+updated_at: 2026-11-15T08:16:59.875Z
+closed_at: 2026-11-15T08:16:59.873Z
+close_reason: Implemented on claude/docs-first-principles (one standalone PR)
+resolution: null
+duplicate_of: null
 ---
 Phase 1, PR 3.
 
