@@ -669,12 +669,13 @@ A sample records its client time, start offset, status, body bytes, whether an E
 back, and `Server-Timing`, and from that header’s `git` entry the `git` time (`git_ms`)
 and the Git processes the request started (`git_processes`). The entry counts them in
 its description, `git;dur=41.2;desc="2 processes"`, from H116 on; an older build’s
-samples hold null. To count an older build’s processes, start each server with
-`GIT_TRACE2_EVENT` naming an empty directory, where Git writes one file a process, and
-pass the directories as `--control-trace` and `--candidate-trace`. A sample then records
-the files that appeared while its request ran (`trace_processes`) and the commands they
-name (`trace_commands`), which show any process the server started on its own in that
-window.
+samples hold null. A process is counted in the request that started it: one that joins a
+comparison another request is already listing counts none of that listing’s processes.
+To count an older build’s processes, start each server with `GIT_TRACE2_EVENT` naming an
+empty directory, where Git writes one file a process, and pass the directories as
+`--control-trace` and `--candidate-trace`. A sample then records the files that appeared
+while its request ran (`trace_processes`) and the commands they name (`trace_commands`),
+which show any process the server started on its own in that window.
 Only a folder’s reads are traced: a store’s Git runs with every inherited `GIT_*`
 variable dropped.
 Tracing writes as Git runs, so a traced pass counts and is never timed;
@@ -685,7 +686,15 @@ H116’s untimed count (2026-11-14) on a four-commit folder, the branch against 
 it was cut from: a commit within `MAX_LISTED_PATCH_BYTES` took 4 processes before and 2
 after (`rev-parse`, `diff`), a 450 KB commit past it 4 and 3, and the root commit 6 and
 6; every answer was byte-equal, and the candidate’s own count matched its trace on every
-sample.
+sample. Two counts differ from these by design, and `tests/test_diff_one_run.py` holds
+them. A server’s first comparison of a folder or store also asks `git config` whether a
+textconv driver is named, beside its listing run, so it counts one more process, and a
+folder’s very first asks `git var` too, which system file Git reads; the warm-up request
+of each route absorbs them.
+The answer is kept only while every configuration file Git reads is unchanged, and not
+at all where it cannot be sure which those are (`textconv.py`), so such a folder asks
+every time. Where a driver is named, the page’s files are diffed in a run of their own,
+with their drivers, as before: 3 processes, and 4 for the first.
 
 `--check-repo` with `--check-control` and `--check-candidate` adds a correctness check
 between pairs, untimed: a scratch clone the timed servers never serve, whose refs it

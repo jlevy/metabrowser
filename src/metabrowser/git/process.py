@@ -44,7 +44,7 @@ import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cache, partial
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -384,9 +384,9 @@ class GitOutputTooLargeError(GitError):
 
 
 class GitOutputCutError(GitOutputTooLargeError):
-    """A run asked to stop at its stdout cap was killed there.
+    """A run was stopped once it had printed what its caller can use.
 
-    *prefix* is what it printed first, in whole reads, so no more than the cap.
+    *prefix* is what it printed until then, the read that ended it included.
     """
 
     def __init__(self, message: str, prefix: bytes) -> None:
@@ -908,18 +908,13 @@ def git_environment(
     return env
 
 
-async def _read_capped(
-    stream: asyncio.StreamReader | None,
-    max_bytes: int,
-    on_overflow: Callable[[], None] | None = None,
-) -> tuple[bytes, bool]:
+async def _read_capped(stream: asyncio.StreamReader | None, max_bytes: int) -> tuple[bytes, bool]:
     """Drain *stream*, stopping once *max_bytes* have been read.
 
     Returns ``(data, overflowed)``. Draining continues past the cap
     without retaining the excess: a producer blocked on a full pipe would
     never exit, and the caller needs the process to finish so it can be
-    reaped. *on_overflow* is called once, when the cap is first passed, so a
-    caller can kill the producer instead of waiting for it to finish.
+    reaped.
     """
     if stream is None:
         return b"", False
@@ -933,12 +928,46 @@ async def _read_capped(
             break
         total += len(chunk)
         if total > max_bytes:
-            if not overflowed and on_overflow is not None:
-                on_overflow()
             overflowed = True
             continue
         chunks.append(chunk)
     return b"".join(chunks), overflowed
+
+
+async def _read_until(
+    stream: asyncio.StreamReader | None,
+    max_bytes: int,
+    stop_when: Callable[[bytes], bool],
+    stop: Callable[[], None],
+) -> tuple[bytes, bool, bool]:
+    """Drain *stream* as :func:`_read_capped` does, and end the producer early.
+
+    *stop_when* sees each read in turn and says when enough has been printed; that read is
+    kept, *stop* is called once, and the rest is drained without being kept, as it is past
+    the cap, which calls *stop* too. Returns ``(data, overflowed, stopped)``.
+    """
+    if stream is None:
+        return b"", False, False
+
+    chunks: list[bytes] = []
+    total = 0
+    overflowed = stopped = False
+    while True:
+        chunk = await stream.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        if overflowed or stopped:
+            continue
+        total += len(chunk)
+        if total > max_bytes:
+            overflowed = True
+            stop()
+            continue
+        chunks.append(chunk)
+        if stop_when(chunk):
+            stopped = True
+            stop()
+    return b"".join(chunks), overflowed, stopped
 
 
 async def _read_stderr(
@@ -976,7 +1005,7 @@ async def run_git(
     pass_fds: Sequence[int] = (),
     stdin_bytes: bytes | None = None,
     on_progress: Callable[[GitProgress], None] | None = None,
-    stop_at_cap: bool = False,
+    stop_when: Callable[[bytes], bool] | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -994,14 +1023,14 @@ async def run_git(
     *on_progress* is called, on the event loop, with each progress record a command
     run with ``--progress`` writes to stderr. It changes nothing else: the deadline,
     the output cap, and what a cancellation kills are the same with or without it.
-    With *stop_at_cap*, Git is killed as soon as its stdout passes the cap, rather
-    than drained to its end, and :class:`GitOutputCutError` carries what it printed
-    before: for a caller that can use a prefix and would otherwise wait for Git to
-    print what it then throws away.
+    *stop_when* is for a caller that can use a prefix and would otherwise wait for Git
+    to print what it then throws away: it sees each read of stdout, and once it says
+    enough, Git is stopped (:class:`_Stop`) and :class:`GitOutputCutError` carries
+    what it printed. A run given it is stopped at the cap too, rather than drained.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
-    :class:`GitOutputTooLargeError` (:class:`GitOutputCutError` with *stop_at_cap*),
-    or :class:`GitCommandError`.
+    :class:`GitOutputTooLargeError` (:class:`GitOutputCutError` once *stop_when* said
+    enough), or :class:`GitCommandError`.
 
     The time it takes is the request's ``git`` phase in ``Server-Timing``
     (:mod:`metabrowser.server_timing`).
@@ -1017,7 +1046,7 @@ async def run_git(
             pass_fds=pass_fds,
             stdin_bytes=stdin_bytes,
             on_progress=on_progress,
-            stop_at_cap=stop_at_cap,
+            stop_when=stop_when,
         )
 
 
@@ -1032,7 +1061,7 @@ async def _run_git(
     pass_fds: Sequence[int],
     stdin_bytes: bytes | None,
     on_progress: Callable[[GitProgress], None] | None,
-    stop_at_cap: bool,
+    stop_when: Callable[[bytes], bool] | None,
 ) -> bytes:
     chosen = policy if policy is not None else _default_policy(target)
     proc = await spawn_git_process(
@@ -1046,15 +1075,18 @@ async def _run_git(
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
 
+    stopper = None if stop_when is None else _Stop(proc)
+
+    async def read_stdout() -> tuple[bytes, bool, bool]:
+        if stop_when is None or stopper is None:
+            data, over = await _read_capped(proc.stdout, max_bytes)
+            return data, over, False
+        return await _read_until(proc.stdout, max_bytes, stop_when, stopper)
+
     # stdout and stderr are drained concurrently. Reading them in
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
-    # Past the cap, a run asked to stop there is killed, and the drain then ends at once.
-    stdout_task = asyncio.ensure_future(
-        _read_capped(proc.stdout, max_bytes, partial(_kill, proc))
-        if stop_at_cap
-        else _read_capped(proc.stdout, max_bytes)
-    )
+    stdout_task = asyncio.ensure_future(read_stdout())
     stderr_task = asyncio.ensure_future(_read_stderr(proc.stderr, on_progress))
 
     async def feed_stdin() -> None:
@@ -1067,7 +1099,7 @@ async def _run_git(
         proc.stdin.close()
 
     try:
-        _fed, (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+        _fed, (stdout, overflowed, stopped), (stderr, _), returncode = await asyncio.wait_for(
             asyncio.gather(feed_stdin(), stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
@@ -1089,12 +1121,18 @@ async def _run_git(
         stderr_task.cancel()
         await terminate_git_process(proc)
         raise
+    finally:
+        if stopper is not None:
+            stopper.cancel()
 
     if overflowed:
-        message = f"git {' '.join(args)} produced more than {max_bytes} bytes on stdout"
-        if stop_at_cap:
-            raise GitOutputCutError(message, stdout)
-        raise GitOutputTooLargeError(message)
+        raise GitOutputTooLargeError(
+            f"git {' '.join(args)} produced more than {max_bytes} bytes on stdout"
+        )
+    if stopped:
+        raise GitOutputCutError(
+            f"git {' '.join(args)} was stopped after {len(stdout)} bytes", stdout
+        )
 
     if returncode != 0:
         stderr_summary = stderr.decode("utf-8", errors="replace").strip()
@@ -1232,11 +1270,11 @@ async def run_git_at(
     timeout_s: float | None = None,
     max_bytes: int | None = None,
     stdin_bytes: bytes | None = None,
-    stop_at_cap: bool = False,
+    stop_when: Callable[[bytes], bool] | None = None,
 ) -> bytes:
     """Run ``git`` at *location*, applying store isolation when it is a pin.
 
-    *stdin_bytes* and *stop_at_cap* are as :func:`run_git` takes them.
+    *stdin_bytes* and *stop_when* are as :func:`run_git` takes them.
     """
 
     return await run_git(
@@ -1247,7 +1285,7 @@ async def run_git_at(
         timeout_s=timeout_s,
         max_bytes=max_bytes,
         stdin_bytes=stdin_bytes,
-        stop_at_cap=stop_at_cap,
+        stop_when=stop_when,
     )
 
 
@@ -1289,14 +1327,54 @@ async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
 
 def _kill(proc: asyncio.subprocess.Process) -> None:
     """Send *proc*, or the group it leads, SIGKILL; reaping it is the caller's."""
+    _signal(proc, signal.SIGKILL)
+
+
+def _signal(proc: asyncio.subprocess.Process, signum: int) -> None:
     if proc.returncode is not None:
         return
     # The process may exit between the returncode check and the signal.
     with contextlib.suppress(ProcessLookupError):
         if _leads_its_own_group(proc.pid):
-            os.killpg(proc.pid, signal.SIGKILL)
+            os.killpg(proc.pid, signum)
         else:
-            proc.kill()
+            proc.send_signal(signum)
+
+
+# How long a run stopped early has to exit on SIGTERM before it is sent SIGKILL. Git's
+# handlers for SIGTERM and SIGPIPE remove the lock files it holds and exit; SIGKILL leaves
+# them, as a textconv cache's notes ref lock showed in review (#449, L4).
+_STOP_GRACE_S: Final[float] = 0.5
+_STOP_SIGNAL: Final[int] = signal.SIGTERM
+
+
+class _Stop:
+    """Stop a run that has printed enough: SIGTERM, then SIGKILL if it outlives the grace.
+
+    A process that leads its own group is killed with its group at once, as a timeout kills
+    it, because once a leader exits on SIGTERM its group can no longer be named by it.
+    """
+
+    __slots__ = ("_later", "_proc", "_sent")
+
+    def __init__(self, proc: asyncio.subprocess.Process) -> None:
+        self._proc = proc
+        self._sent = False
+        self._later: asyncio.TimerHandle | None = None
+
+    def __call__(self) -> None:
+        if self._sent:
+            return
+        self._sent = True
+        if _leads_its_own_group(self._proc.pid):
+            _kill(self._proc)
+            return
+        _signal(self._proc, _STOP_SIGNAL)
+        self._later = asyncio.get_running_loop().call_later(_STOP_GRACE_S, _kill, self._proc)
+
+    def cancel(self) -> None:
+        if self._later is not None:
+            self._later.cancel()
 
 
 def _leads_its_own_group(pid: int) -> bool:

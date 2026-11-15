@@ -9,10 +9,13 @@ own output must round-trip through the neutral model or the model is
 wrong.
 
 A comparison asked for by the diff plugin's route lists its files and prints its patch in
-one run when the two fit in :data:`MAX_LISTED_PATCH_BYTES`, and its revisions resolve in
-one ``rev-parse``, so a commit costs two Git processes where it cost four (H116). Every
-answer is the one the separate runs give; ``tests/test_diff_one_run.py`` holds the two
-equal.
+one run, the patch within :data:`MAX_LISTED_PATCH_BYTES`, and its revisions resolve in one
+``rev-parse``, so a commit costs two Git processes where it cost four (H116). That run never
+converts a file with a textconv driver; where the configuration names one, the page's files
+are diffed in a run of their own, as before (``textconv.py``). Its answers are the separate
+runs' with one exception, a better one: a page whose files Git paired otherwise when
+diffing them alone than when diffing the whole comparison left those files out, and now
+shows them as the manifest lists them. ``tests/test_diff_one_run.py`` holds the rest equal.
 
 Merges are compared against their first parent
 (``--diff-merges=first-parent``), matching the history surface.
@@ -33,6 +36,7 @@ from typing import Any
 
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, name_paths, parse_unified_patch
+from metabrowser.diff.adapters.textconv import read_textconv_named, textconv_named
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -62,6 +66,7 @@ from metabrowser.git.process import (
     GitLocation,
     GitOutputCutError,
     GitOutputTooLargeError,
+    GitTimeoutError,
     RepositoryStoreTarget,
     as_location,
     failure_detail,
@@ -93,14 +98,15 @@ kernel's limit with the environment: `getconf ARG_MAX` is 1 MiB on macOS, measur
 one, and the CLI asks for every file, where a pathspec buys nothing anyway."""
 
 MAX_LISTED_PATCH_BYTES = 256 * 1024
-"""What the run that lists a comparison may print, its patch included, before it is killed
-and the patch left to a run of its own (H116). A Git process start cost about 17 ms on the
-machine the hypothesis was measured on. Measured 2026-11-14 at load 12, untimed and as an
-order of magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with
-its 40 MB patch 1.11 s, so Git printed the patch at about 130 MB/s and a run killed at this
-bound spends about 2 ms past its listing; 329 of this repository's newest 400 commits list
-and patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a
-page does not ask for is work thrown away, at most this much."""
+"""How much of its patch the run that lists a comparison may print after its listing before
+it is stopped and the patch left to a run of its own (H116). The listing itself is bounded as
+the listing run's always was. A Git process start cost about 17 ms on the machine the
+hypothesis was measured on. Measured 2026-11-14 at load 12, untimed and as an order of
+magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with its 40 MB
+patch 1.11 s, so Git printed the patch at about 130 MB/s and a run stopped at this bound
+spends about 2 ms past its listing; 329 of this repository's newest 400 commits list and
+patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a page
+does not ask for is work thrown away, at most this much."""
 
 _NULL_OID = "0" * 40
 _STATUS_KINDS = {
@@ -130,6 +136,34 @@ _COMMIT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|\s|^[-^]|^$")
 
 type _SideKey = tuple[str | None, str | None]
+
+
+class _PatchBound:
+    """Says when a listing run has printed more than *bound* bytes of patch.
+
+    The patch begins after the first two NULs in a row, which end the listing, whose fields
+    are never empty but for a name with no byte; such a name ends the count early, and its
+    listing is then refused whole (:func:`_listing_and_patch`).
+    """
+
+    __slots__ = ("_bound", "_patch", "_tail")
+
+    def __init__(self, bound: int) -> None:
+        self._bound = bound
+        self._patch: int | None = None
+        self._tail = b""
+
+    def __call__(self, chunk: bytes) -> bool:
+        if self._patch is None:
+            seen = self._tail + chunk
+            end = seen.find(b"\0\0")
+            if end < 0:
+                self._tail = seen[-1:]
+                return False
+            self._patch = len(seen) - (end + 2)
+        else:
+            self._patch += len(chunk)
+        return self._patch > self._bound
 
 
 @dataclass(frozen=True, slots=True)
@@ -587,18 +621,31 @@ class GitDiffSource:
         """The manifest from one run that prints the patch after the listings, kept for
         :meth:`hydrate`; or None, which leaves the listing to the run above.
 
-        That run's options are the listing's and the patch's together, and its output is
-        the listing run's bytes, one NUL, then the unrestricted patch run's bytes
-        (``test_one_run_prints_what_the_two_runs_print``). A run that fails is None, so the
-        runs that answer are the ones that always did, in their own words. A run past
-        :data:`MAX_LISTED_PATCH_BYTES` is killed there; its listing, if it was printed
-        whole by then, is the manifest, and the patch is left to :meth:`hydrate`'s run.
+        That run's options are the listing's and the patch's together, ``--no-textconv``
+        added, and its output is the listing run's bytes, one NUL, then the unrestricted
+        patch run's bytes with no driver run (``test_one_run_prints_what_the_two_runs_print``).
+        Its patch is kept for :meth:`hydrate` only when the configuration names no textconv
+        driver, which ``textconv.py`` keeps an answer to: one named is the listing run alone,
+        and the page's run of its own with its drivers; one not yet known is asked beside
+        this run. A run that fails is None, so the runs that answer are the ones that always
+        did, in their own words, but for a timeout, which they would only repeat. A run past
+        :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped there: its listing is the
+        manifest, and the patch is left to :meth:`hydrate`'s run.
         """
+        named = await textconv_named(self._location)
+        if named:
+            return None
+        listing_run = self._patch(resolved, None, listing=True)
         try:
-            out = await self._patch(resolved, None, listing=True)
+            if named is None:
+                out, named = await asyncio.gather(listing_run, read_textconv_named(self._location))
+            else:
+                out = await listing_run
         except GitOutputCutError as exc:
             parts = _listing_and_patch(exc.prefix, cut=True)
             return None if parts is None else self._manifest_from(parts[0])
+        except GitTimeoutError:
+            raise
         except GitError as exc:
             log.info("the listing with its patch failed, listing alone: %s", failure_detail(exc))
             return None
@@ -607,7 +654,8 @@ class GitDiffSource:
             return None
         listing, patch = parts
         manifest = self._manifest_from(listing)
-        self._listed = _Listed(resolved.comparison_id, manifest, patch)
+        if named is False:
+            self._listed = _Listed(resolved.comparison_id, manifest, patch)
         return manifest
 
     def _manifest_from(self, listed: bytes) -> ChangeSetManifest:
@@ -918,13 +966,18 @@ class GitDiffSource:
     ) -> PatchHydration | None:
         """What :meth:`hydrate` answers for *changes*, from the listing run's whole *patch*.
 
-        Asked for every file, the run below is unrestricted and prints *patch* itself. Asked
-        for some, it is limited to their paths, and its sections for them are the
-        unrestricted run's byte for byte (``test_each_file_alone_is_what_the_whole_diff_says``):
-        those sections are taken from *patch* and spend the same bound in the same order.
-        The limited run's sections of files not asked for, a copy's source among them, never
-        spend it. None when a file has no section of its own, which the runs below answer
-        for, their retry without rename detection included.
+        Asked for every file, the run below is unrestricted and prints *patch* itself, but
+        for the textconv drivers this one never runs, which is why it is used only where the
+        configuration names none. Asked for some, the run below is limited to their paths,
+        and where Git pairs renames and copies there as it did in the whole comparison, its
+        sections for them are the unrestricted run's byte for byte
+        (``test_each_file_alone_is_what_the_whole_diff_says``): those sections are taken from
+        *patch* and spend the same bound in the same order. The limited run's sections of
+        files not asked for, a copy's source among them, never spend it. Where it pairs a
+        file otherwise, the limited run's section matched nothing the manifest lists, and the
+        file was left out unless the retry without rename detection found it; *patch* pairs
+        it as the manifest does, and it is answered (``test_a_page_paired_otherwise_alone``).
+        None when a file has no section of its own, which the runs below answer for.
         """
 
         def bounded() -> _Budgeted:
@@ -979,15 +1032,19 @@ class GitDiffSource:
         diff_filter: str | None = None,
         listing: bool = False,
     ) -> bytes:
-        """The patch; with *listing*, the manifest's listings before it, the run killed past
-        :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`)."""
+        """The patch; with *listing*, the manifest's listings before it and no textconv
+        driver run, stopped past :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`)."""
         return await run_git_at(
             [
                 # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
                 "--literal-pathspecs",
                 "diff",
                 # The listing run's own options, and `-p` so the patch follows them.
-                *(["--raw", "--numstat", "-p", "-z", "--no-abbrev"] if listing else []),
+                *(
+                    ["--raw", "--numstat", "-p", "-z", "--no-abbrev", "--no-textconv"]
+                    if listing
+                    else []
+                ),
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
                 *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
                 # The shape the parser reads, whatever a folder's configuration says: Git's
@@ -1000,8 +1057,11 @@ class GitDiffSource:
                 *([] if pathspec is None else ["--", *pathspec]),
             ],
             self._location,
-            max_bytes=MAX_LISTED_PATCH_BYTES if listing else None,
-            stop_at_cap=listing,
+            # The listing as the listing run bounded it, and the patch after it as above.
+            max_bytes=(
+                self._location.read_policy.max_bytes + MAX_LISTED_PATCH_BYTES if listing else None
+            ),
+            stop_when=_PatchBound(MAX_LISTED_PATCH_BYTES) if listing else None,
         )
 
     def _patches_from(

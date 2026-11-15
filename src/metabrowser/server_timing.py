@@ -26,7 +26,10 @@ started: :func:`git_process_started` is called by ``git/process.py`` each time a
 succeeds, inside a phase or not, so the count is every process and not only those the
 ``git`` time covers. The header says it in the ``git`` entry's description,
 ``git;dur=41.2;desc="2 processes"``, and a request whose Git ran inside another phase
-gets a ``git`` entry with the description alone (H116).
+gets a ``git`` entry with the description alone (H116). Work a request joins rather than
+starts is counted where it started: a comparison's listing that another request is already
+computing (``builtin_plugins/diff/comparison_cache.py``) is counted in that request, while it
+is open, and not in the one that waits for it, which says nothing of it (review of #449, L3).
 
 **What the header can say.** A response's headers are sent before its body, so
 ``Server-Timing`` holds ``srv``, the time to the start of the response, and the phases

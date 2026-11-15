@@ -22,6 +22,11 @@ All notable changes to Metabrowser are documented here.
 - `Server-Timing` counts the Git processes a request started, in its `git` entry’s
   description: `git;dur=41.2;desc="2 processes"`.
 
+- A commit of more than 50 files no longer shows some of its renamed files as
+  unreadable. When Git paired the files of the first page differently on their own than
+  in the whole commit, the page named them “could not be read from the produced diff”;
+  their changes now show, as the file list describes them.
+
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote
   10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
