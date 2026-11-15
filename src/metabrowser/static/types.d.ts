@@ -3182,6 +3182,8 @@ declare global {
     flushPull(): void;
     /** The Files panel came to the front: what waited while it was hidden may run. */
     filesShown(): void;
+    /** The Files panel left the front, its toolbar with it. */
+    filesHidden(): void;
     /** Focus the Files tree's roving row: the Files panel's `focusRow`. */
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;

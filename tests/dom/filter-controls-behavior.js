@@ -498,11 +498,26 @@ assertEqual(
   const panel = {
     ownerDocument: doc,
     style: {},
+    getClientRects: () => [{}],
     getBoundingClientRect: () => ({ top: 105 }),
     querySelector: (selector) =>
       selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 29 }) } : null,
   };
-  const empty = { ownerDocument: doc, style: {}, querySelector: () => null };
+  const empty = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [{}],
+    querySelector: () => null,
+  };
+  // Under a hidden toolbar a panel has rows but no box: every rect reads zero.
+  const hidden = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [],
+    getBoundingClientRect: () => ({ top: 0 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 0 }) } : null,
+  };
   let asked = "";
   const root = {
     ownerDocument: doc,
@@ -510,7 +525,7 @@ assertEqual(
     removeEventListener() {},
     querySelectorAll(selector) {
       asked = selector;
-      return [panel, empty];
+      return [panel, empty, hidden];
     },
   };
   fc.fitOpenMenus(root);
@@ -521,12 +536,43 @@ assertEqual(
   );
   assertEqual("an open menu is fitted to the room", panel.style.maxHeight, "307px");
   assertEqual("a menu with no rows is left alone", empty.style.maxHeight, undefined);
+  assertEqual("a menu with no box is not fitted to nothing", hidden.style.maxHeight, undefined);
   const dispose = fc.bind(root, {});
   view.innerHeight = 900;
   viewListeners.resize?.();
   assertEqual("a resize fits the open menu again", panel.style.maxHeight, "474px");
   dispose();
   assertEqual("the disposer stops listening for resizes", viewListeners.resize, undefined);
+
+  // A click on a trigger: the consumer renders the menu open, then bind fits it, so a
+  // consumer that only binds still gets a fitted menu.
+  const rootListeners = {};
+  const order = [];
+  const toggle = {
+    getAttribute: (name) => (name === "data-chip-menu-toggle" ? "types" : null),
+    closest: (selector) => (selector === ".chip-menu" ? { getAttribute: () => "false" } : null),
+  };
+  const clicked = {
+    ownerDocument: doc,
+    addEventListener(type, listener) {
+      rootListeners[type] = listener;
+    },
+    removeEventListener() {},
+    contains: () => true,
+    querySelectorAll() {
+      order.push("fit");
+      return [];
+    },
+  };
+  fc.bind(clicked, {
+    onMenuToggle(key, open) {
+      order.push(`toggle ${key} ${open}`);
+    },
+  });
+  rootListeners.click({
+    target: { closest: (selector) => (selector === "[data-chip-menu-toggle]" ? toggle : null) },
+  });
+  assertEqual("bind fits a menu after its consumer opens it", order, ["toggle types true", "fit"]);
 }
 assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
 

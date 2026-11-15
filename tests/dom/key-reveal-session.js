@@ -519,6 +519,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const mainTabs = context.MetabrowserMainTabs.create({
     cancelPreview() {},
     filesShown() {},
+    filesHidden() {},
     flushPull() {},
     focusFilesRow: () => tree?.focusCurrent() ?? false,
     isGitHistoryLanding: () => false,

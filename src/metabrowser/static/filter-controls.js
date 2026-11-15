@@ -180,8 +180,9 @@
    * `presets` are named shorthands rendered above the raw list, each
    * standing for the full set of values it names.
    *
-   * The panel has no fixed height: once a consumer has rendered it open,
-   * `fitOpenMenus(root)` sizes it to its rows and the window.
+   * The panel's height is fitted to its rows and the window (`fitOpenMenus`):
+   * `bind` fits it when its trigger opens it, and a consumer that renders it
+   * open another way calls `fitOpenMenus(root)` after rendering.
    *
    * @param {{key: string, label: string, options: ChipOption[],
    *          value: string[] | string | null, anyLabel: string,
@@ -326,13 +327,11 @@
     );
   }
 
-  // How tall an open dropdown may be. The user asked for "up to 16" rows
-  // where a fixed 320px held about 8, and for a menu that is "always within the
-  // window". Measured in headless Chrome on the Files type menu (2026-11-15):
-  // every row, check or icon, is 29px and the panel's padding and border add
-  // 10px, so 16 rows are 474px; at a 413px viewport the 320px menu ran 12px off
-  // the window's bottom edge. The cap is rows times the rendered row, so it
-  // follows the row if its type or padding changes.
+  // How tall an open dropdown may be: up to 16 rows, as the user asked, and always
+  // inside the window. Measured in headless Chrome on the Files type menu
+  // (2026-11-15): every row, check or icon, is 29px and the panel's padding and
+  // border add 10px, so 16 rows are 474px. The cap is rows times the rendered row,
+  // so it follows the row if its type or padding changes.
   const MENU_MAX_ROWS = 16;
   // The space kept between a dropdown and the window's edge: the tooltip's
   // TOOLTIP_VIEWPORT_MARGIN in app.js, so every floating surface stops short of
@@ -340,12 +339,12 @@
   const MENU_WINDOW_MARGIN = 8;
 
   /**
-   * The max-height for an open dropdown: its rows' natural height up to
-   * MENU_MAX_ROWS rows, and no lower than the window's bottom edge, less the
-   * margin. Pure, so the rule is checked without a browser.
-   *
-   * It never goes below one row and the frame: a menu opened with less room
-   * than that is still a menu, scrolled one row at a time.
+   * The max-height for an open dropdown: MENU_MAX_ROWS rendered rows and the
+   * frame, or the room from the panel's top to the window's bottom edge less
+   * MENU_WINDOW_MARGIN, whichever is smaller; never less than one row and the
+   * frame, so a menu opened with less room is still a menu, scrolled one row at a
+   * time. A menu with fewer rows is shorter than its cap and keeps its natural
+   * height. Pure, so the rule is checked without a browser.
    *
    * @param {{rowHeight: number, frame: number, top: number, windowHeight: number}} geometry
    *   `rowHeight` is one rendered row, `frame` the panel's vertical padding and
@@ -367,7 +366,9 @@
   function fitMenuPanel(panel) {
     const view = panel.ownerDocument?.defaultView;
     const row = panel.querySelector(".menu-item");
-    if (!view || !row) {
+    // A panel with no box (its toolbar hidden) has no geometry to read: fitting it
+    // would write a one-row sliver that outlives the toolbar's return.
+    if (!view || !row || panel.getClientRects().length === 0) {
       return;
     }
     const style = view.getComputedStyle(panel);
@@ -386,9 +387,10 @@
   }
 
   /**
-   * Fit every open dropdown under `root`. A consumer calls this after it
-   * renders a menu open, since only then is there geometry to read; `bind`
-   * calls it again when the window resizes.
+   * Fit every open dropdown under `root`. `bind` calls it when its trigger is
+   * clicked and the consumer has rendered the menu open, and again when the
+   * window resizes; a consumer that opens or re-renders a menu another way, as
+   * the shell's keyboard path does, calls it after rendering.
    * @param {Element} root
    */
   function fitOpenMenus(root) {
@@ -483,6 +485,8 @@
         if (opts.onMenuToggle) {
           opts.onMenuToggle(key, !isOpen);
         }
+        // The consumer has rendered the menu open: fit it to its rows and the window.
+        fitOpenMenus(root);
         return;
       }
       // A row inside the dropdown. Checked before the generic .chip

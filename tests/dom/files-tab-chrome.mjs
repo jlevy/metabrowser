@@ -125,9 +125,34 @@ const MEASURE = `(key) => {
     rowHeights: [...new Set(rows.map((row) => round(row.getBoundingClientRect().height)))],
     rows: rows.length,
     labelFromRowInset: round(textLeft(first.querySelector(".menu-item-label")) - rowInset),
+    // The rule between the groups and the raw rows, whose 1px a scrolling menu keeps.
+    separators: [...panel.querySelectorAll(":scope > .menu-separator")].map((rule) =>
+      round(rule.getBoundingClientRect().height),
+    ),
     headings,
   };
 }`;
+
+// The gear menu: where its title, its labelled row, and its foot start, against the menu.
+const GEAR = `(() => {
+  const menu = document.querySelector("#settings-control .settings-menu");
+  const left = (element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent.trim()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return Math.round((range.getBoundingClientRect().left - menu.getBoundingClientRect().left) * 100) / 100;
+      }
+    }
+    return null;
+  };
+  return {
+    title: left(menu.querySelector(".menu-title")),
+    labelledRow: left(menu.querySelector(".menu-row")),
+    foot: left(menu.querySelector(".menu-version")),
+  };
+})()`;
 
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
@@ -172,8 +197,19 @@ try {
   );
   await browser.evaluate("document.fonts.ready.then(() => true)");
   phase("loaded");
+  // The gear menu's lines start on one inset.
+  await browser.evaluate(`document.getElementById("settings-btn").click(), true`);
+  await browser.waitFor(
+    `document.getElementById("settings-control").getAttribute("aria-expanded") === "true"`,
+  );
+  await browser.evaluate(frames);
+  const gear = await browser.evaluate(GEAR);
+  await browser.evaluate(`document.getElementById("settings-btn").click(), true`);
+  await browser.waitFor(
+    `document.getElementById("settings-control").getAttribute("aria-expanded") === "false"`,
+  );
 
-  const result = {};
+  const result = { gear };
   await toggle("types", true);
   result.typesTall = await measure("types");
   // The window shrinks under the open menu: it is fitted again to the room left.

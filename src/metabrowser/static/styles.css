@@ -662,10 +662,10 @@
   --help-binding-width: 108px;
   --search-palette-width: 640px;
   --search-palette-max-height: min(70vh, 640px);
-  /* Where a menu's content starts: a row's text, the menu's title, and a group's
-     heading all begin this far inside the menu's padding. A heading indented to
-     the rows' icon or check column read as one of the rows (docs/design-system.md,
-     "Groups in a Menu"). */
+  /* Where a menu's content starts: a row's first column, the menu's title, its
+     foot, a labelled row, and a group's heading all begin this far inside the
+     menu's padding. A heading on the rows' label column reads as a row of its
+     group (docs/design-system.md, "Groups in a Menu"). */
   --menu-row-inset: 8px;
 
   /* Code block backgrounds */
@@ -1794,8 +1794,9 @@ summary {
                       without one or given two.
      .group-heading   the quiet small-caps heading that names a group, at the
                       menu's row inset like every other line in the menu.
-   Every inline inset reads --menu-row-inset, so a heading, a title, and a row's
-   first column start on one edge. See docs/design-system.md, "Groups in a Menu". */
+   A row's first column, the title, the foot, a labelled .menu-row, and a group's
+   heading read --menu-row-inset, so they start on one edge. See
+   docs/design-system.md, "Groups in a Menu". */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1861,7 +1862,10 @@ summary {
 .menu-item[aria-checked="true"] .menu-item-icon {
   color: var(--link);
 }
+/* No shrink: a scrolling menu is a flex column whose rows hold their height, and a
+   1px rule with the default shrink would give up its pixel and leave a gap. */
 .menu-separator {
+  flex-shrink: 0;
   height: 1px;
   margin: 4px 0;
   background: var(--border);
@@ -1931,9 +1935,9 @@ summary {
   }
 }
 /* A named group of a menu's rows. Its divider is its own top edge, drawn with
-   the .menu-separator geometry (4px, a 1px rule, 4px), so a menu author cannot
-   leave a heading without one or put two in a row. The menu's first child needs
-   none: the menu's own edge is there. */
+   the .menu-separator geometry (4px, a 1px rule, 4px), so a heading never lacks
+   one; a group after a .menu-separator draws none, so it never gets two. The
+   menu's first child needs none: the menu's own edge is there. */
 .menu-group {
   display: flex;
   flex-direction: column;
@@ -1942,6 +1946,11 @@ summary {
   margin-top: 4px;
   padding-top: 4px;
   border-top: 1px solid var(--border);
+}
+.menu-separator + .menu-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 /* The heading that names a group. It starts on the menu's row inset, the edge
    the rows' first column (a check, an icon) starts on, not on their labels: on
@@ -2039,7 +2048,7 @@ summary {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 0 2px 2px;
+  padding: 2px 0 2px var(--menu-row-inset);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
@@ -3354,7 +3363,10 @@ a.tab-btn {
      the room between its top and the window's bottom edge; past either it
      scrolls inside itself. Both depend on measured geometry, the rendered row's
      height and where the trigger sits, so filter-controls.js (`fitMenuPanel`)
-     sets max-height when the menu opens and when the window resizes. */
+     sets max-height inline when the menu opens and when the window resizes. This
+     cap is only the floor under that: a menu nothing has fitted yet still stops
+     inside the window. */
+  max-height: calc(100vh - 16px);
   overflow-y: auto;
 }
 .chip-menu[aria-expanded="true"] .chip-menu-panel {
