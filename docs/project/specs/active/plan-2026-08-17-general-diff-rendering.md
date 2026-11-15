@@ -758,8 +758,8 @@ No Git involvement.
   copies, mode changes, binary markers, and malformed input (`mb-rre2`)
 - [ ] Superseded: `diff/service.py`: adapter registry, deterministic comparison IDs,
   bounded caches (`mb-uawv`). Adapters are wired at their call sites with no registry
-  ([comparison sources](../../architecture/arch-git-and-comparison-sources.md#comparison-sources)),
-  and `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
+  ([comparison sources](../../architecture/arch-diff-pipeline.md#the-source-port)), and
+  `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
 - [ ] Superseded: `diff/routes.py`: the `/api/diff/` collection above (`mb-27dr`). The
   diff plugin’s data hooks serve the browser
 - [x] `diff` file kind wired into classification and the view registry (`mb-yv0g`)
@@ -783,9 +783,9 @@ commit.
 - [x] `--diff-merges=first-parent` for merges, matching the history surface
 - [ ] Superseded: comparison context in the shell as a third Files-tree source
   (`mb-p2mi`). A comparison is a
-  [nav container](../../architecture/arch-nav-containers.md) instead: a patch file
-  expands to its file changes with their indicators (`mb-6ba6`, `mb-um0p`), and a pull
-  request’s Changes tab has its own file tree
+  [nav container](../../architecture/arch-plugin-system.md#navigation-containers)
+  instead: a patch file expands to its file changes with their indicators (`mb-6ba6`,
+  `mb-um0p`), and a pull request’s Changes tab has its own file tree
 - [ ] Superseded in part: comparison views injected into changed files’ view descriptors
   (`mb-p2mi`, which took over `mb-yv0g`’s Phase 2 half).
   An inner change opens with Diff as its default view, and the file bar’s **View file**
@@ -1232,9 +1232,9 @@ model have to render somewhere.
 Settled since this plan was written: the Python adapters produce hunks; comparisons are
 addressed by `/commit/<rev>[/<file>]`, `/pull/<n>/files[/<file>]`, and the specified
 `/compare/` route in the
-[browser URL grammar](../../../architecture.md#browser-url-grammar); and uncommitted
-comparisons use optimistic generations with a `stale` refresh, as the Git-status plan
-specifies.
+[browser URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar);
+and uncommitted comparisons use optimistic generations with a `stale` refresh, as the
+Git-status plan specifies.
 
 ## References
 

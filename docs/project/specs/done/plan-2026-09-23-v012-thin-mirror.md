@@ -277,9 +277,9 @@ the run against it.
 
 The Later column is what this plan left out.
 The pull-request list shipped in 0.12.0 through the
-[Pulls tab plan](../active/plan-2026-10-01-github-pulls-tab.md); the rest is work for a
-later release, with its own plan only where a row links one, and `mb-1wk1` lists the
-rows no other bead tracks.
+[Pulls tab plan](plan-2026-10-01-github-pulls-tab.md); the rest is work for a later
+release, with its own plan only where a row links one, and `mb-1wk1` lists the rows no
+other bead tracks.
 
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
@@ -292,7 +292,7 @@ rows no other bead tracks.
 | Pull request: checks and statuses summary | Yes | Logs |
 | Pull request: Files changed | Yes (merge-base diff) |  |
 | Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit; a pull request’s two sides have one since [#347](https://github.com/jlevy/metabrowser/pull/347), after 0.12.0 |
-| Pull request list for a repository |  | Shipped in 0.12.0: [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) |
+| Pull request list for a repository |  | Shipped in 0.12.0: [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) |
 | Issues, Actions, releases, blame |  | Yes |
 | SSH remotes, GitHub Enterprise hosts |  | Yes |
 
@@ -381,7 +381,7 @@ how each pull request above was reviewed, except #260, which changes documents o
 has no row.
 
 The pull-request list and pull requests on a local checkout followed in 0.12.0, through
-the [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) and
+the [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
 [checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans.
 Still later: inline review anchoring, SSH, Enterprise hosts, issues, and rebind.
 

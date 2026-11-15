@@ -25,13 +25,13 @@ lightweight-description pass after the first tree work is idle.
 This one-pass preparation is separate from the recurring foreground watch.
 Eligibility uses the same served-repository discovery as the Pulls tab.
 See
-[Progressive Metadata Preparation](../active/plan-2026-10-01-github-pulls-tab.md#progressive-metadata-preparation).
+[Progressive Metadata Preparation](plan-2026-10-01-github-pulls-tab.md#progressive-metadata-preparation).
 
 The watch covers the repository’s PR catalog.
 The selected PR’s description, conversation, checks, and comparison continue through
 their existing routes.
 GitHub Issues belong to a separate catalog design.
-See the [Pulls plan](../active/plan-2026-10-01-github-pulls-tab.md#catalog-revision).
+See the [Pulls plan](plan-2026-10-01-github-pulls-tab.md#catalog-revision).
 
 ## Catalog and Request Ownership
 
@@ -100,7 +100,7 @@ the filter.
 Keep one status row in Pulls chrome beside the persistent **Reload** action.
 The repository total keeps its own label, and the list’s scan indicator shows below the
 rows while pages are read or fetched (see
-[Extend Pulls on Scroll](../active/plan-2026-10-01-github-pulls-tab.md#extend-pulls-on-scroll)).
+[Extend Pulls on Scroll](plan-2026-10-01-github-pulls-tab.md#extend-pulls-on-scroll)).
 Show the last successful update age when idle and the shared spinner while work is
 active. A retry keeps the last failure visible and keeps its announcement steady until
 the result changes. Announce meaningful status changes through the existing live region.
