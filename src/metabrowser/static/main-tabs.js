@@ -1,4 +1,4 @@
-// Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
+// Deferred shell controller for the Files, Pulls, and Commits tabs, and for going home
 // from the heading above them.
 (() => {
   // In tab order, each with its letter: F for Files, R for pull Requests, H for commit

@@ -1,0 +1,248 @@
+# Browsing Files
+
+`metab ROOT` serves a folder and opens it in your browser; `metab FILE` serves the
+file’s folder with that file selected.
+The page has three main tabs: **Files**, **Pulls** for a GitHub repository, and
+**Commits** for a Git repository.
+This guide covers Files.
+[Browsing history](browsing-history.md) covers Commits,
+[reviewing pull requests](reviewing-pull-requests.md) covers Pulls, and
+[the command-line guide](command-line.md) has every option.
+
+## The Files Tab
+
+The Files tab is a tree of the served folder beside the selected file or folder.
+
+- **Rows:** a file row shows its size and age; a folder row shows its file count, total
+  size, and newest change, for everything beneath it.
+  Age is drawn in a color that runs from the freshest files to the oldest.
+- **Opening:** click a row, or move with the arrow keys or `J` and `K`. Enter or Space
+  opens or closes a folder; Left and Right collapse and expand.
+  A folder with many children shows them a page at a time.
+- **Addresses:** each file and folder has its own `/view/<path>` address, so the
+  browser’s Back, Forward, new tab, and copied links work as they do anywhere.
+  A fragment selects a place in a document, such as a heading.
+- **Up:** `U`, or the folder header’s Up button, opens the parent folder.
+
+Large trees are indexed in the background: the first view does not wait for the whole
+walk, and counts fill in as it goes.
+The index stops at `INVENTORY_MAX_FILES` in `src/metabrowser/settings.py`; past it, the
+tree and Quick Search say that the index is incomplete.
+[Keyboard shortcuts](keyboard-shortcuts.md) lists every key.
+
+### Folders: Overview and Treemap
+
+Selecting a folder shows two views, **Overview** (`O`) and **Treemap** (`M`).
+
+**Overview** has a **File Overview** section and, when the folder has one, its
+**README** rendered as a document.
+File Overview counts what the folder holds:
+
+- **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
+  together, each drawn as a bar split by file-type family.
+- **The type summary:** a legend of the largest families, such as Code, Documentation,
+  Data, Archives, and Media; **Details** opens the full table, where each family lists
+  its extensions.
+- **Files or Bytes** switches every figure between counts and sizes, and **Show
+  ignored** adds the ignored files to the type summary.
+
+**Treemap** draws the same folder as nested rectangles sized by bytes or file count,
+colored by the same families.
+Click a folder’s rectangle to go into it and a file’s to open it.
+The Files or Bytes choice and Show ignored apply to Treemap too.
+
+The families and their extensions come from
+`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`, which the
+[File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
+specifies.
+
+### Filters and the Recent View
+
+The bar above the tree narrows it:
+
+- **Modified within** keeps files changed within a window, from Live to the past month.
+  Live means changed in the last `LIVE_FILE_WINDOW_S` seconds
+  (`src/metabrowser/settings.py`).
+- **File type** keeps the categories, families, or exact extensions you choose.
+- The **More filters** chevron opens **Minimum file size** and **Show ignored**, which
+  is on by default and shows gitignored files dimmed; turn it off to hide them.
+- **Clear** removes every filter.
+
+A type or size filter keeps the tree’s shape, shows only matching files and the folders
+that hold them, and says how many files match.
+Filtering runs over the whole index, not only the folders you have expanded.
+
+Setting **Modified within** turns the tree into the **Recent** view: only the matching
+files, grouped by folder and sorted newest first.
+A chain of folders that each hold one folder shows as one row, and a folder whose files
+were all written at about the same time starts collapsed.
+The view holds at most `RECENT_DEFAULT_LIMIT` files (`src/metabrowser/settings.py`);
+when more match, it leaves out gitignored files first and says how many matched.
+A pinned Git revision has no modification times, so it offers only File type and Minimum
+file size.
+
+The same filters are available from the command line:
+`metab ROOT --walk --type .md --age 7d`.
+
+## Reading Files
+
+Each file opens in the view its kind declares; a kind with several views shows them as
+tabs, and `V` and `S` switch to the rendered view and the source wherever both exist.
+`metab ROOT --show PATH` prints the kind and views a file gets.
+
+| File | Views |
+| --- | --- |
+| Markdown (`.md`) | Document, rendered by KPress, and Source |
+| JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
+| JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
+| Code and text | Source, with syntax highlighting where a grammar exists |
+| Images | Image |
+| HTML | Preview, in a sandboxed frame, and Source |
+| Patches (`.patch`, `.diff`) | Diff, the same view commits and pull requests use |
+| Other binary files | Bytes, a view of the file’s bytes |
+
+A patch file also expands in the tree like a folder, with one row per changed file.
+A compressed copy of a supported file (`GZIP_SUFFIX` or `ZLIB_SUFFIX` in
+`src/metabrowser/gz_io.py`) opens as the file it holds.
+A large source file opens with its beginning and a **Load more** button.
+Plugins add views for other formats ([plugin authoring](plugins.md)).
+
+### Markdown
+
+The Document view renders Markdown with KPress: headings with a table of contents,
+tables, footnotes, highlighted code, math, images, and YAML frontmatter, which shows as
+a closed **Frontmatter** disclosure.
+The Print button in the file header prints the document without the rest of the page.
+
+Links resolve the way GitHub resolves them:
+
+- **Relative and root-relative links** open the file they name from the document’s own
+  folder or from the served root, including headings, images, spaces, and Unicode.
+  A link to a missing file opens a not-found page; nothing guesses a target by its name.
+- **GitHub links to this repository:** a `github.com/<owner>/<repo>/blob/...` link opens
+  locally only when the served folder is a checkout of that repository at that branch or
+  revision. Every other link to the web stays a web link.
+- **Published sites:** when an MkDocs, Docusaurus, or Jekyll configuration sits at the
+  served root, a link to a published page such as `/guide/` opens the source file behind
+  it, if no file has that exact path.
+
+Obsidian wiki links work too:
+
+- `[[note]]`, `[[note#heading]]`, `[[note#^block]]`, and `[[note|label]]` open a note,
+  heading, or named block.
+  A name resolves to an exact path, then to a note in the document’s folder, then to the
+  only note in the tree with that name.
+  A name that matches several notes or none says so, with the candidates, instead of
+  picking one.
+- `![[note]]`, `![[note#heading]]`, and `![[note#^block]]` embed that note, heading, or
+  block in the document.
+  Embeds nest, within the limits in
+  `src/metabrowser/builtin_plugins/markdown/transclusion.js`; past them, or in a cycle,
+  the embed says why it stopped.
+- `![[image.png]]` and other media embed the file.
+
+### Data, Logs, and Code
+
+- **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
+  only the rows in view.
+- **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
+  text, tool calls, and tool results, and each row expands to its raw JSON. For
+  coding-agent session logs, Metabrowser recognizes the agents the `agent_log` built-in
+  plugin’s manifest lists (`src/metabrowser/builtin_plugins/agent_log/manifest.toml`),
+  shows the agent in the header, and adds **Charts**.
+  [Working with agents](working-with-agents.md#reading-agent-logs) has more.
+- **Code and text:** Source highlights the languages `SYNTAX_LANGUAGE_BY_EXTENSION` in
+  `src/metabrowser/file_extensions.py` maps, and shows plain text for the rest, `.log`
+  files among them.
+
+### HTML
+
+Preview shows the page in a sandboxed frame that cannot reach Metabrowser’s own page.
+**Open as full page** opens the same document as its own browser tab, under the same
+sandbox. With active content off (`--untrusted` or `--no-active-content`), HTML files
+show Source only; [the command-line guide](command-line.md#serving) explains those
+settings.
+
+## Live Updates
+
+The server watches the served folder and streams changes to the page.
+
+- **The tree, counts, and Recent** update as files are created, changed, and removed; a
+  newly arrived row is highlighted briefly.
+- **Overview and Treemap** recount when the folder’s contents change.
+- **An open file** shows its new content the next time you open it, or when you reload.
+
+Files that a running process writes get more.
+Metabrowser watches files in a folder named `.logs` or `.state` (`LOGS_DIR` and
+`STATE_DIR` in `src/metabrowser/constants.py`) whose extension is in
+`BROWSER_TRACKABLE_EXTS` (`src/metabrowser/file_extensions.py`). One that is being
+written shows an activity dot in the tree, and when it stops, an open view of it
+reloads.
+How long a file counts as being written is `ACTIVE_TRACKER_QUIET_POLLS` polls of
+`ACTIVE_TRACKER_INTERVAL_S` (`src/metabrowser/settings.py`).
+
+### Tailing a JSONL Log
+
+A JSONL log under `.logs` or `.state` that is being written tails itself: new events
+append to its Log view as the process writes them, without a reload.
+The header shows the run’s state: **Live** while the log is being written, **Running**
+while it has not recorded its end, **Done** or **Failed** for the end the log records,
+and **Run ended** when the tail closes because the file was removed or replaced.
+
+- A `.pid` file beside the log names its writer; when that process has exited, the log
+  is not tailed.
+- Compressed logs, and logs larger than `_LARGE_FILE_BYTES` in
+  `src/metabrowser/jsonl_view.py`, open but are not tailed.
+- Charts count the events there were when they loaded; they do not grow with the tail.
+
+### When a Live Update Is Missing
+
+1. Check that the file is inside the served folder and that no filter hides it,
+   including Show ignored turned off for a gitignored file.
+2. Reload the page.
+3. If the server log says it is refreshing slow browser connections after a queue
+   overflow, a burst of changes outran the page, which then reconnects and catches up
+   from a fresh snapshot.
+   If that repeats, report it with the size of the tree and its filesystem.
+
+[Real-time debugging](realtime-debugging.md) has the diagnostics for a deeper look.
+
+## Quick Search
+
+Press `T` or `/` to find a file by name or path.
+Matching is fuzzy, so the letters you type need only appear in order, and matches in the
+file name rank above matches elsewhere in the path.
+Up and Down move through the results, Enter opens one, and Escape closes the search.
+
+Quick Search searches the files indexed so far, so in a large tree it grows as indexing
+proceeds and says when the index is incomplete.
+It leaves out gitignored files.
+In a GitHub repository it also finds pull requests: type `#` for recent ones, then a
+number or words from the title
+([reviewing pull requests](reviewing-pull-requests.md#find-a-pull-request-with-quick-search)).
+
+## Browsing a Remote Host
+
+To browse a folder on another machine, run `metab` there and view it here:
+
+```shell
+metab --remote example-host --path /srv/shared-files
+```
+
+`metab` connects with SSH, starts `metab` on the host bound to the host’s loopback
+address, so other machines cannot reach it, and tunnels that port to `localhost`, where
+the page opens in your local browser.
+Ctrl-C closes the tunnel and stops the remote server, and so does losing the connection.
+
+- **On the host:** install the same Metabrowser version, so `metab` is on the SSH
+  session’s `PATH` or in `~/.local/bin`. If it is missing, the command says so.
+- **Several sessions** coexist: each takes the next free port on both machines.
+- **SSH settings** come from your SSH configuration; `--ssh-options` adds flags, and
+  `--gcp` connects with `gcloud compute ssh`.
+
+[Remote directories](command-line.md#remote-directories) in the command-line guide has
+every option.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
