@@ -316,7 +316,10 @@ status: 200
       "head_ref": "count-to-two",
       "head_repository": "forker/demo",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af"
+        }
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
@@ -460,7 +463,10 @@ status: 200
       "head_ref": "spam",
       "head_repository": null,
       "labels": [
-        "invalid"
+        {
+          "name": "invalid",
+          "color": "e4e669"
+        }
       ],
       "head_oid": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
       "merged": false
@@ -1126,7 +1132,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -1148,7 +1158,7 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "f4dc7b10faf8db5b62e7a2a1e97c24a6bbb0c8758c6b2558130bdedef54f1c1b"
+    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
   }
 }
 --- stderr ---
@@ -1201,7 +1211,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -1223,7 +1237,7 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "f4dc7b10faf8db5b62e7a2a1e97c24a6bbb0c8758c6b2558130bdedef54f1c1b"
+    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
   }
 }
 --- stderr ---

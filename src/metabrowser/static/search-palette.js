@@ -49,14 +49,16 @@
   }
 
   /**
-   * Append text and matching marks without interpreting result strings as markup.
+   * Text and matching marks, as nodes, without interpreting result strings as markup.
    * @param {Document} hostDocument
-   * @param {HTMLElement} container
    * @param {string} text
    * @param {readonly Readonly<{start: number, end: number}>[]} ranges
    * @param {number} pathOffset
+   * @returns {Node[]}
    */
-  function appendHighlightedText(hostDocument, container, text, ranges, pathOffset) {
+  function highlightedNodes(hostDocument, text, ranges, pathOffset) {
+    /** @type {Node[]} */
+    const nodes = [];
     let cursor = 0;
     for (const range of ranges) {
       const start = Math.max(0, range.start - pathOffset);
@@ -66,18 +68,31 @@
       }
       const boundedStart = Math.max(cursor, start);
       if (boundedStart > cursor) {
-        container.append(hostDocument.createTextNode(text.slice(cursor, boundedStart)));
+        nodes.push(hostDocument.createTextNode(text.slice(cursor, boundedStart)));
       }
       if (end > boundedStart) {
         const mark = hostDocument.createElement("mark");
         mark.textContent = text.slice(boundedStart, end);
-        container.append(mark);
+        nodes.push(mark);
         cursor = end;
       }
     }
     if (cursor < text.length) {
-      container.append(hostDocument.createTextNode(text.slice(cursor)));
+      nodes.push(hostDocument.createTextNode(text.slice(cursor)));
     }
+    return nodes;
+  }
+
+  /**
+   * Append text and matching marks without interpreting result strings as markup.
+   * @param {Document} hostDocument
+   * @param {HTMLElement} container
+   * @param {string} text
+   * @param {readonly Readonly<{start: number, end: number}>[]} ranges
+   * @param {number} pathOffset
+   */
+  function appendHighlightedText(hostDocument, container, text, ranges, pathOffset) {
+    container.append(...highlightedNodes(hostDocument, text, ranges, pathOffset));
   }
 
   /**
@@ -464,7 +479,13 @@
       text.className = "search-palette-option-text";
       const label = hostDocument.createElement("span");
       label.className = "search-palette-label";
-      appendHighlightedText(hostDocument, label, result.label, result.matchRanges, 0);
+      // The title: a conventional-commit prefix is regular and the rest bold, and each part
+      // keeps its matches (docs/design-system.md, "Titles").
+      label.append(
+        ...window.MetabrowserFormatters.titleNodes(hostDocument, result.label, (text, start) =>
+          highlightedNodes(hostDocument, text, result.matchRanges, start),
+        ),
+      );
       const description = hostDocument.createElement("span");
       description.className = "search-palette-description";
       const identifier = hostDocument.createElement("span");

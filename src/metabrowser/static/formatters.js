@@ -1,4 +1,5 @@
-// Locale-aware numeric formatting shared by the shell and plugins.
+// Locale-aware numeric formatting, and the conventional-commit split of a commit's or a
+// pull request's title, shared by the shell and plugins.
 
 (() => {
   const integerFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -88,6 +89,66 @@
     return age(epochSeconds).className;
   }
 
+  // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
+  // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
+  // optional scope of anything but parentheses, an optional "!", and the colon, at most 16
+  // code points, then whitespace and more of the title. The match is linear: each part is a
+  // run of one class, which the first character outside it ends.
+  const TITLE_PREFIX = /^[a-z]+(?:\([^()]+\))?!?:(?=\s+\S)/u;
+  const TITLE_PREFIX_MAX_CHARS = 16;
+  /** The one class that sets a prefix's weight (static/styles.css). */
+  const TITLE_PREFIX_CLASS = "title-prefix";
+  /** @type {Record<string, string>} */
+  const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+  /**
+   * A title's prefix and the rest after it, which together are the title, or null.
+   * @param {string} title
+   * @returns {{prefix: string, rest: string} | null}
+   */
+  function titlePrefix(title) {
+    const match = typeof title === "string" ? TITLE_PREFIX.exec(title) : null;
+    if (match === null || Array.from(match[0]).length > TITLE_PREFIX_MAX_CHARS) {
+      return null;
+    }
+    return { prefix: match[0], rest: title.slice(match[0].length) };
+  }
+
+  /**
+   * A title element's nodes: the prefix in a `span.title-prefix`, then the rest; with no
+   * prefix, the title alone. `part(text, start)` makes a part's nodes, so a caller can mark
+   * matches in it; by default a part is its text.
+   * @param {Document} doc
+   * @param {string} title
+   * @param {(text: string, start: number) => Array<Node | string>} [part]
+   * @returns {Array<Node | string>}
+   */
+  function titleNodes(doc, title, part = (text) => [text]) {
+    const split = titlePrefix(title);
+    if (split === null) {
+      return part(title, 0);
+    }
+    const prefix = doc.createElement("span");
+    prefix.className = TITLE_PREFIX_CLASS;
+    prefix.append(...part(split.prefix, 0));
+    return [prefix, ...part(split.rest, split.prefix.length)];
+  }
+
+  /**
+   * `titleNodes` as escaped markup; with no prefix, the escaped title alone.
+   * @param {string} title
+   * @returns {string}
+   */
+  function titleHtml(title) {
+    /** @param {string} text */
+    const escaped = (text) => text.replace(/[&<>"']/g, (character) => ESCAPES[character]);
+    const split = titlePrefix(title);
+    if (split === null) {
+      return escaped(String(title));
+    }
+    return `<span class="${TITLE_PREFIX_CLASS}">${escaped(split.prefix)}</span>${escaped(split.rest)}`;
+  }
+
   window.MetabrowserFormatters = Object.freeze({
     age,
     ageClass,
@@ -96,5 +157,8 @@
     formatFileCount,
     formatInteger,
     sizeClass,
+    titleHtml,
+    titleNodes,
+    titlePrefix,
   });
 })();

@@ -807,6 +807,11 @@ try {
   // Past the quiet period the tree dims under the scan row's words.
   await sleep(300);
   result.waiting.slow = await browser.evaluate(WAITING);
+  // A reveal while those sections are on their way, as navigating to a file makes one,
+  // lands once they paint (app.js, revealInTree).
+  await browser.evaluate(
+    `(window.__revealed = undefined, revealFileRow("src/lib/k03.py", { scroll: "nearest", isCurrent: () => true }).then((shown) => { window.__revealed = shown; }), true)`,
+  );
   // The write asks the sections to refresh; that waits for the sections on their way
   // instead of starting them over.
   await sleep(1500);
@@ -817,6 +822,10 @@ try {
   await browser.waitFor("document.querySelectorAll('.tree-section').length > 1", 30000);
   await browser.evaluate(frames);
   result.waiting.painted = await browser.evaluate(WAITING);
+  await browser.waitFor("window.__revealed !== undefined", 30000);
+  result.waiting.revealed = await browser.evaluate(
+    `({ shown: window.__revealed, row: document.querySelector('.tree-section[data-tree-group="type:code"] .tree-item[data-path="src/lib/k03.py"]')?.classList.contains("selected") ?? null })`,
+  );
   const refreshDeadline = Date.now() + 10000;
   while (requested === beforeRelease && Date.now() < refreshDeadline) {
     await sleep(50);

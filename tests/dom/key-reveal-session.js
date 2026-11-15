@@ -41,6 +41,7 @@ const recording = JSON.parse(
 
 // In load order, as the shell's startup scripts and its `shell-tools` bundle run them.
 const MODULES = [
+  "formatters.js",
   "navigation.js",
   "pull-route.js",
   "filter-controls.js",

@@ -765,11 +765,49 @@ def test_colors_are_declared_in_oklch() -> None:
     ]
     for sheet in sheets:
         text = sheet.read_text(encoding="utf-8")
+        if sheet.parent.name == "github":
+            text = _without_label_formula(text)
         for notation in (r"hsla?\(", r"rgba?\(", r"#[0-9a-fA-F]{3,8}\b"):
             found = re.findall(notation, text)
             assert not found, (
                 f"{sheet.name} declares colors as {found[0]!r}; every color is written in oklch"
             )
+
+
+_LABEL_RULE = re.compile(
+    r'\.github-pull-label\[data-color\](?::where\(\[data-theme="dark"\] \*\))? \{[^}]*\}'
+)
+
+
+def _without_label_formula(text: str) -> str:
+    """The GitHub plugin's stylesheet without GitHub's label formula, the one exception.
+
+    A label's color is GitHub's data, six hex digits of sRGB, and the formula is
+    github.com's, written in ``rgb()`` and ``hsl()`` of the label's own custom properties
+    (docs/design-system.md, "Label Colors"): in oklch it would not paint what github.com
+    paints. Its two rules are taken out whole, so a color anywhere else in the sheet is
+    still found; and each color they write is computed from a ``--label-`` property, never
+    a literal.
+    """
+
+    rules = _LABEL_RULE.findall(text)
+    assert len(rules) == 2, "the label formula is a light rule and a dark one"
+    for rule in rules:
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b", rule), rule
+        calls = [_call_at(rule, found.start()) for found in re.finditer(r"(?:rgba?|hsla?)\(", rule)]
+        assert calls and all("var(--label-" in call for call in calls), rule
+    return _LABEL_RULE.sub("", text)
+
+
+def _call_at(text: str, start: int) -> str:
+    """The function call that starts at *start* in *text*, to its balancing parenthesis."""
+
+    depth = 0
+    for at in range(text.index("(", start), len(text)):
+        depth += {"(": 1, ")": -1}.get(text[at], 0)
+        if depth == 0:
+            return text[start : at + 1]
+    raise AssertionError(f"an unbalanced call: {text[start:]}")
 
 
 def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:
@@ -2031,7 +2069,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
     assert 'h("span", { class: "github-pull-stack-member-title" })' in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:

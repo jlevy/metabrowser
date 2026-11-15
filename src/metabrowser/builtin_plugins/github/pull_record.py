@@ -18,14 +18,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import stat
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -53,7 +56,10 @@ log = logging.getLogger(__name__)
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
-PULL_RECORD_PROJECTION: Final = 1
+# 1 added each actor's avatar; 2 each label's color and description (:class:`PullLabel`).
+# A record of an earlier projection is still shown, and its next refresh asks GitHub for
+# every part again, without the ETags that would let a 304 keep what it lacks.
+PULL_RECORD_PROJECTION: Final = 2
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
 # kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
@@ -111,6 +117,65 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+# GitHub's color for a label: six hex digits and no ``#``, which the API gives in either
+# case. Of the 2,846 labels of cli/cli, kubernetes/kubernetes, rust-lang/rust,
+# microsoft/vscode, python/cpython, and pytorch/pytorch (``gh api repos/<r>/labels``,
+# 2026-11-15), every color was six hex digits and 556 were upper case; a record keeps it
+# lower case.
+type LabelColor = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{6}$")]
+_LABEL_COLOR: Final = re.compile(r"[0-9A-Fa-f]{6}")
+
+
+def label_color(value: object) -> str | None:
+    """GitHub's color for a label, lower case, or ``None`` for anything but six hex digits.
+
+    A label without one is drawn neutral, never guessed at.
+    """
+
+    return value.lower() if isinstance(value, str) and _LABEL_COLOR.fullmatch(value) else None
+
+
+def label_description(value: object) -> str | None:
+    """A label's description, or ``None`` for none: GitHub answers ``null`` or ``""``."""
+
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def bare_labels(*fields: str) -> Callable[[object], object]:
+    """A reader of labels an earlier projection wrote as bare names, each given *fields*.
+
+    A record of projection 1 or earlier and a catalog row of projection 2 or earlier, what
+    Metabrowser 0.12.0 and the builds since wrote, hold a label as its name. Each reads as
+    a label whose *fields*, its color and, in a record, its description, are ``None``, so
+    it is drawn neutral until the projection's upgrade rewrites it. Anything else is left
+    for the model to validate.
+    """
+
+    def read(value: object) -> object:
+        if not isinstance(value, list | tuple):
+            return value
+        items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
+        return [
+            {"name": item, **dict.fromkeys(fields)} if isinstance(item, str) else item
+            for item in items
+        ]
+
+    return read
+
+
+class PullLabel(_Model):
+    """A label on the pull request: its name, GitHub's color for it, and its description.
+
+    ``color`` is ``None`` when GitHub gave no six hex digits, and the chip is drawn
+    neutral; ``description`` is ``None`` when the label has none, and the chip has no
+    tooltip.
+    """
+
+    name: Short
+    color: LabelColor | None
+    description: Short | None
+
+
 class PullSide(_Model):
     """One end of a pull request: the branch name, its commit, and its repository.
 
@@ -142,7 +207,9 @@ class PullRequest(_Model):
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
-    labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)
+    labels: Annotated[
+        tuple[PullLabel, ...], BeforeValidator(bare_labels("color", "description"))
+    ] = Field(max_length=MAX_LABELS)
     author: Login | None
     author_avatar_url: AvatarUrl = None
     created_at: Timestamp
@@ -793,6 +860,8 @@ __all__ = [
     "CommitStatus",
     "Comparison",
     "IssueComment",
+    "LabelColor",
+    "PullLabel",
     "PullRecord",
     "PullRequest",
     "PullSide",
@@ -803,12 +872,15 @@ __all__ = [
     "Truncation",
     "UnavailablePart",
     "apply_text_budget",
+    "bare_labels",
     "clear_pulls",
     "cut_escaped",
     "cut_text",
     "ensure_pulls_directory",
     "escaped_size",
     "fit_record",
+    "label_color",
+    "label_description",
     "read_pull_record",
     "read_pull_refresh",
     "read_refresh_stamp",

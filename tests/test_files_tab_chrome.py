@@ -28,7 +28,8 @@ opens the Modified within menu in both. This judges what it measured against
   that folder open, the scroll position, and the focused row;
 - with the grouped requests held, a choice reads on the trigger in its click and takes
   the request its press asked for ahead; past the quiet period the tree dims and the
-  scan row says "Grouping by file type…"; a refresh waits for the sections on their way;
+  scan row says "Grouping by file type…"; a refresh waits for the sections on their way,
+  and a reveal made meanwhile lands once they paint;
   and a newer choice, or No grouping, ends the wait at once ("Grouping the Files Tree",
   Waiting);
 - a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
@@ -411,6 +412,9 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert painted["sections"] > 1 and painted["progress"] is None, painted
     assert painted["treeOpacity"] == 1 and painted["busy"] == "false", painted
     assert waiting["refreshedAfter"], waiting
+    # A reveal made while the sections were on their way lands once they paint: its row,
+    # two folders down in Code, is shown and selected.
+    assert waiting["revealed"] == {"shown": True, "row": True}, waiting
     # A newer choice cancels the load on its way, and No grouping ends the wait at once;
     # the answers left behind arrive and paint nothing.
     assert waiting["chosen"] == {"type": "By file type", "age": "By age", "none": "No grouping"}

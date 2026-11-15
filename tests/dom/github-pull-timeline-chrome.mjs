@@ -186,6 +186,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },

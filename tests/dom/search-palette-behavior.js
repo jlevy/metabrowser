@@ -325,6 +325,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 for (const filename of [
+  "formatters.js",
   "navigation.js",
   "file-fuzzy-match.js",
   "known-file-catalog.js",

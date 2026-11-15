@@ -548,6 +548,7 @@ async function mountStory() {
     },
     icon: null,
     currentTitle: "",
+    titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
     onOpen() {},
   });
   menu.element.open = true;

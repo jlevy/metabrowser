@@ -515,6 +515,25 @@ function isEnvelope(value) {
 }
 
 /**
+ * What the Pulls tab says of a pull request the address names that its list does not hold.
+ * A list read only part of the way, newest first, may hold an older one further down, so
+ * it says only what it has loaded (*read*: whether the list has read as far as *number*).
+ *
+ * @param {number} number
+ * @param {string} filter
+ * @param {boolean} read
+ */
+export function outsideText(number, filter, read) {
+  const label = LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (filter)];
+  if (!read) {
+    return `#${number} is not among the pull requests loaded.`;
+  }
+  return filter === "all" || label === undefined
+    ? `#${number} is not in this list.`
+    : `#${number} is not listed under ${label}.`;
+}
+
+/**
  * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
  * by reloading the page onto the commit now served, so the list says nothing of its own for it,
  * whatever order the events arrive in: a page Back restores polls before the guard's check, and
@@ -551,6 +570,7 @@ function pinChanged(response) {
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
+ *   markOutside?(text: string | null): void,
  *   open(route: {
  *     number: number,
  *     tab: string,
@@ -640,6 +660,11 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let current = options.current ?? null;
   let revealCurrent = true;
+  /**
+   * What the list says of a current pull request it does not hold (`noteOutside`).
+   * @type {string | null}
+   */
+  let outside = null;
   /** The row that takes Tab: the current one, or else the first. @type {number | null} */
   let anchor = null;
   // Whether the reader put the anchor where it is, by a key, a focus, or a press. A grouped
@@ -1448,6 +1473,7 @@ export function createPullsController(deps, options = {}) {
       painted = key;
       deps.render(next, identity, arrivals);
     }
+    noteOutside();
   }
 
   function clearTimer() {
@@ -1601,6 +1627,52 @@ export function createPullsController(deps, options = {}) {
       const previous = anchor;
       anchor = next;
       deps.markAnchor(previous, next, false);
+    }
+  }
+
+  /**
+   * Show the current pull request's row: a closed stack that holds it opens, as a file the
+   * address names opens its folders, and the row scrolls into view; a row the list has not
+   * reached yet is chased, and one it does not hold is noted (`noteOutside`).
+   *
+   * @param {number | null} number
+   */
+  function showCurrent(number) {
+    const hidden = number === null ? null : closedStackOf(number);
+    if (hidden !== null) {
+      closedStacks.delete(hidden.stack.number);
+      groupingInputs += 1;
+      render();
+    }
+    settleAnchor(true);
+    if (number !== null && held().keys.has(number)) {
+      if (revealCurrent) {
+        deps.reveal(number);
+      }
+    } else {
+      chaseCurrent();
+    }
+    noteOutside();
+  }
+
+  /**
+   * Say so when the current pull request is not in the list, rather than leave the reader
+   * looking for its row: the filter leaves it out, or All has not listed it. Only once the
+   * list has its rows, and not while a chase may still reach it.
+   */
+  function noteOutside() {
+    const list = held();
+    // The rows are newest first, and *nextAfter* is where the next window starts.
+    const unread = current !== null && list.nextAfter !== null && current < list.nextAfter;
+    const settled =
+      current !== null &&
+      list.envelope !== null &&
+      !list.keys.has(current) &&
+      !(filter === "all" && unread && list.rows.length < list.displayLimit);
+    const next = settled && current !== null ? outsideText(current, filter, !unread) : null;
+    if (next !== outside) {
+      outside = next;
+      deps.markOutside?.(next);
     }
   }
 
@@ -2792,10 +2864,12 @@ export function createPullsController(deps, options = {}) {
     prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
-     * only follows it, and no fetch starts.
+     * only follows it, and no fetch starts. *reveal* shows the row again when the address
+     * names the current one, as an open of the page shown does: its stack opens and it
+     * scrolls into view (docs/design-system.md, "Navigation Reveals the Item").
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, reveal?: boolean}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
@@ -2805,6 +2879,10 @@ export function createPullsController(deps, options = {}) {
         revealCurrent = false;
       }
       if (number === current) {
+        if (options.reveal === true && number !== null) {
+          revealCurrent = true;
+          showCurrent(number);
+        }
         return;
       }
       revealCurrent = !options.preserveScroll;
@@ -2818,22 +2896,7 @@ export function createPullsController(deps, options = {}) {
       const previous = current;
       current = number;
       deps.markCurrent(previous, number);
-      // A pull request the address names in a closed stack opens the stack, as a file the
-      // address names opens its folders.
-      const hidden = number === null ? null : closedStackOf(number);
-      if (hidden !== null) {
-        closedStacks.delete(hidden.stack.number);
-        groupingInputs += 1;
-        render();
-      }
-      settleAnchor(true);
-      if (number !== null && held().keys.has(number)) {
-        if (revealCurrent) {
-          deps.reveal(number);
-        }
-      } else {
-        chaseCurrent();
-      }
+      showCurrent(number);
     },
     move,
     /** The key that was walking was let go: open what it stopped on. */
@@ -3138,6 +3201,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionText,
     connectionHelp,
   ]);
+  // A pull request the address names that the list does not hold: a line of the band, as
+  // the Files tree's outside-filter note is, there only while it has something to say
+  // (docs/design-system.md, "Navigation Reveals the Item").
+  const outsideNote = h("p", {
+    class: "github-pulls-outside nav-metadata nav-metadata-note",
+    role: "status",
+  });
   const foot = h("div", { class: "github-pulls-foot" });
   // Below the last row held, while more are read or fetched: the nav's scan indicator, its
   // spinner and words (`.index-progress` in styles.css), after the shared quiet period.
@@ -3539,7 +3609,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function patchRow(entry, row, key) {
     const before = entry.info;
     if (row.title !== before.title) {
-      entry.title.textContent = row.title;
+      entry.title.replaceChildren(...mb.titleNodes(row.title));
     }
     if (row.state !== before.state) {
       const icon = pullStateIcon(row.state);
@@ -3574,7 +3644,9 @@ export function mountPullsPanel(container, ctx, mb) {
   function buildRow(row, key) {
     const when = rowAge(row);
     const { at } = when;
-    const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
     // No tooltip, as nothing in the Pulls column has one: the page has the exact time
     // (docs/design-system.md, "Tooltips Add Information").
     const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
@@ -4307,6 +4379,16 @@ export function mountPullsPanel(container, ctx, mb) {
       reveal(number) {
         paintViewport();
         painted.get(number)?.row.scrollIntoView({ block: "nearest" });
+      },
+      markOutside(text) {
+        if (text === null) {
+          outsideNote.remove();
+          return;
+        }
+        outsideNote.textContent = text;
+        if (!outsideNote.isConnected) {
+          connection.after(outsideNote);
+        }
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),

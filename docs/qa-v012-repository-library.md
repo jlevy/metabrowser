@@ -1682,6 +1682,9 @@ address.
 1. The page shows **Count to two in the app #7** with an **Open** badge,
    `forker wants to merge 2 commits: forker:count-to-two → octo:topic`, the opened and
    updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
+   The label is white on its indigo, `#2700af`, in the light theme and a light indigo on
+   a tint of it in the dark theme, as github.com draws it, and hovering it shows its
+   description, “A label’s description is its chip’s tooltip”.
    The Pulls list in the navigation pane gives each row’s branches the same way, head →
    base (`forker:count-to-two → topic` on #7’s row), and narrowing the pane shortens the
    branch names with an ellipsis, then moves them to a line of their own, whole.

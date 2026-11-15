@@ -9,9 +9,10 @@
 ## Overview
 
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
-menu, a rule for tooltips, and the Conversation’s rhythm and headings, from the same
-day, and Group by’s speed on a large folder.
-They land as one native GitHub stack of thirteen pull requests on `main`:
+menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
+pull request titles, navigation that reveals the item, label colors, and Group by’s
+speed on a large folder, from the same day.
+They land as one native GitHub stack of sixteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -39,7 +40,14 @@ They land as one native GitHub stack of thirteen pull requests on `main`:
 12. **Conversation rhythm and headings:** every two consecutive events are one token
     apart (`mb-w7rt`), and every event’s heading reads “author verb age”, with a chip
     only for a review state the verb does not say (`mb-novh`).
-13. **Group by speed:** every group is read from one pass over the index (`mb-navs`),
+13. **Title prefixes:** a conventional-commit prefix that starts a commit’s or a pull
+    request’s title, such as `feat(ledger):`, is regular weight and the rest bold,
+    wherever a title appears (`mb-z57p`).
+14. **Navigation reveals the item:** every route to an item reveals it in its tab
+    (`mb-6y0g`).
+15. **Label colors:** a pull request’s labels are colored as github.com colors them, at
+    our chip’s size, with a label’s description as its tooltip (`mb-9qob`).
+16. **Group by speed:** every group is read from one pass over the index (`mb-navs`),
     and a choice shows at once and while it waits (`mb-75l5`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
@@ -93,6 +101,12 @@ request must prove.
 - **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
   toolbar wraps at its natural break, so no control is cut, scrolled out of reach, or
   cut short, with a line height and gap from tokens; one that fits stays one line.
+- **Title prefixes** (`mb-z57p`): a conventional-commit prefix such as `feat(ledger):`
+  that starts a commit’s or a pull request’s title is regular weight and the rest of the
+  title keeps its weight, everywhere a title appears; any other title is unchanged.
+- **Navigation reveals the item** (`mb-6y0g`): going to a file, a pull request, or a
+  commit by any route switches the nav to its tab, opens the folders or stack that hold
+  it, and selects and scrolls to its row.
 
 ## Non-Goals
 
@@ -157,8 +171,12 @@ it:
 | 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
 | 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
+| 11 | `claude/tooltips-substantive` | `mb-8mpo` | On pull request 10; removes the tooltips of the Pulls rows that pull request 5 draws, and hides the shell’s tips that repeat visible text, on the Files row as pull requests 9 and 10 leave it |
 | 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
-| 13 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 12; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made |
+| 13 | `claude/title-prefix-weight` | `mb-z57p` | On pull request 12; draws the titles of the Pulls rows, the pull request page, and its Conversation that pull requests 5, 6, 11, and 12 change |
+| 14 | `claude/reveal-on-navigate` | `mb-6y0g` | On pull request 13; reveals items in the Files tree pull request 2 groups and the Pulls stack groups pull request 5 adds, and notes beside the Pulls rows pull requests 11 and 13 change |
+| 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors in the Pulls catalog’s rows and their descriptions in the records |
+| 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -368,6 +386,33 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
+### Label Colors
+
+- GitHub gives each label a `color`, six hex digits, and a `description`, in REST and
+  GraphQL alike. The selected pull request’s core asks for both, the pull request’s REST
+  read already had them, and the catalog’s page asks for the color alone.
+  A color that is not six hex digits is kept as none, and its chip is neutral.
+- The page sets github.com’s `--label-*` properties on the chip and `github/styles.css`
+  states github.com’s formula once, in both themes; the rule and why it is written in
+  `rgb()` and `hsl()` are in “Label Colors” in `docs/design-system.md`. The constants
+  and the rounding were read from github.com’s stylesheets and rendered labels on
+  2026-11-15.
+- A record keeps each label as its name, color, and description, and a catalog row as
+  its name and color: no row draws labels, and the header’s tooltips come from the
+  record or its core, never from a row (decided in review of `mb-9qob`, 2026-11-15). A
+  record raises `PULL_RECORD_PROJECTION` to 2 and the catalog `CATALOG_PROJECTION` to 3,
+  so what an earlier build cached is still shown, its labels neutral, until its next
+  refresh asks for it in full (a record) or the one ALL rescan rewrites it (a row).
+  Both read a label an earlier projection named alone as one without a color.
+- Colors cost little and descriptions a lot, measured on 2026-11-15 on the catalog’s
+  page of the 100 newest pull requests.
+  kubernetes/kubernetes’s (981 labels) went from 84,678 to 101,355 bytes with colors,
+  where descriptions too made it 174,997, and its average stored row from 646 to 901
+  bytes, where descriptions too made it 1,637. cli/cli’s (105 labels) went from 63,097
+  to 64,882 bytes, and its row from 518 to 545. Every page stays at a GraphQL cost of 1.
+  A row with every text at its bound is 11,079 bytes, inside the catalog’s 32 KiB row
+  limit.
+
 ### Narrow Toolbars
 
 - **The decision** (the owner, 2026-11-15, `mb-nm4z`): “on narrow screens wrap when
@@ -391,6 +436,45 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   rules in `styles.css`, for the Pulls toolbar without the Stacks chip that pull request
   5 removed.
 
+### Title Prefixes
+
+- **The split** (`mb-z57p`): one pure function, `titlePrefix` in `static/formatters.js`,
+  finds a type of lowercase letters, an optional scope of one or more characters other
+  than parentheses, an optional `!`, and the colon, at most 16 code points, followed by
+  whitespace and more of the title.
+  Anything else has no prefix and is drawn as before.
+- **One markup, one rule:** `titleNodes` and `titleHtml` beside it put the prefix in a
+  `span.title-prefix`, the SDK’s `metabrowser.titleNodes` hands its title to the same
+  function, and one rule in the shell’s stylesheet sets the span’s weight from
+  `--weight-normal`. No new token: the one rule is the one place the weight is set.
+- **Surfaces:** a Pulls row, the pull request page’s title, its stack menu, its
+  Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
+  commit’s page, and its tooltip.
+  Quick Search has no commit results.
+  A Commits tab row’s subject is regular, and keeps that weight: the prefix there looks
+  as the rest does, which is reported to the owner rather than changed.
+- **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
+  “Pull Request Numbers”.
+  The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
+  `shell.title-prefix-weight`, read in Chrome.
+
+### Navigation Reveals the Item
+
+- `static/main-tabs.js` holds the rule (`revealPlan`) and the one path every route takes
+  (its controller’s `reveal`): the address’s tab comes to the front, and the tab’s panel
+  reveals the item. Files reveals through `app.js`’s `revealFileRow`, Pulls through
+  `pulls-nav.js` and the list’s `setCurrent`, and Commits from its own landing, after it
+  reads history.
+- The exceptions are stated once, in “Navigation Reveals the Item” in
+  `docs/design-system.md`: focus stays where the reader is; a tab’s button keeps its
+  panel’s place; a step within the item shown reveals nothing; a filtered file, a pull
+  request outside the list, and a commit outside the history read are named or left,
+  each with its reason.
+- The decisions run browserlessly in `tests/dom/nav-reveal-session.js`, pinned by
+  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`). The rows in view after
+  each route are checked in headless Chrome (`tests/test_nav_reveal_chrome.py`,
+  `navigation.reveal-item-paint`).
+
 ### Group By Speed and Feedback
 
 The owner’s report of 2026-11-15 on pull request 12: choosing a grouping “does nothing”.
@@ -407,8 +491,9 @@ against 5 ms for the ungrouped tree.
 - **Feedback** (`mb-75l5`): the trigger reads a choice in the frame it is made; past the
   quiet period the tree dims and the scan row reads “Grouping by file type…”; a newer
   choice or No grouping cancels the load on its way; a file change keeps a prefetched
-  answer, which the choice takes and then refreshes; and a refresh asked for during a
-  choice’s first load waits for it.
+  answer, which the choice takes and then refreshes; a refresh asked for during a
+  choice’s first load waits for it; and a reveal (pull request 14) made meanwhile lands
+  once the sections paint.
   In headless Chrome the trigger always read the choice at once; what the first-click
   case reproduced was the wait: a file change between the menu opening and the choice
   dropped the prefetch, each refresh during the load discarded it and began again, and
@@ -422,6 +507,9 @@ against 5 ms for the ungrouped tree.
 - **The Diff summary and the pull stack groups** read data the routes already answer:
   `pull-files`, a commit’s diff totals, and the stack envelope.
   Any new field arrives with its route’s golden.
+- **Labels** in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`
+  become objects of name, color, and description, and in `/api/plugin/github/pulls` of
+  name and color, which those routes’ goldens print.
 
 ## Implementation Plan
 
@@ -508,15 +596,36 @@ against 5 ms for the ungrouped tree.
 - [ ] `mb-w7rt`: one rhythm between every two consecutive events.
 - [ ] `mb-novh`: every event’s heading reads alike.
 
-### Phase 13: Group By Speed and Feedback (pull request 13)
+### Phase 13: Title Prefixes (pull request 13)
+
+- [ ] `mb-z57p`: the split and its golden session, the shared helper on every title
+  surface, the one weight rule, the Chrome weights, and the docs.
+
+### Phase 14: Navigation Reveals the Item (pull request 14)
+
+- [ ] `mb-6y0g`: every route to an item reveals it in its tab, with one shared path, its
+  exceptions in `docs/design-system.md`, a browserless session and golden, and a Chrome
+  check.
+
+### Phase 15: Label Colors (pull request 15)
+
+- [ ] `mb-9qob`: every query that reads labels asks for their color, and a pull
+  request’s for their description too; the record keeps both and the catalog’s rows the
+  color, each under a raised projection; the chips are painted by github.com’s formula
+  in both themes at our chip’s size, with a label’s description as its tooltip; the
+  routes’ goldens print them; and a Chrome check holds a light, a dark, a very pale, and
+  a colorless label to the formula and to github.com’s own computed colors.
+
+### Phase 16: Group By Speed and Feedback (pull request 16)
 
 - [ ] `mb-navs`: the provider’s one-pass grouped read, its conformance test against each
   group’s filtered tree, a route test that a grouping costs one read, and the prefetch
   on a pressed row or one the arrow keys reach; the measurements in the design system’s
   “Grouping the Files Tree”.
 - [ ] `mb-75l5`: the trigger in the choice’s frame, the dimmed tree under the scan row’s
-  words, cancelling, kept prefetches, and refreshes that wait; in the Group by session
-  and its golden, and in the Files Chrome test with the grouped requests held.
+  words, cancelling, kept prefetches, refreshes that wait, and a reveal that lands after
+  the sections paint; in the Group by session and its golden, and in the Files Chrome
+  test with the grouped requests held.
 
 ## Testing Strategy
 
@@ -543,7 +652,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 12 merges.
+This plan moves to `docs/project/specs/done/` when pull request 16 merges.
 
 ## Open Questions
 
@@ -562,8 +671,8 @@ This plan moves to `docs/project/specs/done/` when pull request 12 merges.
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
   `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
-  follow-ups on the Group by menu; `mb-navs` and `mb-75l5`, Group by’s speed and
-  feedback on a large folder.
+  follow-ups on the Group by menu; `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and
+  `mb-75l5`, Group by’s speed and feedback on a large folder.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

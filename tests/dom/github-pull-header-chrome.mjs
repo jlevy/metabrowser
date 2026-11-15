@@ -14,7 +14,8 @@
 // start of a CI job, the slowest there, has a case of its own. Then the header at its widest
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
-// and the run badge (`badges`). With no part it runs every one. Each part writes how long
+// the run badge (`badges`), and the label chips' colors in both themes (`labels`). With no
+// part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
@@ -41,6 +42,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
 const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
 const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
+const LABEL_COLORS = path.join(root, "tests/fixtures/github-label-colors.json");
 const KPRESS = process.env.KPRESS_STATIC ? path.resolve(process.env.KPRESS_STATIC) : null;
 const failures = [];
 let checks = 0;
@@ -140,6 +142,13 @@ const MEASURE = `async (name, change, tab, width) => {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
   }
+  // Labels of each color the label part checks, in the theme it names.
+  if (change.labels && body.record) {
+    body.record.pull.labels = change.labels;
+  }
+  if (change.theme) {
+    document.documentElement.dataset.theme = change.theme;
+  }
   // A long login and long branch names, the head in a fork: the author gives way to the
   // merge, which stays whole.
   if (change.longNames) {
@@ -169,6 +178,7 @@ const MEASURE = `async (name, change, tab, width) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -247,6 +257,7 @@ const MEASURE = `async (name, change, tab, width) => {
         link: () => document.createElement("a"),
         icon: layers(),
         currentTitle: "",
+        titleNodes: mb.titleNodes,
         onOpen() {},
       }),
     );
@@ -293,7 +304,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const probe = page.createStackMenu(
       { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
       body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {} },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
@@ -393,8 +404,39 @@ const MEASURE = `async (name, change, tab, width) => {
       return { pastHeader: Math.round(past * 100) / 100, culprit };
     })(),
     paneScrolls: pane.scrollWidth > pane.clientWidth,
+    // Each label chip's computed colors and box, and the neutral chip's tokens in this
+    // theme: --muted and --border, read from a probe that is painted with them.
+    labels: [...header.querySelectorAll(".github-pull-label")].map((chip) => {
+      const style = getComputedStyle(chip);
+      return {
+        name: chip.textContent,
+        color: chip.dataset.color ?? null,
+        properties: chip.getAttribute("style"),
+        tip: chip.getAttribute("data-tip-text"),
+        background: style.backgroundColor,
+        text: style.color,
+        border: style.borderTopColor,
+        box: [
+          style.fontSize, style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
+          style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
+        ].join(" "),
+        left: Math.round(box(chip).left * 100) / 100,
+        width: Math.round(box(chip).width * 100) / 100,
+      };
+    }),
+    neutral: (() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--muted)";
+      probe.style.border = "1px solid var(--border)";
+      header.append(probe);
+      const style = getComputedStyle(probe);
+      const tokens = { text: style.color, border: style.borderTopColor };
+      probe.remove();
+      return tokens;
+    })(),
   };
   handle.dispose();
+  delete document.documentElement.dataset.theme;
   return result;
 }`;
 
@@ -729,7 +771,62 @@ const HEADER_PARTS = {
   "header-middle": [560, 420],
   "header-narrow": [360, 320],
 };
-const PARTS = ["launch", ...Object.keys(HEADER_PARTS), "offers", "pulls", "badges"];
+// The label part's chips: a pale label with a description, a dark one, a very pale one
+// whose border shows, white in upper case, two more of github.com's colors, one GitHub gave
+// no color, and one whose color is not six hex digits; the last two are drawn neutral.
+// github.com's own stylesheet computed each of the six colors in both themes
+// (tests/fixtures/github-label-colors.json), and each chip is held to what it computed
+// and to the formula, worked out below apart from any stylesheet.
+const LABEL_CASES = [
+  { name: "pale", color: "a2eeef", description: "New feature or request" },
+  { name: "dark", color: "d73a4a", description: null },
+  { name: "very pale", color: "f4f6f8", description: null },
+  { name: "white", color: "FFFFFF", description: null },
+  { name: "indigo", color: "2700af", description: null },
+  { name: "gray", color: "ededed", description: null },
+  { name: "no color", color: null, description: "GitHub gave it none" },
+  { name: "not a color", color: "#d73a4", description: null },
+];
+// An hsl() color as sRGB channels, 0 to 255, its lightness clamped as CSS clamps it.
+const hslChannels = (hue, saturation, lightness) => {
+  const s = saturation / 100;
+  const l = Math.min(100, Math.max(0, lightness)) / 100;
+  const k = (n) => (n + hue / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map((value) => value * 255);
+};
+// GitHub's label formula (github/styles.css), as [red, green, blue, alpha] for the ground,
+// the text, and the border of a label of *hex* whose properties are *hsl*, in *theme*.
+const labelFormula = (hex, [hue, saturation, lightness], theme) => {
+  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+  const perceived = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+  if (theme === "light") {
+    return {
+      background: [r, g, b, 1],
+      text: perceived > 0.453 ? [0, 0, 0, 1] : [255, 255, 255, 1],
+      border: [
+        ...hslChannels(hue, saturation, lightness - 25),
+        Math.max(0, Math.min((perceived - 0.96) * 100, 1)),
+      ],
+    };
+  }
+  const lighten = perceived < 0.6 ? (0.6 - perceived) * 100 : 0;
+  const text = hslChannels(hue, saturation, lightness + lighten);
+  return { background: [r, g, b, 0.18], text: [...text, 1], border: [...text, 0.3] };
+};
+const channels = (value) => {
+  const found = /^rgba?\(([^)]+)\)$/.exec(value);
+  const parts = found ? found[1].split(",").map(Number) : [];
+  return parts.length === 3 ? [...parts, 1] : parts.length === 4 ? parts : null;
+};
+// A computed color within a unit of each channel the formula gives, and its alpha within
+// the half of a hundredth Chrome rounds an alpha to.
+const nearColor = (value, wanted) =>
+  channels(value)?.every(
+    (channel, at) => Math.abs(channel - wanted[at]) <= (at === 3 ? 0.005 : 1),
+  ) ?? false;
+const PARTS = ["launch", ...Object.keys(HEADER_PARTS), "offers", "pulls", "badges", "labels"];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
   const name = at < 0 ? "all" : process.argv[at + 1];
@@ -907,6 +1004,112 @@ async function main() {
       }
       if (runs("badges")) {
         lap("the run badge");
+      }
+      if (runs("labels")) {
+        const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));
+        for (const theme of ["light", "dark"]) {
+          const empty = await browser.evaluate(
+            `(${MEASURE})("absent", ${JSON.stringify({ theme })}, "", 980)`,
+          );
+          const shape = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({ labels: LABEL_CASES, theme })}, "", 980)`,
+          );
+          check(
+            `${theme}: every label is drawn, in order`,
+            JSON.stringify(shape.labels.map((chip) => chip.name)) ===
+              JSON.stringify(LABEL_CASES.map((label) => label.name)),
+            JSON.stringify(shape.labels),
+          );
+          const neutralBox = shape.labels.find((chip) => chip.name === "no color")?.box;
+          for (const chip of shape.labels) {
+            const label = LABEL_CASES.find((each) => each.name === chip.name);
+            const where = `${theme}, the ${chip.name} label`;
+            const hex = /^[0-9a-fA-F]{6}$/.test(label?.color ?? "")
+              ? label.color.toLowerCase()
+              : null;
+            check(
+              `${where}: carries GitHub's color, or none`,
+              chip.color === hex,
+              JSON.stringify(chip),
+            );
+            check(
+              `${where}: its description is its tooltip, and no description no tooltip`,
+              chip.tip === label?.description,
+              JSON.stringify(chip),
+            );
+            check(
+              `${where}: keeps the chip's font size, padding, border, corner, and height`,
+              neutralBox !== undefined && chip.box === neutralBox,
+              JSON.stringify({ chip: chip.box, neutral: neutralBox }),
+            );
+            if (hex === null) {
+              check(
+                `${where}: is the neutral chip, --muted on no ground in a --border box`,
+                chip.background === "rgba(0, 0, 0, 0)" &&
+                  chip.text === shape.neutral.text &&
+                  chip.border === shape.neutral.border &&
+                  chip.properties === null,
+                JSON.stringify({ chip, neutral: shape.neutral }),
+              );
+              continue;
+            }
+            const computed = github.computed[theme][hex];
+            const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+            const [h, s, l] = computed.properties;
+            check(
+              `${where}: carries the properties github.com gave this color`,
+              chip.properties ===
+                `--label-r:${r};--label-g:${g};--label-b:${b};--label-h:${h};--label-s:${s};--label-l:${l}`,
+              JSON.stringify(chip),
+            );
+            const formula = labelFormula(hex, computed.properties, theme);
+            check(
+              `${where}: its ground, text, and border are GitHub's formula's`,
+              nearColor(chip.background, formula.background) &&
+                nearColor(chip.text, formula.text) &&
+                nearColor(chip.border, formula.border),
+              JSON.stringify({ chip, formula }),
+            );
+            check(
+              `${where}: its ground, text, and border are what github.com computed for it`,
+              chip.background === computed.background &&
+                chip.text === computed.color &&
+                chip.border === computed.border,
+              JSON.stringify({ chip, github: computed }),
+            );
+          }
+          // A label an earlier cache names alone, without a color or a description, as a core
+          // or record cached before label colors draws it, until the record that colors it
+          // arrives: each chip starts and ends where the colored one does, and the rows hold.
+          const bare = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              theme,
+            })}, "", 980)`,
+          );
+          const places = (measured) =>
+            measured.labels.map((chip) => [chip.name, chip.left, chip.width]);
+          check(
+            `${theme}: a label's color and tooltip arriving move no chip and no row`,
+            bare.labels.every((chip) => chip.color === null && chip.tip === null) &&
+              JSON.stringify(places(bare)) === JSON.stringify(places(shape)) &&
+              JSON.stringify(bare.rows) === JSON.stringify(shape.rows) &&
+              bare.tabBar === shape.tabBar,
+            JSON.stringify({
+              bare: places(bare),
+              colored: places(shape),
+              rows: [bare.rows, shape.rows],
+            }),
+          );
+          check(
+            `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,
+            shape.header === empty.header &&
+              shape.tabBar === empty.tabBar &&
+              JSON.stringify(shape.rows) === JSON.stringify(empty.rows),
+            JSON.stringify({ empty: empty.rows, labels: shape.rows }),
+          );
+        }
+        lap("the labels in both themes");
       }
       if (runs("pulls")) {
         const tips = await browser.evaluate(TIPS);

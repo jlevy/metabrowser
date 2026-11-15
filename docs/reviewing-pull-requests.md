@@ -180,6 +180,8 @@ with the discussion.
 ## What the Page Shows
 
 The header has the title, state, branches, labels, and dates.
+Each label is in the color GitHub gives it, as github.com draws it in either theme, and
+hovering one shows its description when it has one.
 PR numbers use bold dark text, usernames use bold normal text ink at the surface’s
 normal size, and branch names use smaller ref chips, consistently with the Pulls list
 and Git history. Hover or focus a copyable branch chip to reveal its copy control; it

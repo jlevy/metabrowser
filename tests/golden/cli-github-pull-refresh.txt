@@ -16,7 +16,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -30,13 +30,13 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
+      "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -57,7 +57,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -257,7 +261,7 @@ status: 202
     "verified_by": "fetch",
     "head_moved": false,
     "checks_pending": true,
-    "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+    "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -288,7 +292,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -346,7 +350,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -489,7 +493,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -503,7 +507,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -603,7 +607,7 @@ status: 200
     "verified_by": "fetch",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+    "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
@@ -714,7 +718,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "df3d26909cd53796d5e46bf0553520b2d9a075c24e8c69882f2b56fcaef8db60",
+  "record_revision": "bf216a4270ac3d6d3a5e23a0e7b42928b1687a9d8299db066d9aaf8d09ce8187",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -728,7 +732,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 8,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1096,7 +1100,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {

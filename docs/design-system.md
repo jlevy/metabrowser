@@ -78,6 +78,10 @@ Consequences worth knowing:
   stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
   from one another, and that property belongs to the set rather than to any member, so
   they are identical in both themes and are never returned individually.
+- A GitHub label’s colors are the other exception ([Label Colors](#label-colors)): the
+  color is GitHub’s data, not a token, and the formula that paints it is github.com’s,
+  written in `rgb()` and `hsl()` of the label’s own custom properties, so it paints what
+  github.com paints.
 
 `tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
 every chromatic token defined in both themes carries the same hue in each.
@@ -1620,11 +1624,11 @@ of events is 20 px apart, as in Chrome.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
+| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
-| Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
+| Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
@@ -1661,6 +1665,50 @@ Anonymous CORS and a no-referrer policy omit credentials and the local page URL.
 browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
 Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
 
+### Label Colors
+
+**A label is colored exactly as github.com colors it, in our chip’s box** (`mb-9qob`).
+GitHub gives each label a color, six hex digits, and a description, and a reader who
+knows a repository’s labels by their colors on github.com should find the same colors
+here. The chip keeps the size every label chip has: `--ui-small-font-size`, the `0 5px`
+padding, the hairline border, `--radius-tag`, and its height, so a colored label is as
+tall as a neutral one and the header’s rows keep their heights.
+
+The colors are github.com’s own formula, read from its stylesheets (Primer’s
+`.IssueLabel`, on 2026-11-15). The page sets the label’s red, green, and blue, 0 to 255,
+and its hue, saturation, and lightness, each rounded to a whole number, as `--label-r`,
+`--label-g`, `--label-b`, `--label-h`, `--label-s`, and `--label-l` on the chip, as
+github.com does; `github/styles.css` states the formula once.
+Its perceived lightness is (0.2126 R + 0.7152 G + 0.0722 B) / 255.
+
+| Part | Light theme | Dark theme |
+| --- | --- | --- |
+| Ground | The color | The color at 0.18 alpha |
+| Text | Black when the perceived lightness is above 0.453, white otherwise | The label’s hue and saturation, its lightness raised by (0.6 − perceived lightness) × 100 points when the perceived lightness is under 0.6 |
+| Border | The label’s hue and saturation 25 points darker, at alpha (perceived lightness − 0.96) × 100, clamped to 0 to 1, so it shows only on a very pale label | The text’s color at 0.3 alpha |
+
+A color that is not six hex digits, or none, is kept as none, and its chip is the
+neutral one: `--muted` text on no ground in a `--border` box.
+A label’s description is its chip’s tooltip, since it says what the name does not
+([Tooltips Add Information](#tooltips-add-information)); a label with no description has
+none. The name is the label’s meaning and is always there, so color is never the only
+signal.
+
+These are the one place the stylesheet writes `rgb()` and `hsl()`
+([Color and Theming](#color-and-theming)): the color is GitHub’s sRGB data and the
+formula is github.com’s, so stating it in `oklch` would paint other colors than
+github.com does. `test_colors_are_declared_in_oklch` takes out the formula’s two rules
+alone and holds that every color they write is computed from a `--label-` property.
+`tests/test_github_label_colors.py` holds the properties to the ones github.com set on
+112 colors of six public repositories’ labels.
+`tests/dom/github-pull-header-chrome.mjs` (its `labels` part) holds each chip’s computed
+ground, text, and border in both themes to the formula and to what github.com’s own
+stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
+label, a colorless or malformed one to the neutral chip, and every chip to the neutral
+chip’s box. A label a core cached before label colors names alone is drawn neutral
+without a tooltip until the record arrives, and the same check holds that its colors and
+tooltip arriving move no chip and no row.
+
 ## The Pulls Tab
 
 The list beside Files and Commits, on a GitHub repository, shows every pull request
@@ -1677,8 +1725,9 @@ stay open.
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
-A row or menu item is a link, so the title sets its own ink and weight, and no visited,
-hover, focus, selected, or current state changes them.
+A conventional-commit prefix that starts it is regular ([Titles](#titles)). A row or
+menu item is a link, so the title sets its own ink and weight, and no visited, hover,
+focus, selected, or current state changes them.
 A pull request’s number is bold wherever it names the pull request
 ([Pull Request Numbers](#pull-request-numbers)). The metadata line gives the PR number
 normal row size and text ink.
@@ -1785,6 +1834,52 @@ A stack’s own number, in “Stack #286”, is part of the stack’s label, in 
 register ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds
 the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
+
+### Titles
+
+A commit’s or a pull request’s title that starts with a conventional-commit prefix sets
+the prefix at regular weight and the rest of the title at the title’s own weight, so in
+“feat(ledger): chart strategies, range bands and Extended default” only “feat(ledger):”
+is regular (`mb-z57p`). The prefix is a type, an optional scope in parentheses, an
+optional `!`, and the colon:
+
+- The type is lowercase ASCII letters, as commitlint’s conventional config holds types
+  to. A capitalized word before a colon, as in “Docs:” or “WIP:”, is the title’s own
+  text.
+- The scope is one or more characters other than parentheses, so a list such as
+  `fix(ui, git):` counts, as conventional-changelog’s parser reads one, and an empty
+  `()` does not.
+- It counts only at 16 characters or fewer, colon included, counted in code points:
+  `refactor(stack):` counts, and `refactor(stacks):` is part of the title.
+- Whitespace and more of the title follow the colon.
+  `fix:keep` and a title that ends at its colon have no prefix.
+
+A merge commit, a `Revert "…"` title, and every title that does not match are drawn
+exactly as before: the same element holding the same text.
+
+One function splits a title, `titlePrefix` in `static/formatters.js`, and `titleNodes`
+and `titleHtml` beside it draw the prefix in a `span.title-prefix`; plugins draw with
+`metabrowser.titleNodes`. One rule, `.title-prefix` in the shell’s stylesheet, sets the
+prefix’s weight from `--weight-normal`, so no surface sets a weight or writes markup of
+its own, and the prefix keeps the title’s face, size, and ink.
+The title’s element still holds the whole title, so an ellipsis, a two-line clamp, and a
+tooltip that gives the whole of a title cut short all work on all of it.
+
+| Surface | Title element | The rest |
+| --- | --- | --- |
+| A Pulls row | `.github-pulls-title` | Bold |
+| The pull request page’s title | `.github-pull-title-text` | Bold |
+| A stack menu’s member | `.github-pull-stack-member-title` | Bold |
+| A Conversation commit | `.github-pull-commit-subject` | Bold |
+| A Quick Search pull request | `.search-palette-label` | Bold; a match in the prefix is marked bold, as a match in a path is |
+| A Commits tab row | `.git-graph-subject` | Regular, the row’s own weight, so the prefix looks as the rest does |
+| A commit’s page | `.git-commit-subject.page-heading` | Bold |
+| A commit’s tooltip | `.git-commit-summary-compact .git-commit-subject` | Bold |
+
+A plain-text tooltip, such as the whole of a title cut short, has no weights.
+`tests/dom/title-prefix-session.js` pins the split, and
+`tests/test_title_prefix_chrome.py` reads each surface’s computed weights in Chrome and
+holds the one helper and the one rule in source.
 
 ### Rows
 
@@ -2738,6 +2833,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   one grouping and often none.
   A file change keeps an answer asked for ahead rather than dropping it: the choice
   takes it, since it comes sooner than a new one, and then refreshes.
+  A reveal made while a choice’s first sections are on their way
+  ([Navigation Reveals the Item](#navigation-reveals-the-item)) waits for them, and
+  lands in its section once they paint.
 - **Refresh.** When files change, the sections refresh in place, in one frame: each
   keeps its heading and updates its count, a group that fills or empties appears or
   goes, the folders open in a section stay open, and the scroll position and the focused
@@ -3168,7 +3266,8 @@ tab.
 Files and Pulls each keep their last selection and navigation scroll position.
 A reader who switches to one returns to that tab’s destination, or to its default on the
 first visit. A direct URL or a browser history step selects the tab that owns the
-destination.
+destination and reveals the item there, as every route to an item does
+([Navigation Reveals the Item](#navigation-reveals-the-item)).
 
 Switching to Commits always selects the newest commit, the top row, and shows its
 detail, whether by a click, the tab’s shortcut, or a history step onto the tab’s own
@@ -3209,6 +3308,89 @@ A use site does not pad, recolor, or re-letter it.
 In the navigation, a pane too narrow for its tabs wraps the bar between them
 ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Reveals the Item
+
+Navigating to an item by any route shows it in the navigation pane.
+The item’s tab comes to the front: Files for a file or folder, Pulls for a pull request
+or one of its changed files, and Commits for a commit.
+That tab’s panel then opens the folders or the stack that hold the item, selects its
+row, and scrolls the row into view.
+The routes are:
+
+- Quick Search;
+- a link in a document, a diff, a pull request’s page, or a commit;
+- the address bar’s crumbs, and the page loading at an address;
+- Back and Forward;
+- a key that opens an item, such as `J` and `K` on a row or Control-N along a stack.
+
+`static/main-tabs.js` holds the rule once, as `revealPlan`, and the one path every route
+takes, as its controller’s `reveal`. That path brings the address’s tab to the front and
+calls the panel’s own `reveal`:
+
+- **Files:** `revealFileRow` in `app.js`.
+- **Pulls:** `pulls-nav.js` marks the pull request in the list (`setCurrent` in
+  `builtin_plugins/github/pulls-panel.js`), which opens a closed stack that holds it.
+- **Commits:** the panel reveals a commit from its own landing (`restoreCommitLanding`
+  in `git-panel.js`), since it has to read history first.
+
+Each exception has a reason:
+
+- **Focus stays where the reader is.** No route moves focus.
+  The panel selects and scrolls, and focus stays in the document, the diff, or the page
+  the reader was reading, so its keys keep working there.
+  A route that starts in the navigation, a row’s click or its keys, has focus there
+  already and keeps it.
+  A tab’s letter, `F`, `P`, or `H`, moves focus to the panel’s row, because that is the
+  letter’s own command, not a reveal.
+- **A tab’s button keeps the panel’s place.** A click on a tab, or its letter, returns
+  to the tab’s last destination with the panel scrolled as the reader left it.
+  The reader asked for the tab, not the item.
+  Back and Forward reveal the item.
+- **A step within the item shown reveals nothing.** This is a fragment, a line anchor,
+  another view of the file shown, or another tab of the pull request shown.
+  Opening the item shown again, as Quick Search does, reveals it again, opening a folder
+  or stack the reader closed since.
+- **A long folder draws the rest of its rows.** A folder draws its first 200 rows and
+  holds the rest behind a row that shows them.
+  When the item is among them, the reveal draws them first.
+- **A file a filter hides is named, not drawn.** The Files tree takes the selection from
+  whatever row had it, so no other row stays selected, and a note under its totals says
+  “src/app.txt is outside this filter.”
+  The tree does not grow a row for the file: a pinned row would mean refetching, and
+  repainting, the tree as the reader moves.
+  The note appears only when the tree can tell.
+  That is when a folder above the file has no row, or the open folder that would hold
+  the file lacks it. A file in a folder the reader closed gets no note.
+  Under Group by, the file is looked for in its own section first, then in each other
+  section.
+- **A pull request outside the list is named.** Open and Closed hold only their state’s
+  pull requests, and the list reads its windows from the newest.
+  A pull request the list does not hold is named under its band: “#8 is not listed under
+  Open.”, or under All, “#8 is not in this list.”
+  A list that has not read as far says only “#8 is not among the pull requests loaded.”,
+  since it may be further down.
+  Under All, the list keeps reading for one older than the rows it has read, up to its
+  display limit, and reveals it when it arrives.
+  A reveal never changes the filter, which is the reader’s choice.
+- **A commit outside the history read is not chased.** Commits reads history from the
+  newest commit, 250 commits a page.
+  A commit’s address reveals its row once the pages read hold it, so the first page’s
+  commits are always found.
+  The list does not page further for an older commit, or for one on no branch the
+  history walks. The pane shows that commit with no row selected, because paging the
+  history for one row costs a request a page.
+- **A file at a pinned revision is the served tree’s.** A page serving a pinned revision
+  shows that revision’s tree in Files, and a file reveals there like any other.
+  A file a commit’s address names (`/commit/<rev>/<path>`) belongs to the commit.
+  It reveals the commit in Commits and leaves the Files tree alone, because that tree
+  lists the served source, not that commit’s.
+
+`tests/dom/nav-reveal-session.js`, pinned by `cli-ui-nav-reveal.tryscript.md`, runs the
+rule, the tabs, the Files tree’s reveal, and the Pulls list’s on the production code.
+`tests/test_nav_reveal_chrome.py` checks in headless Chrome, after each route, that the
+row is in the tab in front, selected, and in view, and that focus has not moved to the
+navigation.
 
 ### Navigation Toolbars Wrap
 

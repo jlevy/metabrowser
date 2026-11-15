@@ -238,7 +238,8 @@
   min-width: 0;
   overflow: hidden;
 }
-/* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
+/* A name the pull request carries, not a filter: the tag corner, not a chip's pill. A label
+   without a color GitHub gave is this neutral chip. */
 .github-pull-label {
   flex: none;
   padding: 0 5px;
@@ -246,6 +247,59 @@
   border-radius: var(--radius-tag);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+/* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
+   formula of github.com's own label stylesheet (Primer's .IssueLabel, read 2026-11-15),
+   with its constants and its custom properties' names under a label- prefix, from the
+   --label-r/g/b/h/s/l the page sets on the chip (labelColorProperties in pull-page.js).
+   docs/design-system.md, "Label Colors", says why these colors are not oklch.
+   Light: the color is the ground; the text is black above a perceived lightness of 0.453
+   and white below it; the border, 25 points darker, shows only on a label paler than 0.96.
+   Dark: the color at 0.18 alpha is the ground; the text is the color lightened by however
+   far it is under 0.6; the border is that text at 0.3 alpha. */
+.github-pull-label[data-color] {
+  --label-lightness: calc(
+    ((var(--label-r) * 0.2126) + (var(--label-g) * 0.7152) + (var(--label-b) * 0.0722)) /
+    255
+  );
+  --label-switch: max(0, min(calc((1 / (var(--label-threshold) - var(--label-lightness)))), 1));
+  --label-threshold: 0.453;
+  --label-border-threshold: 0.96;
+  --label-border-alpha: max(
+    0,
+    min(calc((var(--label-lightness) - var(--label-border-threshold)) * 100), 1)
+  );
+  background: rgb(var(--label-r), var(--label-g), var(--label-b));
+  border-color: hsla(
+    var(--label-h),
+    calc(var(--label-s) * 1%),
+    calc((var(--label-l) - 25) * 1%),
+    var(--label-border-alpha)
+  );
+  color: hsl(0deg, 0%, calc(var(--label-switch) * 100%));
+}
+/* The dark theme's, scoped as every rule here is: :where() adds no specificity, so this rule,
+   later, wins over the light one only in the dark theme. */
+.github-pull-label[data-color]:where([data-theme="dark"] *) {
+  --label-threshold: 0.6;
+  --label-background-alpha: 0.18;
+  --label-border-alpha: 0.3;
+  --label-lighten-by: calc(
+    ((var(--label-threshold) - var(--label-lightness)) * 100) *
+    var(--label-switch)
+  );
+  background: rgba(var(--label-r), var(--label-g), var(--label-b), var(--label-background-alpha));
+  border-color: hsla(
+    var(--label-h),
+    calc(var(--label-s) * 1%),
+    calc((var(--label-l) + var(--label-lighten-by)) * 1%),
+    var(--label-border-alpha)
+  );
+  color: hsl(
+    var(--label-h),
+    calc(var(--label-s) * 1%),
+    calc((var(--label-l) + var(--label-lighten-by)) * 1%)
+  );
 }
 /* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
    cut short before it wraps; its controls never are. A failure is the exception: it says

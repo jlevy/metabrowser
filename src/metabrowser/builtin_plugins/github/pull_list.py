@@ -16,6 +16,7 @@ from typing import Annotated, ClassVar, Final, Literal, Self
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -28,6 +29,7 @@ from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_LABELS,
+    LabelColor,
     Login,
     PullRefreshStamp,
     Reader,
@@ -36,6 +38,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Sha,
     Timestamp,
     Url,
+    bare_labels,
     ensure_pulls_directory,
     read_refresh_stamp,
     write_refresh_stamp,
@@ -66,6 +69,11 @@ log = logging.getLogger(__name__)
 MAX_ROW_TITLE_BYTES: Final = 1024
 MAX_ROW_REF_BYTES: Final = 256
 MAX_ROW_LABEL_BYTES: Final = 64
+# A row with every text at its bound, 100 labels with their colors among them, is 11,079
+# bytes as written (8,479 with names alone), well inside the 32 KiB the catalog lets SQLite
+# store in one row (pull_catalog._database's SQLITE_LIMIT_LENGTH; 2026-11-15). A label's
+# description, which the record keeps, would have taken it to 28,379 bytes at 160 bytes
+# each and past that limit at 400.
 
 # What ``gh_api`` will send as ``If-None-Match``, the same as ``gh.py``'s, which this module
 # does not load. It raises on anything else, which is no failure a job names, so a file
@@ -96,12 +104,25 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PullListLabel(_Model):
+    """A label as a row carries it: its name, bounded, and GitHub's color for it.
+
+    Not its description, which the record keeps (:class:`.pull_record.PullLabel`): no row
+    draws labels, and the pull request header's tooltips come from the record or its core.
+    """
+
+    name: _LabelName
+    color: LabelColor | None
+
+
 class PullListRow(_Model):
     """One pull request as a list shows it.
 
     ``head_repository`` is ``owner/name``, or ``None`` when a fork was deleted.
     ``head_oid`` is the head commit GitHub reported with the row, or ``None`` for a row
-    written before the catalog read it, which the next projection upgrade rewrites.
+    written before the catalog read it, which the next projection upgrade rewrites. A row
+    written before projection 3 names its labels alone, which read as labels without a
+    color (:func:`.pull_record.bare_labels`) until that upgrade too.
     """
 
     number: PullNumber
@@ -117,7 +138,9 @@ class PullListRow(_Model):
     base_ref: _RowText
     head_ref: _RowText
     head_repository: _RowText | None
-    labels: tuple[_LabelName, ...] = Field(max_length=MAX_LABELS)
+    labels: Annotated[tuple[PullListLabel, ...], BeforeValidator(bare_labels("color"))] = Field(
+        max_length=MAX_LABELS
+    )
     head_oid: Sha | None = None
 
     @property
@@ -522,6 +545,7 @@ __all__ = [
     "LocalComparison",
     "PullFileList",
     "PullFileRow",
+    "PullListLabel",
     "PullListRow",
     "parse_stamp",
     "rate_limit_holds",

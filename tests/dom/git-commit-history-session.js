@@ -14,8 +14,8 @@
 //
 // navigation.js, git-panel.js, and the modules it reads are production and load whole, and
 // the preview pane's ownership is navigation.js's own lifecycle. The shell's
-// applyNavigationTarget and isGitHistoryLanding are lifted verbatim from app.js, which
-// cannot load without a document. What it calls to open a file claims the pane and names
+// applyNavigationTarget, revealAddressedItem, and isGitHistoryLanding are lifted verbatim
+// from app.js, which cannot load without a document. What it calls to open a file claims the pane and names
 // the file, which is all this session asks of a file. `history` and `location` are this
 // file's, and the routes answer what the transcripts in cli-api-git.tryscript.md pin.
 //
@@ -455,6 +455,10 @@ async function createPage(start, options = {}) {
   assert(applyTarget, "applyNavigationTarget was not found in app.js");
   const landingTest = appSource.match(/\nfunction isGitHistoryLanding\(\) \{[\s\S]*?\n\}/);
   assert(landingTest, "isGitHistoryLanding was not found in app.js");
+  const revealItem = appSource.match(
+    /\nasync function revealAddressedItem\(route, path, isCurrent\) \{[\s\S]*?\n\}/,
+  );
+  assert(revealItem, "revealAddressedItem was not found in app.js");
   vm.runInContext(
     `
     var PULL_ROUTE_PREFIX = "/pull/";
@@ -466,12 +470,17 @@ async function createPage(start, options = {}) {
     var mainTabIntent = 0;
     var treeKeyboard = null;
     var mainTabs = {
-      takeFilesScroll: () => false,
+      landingRoute: (source) => (source === "user" ? "open" : "history"),
       remember() {},
-      fileLanding() {
+      // main-tabs.js's reveal, for a file's address: Files comes to the front, its pane
+      // given up as a tab click's is. The tree's reveal is revealInTree's, stood in below.
+      async reveal(route) {
         if (activeNavPanelId !== "files") {
           MetabrowserShell.claimPreview("none");
           MetabrowserShell.activateNavPanel("files");
+        }
+        if (route !== "step") {
+          await revealInTree();
         }
       },
     };
@@ -483,7 +492,9 @@ async function createPage(start, options = {}) {
     function showNavigationLanding() { __file.landing(); }
     function loadPullPageHost() { throw new Error("no pull-request page in this session"); }
     async function revealInTree() { return true; }
+    async function revealFileRow() { return true; }
     function selectFile(path) { return __file.open(path); }
+    ${revealItem[0]}
     ${applyTarget[0]}
     `,
     sandbox,

@@ -428,7 +428,8 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
         mergeable=None,
         title="spam",
         body=None,
-        labels=[{"name": "invalid"}],
+        # GitHub's default "invalid" label, with no description, so its chip has no tooltip.
+        labels=[{"name": "invalid", "color": "e4e669", "description": None}],
         user=None,
         closed_at="2026-09-16T19:00:00Z",
         html_url=f"{CANONICAL}/pull/9",
@@ -775,7 +776,7 @@ def list_item(pull: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in item.items()
         if key == "url" or (key.endswith("_url") and key != "review_comment_url")
     }
-    labels = [{**item["labels"][0], "name": label["name"]} for label in pull["labels"]]
+    labels = [{**item["labels"][0], **label} for label in pull["labels"]]
     copied = (
         "number",
         "state",
@@ -1008,7 +1009,8 @@ def catalog_entries(
                         "headRepository": {"nameWithOwner": head["full_name"]} if head else None,
                         "labels": {
                             "nodes": [
-                                {"name": label["name"]} for label in item.get("labels", [])[:100]
+                                {"name": label["name"], "color": label.get("color")}
+                                for label in item.get("labels", [])[:100]
                             ],
                             "pageInfo": {"hasNextPage": len(item.get("labels", [])) > 100},
                         },

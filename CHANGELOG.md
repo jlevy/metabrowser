@@ -11,6 +11,7 @@ All notable changes to Metabrowser are documented here.
   once. On a folder whose files keep changing, a choice no longer starts over each time a
   file changes: the answer its press asked for is kept, and the refresh the change asks
   for waits until the sections have painted.
+  Going to a file while the groups load shows it in its section once they come.
 
 - Group by in the Files tab answers quickly on a large folder: the server now reads
   every group from one pass over the index, where it made one pass per group.
@@ -21,6 +22,32 @@ All notable changes to Metabrowser are documented here.
   Opening the Group by menu no longer asks for both groupings ahead of the choice.
   Pressing a row, or moving to it with the keyboard, asks for that grouping alone, and
   the choice uses that answer when it comes.
+
+- A pull request’s labels are colored as github.com colors them, in both themes: the
+  label’s own color as the chip’s ground in the light theme, and a tint of it in the
+  dark one, with GitHub’s text and border colors, at the chip’s same size.
+  A label’s description, where it has one, is its chip’s tooltip.
+  A label GitHub gave no usable color keeps the plain chip.
+  A pull request cached before this release shows its labels plain until its next
+  refresh, which fetches it in full once, and a repository’s cached list of pull
+  requests reads its rows again once, keeping the rows it holds meanwhile.
+  `metab --api` answers each label as its name, color, and description rather than its
+  name alone in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`,
+  and as its name and color in `/api/plugin/github/pulls`. See
+  [Label Colors](docs/design-system.md#label-colors).
+
+- Going to a file, a pull request, or a commit now shows it in the navigation pane by
+  every route: Quick Search, a link, the address, Back and Forward, and the keys that
+  open one. Its tab comes to the front, the folders or the stack that hold it open, and
+  its row is selected and scrolled into view, while focus stays where you are reading.
+  Back and Forward now scroll to the row too, as a tab’s own button still does not.
+  Quick Search for the item already shown reveals it again, a file past a long folder’s
+  first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
+  A file a filter hides no longer leaves the previous file selected: the tree says
+  “src/app.txt is outside this filter.”, and no longer says that of a file that is only
+  in a closed folder. A pull request the Pulls list does not hold is named under its
+  count, “#8 is not listed under Open.”
+  See [Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item).
 
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
@@ -107,6 +134,16 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s number is bold wherever it names the pull request: a Pulls row, the
   pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- A commit’s or pull request’s title that starts with a conventional-commit prefix, such
+  as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
+  title bold, wherever the title appears: a Pulls row, the pull request page’s title,
+  its stack menu, its Conversation’s commits, Quick Search, a commit’s page, and its
+  tooltip. A Commits tab row’s subject is regular, so there the prefix looks as before.
+  A prefix counts only when it is 16 characters or fewer, colon included, and its type
+  is lowercase; any other title looks as before.
+  For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.
+  See [Titles](docs/design-system.md#titles).
 
 - The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
   one width for a chevron and a file type icon alike, so names start 2px sooner and a
