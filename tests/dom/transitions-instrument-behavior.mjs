@@ -1088,6 +1088,64 @@ check("equal medians with a pair beyond each way name both pairs", () => {
   const text = stats.formatComparison(res).join("\n");
   assert.match(text, /1 higher and 1 lower of 3 beyond/);
 });
+check("a journey's end reading is compared on its memory alone", () => {
+  const withMemory = (heap) => (r, k) => {
+    r.journeys[0].memory = {
+      jsHeapUsedKb: heap + k,
+      domNodes: 5000,
+      workerHeapUsedKb: 900,
+      listeners: 40,
+      documents: 1,
+    };
+  };
+  const res = cmp(series(withMemory(9000), withMemory(15000)));
+  const heap = find(res, "files.end", "memory_js_heap_kb");
+  assert.equal(heap.outcome, "result");
+  assert.equal(heap.wrongWay, true);
+  assert.equal(find(res, "files.end", "painted_ready_ms"), undefined);
+  assert.equal(find(res, "files.end", "requests_data"), undefined);
+  assert.equal(res.gaps.filter((g) => g.id === "files.end").length, 0, JSON.stringify(res.gaps));
+  // Listeners and documents are shown, not judged.
+  assert.equal(find(res, "files.end", "memory_listeners").judged, false);
+  // A reading that failed in one run is a missing value, not a smaller sample.
+  const failed = cmp(
+    series(withMemory(9000), (r, k) => {
+      withMemory(9000)(r, k);
+      if (k === 2) {
+        r.journeys[0].memory = null;
+      }
+    }),
+  );
+  assert.ok(
+    failed.gaps.some(
+      (g) =>
+        g.id === "files.end" &&
+        g.metric === "memory_dom_nodes" &&
+        /missing in 0 of 3 a run\(s\) and 1 of 3 b/.test(g.reason),
+    ),
+    JSON.stringify(failed.gaps),
+  );
+  const text = summarize(series(withMemory(9000), withMemory(15000))).join("\n");
+  assert.match(text, /#### Retained memory, after a garbage collection/);
+  assert.match(text, /\| `files\.end` \| 9001–9003 \|/);
+  assert.doesNotMatch(text.split("#### Retained")[0], /files\.end/);
+  // Samples keep the reading, and a transition's own.
+  const r = row("a", 1);
+  withMemory(9000)(r, 1);
+  setT(r, "files.a", { memory: { domNodes: 7 }, readCostMaxMs: 0.4 });
+  const s = sampleRow(r);
+  assert.equal(s.journeys[0].memory.jsHeapUsedKb, 9001);
+  assert.equal(s.journeys[0].transitions[0].memory.domNodes, 7);
+  assert.equal(s.journeys[0].transitions[0].readCostMaxMs, 0.4);
+});
+check("memory read between transitions is not the standard regime", () => {
+  const flagged = (r) => {
+    r.regime_flags.memory_after = ["files.a"];
+  };
+  const res = cmp(series(flagged, flagged));
+  assert.ok(res.notes.some((n) => /NOT THE STANDARD REGIME: memory read after files\.a/.test(n)));
+  refuses(() => cmp(series(() => {}, flagged)), /regime/);
+});
 check("revision 5 rows compare with each other, noting what revision 6 changed", () => {
   const five = (r) => {
     r.scenario_revision = 5;
