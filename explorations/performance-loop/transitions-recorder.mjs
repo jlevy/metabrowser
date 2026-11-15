@@ -226,6 +226,12 @@ function recorderMain(config) {
       ? e.checkVisibility({ opacityProperty: true, visibilityProperty: true })
       : e.getClientRects().length > 0;
   };
+  // An element that clips its descendants to its box: overflow other than visible, or
+  // paint containment (`contain: paint`, `content`, or `strict`; revision 6).
+  const clips = (cs) =>
+    cs.overflowX !== "visible" ||
+    cs.overflowY !== "visible" ||
+    /paint|content|strict/.test(cs.contain);
   // A viewport rectangle that survives the viewport and every clipping ancestor of `from`
   // (a collapsed tree group is height 0 with overflow hidden), with no ancestor at zero
   // opacity or display none in between (the inert preview stage).
@@ -245,7 +251,7 @@ function recorderMain(config) {
       if (cs.display === "none" || Number.parseFloat(cs.opacity) <= 0.01) {
         return false;
       }
-      if (cs.overflowX !== "visible" || cs.overflowY !== "visible") {
+      if (clips(cs)) {
         const ar = a.getBoundingClientRect();
         left = Math.max(left, ar.left);
         top = Math.max(top, ar.top);
@@ -355,23 +361,19 @@ function recorderMain(config) {
   // where the root can paint looks at what is on screen there, whatever its ancestors'
   // boxes (`hitSearch`). Each frame's read records its own cost (README, "Transition
   // Navigation Scenario").
-  const NOT_CONTENT = `${PLACEHOLDER}, .sr-only, ${EMPTY}`;
+  const NOT_CONTENT = `${PLACEHOLDER}, .sr-only, .visually-hidden, ${EMPTY}`;
   const MEDIA_TAGS = new Set(["img", "canvas", "iframe", "video", "svg"]);
   // The bounds were set from the cost of a call on synthetic documents of 2,000 to 40,000
   // lines in headless Chrome, measured with transitions-search-cost.mjs beside this file:
-  // README, "Transition Navigation Scenario", **How content is found**. A hit test's cost
-  // grows with the siblings its point lands among, so a walk cut off by its bound (a large
-  // subtree, whose content when it has any is dense) tries HIT_POINTS_LARGE points.
+  // README, "Transition Navigation Scenario", **How content is found**.
   const SEARCH_VISITS = 1500;
   const SEARCH_TEXTS = 400;
   const HIT_POINTS = 60;
-  const HIT_POINTS_LARGE = 8;
   const HIT_COLUMNS = [0.02, 0.5, 0.25, 0.75];
   const HIT_CHILDREN = 32;
   const HAS_TEXT = /\S/;
   const outside = (r) =>
     r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth;
-  const clipsOverflow = (cs) => cs.overflowX !== "visible" || cs.overflowY !== "visible";
   // How the walk treats an element: 0 passes over its subtree, 1 enters it, and 2 passes
   // over it on its own box, which a descendant painted elsewhere (fixed, translated) can
   // escape, so the hit test looks again.
@@ -400,12 +402,12 @@ function recorderMain(config) {
       return 0;
     }
     if (sized) {
-      return outside(r) && clipsOverflow(cs) ? 2 : 1;
+      return outside(r) && clips(cs) ? 2 : 1;
     }
     // No box, or an empty one: `display: contents`, an inline whose only child is
     // positioned, a windowed list's zero-height anchor. Its descendants are tested by
-    // their own boxes, unless it clips them away.
-    return clipsOverflow(cs) && el.getClientRects().length > 0 ? 0 : 1;
+    // their own boxes, unless it clips them away (overflow or paint containment).
+    return clips(cs) && el.getClientRects().length > 0 ? 0 : 1;
   };
   const walk = (root, s) => {
     let n = root.firstChild;
@@ -456,7 +458,7 @@ function recorderMain(config) {
     let right = innerWidth;
     let bottom = innerHeight;
     for (let a = root; a && a !== document.documentElement; a = a.parentElement) {
-      if (clipsOverflow(getComputedStyle(a))) {
+      if (clips(getComputedStyle(a))) {
         const ar = a.getBoundingClientRect();
         left = Math.max(left, ar.left);
         top = Math.max(top, ar.top);
@@ -481,12 +483,15 @@ function recorderMain(config) {
     }
     return rows.slice(0, HIT_POINTS / HIT_COLUMNS.length);
   })();
-  // What is on screen at up to `limit` points across the root's paint area, rows coarse
-  // to fine and HIT_COLUMNS across: each element there inside the root, outside a
-  // placeholder, prompt, or label, is tested as media and by its first HIT_CHILDREN
-  // children that are text. A hit test passes over elements with `pointer-events: none`,
-  // and content smaller than the grid can fall between its points.
-  const hitSearch = (root, s, limit) => {
+  // What is on screen at up to HIT_POINTS points across the root's paint area, rows coarse
+  // to fine and HIT_COLUMNS across. A point whose topmost element is outside the root
+  // (an overlay) does not show the root. Otherwise that element and its ancestors up to
+  // the root, outside a placeholder, prompt, or label, are tested as media and by their
+  // first HIT_CHILDREN children that are text. A hit test passes over elements with
+  // `pointer-events: none`, and content smaller than the grid can fall between its
+  // points. Each point costs a walk of the siblings it lands among, so a blank screen over
+  // a long flat list costs the most (README).
+  const hitSearch = (root, s) => {
     const area = paintArea(root);
     if (!area) {
       return false;
@@ -497,30 +502,34 @@ function recorderMain(config) {
     for (const row of HIT_ROWS) {
       const y = area.top + height * row;
       for (const f of HIT_COLUMNS) {
-        if (s.points >= limit) {
-          return false;
-        }
         s.points += 1;
-        // The topmost element and its ancestors up to the root, or, when something outside
-        // the root covers the point, every element there: the full stack costs a walk of
-        // all the siblings the point lands among, the topmost one does not.
         const x = area.left + Math.max(2, width * f);
         const top = document.elementFromPoint(x, y);
-        let stack;
-        if (top && root.contains(top)) {
-          stack = [];
-          for (let a = top; a && a !== root.parentElement; a = a.parentElement) {
-            stack.push(a);
-          }
-        } else {
-          stack = document.elementsFromPoint(x, y);
+        if (!top || !root.contains(top)) {
+          continue;
         }
-        for (const el of stack) {
+        // The first time a topmost element is met, the text the caret lands on at that
+        // point: it sees text under `pointer-events: none` and the text nearest the point
+        // in that element, so a lone line between rows is found.
+        if (!seen.has(top)) {
+          const caret = document.caretPositionFromPoint?.(x, y);
+          const node = caret?.offsetNode;
+          if (
+            node?.nodeType === 3 &&
+            root.contains(node) &&
+            !node.parentElement?.closest(NOT_CONTENT) &&
+            HAS_TEXT.test(node.nodeValue) &&
+            textShown(node)
+          ) {
+            return true;
+          }
+        }
+        for (let el = top; el && el !== root.parentElement; el = el.parentElement) {
           if (seen.has(el)) {
             continue;
           }
           seen.add(el);
-          if (!root.contains(el) || el.closest(NOT_CONTENT)) {
+          if (el.closest(NOT_CONTENT)) {
             continue;
           }
           if (MEDIA_TAGS.has(el.localName)) {
@@ -544,16 +553,20 @@ function recorderMain(config) {
   const search = (root) => {
     const s = { visits: 0, texts: 0, pruned: false, bounded: false, points: 0 };
     R.lastSearch = s;
-    if (!root || root.closest(NOT_CONTENT) || !rendered(root)) {
+    // A root hidden by its own content-visibility, whose descendants are skipped, has none
+    // (checkVisibility answers only for the descendants).
+    if (
+      !root ||
+      root.closest(NOT_CONTENT) ||
+      !rendered(root) ||
+      getComputedStyle(root).contentVisibility === "hidden"
+    ) {
       return false;
     }
     if (walk(root, s)) {
       return true;
     }
-    if (s.bounded) {
-      return hitSearch(root, s, HIT_POINTS_LARGE);
-    }
-    return s.pruned && hitSearch(root, s, HIT_POINTS);
+    return (s.bounded || s.pruned) && hitSearch(root, s);
   };
   // Within one frame's read nothing can change the page, so a root asked about twice (by
   // the frame's state and by the ready predicate) is searched once.
@@ -631,62 +644,77 @@ function recorderMain(config) {
   };
   R.state = state;
 
-  // Whether a box could be on screen: it survives every ancestor that clips its overflow,
-  // a scroll container extended to all it can scroll to and any other clipper to its
-  // client box, and the document's own scrollable area. An ancestor that clips to an empty
-  // area (a block collapsed to height 0) hides it, and so does a position the page cannot
-  // scroll to (a surface parked at left: -10000px). Revision 6.
-  const reachable = (from, r) => {
-    let left = r.left;
-    let top = r.top;
-    let right = r.right;
-    let bottom = r.bottom;
+  // Whether a box is on screen (`scroll` false), or could be brought there by scrolling
+  // (`scroll` true): it survives every ancestor that clips it, each cut to its client box,
+  // and then the viewport. With `scroll`, a scroll container takes the box on each axis
+  // it scrolls when the box lies within all it can scroll to, and projects it onto its
+  // client box there, so a tree row below the fold of `#tree-content` survives the
+  // panes around it that clip without scrolling; the document is taken to its own
+  // scrollable area the same way. An ancestor that clips to an empty area (a block
+  // collapsed to height 0) hides the box, and so does a position nothing scrolls to (a
+  // surface parked at left: -10000px). On each axis where the box has extent the overlap
+  // must be positive, so a box that only touches an edge (parked at left: 100%) is
+  // hidden. Revision 6.
+  const reachable = (from, r, scroll) => {
+    const span = [
+      [r.left, r.right, r.width > 0],
+      [r.top, r.bottom, r.height > 0],
+    ];
+    // Cut axis k to [lo, hi]; false when nothing of the box is left on it.
+    const cut = (k, lo, hi) => {
+      span[k][0] = Math.max(span[k][0], lo);
+      span[k][1] = Math.min(span[k][1], hi);
+      return span[k][2] ? span[k][1] > span[k][0] : span[k][1] >= span[k][0];
+    };
     for (let a = from; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
-      if (!clipsOverflow(cs)) {
+      if (!clips(cs)) {
         continue;
       }
       if (a.clientWidth === 0 || a.clientHeight === 0) {
         return false;
       }
       const ar = a.getBoundingClientRect();
-      const sx = /auto|scroll/.test(cs.overflowX);
-      const sy = /auto|scroll/.test(cs.overflowY);
-      const x0 = ar.left + a.clientLeft - (sx ? a.scrollLeft : 0);
-      const y0 = ar.top + a.clientTop - (sy ? a.scrollTop : 0);
-      left = Math.max(left, x0);
-      top = Math.max(top, y0);
-      right = Math.min(right, x0 + (sx ? a.scrollWidth : a.clientWidth));
-      bottom = Math.min(bottom, y0 + (sy ? a.scrollHeight : a.clientHeight));
-      if (right < left || bottom < top) {
-        return false;
+      const axes = [
+        [ar.left + a.clientLeft, a.clientWidth, a.scrollLeft, a.scrollWidth, cs.overflowX],
+        [ar.top + a.clientTop, a.clientHeight, a.scrollTop, a.scrollHeight, cs.overflowY],
+      ];
+      for (const [k, [c0, size, offset, extent, overflow]] of axes.entries()) {
+        if (scroll && /auto|scroll/.test(overflow)) {
+          if (!cut(k, c0 - offset, c0 - offset + extent)) {
+            return false;
+          }
+          span[k][0] = c0;
+          span[k][1] = c0 + size;
+        } else if (!cut(k, c0, c0 + size)) {
+          return false;
+        }
       }
+    }
+    if (!scroll) {
+      return cut(0, 0, innerWidth) && cut(1, 0, innerHeight);
     }
     const page = document.scrollingElement ?? document.documentElement;
     return (
-      right >= -scrollX &&
-      bottom >= -scrollY &&
-      left <= page.scrollWidth - scrollX &&
-      top <= page.scrollHeight - scrollY
+      cut(0, -scrollX, page.scrollWidth - scrollX) && cut(1, -scrollY, page.scrollHeight - scrollY)
     );
   };
   // A box is [x, y, w, h], and a region with `identity` also carries that attribute.
-  // A region is the first rendered element its selector matches whose box is reachable,
-  // so a surface kept mounted but hidden ahead of the one on screen (by display,
-  // visibility, opacity, content-visibility, a collapsed clipping ancestor, or a parked
-  // position) is not taken for it.
+  // A region is the first rendered element its selector matches whose box is on screen,
+  // or failing one, the first whose box could be scrolled there, so a surface kept
+  // mounted but hidden ahead of the one on screen (by display, visibility, opacity,
+  // content-visibility, a collapsed clipping ancestor, or a parked position) is not taken
+  // for it, and a tree row below the fold is still the row (revision 6).
   const box = (spec) => {
     let el = null;
     let r = null;
-    for (const candidate of document.querySelectorAll(spec.selector)) {
-      const cr = candidate.getBoundingClientRect();
-      if (
-        (cr.width > 0 || cr.height > 0) &&
-        rendered(candidate) &&
-        reachable(candidate.parentElement, cr)
-      ) {
-        el = candidate;
-        r = cr;
+    const candidates = [...document.querySelectorAll(spec.selector)]
+      .map((c) => [c, c.getBoundingClientRect()])
+      .filter(([c, cr]) => (cr.width > 0 || cr.height > 0) && rendered(c));
+    for (const scroll of [false, true]) {
+      const hit = candidates.find(([c, cr]) => reachable(c.parentElement, cr, scroll));
+      if (hit) {
+        [el, r] = hit;
         break;
       }
     }

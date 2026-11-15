@@ -60,7 +60,7 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
         ("content", 10),
         ("network", 2),
         ("landing", 11),
-        ("search", 8),
+        ("search", 12),
         ("window", 3),
         ("readings", 4),
     ],
