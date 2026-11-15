@@ -79,6 +79,8 @@ def _served_folder(root: Path) -> None:
         (root / "media" / f"m.{ext}").write_bytes(b"x")
     (root / "archives" / "a.zip").write_bytes(b"x")
     (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+    # A note beside the code, so src stands in Documentation and in Code.
+    (root / "src" / "notes.md").write_text("# Notes\n", encoding="utf-8")
 
 
 def _free_port() -> int:
@@ -202,7 +204,7 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "Media",
     ]
     assert [section["count"] for section in sections] == [
-        "9 files",
+        "10 files",
         "36 files",
         "6 files",
         "1 file",
@@ -217,5 +219,13 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code
     assert {path.rsplit(".", 1)[1] for path in code} == set(_CODE), code
+    # Keys that close and open Code's copy of src, which Documentation also holds, keep
+    # focus on Code's copy.
+    assert measured["focusAfterClose"] == {
+        "section": "type:code",
+        "path": "src",
+        "expanded": "false",
+    }
+    assert measured["focusAfterOpen"] == {"section": "type:code", "path": "src", "expanded": "true"}
     # No grouping is the one Files tree again.
     assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}

@@ -230,15 +230,18 @@ try {
   };
   const measure = (key) => browser.evaluate(`(${MEASURE})(${JSON.stringify(key)})`);
   /** Press one key, as the reader does, at the page. */
+  /** @type {Record<string, number>} */
+  const NAMED_KEYS = { Escape: 27, ArrowLeft: 37, ArrowRight: 39 };
   const press = async (key) => {
-    const code = key === "Escape" ? "Escape" : `Digit${key}`;
-    const windowsVirtualKeyCode = key === "Escape" ? 27 : key.charCodeAt(0);
+    const named = key in NAMED_KEYS;
+    const code = named ? key : `Digit${key}`;
+    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.charCodeAt(0);
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key,
       code,
       windowsVirtualKeyCode,
-      ...(key === "Escape" ? {} : { text: key }),
+      ...(named ? {} : { text: key }),
     });
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyUp",
@@ -337,6 +340,21 @@ try {
   result.codeFiles = await browser.evaluate(
     `[...document.querySelectorAll('.tree-section[data-tree-group="type:code"] .tree-file')].map((row) => row.dataset.path)`,
   );
+  // src also stands in Documentation. With focus on Code's copy, the keys that close and
+  // open it are mutations the tree repairs focus after: focus stays on Code's copy.
+  const FOCUSED = `(() => { const row = document.activeElement; return { section: row?.closest(".tree-section")?.dataset.treeGroup ?? null, path: row?.dataset?.path ?? null, expanded: row?.getAttribute("aria-expanded") ?? null }; })()`;
+  await browser.evaluate(
+    `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').focus(), true`,
+  );
+  await press("ArrowLeft");
+  await browser.evaluate(frames);
+  result.focusAfterClose = await browser.evaluate(FOCUSED);
+  await press("ArrowRight");
+  await browser.waitFor(
+    `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').getAttribute("aria-expanded") === "true"`,
+  );
+  await browser.evaluate(frames);
+  result.focusAfterOpen = await browser.evaluate(FOCUSED);
   // No grouping is the one tree again.
   await toggle("group", true);
   await browser.evaluate(

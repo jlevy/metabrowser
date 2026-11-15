@@ -2025,6 +2025,11 @@ function renderContainerChildren(rows, options) {
 function treeItemAttributes(options) {
   var identity =
     options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
+  // A folder can stand in several Group by sections: its identity, which the keyboard
+  // navigator finds rows and repairs focus by, names the section, as its DOM ids do.
+  if (_treeIdScope) {
+    identity = `${_treeIdScope}|${identity}`;
+  }
   var attributes =
     ' role="treeitem" tabindex="-1"' +
     ` data-tree-kind="${esc(options.kind)}"` +

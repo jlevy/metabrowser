@@ -837,6 +837,90 @@ async function walkSession() {
   );
 }
 
+// Group by sections: the same folder stands in two sections, each its own tree. Its
+// rows take their identities from app.js's own treeItemAttributes, scoped to the section
+// being built, so a mutation that repairs the roving anchor keeps focus on the copy the
+// reader is in rather than the first one in the panel.
+{
+  const app = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf-8");
+  const lift = (name) => {
+    const match = app.match(new RegExp(`^function ${name}\\([\\s\\S]*?^}`, "m"));
+    if (!match) {
+      throw new Error(`${name} not found in app.js`);
+    }
+    return match[0];
+  };
+  const shell = { _treeIdScope: "" };
+  vm.createContext(shell);
+  vm.runInContext(`${lift("esc")}\n${lift("treeItemAttributes")}`, shell);
+  const identityIn = (scope, kind, pathName) => {
+    shell._treeIdScope = scope;
+    const attributes = vm.runInContext(
+      `treeItemAttributes({ kind: ${JSON.stringify(kind)}, path: ${JSON.stringify(pathName)}, level: 1, position: 1, setSize: 1, labelId: "label" })`,
+      shell,
+    );
+    shell._treeIdScope = "";
+    return /data-tree-id="([^"]*)"/.exec(attributes)[1];
+  };
+  const sections = new FakeDocument();
+  const panel = sections.createElement("nav");
+  sections.body.append(panel);
+  /** @type {Array<{folder: FakeElement, file: FakeElement}>} */
+  const copies = [];
+  for (const scope of ["type:docs", "type:code"]) {
+    const tree = sections.createElement("div");
+    tree.setAttribute("role", "tree");
+    const folderRow = treeItem(sections, "folder", identityIn(scope, "folder", "src"), "src");
+    folderRow.classList.add("expanded");
+    folderRow.setAttribute("aria-expanded", "true");
+    const rows = group(sections, `group-${scope}`);
+    const fileRow = treeItem(
+      sections,
+      "file",
+      identityIn(scope, "file", `src/${scope}`),
+      `src/${scope}`,
+    );
+    rows.append(fileRow);
+    tree.append(folderRow, rows);
+    panel.append(tree);
+    copies.push({ folder: folderRow, file: fileRow });
+  }
+  check(
+    "a folder in two sections has two identities",
+    copies[0].folder.dataset.treeId !== copies[1].folder.dataset.treeId,
+    copies.map((copy) => copy.folder.dataset.treeId).join(" "),
+  );
+  const sectionShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sections });
+  const sectionNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: panel,
+    document: sections,
+    navigate() {},
+    setFolderExpanded(row, expanded) {
+      row.setAttribute("aria-expanded", String(expanded));
+      row.classList.toggle("expanded", expanded);
+      row.classList.toggle("collapsed", !expanded);
+      row.nextElementSibling?.classList.toggle("tree-children-collapsed", !expanded);
+    },
+    shortcuts: sectionShortcuts,
+  });
+  const second = copies[1].folder;
+  second.focus();
+  panel.dispatch("focusin", { target: second });
+  // Collapsing the second section's copy is a mutation; the anchor is repaired after it.
+  const mutation = sectionNavigator.prepareForMutation();
+  second.setAttribute("aria-expanded", "false");
+  second.nextElementSibling.classList.add("tree-children-collapsed");
+  sectionNavigator.synchronize(mutation);
+  check(
+    "a mutation in the second section keeps focus on its copy of the folder",
+    sections.activeElement === second,
+    sections.activeElement?.dataset?.treeId,
+  );
+  sectionNavigator.dispose();
+  sectionShortcuts.dispose();
+}
+
 walkSession()
   .catch((error) => {
     failures.push(`walk session threw: ${error?.stack || error}`);
