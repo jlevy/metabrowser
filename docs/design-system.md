@@ -2967,6 +2967,70 @@ A menu renderer supplies menu roles and roving focus; a dialog renderer supplies
 label relationship and modal state; a tooltip renderer never accepts interactive
 children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
+### Groups in a Menu
+
+**A menu that groups its rows heads each group one way: a `.menu-group` named by its
+`.group-heading`.** The pattern lives in the shell’s `styles.css`, so a built-in menu
+and a plugin’s use the same markup:
+
+```html
+<div class="menu-group" role="group" aria-labelledby="types-section-1">
+  <div class="group-heading" id="types-section-1">Code</div>
+  <!-- the group's .menu-item rows -->
+</div>
+```
+
+- **Heading.** A `.group-heading` is the quiet small-caps label register, and it starts
+  on the menu’s row inset, `--menu-row-inset`: the edge a row’s first column starts on,
+  a check or an icon, and the edge the menu’s `.menu-title` and `.menu-version` start
+  on. It is not indented to the rows’ labels.
+  The type filter’s headings once were, and read as rows of the group rather than its
+  name.
+- **Separator.** A `.menu-group` draws its own divider as its top edge, in the
+  `.menu-separator` geometry (4 px, a 1 px rule, 4 px), unless it is the menu’s first
+  child, where the menu’s edge already sets it off.
+  So a heading never lacks a divider or gets two.
+  Rows that no heading names, such as the type filter’s raw extensions after its groups,
+  are set off with a plain `.menu-separator`.
+- **Semantics.** The group carries `role="group"` and `aria-labelledby` naming its
+  heading, so a screen reader announces the group as the eye reads it.
+  The heading is the group’s first child.
+- **Title.** A heading that names the whole menu rather than a part of it is the menu’s
+  `.menu-title`, as the gear menu’s wordmark is.
+  A menu whose rows are all one named group, as a pull request’s stack menu is, uses one
+  `.menu-group`.
+
+`tests/test_files_tab_chrome.py` and the stack part of
+`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
+starts on its rows’ inset and names its group; `tests/test_browser_filter_ui.py` pins
+that every inset reads the one token.
+
+### Menu Height
+
+**A dropdown takes its rows’ natural height, up to 16 rows, and never reaches past the
+window.** Its `max-height` is the smaller of 16 rendered rows plus its padding and
+border, and the room from its top edge to the window’s bottom edge less 8 px, the
+tooltip’s viewport margin.
+Past that it scrolls inside itself.
+The rule is stated from the rendered row, not in pixels, so it follows the row if the
+row’s type or padding changes.
+
+The room depends on where the trigger sits and on the window, so the height is measured,
+not declared: `filterControls.fitOpenMenus(root)` fits every open filter dropdown when
+its consumer renders it open, and `filterControls.bind` fits them again when the window
+resizes.
+The rule applies to every filter dropdown, not only the type filter: a menu with
+few rows, such as Modified within or Minimum file size, is shorter than both caps in any
+window it can open in, so it keeps its natural height, and a short window is the one
+place either would have run off the screen.
+
+Measured in headless Chrome on the Files type filter: every row is 29 px and the frame
+10 px, so the cap is 474 px, where the fixed 320 px it replaced held 8 rows; in a 413 px
+viewport the 320 px menu ran 12 px past the window’s bottom edge.
+`menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
+and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
+window, through a resize and a reopen, and the age menu at both.
+
 ## Structured Data and Tables
 
 Use structured rows rather than syntax-colored walls of punctuation when the user is

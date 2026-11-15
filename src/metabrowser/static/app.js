@@ -4841,6 +4841,9 @@ function renderNavFilterBar() {
         })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
+  // An open menu is sized to its rows and the window now that it has geometry, before
+  // the frame paints it.
+  fc.fitOpenMenus(bar);
   // The rebuild replaced the triggers that the file type and modified-within keys badge.
   shellKeymap?.syncFilters();
 }

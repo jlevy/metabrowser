@@ -555,6 +555,15 @@ and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet 
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
 
+A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
+host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
+`.group-heading`, which draws its own divider and starts on the menu’s row inset.
+A `filterControls` dropdown sizes itself to its rows and the window: call
+`filterControls.fitOpenMenus(root)` after rendering one open, and `filterControls.bind`
+fits it again when the window resizes.
+See [Groups in a Menu](design-system.md#groups-in-a-menu) and
+[Menu Height](design-system.md#menu-height).
+
 A control in a view that shows or hides content, such as a row with the `icons.toggle`
 chevron, a fold, or a section trigger, carries the host’s `disclosure-toggle` class, so
 clicking it never selects text; a native `summary` needs nothing.

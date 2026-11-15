@@ -639,6 +639,11 @@
   --help-binding-width: 108px;
   --search-palette-width: 640px;
   --search-palette-max-height: min(70vh, 640px);
+  /* Where a menu's content starts: a row's text, the menu's title, and a group's
+     heading all begin this far inside the menu's padding. A heading indented to
+     the rows' icon or check column read as one of the rows (docs/design-system.md,
+     "Groups in a Menu"). */
+  --menu-row-inset: 8px;
 
   /* Code block backgrounds */
   --code-bg: oklch(97.6% 0.004 247.9);
@@ -1759,8 +1764,15 @@ summary {
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
      .menu-version    the command-formatted build identity at the menu's foot.
-     .menu-separator  a divider between groups.
-     .menu-section-label a quiet heading for a semantic group of rows. */
+     .menu-separator  a divider between rows that no heading names.
+     .menu-group      a named group of rows: role="group" with aria-labelledby
+                      on its .group-heading. It draws its own divider above it
+                      unless it opens the menu, so a heading is never left
+                      without one or given two.
+     .group-heading   the quiet small-caps heading that names a group, at the
+                      menu's row inset like every other line in the menu.
+   Every inline inset reads --menu-row-inset, so a heading, a title, and a row's
+   first column start on one edge. See docs/design-system.md, "Groups in a Menu". */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1777,7 +1789,7 @@ summary {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 6px var(--menu-row-inset);
   background: transparent;
   border: none;
   border-radius: var(--radius-chrome);
@@ -1832,7 +1844,7 @@ summary {
   background: var(--border);
 }
 .menu-version {
-  padding: 2px 8px;
+  padding: 2px var(--menu-row-inset);
   color: var(--muted);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
@@ -1844,10 +1856,10 @@ summary {
 /* The menu's own name, at its top. Metabrowser's wordmark lives here now:
    the gear is the product's menu, and a menu that names itself does not
    need a line of the navigation column to do it. Same small-caps register
-   as .menu-section-label, without that rule's icon-column inset — a title
-   is not a row. */
+   and the same inset as .group-heading: a title names the whole menu where a
+   heading names one group of it. */
 .menu-title {
-  padding: 2px 8px 3px;
+  padding: 2px var(--menu-row-inset) 3px;
   color: var(--label-color);
   font-family: var(--font-sans);
   font-size: var(--label-font-size);
@@ -1895,8 +1907,24 @@ summary {
     transition: none;
   }
 }
-.menu-section-label {
-  padding: 3px 8px 2px 32px;
+/* A named group of a menu's rows. Its divider is its own top edge, drawn with
+   the .menu-separator geometry (4px, a 1px rule, 4px), so a menu author cannot
+   leave a heading without one or put two in a row. The menu's first child needs
+   none: the menu's own edge is there. */
+.menu-group {
+  display: flex;
+  flex-direction: column;
+}
+.menu-group:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+/* The heading that names a group. It starts on the menu's row inset, the edge
+   the rows' first column (a check, an icon) starts on, not on their labels: on
+   the label column it read as a row of the group rather than its name. */
+.group-heading {
+  padding: 3px var(--menu-row-inset) 2px;
   color: var(--label-color);
   font-family: var(--font-sans);
   font-size: var(--label-font-size);
@@ -3324,9 +3352,11 @@ a.tab-btn {
   top: calc(100% + 4px);
   left: 0;
   min-width: 180px;
-  /* The list is capped at 30 entries, which still overflows a short
-     pane; scroll inside the menu rather than off the page. */
-  max-height: 320px;
+  /* The menu takes its rows' natural height up to 16 rows, and never more than
+     the room between its top and the window's bottom edge; past either it
+     scrolls inside itself. Both depend on measured geometry, the rendered row's
+     height and where the trigger sits, so filter-controls.js (`fitMenuPanel`)
+     sets max-height when the menu opens and when the window resizes. */
   overflow-y: auto;
 }
 .chip-menu[aria-expanded="true"] .chip-menu-panel {

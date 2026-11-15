@@ -88,6 +88,7 @@ DEADLINE_S = 5.0
 SLACK_S = 0.5
 CHROME_TESTS = (
     "tests.test_folder_overview_alignment",
+    "tests.test_files_tab_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
     "tests.test_raw_profile_cache_chrome",

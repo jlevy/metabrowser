@@ -180,6 +180,9 @@
    * `presets` are named shorthands rendered above the raw list, each
    * standing for the full set of values it names.
    *
+   * The panel has no fixed height: once a consumer has rendered it open,
+   * `fitOpenMenus(root)` sizes it to its rows and the window.
+   *
    * @param {{key: string, label: string, options: ChipOption[],
    *          value: string[] | string | null, anyLabel: string,
    *          anyValue?: string, select?: string, open?: boolean,
@@ -270,15 +273,18 @@
 
     // Named shorthands above the raw list. A preset is checked only
     // when every value it stands for is selected, so a half-covered
-    // group never claims to be on.
+    // group never claims to be on. Each section is the menu's one group
+    // pattern (docs/design-system.md, "Groups in a Menu"): a .menu-group
+    // draws its own divider, and its heading names it for assistive
+    // technology as well as on screen.
     const presetRows = presetSections
       .filter((section) => section.presets.length > 0)
       .map((section, sectionIndex) => {
         const labelId = `${spec.menuId}-section-${sectionIndex}`;
         return (
-          `<div class="chip-menu-preset-section" role="group" aria-labelledby="${esc(labelId)}">` +
-          `<div class="menu-separator" data-chip-menu-section="${esc(section.id)}"></div>` +
-          `<div class="menu-section-label" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
+          `<div class="menu-group" role="group" aria-labelledby="${esc(labelId)}"` +
+          ` data-chip-menu-section="${esc(section.id)}">` +
+          `<div class="group-heading" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
           section.presets
             .map((preset) => {
               const on =
@@ -301,6 +307,7 @@
         );
       })
       .join("");
+    // The raw rows have no heading, so a plain separator sets them off.
     const optionSeparator = presetRows ? '<div class="menu-separator"></div>' : "";
     return (
       `<span class="chip-menu" data-chip-menu="${esc(spec.key)}"` +
@@ -317,6 +324,79 @@
       `<span class="menu chip-menu-panel" id="${esc(spec.menuId)}" role="menu"` +
       ` aria-label="${esc(spec.label)}">${anyRow}${presetRows}${optionSeparator}${rows}</span></span>`
     );
+  }
+
+  // How tall an open dropdown may be. The user asked for "up to 16" rows
+  // where a fixed 320px held about 8, and for a menu that is "always within the
+  // window". Measured in headless Chrome on the Files type menu (2026-11-15):
+  // every row, check or icon, is 29px and the panel's padding and border add
+  // 10px, so 16 rows are 474px; at a 413px viewport the 320px menu ran 12px off
+  // the window's bottom edge. The cap is rows times the rendered row, so it
+  // follows the row if its type or padding changes.
+  const MENU_MAX_ROWS = 16;
+  // The space kept between a dropdown and the window's edge: the tooltip's
+  // TOOLTIP_VIEWPORT_MARGIN in app.js, so every floating surface stops short of
+  // the edge by the same amount.
+  const MENU_WINDOW_MARGIN = 8;
+
+  /**
+   * The max-height for an open dropdown: its rows' natural height up to
+   * MENU_MAX_ROWS rows, and no lower than the window's bottom edge, less the
+   * margin. Pure, so the rule is checked without a browser.
+   *
+   * It never goes below one row and the frame: a menu opened with less room
+   * than that is still a menu, scrolled one row at a time.
+   *
+   * @param {{rowHeight: number, frame: number, top: number, windowHeight: number}} geometry
+   *   `rowHeight` is one rendered row, `frame` the panel's vertical padding and
+   *   border, `top` the panel's top edge in the viewport, and `windowHeight` the
+   *   viewport's height.
+   * @returns {number}
+   */
+  function menuMaxHeight(geometry) {
+    const rows = MENU_MAX_ROWS * geometry.rowHeight + geometry.frame;
+    const room = geometry.windowHeight - MENU_WINDOW_MARGIN - geometry.top;
+    return Math.max(geometry.rowHeight + geometry.frame, Math.min(rows, room));
+  }
+
+  /**
+   * Fit one open dropdown panel to its rows and the window, reading the
+   * geometry `menuMaxHeight` needs from the rendered panel.
+   * @param {HTMLElement} panel
+   */
+  function fitMenuPanel(panel) {
+    const view = panel.ownerDocument?.defaultView;
+    const row = panel.querySelector(".menu-item");
+    if (!view || !row) {
+      return;
+    }
+    const style = view.getComputedStyle(panel);
+    const frame =
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom) +
+      parseFloat(style.borderTopWidth) +
+      parseFloat(style.borderBottomWidth);
+    const height = menuMaxHeight({
+      rowHeight: row.getBoundingClientRect().height,
+      frame,
+      top: panel.getBoundingClientRect().top,
+      windowHeight: view.innerHeight,
+    });
+    panel.style.maxHeight = `${height}px`;
+  }
+
+  /**
+   * Fit every open dropdown under `root`. A consumer calls this after it
+   * renders a menu open, since only then is there geometry to read; `bind`
+   * calls it again when the window resizes.
+   * @param {Element} root
+   */
+  function fitOpenMenus(root) {
+    for (const panel of root.querySelectorAll(
+      '.chip-menu[aria-expanded="true"] > .chip-menu-panel',
+    )) {
+      fitMenuPanel(/** @type {HTMLElement} */ (panel));
+    }
   }
 
   /**
@@ -597,18 +677,26 @@
       }
     }
 
+    // An open dropdown's room changes with the window, so it is fitted again.
+    function onWindowResize() {
+      fitOpenMenus(root);
+    }
+
     root.addEventListener("click", onClick);
     root.addEventListener("change", onChange);
     root.addEventListener("keydown", onKeyDown);
     const doc = root.ownerDocument;
+    const view = doc?.defaultView;
     doc?.addEventListener("pointerdown", onDocumentPointerDown);
     doc?.addEventListener("keydown", onDocumentEscape);
+    view?.addEventListener("resize", onWindowResize);
     return () => {
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
       root.removeEventListener("keydown", onKeyDown);
       doc?.removeEventListener("pointerdown", onDocumentPointerDown);
       doc?.removeEventListener("keydown", onDocumentEscape);
+      view?.removeEventListener("resize", onWindowResize);
     };
   }
 
@@ -618,6 +706,8 @@
     isSelected,
     groupHtml,
     menuGroupHtml,
+    menuMaxHeight,
+    fitOpenMenus,
     toggleHtml,
     checkHtml,
     clearHtml,

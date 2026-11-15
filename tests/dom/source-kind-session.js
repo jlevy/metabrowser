@@ -123,7 +123,13 @@ function createContext() {
     intervals: [],
     progressRefreshes: 0,
   };
-  const navFilterBar = { innerHTML: "" };
+  // The bar the shell renders into: its markup, and no menu open to fit.
+  const navFilterBar = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    },
+  };
   const document = {
     addEventListener() {},
     createElement() {

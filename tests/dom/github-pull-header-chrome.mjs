@@ -237,6 +237,43 @@ const MEASURE = `async (name, change, tab, width) => {
       moved: JSON.stringify(before) === JSON.stringify(after) ? null : { before, after },
       chipShown: shown(menu.element),
     };
+    // Its member menu heads its rows with the host's menu group, whose heading starts
+    // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
+    // the same stack is opened outside the header, through its disclosure, which
+    // populates it on its toggle event, and removed again: the header's own menu stays
+    // lazy, as the checks below expect.
+    const probe = page.createStackMenu(
+      { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
+      body.number,
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+    );
+    const holder = document.createElement("div");
+    holder.className = "github-pull-stacks";
+    holder.style.position = "relative";
+    document.body.append(holder);
+    holder.append(probe.element);
+    probe.element.open = true;
+    await frames();
+    const heading = probe.element.querySelector(".group-heading");
+    const member = probe.element.querySelector(".github-pull-stack-member");
+    const textLeft = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().left;
+    };
+    chipMoves.headingInset =
+      heading && member
+        ? Math.round(
+            (textLeft(heading) - box(member).left - parseFloat(getComputedStyle(member).paddingLeft)) * 100,
+          ) / 100
+        : null;
+    chipMoves.headingNamesGroup =
+      heading !== null &&
+      heading.parentElement.getAttribute("role") === "group" &&
+      heading.parentElement.getAttribute("aria-labelledby") === heading.id &&
+      heading.parentElement.contains(member);
+    probe.dispose();
+    holder.remove();
   }
   const rows = [...header.children].map((row) => ({
     row: row.tagName === "H1" ? "title" : [...row.classList].find((c) => c.startsWith("github-pull-")).slice(12),
@@ -621,6 +658,17 @@ async function main() {
                 `${where}: a late stack chip shows whole`,
                 shape.chipMoves.chipShown >= 0.99,
                 String(shape.chipMoves.chipShown),
+              );
+              check(
+                `${where}: the stack menu's heading starts on its rows' inset`,
+                shape.chipMoves.headingInset !== null &&
+                  Math.abs(shape.chipMoves.headingInset) <= 0.5,
+                String(shape.chipMoves.headingInset),
+              );
+              check(
+                `${where}: the stack menu's heading names the group of its members`,
+                shape.chipMoves.headingNamesGroup === true,
+                String(shape.chipMoves.headingNamesGroup),
               );
             }
             seen[`${label} ${tab || "conversation"}`] = shape;

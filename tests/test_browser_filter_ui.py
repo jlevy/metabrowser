@@ -343,6 +343,67 @@ def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
     assert "showIgnored ? row[1] + row[2] : row[1]" in block
 
 
+def _rule(css: str, selector: str) -> str:
+    """The body of the top-level rule for *selector*."""
+
+    start = css.index(f"\n{selector} {{")
+    return css[start : css.index("}", start)]
+
+
+def test_every_line_of_a_menu_starts_on_one_inset() -> None:
+    """A group heading starts where a row's first column does, and a menu's title and
+    foot where its rows do, because all of them read one token. A heading indented to the
+    check column read as a row (docs/design-system.md, "Groups in a Menu"); where the text
+    actually lands is measured in Chrome by tests/test_files_tab_chrome.py."""
+
+    css = _read("styles.css")
+    assert "--menu-row-inset: 8px;" in css
+    for selector, padding in (
+        (".menu-item", "6px var(--menu-row-inset)"),
+        (".menu-title", "2px var(--menu-row-inset) 3px"),
+        (".group-heading", "3px var(--menu-row-inset) 2px"),
+        (".menu-version", "2px var(--menu-row-inset)"),
+    ):
+        assert f"padding: {padding};" in _rule(css, selector), selector
+
+
+def test_a_menu_group_draws_the_separator_s_divider_itself() -> None:
+    """A named group's divider is its own top edge, in the separator's geometry, so no
+    menu can leave a heading without one or give it two; the menu's first child needs
+    none."""
+
+    css = _read("styles.css")
+    separator = _rule(css, ".menu-separator")
+    assert "height: 1px;" in separator
+    assert "margin: 4px 0;" in separator
+    group = _rule(css, ".menu-group:not(:first-child)")
+    assert "margin-top: 4px;" in group
+    assert "padding-top: 4px;" in group
+    assert "border-top: 1px solid var(--border);" in group
+    js = _read("filter-controls.js")
+    assert '`<div class="menu-group" role="group" aria-labelledby="${esc(labelId)}"`' in js
+    assert '`<div class="group-heading" id="${esc(labelId)}">' in js
+
+
+def test_dropdown_height_is_fitted_to_rows_and_window() -> None:
+    """The panel has no fixed height: filter-controls.js sets one from the rendered row
+    and the window when a menu opens and when the window resizes (mb-1wfn)."""
+
+    css = _read("styles.css")
+    panel = _rule(css, ".chip-menu-panel")
+    assert "max-height:" not in panel
+    assert "overflow-y: auto;" in panel
+    js = _read("filter-controls.js")
+    assert "const MENU_MAX_ROWS = 16;" in js
+    assert "const MENU_WINDOW_MARGIN = 8;" in js
+    app = _read("app.js")
+    fn_start = app.index("function renderNavFilterBar()")
+    fn_block = app[fn_start : app.index("\n}\n", fn_start)]
+    assert fn_block.index("bar.innerHTML = main + drawer;") < fn_block.index(
+        "fc.fitOpenMenus(bar);"
+    )
+
+
 def test_dropdown_rows_are_arrow_key_traversable() -> None:
     """A menu is a list, so it takes the vertical keys; the segmented
     groups take the horizontal ones."""

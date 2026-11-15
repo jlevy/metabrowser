@@ -3157,7 +3157,11 @@ export function createStackMenu(initial, number, deps) {
   const links = [];
   /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
-  const label = h("div", { class: "menu-section-label" }, [`Stack #${stack.number}`]);
+  // The members are one named group, in the host's menu group pattern
+  // (docs/design-system.md, "Groups in a Menu").
+  const labelId = `${menuId}-heading`;
+  const label = h("div", { class: "group-heading", id: labelId }, [`Stack #${stack.number}`]);
+  const group = h("div", { class: "menu-group", role: "group", "aria-labelledby": labelId });
   let populated = false;
 
   function updateTitles() {
@@ -3224,8 +3228,9 @@ export function createStackMenu(initial, number, deps) {
       links.push(row.link);
     }
     updateTitles();
-    menu.replaceChildren(label, ...links);
+    group.replaceChildren(label, ...links);
     if (!populated) {
+      menu.append(group);
       root.append(menu);
       populated = true;
     }

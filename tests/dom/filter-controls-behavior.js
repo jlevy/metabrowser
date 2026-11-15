@@ -432,6 +432,102 @@ assertContains(
   menuSections,
   'data-chip-preset="family:javascript"',
 );
+// One group pattern (docs/design-system.md, "Groups in a Menu"): each section is a
+// .menu-group named by its .group-heading, and draws its own divider, so the one
+// .menu-separator left is the one before the raw rows, which no heading names.
+assertContains(
+  "a preset section is the menu group",
+  menuSections,
+  '<div class="menu-group" role="group" aria-labelledby="m-section-1" data-chip-menu-section="families">' +
+    '<div class="group-heading" id="m-section-1">Code</div>',
+);
+assertEqual(
+  "only the raw rows are set off by a separator",
+  menuSections.split('class="menu-separator"').length - 1,
+  1,
+);
+
+// ── Menu height ────────────────────────────────────────────────
+// Up to 16 rows of the rendered row, and never past the window's bottom edge less 8 px.
+// The numbers are the Files type menu's, measured in Chrome: 29 px rows, a 10 px frame,
+// and the panel's top at 105 px under the filter row.
+const menuGeometry = { rowHeight: 29, frame: 10, top: 105 };
+assertEqual(
+  "a tall window holds 16 rows",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 900 }),
+  16 * 29 + 10,
+);
+assertEqual(
+  "a short window holds what fits above its edge",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 420 }),
+  420 - 8 - 105,
+);
+assertEqual(
+  "the cap follows the rendered row",
+  fc.menuMaxHeight({ ...menuGeometry, rowHeight: 24, windowHeight: 900 }),
+  16 * 24 + 10,
+);
+assertEqual(
+  "a menu with no room still shows one row",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 120 }),
+  29 + 10,
+);
+
+// Fitting reads that geometry from the rendered panel and sets max-height on every open
+// menu; bind fits them again when the window resizes, and its disposer stops.
+{
+  const viewListeners = {};
+  const view = {
+    innerHeight: 420,
+    getComputedStyle: () => ({
+      paddingTop: "4px",
+      paddingBottom: "4px",
+      borderTopWidth: "1px",
+      borderBottomWidth: "1px",
+    }),
+    addEventListener(type, listener) {
+      viewListeners[type] = listener;
+    },
+    removeEventListener(type, listener) {
+      if (viewListeners[type] === listener) {
+        delete viewListeners[type];
+      }
+    },
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  const panel = {
+    ownerDocument: doc,
+    style: {},
+    getBoundingClientRect: () => ({ top: 105 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 29 }) } : null,
+  };
+  const empty = { ownerDocument: doc, style: {}, querySelector: () => null };
+  let asked = "";
+  const root = {
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    querySelectorAll(selector) {
+      asked = selector;
+      return [panel, empty];
+    },
+  };
+  fc.fitOpenMenus(root);
+  assertEqual(
+    "fitting looks only at open menus",
+    asked,
+    '.chip-menu[aria-expanded="true"] > .chip-menu-panel',
+  );
+  assertEqual("an open menu is fitted to the room", panel.style.maxHeight, "307px");
+  assertEqual("a menu with no rows is left alone", empty.style.maxHeight, undefined);
+  const dispose = fc.bind(root, {});
+  view.innerHeight = 900;
+  viewListeners.resize?.();
+  assertEqual("a resize fits the open menu again", panel.style.maxHeight, "474px");
+  dispose();
+  assertEqual("the disposer stops listening for resizes", viewListeners.resize, undefined);
+}
 assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
 
 const emptyPreset = fc.menuGroupHtml({

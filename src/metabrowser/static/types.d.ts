@@ -891,6 +891,7 @@ type MetabrowserFilterControls = {
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
+  fitOpenMenus(root: Element): void;
   groupHtml(spec: {
     className?: string;
     key: string;
@@ -918,6 +919,12 @@ type MetabrowserFilterControls = {
     select?: string;
     value: MetabrowserFilterSelection;
   }): string;
+  menuMaxHeight(geometry: {
+    frame: number;
+    rowHeight: number;
+    top: number;
+    windowHeight: number;
+  }): number;
   nextSelection(
     select: string,
     current: MetabrowserFilterSelection,
