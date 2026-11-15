@@ -107,11 +107,11 @@ $ node tests/dom/source-kind-session.js
       },
       "navFilterControls": [
         "group",
+        "showIgnored",
         "drawer",
         "recency",
         "types",
-        "size",
-        "showIgnored"
+        "size"
       ],
       "groupByOptions": [
         "age",

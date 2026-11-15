@@ -3484,7 +3484,8 @@ a.tab-btn {
    Sits between the nav tab bar and the scrolling tree, outside the
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
-   recency; everything else lives in the drawer one toggle down. */
+   Group by and Show ignored; the three filters live in the drawer one
+   toggle down. */
 .nav-filter-bar {
   display: flex;
   align-items: center;
@@ -3633,8 +3634,8 @@ a.tab-btn {
 .nav-filter-bar-main > .chip-group > .chip {
   padding-inline: 7px;
 }
-/* Pushes the drawer toggle and Clear to the trailing edge, so the
-   recency group always starts at the same x as the tree's first row. */
+/* Pushes the drawer toggle and Clear to the trailing edge, so Group by
+   always starts at the same x as the tree's first row. */
 .nav-filter-bar-end {
   position: relative;
   display: flex;
@@ -3642,6 +3643,24 @@ a.tab-btn {
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+/* The chevron's count sits outside its fixed-size button
+   (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
+   sits against the chevron: the margin cancels the span's gap on that
+   side, and the 5 px a badge keeps from a chip's label goes, since the
+   gap already parts it from Clear. That gives the row 9 px (mb-x1h6).
+   Measured in headless Chrome on 2026-11-15 at the default 299 px bar
+   (a 275 px row), in the default font set, with a filter set so Clear
+   and the badge "1" show: "No grouping", the widest trigger, overflowed
+   by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
+   about 1 px and has 7.83; "By age" has 30.7. The row still overflows in
+   the system font set's wider face, by about 18 px at "No grouping"; in a
+   pane narrower than about 297 px at its widest; and, with no filter set,
+   in one narrower than about 245 px. tests/test_files_tab_chrome.py
+   checks the default case. */
+.nav-filter-bar-end > .chip-badge {
+  margin-left: 0;
+  margin-right: -4px;
 }
 /* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
    focus, and a badge that sits beside the chevron, Modified within's before File type's.
