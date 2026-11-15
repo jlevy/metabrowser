@@ -3,20 +3,22 @@
 // The summary's words, its rows, and its tree are three production modules, loaded as they
 // ship: the shell's changed-files tree (static/changed-files-tree.js), which the Pulls tab's
 // tree of a pull request's files is drawn on too, for the header's words, the roll-ups, and
-// the rows a reader sees; builtin_plugins/diff/diff-model.js for what each change of a File
-// Diff Format manifest is as a row (`changeSummaryRow`); and
+// the rows a reader sees; builtin_plugins/diff/diff-model.js for a manifest's summary, its
+// rows and its header's words, as the diff's toolbar asks for them (`diffSummaryOf`); and
 // builtin_plugins/diff/diff-summary.js for the tree's decisions without a DOM
-// (`createSummaryTree`): which folders are open, the row that takes Tab, and what a key or
-// a press does.
+// (`createSummaryTree`): which folders are open, the row that takes Tab, what a key or a
+// press does, and which rows of a long tree are in the document (`rowsToDraw`).
 //
 // Each story prints what a reader would see: a header as its words, and the visible rows, a
-// folder as "v" open or ">" closed with its files and its line counts rolled up, a file as
-// its change letter, its name, and its line counts; a key's step names the key, what it did,
+// folder as "v" open or ">" closed with its files, what its sums leave out, and its line
+// counts rolled up, a file as its change letter, its name, and its line counts, every count
+// written as the rows write it (`changeStats`); a key's step names the key, what it did,
 // the row that takes Tab after it, and a jump's path. The manifests are built here, each file
 // as a comparison's manifest lists it, since what is under test is what the summary makes of
 // any manifest: the header the reader asked for, "35 changed files (2 added, 3 removed, 30
 // modified)  +1,234 −3,423", one of every change kind a comparison can hold, binary files that
-// carry no counts, a change set whose totals are not exact, and a change set of no files.
+// carry no counts, a change set whose totals are not exact, a change set of no files, and
+// patches that list a path more than once.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -58,16 +60,15 @@ function change(kind, file, additions, deletions, from) {
   };
 }
 
-/** A visible row as one line. */
+/** A visible row as one line, its counts as the rows write them. */
 function line(row) {
   const indent = "  ".repeat(row.depth);
-  const counts =
-    row.additions === null && row.deletions === null
-      ? ""
-      : ` +${row.additions ?? "?"} -${row.deletions ?? "?"}`;
+  const stats = shared.changeStats(row, formatCount);
+  const counts = stats === null ? "" : ` ${stats.additions} ${stats.deletions}`;
   if (row.kind === "folder") {
-    const unknown = row.unknown > 0 ? `, ${row.unknown} without counts` : "";
-    return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files}${unknown})${counts}`;
+    const missing = shared.missingCounts(row, formatCount);
+    const files = `${row.files}${missing === "" ? "" : `; ${missing}`}`;
+    return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${files})${counts}`;
   }
   const from = row.previousName === null ? "" : ` (from ${row.previousName})`;
   return `${indent}${row.badge} ${row.name}${from}${counts}`;
@@ -78,20 +79,12 @@ let rowOf = () => {
   throw new Error("the modules have not loaded");
 };
 
-/** The header of a manifest, as `renderDiffSummary` in diff-view.js asks for it. */
+/** diff-model.js, once it has loaded. */
+let diffModel = null;
+
+/** The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. */
 function header(_model, manifest) {
-  const rows = manifest.files.map(rowOf);
-  const totals = manifest.totals;
-  const said = shared.describeChanges(
-    {
-      files: totals.files,
-      additions: totals.additions,
-      deletions: totals.deletions,
-      exact: totals.exact,
-    },
-    rows.map((row) => row.status),
-    formatCount,
-  );
+  const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
   return { text: said.text, label: said.label, estimated: said.estimated };
 }
 
@@ -117,6 +110,7 @@ async function main() {
   const summary = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-summary.js")).href
   );
+  diffModel = model;
   rowOf = (change) => model.changeSummaryRow(change, shared.displayPath);
   const stories = {};
 
@@ -248,6 +242,78 @@ async function main() {
   if (shown.some((row) => /[\u200B\u202E]/.test(row.name))) {
     throw new Error("a row shows a character a reader cannot see");
   }
+
+  // A patch can list a path more than once: `git diff` writes a file that became a symlink as
+  // a deletion and an addition of one path, and a `git format-patch` series repeats each path
+  // its commits touch. The header counts the changes, and the tree shows each path once, its
+  // counts both changes' and its status what happened to it over them, so the root's counts
+  // are the header's totals (A1 of review A on #448).
+  const symlink = [
+    change("deleted", "bin/run", 0, 3),
+    change("added", "bin/run", 1, 0),
+    change("modified", "README.md", 2, 1),
+  ];
+  const series = [
+    change("modified", "src/a.py", 2, 1),
+    change("added", "src/b.py", 5, 0),
+    change("modified", "src/c.py", 1, 1),
+    change("modified", "src/a.py", 3, 0),
+    change("modified", "src/b.py", 1, 1),
+    change("deleted", "src/c.py", 0, 4),
+  ];
+  const repeated = (files) => {
+    const manifest = manifestOf(files);
+    const { rows } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
+    const built = shared.buildFileTree(rows);
+    return {
+      header: header(model, manifest).text,
+      rows: summary.createSummaryTree(shared, rows).rows().map(line),
+      rootMatchesTotals:
+        built.root.additions === manifest.totals.additions &&
+        built.root.deletions === manifest.totals.deletions,
+    };
+  };
+  stories["a path a patch lists twice is one row"] = {
+    "a file that became a symlink": repeated(symlink),
+    "a format-patch series of two commits": repeated(series),
+  };
+
+  // One count of a file unknown: its folder sums the counts its files know, and says which
+  // side leaves a file out (A9 of review A on #448).
+  const oneSided = [
+    { ...change("modified", "lib/half.py", 4, 1), deletions: null },
+    change("modified", "lib/whole.py", 2, 2),
+    change("added", "lib/logo.png", null, null),
+  ];
+  stories["a folder says what its sums leave out"] = summary
+    .createSummaryTree(shared, oneSided.map(rowOf))
+    .rows()
+    .map((row) => ({ row: line(row), label: shared.rowLabel(row, formatCount) }));
+
+  // Which rows of a long tree are in the document: those in the box's view and 40 more each
+  // way, and the row that takes Tab wherever it is (A10 of review A on #448).
+  const long = Array.from({ length: 1200 }, (_, at) =>
+    change("modified", `pkg/file-${String(at).padStart(4, "0")}.py`, 1, 1),
+  ).map(rowOf);
+  const tall = summary.createSummaryTree(shared, long);
+  const drawn = (viewTop, anchor) => {
+    tall.focused(anchor);
+    const range = shared.windowRange({
+      count: tall.rows().length,
+      rowHeight: 24,
+      viewTop,
+      viewBottom: viewTop + 480,
+      listTop: 0,
+      overscan: summary.SUMMARY_ROWS_OVERSCAN,
+    });
+    const at = summary.rowsToDraw(range, tall.indexOf(tall.anchor()));
+    return { range, rows: at.length, first: at[0], last: at.at(-1) };
+  };
+  stories["a long tree draws its view, its overscan, and the row that takes Tab"] = {
+    "at the top": drawn(0, "pkg/"),
+    "scrolled to the middle": drawn(12000, "pkg/"),
+    "the row that takes Tab far below": drawn(0, "pkg/file-1100.py"),
+  };
 
   // Relations a reviewer can break the model against.
   const exampleRows = example.map(rowOf);

@@ -175,7 +175,9 @@ it:
 
 ### Diff Summary
 
-- **One component:** a diff-plugin component used by every multi-file diff host.
+- **One component:** a diff-plugin component used by every multi-file diff host but the
+  Git commit view, whose commit summary carries the totals, so the view keeps one set of
+  them (docs/design-system.md, Git Commit Summary).
   It is built on the Pulls tab’s tree model, shared rather than copied, so the Pulls
   tab’s tree gains the same folder roll-ups.
 - **Header:**
@@ -332,7 +334,9 @@ reason. This plan moves to `docs/project/specs/done/` when pull request 7 merges
   The choice persists either way.
 - **Shared membership:** should a pull request in two stacks appear under each, rather
   than once under the first?
-- **Open folders in the Diff summary:** should an open folder also show its line counts?
+- **Open folders in the Diff summary (answered):** an open folder shows its line counts
+  too, as a Files folder keeps its size whichever way it is turned.
+  The question was: should an open folder also show its line counts?
   This plan leaves that to the implementer, kept consistent with the Files tab’s folder
   tallies.
 

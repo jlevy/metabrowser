@@ -1266,6 +1266,10 @@ numbers use the shell’s number format; the totals are the
 [inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
 not exact. Its accessible name says the same in words.
 A change set of no files has nothing to open, so its header is a line.
+Where the shared tree did not load, the header is the line main drew, “N changed files
++A −D” in the shell’s number format, with no toggle; and a header whose tree did not
+load when pressed is marked `aria-disabled`, with a tooltip saying a press tries again,
+until a press loads it.
 A commit’s view has no Diff summary: its [commit summary](#git-commit-summary) carries
 the totals.
 
@@ -1275,6 +1279,10 @@ Opened, it shows the change set’s files as a tree by folder, the
 letters, and inline change stats at the row’s end, a chain of single folders as one row,
 and every folder with the line counts of the files under it rolled up, open or closed,
 as a Files folder keeps its size whichever way it is turned.
+A folder says in its accessible name and tooltip what its sums leave out (“2 files
+without line counts”, or each side’s when they differ).
+A path a patch lists more than once, as a file that became a symlink, is one row with
+both changes’ counts, and goes to the first of its sections.
 The tree sits in a box under the toolbar, at most `60vh` tall, which scrolls inside
 itself so the files stay a scroll away, and it is drawn a window at a time.
 Nothing of it is mounted until the header first opens it.
@@ -1288,11 +1296,16 @@ names it and Back returns; a patch file has no address for a place in its diff, 
 the diff moves in place and the address stays the file’s. A path is its author’s text: a
 row shows it by the server’s display rule, with a control, format, or invisible
 character, such as a right-to-left override or a zero-width space, as U+FFFD, as the
-Pulls tab shows the same path.
-`tests/dom/diff-summary-session.js` holds the words, the rows, and the keys, and the
-paint’s measurement is in the views, models, and routes map (`diff.summary-paint`).
+Pulls tab shows the same path, and the file bar the row goes to shows it the same way
+([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the words,
+the rows, and the keys, and the paint’s measurement is in the views, models, and routes
+map (`diff.summary-paint`).
 
 ### Diff File Bar
+
+The bar shows its path, and a rename’s two, by the server’s display rule, as the
+[Diff summary](#diff-summary) does, and its stats in the shell’s number format; its copy
+control copies the path as it is.
 
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared

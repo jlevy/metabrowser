@@ -295,13 +295,74 @@
   }
 
   /**
+   * What happened to a path a list names more than once, over all its changes in order: the
+   * status they share, or else what the path is at the end against the start. A path that
+   * was there before and after and was deleted or added on the way, as a file that became a
+   * symlink is, `changed`; there before and after otherwise, `modified`; only after, `added`;
+   * only before, `removed`; and neither, `changed`.
+   *
+   * @param {ReadonlyArray<string>} statuses
+   * @returns {string}
+   */
+  function mergedStatus(statuses) {
+    if (statuses.every((status) => status === statuses[0])) {
+      return statuses[0];
+    }
+    const before = statuses[0] !== "added";
+    const after = statuses[statuses.length - 1] !== "removed";
+    if (before && after) {
+      return statuses.includes("added") || statuses.includes("removed") ? "changed" : "modified";
+    }
+    if (after) {
+      return "added";
+    }
+    return before ? "removed" : "changed";
+  }
+
+  /**
+   * The rows with each path once, in the order each first appears. GitHub's list never
+   * repeats a path, but a patch can: `git diff` writes a file that became a symlink as a
+   * deletion and an addition of one path, and a `git format-patch` series repeats every path
+   * its commits touch. A repeated path is one row, with the counts its changes know summed,
+   * so the tree's roll-ups are the change set's totals, the first rename or copy it came
+   * from, and a status for all of its changes (`mergedStatus`).
+   *
+   * @param {ReadonlyArray<MetabrowserChangedFileRow>} rows
+   * @returns {MetabrowserChangedFileRow[]}
+   */
+  function mergeRows(rows) {
+    /** @type {Map<string, {row: MetabrowserChangedFileRow, statuses: string[]}>} */
+    const byPath = new Map();
+    for (const row of rows) {
+      const held = byPath.get(row.path);
+      if (held === undefined) {
+        byPath.set(row.path, { row, statuses: [row.status] });
+        continue;
+      }
+      held.statuses.push(row.status);
+      held.row = {
+        ...held.row,
+        additions: rollUp(held.row.additions, row.additions),
+        deletions: rollUp(held.row.deletions, row.deletions),
+        previous_path: held.row.previous_path ?? row.previous_path,
+        previous_display: held.row.previous_display ?? row.previous_display,
+      };
+    }
+    return [...byPath.values()].map(({ row, statuses }) =>
+      statuses.length === 1 ? row : { ...row, status: mergedStatus(statuses) },
+    );
+  }
+
+  /**
    * Folders of the rows' paths, each with its files and its line counts rolled up from them.
    * Each path is split on "/", and each segment is named by the same segment of `display`,
-   * which a display rule keeps one for one. A path listed twice counts once.
+   * which a display rule keeps one for one. A path listed more than once is one file
+   * (`mergeRows`).
    *
    * A folder's `additions` and `deletions` are the sums of the counts its files know, and
-   * null only when none of them knows one; `unknown` is how many of its files know neither,
-   * as a binary file does, so a reader can be told the sum leaves them out.
+   * null only when none of them knows one. `additionsUnknown` and `deletionsUnknown` are how
+   * many of its files do not know that side's count, and `unknown` how many know neither, as
+   * a binary file does, so a reader is told what the sums leave out (`missingCounts`).
    *
    * @param {ReadonlyArray<MetabrowserChangedFileRow>} rows
    * @returns {MetabrowserChangedFilesTreeModel}
@@ -316,26 +377,23 @@
       additions: null,
       deletions: null,
       unknown: 0,
+      additionsUnknown: 0,
+      deletionsUnknown: 0,
       children: [],
     };
     /** @type {Map<string, MetabrowserChangedFilesFolder>} */
     const folders = new Map([["", root]]);
-    /** @type {Set<string>} */
-    const seen = new Set();
-    for (const row of rows) {
-      if (seen.has(row.path)) {
-        continue;
-      }
-      seen.add(row.path);
+    for (const row of mergeRows(rows)) {
       const segments = row.path.split("/");
       const names = row.display.split("/");
-      const unknown = row.additions === null && row.deletions === null ? 1 : 0;
       /** @param {MetabrowserChangedFilesFolder} folder */
       const count = (folder) => {
         folder.files += 1;
         folder.additions = rollUp(folder.additions, row.additions);
         folder.deletions = rollUp(folder.deletions, row.deletions);
-        folder.unknown += unknown;
+        folder.unknown += row.additions === null && row.deletions === null ? 1 : 0;
+        folder.additionsUnknown += row.additions === null ? 1 : 0;
+        folder.deletionsUnknown += row.deletions === null ? 1 : 0;
       };
       let parent = root;
       count(parent);
@@ -352,6 +410,8 @@
             additions: null,
             deletions: null,
             unknown: 0,
+            additionsUnknown: 0,
+            deletionsUnknown: 0,
             children: [],
           };
           folders.set(prefix, folder);
@@ -435,7 +495,7 @@
    *
    * A folder row stands for its chain: `ids` are the chain's folders, top first, and `id`
    * the deepest, whose children follow it when it is open. Its `files`, `additions`,
-   * `deletions`, and `unknown` are the chain's, which are its deepest folder's, since every
+   * `deletions`, and unknown counts are the chain's, which are its deepest folder's, since every
    * file under the chain is under that folder. `position` and `setSize` are a row's place
    * among its parent's children, a chain counting as one, for `aria-posinset` and
    * `aria-setsize`: a row out of view is not in the document.
@@ -500,6 +560,8 @@
           additions: folder.additions,
           deletions: folder.deletions,
           unknown: folder.unknown,
+          additionsUnknown: folder.additionsUnknown,
+          deletionsUnknown: folder.deletionsUnknown,
         });
         if (open) {
           walk(folder.children, depth + 1);
@@ -625,6 +687,61 @@
     };
   }
 
+  /**
+   * What a folder's sums leave out, in words: "2 files without line counts", or each side's
+   * when they differ, "1 file without an added count, 2 files without deleted counts"; ""
+   * when every file under it knows both. A file row says it itself, with "?".
+   *
+   * @param {{kind: string, additionsUnknown?: number, deletionsUnknown?: number}} row
+   * @param {(count: number) => string} formatCount
+   */
+  function missingCounts(row, formatCount) {
+    if (row.kind !== "folder") {
+      return "";
+    }
+    const added = row.additionsUnknown ?? 0;
+    const deleted = row.deletionsUnknown ?? 0;
+    /** @param {number} count */
+    const files = (count) => `${formatCount(count)} ${count === 1 ? "file" : "files"}`;
+    if (added === deleted) {
+      return added === 0 ? "" : `${files(added)} without line counts`;
+    }
+    return [
+      added === 0
+        ? ""
+        : `${files(added)} without ${added === 1 ? "an added count" : "added counts"}`,
+      deleted === 0
+        ? ""
+        : `${files(deleted)} without ${deleted === 1 ? "a deleted count" : "deleted counts"}`,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  /**
+   * What a row is called, for a screen reader, in the shell's number format: a folder by its
+   * name, its files, its lines, and what its sums leave out; a file by its name, its change,
+   * where it came from, and its lines. Every tree of changed files names its rows by this.
+   *
+   * @param {MetabrowserChangedFilesRow} row
+   * @param {(count: number) => string} formatCount
+   */
+  function rowLabel(row, formatCount) {
+    /** @param {number | null} count */
+    const said = (count) => (count === null ? "unknown" : formatCount(count));
+    const lines =
+      row.additions === null && row.deletions === null
+        ? ""
+        : `, ${said(row.additions)} added, ${said(row.deletions)} deleted`;
+    if (row.kind === "folder") {
+      const missing = missingCounts(row, formatCount);
+      const files = `${formatCount(row.files)} ${row.files === 1 ? "file" : "files"}`;
+      return `${row.name}, ${files}${lines}${missing === "" ? "" : `, ${missing}`}`;
+    }
+    const from = row.previousName === null ? "" : `, from ${row.previousName}`;
+    return `${row.name}, ${row.statusLabel.toLowerCase()}${from}${lines}`;
+  }
+
   /** @type {MetabrowserChangedFilesTree} */
   const api = Object.freeze({
     STATUS_BADGES,
@@ -636,8 +753,10 @@
     displayPath,
     expansionFor,
     isOpen,
+    missingCounts,
     parentIndex,
     revealPath,
+    rowLabel,
     statusBreakdown,
     toggleFolder,
     visibleRows,

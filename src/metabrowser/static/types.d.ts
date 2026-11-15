@@ -3312,6 +3312,8 @@ declare global {
     additions: number | null;
     deletions: number | null;
     unknown: number;
+    additionsUnknown: number;
+    deletionsUnknown: number;
     children: MetabrowserChangedFilesNode[];
   };
 
@@ -3344,6 +3346,8 @@ declare global {
     additions: number | null;
     deletions: number | null;
     unknown: number;
+    additionsUnknown: number;
+    deletionsUnknown: number;
   };
 
   type MetabrowserChangedFilesFileRow = {
@@ -3397,6 +3401,13 @@ declare global {
     displayPath(path: string): string;
     expansionFor(files: number, autoExpandFiles: number): MetabrowserChangedFilesExpansion;
     isOpen(expansion: MetabrowserChangedFilesExpansion, id: string): boolean;
+    /** What a folder's sums leave out, in words, or "". */
+    missingCounts(
+      row: { kind: string; additionsUnknown?: number; deletionsUnknown?: number },
+      formatCount: (count: number) => string,
+    ): string;
+    /** What a row is called, for a screen reader. */
+    rowLabel(row: MetabrowserChangedFilesRow, formatCount: (count: number) => string): string;
     parentIndex(rows: ReadonlyArray<{ depth: number }>, at: number): number | null;
     revealPath(
       expansion: MetabrowserChangedFilesExpansion,

@@ -53,7 +53,19 @@ async function run() {
   ) =>
     mountPullPage(
       container,
-      { number: 7, tab, reader: { initial, fetchAfterMs: 0 }, open: (route) => opened.push(route) },
+      {
+        number: 7,
+        tab,
+        reader: { initial, fetchAfterMs: 0 },
+        // The route opener as pull-route.js's `open` answers: a route whose file it cannot
+        // spell, as one with a backslash, is refused.
+        open: (route) => {
+          opened.push(route);
+          return route.file?.includes("\\")
+            ? Promise.reject(new Error("the route cannot spell this path"))
+            : Promise.resolve({ status: "opened" });
+        },
+      },
       {
         perf,
         ensureAsset: async () => {},
@@ -117,6 +129,13 @@ async function run() {
     jumped: false,
   });
   assert.deepEqual(abandoned, [], "a fileless visit must not consume the abandoned file");
+  // A path the route cannot spell has no address, so the diff goes to it in place (A6 of
+  // review A on #448).
+  changesView.openFile("docs\\notes.md");
+  await settle();
+  assert.equal(opened.at(-1).file, "docs\\notes.md");
+  assert.deepEqual(abandoned, ["docs\\notes.md"], "an unaddressable file is jumped to in place");
+  abandoned.length = 0;
   page.dispose();
 
   const timers = setup();

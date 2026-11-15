@@ -315,6 +315,8 @@ globalThis.window = {
       assert(kind === "diff" && view === "diff", "the plugin registers its one view");
       diffView = spec;
     },
+    // The shared changed-files tree, which the SDK loads from the shell's bundle.
+    loadChangedFilesTree: async () => require("./changed-files-tree-fixture.js").changedFilesTree(),
     // The plugin-data transport: the recorded answer for exactly this request.
     async fetchPluginData(plugin, name, params) {
       const request = pluginRoute(plugin, name, params);

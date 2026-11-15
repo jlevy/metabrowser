@@ -88,7 +88,10 @@ All notable changes to Metabrowser are documented here.
   request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
   move along the rows without moving the diff.
   A name shows a control or invisible character, such as a right-to-left override, as
-  U+FFFD, as the Pulls tab does.
+  U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
+  counts now read in the shell’s number format.
+  A path a patch lists more than once, as a file that became a symlink, is one row.
+  If the tree cannot load, the totals line stays.
   It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
   commit summary’s totals, as before.
 

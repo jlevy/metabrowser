@@ -5081,6 +5081,9 @@ export function mountPullPage(container, ctx, mb) {
     },
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
+      // The shared changed-files tree every diff draws its paths and summary with, so Changes
+      // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
+      void mb.loadChangedFilesTree().catch(() => {});
     },
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
@@ -5154,8 +5157,17 @@ export function mountPullPage(container, ctx, mb) {
               // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
               // the route a press on it in the Pulls tab's tree takes, so the address names it
               // and Back returns to where the reader was.
+              // A path the route cannot spell, as one with a backslash, which Git allows in a
+              // name, has no address: the diff goes to it in place instead.
               openFile: (path) => {
-                void open({ number, tab: "files", file: path, replace: false, jumped: false });
+                const opened = /** @type {{then?: unknown} | null | undefined} */ (
+                  open({ number, tab: "files", file: path, replace: false, jumped: false })
+                );
+                if (opened && typeof opened.then === "function") {
+                  void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+                } else {
+                  jumpTo(path);
+                }
               },
             }),
           { number },

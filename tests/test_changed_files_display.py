@@ -117,3 +117,18 @@ def test_a_bidi_control_and_a_zero_width_character_show_as_replacement() -> None
         check=True,
     )
     assert json.loads(run.stdout) == ["src/evil\ufffdgnp.js", "docs/zero\ufffdwidth.md"]
+
+
+def test_the_sdk_asks_again_for_a_tree_that_did_not_load() -> None:
+    """``metabrowser.loadChangedFilesTree`` rejects a failed or empty bundle, and asks again."""
+
+    node = require_node()
+    run = subprocess.run(
+        [node, "tests/dom/changed-files-tree-loader-behavior.js"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    assert run.stdout.strip() == "changed-files tree loader OK"
