@@ -1,17 +1,17 @@
 ---
 type: is
 id: is-01m7g6dbyvtsbm7pzrgvmqreh4
-title: "Files filter row: fit narrow panes and the system font set with Show ignored on it"
+title: Nav tab toolbars wrap when narrow, one design-system rule with a set line height
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-15T18:09:48.506Z
-updated_at: 2026-11-15T18:09:48.506Z
+updated_at: 2026-11-15T18:12:26.579Z
 ---
 Found while doing mb-x1h6 (#445, 6ef17dbe, 2026-11-15).
 
@@ -26,3 +26,9 @@ Options (decision pending with the user):
 - Shorter labels, or Show ignored back in the drawer below some width.
 
 Done when the row shows every control whole, or by a documented rule, at every pane width from 180 px and in both font sets, measured in Chrome and pinned in tests/test_files_tab_chrome.py.
+
+## Notes
+
+Decision, the user (2026-11-15), verbatim: "on narrow screens wrap when narrow on the tabs" and "make sure line height on tabs is appropriate too. This should be a consistent design system that works everywhere. Tabs containers become too narrow."
+
+Scope widened from the Files row to every nav tab: one shared rule for the nav pane's tab toolbars (the Files filter row with Group by and Show ignored, the Pulls toolbar, the Commits toolbar) and the nav tab bar itself if it overflows. Each wraps at its natural break when the pane is too narrow, so no control is clipped or truncated, with a line height and row gap from tokens that read as one toolbar. Measured in Chrome from the 180 px minimum pane up to the default 299 px and wider, in both font sets; pinned in the Files, Pulls and Commits Chrome tests; stated once in docs/design-system.md. Delivered as its own PR at the top of stack #446.
