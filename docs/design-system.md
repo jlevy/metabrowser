@@ -2316,12 +2316,16 @@ stop, because each is an independent control.
 
 ### Grouping the Files Tree
 
-**The Files tab’s filter row holds one control, Group by; the filters sit in the drawer
-behind the chevron.** Group by splits the tree into sections and removes nothing, so it
-needs no drawer and no badge.
-The drawer holds Modified within, File type, Minimum file size, and Show ignored, and
-the chevron’s badge counts the filters set.
-Clear sits beside the chevron and undoes the filters, keeping the grouping.
+**The Files tab’s filter row holds Group by and Show ignored; the three filters sit in
+the drawer behind the chevron.** Group by splits the tree into sections and removes
+nothing, so it needs no drawer and no badge.
+Show ignored follows it: its tick states its own direction, so the row shows its state
+and the badge need not.
+A Git revision has no gitignored entries, so its row has no Show ignored.
+The drawer holds Modified within, File type, and Minimum file size, and the chevron’s
+badge counts the ones set.
+Clear sits beside the chevron and shows while any filter is set, Show ignored included;
+it resets them all, Show ignored back on, and keeps the grouping.
 
 - **Values.** No grouping is the default and shows the one tree.
   Age splits by modification time and File type by the registry’s display groups.
@@ -2363,6 +2367,10 @@ Clear sits beside the chevron and undoes the filters, keeping the grouping.
   goes, the folders open in a section stay open, and the scroll position and the focused
   row are kept. A folder whose cached children a write dropped is fetched before the
   paint. A refresh that fails keeps what is shown and retries with a backoff.
+- **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
+  Clear and the badge showing, in the default font set.
+  The badge sits against the chevron to make that room; the measurements are beside
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
