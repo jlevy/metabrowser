@@ -851,12 +851,15 @@ whose only child is positioned) and an empty one that does not clip (a windowed 
 zero-height anchor) are entered, so their descendants are tested by their own boxes.
 An element wholly outside the viewport is not entered unless its scrollable overflow,
 which holds content and positioned descendants laid out outside its box, reaches the
-viewport. Text under a hidden parent is visited but neither measured nor counted toward
-the 400. The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes
-measured. A text node longer than 2,000 characters, such as a source view’s line-number
-gutter, is measured from its start only, since its boxes cost in proportion to its lines
-(3 ms a call for the corpus’s `app.js` gutter, in every frame of that view); one whose
-start is not shown sends the search on to the hit test.
+viewport. A text node is measured only over its runs of lines that hold a non-space
+character, each trimmed to its first and last one, so blank lines on screen after text
+that is not are not content.
+Text under a hidden parent is visited but neither measured nor counted toward the 400.
+The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes measured.
+A text node longer than 2,000 characters, such as a source view’s line-number gutter, is
+measured from its start only, since its boxes cost in proportion to its lines (3 ms a
+call for the corpus’s `app.js` gutter, in every frame of that view); one whose start is
+not shown sends the search on to the hit test.
 When the walk stops at a bound, or found nothing after passing over an element on its
 own box, it hit-tests up to 60 points across the area where the root can paint (the
 viewport, cut by the root and every ancestor that clips), at four columns: first the two
@@ -1062,13 +1065,22 @@ start for a landing).
 - the recorder’s own read (revision 6): `readCostMaxMs`, the longest read of a frame in
   the window, `readCostToReadyMs`, the reads summed up to the ready frame, and
   `searchTruncatedFrames`, the frames whose content search stopped at its hit-test
-  budget, where on-screen content can have read as blank.
-  A read includes the frame’s state, its regions, and the ready and milestone
-  predicates, so a condition whose page makes the search work harder shows it here.
-  `compare` and `summarize` name every transition whose longest read passed
+  budget, where on-screen content can have read as blank, and
+  `searchTruncatedBeforeInput`, the same count for the arm check and the frames before
+  the input, which the ready-before-input guard read: when it is not 0,
+  `readyBeforeInputUncertain` is true, since a truncated search there can have hidden a
+  subject shown before the input.
+  `convergedUncertain` marks a converged check whose search was truncated, and its
+  refusal says so. A read includes the frame’s state, its regions, and the ready and
+  milestone predicates, so a condition whose page makes the search work harder shows it
+  here. `compare` and `summarize` name every transition whose longest read passed
   `READ_COST_CEILING_MS` (4 ms, about a quarter of a 60 Hz frame, in
   `transitions-stats.mjs`), as `INSTRUMENT COST`, since the recorder may have delayed
-  that frame, and every transition with a truncated search, as `SEARCH TRUNCATED`;
+  that frame, and every transition with a truncated search, as `SEARCH TRUNCATED`. On a
+  transition with any truncated search on either side, `compare` does not judge its
+  ready and blank metrics (`painted_ready_ms`, `ready_ms`, `frames_to_ready`,
+  `blank_frames`, `blank_frames_after_ready`, `blank_ms`, and
+  `ready_after_last_input_ms`): each is a gap, with the reason in its verdict;
 - retained memory (revision 6), after a full garbage collection, at every journey’s end
   (`journey.memory`, compared as `<journey>.end`) and, with `--memory-after`, after
   named transitions (`memory`): the page’s main-thread V8 heap (`Runtime.getHeapUsage`,
@@ -1271,8 +1283,10 @@ The hit test’s budget is time, so on a slower or busier machine it tries fewer
 before it stops: sparse content past the first point can then read as blank, and the
 frame says so (`searchTruncated`). On the synthetic pages every sparse case was found at
 the first point, which always runs.
-A long text node still costs its rectangles: the source view’s line-number gutter is one
-text node, which a search that reaches it measures whole.
+A text node is measured over at most 2,000 characters, from its start or from the
+caret’s offset in the hit test, and only over its runs of non-blank lines, so blank
+lines on screen after text that is not do not read as content; on screen beyond those
+2,000 characters, a long node’s text is found only through the hit test.
 The search reads an off-screen element’s scroll size to see whether its overflow reaches
 the viewport. On 200 `content-visibility: auto` chunks of 50 lines scrolled to the
 middle, the chunking H99 (b) proposes, a call found the lines in 0.2 ms, but whether
