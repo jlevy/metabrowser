@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
@@ -16,6 +18,14 @@ from tests.required_tools import require_node
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "obsidian-vault"
 PREPROCESSOR = Path(__file__).resolve().parent / "dom" / "markdown-preprocess-fixture.js"
+# Shared with tests/dom/markdown-wiki-parser-behavior.js, which checks each case's
+# source; the render comparison below checks its blocks.
+HEADING_LAYOUT_CASES: list[dict[str, Any]] = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "markdown_heading_layout.json").read_text(
+        encoding="utf-8"
+    )
+)["cases"]
+_HEADING_ANCHOR = re.compile(r'<span class="metabrowser-wiki-heading" id="[^"]*"></span>')
 
 
 class _WikiMetadata(HTMLParser):
@@ -183,6 +193,26 @@ def _render(client: TestClient, source_text: str) -> Any:
     )
     assert response.status_code == 200
     return response.json()
+
+
+@pytest.mark.parametrize(
+    "case", HEADING_LAYOUT_CASES, ids=[str(case["name"]) for case in HEADING_LAYOUT_CASES]
+)
+def test_heading_anchors_change_no_block(tmp_path: Path, case: dict[str, Any]) -> None:
+    """Each layout case, preprocessed and rendered through KPress with its heading
+    anchors then removed, gives exactly the authored render's HTML: the anchors turn no
+    line into another block and split no table row's cells."""
+    source = str(case["source"])
+    document = tmp_path / "headings.md"
+    document.write_text(source, encoding="utf-8")
+    preprocessed = _preprocessed(document)
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    authored = str(_render(client, source)["html"])
+    wiki = str(_render(client, str(preprocessed["source"]))["html"])
+
+    assert len(_HEADING_ANCHOR.findall(wiki)) == case["anchors"]
+    assert _HEADING_ANCHOR.sub("", wiki) == authored
 
 
 def test_wiki_heading_anchors_render_inside_their_headings(tmp_path: Path) -> None:

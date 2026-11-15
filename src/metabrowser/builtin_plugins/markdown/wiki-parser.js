@@ -105,7 +105,9 @@ export function preprocessObsidianWiki(source) {
           const key = hierarchy.slice(index).join("#");
           const id = `obsidian-heading-${key}`;
           if (!anchorIds.has(id)) {
-            const anchor = `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>`;
+            // `|` is a character reference: markdown-it splits a table row at every
+            // `|`, inside an attribute too, and the browser decodes it back.
+            const anchor = `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id).replaceAll("|", "&#124;")}"></span>`;
             if (claimReplacement(outputBudget, "", anchor)) {
               inserted.push(anchor);
               anchorIds.add(id);
@@ -604,12 +606,22 @@ export function findNamedBlock(line) {
 }
 
 // A setext heading's text is a paragraph line, so a line that opens any other block
-// is never one, whatever `===` or `---` follows it: a block quote, a list item, a
-// table row, an underline or thematic break, a link or footnote definition, or
-// KPress's container, math, and attribute blocks. Their anchors would turn it into
-// paragraph text and change the block.
+// is never one, whatever `===` or `---` follows it: an ATX heading (`#` with no text),
+// a line indented to column 4 by a tab, a block quote, a list item, a table row, an
+// underline or thematic break, a link or footnote definition, or KPress's container,
+// math, and attribute blocks. Their anchors would turn it into paragraph text and
+// change the block.
+//
+// It judges one line by its first characters, so it approximates markdown-it, which
+// also reads the lines around it. It refuses some lines markdown-it does read as setext
+// text, which then get no anchors and bound no section: `| a | b |` over `---` (two
+// cells against one) or any `|` line over `===`, `[Draft]: Release notes` over `===`
+// (no quoted title, so no definition), a `===` line that opens a paragraph, and a
+// paragraph's continuation line that begins `2. ` or a column-4 tab. It accepts a
+// table row without outer pipes over `---`, which can end a section early; its
+// anchors' ids encode `|`, so the row still renders whole.
 const NON_PARAGRAPH_LINE =
-  /^ {0,3}(?:[>|]|[-+*](?:[\t ]|$)|\d{1,9}[.)](?:[\t ]|$)|(?:=+|-+)[\t ]*$|([-*_])(?:[\t ]*\1){2,}[\t ]*$|\[[^\]]*\]:|:::|\$\$|\{[^}]*\}[\t ]*$)/;
+  /^ {0,3}(?:#{1,6}(?:[\t ]|$)|\t|[>|]|[-+*](?:[\t ]|$)|\d{1,9}[.)](?:[\t ]|$)|(?:=+|-+)[\t ]*$|([-*_])(?:[\t ]*\1){2,}[\t ]*$|\[[^\]]*\]:|:::|\$\$|\{[^}]*\}[\t ]*$)/;
 
 /**
  * The heading a line opens, with *nextLine* as a possible setext underline.

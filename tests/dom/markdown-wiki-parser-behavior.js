@@ -292,24 +292,16 @@ function check(name, condition, detail = "failed") {
     `${lineCount(headings.source)} lines for ${lineCount(headingSource)}`,
   );
 
-  // A line the setext underline cannot underline -- a list item, quote, table row,
-  // underline, definition, or container above `---` or `===` -- is no heading, so
-  // its anchors would turn it into paragraph text. Removing every anchor restores
-  // the source exactly, so no case gains a line or a block.
-  const headingLayoutCases = [
-    ["list item above a thematic break", "- one\n- two\n---\n", 0],
-    ["numbered list item above its lazy line", "1. Introduction\n===\n", 0],
-    ["block quote above a thematic break", "> quoted\n---\n", 0],
-    ["one-column table above its delimiter row", "| cell |\n---\n", 0],
-    ["heading underline above a thematic break", "Title\n===\n---\n", 1],
-    ["thematic break above a thematic break", "- - -\n---\n", 0],
-    ["footnote definition above a thematic break", "[^1]: A note.\n---\n", 0],
-    ["container above a thematic break", "::: note\n---\n:::\n", 0],
-    ["indented setext heading", "   Title\n   =====\n", 1],
-    ["empty heading with a closing sequence", "# #\n", 0],
-    ["heading named by its closing character", "# # #\n", 1],
-  ];
-  for (const [name, input, anchors] of headingLayoutCases) {
+  // A line the setext underline cannot underline -- an empty ATX heading, a column-4
+  // line, a list item, quote, table row, underline, definition, or container above
+  // `---` or `===` -- is no heading, so it gets no anchor. Each case pins its anchor
+  // count and that removing every anchor restores the source exactly, so no case
+  // gains a line. That no case changes a block is the render comparison in
+  // tests/test_markdown_obsidian_fixture.py, over the same fixture.
+  const headingLayout = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tests/fixtures/markdown_heading_layout.json"), "utf8"),
+  );
+  for (const { name, source: input, anchors } of headingLayout.cases) {
     const actual = module.preprocessObsidianWiki(input);
     const count = (actual.source.match(/metabrowser-wiki-heading/g) || []).length;
     check(
@@ -318,6 +310,12 @@ function check(name, condition, detail = "failed") {
       JSON.stringify(actual.source),
     );
   }
+  check(
+    "a `|` in an anchor id is a character reference",
+    module
+      .preprocessObsidianWiki("a |\n---\n")
+      .source.startsWith(`${headingAnchor("a &#124;")}a |\n`),
+  );
   check(
     "an indented setext heading's anchors follow its indentation",
     module.preprocessObsidianWiki("   Title\n   =====\n").source ===
