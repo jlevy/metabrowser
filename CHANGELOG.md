@@ -28,16 +28,18 @@ All notable changes to Metabrowser are documented here.
   and tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
-- The Files tab has a Group by menu, the one control on its filter row: No grouping,
-  Age, or File type. Grouped, the tree splits into sections, each headed like a menu
-  group with the group’s file count and holding a full tree of the group’s files after
-  the filters. Age groups are disjoint bands: Live, then Past hour, Past day, Past week,
-  and Past month, each holding only what the bands before it do not, then Older.
+- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
+  type. Grouped, the tree splits into sections, each headed like a menu group with the
+  group’s file count and holding a full tree of the group’s files after the filters.
+  Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
+  month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
   is not shown, and a Git revision offers no Age.
-  Modified within, File type, Minimum file size, and Show ignored move into the drawer
-  behind the chevron, whose badge counts the filters set; Clear keeps the grouping.
+  Show ignored moves out of the drawer to follow it on the row, and Modified within and
+  File type move into the drawer behind the chevron beside Minimum file size; the
+  chevron’s badge counts the ones of those three that are set.
+  Clear resets every filter, Show ignored included, and keeps the grouping.
   Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
   drawer is open; a filter’s number opens the drawer with its menu.
   Grouping keeps symbolic links: File type puts them in Other, and Age places them by
