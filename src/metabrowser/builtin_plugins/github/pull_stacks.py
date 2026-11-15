@@ -45,7 +45,10 @@ from metabrowser.home import PrivateStorageError, write_private_file_atomic
 
 log = logging.getLogger(__name__)
 
+# How long a snapshot, or a failed attempt, holds off the next automatic refresh; an
+# explicit retry still waits for a known rate-limit reset.
 STACK_FRESHNESS_S: Final = 300.0
+# Stacks per REST page, and pages per refresh: at most 1,000 stacks.
 STACK_PAGE_SIZE: Final = 100
 MAX_STACK_PAGES: Final = 10
 MAX_STACK_MEMBERS: Final = 1000
