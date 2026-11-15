@@ -67,9 +67,9 @@ An empty argument is refused; write `.` for the current directory.
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 
-On a local folder every mode only reads.
-A Git source is cloned into the cache by whichever mode opens it first, and `--api`
-writes when the route it names does, such as a refresh.
+The modes read, with two exceptions: a Git source is cloned into the cache by whichever
+mode opens it first, and `--api` writes when the route it names does, as a refresh
+writes to the cache and `/api/kpress/export` writes a file under `ROOT`.
 
 ## Serving
 
