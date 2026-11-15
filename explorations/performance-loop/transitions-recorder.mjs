@@ -362,8 +362,10 @@ function recorderMain(config) {
     }
     return runs;
   };
+  // `R.lastSearch.chars` counts the characters a search measured, for the tests.
   const sliceShown = (node, parent, start, end) => {
     for (const [a, b] of textRuns(node.nodeValue, start, end)) {
+      R.searchChars += b - a;
       range.setStart(node, a);
       range.setEnd(node, b);
       for (const r of range.getClientRects()) {
@@ -636,6 +638,7 @@ function recorderMain(config) {
     }
     return false;
   };
+  R.searchChars = 0;
   const search = (root) => {
     const s = {
       visits: 0,
@@ -644,8 +647,17 @@ function recorderMain(config) {
       bounded: false,
       points: 0,
       truncated: false,
+      chars: 0,
     };
     R.lastSearch = s;
+    const before = R.searchChars;
+    try {
+      return searchRoot(root, s);
+    } finally {
+      s.chars = R.searchChars - before;
+    }
+  };
+  const searchRoot = (root, s) => {
     // A root hidden by its own content-visibility, whose descendants are skipped, has none
     // (checkVisibility answers only for the descendants).
     if (
