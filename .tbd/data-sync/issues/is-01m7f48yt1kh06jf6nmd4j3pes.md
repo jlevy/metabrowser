@@ -5,12 +5,12 @@ title: "Group by: compute every group in one pass over the index; a large folder
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-15T08:13:12.384Z
-updated_at: 2026-11-15T08:13:12.384Z
+updated_at: 2026-11-15T09:23:48.599Z
 ---
 Found while building mb-sogv (Files Group by, #445, pull request 2 of the 2026-11-15 plan stack).
 
@@ -28,3 +28,7 @@ Done when:
 - choosing a grouping on the 100,000-file fixture paints within the same budget as choosing No grouping, with the measurement recorded beside the code per AGENTS.md's "Measure before bounding";
 - the prefetch on menu open asks only for what is likely to be chosen, or costs what one pass costs;
 - the route golden (`cli-api-tree-groups.tryscript.md`) is unchanged.
+
+## Notes
+
+From review A on #445 (finding A3), 2026-11-15: a grouped request now reads one `as_of_ns` and cuts every group at it, so the age bands partition mtimes at one instant (`server.py`, `api_tree`'s `group_by` branch; edge tests in `tests/test_inventory_provider_contract.py`). Each group is still its own provider query, though, so the index can change between two groups' queries: a file written mid-request can be counted in one group's answer and missed in the next one's, or appear in two. The one-pass computation this bead asks for should read every group from one index version, which closes that too; until then the next change's refresh repairs it.
