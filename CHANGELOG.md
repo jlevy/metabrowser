@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Going to a file, a pull request, or a commit now shows it in the navigation pane by
+  every route: Quick Search, a link, the address, Back and Forward, and the keys that
+  open one. Its tab comes to the front, the folders or the stack that hold it open, and
+  its row is selected and scrolled into view, while focus stays where you are reading.
+  Back and Forward now scroll to the row too, as a tab’s own button still does not.
+  Quick Search for the item already shown reveals it again, a file past a long folder’s
+  first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
+  A file a filter hides no longer leaves the previous file selected: the tree says
+  “src/app.txt is outside this filter.”, and no longer says that of a file that is only
+  in a closed folder. A pull request the Pulls list does not hold is named under its
+  count, “#8 is not listed under Open.”
+  See [Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item).
+
 - `P` now opens the Pulls tab, as `F` opens Files and `H` Commits; it was `R`, for pull
   Requests, while `P` walked a stack.
   `R` now does nothing, and for plugin authors a manifest view may take it as its key,

@@ -75,6 +75,9 @@ request must prove.
   field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
 - **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
   mechanism, as `F` opens Files and `H` Commits; `R` is freed.
+- **Navigation reveals the item** (`mb-6y0g`): going to a file, a pull request, or a
+  commit by any route switches the nav to its tab, opens the folders or stack that hold
+  it, and selects and scrolls to its row.
 
 ## Non-Goals
 
@@ -325,6 +328,23 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
+### Navigation Reveals the Item
+
+- `static/main-tabs.js` holds the rule (`revealPlan`) and the one path every route takes
+  (its controller’s `reveal`): the address’s tab comes to the front, and the tab’s panel
+  reveals the item. Files reveals through `app.js`’s `revealFileRow`, Pulls through
+  `pulls-nav.js` and the list’s `setCurrent`, and Commits from its own landing, after it
+  reads history.
+- The exceptions are stated once, in “Navigation Reveals the Item” in
+  `docs/design-system.md`: focus stays where the reader is; a tab’s button keeps its
+  panel’s place; a step within the item shown reveals nothing; a filtered file, a pull
+  request outside the list, and a commit outside the history read are named or left,
+  each with its reason.
+- The decisions run browserlessly in `tests/dom/nav-reveal-session.js`, pinned by
+  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`). The rows in view after
+  each route are checked in headless Chrome (`tests/test_nav_reveal_chrome.py`,
+  `navigation.reveal-item-paint`).
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -388,6 +408,12 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - [ ] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
   sessions, goldens, and docs say so.
 
+### Phase 9: Navigation Reveals the Item (pull request 9)
+
+- [ ] `mb-6y0g`: every route to an item reveals it in its tab, with one shared path, its
+  exceptions in `docs/design-system.md`, a browserless session and golden, and a Chrome
+  check.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -431,7 +457,7 @@ This plan moves to `docs/project/specs/done/` when pull request 8 merges.
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
-  `mb-sogv`.
+  `mb-sogv`; `mb-6y0g`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

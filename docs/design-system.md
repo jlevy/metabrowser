@@ -3103,7 +3103,8 @@ tab.
 Files and Pulls each keep their last selection and navigation scroll position.
 A reader who switches to one returns to that tab’s destination, or to its default on the
 first visit. A direct URL or a browser history step selects the tab that owns the
-destination.
+destination and reveals the item there, as every route to an item does
+([Navigation Reveals the Item](#navigation-reveals-the-item)).
 
 Switching to Commits always selects the newest commit, the top row, and shows its
 detail, whether by a click, the tab’s shortcut, or a history step onto the tab’s own
@@ -3142,6 +3143,89 @@ The bar is as wide as the pane and sits under the identity it belongs to and ove
 content it switches.
 A use site does not pad, recolor, or re-letter it.
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Reveals the Item
+
+Navigating to an item by any route shows it in the navigation pane.
+The item’s tab comes to the front: Files for a file or folder, Pulls for a pull request
+or one of its changed files, and Commits for a commit.
+That tab’s panel then opens the folders or the stack that hold the item, selects its
+row, and scrolls the row into view.
+The routes are:
+
+- Quick Search;
+- a link in a document, a diff, a pull request’s page, or a commit;
+- the address bar’s crumbs, and the page loading at an address;
+- Back and Forward;
+- a key that opens an item, such as `J` and `K` on a row or Control-N along a stack.
+
+`static/main-tabs.js` holds the rule once, as `revealPlan`, and the one path every route
+takes, as its controller’s `reveal`. That path brings the address’s tab to the front and
+calls the panel’s own `reveal`:
+
+- **Files:** `revealFileRow` in `app.js`.
+- **Pulls:** `pulls-nav.js` marks the pull request in the list (`setCurrent` in
+  `builtin_plugins/github/pulls-panel.js`), which opens a closed stack that holds it.
+- **Commits:** the panel reveals a commit from its own landing (`restoreCommitLanding`
+  in `git-panel.js`), since it has to read history first.
+
+Each exception has a reason:
+
+- **Focus stays where the reader is.** No route moves focus.
+  The panel selects and scrolls, and focus stays in the document, the diff, or the page
+  the reader was reading, so its keys keep working there.
+  A route that starts in the navigation, a row’s click or its keys, has focus there
+  already and keeps it.
+  A tab’s letter, `F`, `P`, or `H`, moves focus to the panel’s row, because that is the
+  letter’s own command, not a reveal.
+- **A tab’s button keeps the panel’s place.** A click on a tab, or its letter, returns
+  to the tab’s last destination with the panel scrolled as the reader left it.
+  The reader asked for the tab, not the item.
+  Back and Forward reveal the item.
+- **A step within the item shown reveals nothing.** This is a fragment, a line anchor,
+  another view of the file shown, or another tab of the pull request shown.
+  Opening the item shown again, as Quick Search does, reveals it again, opening a folder
+  or stack the reader closed since.
+- **A long folder draws the rest of its rows.** A folder draws its first 200 rows and
+  holds the rest behind a row that shows them.
+  When the item is among them, the reveal draws them first.
+- **A file a filter hides is named, not drawn.** The Files tree takes the selection from
+  whatever row had it, so no other row stays selected, and a note under its totals says
+  “src/app.txt is outside this filter.”
+  The tree does not grow a row for the file: a pinned row would mean refetching, and
+  repainting, the tree as the reader moves.
+  The note appears only when the tree can tell.
+  That is when a folder above the file has no row, or the open folder that would hold
+  the file lacks it. A file in a folder the reader closed gets no note.
+  Under Group by, the file is looked for in its own section first, then in each other
+  section.
+- **A pull request outside the list is named.** Open and Closed hold only their state’s
+  pull requests, and the list reads its windows from the newest.
+  A pull request the list does not hold is named under its band: “#8 is not listed under
+  Open.”, or under All, “#8 is not in this list.”
+  A list that has not read as far says only “#8 is not among the pull requests loaded.”,
+  since it may be further down.
+  Under All, the list keeps reading for one older than the rows it has read, up to its
+  display limit, and reveals it when it arrives.
+  A reveal never changes the filter, which is the reader’s choice.
+- **A commit outside the history read is not chased.** Commits reads history from the
+  newest commit, 250 commits a page.
+  A commit’s address reveals its row once the pages read hold it, so the first page’s
+  commits are always found.
+  The list does not page further for an older commit, or for one on no branch the
+  history walks. The pane shows that commit with no row selected, because paging the
+  history for one row costs a request a page.
+- **A file at a pinned revision is the served tree’s.** A page serving a pinned revision
+  shows that revision’s tree in Files, and a file reveals there like any other.
+  A file a commit’s address names (`/commit/<rev>/<path>`) belongs to the commit.
+  It reveals the commit in Commits and leaves the Files tree alone, because that tree
+  lists the served source, not that commit’s.
+
+`tests/dom/nav-reveal-session.js`, pinned by `cli-ui-nav-reveal.tryscript.md`, runs the
+rule, the tabs, the Files tree’s reveal, and the Pulls list’s on the production code.
+`tests/test_nav_reveal_chrome.py` checks in headless Chrome, after each route, that the
+row is in the tab in front, selected, and in view, and that focus has not moved to the
+navigation.
 
 ### Navigation Metadata Line
 
