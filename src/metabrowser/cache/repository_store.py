@@ -1,5 +1,9 @@
 """Open a pinned commit in a published worktree-free store.
 
+One store serves every subject of its repository: measured 2026-09-16, readers of
+different commits of one store ran concurrently with identical output, across ``repack``
+and ``gc`` runs (``explorations/repository-cache/README.md``).
+
 A store is a read-only mirror: acquisition fetches every object, nothing runs ``gc``,
 ``prune``, or ``repack`` on it, and Metabrowser writes no ref of its own into it. A commit
 that is in the store therefore stays readable, so opening one only proves it is there and

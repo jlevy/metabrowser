@@ -104,58 +104,20 @@ lists what a new one brings.
 Two harnesses answer different questions.
 [`explorations/performance-loop/`](../explorations/performance-loop/README.md) is the
 measured-improvement loop: one hypothesis per round, measured against the unchanged
-build on the same corpus, with the verdict written down either way.
-Its browser half follows the [Web Performance Framework](web-performance-framework.md).
-`devtools/bench_serving.py` is the standing benchmark, and
-[Scale Benchmark](scale-benchmark.md) records its baseline figures.
+build on the same corpus, with the verdict written down either way; its browser half
+follows the [Web Performance Framework](web-performance-framework.md).
+`devtools/bench_serving.py` is the standing benchmark, which
+[Scale Benchmark](scale-benchmark.md) runs at fixed sizes.
 An exploration answers a question once; a benchmark defends an answer, and only the
 second belongs in a release gate.
-
 Both run on one corpus, built once per machine into the gitignored `.bench/` by
-[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus).
-It is assembled from this repository’s own locked installs, so one commit gives one tree
-and the two builds under comparison face an identical one.
+[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus)
+from this repository’s own locked installs, so one commit gives one tree.
 
-`devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.
-Use it whenever a change touches the walker, the derived index state, or the delivery
-layer, and record the comparison in the pull request:
-
-```shell
-# Establish a baseline, then measure the change against it.
-uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
-  --metab /path/to/release/bin/metab \
-  --files 100000 --label before --json bench-before.json
-
-uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
-  --files 100000 --label after --baseline bench-before.json
-```
-
-A corpus is reused when it already matches `--files`, and the corpus, server logs, and
-result JSON stay in `.bench/`. Pass `--metab` on both sides when comparing installed
-artifacts: the harness resolves the console script and records its `--version` output,
-so `PATH` order cannot change the build under test.
-
-Three of the reported rows exist because a single blended latency hides what matters:
-
-- The **cold scan** runs with nothing attached and is walker throughput alone, read from
-  the walker’s completion record rather than by polling.
-  A change that leaves this row alone and moves the next one removed contention, not
-  work.
-- The **scan with a client attached** is what a reader experiences, because rollup work
-  and the walker take CPU from each other.
-- The **settled rollup** is three rows, because a real aggregation, a retained body, and
-  a `304` revalidation are three amounts of work.
-  A build with no validators shows up as an absent `304` row rather than a fast one.
-
-Tree latency is reported against response size, because a request that costs more than a
-larger response does work proportional to something other than its answer.
-
-The client half is not visible from the server.
-`--browser-probe` prints `devtools/bench-browser-probe.js`; load it in an open folder
-view and call `await metabrowser.bench.run({clients: 8})`. It reads the `Server-Timing`
-header every route emits, because a request count cannot tell a shared computation from
-a repeated one, and reports per query shape whether validators work and what
-simultaneous clients cost.
+Run `devtools/bench_serving.py` before and after a change to the walker, the derived
+index state, or the delivery layer, and record the comparison in the pull request; its
+docstring has the commands, why it reports a cold scan, a scan with a client attached,
+and three settled rollup rows, and the in-page probe for the client half.
 
 ### Measurement Discipline
 
@@ -195,37 +157,11 @@ The per-entry rule these measure is in the
 ### Comparing File Navigation Without a Browser
 
 `devtools/bench_navigation.py` runs baseline, candidate, candidate, baseline on one
-existing tree, each fresh process completing discovery before it is measured.
-It exercises warm text reads, ETag revalidation, optional Markdown rendering, and
-concurrent tree, navigation, rollup, and catalog traffic with and without a large Recent
-request, and never writes to the served tree.
-
-Install both checkouts with their committed locks and the same explicit Python
-interpreter, patch release and free-threading mode included:
-
-```shell
-uv --config-file "$BASELINE/uv.toml" sync --project "$BASELINE" \
-  --python "$PWD/.venv/bin/python" --all-extras --all-groups --locked
-uv --config-file uv.toml run --frozen python -m devtools.bench_navigation \
-  --root . --baseline-metab "$BASELINE/.venv/bin/metab" \
-  --file docs/engine-performance-model.md \
-  --file tests/test_active_tracker_event_loop_stall.py \
-  --render-file docs/engine-performance-model.md \
-  --rounds 20 --json "$RESULTS/navigation-comparison.json"
-```
-
-`$BASELINE` is an independently checked-out baseline, `$RESULTS` a directory outside the
-served tree for the JSON and its `.logs`, and file arguments name paths relative to the
-served root; `--baseline-paths native` is for a baseline from before canonical path
-identities. The tool refuses mismatched Python builds or GIL modes, and records
-dependency versions, source hashes, host load, process CPU and RSS, and raw and
-summarized latencies; weigh a dependency difference it reports before attributing a
-result to code. Leave the tree unchanged and pause tests, installs, and other benchmarks
-during the run. The tool reports success only when status, indexed population, text
-content, kind and path, catalog membership and extensions, and Recent membership and
-counts agree. A file ageing out of the Recent window, or a Recent population above the
-provider’s display cap, fails the comparison; inspect the difference before comparing
-timings. Finish in a browser for rendering and interaction costs HTTP cannot see.
+existing tree, each fresh process completing discovery before it is measured, and
+compares warm text reads, ETag revalidation, optional Markdown rendering, and concurrent
+inventory traffic without writing to the tree.
+Its docstring has the setup, the command, and the agreement checks that must pass before
+timings compare.
 
 ## Dependencies
 
@@ -378,8 +314,8 @@ only after two polls, which a one-shot process never reaches, so its transcript 
 envelope and `tests/test_browser_active_tracker.py` asserts the nonempty case.
 
 **Functional UI parity is about ownership, not simulation.** Route reachability is
-necessary and insufficient: a view can combine two correct models incorrectly, as Recent
-did when its tally counted the complete response while its folder visibility depended on
+necessary and insufficient: a view can combine two correct models incorrectly, such as a
+tally that counts the complete response beside folder visibility that depends on the
 rows mounted in the DOM. So every user-visible aspect has a tier.
 Membership, ordering, counts, bounds, state, actions, and errors are **data**, behind a
 route or model and exercised through `metab`. Focus, disclosure, pagination, and
@@ -579,18 +515,8 @@ What a document must never include is in
 
 ### Changing This Guidance
 
-This document and `AGENTS.md` constrain everyone who works here, so a rule earns its
-place the way code does.
-
-- **State the reason with the rule.** A reader who cannot reconstruct why a rule exists
-  cannot tell when it stops applying.
-- **Prefer a check to a sentence.** Guidance that restates what `make verify` enforces
-  adds a second place to drift.
-- **Never put a number in prose that nothing maintains.** Cite the file or command that
-  reports the current value.
-- **Delete a rule whose reason no longer holds.** Guidance is not append-only.
-
-Challenging an existing rule from first principles is ordinary work.
+[Changing This Guidance](../AGENTS.md#changing-this-guidance) in `AGENTS.md` holds the
+rules for adding, checking, and deleting guidance here and there, each with its reason.
 
 ## Issue Tracking
 
@@ -632,13 +558,11 @@ Experiment and campaign files follow the
 
 ## Pull Requests
 
-1. Start from current `main` on a focused branch.
-2. Add the failing test before a regression fix where practical.
-3. Keep implementation, documentation, and public-hygiene changes together when they
-   describe one contract.
-4. Run `make verify`.
-5. Review the diff and wheel contents for unintended files or private residue.
-6. Commit, push, open the pull request, and watch CI to completion.
+[Git](../AGENTS.md#git) in `AGENTS.md` lists the handoff steps.
+Start from current `main` on a focused branch, add the failing test before a regression
+fix where practical, keep implementation, documentation, and public-hygiene changes
+together when they describe one contract, and review the wheel contents as well as the
+diff for unintended files or private residue.
 
 ## Troubleshooting
 

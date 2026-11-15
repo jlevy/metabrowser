@@ -27,7 +27,11 @@ run (a branch, a commit, "before"), ``--json`` to write it somewhere, and
 
 The client half -- request coalescing and validator behavior as the browser
 actually experiences them -- is not visible from here. ``--browser-probe``
-prints the in-page probe; see ``devtools/bench-browser-probe.js``.
+prints the in-page probe, ``devtools/bench-browser-probe.js``: load it in an open
+folder view and call ``await metabrowser.bench.run({clients: 8})``. It reads the
+``Server-Timing`` header every route emits, because a request count cannot tell
+a shared computation from a repeated one, and reports per query shape whether
+validators work and what simultaneous clients cost.
 
 Usage::
 
@@ -39,7 +43,12 @@ Usage::
 
 Run the two on the same machine and the same corpus size; the absolute numbers
 move a lot with the filesystem and the page cache, and only the comparison
-carries over.
+carries over. A corpus is reused when it already matches ``--files``, and the
+corpus, server logs, and result JSON stay in ``.bench/``. Pass ``--metab`` on both
+sides to compare installed artifacts: the harness resolves the console script and
+records its ``--version`` output, so ``PATH`` order cannot change the build under
+test. Record the comparison in the pull request of any change to the walker, the
+derived index state, or the delivery layer.
 
 The corpus generators here are also what the load-time loop and the release
 comparison run on, which is easy to miss because that loop is otherwise a

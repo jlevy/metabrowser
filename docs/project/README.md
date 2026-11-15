@@ -219,6 +219,9 @@ The first two are current checklists; the dated runs after them are records.
   in a real browser can judge, run before each release on the public-safe manual corpus
 - [macOS app hand checks](qa/qa-macos-app-hand-checks.md): what AppKit, WebKit, and
   macOS decide, checked against a built app after a change to the behavior they cover
+- [WebKit measurement gate, 2026-11-11](qa/qa-2026-11-11-webkit-measurement-gate.md):
+  the app’s WebKit run against Chrome’s large-content bounds, which failed, with every
+  figure and the print and drop checks
 - [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md): the
   integrated candidate, installation evidence, and release gates before the 0.12.0 tag
 - [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md):

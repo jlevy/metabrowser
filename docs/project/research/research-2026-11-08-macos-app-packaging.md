@@ -1334,7 +1334,7 @@ page’s Print button now reaches File > Print’s path (`mb-j3eu`), and a dropp
 opens at its page (`mb-3h2m`). A later check run, with the app’s print bridge in the
 gate’s driver, found the Print request reaching that path and a dropped file handed to
 the app’s open path
-([`window.print()` and Drag and Drop](../architecture/arch-macos-app.md#windowprint-and-drag-and-drop)).
+([`window.print()` and Drag and Drop](../qa/qa-2026-11-11-webkit-measurement-gate.md#windowprint-and-drag-and-drop)).
 
 ## References
 

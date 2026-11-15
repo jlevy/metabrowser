@@ -81,7 +81,9 @@ _STDERR_MAX_BYTES = 64 * 1024
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
-# Store reads must not apply the operator's mailmap to acquired objects.
+# Store reads must not apply the operator's mailmap to acquired objects. Measured
+# 2026-09-16 (explorations/repository-cache/README.md): with Git's defaults, history reads
+# loaded ``HEAD:.mailmap``, and with lazy fetch off they printed an error and exited 0.
 GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
     "-c",
     "mailmap.blob=",
@@ -121,6 +123,8 @@ class GitProcessPolicy:
     timeout_s: float
     max_bytes: int
     stdin: Literal["inherit", "devnull", "pipe"]
+    # ``0o077`` for every spawn that writes a store: under umask ``022``, measured
+    # 2026-09-16, Git wrote store files other users could read.
     child_umask: int | None
     isolate_user_config: bool
     no_lazy_fetch: bool

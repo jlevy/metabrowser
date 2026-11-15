@@ -176,6 +176,18 @@ function populationValue(tally, metric, population) {
 /**
  * Build the two independently normalized compositions shown above File Breakdown.
  *
+ * The rows are Files (the unignored population), Ignored, and Total, their sum; the first
+ * two are disjoint, and each treats its own population as 100%. Total is shown although
+ * it is derivable because the type distribution below counts against the whole folder
+ * while Show ignored is on, and then only Total's track matches its percentages.
+ * Segments follow the registry's group order and then descend by the selected measure
+ * within a group, sorted on the combined population, the one basis all three rows share
+ * and the one Show ignored cannot move, so the tracks stay comparable column by column.
+ * This takes no Show ignored flag: the tallies are fixed populations, and the checkbox
+ * changes only what the distribution counts. Until a terminal projection arrives, a
+ * nonzero population is one neutral fill; a projection that does not conserve the current
+ * tally leaves it neutral, and a zero population has no fill.
+ *
  * @param {ReturnType<import("./file-type-summary-model.js").normalizeRollupEnvelope> | null} envelope
  * @param {MetabrowserPublicFileTypeTaxonomyRuntime} fileTypes
  * @param {"files" | "size"} metric

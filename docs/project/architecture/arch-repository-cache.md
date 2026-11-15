@@ -315,27 +315,12 @@ untrusted content; `metab <url> --api /api/cache/…` inspects the cache instead
 
 ## Measured Choices
 
-Phase 0 measured these on 2026-09-16 on one macOS machine; the method and figures are in
-[Repository cache measurements](../../../explorations/repository-cache/README.md), and
-the decision table is the open-repo plan’s
-[Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions),
-which also lists the measurements still open.
-
-- **Bare layout:** a no-checkout store costs the same as a bare one but keeps
-  `core.bare=false`, an empty work tree, reflogs, and a local branch.
-- **No mailmap on store reads:** with Git’s defaults, history reads loaded
-  `HEAD:.mailmap`, and with lazy fetch off they printed an error and exited 0.
-- **Maintenance off and umask `077`:** each fetch spawned `git maintenance run --auto`,
-  and under umask `022` Git wrote store files other users could read.
-- **Batch readers per store:** whole-tree reads peaked at the count
-  `MAX_BATCH_READERS_PER_STORE` holds and fell beyond it; a cancelled reader is
-  terminated and replaced rather than cancelled in band.
-- **One store for concurrent subjects:** readers of different commits ran concurrently
-  with identical output, across `repack` and `gc` runs.
-- **`flock`, lock-based liveness, and locked no-replace publication:** a killed `flock`
-  holder released at once, a `lockf` lock vanished when an unrelated descriptor closed,
-  and `os.rename` replaced an empty directory.
-
+Phase 0 measured the store’s layout, its Git configuration, its locks, and its readers
+on 2026-09-16; the comment beside each choice gives its measurement, and
+[Repository cache measurements](../../../explorations/repository-cache/README.md) has
+the method and figures, with the open-repo plan’s
+[Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
+listing those still open.
 These choices may change cost.
 They may not add shared working-tree state, make a checkout the cache’s authority, or
 weaken immutable publication.

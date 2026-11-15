@@ -5,6 +5,31 @@ validators, and concurrent inventory requests with and without Recent. Output in
 raw samples, response checks, runtimes, dependency versions and host/process load.
 The root is read-only; put output and logs outside it. See docs/development.md,
 "Comparing File Navigation Without a Browser".
+
+Install both checkouts with their committed locks and the same explicit Python
+interpreter, patch release and free-threading mode included::
+
+    uv --config-file "$BASELINE/uv.toml" sync --project "$BASELINE" \
+      --python "$PWD/.venv/bin/python" --all-extras --all-groups --locked
+    uv --config-file uv.toml run --frozen python -m devtools.bench_navigation \
+      --root . --baseline-metab "$BASELINE/.venv/bin/metab" \
+      --file docs/engine-performance-model.md \
+      --file tests/test_active_tracker_event_loop_stall.py \
+      --render-file docs/engine-performance-model.md \
+      --rounds 20 --json "$RESULTS/navigation-comparison.json"
+
+``$BASELINE`` is an independently checked-out baseline, ``$RESULTS`` a directory
+outside the served tree for the JSON and its ``.logs``, and file arguments name paths
+relative to the served root; ``--baseline-paths native`` is for a baseline from before
+canonical path identities. The tool refuses mismatched Python builds or GIL modes, and
+records dependency versions, source hashes, host load, process CPU and RSS, and raw and
+summarized latencies; weigh a dependency difference it reports before attributing a
+result to code. Leave the tree unchanged and pause tests, installs, and other benchmarks
+during the run. It reports success only when status, indexed population, text content,
+kind and path, catalog membership and extensions, and Recent membership and counts
+agree: a file ageing out of the Recent window, or a Recent population above the
+provider's display cap, fails the comparison. Finish in a browser for rendering and
+interaction costs HTTP cannot see.
 """
 
 from __future__ import annotations

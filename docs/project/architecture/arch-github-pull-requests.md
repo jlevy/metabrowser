@@ -180,21 +180,14 @@ the envelope’s `snapshot_route`.
 
 `pull_freshness.py` judges a record and a file list by events rather than the clock.
 The catalog’s delta scan reads pull requests by `UPDATED_AT`, and each row carries the
-head commit, so a record is checked against its row when the catalog has the record’s
-source and reader:
-
-- **changed** when the row is newer, or as new with another head (`head_moved`);
-- **current** when the scan that published the row ran within the window, or the next is
-  running and the last ran within `SCAN_GRACE_S` past it;
-- **checks** for an open record past the window that the catalog still vouches for,
-  since `updated_at` does not move for check runs, statuses, or mergeability: its
-  refresh reads those alone, with ETags and no fetch into the store; and
-- **unverified** otherwise, which the freshness window decides.
-
+head commit, so a record checked against its row is **changed** when the row is newer or
+names another head, **current** while the scan that published the row is recent,
+**checks** when an open record is past the window that its row still vouches for, since
+`updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
+otherwise; the module docstring states each rule.
 `verified_at` and `verified_by` say when and how the record was last known to describe
 GitHub. They move with every scan, so the entity tag leaves them out and
 `x-metabrowser-verified` carries them.
-`checks_pending` reports checks still settling (`NO_CHECKS_GRACE_S`).
 `cli-github-pulls-prefetch.txt` pins each verdict.
 
 ## The Catalog
@@ -250,31 +243,15 @@ when it stopped there.
 A **core** is a pull request’s validated header and description, prepared ahead of
 selection so a row shows its description before the full record exists.
 `pull_core_cache.py` stores each in `<n>.core.json`, bound to the source, repository,
-reader, catalog epoch, and the row’s summary fingerprint.
-An ordinary catalog refresh keeps its epoch, so unchanged cores stay usable after the
-freshness window and across restarts; a changed fingerprint lets the older core show,
-marked stale, while preparation fetches the update; a changed account, repository, or
-epoch refuses it. A complete record always takes precedence.
-
-`POST pull-cores-prepare` (`pull_cores.py`) takes a window identity and a batch of at
-most `MAX_CATALOG_MEMBERS` numbers, admitted against the exact catalog generation, and
-answers one of the `Preparation` outcomes.
-A ready answer lists `ready_numbers` and `skipped_numbers`, a partial one adds
-`retry_numbers` and `retry_at`, and the lists account for every member requested.
-A source runs one core job at a time; a `visible` batch preempts a `background` one that
-reads none of the members it still needs, revoking its window, cancelling its job, and
-waiting for it to unwind.
-A failed batch holds later ones with the same outcome until another attempt is eligible,
-and `cores.refresh.json` keeps provider holds across restarts.
-The panel’s batch timeouts are `CORE_VISIBLE_TIMEOUT_MS` and
-`CORE_BACKGROUND_TIMEOUT_MS` in `pulls-panel.js`.
-
-A reader who selects a pull request with no record may ask the refresh to wait for its
-core (`"wait_core": true`, at most `CORE_WAIT_TIMEOUT_S`); the envelope then carries a
-`core_preview` until the full record lands.
-A page can ask `GET pull` to wait for that exact preview’s completion
-(`wait_full_after`, at most `FULL_WAIT_TIMEOUT_S`), which holds no network slot and
-starts nothing.
+reader, catalog epoch, and the row’s summary fingerprint: an unchanged core stays usable
+across refreshes and restarts, a changed fingerprint shows the older core marked stale
+while preparation fetches the update, and a changed account, repository, or epoch
+refuses it. A complete record always takes precedence.
+`POST pull-cores-prepare` prepares a bounded batch admitted against the exact catalog
+generation, one core job per source, a `visible` batch preempting a `background` one;
+`pull_cores.py`’s docstring gives its outcomes, retries, and waits.
+A reader who selects a pull request with no record may ask its refresh to wait for the
+core, and the envelope then carries a `core_preview` until the full record lands.
 
 ## Changed Files
 
@@ -353,35 +330,26 @@ in a provider slot of its own once any metadata refresh settles.
 `pull_stacks.py` keeps one optional `stacks.json` per repository, apart from the catalog
 and records: native stack numbers, which are labels and not pull-request numbers, with
 their ordered bottom-to-top members.
-A coordinator job probes `gh stack --version` from an isolated directory, then reads
-GitHub’s REST stack pages; it never runs `gh stack view`, checkout, sync, or tracking
-commands.
-REST pages name no reader, so the job checks the account before and after them.
-The snapshot’s bounds (`MAX_STACK_PAGES`, `MAX_STACK_MEMBERS`, `MAX_SNAPSHOT_MEMBERS`,
-`MAX_STACK_BYTES`) are measured beside them; a page that would exceed them is omitted
-and the snapshot marked incomplete.
-Membership missing from a partial or unavailable snapshot never means a pull request is
-unstacked, and `403` or `404` is neutral unavailability.
-Attempts wait `STACK_FRESHNESS_S`, and a failure keeps the preceding snapshot.
+A coordinator job probes `gh stack --version` from an isolated directory and reads
+GitHub’s REST stack pages, checking the account before and after them, since the pages
+name no reader; it never runs `gh stack view` or a checkout, sync, or tracking command.
+The snapshot is bounded, a page past its bounds is omitted and marks it incomplete, and
+membership missing from a partial or unavailable snapshot never means a pull request is
+unstacked. A failure keeps the preceding snapshot.
 
 ## Background Prefetch
 
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
-(`pull_prefetch.py`); nothing on the server starts that work by itself, so a hidden or
-offline page spends nothing.
-The request names records and changed-file lists, each at most `MAX_PREFETCH_NUMBERS`
-numbers in priority order, and replaces the repository’s lane queue.
+(`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
+starts that work by itself, so a hidden or offline page spends nothing.
 The lane is one coordinator job per served repository that runs one item at a time,
 alternating records and file lists, rereads each from disk before it runs, and stops
-when the governor refuses.
-Its caps (`RECORDS_PER_SCAN`, `RECORDS_PER_HOUR`, `FILES_PER_HOUR`) and the GitHub
-points they cost are worked out in the module docstring.
-A background job takes no network slot, waits at a store turn behind every other job and
-is cancelled when one starts waiting, and a reader’s request for the same pull request
-joins and promotes it.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and the last `MAX_RECENT`
-outcomes from memory.
-The panel’s choice of what to name, and when (`FILES_DWELL_MS`), is in `pulls-panel.js`.
+when the governor refuses; the module docstring works out its caps and the GitHub points
+they cost. A background job takes no network slot, waits behind every other job at a
+store turn and is cancelled when one starts waiting, and is joined and promoted by a
+reader’s request for the same pull request.
+`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
+`pulls-panel.js` chooses what to name and when.
 
 ## Beside a Checkout
 
