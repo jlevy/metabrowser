@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A size of a gigabyte or more now reads in gigabytes.
+  The Files tree, the totals line under the Files toolbar, and the binary preview wrote
+  10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
+  The shell had its own copy of the size formatter, which stopped at megabytes; it now
+  uses the shared one, and smaller sizes read exactly as before.
+
 - A heading that opens a pull request’s description, comment, or review no longer sits
   pressed under the card’s header.
   It had 8 px above it and 16 px below, so it read as part of the header rather than of
