@@ -5028,6 +5028,24 @@ function filterTypeFamilies(groupId) {
     .filter((family) => family.count > 0);
 }
 
+// Where the drawer's filters take their keyboard numbers while the drawer is closed: its
+// triggers are inert then and cannot be numbered, so each filter is numbered on a stand-in
+// beside the chevron, which a number reaches whether or not the drawer is open
+// (shell-keymap.js, syncFilters). Activating one opens the drawer with its menu
+// (toggleFilterMenu). The stand-ins take no space and no focus; a badge on one shows
+// beside the chevron.
+function filterKeySlotsHtml() {
+  /** @type {Record<string, string>} */
+  var names = { recency: "Modified within", types: "File type" };
+  return (isGitRevisionSource() ? ["types"] : ["recency", "types"])
+    .map(
+      (key) =>
+        `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
+        ` aria-label="${names[key]}"></span>`,
+    )
+    .join("");
+}
+
 // Group by's choices beside "No grouping". A Git revision has no mtime, so it offers no
 // Age, as it offers no Modified within.
 function filterGroupOptions() {
@@ -5195,6 +5213,7 @@ function renderNavFilterBar() {
       tip: filterDrawerOpen ? "Hide filters" : "Filters",
       controls: "filter-drawer",
     }) +
+    filterKeySlotsHtml() +
     "</span></div>";
   var drawer =
     // `inert` rather than `hidden`: it keeps the closed drawer out of
@@ -5251,6 +5270,9 @@ function applyDrawerOpenState() {
     );
     toggle.dataset.tipText = filterDrawerOpen ? "Hide filters" : "Filters";
   }
+  // The drawer's filters take their numbers on their triggers while it is open, and on
+  // their stand-ins while it is closed.
+  shellKeymap?.syncFilters();
 }
 
 // The Files toolbar is hidden with its panel. A filter menu left open there is not on

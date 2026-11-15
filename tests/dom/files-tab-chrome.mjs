@@ -277,18 +277,16 @@ try {
   const result = { gear };
   // Group by is the row's one control; the three filters wait in the closed drawer.
   result.row = await browser.evaluate(ROW);
-  // A number reaches what is on screen. With the drawer closed it is inert, so 1 is
-  // Group by and nothing else is numbered.
+  // The numbers: 1 is Group by, and the drawer's filters keep theirs while it is closed,
+  // on stand-ins beside the chevron.
   await press("1");
   result.keyOneOpens = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  // Open the drawer, as its chevron does; its filters then take the numbers after Group
-  // by, so 3 is File type.
-  await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
+  // 3 is File type: it opens the closed drawer with its menu.
+  await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
   await sleep(400);
-  await press("3");
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);

@@ -187,8 +187,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert row["row"] == ["menu:group", "nav-filter-bar-end"], row
     assert row["drawer"] == ["recency", "types", "size", "showIgnored"], row
     assert row["drawerOpen"] == "false" and row["drawerInert"] is True, row
-    # The numbers follow what is on screen: 1 is Group by while the drawer is closed, and
-    # once it is open its filters follow, so 3 is File type.
+    # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
+    # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 

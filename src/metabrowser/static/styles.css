@@ -3623,11 +3623,27 @@ a.tab-btn {
 /* Pushes the drawer toggle and Clear to the trailing edge, so the
    recency group always starts at the same x as the tree's first row. */
 .nav-filter-bar-end {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+/* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
+   focus, and a badge that sits beside the chevron, Modified within's before File type's.
+   The badge ends at its stand-in's edge (.kbd-badge, inline-end). */
+.filter-key-slot {
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.filter-key-slot[data-filter-key-slot="types"] {
+  inset-inline-end: var(--icon-btn-size);
+}
+.filter-key-slot[data-filter-key-slot="recency"] {
+  inset-inline-end: calc(var(--icon-btn-size) + 1.5em);
 }
 /* The drawer opens on the shared motion token rather than snapping,
    so the chevron's rotation and the reveal it announces run together.
