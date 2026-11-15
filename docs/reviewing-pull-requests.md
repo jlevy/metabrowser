@@ -131,10 +131,12 @@ its membership. The PR page uses the same position as a menu trigger.
 Open it for the stack number and members ordered from stack top to base, with each
 member’s title, ordinal, and PR number.
 Titles come from the matching local catalog; a missing title falls back to the PR
-number.
-Press `N` for the next member toward the stack’s top and `P` for the previous one
-toward its base; Shift makes no difference.
-Help lists both shortcuts, and editors or open dialogs keep their normal keys.
+number. Press Control-N for the next member toward the stack’s top and Control-P for the
+previous one toward its base; Shift makes no difference.
+Help lists both shortcuts, and text fields and open dialogs keep their normal keys: on
+macOS, Control-N and Control-P move a field’s caret.
+On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
+the stack ([Control Chords](design-system.md#control-chords)).
 [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the rest of the keys.
 Moving between members keeps the current PR tab selected and clears the previous PR’s
 file selection.
@@ -178,12 +180,13 @@ with the discussion.
 ## What the Page Shows
 
 The header has the title, state, branches, labels, and dates.
-PR numbers use dark text, usernames use bold normal text ink at the surface’s normal
-size, and branch names use smaller ref chips, consistently with the Pulls list and Git
-history. Hover or focus a copyable branch chip to reveal its copy control; it copies the
-full branch name. The author’s small circular avatar appears beside the username when
-available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
-condensed navigation keeps short ages.
+PR numbers use bold dark text, usernames use bold normal text ink at the surface’s
+normal size, and branch names use smaller ref chips, consistently with the Pulls list
+and Git history. Hover or focus a copyable branch chip to reveal its copy control; it
+copies the full branch name.
+The author’s small circular avatar appears beside the username when available.
+Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; condensed
+navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.
 When switching from useful content, that content stays visible until the new description
 or an actionable failure is ready.

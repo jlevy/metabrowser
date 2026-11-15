@@ -295,7 +295,7 @@ async function heldTabKeys(page) {
     document: globalThis.document,
     HTMLElement: LiveElement,
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."fphtjkuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;
@@ -327,8 +327,9 @@ async function heldTabKeys(page) {
       shortcuts: { attach: facade.attachShortcut },
     },
   );
-  // The Pulls tab shows the page, so it is active, and its N and P are the production pair,
-  // walking this page's stack (pulls-nav.js reaches the page through `hasStack`).
+  // The Pulls tab shows the page, so it is active, and its Control-N and Control-P are the
+  // production pair, walking this page's stack (pulls-nav.js reaches the page through
+  // `hasStack`). Plain N is no longer the stack's, so it opens nothing.
   handle.activate();
   const unregisterStackKeys = shell.MetabrowserPullsNav.registerKeys(
     {
@@ -360,12 +361,13 @@ async function heldTabKeys(page) {
       strip = stackKeys();
     }
   });
-  // The stack menus in the header's labels row, past the strut that holds its height.
+  // The stack menus at the end of the header's author row, past the strut that holds its
+  // height.
   const stackMenus = () =>
     container
       .querySelector(".github-pull-stacks")
       .children.filter((node) => !String(node.getAttribute("class")).includes("strut")).length;
-  const press = (key) => {
+  const press = (key, { ctrlKey = false } = {}) => {
     opened.length = 0;
     let handled = false;
     const event = {
@@ -373,7 +375,7 @@ async function heldTabKeys(page) {
       key,
       code: "",
       altKey: false,
-      ctrlKey: false,
+      ctrlKey,
       metaKey: false,
       shiftKey: false,
       repeat: false,
@@ -424,7 +426,8 @@ async function heldTabKeys(page) {
   await settle();
   // Inert, the column lets go of focus, as Chrome moves it to the body.
   globalThis.document.activeElement = body;
-  // The stack arrives while the header waits: its menu waits with it, and so do N and P.
+  // The stack arrives while the header waits: its menu waits with it, and so do
+  // Control-N and Control-P.
   assert.equal(stackAnswers.length, 1, "the page asked for its stack");
   stackAnswers.shift()();
   await settle();
@@ -447,13 +450,17 @@ async function heldTabKeys(page) {
     stackMenus: stackMenus(),
     stackKeys: stackKeys(),
     strip,
-    n: press("n"),
+    "control-n": press("n", { ctrlKey: true }),
   };
   assert.equal(whileHeld.holding, true, "the landing's first paint is held");
   assert.deepEqual(whileHeld.live, [], "no tab key is live while the header waits");
   assert.equal(whileHeld.stackMenus, 0, "the stack menu waits with the header");
-  assert.equal(whileHeld.stackKeys, "none", "N and P wait with the header");
-  assert.equal(whileHeld.n, "not handled", "N opens nothing while the header waits");
+  assert.equal(whileHeld.stackKeys, "none", "Control-N and Control-P wait with the header");
+  assert.equal(
+    whileHeld["control-n"],
+    "not handled",
+    "Control-N opens nothing while the header waits",
+  );
   while (markdown.length > 0) {
     markdown.shift()();
     await settle();
@@ -472,11 +479,16 @@ async function heldTabKeys(page) {
     stackKeys: stackKeys(),
     strip: wokenStrip,
     n: press("n"),
-    p: press("p"),
+    "control-n": press("n", { ctrlKey: true }),
+    "control-p": press("p", { ctrlKey: true }),
   };
   assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");
   assert.equal(released.stackMenus, 1, "the header paints its stack menu at release");
-  assert.equal(released.strip, released.stackKeys, "the strip shows N and P at release");
+  assert.equal(
+    released.strip,
+    released.stackKeys,
+    "the strip shows Control-N and Control-P at release",
+  );
   unsubscribeStrip();
   for (const unregister of unregisterStackKeys) {
     unregister();

@@ -26,10 +26,12 @@ Files was chosen by hand; a load that fails, which says so only to a reader look
 tries again on the next show; and a page that goes while the view loads, whose late
 mount is disposed. `keys` is each key through the real registry and what it told the
 view, and `help` is what Help reads for the group.
-`stack keys` drives N and P, with and without Shift, through the real global registry
-and the active PR’s public stack capability, including endpoints, membership changes,
-editor and modal guards, and disposal; Shift-J and Shift-K on a focused pull request row
-or changed file move the row, as J and K do, and never reach the stack.
+`stack keys` drives Control-N and Control-P, with and without Shift, through the real
+global registry and the active PR’s public stack capability, including endpoints,
+membership changes, editor and modal guards, and disposal, and shows that N and P alone,
+Command-N, Control-Command-N, and AltGr’s Control-Alt walk nothing and that a text field
+keeps both chords; Shift-J and Shift-K on a focused pull request row or changed file
+move the row, as J and K do, and never reach the stack.
 `the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
 listeners it adds, that only a walking key’s release ends a walk, and that an `init`
 after a `dispose` listens again.
@@ -214,6 +216,22 @@ $ node tests/dom/pulls-nav-session.js
       -1,
       1
     ],
+    "plainLettersWalkNothing": [
+      false,
+      false,
+      false
+    ],
+    "otherChordsWalkNothing": {
+      "Command-N": false,
+      "Control-Command-N": false,
+      "Control-Alt-N, as AltGr": false,
+      "Control-Alt-P, as AltGr": false
+    },
+    "textFieldsKeepTheChords": [
+      false,
+      false,
+      false
+    ],
     "endpointConsumed": true,
     "plainJRemainsRowNavigation": true,
     "shiftedRowKeysMoveTheRow": {
@@ -239,6 +257,7 @@ $ node tests/dom/pulls-nav-session.js
     "guards": [
       "repeat",
       "input",
+      "textarea",
       "contenteditable",
       "Help",
       "modal",
@@ -251,11 +270,11 @@ $ node tests/dom/pulls-nav-session.js
     ],
     "help": [
       {
-        "keys": "N",
+        "keys": "Control N",
         "action": "Next in stack"
       },
       {
-        "keys": "P",
+        "keys": "Control P",
         "action": "Previous in stack"
       }
     ],

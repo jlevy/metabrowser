@@ -185,7 +185,10 @@ def test_the_session_runs_on_the_recording() -> None:
 
     # What each part printed is what its golden pins, which tests/test_keymap.py holds to
     # the reserved shell keys.
-    assert {key for part in parts for key in part["shellKeys"]} == set("123456789fhjknprtuw")
+    assert {key for part in parts for key in part["shellKeys"]} == set("123456789fhjkptuw") | {
+        "control-n",
+        "control-p",
+    }
 
     by_name = {step["step"]: step for part in parts for step in part["steps"]}
     root = by_name["the root folder has no Up"]
@@ -198,15 +201,37 @@ def test_the_session_runs_on_the_recording() -> None:
     ):
         assert by_name[copying]["pressed"] == {"key": "y", "handled": False}, copying
         assert by_name[copying]["ancillary"], copying
-    preview = by_name["the Preview tab is V, and P outside a stack does nothing"]
+    preview = by_name["the Preview tab is V, and Control-P outside a stack does nothing"]
     assert ["V", "view-tabs.v", "Preview tab"] in preview["keys"]
-    assert preview["p"] is False
+    assert preview["controlP"] is False
+    # On a pull request in a stack, Control-N and Control-P walk it (mb-lnqj): listed on
+    # the strip as the platform writes them, here with no navigator; a chord ends the
+    # reveal and still walks; the letters alone and AltGr's Control-Alt walk nothing.
+    listed = by_name["a pull request in a stack lists Control-N or Control-P on the strip"]
+    assert "Ctrl+N or Ctrl+P Stack" in listed["strip"]["items"]
+    assert ["Ctrl+N", "pulls.stack.top", None] in listed["keys"]
+    shifted = by_name["Control-N with Shift held walks the stack and ends the reveal"]
+    assert shifted["pressed"] == {"key": "Control-n", "handled": True}
+    assert shifted["did"] == ["moved toward the stack's top"]
+    assert shifted["reveal"] == "idle"
+    toward_base = by_name["Control-P walks the stack toward its base"]
+    assert toward_base["pressed"] == {"key": "Control-p", "handled": True}
+    assert toward_base["did"] == ["moved toward its base"]
+    alone = by_name["N alone and Control-Alt-N walk nothing, and P alone is the Pulls tab"]
+    assert (alone["n"], alone["altGr"], alone.get("did")) == (False, False, None)
+    assert alone["p"] == {"handled": True, "active": "pulls", "focus": "#7"}
+    # P is the Pulls tab (mb-6rfu): from a file it opens the tab, and again it moves focus
+    # to the selected row.
+    to_pulls = by_name["P opens the Pulls tab from a file"]
+    assert (to_pulls["pressed"], to_pulls["active"]) == ({"key": "p", "handled": True}, "pulls")
+    again = by_name["P again, once the list has rows, moves focus to the selected row"]
+    assert (again["pressed"], again["focus"]) == ({"key": "p", "handled": True}, "#7")
     # The main tabs in their order, each with its letter.
     hosted = by_name["a repository with a hosted origin shows Files, Pulls, and Commits"]
     assert hosted["tabs"] == ["Files", "Pulls", "Commits"]
     assert [key for key, command, _target in hosted["keys"] if command.startswith("main-")] == [
         "F",
-        "R",
+        "P",
         "H",
     ]
     # The numbers are positional and Help never gives a digit a fixed meaning.

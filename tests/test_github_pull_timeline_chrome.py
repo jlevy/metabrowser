@@ -1,7 +1,8 @@
 """A pull request's Conversation timeline, laid out and painted by headless Chrome.
 
 A commit row is set in a card head's type and sits in its row as a card head's text sits
-in its card, and one line joins every two adjacent events, with a node on it at each
+in its card, a run of commits stands at least as far from the cards around it as one
+commit's glyphs stand from the next's, and one line joins every two adjacent events, with a node on it at each
 commit (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"). Sizes
 resolved through the cascade, boxes, and what is painted where are layout and paint,
 which no browserless DOM computes, so ``tests/dom/github-pull-timeline-chrome.mjs`` mounts

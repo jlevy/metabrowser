@@ -11,12 +11,12 @@ groups list a stack's pull requests in the menu's order; and that the choice per
 
 It also holds the Pulls toolbar to the navigation toolbars' wrap rule (docs/design-system.md,
 "Navigation Toolbars Wrap"): at every pane width from the narrowest, 179 px, to 420, in
-both font sets, with three- and four-digit tallies, with the Stacks chip and without it,
-nothing is cut, the toolbar is one line exactly while it fits and wraps in order otherwise,
-Reload last and at the line's end, its lines a line height and a gap apart; the Show group
-is joined where its line holds it and the chip cluster below, through the row's own
-observers, holding one layout at the break and switching once across it, with no
-ResizeObserver loop error; and a group bound and then disposed is fitted no more.
+both font sets, with three- and four-digit tallies, nothing is cut, the toolbar is one line
+exactly while it fits and wraps in order otherwise, Reload last and at the line's end, its
+lines a line height and a gap apart; the Show group is joined where its line holds it and
+the chip cluster below, through the row's own observers, holding one layout at the break
+and switching once across it, with no ResizeObserver loop error; and a group bound and
+then disposed is fitted no more.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers two native stacks, #286 (pull requests 7 to 10, from the base) and #300 (5 and

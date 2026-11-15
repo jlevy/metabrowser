@@ -12,11 +12,13 @@
 // heading starts against its rows, how tall an open menu is drawn against its rows and
 // the window, which controls the bar's row and closed drawer hold, whether the row fits
 // its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
-// Group by section's heading starts against its tree, and whether a refresh after a write
-// keeps the scroll position and the focused row (docs/design-system.md, "Groups in a
-// Menu", "Menu Height", "Grouping the Files Tree", and "Navigation Toolbars Wrap"). The
-// wrap is held to its rule by tests/dom/nav-toolbar-wrap.mjs. The requests and sections
-// themselves run browserlessly in
+// Group by section's heading starts against its tree, whether a refresh after a write
+// keeps the scroll position and the focused row, and a tree row's leading slot, a
+// folder's chevron and a file's icon, against the name after it (docs/design-system.md,
+// "Groups in a Menu", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
+// "Navigation Toolbars Wrap"). The wrap is held to its rule by
+// tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
+// in
 // tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
 // a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
@@ -141,6 +143,39 @@ const MEASURE = `(key) => {
     headings,
   };
 }`;
+
+// A tree row's leading slot: a folder's chevron and a file's type icon, at one depth, each
+// in its box from the row's content edge, and where the name after it starts. The box is
+// `--tree-icon-slot` wide (styles.css, mb-hmv7); a folder's chevron is its toggle's margin
+// box, as a container row's is.
+const SLOTS = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const measure = (row, slot) => {
+    const box = row.getBoundingClientRect();
+    const style = getComputedStyle(row);
+    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const r = slot.getBoundingClientRect();
+    const s = getComputedStyle(slot);
+    const glyph = slot.querySelector("svg").getBoundingClientRect();
+    const left = r.left - parseFloat(s.marginLeft);
+    return {
+      slot: round(r.width + parseFloat(s.marginLeft) + parseFloat(s.marginRight)),
+      fromInset: round(left - inset),
+      glyph: round(glyph.width),
+      glyphFromSlot: round(glyph.left - left),
+      name: round(row.querySelector(".tree-item-name").getBoundingClientRect().left - inset),
+      gap: parseFloat(style.columnGap),
+    };
+  };
+  const folder = tree.querySelector('.tree-folder[data-path="src"]');
+  const file = tree.querySelector('.tree-file[data-path="README.md"]');
+  return {
+    token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
+    folder: measure(folder, folder.querySelector(":scope > .tree-toggle")),
+    file: measure(file, file.querySelector(":scope > .tree-item-icon")),
+  };
+})()`;
 
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
@@ -558,6 +593,7 @@ try {
   result.ungrouped = await browser.evaluate(
     `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
   );
+  result.slots = await browser.evaluate(SLOTS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

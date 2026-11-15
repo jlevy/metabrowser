@@ -12,9 +12,10 @@ All notable changes to Metabrowser are documented here.
   Pulls, and Commits tabs wrap too.
   The Files row overflowed the pane below about 297 px with a filter set, and its
   chevron was out of sight at the narrowest pane, 180 px.
-  The Pulls toolbar, which scrolled sideways, ran 36 px past the default pane, so Reload
-  was cut off. A toolbar that fits stays one line, as before, and a wrapped one keeps one
-  spacing between its lines and its controls.
+  The Pulls toolbar, which scrolled sideways, ran past the default pane in the system
+  font set, so Reload was cut off.
+  A toolbar that fits stays one line, as before, and a wrapped one keeps one spacing
+  between its lines and its controls.
   The Pulls tab’s Show choice, when even its own line is too narrow for it, shows its
   three choices as separate pills that wrap, and joins them again when there is room.
   Reload in the Pulls toolbar is now a chip’s height, 2 px shorter.
@@ -24,6 +25,21 @@ All notable changes to Metabrowser are documented here.
   navigation toolbar fitted to its line; `filterControls.fitJoinedGroups(root)` fits one
   at once, and `filterControls.joinedGroupFits` is the pure rule.
 
+- `P` now opens the Pulls tab, as `F` opens Files and `H` Commits; it was `R`, for pull
+  Requests, while `P` walked a stack.
+  `R` now does nothing, and for plugin authors a manifest view may take it as its key,
+  while `P` is reserved in every kind.
+  See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
+
+- Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
+  top, and Control-P, to the previous one toward its base, so `N` and `P` alone are
+  free. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
+  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
+  AltGr with `N` or `P` still types its character.
+  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
+  the stack. For plugin authors, a manifest view may now take `N` as its key.
+  See [Control Chords](docs/design-system.md#control-chords).
+
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
   description, comments, and reviews, and in any document when you chose the Sans
   reading font. It was italic under either reading font, an accent of the serif that read
@@ -31,33 +47,56 @@ All notable changes to Metabrowser are documented here.
   spacing are unchanged.
   See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
 
+- A pull request’s page header gives the head and base branches a line of their own,
+  under “jlevy wants to merge 2 commits”, instead of ending that sentence with them.
+  The state badge (Draft, Open, Merged, Closed) moves down a line, to lead “Opened 9h
+  ago · updated …”. The stack button moves from the end of the labels row to the right
+  end of the author’s row, under the end of the title, and its menu opens from there;
+  arriving after the page, it still moves nothing.
+  A short title now starts at the header’s left edge with its icon, instead of sitting
+  centred, and the pull request’s number ends at the right edge, above the stack button,
+  for every title.
+
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and its text sits as far below the event above as a comment header’s
-  does. A line now joins the description, comments, reviews, and commits down the
-  avatars’ column, with a dot at each commit, as on GitHub’s own pull request page.
+  header’s type, and a run of commits stands at least as far from the comment above and
+  below it as one commit stands from the next.
+  A line now joins the description, comments, reviews, and commits down the avatars’
+  column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
   See [Conversation Timeline](docs/design-system.md#conversation-timeline).
 
-- The Pulls tab can group a native GitHub stack’s pull requests under a “Stack #N” row,
+- A Pulls row no longer names its branches, so its title has more room; the pull
+  request’s page still names them, head → base.
+
+- A pull request’s number is bold wherever it names the pull request: a Pulls row, the
+  pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
+  one width for a chevron and a file type icon alike, so names start 2px sooner and a
+  pull request’s title is 4px wider.
+
+- A stack member’s place in its stack is on its number’s line, before the number, as
+  “1/6 · #455 · jlevy”, and its row draws no stack icon: the stack’s row above it has
+  one. Its title’s line holds only the title and the age, so the title has all that room:
+  at the default pane, 166 px where it had 65 to 125.
+
+- The Pulls tab groups a native GitHub stack’s pull requests under a “Stack #N” row,
   open by default, with the stack’s pull requests under it top of the stack first, as
   the pull request page’s stack menu lists them, and the pull requests in no stack after
-  the stacks. Stacks, a chip in the Pulls toolbar named Group by stack, turns it on and
-  off; it is on once the repository’s stacks are known, and your choice is kept.
+  the stacks. It always groups once the repository’s stacks are known; until then, or
+  when they cannot be read, the list stays as it was.
   A stack’s row counts the pull requests of it the list holds, and its tip says where
   any sit under another stack.
-  A pull request in two stacks appears once, under the first, and its badge names the
-  other stack by the stack icon and its number before its position, everywhere a badge
-  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. Until the
-  stacks are known, or when they cannot be read, the list stays as it was and the chip
-  says why and what to do.
-  A stack’s row opens and closes like a folder: J and K stop on it, Enter, Space, and
-  the arrow keys open, close, enter, and leave it.
-  The chip takes `4` among the Pulls tab’s numbers, so Reload is now `5`. The stack
-  row’s header and the stack menu’s heading are now one label, gray, all caps, and
-  tracked, and the menu’s positions are in the row’s ink rather than link blue
+  A pull request in two stacks appears once, under the first, and its place names the
+  other stack by the stack icon and its number before its position, everywhere a place
+  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. A stack’s row
+  opens and closes like a folder: J and K stop on it, Enter, Space, and the arrow keys
+  open, close, enter, and leave it.
+  The stack row’s header and the stack menu’s heading are now one label, gray, all caps,
+  and tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
 - The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
@@ -606,10 +645,10 @@ All notable changes to Metabrowser are documented here.
   design system’s reveal motion, `--motion-reveal`.
 
 - The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
-  Open, Closed, and All and put focus on the chosen filter, `4` is Group by stack, and
-  `5` is Reload, each of which does nothing while it waits, as a click does.
+  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
+  does nothing while it waits, as a click does.
   The navigation pane’s numbers come first, so beside the Pulls tab a pull request
-  page’s View on GitHub and the actions after it now start at `6`. Holding Shift shows
+  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
   each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull

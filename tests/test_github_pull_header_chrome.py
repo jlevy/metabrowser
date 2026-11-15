@@ -5,7 +5,7 @@ layout: no browserless DOM computes it, and the stylesheet text passed while the
 badge hung below its line. This mounts the production page module on
 recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
 compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs). The
-same session lays out Pulls rows as their stack positions arrive, and a file header as a
+same session lays out Pulls rows as their stack places arrive, and a file header as a
 run's status badge changes its label in place, and checks that nothing moves. It runs in
 parts, one case each, so each part has a bound of its own under the suite's.
 

@@ -21,7 +21,10 @@ opens the Modified within menu in both. This judges what it measured against
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
 - a file written into a folder open in a section refreshes the sections in place, keeping
-  that folder open, the scroll position, and the focused row.
+  that folder open, the scroll position, and the focused row;
+- a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
+  row's content edge, each glyph centred in it, so the names after them start on one
+  column ("One Glyph Size", mb-hmv7).
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -251,6 +254,20 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert measured["narrowKeyThree"] == {"menu": "types", "drawerOpen": "true"}
     assert measured["narrowOpen"]["height"] > narrow["height"], measured["narrowOpen"]
     assert measured["narrowClosed"]["height"] == narrow["height"], measured["narrowClosed"]
+    # A folder's chevron and a file's icon are one slot wide, from the row's content edge,
+    # each glyph centred in it, and the names after them start on one column (mb-hmv7). At
+    # 16 px the names started at 22 px; the slot is 14 px since, so they start at 20.
+    slots = measured["slots"]
+    assert slots["token"] == "14px", slots
+    for kind, glyph in (("folder", 12), ("file", 14)):
+        slot = slots[kind]
+        assert slot["slot"] == 14 and slot["fromInset"] == 0, (kind, slot)
+        assert slot["glyph"] == glyph and _close(slot["glyphFromSlot"], (14 - glyph) / 2), (
+            kind,
+            slot,
+        )
+        assert slot["name"] == 14 + slot["gap"] == 20, (kind, slot)
+
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
