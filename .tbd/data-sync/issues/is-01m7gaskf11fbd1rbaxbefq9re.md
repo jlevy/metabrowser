@@ -5,7 +5,7 @@ title: "Conversation: one vertical rhythm between comments and commits, roomier 
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:23.712Z
-updated_at: 2026-11-15T19:41:14.975Z
+updated_at: 2026-11-15T20:03:14.920Z
 started_at: 2026-11-15T19:27:14.339Z
 ---
 The user's requests (2026-11-15), verbatim:
@@ -30,3 +30,4 @@ Done when the Conversation timeline has one vertical rhythm: the visible space b
 ## Notes
 
 2026-11-15: done in 4a46ec4dd on claude/conversation-rhythm (pushed --no-verify, no PR). There is one token, --github-pull-rhythm (20 px), for the body's gap, the line's connectors and the Review comments cards (.github-pull-threads). A commit row's box is now its line (no padding-block, no min-height, frame only at its sides), and mb-xz1r's run margins are gone. Visible gaps, card border or commit text: before (Chrome 152) card>card 12, card>commit 23.5, commit>card 23.5, commit>commit 20, other>commit 23.5; after, all 20, in Chrome and in WebKit 21624.2.5.11.8 via webkit-driver measure, both themes, 980 and 420 px. The timeline Chrome session asserts every pair's box gap and visible space equal the token; it failed on the previous head.
+2026-11-15: merged #460 (claude/tooltips-substantive at 1bf471a02) into claude/conversation-rhythm as b3fcd2508. The only conflict was the plan's phases; this work is now pull request 12 and Phase 12, and the stack count is twelve. Opened draft PR #461 on claude/tooltips-substantive and linked it into stack 446 (12 PRs, in order). After the merge: 152 focused pytest, the page golden via tryscript, the DOM sessions and lint-check (tooltip check included) all pass.
