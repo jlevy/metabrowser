@@ -1547,8 +1547,12 @@ a commit. It is said the way a card head says a comment:
   `--nav-font-size`, one step below the text beside it, as in the
   [Git Commit Summary](#git-commit-summary).
 
-- **Spacing:** every two events are `--github-pull-gap` apart, and a commit’s text sits
-  as far below the event above it as a card head’s text does.
+- **Spacing:** two cards, or two commits, are `--github-pull-gap` apart.
+  A commit row keeps a room between its text and its edge (its 1 px frame, the head’s 3
+  px, and at least the line’s half-leading), so two commits’ glyphs are the gap and two
+  rooms apart. A run of commits keeps that room outside it too, past the gap, so the
+  space from a card’s edge, or Review comments’, to a run’s first commit, and from its
+  last commit to the card below, is at least the space between two commits.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1566,10 +1570,12 @@ It adds no token: its geometry is the avatar’s, the card head’s, and the pag
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
 and the pixels painted, with one head drawn with only its slot.
-In Chrome 152, the glyphs of a commit and of a card head both sit 16 px below the event
-above. Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs
-sat 13 px below the event above, 1 px under its row’s top and 6 px over its bottom, and
-nothing joined the events.
+In Chrome 152 and in the app’s WebKit alike, a run’s first commit’s glyphs sit 23.5 px
+below the card above, and its last commit’s 23.5 px above the card below, against 20 px
+between two commits’; before the run kept its room outside it, both were 16 px.
+Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
+px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
+joined the events.
 
 In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2), run through the
 WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the same page and

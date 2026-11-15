@@ -328,6 +328,22 @@
   padding: 3px var(--github-pull-text-inset) 3px calc(var(--github-pull-text-inset) + 18px + 4px);
   border: 1px solid transparent;
   font-size: var(--body-font-size);
+  /* The room the row keeps between its text and its edge: its 1 px frame, the head's
+     3 px, and at least the line's half-leading, since a face's glyphs are at least 1em
+     tall. A run of commits keeps it outside the run too (below). */
+  --github-pull-run-space: calc(1px + 3px + (1lh - 1em) / 2);
+}
+/* Two commits' glyphs are a gap and both rows' room apart, so a run of commits stands that
+   room further from whatever is above and below it than the gap: from a card's edge, or
+   Review comments', to the first commit's glyphs is then at least as far as from one
+   commit's glyphs to the next's, and so from the last commit's to the card below. Measured
+   in Chrome 152 before this: 16 px from a card's edge to a commit's glyphs, against 20 px
+   between two commits'. */
+.github-pull-body > :not(.github-pull-commit) + .github-pull-commit {
+  margin-top: var(--github-pull-run-space);
+}
+.github-pull-commit:has(+ :not(.github-pull-commit)) {
+  margin-bottom: var(--github-pull-run-space);
 }
 .github-pull-commit-subject {
   flex: 1 1 12em;
@@ -381,6 +397,13 @@
 }
 .github-pull-commit:has(+ .github-pull-event)::before {
   bottom: -1px;
+}
+/* Across a run's own room above and below it, to the card beside it. */
+.github-pull-event:not(.github-pull-commit) + .github-pull-commit::before {
+  top: calc(-1px - var(--github-pull-gap) - var(--github-pull-run-space));
+}
+.github-pull-commit:has(+ .github-pull-event:not(.github-pull-commit))::before {
+  bottom: calc(-1px - var(--github-pull-run-space));
 }
 /* The commit's node: a solid dot on the line, as every commit is in the history graph. */
 .github-pull-commit::after {

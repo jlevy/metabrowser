@@ -8,9 +8,10 @@ All notable changes to Metabrowser are documented here.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and its text sits as far below the event above as a comment header’s
-  does. A line now joins the description, comments, reviews, and commits down the
-  avatars’ column, with a dot at each commit, as on GitHub’s own pull request page.
+  header’s type, and a run of commits stands at least as far from the comment above and
+  below it as one commit stands from the next.
+  A line now joins the description, comments, reviews, and commits down the avatars’
+  column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
   See [Conversation Timeline](docs/design-system.md#conversation-timeline).
 
