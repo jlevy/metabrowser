@@ -1,4 +1,4 @@
-"""``git log`` argument vectors, output parsing, and page cursors.
+"""``git log`` record format, output parsing, refs, and the history summary.
 
 Output format
 -------------
@@ -22,11 +22,11 @@ Using an explicit separator keeps the record extensible.
 Ordering
 --------
 
-``--topo-order`` is what makes the graph readable: it keeps a branch's
-commits contiguous instead of interleaving branches by date, so a lane
-stays a lane for its whole length. It is also what makes paging sound —
-lane state at the end of one page is exactly the lane state at the start
-of the next.
+The history walk in :mod:`metabrowser.git.history` runs ``--date-order``:
+no parent before all of its children, otherwise newest first. That is what
+makes paging sound — lane state at the end of one page is exactly the lane
+state at the start of the next — and every measured history shape matched
+one ``git rev-list --date-order`` walk (``explorations/git-history/README.md``).
 """
 
 from __future__ import annotations

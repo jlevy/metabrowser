@@ -1,7 +1,10 @@
 """Bounded ``git`` subprocess execution.
 
-The single place in the package that spawns a process. Every
-``/api/git/`` handler runs on a request path, so each invocation is
+The one place that starts a ``git`` process for serving, reading a store,
+and acquisition. The only other is ``build_version.py``, which asks a
+source checkout for its version once per process and never reads a
+served repository; ``tests/test_git_arch_doc.py`` holds that list.
+Every ``/api/git/`` handler runs on a request path, so each invocation is
 bounded on both axes that can hurt the server: wall clock, and how much
 output we are willing to buffer.
 

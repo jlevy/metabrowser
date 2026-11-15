@@ -11,11 +11,9 @@ Metabrowser hosts the reference implementations and emits the format from
 `metab --diff --format json`. Sources (a `.patch` file, git, a hosted provider, a
 document’s edit history) produce this format; the renderer and the CLI consume it;
 nothing downstream knows which source produced a document.
-Design rationale lives in the
-[general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md);
-this document is the normative contract.
-[Diff sources, context, and anchoring](diff-sources-and-anchoring.md) maps where
-documents come from and what a repository context adds.
+This document is the normative contract.
+The [diff pipeline](../arch-diff-pipeline.md) covers where documents come from, what a
+repository context adds, and how they are hydrated and kept.
 
 ## Authority and Implementations
 
@@ -117,8 +115,8 @@ Git’s extended unified format is the interchange surface: GitHub serves it for
 request, Mercurial documents plain unified diffs as lossy and adopts git’s extension,
 and Jujutsu emits it.
 This format wraps that surface rather than replacing it — parsed text becomes a
-validated document; a document should print back to git-applyable text (the emitter is
-tracked work). What the document adds over any text patch: snapshot identity and
+validated document; a document should print back to git-applyable text, though no
+emitter exists yet. What the document adds over any text patch: snapshot identity and
 anchoring, availability states instead of ambiguous absence, machine-validatable
 structure, and apply semantics with an oracle.
 The full survey, including agent edit formats and the ingest/emit compatibility matrix,
