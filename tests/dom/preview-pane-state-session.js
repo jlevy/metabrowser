@@ -390,6 +390,8 @@ const shellSource = [
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   // Showing Files resumes a root summary that waited; none of these states asks for one.
   appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
+  // Nor does any of them group the Files tree.
+  appDeclaration(/^var _groupedRefresh = null;$/m, "Group by section refresh"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(

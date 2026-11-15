@@ -417,32 +417,37 @@ def test_dropdown_rows_are_arrow_key_traversable() -> None:
     assert ".chip-menu-item" in block
 
 
-def test_all_three_dimensions_are_dropdowns() -> None:
-    """Age, type, and size are dropdowns rather than segmented ramps:
-    six joined segments each is a lot of pill for a 300px pane."""
-
+def _render_nav_filter_bar() -> str:
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
-    assert fn_block.count("fc.menuGroupHtml(") == 3
-    # Age and size pick one; type picks several.
-    assert fn_block.count('select: "one"') == 2
-    for label in ('"Any age"', '"Any type"', '"Any size"'):
+    return js[fn_start : js.index("\n}\n", fn_start)]
+
+
+def test_group_by_and_the_three_filters_are_dropdowns() -> None:
+    """Group by, age, type, and size are dropdowns rather than segmented ramps:
+    six joined segments each is a lot of pill for a 300px pane."""
+
+    fn_block = _render_nav_filter_bar()
+    assert fn_block.count("fc.menuGroupHtml(") == 4
+    # Group by, age, and size pick one; type picks several.
+    assert fn_block.count('select: "one"') == 3
+    for label in ('"No grouping"', '"Any age"', '"Any type"', '"Any size"'):
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_age_and_type_ride_the_always_visible_row() -> None:
-    """Size and gitignored visibility sit behind the disclosure; the
-    two dimensions people reach for do not."""
+def test_group_by_rides_the_row_and_the_filters_sit_in_the_drawer() -> None:
+    """Group by is the row's one control: it removes nothing, so it needs no drawer.
+    The three filters and Show ignored sit behind the disclosure, whose badge counts
+    the ones set (mb-sogv)."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
-    drawer_at = fn_block.index('class="filter-drawer"')
-    assert fn_block.index('"Any age"') < drawer_at
-    assert fn_block.index('"Any type"') < drawer_at
-    assert fn_block.index('"Any size"') > drawer_at
-    assert fn_block.index('"Show ignored"') > drawer_at
+    fn_block = _render_nav_filter_bar()
+    main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
+    drawer = fn_block[fn_block.index("var drawer =") :]
+    assert 'key: "group"' in main
+    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
+        assert menu not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
+    assert '"Show ignored"' in drawer
 
 
 def test_option_lists_omit_the_any_value() -> None:
@@ -493,7 +498,7 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     fn_start = js.index("function renderNavFilterBar()")
     fn_block = js[fn_start : fn_start + 3000]
     assert "icon: ICONS.toggle" in fn_block
-    assert '"Hide more filters" : "Show more filters"' in fn_block
+    assert '"Hide filters" : "Show filters"' in fn_block
     assert "active)" in fn_block
 
     controls = _read("filter-controls.js")
@@ -683,10 +688,12 @@ def test_type_presets_name_registry_display_groups() -> None:
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
+    # Documentation first, the order every surface lists the groups in
+    # (FILE_TYPE_GROUP_DISPLAY_ORDER), not the File Rollup Format's registry order.
     labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
     assert labels == [
-        "Code",
         "Documentation",
+        "Code",
         "Data",
         "Archives",
         "Media",
@@ -939,7 +946,7 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     render_block = js[render_start : render_start + 2200]
     assert "presetSections: filterTypePresetSections()" in render_block
     assert "function filterTypeFamilies(groupId)" in js
-    assert "window.MetabrowserFileTypeTaxonomy?.groups" in js
+    assert "window.MetabrowserFileTypeTaxonomy?.displayGroups" in js
     assert "_typeFamilyTally" in js
 
 
@@ -1006,7 +1013,7 @@ def test_leaving_recency_refetches_the_authoritative_tree() -> None:
 
     js = _read("app.js")
     start = js.index("function onFilterStateChange(state)")
-    block = js[start : start + 2200]
+    block = js[start : js.index("\n}\n", start)]
     assert "loadTree();" in block
     assert "renderFilesFromTree()" not in block
 
@@ -1029,7 +1036,7 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
 
 def _provider_tree_source() -> str:
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
-    start = py.index("async def _read_tree_from_provider(")
+    start = py.index("async def _tree_payload_from_provider(")
     return py[start : py.index("\nasync def ", start + 1)]
 
 
@@ -1142,9 +1149,11 @@ def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> N
 
     # A subtree cached under a wider filter is not an answer for a narrower
     # one, so the cache key carries the selection.
-    key_start = js.index("function subtreeCacheKey(path)")
+    # Inside a Group by section the key is that group's request instead.
+    key_start = js.index("function subtreeCacheKey(path, group)")
     key = js[key_start : js.index("}", js.index("return filter", key_start))]
     assert "treeFilterKey()" in key
+    assert 'treeUrl("", [], group)' in key
 
     # And the tree source never re-decides a folder: it judges leaves only,
     # which is all that rows arriving live can get wrong.

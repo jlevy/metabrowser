@@ -49,6 +49,7 @@ import sys
 import time
 from collections.abc import AsyncIterator, Mapping, MutableMapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from html import escape as html_escape
 from pathlib import Path
 from stat import S_ISREG
@@ -247,6 +248,13 @@ from metabrowser.tree_filter import (
     parse_recency,
     parse_size_floor,
     parse_types,
+)
+from metabrowser.tree_groups import (
+    TreeGroup,
+    age_band,
+    groups_for,
+    parse_group,
+    parse_group_by,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -2266,7 +2274,8 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
     filename tokens (repeated or comma-separated), ``min_size`` is a byte
     floor, and ``include_ignored=0`` drops gitignored entries. An absent or
     unrecognized value means "no constraint", so an older client sees more
-    rather than a 400.
+    rather than a 400. `group` names one Group by group, `<by>:<id>`
+    (metabrowser/tree_groups.py), which narrows the tree as one more filter.
     """
 
     return TreeFilter(
@@ -2274,7 +2283,40 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
         types=parse_types(_query_values(request, "types")),
         min_size=parse_size_floor(request.query_params.get("min_size", "")),
         include_ignored=request.query_params.get("include_ignored", "1") not in ("0", "false"),
+        group=parse_group(request.query_params.get("group", "")),
     )
+
+
+def _tree_group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """One group of a grouped tree: its name, what it holds, and its tree."""
+
+    filtered = payload.get("filtered") or {}
+    return {
+        "id": group.id,
+        "label": group.label,
+        "files": filtered.get("files", 0),
+        "size": filtered.get("size", 0),
+        "entries": filtered.get("entries", 0),
+        "tree": payload.get("tree", []),
+    }
+
+
+def _tree_groups_payload(
+    group_by: str, groups: list[dict[str, Any]], envelope: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """`/api/tree?group_by=`: the groups that hold anything after the filter, in display
+    order, each with its counts and its tree, under the envelope one group's tree carries.
+    """
+
+    source = envelope or {}
+    return {
+        "root": source.get("root"),
+        "group_by": group_by,
+        # A group the filter leaves empty is not shown (metabrowser/tree_groups.py).
+        "groups": [group for group in groups if group["entries"] > 0],
+        "tally_cache_status": source.get("tally_cache_status"),
+        "tally_cache_max_files": source.get("tally_cache_max_files"),
+    }
 
 
 def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFilter:
@@ -2282,15 +2324,26 @@ def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFil
 
     extensions = tuple(token for token in tree_filter.types if token.startswith("."))
     filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
+    group = tree_filter.group
+    recency: float | None = (
+        float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
+    )
+    older_than: float | None = None
+    if group is not None and group.by == "age":
+        # An age group is a band, intersected with the recency window
+        # (metabrowser/tree_groups.py, `age_band`).
+        band = age_band(group, tree_filter.recency_seconds)
+        recency = band.within_seconds
+        older_than = band.older_than_seconds
     return InventoryFilter(
         extensions=extensions,
         filenames=filenames,
-        recency_seconds=(
-            float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
-        ),
+        recency_seconds=recency,
+        older_than_seconds=older_than,
+        type_group=group.id if group is not None and group.by == "type" else None,
         minimum_size=tree_filter.min_size or None,
         include_ignored=tree_filter.include_ignored,
-        as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+        as_of_ns=as_of_ns if recency is not None or older_than is not None else None,
     )
 
 
@@ -2322,6 +2375,23 @@ async def _read_tree_from_provider(
     remaining_depth: int,
     tree_filter: TreeFilter,
 ) -> JSONResponse:
+    payload = await _tree_payload_from_provider(
+        request, subpath=subpath, remaining_depth=remaining_depth, tree_filter=tree_filter
+    )
+    if payload is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(payload)
+
+
+async def _tree_payload_from_provider(
+    request: Request,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+) -> dict[str, Any] | None:
+    """One /api/tree answer from the inventory, or None when *subpath* is no folder."""
+
     runtime = _inventory_runtime_for(request)
     as_of_ns = time.time_ns()
     companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
@@ -2400,7 +2470,7 @@ async def _read_tree_from_provider(
         parent.presence is EntryPresence.PRESENT
         and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
     ):
-        return JSONResponse({"error": "Not found"}, status_code=404)
+        return None
 
     tree_entries = ()
     filtered_projection: FilteredTreeProjection | None = None
@@ -2433,34 +2503,32 @@ async def _read_tree_from_provider(
         complete=state.coverage.complete,
         budget=any(issue.code.value == "resource_budget" for issue in state.issues),
     )
-    return JSONResponse(
-        {
-            "root": str(root_dir),
-            "tree": tree,
-            "filtered": (
-                {
-                    "files": filtered_projection.matching_files,
-                    "size": filtered_projection.matching_bytes,
-                    "entries": filtered_projection.matching_leaves,
-                }
-                if filtered_projection is not None
-                else None
-            ),
-            "tally_cache_status": status,
-            "tally_cache_max_files": runtime.config.budget.max_files,
-            "summary": navigation["summary"] if navigation is not None else None,
-            "file_type_registry": (
-                navigation["file_type_registry"] if navigation is not None else None
-            ),
-            "extensions": navigation["extensions"] if navigation is not None else None,
-            "canonical_extensions": (
-                navigation["canonical_extensions"] if navigation is not None else None
-            ),
-            "type_families": navigation["type_families"] if navigation is not None else None,
-            "type_presets": navigation["type_presets"] if navigation is not None else None,
-            "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
-        }
-    )
+    return {
+        "root": str(root_dir),
+        "tree": tree,
+        "filtered": (
+            {
+                "files": filtered_projection.matching_files,
+                "size": filtered_projection.matching_bytes,
+                "entries": filtered_projection.matching_leaves,
+            }
+            if filtered_projection is not None
+            else None
+        ),
+        "tally_cache_status": status,
+        "tally_cache_max_files": runtime.config.budget.max_files,
+        "summary": navigation["summary"] if navigation is not None else None,
+        "file_type_registry": (
+            navigation["file_type_registry"] if navigation is not None else None
+        ),
+        "extensions": navigation["extensions"] if navigation is not None else None,
+        "canonical_extensions": (
+            navigation["canonical_extensions"] if navigation is not None else None
+        ),
+        "type_families": navigation["type_families"] if navigation is not None else None,
+        "type_presets": navigation["type_presets"] if navigation is not None else None,
+        "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
+    }
 
 
 @log_async_calls()
@@ -2468,24 +2536,53 @@ async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
     tree_filter = tree_filter_from_request(request)
+    # `group_by` without `group` asks for the groups themselves (`_tree_groups_payload`).
+    group_by = (
+        parse_group_by(request.query_params.get("group_by", ""))
+        if tree_filter.group is None
+        else None
+    )
     require_source_capability("navigation")
     require_source_capability("index")
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
     require_filter_capabilities(
-        recency=bool(tree_filter.recency_seconds),
+        # An age group is a recency band: a source without mtimes has none to offer.
+        recency=bool(tree_filter.recency_seconds)
+        or group_by == "age"
+        or (tree_filter.group is not None and tree_filter.group.by == "age"),
         # Ignore is absent on a pin: unignored equals total, so hiding
         # ignored files is a no-op rather than unsupported_for_subject.
         include_ignored=True if git_pin else tree_filter.include_ignored,
     )
     if pin is not None:
-        from metabrowser.git.content_routes import git_revision_tree
+        from metabrowser.git.content_routes import git_revision_tree, git_revision_tree_groups
 
+        if group_by is not None:
+            return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if group_by is not None:
+        groups = []
+        envelope: dict[str, Any] | None = None
+        for group in groups_for(group_by):
+            if group.by == "age" and age_band(group, tree_filter.recency_seconds).empty:
+                continue
+            payload = await _tree_payload_from_provider(
+                request,
+                subpath=subpath,
+                remaining_depth=remaining_depth,
+                tree_filter=replace(tree_filter, group=group),
+            )
+            if payload is None:
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            envelope = envelope or payload
+            groups.append(_tree_group_row(group, payload))
+        return JSONResponse(_tree_groups_payload(group_by, groups, envelope))
 
     return await _read_tree_from_provider(
         request,

@@ -106,11 +106,16 @@ $ node tests/dom/source-kind-session.js
         "catalogFeedCanStart": false
       },
       "navFilterControls": [
+        "group",
+        "drawer",
         "recency",
         "types",
-        "drawer",
         "size",
         "showIgnored"
+      ],
+      "groupByOptions": [
+        "age",
+        "type"
       ]
     }
   },
@@ -190,9 +195,13 @@ $ node tests/dom/source-kind-session.js
         "catalogFeedCanStart": true
       },
       "navFilterControls": [
-        "types",
+        "group",
         "drawer",
+        "types",
         "size"
+      ],
+      "groupByOptions": [
+        "type"
       ]
     }
   }

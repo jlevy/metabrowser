@@ -69,7 +69,7 @@ $ node tests/dom/key-reveal-session.js
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -78,7 +78,7 @@ $ node tests/dom/key-reveal-session.js
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
-      "step": "2 opens the file type filter and focuses its checked row",
+      "step": "3 opens the file type filter and focuses its checked row",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -89,7 +89,7 @@ $ node tests/dom/key-reveal-session.js
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -97,7 +97,7 @@ $ node tests/dom/key-reveal-session.js
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
       "pressed": {
-        "key": "2",
+        "key": "3",
         "handled": true
       },
       "focus": {
@@ -120,7 +120,7 @@ $ node tests/dom/key-reveal-session.js
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -148,7 +148,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -174,7 +174,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -200,7 +200,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -226,7 +226,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","Open parent folder"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -247,7 +247,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","Open parent folder"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -268,7 +268,7 @@ $ node tests/dom/key-reveal-session.js
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -292,7 +292,7 @@ $ node tests/dom/key-reveal-session.js
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -315,7 +315,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -336,7 +336,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -362,7 +362,7 @@ $ node tests/dom/key-reveal-session.js
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -401,7 +401,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -422,11 +422,12 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["U","beside, in file-header"],
         ["V","Document tab"],
         ["S","Source tab"]
@@ -450,11 +451,12 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["U","beside, in file-header"],
         ["V","Tree tab"],
         ["S","Source tab"]
@@ -483,7 +485,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -504,7 +506,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -544,7 +546,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -565,7 +567,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -586,11 +588,12 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["U","beside, in file-header"],
         ["V","Document tab"],
         ["S","Source tab"]
@@ -614,7 +617,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -642,7 +645,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -671,11 +674,12 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["U","beside, in file-header"],
         ["V","Document tab"],
         ["S","Source tab"]
@@ -717,11 +721,12 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["U","beside, in file-header"],
         ["V","Document tab"],
         ["S","Source tab"]
@@ -752,7 +757,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -780,7 +785,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -808,7 +813,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -863,7 +868,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -884,8 +889,8 @@ $ node tests/dom/key-reveal-session.js gestures
 `H` and `F` under a held Shift, a commit view’s Copy revision with no key, Commits
 registered while the registry is down, Pulls drawn before Git discovery and the tab
 order Files, Pulls, Commits, the Preview tab’s `V` with `P` left to the stack, a pull
-request in and outside a stack, a mirror’s pin with its branch switcher and its one
-filter numbered 1, and Help’s one positional row for the numbers.
+request in and outside a stack, a mirror’s pin with its branch switcher, Group by
+numbered 1 and its one filter 2, and Help’s one positional row for the numbers.
 
 ```console
 $ node tests/dom/key-reveal-session.js tabs
@@ -905,7 +910,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -946,7 +951,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "did": ["address /view/"]
     },
     {
-      "step": "F during the reveal shows the filter bar, and its filters gain 1 and 2",
+      "step": "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
       "reveal": "revealed",
       "rootMarked": true,
       "keys": [
@@ -965,12 +970,13 @@ $ node tests/dom/key-reveal-session.js tabs
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [
         ["F","Files tab"],
         ["H","Commits tab"],
-        ["1","Modified within"],
-        ["2","File type"],
+        ["1","Group by"],
+        ["2","Modified within"],
+        ["3","File type"],
         ["O","Overview tab"],
         ["M","Treemap tab"]
       ],
@@ -1006,7 +1012,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["End","tree.last",null],
         ["Enter or Space","tree.activate",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -1104,7 +1110,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -1131,7 +1137,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["M","view-tabs.m","Treemap tab"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -1155,7 +1161,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["U","header.parent","/ crumb"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Modified within","File type"],
+      "numbers": ["Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -1278,7 +1284,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "did": ["moved toward its base"]
     },
     {
-      "step": "a mirror's pin has W, and its one filter is 1",
+      "step": "a mirror's pin has W, Group by is 1, and its one filter is 2",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -1290,7 +1296,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["W","source.switch-ref","Branch: topic"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["File type"],
+      "numbers": ["Group by","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -1301,7 +1307,7 @@ $ node tests/dom/key-reveal-session.js tabs
         "key": "w",
         "handled": true
       },
-      "two": false,
+      "three": false,
       "did": ["opened the branch list and focused its filter"]
     },
     {
@@ -1317,10 +1323,11 @@ $ node tests/dom/key-reveal-session.js tabs
         ["W","source.switch-ref","Branch: topic"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["File type"],
+      "numbers": ["Group by","File type"],
       "badges": [
         ["F","Files tab"],
-        ["1","File type"],
+        ["1","Group by"],
+        ["2","File type"],
         ["W","Branch: topic"],
         ["O","Overview tab"],
         ["M","Treemap tab"]

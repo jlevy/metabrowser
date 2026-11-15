@@ -966,6 +966,11 @@ class InventoryFilter:
     filenames: tuple[str, ...] = ()
     type_families: tuple[str, ...] = ()
     recency_seconds: float | None = None
+    # Only files modified at least this long before `as_of_ns`: the far edge of an age band.
+    older_than_seconds: float | None = None
+    # Only files the registry classifies into this display group, `other` taking every file
+    # it does not recognize.
+    type_group: str | None = None
     minimum_size: int | None = None
     include_ignored: bool = True
     as_of_ns: int | None = None
@@ -973,9 +978,13 @@ class InventoryFilter:
     def __post_init__(self) -> None:
         if self.recency_seconds is not None and self.recency_seconds <= 0:
             raise ValueError("recency_seconds must be positive")
+        if self.older_than_seconds is not None and self.older_than_seconds <= 0:
+            raise ValueError("older_than_seconds must be positive")
         if self.minimum_size is not None:
             _require_nonnegative(self.minimum_size, "minimum_size")
-        if self.recency_seconds is not None and self.as_of_ns is None:
+        if (
+            self.recency_seconds is not None or self.older_than_seconds is not None
+        ) and self.as_of_ns is None:
             raise ValueError("a recency filter requires as_of_ns")
         if self.as_of_ns is not None:
             _require_positive(self.as_of_ns, "as_of_ns")

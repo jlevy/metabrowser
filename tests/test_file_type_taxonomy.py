@@ -50,7 +50,8 @@ def test_unknown_and_ambiguous_extensions_remain_raw() -> None:
 
 def test_catalog_generates_presets_for_every_populated_group() -> None:
     presets = {preset["id"]: preset for preset in FILTER_TYPE_PRESETS}
-    assert tuple(presets) == ("code", "docs", "data", "archives", "media")
+    # Display order, Documentation first (FILE_TYPE_GROUP_DISPLAY_ORDER), not the registry's.
+    assert tuple(presets) == ("docs", "code", "data", "archives", "media")
     assert {".js", ".mjs", ".cjs", ".jsx", "makefile"} <= set(presets["code"]["values"])
     assert {".yaml", ".yml", ".db"} <= set(presets["data"]["values"])
     # A preset with no selectable values would render as a filter that does nothing.
@@ -210,3 +211,21 @@ def test_typescript_paints_a_saturated_yellow_clear_of_its_neighbours(theme: str
         if family_id != "typescript"
     )
     assert gap >= TYPESCRIPT_NEIGHBOUR_FLOOR, f"{theme}: {gap:.4f} from {nearest}"
+
+
+def test_groups_are_listed_documentation_first_and_the_registry_keeps_its_order() -> None:
+    """The order a reader sees groups in is presentation, kept in one place; the
+    registry's own order is the File Rollup Format's, which its fingerprint covers."""
+
+    from metabrowser.file_type_filters import FILE_TYPE_GROUP_DISPLAY_ORDER
+    from metabrowser.file_type_registry import load_file_type_registry
+
+    assert FILE_TYPE_GROUP_DISPLAY_ORDER == ("docs", "code", "data", "archives", "media", "other")
+    assert [group.id for group in load_file_type_registry().groups] == [
+        "code",
+        "docs",
+        "data",
+        "archives",
+        "media",
+        "other",
+    ]

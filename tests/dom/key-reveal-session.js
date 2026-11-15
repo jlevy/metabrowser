@@ -457,9 +457,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   }
 
   /**
-   * renderNavFilterBar: the two dropdowns, from the production filter controls, so the
-   * triggers, panels, and checked rows the filter numbers reach are that module's markup.
-   * A pin has no modified-within filter. The options are a stand-in for the tallies.
+   * renderNavFilterBar: Group by on the row and, in the open drawer, the two filter
+   * dropdowns, from the production filter controls, so the triggers, panels, and checked
+   * rows the filter numbers reach are that module's markup. A pin has no modified-within
+   * filter. The options are a stand-in for the tallies.
    */
   function renderFilters() {
     const controls = context.metabrowser.filterControls;
@@ -491,7 +492,24 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       ],
       value: null,
     });
-    filterBar.innerHTML = `<div class="nav-filter-bar-main">${recency}${types}</div>`;
+    const group = controls.menuGroupHtml({
+      anyLabel: "No grouping",
+      anyValue: "none",
+      key: "group",
+      label: "Group by",
+      menuId: "filter-group-menu",
+      open: filterOpenMenu === "group",
+      options: [
+        { label: "Age", value: "age" },
+        { label: "File type", value: "type" },
+      ],
+      select: "one",
+      value: "none",
+    });
+    filterBar.innerHTML =
+      `<div class="nav-filter-bar-main">${group}</div>` +
+      `<div class="filter-drawer" data-open="true"><div class="filter-drawer-row">` +
+      `${recency}${types}</div></div>`;
     keymap?.syncFilters();
   }
 
@@ -964,10 +982,11 @@ const PARTS = {
     steps.push(plain.record("a plain folder shows Files only"));
     // The trigger's own path opens the menu, and focus goes to its checked row, so the
     // menu's arrow keys work next; Escape closes it through the same path.
-    // The filters are situational: Any age is 1 and Any type is 2, by their place.
+    // The filters are situational, numbered by their place: Group by is 1 on the row, and
+    // in the open drawer Any age is 2 and Any type is 3.
     steps.push(
-      plain.record("2 opens the file type filter and focuses its checked row", {
-        pressed: { key: "2", handled: plain.press("2") },
+      plain.record("3 opens the file type filter and focuses its checked row", {
+        pressed: { key: "3", handled: plain.press("3") },
         focus: plain.menuFocus(),
       }),
     );
@@ -1223,7 +1242,7 @@ const PARTS = {
       ["a tree row", () => page.rows[0].focus()],
       ["Quick Search's field", () => page.press("t")],
       ["Help", () => page.press("?", { shiftKey: true })],
-      ["the file type filter's open menu", () => page.press("2")],
+      ["the file type filter's open menu", () => page.press("3")],
     ];
     const steps = [];
     for (const [place, enter] of places) {
@@ -1293,11 +1312,15 @@ const PARTS = {
     );
     const toFiles = repo.press("F", { shiftKey: true });
     steps.push(
-      repo.record("F during the reveal shows the filter bar, and its filters gain 1 and 2", {
-        pressed: { key: "f", handled: toFiles },
-        active: repo.mainTabs.active(),
-        focus: repo.document.activeElement.dataset.path ?? repo.document.activeElement.textContent,
-      }),
+      repo.record(
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
+        {
+          pressed: { key: "f", handled: toFiles },
+          active: repo.mainTabs.active(),
+          focus:
+            repo.document.activeElement.dataset.path ?? repo.document.activeElement.textContent,
+        },
+      ),
     );
     repo.shiftUp();
     steps.push(repo.record("releasing Shift ends the reveal"));
@@ -1426,9 +1449,9 @@ const PARTS = {
     pinned.build();
     pinned.mountSelector();
     steps.push(
-      pinned.record("a mirror's pin has W, and its one filter is 1", {
+      pinned.record("a mirror's pin has W, Group by is 1, and its one filter is 2", {
         pressed: { key: "w", handled: pinned.press("w") },
-        two: pinned.press("2"),
+        three: pinned.press("3"),
       }),
     );
     pinned.press("Escape");

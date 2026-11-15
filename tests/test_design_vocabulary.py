@@ -505,12 +505,14 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     assert "transition: none" in instant, "the instant disclosure travels"
     assert styles.index(".tree-children-instant {") > styles.index(".tree-children {")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    reveal = app[app.index("async function revealInTree(") :]
+    # revealInTree reveals within a scope (the panel, or a Group by section) through
+    # revealWithin, which opens the folders.
+    reveal = app[app.index("async function revealWithin(") :]
     reveal = reveal[: reveal.index("\n}\n")]
     assert "setFolderExpanded(folder, true, { instant })" in reveal, (
         "navigation's reveal of a path animates the folders it opens"
     )
-    assert "instant = true }" in reveal.splitlines()[0], "a reveal the reader caused travels"
+    assert "instant = true }" in reveal[: reveal.index(") {")], "a reveal the reader caused travels"
     # A landing's reveal answers no input, and its folders travelling moved the tree less.
     landing = app[app.index("    revealInTree(initialPath, {") :]
     assert "instant: false" in landing[: landing.index("});")]

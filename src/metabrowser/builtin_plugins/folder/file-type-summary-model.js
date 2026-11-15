@@ -487,7 +487,7 @@ function buildRegistryRows(
   const rawGroups = new Map(envelope.groups.map((group) => [group.id, group]));
   const familyDescriptors = new Map(runtime.families.map((family) => [family.id, family]));
   const rows = [];
-  for (const group of runtime.groups) {
+  for (const group of runtime.displayGroups) {
     const rawGroup = rawGroups.get(group.id);
     if (!rawGroup) {
       continue;
@@ -646,7 +646,7 @@ function buildRegistryRows(
   }
   const populatedRows = rows.filter((row) => row.files !== 0 || row.bytes !== 0);
   const bounded = [];
-  for (const group of runtime.groups) {
+  for (const group of runtime.displayGroups) {
     bounded.push(
       ...boundedRows(
         populatedRows.filter((row) => row.category === group.id),
@@ -780,7 +780,7 @@ export function buildFileTypeSummaryModel(
     selectedMetric,
   );
   const groupDescriptors = Object.freeze(
-    runtime.groups.map((group) => Object.freeze({ id: group.id, label: group.label })),
+    runtime.displayGroups.map((group) => Object.freeze({ id: group.id, label: group.label })),
   );
 
   const filesText = formatters.formatFileCount(population.files);

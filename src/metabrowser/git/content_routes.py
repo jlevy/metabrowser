@@ -74,7 +74,7 @@ import logging
 import mimetypes
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -128,6 +128,7 @@ from metabrowser.settings import (
 from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, UnsupportedSourceCapabilityError
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
+from metabrowser.tree_groups import GroupBy, groups_for
 from metabrowser.view_routes import decode_view_logical_path
 
 log = logging.getLogger(__name__)
@@ -363,7 +364,31 @@ def _matches_types(
 
 
 def _git_filter_active(tree_filter: TreeFilter) -> bool:
-    return bool(tree_filter.types or tree_filter.min_size)
+    return bool(tree_filter.types or tree_filter.min_size or tree_filter.group is not None)
+
+
+def _git_type_group(name: str, ext: str, by_extension: dict[str, str]) -> str:
+    """The display group a blob classifies into, as the inventory provider decides it: by
+    its name when the registry knows the name, else by its extension, once per extension."""
+
+    registry = load_file_type_registry()
+    if registry.classifies_by_name(name):
+        return registry.classify(name, ext).group_id
+    group = by_extension.get(ext)
+    if group is None:
+        group = registry.classify("", ext).group_id
+        by_extension[ext] = group
+    return group
+
+
+def _git_group_keeps(name: str, ext: str, tree_filter: TreeFilter, memo: dict[str, str]) -> bool:
+    """Whether a blob is a member of the filter's Group by group. A Git revision has no
+    mtime, so only type groups reach here (`require_filter_capabilities`)."""
+
+    group = tree_filter.group
+    if group is None:
+        return True
+    return group.by == "type" and _git_type_group(name, ext, memo) == group.id
 
 
 def _blob_display_name(rel: bytes) -> str:
@@ -399,6 +424,7 @@ def _git_filter_tallies(
     suffix_tokens = tuple(token for token in ext_tokens if token in semantic)
     ext_verdicts: dict[str, bool] = {}
     floor = tree_filter.min_size
+    group_memo: dict[str, str] = {}
     matches = bytearray(len(index.blobs))
     for position, ((rel, oid), ext) in enumerate(zip(index.blobs, exts, strict=True)):
         keep = True
@@ -412,6 +438,8 @@ def _git_filter_tallies(
             keep = verdict or (
                 bool(name_tokens) and ascii_casefold(_blob_display_name(rel)) in name_tokens
             )
+        if keep and tree_filter.group is not None:
+            keep = _git_group_keeps(_blob_display_name(rel), ext, tree_filter, group_memo)
         if keep and floor:
             size = index.sizes.get(oid)
             keep = size is not None and size >= floor
@@ -446,7 +474,13 @@ async def _git_tally_view(
         return _GitTallyView(index, index.tallies)
     exts = await source.derived(("blob-exts", tree_oid), lambda: _git_blob_exts(index))
     tallies = await source.derived(
-        ("filter-tallies", tree_oid, tree_filter.types, tree_filter.min_size),
+        (
+            "filter-tallies",
+            tree_oid,
+            tree_filter.types,
+            tree_filter.min_size,
+            tree_filter.group.key if tree_filter.group is not None else None,
+        ),
         lambda: _git_filter_tallies(index, exts, tree_filter, semantic),
     )
     return _GitTallyView(index, tallies)
@@ -470,6 +504,10 @@ def _git_entry_visible(
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1])
         return view.tally(prefix).total_files > 0
     if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
+        return False
+    if not _git_group_keeps(
+        _display_basename(entry.path), _filter_tail_ext(entry.path), tree_filter, {}
+    ):
         return False
     if tree_filter.min_size:
         return _passes_min_size(entry, tree_filter.min_size)
@@ -1152,15 +1190,51 @@ async def git_revision_tree(
 ) -> JSONResponse:
     """List one Git tree. ``entries`` are Git facts; ``tree`` is the SPA nav."""
 
+    payload, status = await _git_revision_tree_payload(request, subject, tree_filter)
+    return _json(payload, status_code=status)
+
+
+@_typed_git_failures
+async def git_revision_tree_groups(
+    request: Request,
+    subject: GitRevisionSubject,
+    tree_filter: TreeFilter,
+    group_by: GroupBy,
+) -> JSONResponse:
+    """`group_by` on a Git revision: each group's tree, as `git_revision_tree` lists it."""
+
+    from metabrowser.server import _tree_group_row, _tree_groups_payload
+
+    groups: list[dict[str, Any]] = []
+    envelope: dict[str, Any] | None = None
+    for group in groups_for(group_by):
+        payload, status = await _git_revision_tree_payload(
+            request, subject, replace(tree_filter, group=group)
+        )
+        if status != 200:
+            return _json(payload, status_code=status)
+        envelope = envelope or payload
+        groups.append(_tree_group_row(group, payload))
+    grouped = _tree_groups_payload(group_by, groups, envelope)
+    # A revision has no served root folder; its envelope names the path it lists.
+    grouped["root"] = envelope.get("display") if envelope is not None else None
+    return _json(grouped)
+
+
+async def _git_revision_tree_payload(
+    request: Request,
+    subject: GitRevisionSubject,
+    tree_filter: TreeFilter,
+) -> tuple[dict[str, Any], int]:
     remaining_depth = _tree_depth_from_query(request.query_params.get("depth", ""))
     try:
         path = _git_path_from_query(request)
     except GitPathError:
-        return _json(_NOT_FOUND, status_code=404)
+        return dict(_NOT_FOUND), 404
     try:
         located = await subject.tree_source.resolve_path(path)
         if located is None or not located.is_tree:
-            return _json(_NOT_FOUND, status_code=404)
+            return dict(_NOT_FOUND), 404
         source = subject.tree_source
         index = await source.blob_index(path)
         semantic = _semantic_extension_tokens(tree_filter.types)
@@ -1187,7 +1261,7 @@ async def git_revision_tree(
             )
         root_index = index if not path.segments else await source.blob_index()
     except GitObjectUnavailableError as exc:
-        return _json(_object_unavailable_payload(exc), status_code=404)
+        return (_object_unavailable_payload(exc), 404)
     assert located is not None
     chrome = await _git_root_index_chrome(subject, root_index)
     filtered = _git_tree_filtered(view, tree_filter)
@@ -1203,7 +1277,7 @@ async def git_revision_tree(
     }
     if filtered is not None:
         payload["filtered"] = filtered
-    return _json(payload)
+    return payload, 200
 
 
 async def _git_root_index_chrome(

@@ -9,8 +9,12 @@
 // prints: one JSON line of measurements.
 //
 // What it measures is layout, which no browserless DOM computes: where a menu's group
-// heading starts against its rows, and how tall an open menu is drawn against its rows and
-// the window (docs/design-system.md, "Groups in a Menu" and "Menu Height"). The pure rule,
+// heading starts against its rows, how tall an open menu is drawn against its rows and
+// the window, which controls the bar's row and closed drawer hold and which take keyboard
+// numbers, and where a Group by section's heading starts against its tree
+// (docs/design-system.md, "Groups in a Menu", "Menu Height", and "Grouping the Files
+// Tree"). The requests and sections themselves run browserlessly in
+// tests/dom/files-group-by-session.js. The pure rule,
 // `menuMaxHeight`, is checked without a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -129,6 +133,45 @@ const MEASURE = `(key) => {
   };
 }`;
 
+// The bar's row and drawer: which controls each holds.
+const ROW = `(() => ({
+  row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
+    child.matches(".chip-menu") ? "menu:" + child.dataset.chipMenu : child.className),
+  drawer: [...document.querySelectorAll("#filter-drawer [data-chip-menu-toggle], #filter-drawer [data-chip-check]")]
+    .map((control) => control.dataset.chipMenuToggle || control.dataset.chipCheck),
+  drawerOpen: document.getElementById("filter-drawer").dataset.open,
+  drawerInert: document.getElementById("filter-drawer").inert,
+}))()`;
+
+// Which filter menu is open, and whether the drawer is.
+const OPEN_MENU = `({
+  menu: document.querySelector('.chip-menu[aria-expanded="true"]')?.dataset.chipMenu ?? null,
+  drawerOpen: document.getElementById("filter-drawer").dataset.open,
+})`;
+
+// Each Group by section: its heading against its rows, and how the heading names it.
+const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) => {
+  const heading = section.querySelector(":scope > .tree-section-heading");
+  const label = heading.querySelector(".tree-section-label");
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const row = section.querySelector(".tree-item");
+  const box = row.getBoundingClientRect();
+  const style = getComputedStyle(row);
+  const tree = section.querySelector(":scope > [role='tree']");
+  return {
+    key: section.dataset.treeGroup,
+    label: label.textContent,
+    count: heading.querySelector(".tree-section-count").textContent,
+    headingClasses: [...heading.classList],
+    fromRowInset: Math.round((range.getBoundingClientRect().left - box.left -
+      parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)) * 100) / 100,
+    namesItsTree: section.getAttribute("aria-labelledby") === heading.id &&
+      tree?.getAttribute("aria-labelledby") === heading.id,
+    divider: parseFloat(getComputedStyle(section).borderTopWidth),
+  };
+})`;
+
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
 
@@ -161,6 +204,25 @@ try {
     await browser.evaluate(frames);
   };
   const measure = (key) => browser.evaluate(`(${MEASURE})(${JSON.stringify(key)})`);
+  /** Press one key, as the reader does, at the page. */
+  const press = async (key) => {
+    const code = key === "Escape" ? "Escape" : `Digit${key}`;
+    const windowsVirtualKeyCode = key === "Escape" ? 27 : key.charCodeAt(0);
+    await browser.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key,
+      code,
+      windowsVirtualKeyCode,
+      ...(key === "Escape" ? {} : { text: key }),
+    });
+    await browser.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key,
+      code,
+      windowsVirtualKeyCode,
+    });
+    await browser.evaluate(frames);
+  };
 
   await viewport(TALL);
   await browser.send("Page.enable");
@@ -174,6 +236,23 @@ try {
   phase("loaded");
 
   const result = {};
+  // Group by is the row's one control; the three filters wait in the closed drawer.
+  result.row = await browser.evaluate(ROW);
+  // A number reaches what is on screen. With the drawer closed it is inert, so 1 is
+  // Group by and nothing else is numbered.
+  await press("1");
+  result.keyOneOpens = await browser.evaluate(OPEN_MENU);
+  await press("Escape");
+  await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  // Open the drawer, as its chevron does; its filters then take the numbers after Group
+  // by, so 3 is File type.
+  await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
+  await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
+  await sleep(400);
+  await press("3");
+  result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
+  await press("Escape");
+  await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   await toggle("types", true);
   result.typesTall = await measure("types");
   // The window shrinks under the open menu: it is fitted again to the room left.
@@ -199,7 +278,39 @@ try {
   await browser.evaluate(frames);
   result.ageShort = await measure("recency");
   await toggle("recency", false);
+  await viewport(TALL);
+  await browser.waitFor(`window.innerHeight === ${TALL.height}`);
   phase("measured");
+
+  // Group by File type: one section per group, headed in the menu group pattern.
+  await toggle("group", true);
+  await browser.evaluate(
+    `document.querySelector('#filter-group-menu [data-chip-value="type"]').click(), true`,
+  );
+  await browser.waitFor("document.querySelectorAll('.tree-section').length > 1", 30000);
+  await browser.evaluate(frames);
+  result.byType = await browser.evaluate(SECTIONS);
+  // A folder inside a section opens under that section's group.
+  await browser.evaluate(
+    `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').click(), true`,
+  );
+  await browser.waitFor(
+    `document.querySelectorAll('.tree-section[data-tree-group="type:code"] .tree-file').length > 3`,
+    30000,
+  );
+  result.codeFiles = await browser.evaluate(
+    `[...document.querySelectorAll('.tree-section[data-tree-group="type:code"] .tree-file')].map((row) => row.dataset.path)`,
+  );
+  // No grouping is the one tree again.
+  await toggle("group", true);
+  await browser.evaluate(
+    `document.querySelector('#filter-group-menu [data-chip-any]').click(), true`,
+  );
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  result.ungrouped = await browser.evaluate(
+    `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
+  );
+  phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
   await chrome?.close();

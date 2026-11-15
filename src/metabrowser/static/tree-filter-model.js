@@ -13,6 +13,7 @@
    * @property {string[] | null} types
    * @property {string} size
    * @property {boolean} showIgnored
+   * @property {string} [group] Group by: "none", "age", or "type"
    */
 
   /**
@@ -54,8 +55,9 @@
   /**
    * @typedef {object} RecentFilterCursor
    * @property {string} recentRequestKey
-   * @property {"recent" | "tree"} source
+   * @property {"recent" | "tree" | "grouped"} source
    * @property {string} treeRequestKey
+   * @property {string} groupedRequestKey
    * @property {string} windowKey
    */
 
@@ -69,7 +71,7 @@
 
   /**
    * @typedef {object} RecentFilterTransition
-   * @property {"apply" | "load-recent" | "load-tree" | "refetch-recent"} action
+   * @property {"apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent"} action
    * @property {RecentFilterCursor} current
    */
 
@@ -204,6 +206,148 @@
     return params.length > 0 ? `/api/tree?${params.join("&")}` : "/api/tree";
   }
 
+  // ── Group by ──────────────────────────────────────────────────
+  //
+  // Grouping splits the Files tree into groups, each a full tree of its members after the
+  // filter. The server decides which groups hold anything, their order, and their counts
+  // (`/api/tree?group_by=`, metabrowser/tree_groups.py); these functions say which
+  // requests the browser makes for them and turn the answer into sections to paint.
+
+  const GROUP_BY_VALUES = Object.freeze(["none", "age", "type"]);
+
+  /**
+   * @param {FilterSnapshot | null} state
+   * @returns {string} "none", "age", or "type"
+   */
+  function groupBy(state) {
+    const value = state?.group;
+    return value && GROUP_BY_VALUES.includes(value) ? value : "none";
+  }
+
+  /**
+   * A grouped request's filter parameters: the tree's, and the recency window, which
+   * the ungrouped tree leaves to /api/recent but a group's tree narrows by itself.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string[]}
+   */
+  function groupedRequestParams(state, sizeFloors) {
+    const params = requestParams(state, sizeFloors);
+    if (state?.recency && state.recency !== "all") {
+      params.push(`recency=${encodeURIComponent(state.recency)}`);
+    }
+    return params;
+  }
+
+  /**
+   * The identity of a grouped view: the grouping and the filter it is cut under.
+   * Empty when nothing is grouped.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   */
+  function groupedRequestKey(state, sizeFloors) {
+    const by = groupBy(state);
+    return by === "none" ? "" : groupsUrl(state, sizeFloors, 0);
+  }
+
+  /**
+   * The request for the groups themselves: which hold anything, in order, with their
+   * counts and their trees to *depth*.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {number} depth
+   */
+  function groupsUrl(state, sizeFloors, depth) {
+    const params = [
+      `group_by=${encodeURIComponent(groupBy(state))}`,
+      ...groupedRequestParams(state, sizeFloors),
+      `depth=${depth}`,
+    ];
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * One group's tree under *path*: how a folder inside a group opens.
+   *
+   * @param {string} path
+   * @param {string} groupKey `<by>:<id>`, as a section carries it
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {string[]} [extraParams]
+   */
+  function groupTreeUrl(path, groupKey, state, sizeFloors, extraParams) {
+    const params = [
+      `group=${encodeURIComponent(groupKey)}`,
+      ...groupedRequestParams(state, sizeFloors),
+      ...(extraParams || []),
+    ];
+    if (path) {
+      params.unshift(`path=${encodeURIComponent(path)}`);
+    }
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * The age group a file of *ageSeconds* falls in: the first window, shortest first, it is
+   * inside, else "older" (metabrowser/tree_groups.py draws the same bands).
+   *
+   * @param {number} ageSeconds
+   * @param {Record<string, number | null>} windows the recency windows, by key
+   * @returns {string}
+   */
+  function ageGroupFor(ageSeconds, windows) {
+    const bounded = Object.entries(windows)
+      .filter((entry) => typeof entry[1] === "number" && entry[1] > 0)
+      .sort((left, right) => Number(left[1]) - Number(right[1]));
+    const inside = bounded.find((entry) => ageSeconds <= Number(entry[1]));
+    return inside ? inside[0] : "older";
+  }
+
+  /**
+   * @typedef {object} TreeSection
+   * @property {string} key `<by>:<id>`, the group a folder inside it opens under
+   * @property {string} id
+   * @property {string} label
+   * @property {number} files
+   * @property {number} size
+   * @property {Array<Record<string, unknown>>} tree
+   */
+
+  /**
+   * The sections a grouped answer paints, in the order the server gave: one per group
+   * that holds anything. A malformed answer is refused rather than painted partly.
+   *
+   * @param {unknown} payload
+   * @returns {TreeSection[]}
+   */
+  function groupSections(payload) {
+    const answer = /** @type {{group_by?: unknown, groups?: unknown} | null} */ (payload);
+    const by = answer?.group_by;
+    if (typeof by !== "string" || !GROUP_BY_VALUES.includes(by) || by === "none") {
+      throw new Error("a grouped tree answer names no grouping");
+    }
+    if (!Array.isArray(answer?.groups)) {
+      throw new Error("a grouped tree answer has no groups");
+    }
+    return answer.groups.map((raw) => {
+      const group = /** @type {Record<string, unknown>} */ (raw);
+      if (typeof group.id !== "string" || typeof group.label !== "string") {
+        throw new Error("a group has no id or label");
+      }
+      return {
+        key: `${by}:${group.id}`,
+        id: group.id,
+        label: group.label,
+        files: typeof group.files === "number" ? group.files : 0,
+        size: typeof group.size === "number" ? group.size : 0,
+        tree: Array.isArray(group.tree) ? group.tree : [],
+      };
+    });
+  }
+
   /**
    * The exact Recent request the browser makes. Filters precede the provider's
    * ranking and cap, so a narrow selection cannot spend its page on nonmatches.
@@ -246,7 +390,10 @@
     const windowKey = state?.recency || "all";
     return {
       recentRequestKey: recentRequestKey(windowKey, limit, state, sizeFloors),
-      source: windowKey === "all" ? "tree" : "recent",
+      // Grouping takes the tree source whatever the window: each group is a filtered tree,
+      // which the recency window narrows like any other filter (groupedRequestParams).
+      source: groupBy(state) !== "none" ? "grouped" : windowKey === "all" ? "tree" : "recent",
+      groupedRequestKey: groupedRequestKey(state, sizeFloors),
       treeRequestKey: requestKey(state, sizeFloors),
       windowKey,
     };
@@ -262,6 +409,12 @@
    * @returns {RecentFilterTransition}
    */
   function recentFilterTransition(previous, current) {
+    if (current.source === "grouped") {
+      return previous?.source !== "grouped" ||
+        previous.groupedRequestKey !== current.groupedRequestKey
+        ? { action: "load-groups", current }
+        : { action: "apply", current };
+    }
     if (current.source === "recent") {
       if (previous?.source !== "recent" || previous.windowKey !== current.windowKey) {
         return { action: "load-recent", current };
@@ -1398,6 +1551,14 @@
   }
 
   window.MetabrowserTreeFilterModel = Object.freeze({
+    GROUP_BY_VALUES,
+    ageGroupFor,
+    groupBy,
+    groupSections,
+    groupTreeUrl,
+    groupedRequestKey,
+    groupedRequestParams,
+    groupsUrl,
     applyRecentChangeBatch,
     applyRecentCatalogChange,
     beginRecentRequest,

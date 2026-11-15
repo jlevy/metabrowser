@@ -4,6 +4,26 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Files tab has a Group by menu, the one control on its filter row: No grouping,
+  Age, or File type. Grouped, the tree splits into sections, each headed like a menu
+  group with the group’s file count and holding a full tree of the group’s files after
+  the filters. Age groups are disjoint bands: Live, then Past hour, Past day, Past week,
+  and Past month, each holding only what the bands before it do not, then Older.
+  File type groups are Documentation, Code, Data, Archives, Media, and Other, which
+  takes every file the type registry does not recognize; a group the filters leave empty
+  is not shown, and a Git revision offers no Age.
+  Modified within, File type, Minimum file size, and Show ignored move into the drawer
+  behind the chevron, whose badge counts the filters set; Clear keeps the grouping.
+  Holding Shift numbers Group by first, then the drawer’s filters while it is open.
+
+- Every list of file type groups puts Documentation before Code: the type filter, Group
+  by, and File Overview.
+  The type registry keeps its own order, which is the File Rollup Format’s; for plugin
+  authors, `fileTypes.displayGroups` is the order to list groups in.
+
+- `/api/tree` takes `group_by=type` or `group_by=age` for the groups, with their counts
+  and trees, and `group=<by>:<id>` for one group’s tree.
+
 - The Files tab’s File type menu shows up to 16 rows before it scrolls, where it showed
   about 8, and never reaches past the window: in a short window it stops 8 px above the
   bottom edge and scrolls inside, and it fits itself again when the window is resized.

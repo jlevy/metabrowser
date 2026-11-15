@@ -156,6 +156,23 @@ def validate_file_type_taxonomy(
 
 validate_file_type_taxonomy(FILE_TYPE_CATEGORIES, FILE_TYPE_FAMILIES)
 
+# The order the app lists the display groups in for a reader: the type filter's Groups and
+# its sections, Group by's File type groups, and File Overview. Documentation leads, ahead of
+# Code, as the user asked (2026-11-15); the rest keep the registry's order. This is
+# presentation, kept apart from the registry on purpose: a group's `order` is part of the File
+# Rollup Format's recommended definitions, which its fingerprint covers and its rollups and
+# conformance fixtures follow ("The recommended order is Code, Documentation, ...",
+# docs/project/architecture/file-rollup-format/file-rollup-format.md), so reordering there
+# would be a new registry revision for every producer and consumer of the format.
+_DISPLAY_LEADS = ("docs",)
+FILE_TYPE_GROUP_DISPLAY_ORDER: tuple[str, ...] = (
+    *_DISPLAY_LEADS,
+    *(category.id for category in FILE_TYPE_CATEGORIES if category.id not in _DISPLAY_LEADS),
+)
+if set(_DISPLAY_LEADS) - {category.id for category in FILE_TYPE_CATEGORIES}:
+    raise ValueError(f"display order names an unknown group: {_DISPLAY_LEADS!r}")
+_DISPLAY_RANK = {group_id: rank for rank, group_id in enumerate(FILE_TYPE_GROUP_DISPLAY_ORDER)}
+
 
 def family_for_extension(extension: str) -> FileTypeFamilyMatch | None:
     """Return the longest declared display-family suffix."""
@@ -210,7 +227,7 @@ def _build_filter_type_presets() -> tuple[FilterTypePreset, ...]:
             )
             + category.extra_values,
         }
-        for category in FILE_TYPE_CATEGORIES
+        for category in sorted(FILE_TYPE_CATEGORIES, key=lambda item: _DISPLAY_RANK[item.id])
         if category.id != _FALLBACK_GROUP_ID
         and (
             any(family.category == category.id for family in FILE_TYPE_FAMILIES)
@@ -262,6 +279,7 @@ __all__ = [
     "FILE_TYPE_CATEGORIES",
     "FILE_TYPE_FAMILIES",
     "FILE_TYPE_FAMILY_KEY_PREFIX",
+    "FILE_TYPE_GROUP_DISPLAY_ORDER",
     "FILE_TYPE_NO_EXTENSION_KEY",
     "FILE_TYPE_REMAINING_KEY",
     "FILTER_TYPE_PRESETS",

@@ -50,7 +50,7 @@ def test_tree_navigator_is_ordered_in_the_deferred_shell_tools() -> None:
 
 def test_renderers_share_one_tree_semantics_helper() -> None:
     source = _app()
-    assert "function treeRootHtml(content)" in source
+    assert "function treeRootHtml(content, labelledBy)" in source
     assert "function treeDomId(prefix, identity)" in source
     assert "function treeItemAttributes(options)" in source
     render = _function(source, "renderTreeNodes", 12_000)
@@ -63,7 +63,10 @@ def test_renderers_share_one_tree_semantics_helper() -> None:
         assert "data-tree-set-size" in source
     assert "treeChildGroupStartHtml(" in render
     assert 'role="group"' in _function(source, "treeChildGroupStartHtml", 800)
-    assert 'role="tree" aria-label="Files"' in source
+    # The one tree is "Files"; a Group by section's tree is named by its heading.
+    root = _function(source, "treeRootHtml", 400)
+    assert 'role="tree" ${name}' in root
+    assert "'aria-label=\"Files\"'" in root
     deferred_page = _function(source, "deferredTreePageHtml", 2000)
     assert "deferredTreePageHtml(" in render
     assert 'kind: "page"' in deferred_page
@@ -150,7 +153,9 @@ def test_every_tree_mutation_path_synchronizes_focus() -> None:
         ("loadSubtree", 3500),
         ("applyTreeFilters", 5000),
         ("setSelectedPath", 1000),
-        ("revealInTree", 2200),
+        # revealInTree reveals through revealWithin, in the panel or a Group by section.
+        ("revealWithin", 2200),
+        ("renderGroupedSections", 3000),
         ("applyCellPatch", 6500),
         ("_removeRenderedRows", 2600),
         ("_removeRenderedRowsImmediately", 1500),

@@ -524,6 +524,8 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
     fingerprint: string;
   }>;
   groups: ReadonlyArray<MetabrowserFileTypeCategory>;
+  /** The groups in the order the app lists them for a reader, Documentation first. */
+  displayGroups: ReadonlyArray<MetabrowserFileTypeCategory>;
   families: ReadonlyArray<MetabrowserFileTypeFamily>;
   kinds: ReadonlyArray<MetabrowserFileTypeKind>;
   classify(name: unknown, extension: unknown): MetabrowserFileTypeClassification;
@@ -843,6 +845,7 @@ type MetabrowserFilterOption = {
   icon?: string;
   iconClass?: string;
   label: string;
+  summary?: string;
   title?: string;
   value: string;
 };
@@ -850,10 +853,20 @@ type MetabrowserFilterOption = {
 type MetabrowserFilterSelection = string | Array<string> | null;
 
 type MetabrowserFilterSnapshot = {
+  group?: string;
   recency: string;
   showIgnored: boolean;
   size: string;
   types: Array<string> | null;
+};
+
+type MetabrowserTreeSection = {
+  files: number;
+  id: string;
+  key: string;
+  label: string;
+  size: number;
+  tree: Array<Record<string, unknown>>;
 };
 
 type MetabrowserFilterState = {
@@ -1458,8 +1471,9 @@ type MetabrowserRecentRefetch = {
 };
 
 type MetabrowserRecentFilterCursor = Readonly<{
+  groupedRequestKey: string;
   recentRequestKey: string;
-  source: "recent" | "tree";
+  source: "recent" | "tree" | "grouped";
   treeRequestKey: string;
   windowKey: string;
 }>;
@@ -1537,6 +1551,30 @@ type MetabrowserRecentContinuity = {
 };
 
 type MetabrowserTreeFilterModel = {
+  GROUP_BY_VALUES: ReadonlyArray<string>;
+  ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  groupBy(state: MetabrowserFilterSnapshot | null): string;
+  groupSections(payload: unknown): Array<MetabrowserTreeSection>;
+  groupTreeUrl(
+    path: string,
+    groupKey: string,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+    extraParams?: Array<string>,
+  ): string;
+  groupedRequestKey(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string;
+  groupedRequestParams(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): Array<string>;
+  groupsUrl(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+    depth: number,
+  ): string;
   beginRecentRequest(
     continuity: MetabrowserRecentContinuity,
     cursor: MetabrowserRecentFilterCursor,
@@ -1647,7 +1685,7 @@ type MetabrowserTreeFilterModel = {
     previous: MetabrowserRecentFilterCursor | null,
     current: MetabrowserRecentFilterCursor,
   ): Readonly<{
-    action: "apply" | "load-recent" | "load-tree" | "refetch-recent";
+    action: "apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent";
     current: MetabrowserRecentFilterCursor;
   }>;
   recentFilteredTallyText(
@@ -3207,6 +3245,7 @@ declare global {
   type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
+  type MetabrowserPublicTreeSection = MetabrowserTreeSection;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;
@@ -3417,6 +3456,7 @@ declare global {
           priority: number;
         }>;
       };
+      FILE_TYPE_GROUP_ORDER?: Array<string>;
       FILTER_TYPE_PRESETS?: Array<{
         id: string;
         label: string;

@@ -169,6 +169,13 @@ async function main() {
       { id: "documentation", label: "Documentation" },
       { id: "other", label: "Other" },
     ],
+    // The order the app lists groups in, Documentation first (file_type_filters.py,
+    // FILE_TYPE_GROUP_DISPLAY_ORDER); the segments follow it, not the registry's.
+    displayGroups: [
+      { id: "documentation", label: "Documentation" },
+      { id: "code", label: "Code" },
+      { id: "other", label: "Other" },
+    ],
     families: [
       { id: "javascript", label: "JavaScript", groupId: "code" },
       { id: "python", label: "Python", groupId: "code" },
@@ -183,14 +190,14 @@ async function main() {
     composition.files.value !== 350 ||
     composition.ignored.value !== 550 ||
     filesSegments.map((segment) => segment.label).join(",") !==
-      "JavaScript,Python,Markdown,Other types,No extension" ||
+      "Markdown,JavaScript,Python,Other types,No extension" ||
     Math.abs(filesSegments.reduce((sum, segment) => sum + segment.share, 0) - 100) >
       SHARE_TOLERANCE ||
     Math.abs(ignoredSegments.reduce((sum, segment) => sum + segment.share, 0) - 100) >
       SHARE_TOLERANCE ||
-    filesSegments[0].paletteKey !== "family:javascript" ||
-    filesSegments[0].files !== 1 ||
-    filesSegments[0].bytes !== 50 ||
+    filesSegments[1].paletteKey !== "family:javascript" ||
+    filesSegments[1].files !== 1 ||
+    filesSegments[1].bytes !== 50 ||
     ignoredSegments.some((segment) => segment.label === "No extension")
   ) {
     throw new Error(`folder total composition is incorrect: ${JSON.stringify(composition)}`);

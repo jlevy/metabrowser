@@ -1710,12 +1710,13 @@ What is numbered, in reading order, each only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Modified within (Any age), then File type (Any type); a Git pin has only File type |
+| The Files tab | Group by, then, while the filter drawer is open, Modified within (Any age) and File type (Any type); a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
-beside the Pulls tab and at `3` beside the Files tab’s two filters.
+beside the Pulls tab, at `2` beside the Files tab with its drawer closed, and at `4`
+with it open.
 
 The keys and buttons that have no key, and why: every copy control, ancillary; a changed
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
@@ -1822,9 +1823,9 @@ rebuild.
 Every key runs a named activation path, the one its control’s click runs, plus the focus
 a keyboard user needs next; no command synthesizes a click.
 A main tab’s letter opens the tab and then focuses the panel’s roving row; a view tab’s
-letter selects the tab and leaves focus where it was; a filter’s number opens its menu
-and focuses the checked row; `W` opens the branch list and focuses its filter; and `U`
-opens the parent folder.
+letter selects the tab and leaves focus where it was; a filter’s number opens its menu,
+and the drawer that holds it, and focuses the checked row; `W` opens the branch list and
+focuses its filter; and `U` opens the parent folder.
 View tab letters are commands in a permanent `view-tabs` scope below `global`, one per
 letter, held for the bar the main pane commits and never for one still staged; the
 keymap check keeps them off the shell’s letters.
@@ -2213,16 +2214,19 @@ tail rather than an arbitrary alphabetical slice.
 
 A dropdown may lead with ordered named **preset sections** — shorthands standing for the
 full set of values beneath them.
-Each nonempty section has a visible small-caps label, an ARIA-labelled group, and a
-separator between semantic tiers and before the raw list.
+Each nonempty section is a menu group ([Groups in a Menu](#groups-in-a-menu)): a
+`.group-heading` at the menu’s row inset naming a `.menu-group`, which draws the divider
+above it, and a plain separator before the raw list.
 The navigation type chooser uses broad group presets first, families grouped under the
 recommended file-type definitions’ group labels second, and canonical/raw extension rows
-last. Empty groups and empty presets are omitted; an empty preset must never alias the
-Any state. A preset is checked only when every value it names is selected, so a
-half-covered group never claims to be on, and a selection that is exactly one preset
-shows by its name rather than as `.md +21`. Other remains a family-section heading
-rather than a broad preset because its unknown extension population is open-ended and
-cannot be represented by a fixed token list.
+last. Groups are listed Documentation first
+([Grouping the Files Tree](#grouping-the-files-tree)). Empty groups and empty presets
+are omitted; an empty preset must never alias the Any state.
+A preset is checked only when every value it names is selected, so a half-covered group
+never claims to be on, and a selection that is exactly one preset shows by its name
+rather than as `.md +21`. Other remains a family-section heading rather than a broad
+preset because its unknown extension population is open-ended and cannot be represented
+by a fixed token list.
 Named families such as Log files remain selectable within that section.
 
 Selecting a semantic family adds all declared canonical suffixes; selecting a broad
@@ -2273,6 +2277,55 @@ names a value.
 Keyboard behavior follows the kind: an exclusive group is one tab stop with arrow-key
 traversal and roving `tabindex`, while each chip in an additive group is its own tab
 stop, because each is an independent control.
+
+### Grouping the Files Tree
+
+**The Files tab’s filter row holds one control, Group by; the filters sit in the drawer
+behind the chevron.** Group by splits the tree into sections and removes nothing, so it
+needs no drawer and no badge.
+The drawer holds Modified within, File type, Minimum file size, and Show ignored, and
+the chevron’s badge counts the filters set.
+Clear sits beside the chevron and undoes the filters, keeping the grouping.
+
+- **Values.** No grouping is the default and shows the one tree.
+  Age splits by modification time and File type by the registry’s display groups.
+  A Git revision has no modification times, so it offers no Age.
+- **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
+  then Past hour, Past day, Past week, and Past month, each holding only what the
+  windows before it do not, then Older.
+  File type groups are Documentation, Code, Data, Archives, Media, and Other, which
+  takes every file the registry does not recognize.
+  A group the filters leave empty is not shown.
+- **Sections.** Each section is a group heading in the menu group pattern, the group’s
+  name and its file count, over a full tree of the group’s members after the filters.
+  The heading starts on the tree’s row inset, 12 px, as a menu’s starts on its rows’,
+  and names the section and its tree; sections after the first draw the divider above
+  themselves. A folder opened inside a section lists only that group’s members.
+- **One order.** Every surface that lists the file type groups lists them in one
+  presentation order, Documentation first: the type filter’s Groups and sections, Group
+  by, and File Overview’s type table and bars.
+  The order is `FILE_TYPE_GROUP_DISPLAY_ORDER` in `file_type_filters.py`, published to
+  the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
+  first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
+  definitions that rollups and conformance fixtures follow.
+- **Persistence.** The choice is transient view state, as the filters are: every page
+  starts with No grouping.
+- **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
+  breathes as refreshing text does once the wait passes `--loading-state-delay`. Opening
+  the Group by menu asks for both groupings ahead of the choice.
+
+The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
+`metabrowser/tree_groups.py`), pinned by
+`tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
+browserlessly in `tests/dom/files-group-by-session.js`; and
+`tests/test_files_tab_chrome.py` measures the row, the drawer, the numbers, and the
+sections’ headings in Chrome.
+
+Measured in headless Chrome on a served folder (2026-11-15), grouping costs the server a
+pass over the index per group: on 22,104 files File type answered in 106 ms where the
+ungrouped tree took 34 ms, and on 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19
+s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
+spinner shown.
 
 ### Filters Say What They Do Not Know
 

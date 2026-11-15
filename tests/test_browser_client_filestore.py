@@ -610,7 +610,7 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 
     # The scanning gate lives in fetchSubtree, which owns the request shared by
     # an expansion and the idle prefetch; loadSubtree owns what the reader sees.
-    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_start = js.index("function fetchSubtree(path, group)")
     fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
     assert 'data.tally_cache_status === "scanning"' in fetch_block
     # Caching an empty subtree because the scan has not reached it yet would
@@ -651,7 +651,7 @@ def test_every_lazy_stub_lookup_is_scoped_to_direct_children() -> None:
 
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     js = _read_app_js()
-    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_start = js.index("function fetchSubtree(path, group)")
     fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
     assert "if (!resp.ok)" in fetch_block
     assert "throw new Error(`HTTP ${resp.status}`)" in fetch_block

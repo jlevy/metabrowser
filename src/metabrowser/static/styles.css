@@ -3686,6 +3686,32 @@ a.tab-btn {
 .tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
+/* ── Group by sections ──────────────────────────────────────────
+   With Group by on, the Files panel is one section per group: the menu group
+   pattern's heading (docs/design-system.md, "Groups in a Menu") over that group's
+   own tree. The heading starts on the tree's row inset, the 12px where a row's
+   content starts past its 2px selection bar, as a menu's heading starts on its
+   rows'. Sections after the first draw the divider above themselves, as a
+   .menu-group does; the first sits under the tally's own rule. */
+.tree-section + .tree-section {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.tree-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px 2px;
+}
+/* The count is a figure, not part of the name: the label register's caps and
+   tracking are for the name alone. */
+.tree-section-count {
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
 .recent-truncated-note {
   padding: 8px 12px;
   margin: 4px 0;

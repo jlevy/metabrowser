@@ -527,8 +527,10 @@ Useful helpers include:
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
   `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
   `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `classify(name, ext)` returns registry identities and evidence for one file.
-  `matchExtension(ext)` returns the matching family and canonical suffix,
+  `displayGroups` holds the same groups in the order the app lists them for a reader,
+  Documentation first; a view that lists groups uses it, and `groups` keeps the
+  registry’s order. `classify(name, ext)` returns registry identities and evidence for
+  one file. `matchExtension(ext)` returns the matching family and canonical suffix,
   `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
   includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.

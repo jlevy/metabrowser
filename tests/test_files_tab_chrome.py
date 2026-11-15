@@ -1,4 +1,4 @@
-"""The Files tab's filter menus, laid out by headless Chrome on a served folder.
+"""The Files tab's filter bar, filter menus, and Group by sections, in headless Chrome.
 
 ``tests/dom/files-tab-chrome.mjs`` serves a folder with dozens of file types, opens the
 File type menu in a tall window and a short one, resizing under it and reopening it, and
@@ -9,7 +9,12 @@ opens the Modified within menu in both. This judges what it measured against
   on, and names its rows as an ARIA group;
 - an open menu is its rows' natural height up to 16 rows, and stops 8 px short of the
   window's bottom edge, measured again when it opens and when the window resizes;
-- the Modified within menu, with few rows, keeps its natural height in both windows.
+- the Modified within menu, with few rows, keeps its natural height in both windows;
+- Group by is the row's one control, the filters wait in the closed drawer, and the
+  keyboard numbers follow what is on screen ("Grouping the Files Tree");
+- each File type section's heading starts on its tree's row inset and names its section
+  and tree, Documentation first, and a folder opened in a section lists its group's
+  files only.
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -128,7 +133,11 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
 
     tall = measured["typesTall"]
     # The headings: "Groups", then one per taxonomy group with families in this folder.
-    assert [heading["text"] for heading in tall["headings"]][:2] == ["Groups", "Code"]
+    assert [heading["text"] for heading in tall["headings"]][:3] == [
+        "Groups",
+        "Documentation",
+        "Code",
+    ]
     for heading in tall["headings"]:
         # On the rows' inset, the edge the check column starts on, not the label column.
         assert _close(heading["fromRowInset"], 0), heading
@@ -162,3 +171,44 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert age["scrollHeight"] <= age["clientHeight"], age
         assert _close(age["height"], age["rows"] * _row(age) + age["frame"]), age
     assert measured["ageTall"]["height"] == measured["ageShort"]["height"]
+
+    # Group by is the row's one control; the filters and Show ignored are in the drawer,
+    # which starts closed and inert (mb-sogv).
+    row = measured["row"]
+    assert row["row"] == ["menu:group", "nav-filter-bar-end"], row
+    assert row["drawer"] == ["recency", "types", "size", "showIgnored"], row
+    assert row["drawerOpen"] == "false" and row["drawerInert"] is True, row
+    # The numbers follow what is on screen: 1 is Group by while the drawer is closed, and
+    # once it is open its filters follow, so 3 is File type.
+    assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
+    assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
+
+    # File type sections: Documentation first, each headed in the menu group pattern at
+    # the tree's row inset, naming its section and its tree, a divider above all but the
+    # first. Other holds nothing in this folder, so it is not shown.
+    sections = measured["byType"]
+    assert [section["label"] for section in sections] == [
+        "Documentation",
+        "Code",
+        "Data",
+        "Archives",
+        "Media",
+    ]
+    assert [section["count"] for section in sections] == [
+        "9 files",
+        "36 files",
+        "6 files",
+        "1 file",
+        "3 files",
+    ]
+    for index, section in enumerate(sections):
+        assert "group-heading" in section["headingClasses"], section
+        assert _close(section["fromRowInset"], 0), section
+        assert section["namesItsTree"], section
+        assert section["divider"] == (0 if index == 0 else 1), section
+    # A folder opened inside Code lists Code's files only.
+    code = measured["codeFiles"]
+    assert len(code) == len(_CODE) * 3, code
+    assert {path.rsplit(".", 1)[1] for path in code} == set(_CODE), code
+    # No grouping is the one Files tree again.
+    assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}

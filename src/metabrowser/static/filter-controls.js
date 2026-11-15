@@ -70,7 +70,7 @@
   /**
    * @typedef {{value: string, label: string, tip?: string, className?: string,
    *            count?: number, icon?: string, iconClass?: string,
-   *            ageClass?: string}} ChipOption
+   *            ageClass?: string, summary?: string}} ChipOption
    * @typedef {{key: string, select?: string, layout?: string, label: string,
    *            options: ChipOption[], value: string | string[] | null,
    *            className?: string}} ChipGroupSpec
@@ -205,7 +205,9 @@
     const chosen = (spec.options || []).filter((o) => selected.indexOf(o.value) >= 0);
     let summary = spec.anyLabel;
     if (chosen.length === 1) {
-      summary = chosen[0].label;
+      // An option may say itself differently on the closed trigger, where it stands
+      // without its menu: "By age" where the row reads "Age".
+      summary = chosen[0].summary || chosen[0].label;
     } else if (chosen.length > 1) {
       summary = `${chosen[0].label} +${chosen.length - 1}`;
     }

@@ -214,8 +214,10 @@ def test_the_session_runs_on_the_recording() -> None:
     assert positional["helpDigits"] == [
         {"keys": "1–9", "range": True, "action": "Numbered links and actions"}
     ]
-    assert positional["numbers"] == ["File type"]
-    assert ["1", "File type"] in positional["badges"]
+    # A pin's bar: Group by first, then its one filter (no Modified within on a pin).
+    assert positional["numbers"] == ["Group by", "File type"]
+    assert ["1", "Group by"] in positional["badges"]
+    assert ["2", "File type"] in positional["badges"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
     for chord in (
         "a capital typed within the threshold never reveals",
@@ -231,15 +233,18 @@ def test_the_session_runs_on_the_recording() -> None:
         "↑ on a tree row moves one row and keeps the reveal",
         "a held J moves rows and does no reveal work on its repeats",
         "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
-        "F during the reveal shows the filter bar, and its filters gain 1 and 2",
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
     ):
         assert by_name[moved]["reveal"] == "revealed", moved
     assert by_name["the window losing focus ends the reveal"]["reveal"] == "idle"
-    files = by_name["F during the reveal shows the filter bar, and its filters gain 1 and 2"]
-    assert ["1", "Modified within"] in files["badges"]
-    assert ["2", "File type"] in files["badges"]
-    assert files["numbers"] == ["Modified within", "File type"]
-    opened = by_name["2 opens the file type filter and focuses its checked row"]
+    files = by_name[
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3"
+    ]
+    assert ["1", "Group by"] in files["badges"]
+    assert ["2", "Modified within"] in files["badges"]
+    assert ["3", "File type"] in files["badges"]
+    assert files["numbers"] == ["Group by", "Modified within", "File type"]
+    opened = by_name["3 opens the file type filter and focuses its checked row"]
     assert opened["focus"] == {
         "menu": "filter-type-menu",
         "row": "Any type",
