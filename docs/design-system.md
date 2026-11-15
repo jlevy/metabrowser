@@ -623,7 +623,8 @@ that arrived while the Files panel was inactive.
 
 A file whose kind declares the container capability keeps its file identity — icon,
 name, size, selection — and additionally leads with the tree’s disclosure chevron in the
-same 16px alignment box a folder uses, so names stay aligned at every indent.
+same slot a folder uses, `--tree-icon-slot` ([One Glyph Size](#one-glyph-size)), so
+names stay aligned at every indent.
 Its children are ordinary rows carrying a one-letter change badge in place of the file
 icon. Clicking is one gesture, as on a folder row: it opens the file *and* toggles its
 children. The keyboard splits them the same way, and every disclosure affordance in the
@@ -1250,10 +1251,10 @@ Kind letters reuse the same mapping — added is `--status-success`, deleted is
 A diff of more than one file opens with its Diff summary, in the toolbar beside the
 layout control, and it starts collapsed.
 Its header is one row-like disclosure toggle that leads with the registry’s chevron in
-the tree’s 16px box: “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423”.
-The breakdown lists only the statuses some file has, in one order (added, removed,
-modified, renamed, then copied, type changed, unmerged, and any other), in `--muted`;
-numbers use the shell’s number format; the totals are the
+the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2 added, 3 removed, 30
+modified) +1,234 −3,423”. The breakdown lists only the statuses some file has, in one
+order (added, removed, modified, renamed, then copied, type changed, unmerged, and any
+other), in `--muted`; numbers use the shell’s number format; the totals are the
 [inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
 not exact. Its accessible name says the same in words.
 A change set of no files has nothing to open, so its header is a line.
@@ -1658,7 +1659,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | --- | --- | --- |
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
-| State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
+| State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
@@ -2260,8 +2261,18 @@ the GitHub plugin’s four pull-request states are in
 Every icon in the chrome is drawn at `--icon-glyph`, whether it is a button, a file-type
 mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
-Where an icon reserves a column in a row of text, the alignment box around it is 16px —
-one step wider than the glyph, so the mark sits optically centered.
+Where an icon reserves a column in a palette or menu row, the alignment box around it is
+16px — one step wider than the glyph, so the mark sits optically centered.
+
+A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, 14px: a folder’s
+or a container’s chevron, a file’s type icon, a change letter, and a Pulls row’s
+chevron, state icon, and a stack’s Layers icon all take it, so chevrons and icons make
+one column and the names after them line up (`mb-hmv7`). A 12px chevron sits 1px in, and
+a file icon fills the slot, the row’s 6px gap from its name.
+At 16px a Files name started 22px from the row’s content edge and a Pulls title 44px,
+past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
+wider. `tests/test_files_tab_chrome.py` and `tests/test_github_pulls_stacks_chrome.py`
+measure the slots and where the names start in Chrome.
 
 Files and exact file extensions use the `.file-identity-icon` alignment-box primitive.
 Resolve its host-owned SVG and subtype class with `window.metabrowser.fileTypeIcon()`;

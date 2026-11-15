@@ -351,7 +351,11 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
     # The title takes its line but the age: a stack member's place is on the muted line.
-    assert " ".join(columns.group(1).split()) == "16px 16px minmax(0, 1fr) 5ch"
+    # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
+    assert (
+        " ".join(columns.group(1).split())
+        == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch"
+    )
     assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
     count = _rule(css, ".github-pulls-filters .count")
     assert "min-width: 3ch;" in count

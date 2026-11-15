@@ -7,6 +7,10 @@ All notable changes to Metabrowser are documented here.
 - A Pulls row no longer names its branches, so its title has more room; the pull
   request’s page still names them, head → base.
 
+- The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
+  one width for a chevron and a file type icon alike, so names start 2px sooner and a
+  pull request’s title is 4px wider.
+
 - A stack member’s place in its stack is on its number’s line, before the number, as
   “1/6 · #455 · jlevy”, and its row draws no stack icon: the stack’s row above it has
   one. Its title’s line holds only the title and the age, so the title has all that room:

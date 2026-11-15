@@ -6,10 +6,10 @@
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
 // one `.tree-children[role="group"]` after the pull request's row, folders that lead with the
-// registry's chevron in the 16 px box and file rows with the change letter a patch's children
-// carry in place of an icon, the tree's indent and row height, and the inline change stats: a
-// file's own, and a folder's rolled up from every file under it, open or closed, as a Files
-// folder keeps its size whichever way it is turned. It
+// registry's chevron in the tree's icon slot and file rows with the change letter a patch's
+// children carry in place of an icon, the tree's indent and row height, and the inline change
+// stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
+// a Files folder keeps its size whichever way it is turned. It
 // takes none of `.tree-item`, `[data-tree-id]`, or the Files tree's keyboard, which the shell
 // keeps for the Files tab: these rows are the plugin's, and their keys come from the Pulls
 // tab's host.

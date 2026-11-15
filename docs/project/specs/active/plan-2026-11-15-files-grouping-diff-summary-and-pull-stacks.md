@@ -237,7 +237,8 @@ it:
   names no branches (`mb-ghff`); the pull request’s page keeps them.
   A stack member’s place sits before its number on the metadata line, “1/6 · #455”, with
   no stack icon of its own, so the title’s line holds only the title and the age
-  (`mb-dzsi`).
+  (`mb-dzsi`). A tree row’s chevrons and icons share one slightly tighter slot,
+  `--tree-icon-slot`, 14px where they had 16 (`mb-hmv7`).
 
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,

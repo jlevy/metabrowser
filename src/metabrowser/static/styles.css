@@ -414,6 +414,17 @@
      this to their left padding per level, so depth reads in the text
      position while the hover and selection shapes stay constant. */
   --tree-indent: 16px;
+  /* A tree row's leading slot: a folder's or a container's chevron, a file's
+     type icon, a change letter, and a Pulls row's chevron, state icon, and a
+     stack's Layers icon, one width, so they make one column and the names
+     after them line up (mb-hmv7). It is the glyph's own width: a 12px chevron
+     sits 1px in, and a file icon fills it, 6px (the row's gap) from its name.
+     Measured in Chrome at the default pane (tests/test_files_tab_chrome.py,
+     tests/test_github_pulls_stacks_chrome.py): at 16px, one step wider than
+     the glyph, a Files name started 22px from the row's content edge, and a
+     Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
+     pull request's title 4px wider. */
+  --tree-icon-slot: 14px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -448,9 +459,9 @@
      row's leading mark, so icons stay interchangeable wherever they
      appear. --icon-btn-size is the hit target the interactive ones get;
      see the `── Icon buttons ──` primitive below. The alignment boxes
-     that reserve a row's icon column (tree rows, palette rows, menu
-     rows) are 16px, one step wider than the glyph, so the glyph has
-     room to sit optically centered. The one deliberate exception is
+     that reserve a palette or menu row's icon column are 16px, one step
+     wider than the glyph, so the glyph has room to sit optically
+     centered; a tree row's is --tree-icon-slot, the glyph's own width. The one deliberate exception is
      `.menu-seg svg`, where the glyph is the whole label of a segmented
      chooser rather than a mark beside text; it is sized in place. */
   --icon-glyph: 14px;
@@ -1838,8 +1849,9 @@ summary {
   cursor: default;
   pointer-events: none;
 }
-/* 16px alignment box + --icon-glyph mark, same as a tree row and a
-   palette row, so a menu row's icon column lines up with theirs. */
+/* 16px alignment box + --icon-glyph mark, same as a palette row, so a
+   menu row's icon column lines up with a palette row's. A tree row's slot
+   is the glyph's own width (--tree-icon-slot). */
 .menu-item-icon {
   display: flex;
   width: 16px;
@@ -2770,7 +2782,9 @@ html[data-prose-font="sans"] {
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
 .tree-item.tree-page-more {
-  padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+  /* On the names' column: the row's inset, its slot, and its gap. */
+  padding: 2px 12px 2px
+    calc(10px + var(--tree-icon-slot) + 6px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
@@ -2820,7 +2834,7 @@ html[data-prose-font="sans"] {
 }
 .tree-item-icon {
   flex-shrink: 0;
-  width: 16px;
+  width: var(--tree-icon-slot);
   height: 16px;
   display: flex;
   align-items: center;
@@ -2846,6 +2860,12 @@ html[data-prose-font="sans"] {
 .file-identity-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
+}
+/* In a tree row the file's icon is in the row's one slot, as a chevron is
+   (--tree-icon-slot). */
+.tree-item-icon.file-identity-icon {
+  width: var(--tree-icon-slot);
+  flex-basis: var(--tree-icon-slot);
 }
 /* Compression overlay — reuses the existing 16x16 envelope as the
    positioning anchor and tucks a small badge into the bottom-right.
@@ -5556,21 +5576,21 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 /* Container rows: a file that is also folder-like. Its chevron sits in
-   the same 16px alignment box a folder's does, so names line up at every
-   indent level; its children carry a kind badge in place of an icon. */
+   the same slot a folder's does (--tree-icon-slot), so names line up at
+   every indent level; its children carry a kind badge in place of an icon. */
 .tree-container > .tree-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 12px;
-  margin: 0 2px;
+  margin: 0 calc((var(--tree-icon-slot) - 12px) / 2);
   flex: none;
 }
 .tree-container-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
   flex: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
@@ -5597,10 +5617,10 @@ pre.code-block.metabrowser-source-lines > code {
 .expanded .toggle-chevron {
   transform: rotate(90deg);
 }
-/* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the chevron inside its
-   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+/* Left-align folder names with file names. A file row leads with its icon
+   in the row's slot (.tree-item-icon, --tree-icon-slot); a folder row leads
+   with the chevron inside its .tree-toggle wrapper, whose inline margins
+   make its margin box the slot's width (glyph stays 12px, centered), so
    names align at every indent level. Scoped to .tree-folder so the shared
    tally-tree chevron is unaffected. The entire folder row shares one
    disclosure-and-navigation action. */
@@ -5608,7 +5628,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-inline: 2px;
+  margin-inline: calc((var(--tree-icon-slot) - 12px) / 2);
   flex-shrink: 0;
   border-radius: var(--radius-circle);
 }
