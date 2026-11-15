@@ -94,6 +94,8 @@ export const METRICS = [
   T("window_ms", (t) => t.windowMs, null),
   T("long_task_max_ms", (t) => t.longTasks?.maxMs),
   T("input_span_ms", (t) => t.inputSpanMs, null),
+  // A hover-click's realized dwell, the pointer's arrival to the press (revision 6).
+  T("hover_dwell_ms", (t) => t.hoverDwellMs, null),
   T("ready_after_last_input_ms", (t) => t.readyAfterLastInputMs),
   // The recorder's own work in each frame (revision 6): shown, so a comparison can see
   // when the instrument cost one condition more, and never judged.
@@ -862,6 +864,7 @@ const TABLES = [
     sparse: true,
     columns: [
       ["input_span_ms", "Input span ms"],
+      ["hover_dwell_ms", "Hover dwell ms"],
       ["ready_after_last_input_ms", "Ready after last input ms"],
       ["file_envelope_requests", "File envelopes"],
       ["post_body_bytes", "POST body bytes"],
@@ -876,6 +879,7 @@ const TABLES = [
     // A row only when something here differs from a single-input transition's defaults.
     keep: (v) =>
       v.list_row_replacements !== undefined ||
+      v.hover_dwell_ms !== undefined ||
       ["input_span_ms", "post_body_bytes", "tree_movement_path_px", "palette_movement_px"].some(
         (k) => v[k]?.some((x) => x.v > 0),
       ),
@@ -1078,6 +1082,7 @@ export function keepTransition(t) {
     readCostMaxMs: t.readCostMaxMs,
     readCostToReadyMs: t.readCostToReadyMs,
     inputSpanMs: t.inputSpanMs,
+    hoverDwellMs: t.hoverDwellMs,
     readyAfterLastInputMs: t.readyAfterLastInputMs,
     milestones: t.milestones,
     milestonesMissing: t.milestonesMissing,

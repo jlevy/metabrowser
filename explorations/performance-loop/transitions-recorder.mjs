@@ -194,7 +194,8 @@ function recorderMain(config) {
     },
     { durationThreshold: 16 },
   );
-  for (const type of ["pointerdown", "mousedown", "click", "keydown", "popstate"]) {
+  // `pointerover` is kept for a hover-click's realized dwell (revision 6).
+  for (const type of ["pointerover", "pointerdown", "mousedown", "click", "keydown", "popstate"]) {
     window.addEventListener(
       type,
       (e) => {
@@ -2182,6 +2183,14 @@ export function driver(browser) {
     const windowEnd = raw.readyNext === null ? lastFrame : raw.readyNext + settleMs;
     const gesture = raw.inputs.filter((i) => startEvents?.includes(i[0]) && i[1] >= origin);
     const inputSpanMs = gesture.length > 1 ? round1(gesture[gesture.length - 1][1] - origin) : 0;
+    // A hover-click's realized dwell: from the pointer's arrival over the target (its first
+    // `pointerover` after arm) to the press that starts the clock (revision 6). The page's
+    // own hover intent sees this, not the requested `hoverMs`.
+    let hoverDwellMs;
+    if (input.kind === "hover-click" && t0 !== null) {
+      const over = raw.inputs.find((i) => i[0] === "pointerover" && i[1] <= t0);
+      hoverDwellMs = over ? round1(t0 - over[1]) : null;
+    }
 
     // Milestones are waited for after the window above has closed, so every other field
     // keeps the window it had before milestones existed. One that never arrives is null,
@@ -2314,6 +2323,7 @@ export function driver(browser) {
       ),
       regions: movement.regions,
       inputSpanMs,
+      hoverDwellMs,
       readyAfterLastInputMs:
         frameAccount.paintedReadyMs === null
           ? null

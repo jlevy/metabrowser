@@ -1375,6 +1375,11 @@ try {
       for (const [i, ms] of D.ms.entries()) {
         const rested = seen[D.files[i]];
         assert.ok(rested >= ms - 2 && rested < ms + 300, `${ms} ms dwell rested ${rested} ms`);
+        // The row records the realized dwell, the pointer's arrival to the press.
+        assert.ok(
+          Math.abs(rows[i].hoverDwellMs - rested) <= 1,
+          `${ms} ms dwell: the row says ${rows[i].hoverDwellMs} ms, the page saw ${rested} ms`,
+        );
       }
     });
   } else {
