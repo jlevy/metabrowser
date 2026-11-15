@@ -5,7 +5,7 @@ title: "PR page: the stack chip leads the author's row, under the title"
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:00:19.895Z
-updated_at: 2026-11-15T18:14:47.839Z
+updated_at: 2026-11-15T18:18:15.493Z
 started_at: 2026-11-15T18:00:53.720Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -37,3 +37,5 @@ Measured in headless Chrome 152 on the production header (recorded PR 7, author 
 - B. Slot reserved at the width of a "99/99" chip, in every header. Late: 0 shift for one chip. Two memberships (109.5 px) overflow the 99.42 px slot. Never in a stack: the author starts 99.42 px from the header's edge instead of 24 px, a 75.42 px empty gap on every PR not in a stack. Same 1 px row move, also fixable.
 - C. Hold the header's first paint for the stacks answer within an existing bound (DESCRIPTION_HOLD_MS, 200 ms). 0 shift when the index is already held (the controller is shared module-wide, so the Pulls tab or an earlier PR page in the document has it) or when the cache-only GET answers within the bound. Otherwise it shifts as in A: a first refresh with no snapshot yet, a stack created while the page is open, or a GET slower than the bound. GET latency was not measured.
 - D. Chip first when membership is known at first paint; a chip that arrives later takes today's slot at the end of the labels row, and moves to the front on the next mount. 0 shift and no gap, but the chip's place depends on timing. Today's behavior covers the late half.
+
+Decision, the user (2026-11-15), verbatim: "on the stack then let's find a way to avoid the problem altogether, e.g. put it right aligned below the right aligned PR number, on same line as author". So the stack chip sits at the right end of the author's row, aligned under the title's right-aligned PR number. A chip that arrives late lands in the row's empty end and moves nothing: no shift of the author, no reserved gap. This supersedes options A to D.
