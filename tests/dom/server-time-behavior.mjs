@@ -10,6 +10,7 @@ const HERE = import.meta.dirname;
 const LOOP = path.resolve(HERE, "../../explorations/performance-loop");
 const {
   formatRecord,
+  inFlight,
   landingAssets,
   logPathOf,
   pairRows,
@@ -306,5 +307,35 @@ check("a record prints as tables, saying when a build logged its ends coarsely",
   assert.match(text, /6 of 6 rows logged their end only to the ms/);
   assert.match(text, /serial: 1 assets one at a time: 4\.0 ms/);
 });
+
+check(
+  "a request is open until some session says it ended, and timers and streams are not waited for",
+  () => {
+    const open = {
+      id: "7",
+      url: `${B}/static/a.js?v=1`,
+      cls: "static",
+      status: null,
+      netStatus: null,
+      encoded: null,
+      failed: null,
+      cache: null,
+    };
+    assert.equal(inFlight(open, new Set()), true);
+    // A worker's script: requested on the page's session, ended on the worker's.
+    assert.equal(inFlight(open, new Set(["7"])), false);
+    assert.equal(inFlight({ ...open, status: 200 }, new Set()), false);
+    assert.equal(inFlight({ ...open, netStatus: 304 }, new Set()), false);
+    assert.equal(inFlight({ ...open, encoded: 900 }, new Set()), false);
+    assert.equal(inFlight({ ...open, failed: "canceled" }, new Set()), false);
+    assert.equal(inFlight({ ...open, cache: "memory" }, new Set()), false);
+    assert.equal(inFlight({ ...open, cls: "background" }, new Set()), false);
+    assert.equal(inFlight({ ...open, cls: "stream" }, new Set()), false);
+    assert.equal(
+      inFlight({ ...open, cls: "data", url: `${B}/api/stream?path=a.log` }, new Set()),
+      false,
+    );
+  },
+);
 
 console.log(`server-time instrument: ${checks} checks passed`);

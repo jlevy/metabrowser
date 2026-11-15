@@ -307,6 +307,42 @@ export function serialAccount(assets, logRows) {
   };
 }
 
+/** Requests that stay open by design, which a landing does not wait for. */
+export const LONG_LIVED = ["/api/events", "/api/stream"];
+
+/**
+ * Whether a request the browser made is still open, so a landing has not settled.
+ *
+ * The Pulls catalog's background work runs on its own timers after every load, so the
+ * network is never quiet while it is counted; it is summed, as `background`, not waited for.
+ * `settledIds` are the request IDs some session has said ended.
+ */
+export function inFlight(entry, settledIds) {
+  if (["inline", "stream", "background"].includes(entry.cls)) {
+    return false;
+  }
+  if (LONG_LIVED.some((p) => entry.url.includes(p))) {
+    return false;
+  }
+  // A dedicated worker's script is requested on the page's session and answered, from the
+  // server or the cache, on the worker's, so its page entry never hears how it ended; any
+  // session's word for its request ID settles it. The server's log, read after the quiet,
+  // is what says where each body ended.
+  if (settledIds.has(entry.id)) {
+    return false;
+  }
+  const answered = entry.status !== null || entry.netStatus !== null;
+  return !answered && entry.encoded === null && entry.failed === null && entry.cache !== "memory";
+}
+
+/** The DevTools events that end a request, on whichever session they arrive. */
+export const SETTLING_EVENTS = new Set([
+  "Network.loadingFinished",
+  "Network.loadingFailed",
+  "Network.requestServedFromCache",
+  "Network.responseReceived",
+]);
+
 const PHASE_ORDER = ["read", "render", "git", "encode"];
 
 /** The phase columns a table shows: the four named ones, then any other seen, by name. */

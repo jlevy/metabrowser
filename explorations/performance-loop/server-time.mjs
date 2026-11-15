@@ -30,9 +30,11 @@ import { buildProvenance, getJson, harnessProvenance } from "./provenance.mjs";
 import {
   formatRecord,
   INSTRUMENT,
+  inFlight,
   landingAssets,
   parseLog,
   parseServerTiming,
+  SETTLING_EVENTS,
   serialAccount,
   windowAccount,
 } from "./server-time-sums.mjs";
@@ -241,24 +243,6 @@ const READ_TIMING = `(() => {
   return JSON.stringify({ rows, dcl_ms: dcl, load_ms: nav ? nav.loadEventEnd : null });
 })()`;
 
-const LONG_LIVED = ["/api/events", "/api/stream"];
-
-// The Pulls catalog's background work runs on its own timers after every load, so the
-// network is never quiet while it is counted; it is summed, as `background`, not waited for.
-function inFlight(entry) {
-  if (["inline", "stream", "background"].includes(entry.cls)) {
-    return false;
-  }
-  if (LONG_LIVED.some((p) => entry.url.includes(p))) {
-    return false;
-  }
-  // Answered counts as done: a dedicated worker's script is requested on the page's
-  // session and finishes on the worker's, so its page entry never hears the end of its body.
-  // The server's log, read after the quiet, is what says where each body ended.
-  const answered = entry.status !== null || entry.netStatus !== null;
-  return !answered && entry.encoded === null && entry.failed === null && entry.cache !== "memory";
-}
-
 /** Navigate (or reload) and wait for the load event and then a quiet network. */
 async function land(browser, go) {
   const from = browser.net.length;
@@ -271,7 +255,7 @@ async function land(browser, go) {
     await loaded;
     let quietSince = Date.now();
     while (Date.now() - started < LOAD_TIMEOUT_MS) {
-      pending = browser.net.slice(from).filter(inFlight);
+      pending = browser.net.slice(from).filter((entry) => inFlight(entry, browser.settledIds));
       if (pending.length > 0) {
         quietSince = Date.now();
       } else if (Date.now() - quietSince >= QUIET_MS) {
@@ -313,7 +297,13 @@ async function freshBrowser(work, name) {
     ...VIEWPORT,
   });
   await browser.page.send("Page.addScriptToEvaluateOnNewDocument", { source: BUFFER_SOURCE });
-  return browser;
+  const settledIds = new Set();
+  browser.conn.listeners.add((method, params) => {
+    if (SETTLING_EVENTS.has(method) && params?.requestId) {
+      settledIds.add(params.requestId);
+    }
+  });
+  return { ...browser, settledIds };
 }
 
 // --------------------------------------------------------------------------- serial pass
