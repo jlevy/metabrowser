@@ -2004,3 +2004,94 @@ def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
             await handle.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    """Group by's filter fields (metabrowser/tree_groups.py): an age band keeps an mtime
+    exactly at its near edge and rejects one exactly at its far edge, so the bands
+    partition mtimes; a type group classifies by name before extension; and a group,
+    unlike a filter, keeps symlinks, by their own mtime for Age and in Other for type."""
+
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    as_of_ns = 100_000_000_000
+    live_edge_ns = as_of_ns - 90_000_000_000
+    files = {
+        "at-edge.md": live_edge_ns,
+        "just-newer.md": live_edge_ns + 1,
+        "just-older.md": live_edge_ns - 1,
+        "Makefile": live_edge_ns + 5,
+        "notes.xyz": live_edge_ns + 5,
+    }
+    for name, mtime_ns in files.items():
+        path = scope / name
+        path.write_bytes(b"x")
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+    link = scope / "link"
+    try:
+        link.symlink_to("at-edge.md")
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    os.utime(link, ns=(live_edge_ns + 7, live_edge_ns + 7), follow_symlinks=False)
+
+    live = InventoryFilter(band_within_seconds=90, as_of_ns=as_of_ns)
+    past_hour = InventoryFilter(band_within_seconds=3600, older_than_seconds=90, as_of_ns=as_of_ns)
+    selections = {
+        "live": live,
+        "past-hour": past_hour,
+        "docs": InventoryFilter(type_group="docs"),
+        "code": InventoryFilter(type_group="code"),
+        "other": InventoryFilter(type_group="other"),
+        # A filter still drops symlinks: the user's window, here, cuts the Live band.
+        "live-in-window": InventoryFilter(
+            recency_seconds=90, band_within_seconds=90, as_of_ns=as_of_ns
+        ),
+    }
+
+    async def run() -> dict[str, set[str]]:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=tuple(
+                        FilteredTreeQuery(
+                            query_id=name, path="scope", max_depth=1, filter=selection
+                        )
+                        for name, selection in selections.items()
+                    )
+                )
+            )
+            leaves: dict[str, set[str]] = {}
+            for name in selections:
+                projection = result.projection(name)
+                assert isinstance(projection, FilteredTreeProjection)
+                leaves[name] = {
+                    entry.path.removeprefix("scope/")
+                    for entry in projection.entries
+                    if entry.type is not EntryType.DIRECTORY
+                }
+            return leaves
+        finally:
+            await handle.close()
+
+    leaves = asyncio.run(run())
+    assert leaves["live"] == {"at-edge.md", "just-newer.md", "Makefile", "notes.xyz", "link"}
+    assert leaves["past-hour"] == {"just-older.md"}
+    assert leaves["docs"] == {"at-edge.md", "just-newer.md", "just-older.md"}
+    assert leaves["code"] == {"Makefile"}
+    assert leaves["other"] == {"notes.xyz", "link"}
+    assert leaves["live-in-window"] == {"at-edge.md", "just-newer.md", "Makefile", "notes.xyz"}
+
+
+def test_group_filter_fields_are_validated() -> None:
+    for name in ("band_within_seconds", "older_than_seconds"):
+        with pytest.raises(ValueError, match=f"{name} must be positive"):
+            InventoryFilter(**{name: 0}, as_of_ns=1)
+        with pytest.raises(ValueError, match="requires as_of_ns"):
+            InventoryFilter(**{name: 1})

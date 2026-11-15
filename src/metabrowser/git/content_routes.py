@@ -128,7 +128,7 @@ from metabrowser.settings import (
 from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, UnsupportedSourceCapabilityError
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
-from metabrowser.tree_groups import GroupBy, groups_for
+from metabrowser.tree_groups import GroupBy, group_row, groups_for, groups_payload
 from metabrowser.view_routes import decode_view_logical_path
 
 log = logging.getLogger(__name__)
@@ -1203,8 +1203,6 @@ async def git_revision_tree_groups(
 ) -> JSONResponse:
     """`group_by` on a Git revision: each group's tree, as `git_revision_tree` lists it."""
 
-    from metabrowser.server import _tree_group_row, _tree_groups_payload
-
     groups: list[dict[str, Any]] = []
     envelope: dict[str, Any] | None = None
     for group in groups_for(group_by):
@@ -1214,8 +1212,8 @@ async def git_revision_tree_groups(
         if status != 200:
             return _json(payload, status_code=status)
         envelope = envelope or payload
-        groups.append(_tree_group_row(group, payload))
-    grouped = _tree_groups_payload(group_by, groups, envelope)
+        groups.append(group_row(group, payload))
+    grouped = groups_payload(group_by, groups, envelope)
     # A revision has no served root folder; its envelope names the path it lists.
     grouped["root"] = envelope.get("display") if envelope is not None else None
     return _json(grouped)
@@ -1275,6 +1273,12 @@ async def _git_revision_tree_payload(
         "tree": tree_nodes,
         **chrome,
     }
+    if filtered is None and tree_filter.group is not None:
+        # A group's answer always says what it holds: its files when blob sizes are
+        # incomplete, and nothing it cannot count when the index is truncated, so the
+        # grouped answer keeps every group that shows anything (tree_groups.groups_payload).
+        counted = view.tally().total_files if view is not None else None
+        filtered = {"files": counted, "size": None, "entries": counted}
     if filtered is not None:
         payload["filtered"] = filtered
     return payload, 200
