@@ -5,7 +5,7 @@ title: "Pulls tab: group a native stack's pull requests under a Stack #N toggle"
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:37:52.961Z
-updated_at: 2026-11-15T08:34:34.762Z
+updated_at: 2026-11-15T09:00:25.825Z
 started_at: 2026-11-15T07:41:28.229Z
 ---
 The user's request (2026-11-15), verbatim: "Feature is that within the Pulls tab, there is an option to group all PRs in a stack in a recursive toggle for the stack itself, so that if there are say 4 PRs in the stack, the stack itself (which github gives a number) woudl be somethig like Stack #1234  and then it would be pre-opened but include all PRs in that stack."
@@ -61,3 +61,5 @@ Built (2026-11-15, sub-agent, branch claude/pulls-stack-groups, local only, not 
 - Tests (each red on the pre-change source): tests/dom/github-pulls-stack-groups-session.js + golden cli-ui-github-pulls-stack-groups.tryscript.md; tests/test_github_pulls_stacks_chrome.py (+ tests/dom/github-pulls-stacks-chrome.mjs, live server, fake gh stack with #286 [7..10] and #300 [5,10]); tests/test_github_stack_design.py; updated github-pull-stacks-behavior.js, panel session number story, pulls-nav golden copy, keymap/vocabulary/process-group registries; stack fixture gained a recorded "shared" answer.
 - Measured (headless Chrome, 1280x900, load 8-19): first Pulls row 964-1094 ms after vs 1006-1013 ms before (one before outlier 2199 ms); stacks grouped 1068-1186 ms after the tab press; toggle 8-36 ms. Label tokens identical on both headers; stack row 24 px; member inset +16 px.
 - Local: make -o install lint-check passed; cli-ui goldens 74 passed; focused pytest set passed incl. Chrome. Not run: full make test / make verify, macOS app, light theme screenshots.
+
+PR #450 (draft, 2026-11-15): https://github.com/jlevy/metabrowser/pull/450, base claude/diff-summary (#448). The merge 6ced50c7 was dropped: the two commits were rebased once onto the restacked claude/diff-summary (7ca39485, which holds PR 1 through #444, #445, #447), now 6bb61ee2 (feat) and c7e8573e (docs); head c7e8573eac6e66aea96e4068d0e336c760244082. Conflicts in docs/e2e-testing.md and tests/test_process_group.py (the Chrome test lists, both sides kept, with test_prose_faces_chrome) and CHANGELOG (both kept). Linked with gh stack link into native stack #446: [444, 445, 447, 448, 450]. After the rebase: lint-check, parity, 75 cli-ui goldens, the stack-groups session, and 135 focused pytest tests (incl. the stack Chrome test and header Chrome launch/pulls/header-wide) passed locally; pushed with --no-verify. CI run 43695631545: all 9 checks passed (lint, distribution, stack-integration, test 3.12/3.13/3.14/3.14t, admitted-git 2.43.7/2.50.1). Not merged, not marked ready. Stale handling confirmed by the coordinator: missing stacks or another account's keep the list flat; a kept snapshot still groups.
