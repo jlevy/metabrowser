@@ -1180,6 +1180,42 @@ check("memory read between transitions is not the standard regime", () => {
   assert.ok(res.notes.some((n) => /NOT THE STANDARD REGIME: memory read after files\.a/.test(n)));
   refuses(() => cmp(series(() => {}, flagged)), /regime/);
 });
+check("truncated searches and slow reads are counted and reported", () => {
+  const frames = [
+    [100, "", 102, 0.3, 1, 0],
+    [100 + I, "", 102 + I, 5.2, 1, 1],
+    [100 + 2 * I, "U", 102 + 2 * I, 5.6, 1, 1],
+  ];
+  const a = accountFrames({
+    frames,
+    origin: 99,
+    windowEnd: frames.at(-1)[0],
+    readyAt: frames[2][0],
+    readyRead: frames[2][2],
+    readyNext: null,
+  });
+  assert.equal(a.searchTruncatedFrames, 2);
+  assert.equal(a.readCostMaxMs, 5.6);
+  // compare and summarize name a transition whose read passed the ceiling or whose search
+  // was cut, on either side.
+  const slow = (r) => setT(r, "files.a", { readCostMaxMs: 5.6, searchTruncatedFrames: 2 });
+  const res = cmp(series(() => {}, slow));
+  assert.equal(stats.READ_COST_CEILING_MS, 4);
+  assert.ok(
+    res.notes.some((n) =>
+      /^INSTRUMENT COST: in condition b.*files\.a \(longest read 5\.6 ms\)/.test(n),
+    ),
+    res.notes,
+  );
+  assert.ok(
+    res.notes.some((n) =>
+      /^SEARCH TRUNCATED: in condition b.*files\.a \(6 frame\(s\) in 3 run/.test(n),
+    ),
+  );
+  assert.ok(!res.notes.some((n) => /in condition a/.test(n) && /INSTRUMENT|TRUNCATED/.test(n)));
+  const text = summarize(series(() => {}, slow)).join("\n");
+  assert.match(text, /instrument cost over 4 ms in `files\.a` \(longest read 5\.6 ms\)/);
+});
 check("revision 5 rows compare with each other, noting what revision 6 changed", () => {
   const five = (r) => {
     r.scenario_revision = 5;
