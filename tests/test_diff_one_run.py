@@ -319,46 +319,40 @@ def test_a_shallow_boundary_is_refused_as_before(
 # ── Past the bound: today's runs, and never more than its cap read ──────
 
 
-def _killed(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    killed: list[int] = []
-    real = git_process._kill
-
-    def spy(proc: Any) -> None:
-        killed.append(proc.pid)
-        real(proc)
-
-    monkeypatch.setattr(git_process, "_kill", spy)
-    return killed
-
-
-def test_a_run_past_the_bound_is_cut_after_its_listing_and_the_patch_runs_alone(
+def test_a_run_past_the_bound_is_stopped_after_its_listing_and_the_patch_runs_alone(
     repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The bound counts the patch after the listing; the read that passes it is kept."""
     root, _base, target = repo
-    printed = _Printed(monkeypatch)
-    source = _Today(root)
-    asyncio.run(source.manifest(asyncio.run(source.resolve({"revision": target}))))
-    listing = printed.runs[-1][1]
-    # A bound past the listing, short of its whole patch: read in small pieces, the run is
-    # killed inside its patch with its listing whole, and each page is a run of its own.
-    monkeypatch.setattr(git_process, "_READ_CHUNK_BYTES", 64)
-    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", len(listing) + 200)
-    killed = _killed(monkeypatch)
+    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 200)
     _both(root, {"revision": target}, _every_ask)
-    assert killed, "the listing run was stopped at the bound"
     (today, _), (one_run, _) = _both(root, {"revision": target})
     assert (today, one_run) == (4, 3)
 
 
-def test_a_run_cut_inside_its_listing_lists_again_as_before(
+def test_a_listing_longer_than_the_bound_is_still_read_whole(
     repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Read in pieces smaller than the listing's two final NULs are apart, and a bound far
+    smaller than the listing: the listing is never cut, so it is never listed again (#449,
+    L2)."""
     root, _base, target = repo
-    monkeypatch.setattr(git_process, "_READ_CHUNK_BYTES", 64)
-    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 100)
-    killed = _killed(monkeypatch)
+    monkeypatch.setattr(git_process, "_READ_CHUNK_BYTES", 7)
+    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 10)
+    (today, _), (one_run, _) = _both(root, {"revision": target}, _every_ask)
     (today, _), (one_run, _) = _both(root, {"revision": target})
-    assert killed and one_run == today, "a wasted listing run, and one rev-parse fewer"
+    assert (today, one_run) == (4, 3)
+
+
+def test_the_patch_bound_counts_only_what_follows_the_listing() -> None:
+    bound = adapter._PatchBound(5)
+    assert not bound(b":listing\0path\0")
+    assert not bound(b"1\t1\tpath\0")
+    assert not bound(b"\0diff")  # the NULs straddle two reads: four bytes of patch
+    assert not bound(b" ")
+    assert bound(b"--git")
+    whole = adapter._PatchBound(5)
+    assert whole(b"listing\0\0" + b"x" * 6)
 
 
 def test_the_bound_of_a_page_is_spent_alike_from_the_one_runs_patch(

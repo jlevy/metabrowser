@@ -93,14 +93,15 @@ kernel's limit with the environment: `getconf ARG_MAX` is 1 MiB on macOS, measur
 one, and the CLI asks for every file, where a pathspec buys nothing anyway."""
 
 MAX_LISTED_PATCH_BYTES = 256 * 1024
-"""What the run that lists a comparison may print, its patch included, before it is killed
-and the patch left to a run of its own (H116). A Git process start cost about 17 ms on the
-machine the hypothesis was measured on. Measured 2026-11-14 at load 12, untimed and as an
-order of magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with
-its 40 MB patch 1.11 s, so Git printed the patch at about 130 MB/s and a run killed at this
-bound spends about 2 ms past its listing; 329 of this repository's newest 400 commits list
-and patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a
-page does not ask for is work thrown away, at most this much."""
+"""How much of its patch the run that lists a comparison may print after its listing before
+it is stopped and the patch left to a run of its own (H116). The listing itself is bounded as
+the listing run's always was. A Git process start cost about 17 ms on the machine the
+hypothesis was measured on. Measured 2026-11-14 at load 12, untimed and as an order of
+magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with its 40 MB
+patch 1.11 s, so Git printed the patch at about 130 MB/s and a run stopped at this bound
+spends about 2 ms past its listing; 329 of this repository's newest 400 commits list and
+patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a page
+does not ask for is work thrown away, at most this much."""
 
 _NULL_OID = "0" * 40
 _STATUS_KINDS = {
@@ -130,6 +131,34 @@ _COMMIT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|\s|^[-^]|^$")
 
 type _SideKey = tuple[str | None, str | None]
+
+
+class _PatchBound:
+    """Says when a listing run has printed more than *bound* bytes of patch.
+
+    The patch begins after the first two NULs in a row, which end the listing, whose fields
+    are never empty but for a name with no byte; such a name ends the count early, and its
+    listing is then refused whole (:func:`_listing_and_patch`).
+    """
+
+    __slots__ = ("_bound", "_patch", "_tail")
+
+    def __init__(self, bound: int) -> None:
+        self._bound = bound
+        self._patch: int | None = None
+        self._tail = b""
+
+    def __call__(self, chunk: bytes) -> bool:
+        if self._patch is None:
+            seen = self._tail + chunk
+            end = seen.find(b"\0\0")
+            if end < 0:
+                self._tail = seen[-1:]
+                return False
+            self._patch = len(seen) - (end + 2)
+        else:
+            self._patch += len(chunk)
+        return self._patch > self._bound
 
 
 @dataclass(frozen=True, slots=True)
@@ -591,8 +620,8 @@ class GitDiffSource:
         the listing run's bytes, one NUL, then the unrestricted patch run's bytes
         (``test_one_run_prints_what_the_two_runs_print``). A run that fails is None, so the
         runs that answer are the ones that always did, in their own words. A run past
-        :data:`MAX_LISTED_PATCH_BYTES` is killed there; its listing, if it was printed
-        whole by then, is the manifest, and the patch is left to :meth:`hydrate`'s run.
+        :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped there: its listing is the
+        manifest, and the patch is left to :meth:`hydrate`'s run.
         """
         try:
             out = await self._patch(resolved, None, listing=True)
@@ -979,8 +1008,8 @@ class GitDiffSource:
         diff_filter: str | None = None,
         listing: bool = False,
     ) -> bytes:
-        """The patch; with *listing*, the manifest's listings before it, the run killed past
-        :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`)."""
+        """The patch; with *listing*, the manifest's listings before it, stopped past
+        :data:`MAX_LISTED_PATCH_BYTES` of patch (:meth:`_list_with_patch`)."""
         return await run_git_at(
             [
                 # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
@@ -1000,8 +1029,11 @@ class GitDiffSource:
                 *([] if pathspec is None else ["--", *pathspec]),
             ],
             self._location,
-            max_bytes=MAX_LISTED_PATCH_BYTES if listing else None,
-            stop_at_cap=listing,
+            # The listing as the listing run bounded it, and the patch after it as above.
+            max_bytes=(
+                self._location.read_policy.max_bytes + MAX_LISTED_PATCH_BYTES if listing else None
+            ),
+            stop_when=_PatchBound(MAX_LISTED_PATCH_BYTES) if listing else None,
         )
 
     def _patches_from(
