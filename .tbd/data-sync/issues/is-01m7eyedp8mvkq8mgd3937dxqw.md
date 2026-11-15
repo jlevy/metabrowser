@@ -3,14 +3,18 @@ type: is
 id: is-01m7eyedp8mvkq8mgd3937dxqw
 title: "Diff summary: one collapsible changed-files tree with folder roll-ups, replacing the diff toolbar's count line"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T06:31:20.007Z
+updated_at: 2026-11-15T06:32:50.040Z
+started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
 
