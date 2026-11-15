@@ -4646,10 +4646,13 @@ export function mountPullPage(container, ctx, mb) {
     if (href === null) {
       return null;
     }
-    return h("div", { class: "github-pull-commit" }, [
+    // An event on the Conversation's timeline, said as a card head says a comment: the
+    // subject where the author is, then when, in the head's type (docs/design-system.md,
+    // "Conversation Timeline").
+    return h("div", { class: "github-pull-commit github-pull-event" }, [
       h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
       event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
-        ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+        ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
       mb.decorateExternalLink(
         outside(
@@ -4840,7 +4843,7 @@ export function mountPullPage(container, ctx, mb) {
         pull.truncated,
       ],
       () =>
-        h("section", { class: "page-card github-pull-card" }, [
+        h("section", { class: "page-card github-pull-card github-pull-event" }, [
           h("div", { class: "github-pull-card-head" }, [
             authorLabel(pull.author, pull.avatar),
             " opened ",
@@ -4876,7 +4879,7 @@ export function mountPullPage(container, ctx, mb) {
         head.append(" ", item.at === null ? "(pending)" : age(item.at));
         const built = h(
           "section",
-          { class: `page-card github-pull-card github-pull-${item.kind}` },
+          { class: `page-card github-pull-card github-pull-${item.kind} github-pull-event` },
           [head],
         );
         if (item.text.trim() !== "" || item.kind === "comment") {

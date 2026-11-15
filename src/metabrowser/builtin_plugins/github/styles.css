@@ -302,21 +302,31 @@
   background: var(--sidebar-bg);
   font-size: var(--body-font-size);
 }
-.github-pull-card-head .github-pull-age {
+.github-pull-card-head .github-pull-age,
+.github-pull-commit .github-pull-age {
   font-size: var(--body-font-size);
   line-height: inherit;
 }
 .github-pull-card-head:last-child {
   border-bottom: 0;
 }
+
+/* ── The Conversation timeline ──────────────────────────────────
+   docs/design-system.md, "Conversation Timeline". A commit row is a card head without its
+   card: the head's box, type, and line, in a frame as wide as a card's that draws nothing,
+   so its text sits in its row as a head's sits in its card, and its subject starts where
+   an author's name does after the 18 px avatar and the identity's 4 px gap. Its hash takes a revision's own size, one step below the text
+   beside it (`.git-commit-sha`). Measured in Chrome 152 before this: the row was set at
+   12 px against the head's 14, its text 1 px under its top and 6 px over its bottom. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
-  padding-inline: var(--github-pull-text-inset);
   min-height: var(--ui-row-height);
-  font-size: var(--ui-small-font-size);
+  padding: 3px var(--github-pull-text-inset) 3px calc(var(--github-pull-text-inset) + 18px + 4px);
+  border: 1px solid transparent;
+  font-size: var(--body-font-size);
 }
 .github-pull-commit-subject {
   flex: 1 1 12em;
@@ -326,11 +336,61 @@
 .github-pull-commit-id {
   white-space: nowrap;
 }
-/* A hash matches its row's 12 px sans rather than sitting one step below it, as a
-   revision elsewhere does (docs/design-system.md, "The Pull Request Page"): the ramp's
-   next step down is 10 px. */
-.github-pull-commit .git-commit-sha {
-  font-size: var(--ui-small-font-size);
+/* One line joins every two adjacent events (the description, comments, reviews, and
+   commits), down the center of the card heads' avatars, in the border's ink. Each event
+   that follows another draws it across the gap above itself, a card to its edge and a
+   commit to its node; a commit that another event follows draws it on to its own lower
+   edge. So it starts at the first event, ends at the last, and breaks where anything else
+   (Review comments, a note) stands between two events. An event card lets the line out
+   above it: it clips only sideways, as `.page-card`'s hidden overflow did, and its radius
+   is the chrome's 0. Offsets are from each event's padding box, which is 1 px inside its
+   frame for a card and a commit row alike. */
+.github-pull-event {
+  --github-pull-line: 2px;
+  --github-pull-node: 8px;
+  /* The avatar's center: the head's inset and half its 18 px. */
+  --github-pull-rail: calc(var(--github-pull-text-inset) + 9px);
+  /* A commit's first line: the head's 3 px and half a line. */
+  --github-pull-node-y: calc(3px + 0.5lh);
+  position: relative;
+}
+.github-pull-event.page-card {
+  overflow: visible;
+  overflow-x: clip;
+}
+.github-pull-event + .github-pull-event.page-card::before,
+.github-pull-commit::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--github-pull-rail) - var(--github-pull-line) / 2);
+  width: var(--github-pull-line);
+  background: var(--border);
+}
+.github-pull-event + .github-pull-event.page-card::before {
+  top: calc(-1px - var(--github-pull-gap));
+  height: calc(var(--github-pull-gap) + 1px);
+}
+/* No length of its own: the events beside it give it one. */
+.github-pull-commit::before {
+  top: var(--github-pull-node-y);
+  bottom: calc(100% - var(--github-pull-node-y));
+}
+.github-pull-event + .github-pull-commit::before {
+  top: calc(-1px - var(--github-pull-gap));
+}
+.github-pull-commit:has(+ .github-pull-event)::before {
+  bottom: -1px;
+}
+/* The commit's node: a solid dot on the line, as every commit is in the history graph. */
+.github-pull-commit::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--github-pull-node-y) - var(--github-pull-node) / 2);
+  left: calc(var(--github-pull-rail) - var(--github-pull-node) / 2);
+  width: var(--github-pull-node);
+  height: var(--github-pull-node);
+  border-radius: var(--radius-circle);
+  background: var(--muted);
 }
 .github-pull-reply {
   margin-left: var(--content-padding-x);

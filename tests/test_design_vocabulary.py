@@ -2171,11 +2171,23 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
-    # A hash matches its 12 px row; the ramp's next step below is the 10 px micro size.
-    assert github[".github-pull-commit"]["font-size"] == "var(--ui-small-font-size)"
-    assert github[".github-pull-commit .git-commit-sha"]["font-size"] == (
-        "var(--ui-small-font-size)"
+    # A conversation commit is said in a card head's type ("Conversation Timeline"): its
+    # when is no quieter than a comment's, its age is the head's, and its hash takes a
+    # revision's own size, one step below the text beside it. The sizes and the line they
+    # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
+    commit = github[".github-pull-commit"]
+    assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
+    assert commit["min-height"] == github[".github-pull-card-head"]["min-height"]
+    assert ".github-pull-commit .git-commit-sha" not in github
+    assert (
+        github[".github-pull-commit .github-pull-age"]
+        == (github[".github-pull-card-head .github-pull-age"])
     )
+    assert 'h("span", { class: "github-pull-quiet" }, ["committed "' not in page
+    # The events the line joins: the description, each comment and review, and each commit.
+    assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
+    node = github[".github-pull-commit::after"]
+    assert (node["border-radius"], node["background"]) == ("var(--radius-circle)", "var(--muted)")
     # A button that moves the pin looks as a link does: no primitive's border or fill.
     action = github[".github-pull-text-action"]
     assert (action["color"], action["border"], action["background"]) == (

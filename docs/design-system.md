@@ -1504,6 +1504,48 @@ The route’s answer names KPress’s stylesheets, and that list is the same for
 so a comment does not choose what the page loads.
 Until its render arrives a text shows as plain text in the same face and size.
 
+### Conversation Timeline
+
+The Conversation is a timeline of events: the description, then its comments, reviews,
+and commits, in the order the page places them
+(`tests/dom/github-pull-timeline-session.js` holds the order).
+A commit is an event of the same weight as a comment, so it is not set smaller for being
+a commit. It is said the way a card head says a comment:
+
+- **Type:** a commit row is a card head without its card.
+  It is set at `--body-font-size` on the head’s line, in a box of the head’s height and
+  inset, inside a 1 px frame as wide as a card’s that draws nothing.
+  Its subject is bold in text ink where a head’s author is, and starts where the
+  author’s name does after the 18 px avatar.
+  “committed” and the age read as a head’s “commented” and age do, with no quieter ink
+  or size. The hash is the [GitHub action](#chrome) at a revision’s own
+  `--nav-font-size`, one step below the text beside it, as in the
+  [Git Commit Summary](#git-commit-summary).
+
+- **Spacing:** every two events are `--github-pull-gap` apart, and a commit’s text sits
+  as far below the event above it as a card head’s text does.
+
+- **The line:** one 2 px line in `--border` joins every two adjacent events, down the
+  center of the card heads’ avatars.
+  Each commit has a solid `--muted` dot on the line at its first line, the shape of the
+  history graph’s [commit nodes](#commit-nodes).
+  The line starts at the first event, ends at the last, and breaks wherever something
+  that is not an event, such as Review comments or a note, stands between two events.
+  Commits that answer after the conversation has painted go after everything, so their
+  run has a line of its own.
+
+This is the structure of GitHub’s own pull request page, a line down the timeline with a
+mark at each commit, drawn in the shell’s tokens and none of GitHub’s assets.
+It adds no token: its geometry is the avatar’s, the card head’s, and the page’s gap.
+
+`tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
+places the page puts commits, in both themes and a narrow pane, from the boxes laid out
+and the pixels painted.
+In Chrome 152, the glyphs of a commit and of a card head both sit 16 px below the event
+above. Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs
+sat 13 px below the event above, 1 px under its row’s top and 6 px over its bottom, and
+nothing joined the events.
+
 ### Chrome
 
 | Element | Primitive | Why |
@@ -1517,7 +1559,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
-| Conversation commit hash | `.git-commit-sha` at `--ui-small-font-size`, its row’s size | A [revision](#git-commit-summary) sits one step below the sans beside it, but below this 12px row the ramp’s next step is `--micro-font-size`, 10px |
+| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
