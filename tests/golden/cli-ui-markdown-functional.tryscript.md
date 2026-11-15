@@ -11,8 +11,8 @@ catalog reconciliation coordinator, published-route adapters, preprocessing Work
 client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
 It pins exact, incomplete, truncated-catalog, truncated-to-complete, ambiguous,
 overflow, revision, slice, disposal, percent-identity, shared root-budget, task-list
-bracket-pairing, and page-wide Worker sharing, primary-first dispatch, and recovery
-behavior without requiring a browser.
+bracket-pairing, heading-anchor placement, and page-wide Worker sharing, primary-first
+dispatch, and recovery behavior without requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -118,6 +118,16 @@ $ node tests/dom/markdown-functional-session.js
     }
   },
   "wikiPreprocessing": {
+    "headings": [
+      "# <span class=\"metabrowser-wiki-heading\" id=\"obsidian-heading-Guide\"></span>Guide",
+      "## <span class=\"metabrowser-wiki-heading\" id=\"obsidian-heading-Guide#Setup\"></span><span class=\"metabrowser-wiki-heading\" id=\"obsidian-heading-Setup\"></span>Setup",
+      "<span class=\"metabrowser-wiki-heading\" id=\"obsidian-heading-Usage\"></span>Usage",
+      "=====",
+      "- step",
+      "---",
+      "## <span class=\"metabrowser-wiki-heading\" id=\"obsidian-heading-Usage#Setup\"></span>Setup",
+      ""
+    ],
     "taskList": {
       "source": [
         "- [ ] Review <span class=\"metabrowser-wiki-link\" data-mb-wiki-target=\"Meeting Notes\" data-mb-wiki-action=\"navigate\">Meeting Notes</span> per [spec](https://example.com/spec)",

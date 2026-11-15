@@ -4,6 +4,23 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Markdown document’s title sits at the top of its card again, and an Obsidian link to
+  a heading scrolls that heading to the top of the view.
+  The anchors an Obsidian link such as `[[Note#Heading]]` or `[[Note#A#B]]` lands on
+  were written on a line of their own before each heading, so a heading written with `#`
+  usually had an empty paragraph in front of it: the title kept its 32 px top margin
+  inside the card, and a link scrolled to that paragraph, as much as 20 px above the
+  heading. The anchors now open the heading’s own text, so the title starts at the card’s
+  top in both reading fonts and the space between later headings is unchanged.
+  An image alone on the line above such a heading is a figure again, and a heading
+  directly after a table no longer adds an empty row to it: each used to take in the
+  anchors’ line. A setext heading (text over a line of `===` or `---`) also gets back its
+  usual id, so a link such as `[Part](#part)` reaches it again: each anchor’s line break
+  used to add a leading hyphen, as in `--part`. A list item, quote, definition, or table
+  row that starts with `|`, directly above a `---`, is no longer mistaken for a heading,
+  so it gets no heading anchor, and embedding a section through `![[Note#Heading]]` no
+  longer stops at it.
+
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
   and the pull request count with how fresh it is — now looks the same on every tab.
   It was three styles: on Pulls it was smaller, gray, and hard against the filters with

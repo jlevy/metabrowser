@@ -1,0 +1,26 @@
+{
+  "description": "Lines around a heading that the wiki parser's anchors must not turn into another block. Each case is checked twice: tests/dom/markdown-wiki-parser-behavior.js counts its anchors and checks that removing them restores the source, and tests/test_markdown_obsidian_fixture.py renders it through /api/kpress/render as authored and as preprocessed, which must give the same HTML once the anchors are removed.",
+  "cases": [
+    { "name": "list item above a thematic break", "source": "- one\n- two\n---\n", "anchors": 0 },
+    { "name": "numbered list item above its lazy line", "source": "1. Introduction\n===\n", "anchors": 0 },
+    { "name": "block quote above a thematic break", "source": "> quoted\n---\n", "anchors": 0 },
+    { "name": "one-column table above its delimiter row", "source": "| cell |\n---\n", "anchors": 0 },
+    { "name": "heading underline above a thematic break", "source": "Title\n===\n---\n", "anchors": 1 },
+    { "name": "thematic break above a thematic break", "source": "- - -\n---\n", "anchors": 0 },
+    { "name": "footnote definition above a thematic break", "source": "[^1]: A note.\n---\n", "anchors": 0 },
+    { "name": "container above a thematic break", "source": "::: note\n---\n:::\n", "anchors": 0 },
+    { "name": "indented setext heading", "source": "   Title\n   =====\n", "anchors": 1 },
+    { "name": "empty heading with a closing sequence", "source": "# #\n", "anchors": 0 },
+    { "name": "heading named by its closing character", "source": "# # #\n", "anchors": 1 },
+    { "name": "empty ATX heading above a thematic break", "source": "#\n---\n", "anchors": 0 },
+    { "name": "empty ATX heading above an equals line", "source": "#\n===\n", "anchors": 0 },
+    { "name": "line indented to column 4 by a tab", "source": " \tcode\n---\n", "anchors": 0 },
+    { "name": "table row without outer pipes above a thematic break", "source": "a | b\n--|--\nc | d\n---\n", "anchors": 1 },
+    { "name": "one-column table with a trailing pipe", "source": "a |\n---\n", "anchors": 1 },
+    { "name": "one-column table with an escaped pipe", "source": "A \\| B\n---\n", "anchors": 1 },
+    { "name": "ATX heading with a pipe in its text", "source": "# A | B\n\nText.\n", "anchors": 1 },
+    { "name": "image alone directly above an ATX heading stays a figure", "source": "![Map](map.png)\n# Heading\n\nText.\n", "anchors": 1 },
+    { "name": "ATX heading directly after a table adds no row", "source": "| a |\n|---|\n| b |\n# Heading\n\nText.\n", "anchors": 1 },
+    { "name": "known approximation: setext text that reads as a definition is refused", "source": "[Draft]: Release notes\n===\n", "anchors": 0 }
+  ]
+}
