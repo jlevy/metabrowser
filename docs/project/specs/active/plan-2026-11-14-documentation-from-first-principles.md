@@ -144,21 +144,30 @@ checks guard the moves this plan makes rather than repair existing damage.
 ### Rules
 
 The common doc guidelines apply throughout.
-Four rules beyond them answer what the survey found:
+Five rules beyond them answer what the survey found:
 
 1. **Two indexes.** `README.md` reaches every user, contributor, and design document
    through its Documentation section, and `docs/project/README.md` reaches every project
    record and architecture document.
    Checked.
-2. **Figures have one home each.** Benchmark figures live in `docs/scale-benchmark.md`,
+2. **Values live in code.** A constant, limit, default, timeout, enumerated list, or
+   other value that code defines is documented in the code, in the docstring or comment
+   beside it, with the measurement that set it where there is one.
+   A document names the constant and the file that holds it, and describes what it
+   means, but does not restate its value.
+   The survey found such restatements drifting silently: the large-content limits table
+   says 60,000 where the constant is 400,000, and the README’s file count trails the
+   cap. A document may restate a value only when a test pins the copy to the code, as
+   `tests/test_keymap.py` does for the keyboard table.
+3. **Figures have one home each.** Benchmark figures live in `docs/scale-benchmark.md`,
    the Python engine’s unit costs in its engine document, and a bound’s measurement
    beside its constant, as `AGENTS.md` requires.
    The README and every other document state ranges and link; an adjective with no
    measurement behind it is cut.
-3. **Built and planned are explicit.** Architecture documents keep their status lines.
+4. **Built and planned are explicit.** Architecture documents keep their status lines.
    User documents describe what ships, and the README’s Direction section links the
    plans for the rest.
-4. **No tracker IDs in user guides.** Bead IDs and branch names change state without the
+5. **No tracker IDs in user guides.** Bead IDs and branch names change state without the
    document changing; the survey found closed beads cited as under way.
    They belong in specs, records, `TODO.md`, and architecture status lines.
    Checked.
@@ -173,7 +182,7 @@ Four rules beyond them answer what the survey found:
 | The content-trust model | `arch-server-and-content.md` (new) | `SECURITY.md`, `docs/command-line.md` |
 | Plugin discovery order | `docs/plugins.md` | README, `SECURITY.md` |
 | Failure reasons for a pull request and what to do | `docs/reviewing-pull-requests.md` | `docs/command-line.md` |
-| Beside-a-checkout cases and mirror internals | `arch-mirror-acquisition-and-refresh.md` (new; until Phase 2, `arch-repository-sources-and-provider-mirrors.md`) | `docs/command-line.md`, `docs/reviewing-pull-requests.md` |
+| Beside-a-checkout cases and mirror internals | `arch-mirror-acquisition-and-refresh.md` (new) | `docs/command-line.md`, `docs/reviewing-pull-requests.md` |
 | Keyboard shortcuts for users | `docs/keyboard-shortcuts.md` (new) | README, `docs/design-system.md` |
 | The baseline benchmark and its figures | `docs/scale-benchmark.md` (new) | README, architecture documents |
 | Running a source checkout, tool versions, and the engineering benchmark method | `docs/development.md`, citing `package.json` and `.nvmrc` | README, `docs/installation.md`, `docs/engine-performance-model.md` |
@@ -283,8 +292,7 @@ Removed from the README to their owners: trust flags, the plugin discovery order
 developer tool versions, the File Rollup Format, link and transclusion semantics, and
 the shortcut scheme.
 
-The README lands second in Phase 1, linking the documents that exist then; each later
-guide adds its own link to What You Can Do and Documentation.
+The README links every guide by its planned name, so it is written alongside them.
 
 ### The Baseline Benchmark
 
@@ -329,20 +337,16 @@ pull request’s head:
 - **`docs/keyboard-shortcuts.md`:** the user table from the design system, with the
   `tests/test_keymap.py` pin moving to the new file.
 
-Internals leave the user guides.
-Most already have a home in `arch-repository-sources-and-provider-mirrors.md`, so Phase
-1 replaces them with links and moves only what that document lacks; Phase 2 then splits
-it.
+Internals leave the user guides for the layer documents that own them:
 
 - `docs/command-line.md`: mirror refresh and pin routes, clone progress, mirror page
-  naming, the beside-a-checkout table, and application-home repair go to the repository
-  document; `--exit-on-eof` process handling goes to the CLI architecture document in
-  Phase 2, and until then to the docstring of the function that does it.
-- `docs/reviewing-pull-requests.md`: background preparation and cache refusals go to the
-  repository document; visual styling is cut where the design system’s pull-request page
-  section already says it.
-- `docs/plugins.md` (Phase 2): retained-navigation staging, the Markdown Worker
-  lifecycle, and the diagnostic console tools go to `arch-browser-shell.md`.
+  naming, the beside-a-checkout table, and application-home repair go to the mirror and
+  cache documents; `--exit-on-eof` process handling goes to `arch-cli.md`.
+- `docs/reviewing-pull-requests.md`: background preparation and cache refusals go to
+  `arch-github-pull-requests.md`; visual styling is cut where the design system’s
+  pull-request page section already says it.
+- `docs/plugins.md`: retained-navigation staging, the Markdown Worker lifecycle, and the
+  diagnostic console tools go to `arch-browser-shell.md`.
 
 ### Architecture Documents
 
@@ -433,9 +437,9 @@ Nothing else changes.
 - **`docs/e2e-testing.md`:** the manual browser recipes move to a QA checklist under
   `docs/project/qa/`, and the navigation performance playbook to
   `explorations/performance-loop/`.
-- **`apps/macos/README.md`:** user material leaves in Phase 1, and architecture moves to
-  `arch-macos-app.md` in Phase 2, with measurement tables beside `TabDiscardPolicy` and
-  `RestoreBudget`; build, test, and release instructions stay.
+- **`apps/macos/README.md`:** user material moves to `docs/macos-app.md` and
+  architecture to `arch-macos-app.md`, with measurement tables beside `TabDiscardPolicy`
+  and `RestoreBudget`; build, test, and release instructions stay.
 
 ### Project Records
 
@@ -471,8 +475,7 @@ is proven by a failing fixture, as `tests/test_experiment_storage.py` does.
    four standards in `docs/`, which are outside them today.
    That gap is how `docs/large-content-rendering.md` drifted.
 
-Checks 1 to 3 land first in Phase 1; check 4 lands in Phase 2 with the documents it
-covers.
+All four checks run on the finished pull request.
 
 ### Review of Each Pull Request
 
@@ -485,23 +488,27 @@ covers.
 
 ## Implementation Plan
 
-Two phases, each one stack of eight pull requests.
-Each item below is one pull request, in stack order; a large one can split into several
-beads that own disjoint files on its branch.
+All of it lands as one standalone pull request, so a reviewer sees the whole
+documentation set change at once and every check runs on the finished result.
+The items below are its beads, grouped in the order a reader meets the documents; the
+two groups keep their phase names.
 
-- **Order:** the stack lands in order, and each phase’s first pull request lands before
-  the others rebase onto it.
-  Beads can be drafted in parallel worktrees but rebase in stack order.
-- **Ownership:** within a phase, each existing document has one owning pull request.
-  When material moves, the pull request that creates the destination copies it in, and
-  the owner of the source deletes it and leaves a link.
-- **Links:** whoever moves a file or heading updates every inbound link, wherever it is.
-  `README.md` and `docs/project/README.md` are shared indexes: each pull request adds
-  its own lines, and rebasing resolves the line-level conflicts.
+- **Parallel work:** beads are drafted in parallel worktrees, each on a branch from the
+  same base, and merged into the pull request’s branch.
+- **Ownership:** each existing file has one owning bead.
+  When material moves, the bead that creates the destination copies it from the base,
+  and the owner of the source deletes it and leaves a link.
+- **Shared files:** `README.md` belongs to the README bead and `docs/project/README.md`
+  to the records bead, which add the entries for every new document by its planned name.
+  A link to a moved heading in a file another bead owns is fixed after the merge, where
+  the link check finds it.
 
 ### Phase 1: The Reader’s Path
 
-- [ ] Add checks 1 to 3 with their failing fixtures, and fix what they find.
+- [ ] Add checks 1 to 3 with their failing fixtures, and fix what they find; add the
+  values-live-in-code rule (Rules, item 2) to the documentation conventions in
+  `docs/development.md` and to the Documentation section of `AGENTS.md`, with its
+  reason, so every later rewrite follows it.
 - [ ] Rewrite `README.md` with the icon block, the thesis, a refreshed screenshot, and
   the outline above, linking the documents that exist; extend
   `apps/macos/scripts/build-icon.sh` to write the README image.
@@ -568,9 +575,8 @@ beads that own disjoint files on its branch.
 
 ## Rollout Plan
 
-Phase 1 goes first because it changes what a new reader sees; Phase 2 stacks on it,
-because it splits the repository document and completes the server document that Phase 1
-edits. When the fdu provider ships, its pull request takes the engine-swap steps under
+One pull request against `main`, reviewed as a whole.
+When the fdu provider ships, its pull request takes the engine-swap steps under
 Architecture Documents.
 
 ## Decisions
