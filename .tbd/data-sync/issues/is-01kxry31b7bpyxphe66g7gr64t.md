@@ -5,14 +5,14 @@ title: "Platform A3: expose file-change event subscription/emission to installed
 kind: feature
 status: closed
 priority: 1
-version: 5
+version: 6
 labels: []
 dependencies:
   - type: blocks
     target: is-01kxse0wddy6je24t1dm5caber
 parent_id: is-01kxry18kdjj6xk8nkz4bs4ba6
 created_at: 2026-07-17T21:00:32.999Z
-updated_at: 2026-11-14T18:46:45.270Z
+updated_at: 2026-11-15T05:59:00.520Z
 closed_at: 2026-11-14T18:46:45.269Z
 close_reason: "Superseded: the diff plugin is built-in, comparison caches are commit-keyed, and uncommitted-comparison staleness is core work in mb-tcdy; browser views already have onInventoryChange. Reopen under mb-xbw3 if an out-of-process plugin needs server-side change events."
 resolution: canceled
@@ -23,3 +23,7 @@ extensions:
     linked_at: 2026-08-16T08:06:14.969Z
 ---
 InventoryIndex.subscribe() and ProjectionInvalidate/Update exist but are not in plugin_api; diff comparisons need watcher-driven invalidation without private imports.
+
+## Notes
+
+2026-11-14 correction (PR #434 review A, A6): the close reason names mb-tcdy for uncommitted-comparison staleness; mb-tcdy was closed as a duplicate of mb-vibn, which carries that work.
