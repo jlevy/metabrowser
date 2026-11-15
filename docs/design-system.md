@@ -682,7 +682,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
-| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon, stack position |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -1577,13 +1577,17 @@ Usernames use the same small metadata size and bold normal text ink; the reposit
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
 A row names no branches: the pull request’s page names them, head → base, as
 [Merge Direction](#merge-direction) sets them, and the row’s room goes to its title
-(`mb-ghff`). Known native stack membership uses a small Layers icon and bold position in
-a column of the title line, before the age, in all the room the title and it share but
-4ch of the title, and cut short with an ellipsis past that; a second stack’s position is
-named by its number, and the tooltip names the stack and every position
-([Stacks](#stacks)). Their shared repository snapshot is indexed once by PR number; rows
-make no stack requests, and enrichment updates retain the row and any focused
-changed-file tree.
+(`mb-ghff`). A stack member’s place in its stack comes first on the metadata line,
+before its number and in the number’s size and ink: “1/6 · #455 · jlevy”, its position
+bold (`mb-dzsi`). It has no stack icon of its own: the stack’s row it sits under has
+one. A second stack’s position is named by its number, the tooltip names the stack and
+every position ([Stacks](#stacks)), and a place too wide for its line is cut short with
+an ellipsis, the number whole after it.
+The title’s line holds only the title and the age, so a member’s title has the room a
+first-level row’s has, less its one indent: at the default 299 px pane, 166 px, where a
+position on the title line left it 65 to 125. Their shared repository snapshot is
+indexed once by PR number; rows make no stack requests, and enrichment updates retain
+the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1659,7 +1663,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
-| Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip ([Stacks](#stacks)) |
+| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in the tooltip ([Stacks](#stacks)); the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1669,8 +1673,8 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
-icon and the title with the age beside it, sharing a baseline, and the stack position,
-if any, centred between them, then the metadata line under them.
+icon and the title with the age beside it, sharing a baseline, then the metadata line
+under them: a stack member’s place, the number, and the author.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
 
@@ -1697,16 +1701,16 @@ rows with or without Shift; walking a pull request’s stack is `N` and `P`
 ## Stacks
 
 **A native GitHub stack is named, placed, and listed one way wherever it appears:** the
-pull request page’s stack button and menu, a Pulls row’s position badge, and the Pulls
-tab’s stack groups. The words come from one place,
-`builtin_plugins/github/pull-stacks.js` (`stackLabel`, `stackPosition`,
-`stackPositionHint`, `stackMenuOrder`), and the look from one set of classes in the
-GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy of either.
+pull request page’s stack button and menu, a Pulls row’s place, and the Pulls tab’s
+stack groups. The words come from one place, `builtin_plugins/github/pull-stacks.js`
+(`stackLabel`, `stackPosition`, `stackPositionHint`, `stackMenuOrder`), and the look
+from one set of classes in the GitHub plugin’s stylesheet on the shell’s tokens, so no
+surface keeps a copy of either.
 
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
-| Position, “2/4” | `.github-pull-stack-position`, bold and tabular, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s badge |
+| Position, “2/4” | `.github-pull-stack-position`, bold and tabular; on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s place, before its number, with no icon (`mb-dzsi`) |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`; and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
 
@@ -1724,11 +1728,11 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   A number alone, “#300”, read as the pull request number on the same row.
   Its own stack is its only stack, the one a group places it under, or else the first
   GitHub lists.
-- **Ink.** The position takes the ink of what holds it: muted in a Pulls row’s badge,
-  which is passive, and normal text ink on the stack button and in a member row.
-  A member row is a link, so its position, title, and number each set their own ink, and
-  no link, visited, hover, focus, or current state changes them; a part that set none
-  would take the link’s blue.
+- **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
+  place, the ink of the number it comes before, on the stack button, and in a member
+  row. A member row is a link, so its position, title, and number each set their own ink,
+  and no link, visited, hover, focus, or current state changes them; a part that set
+  none would take the link’s blue.
 - **Order.** A stack’s members are listed top of the stack first, the order of
   `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
   order.
@@ -1740,10 +1744,11 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
   The stack button carries it, and its accessible name is “Navigate” before it.
-  A badge’s glyph has no words of its own: its tip and accessible name name each stack,
-  “Stack #300, position 2 of 2”. A stack group’s row says its size, how many the list
-  holds when that is fewer, and how many of those sit under an earlier stack: “Stack
-  #286, 4 pull requests, 3 in this list, 1 under Stack #290”.
+  The glyph in a Pulls row’s place has no words of its own: the place’s tip and
+  accessible name name each stack, “Stack #300, position 2 of 2”. A stack group’s row
+  says its size, how many the list holds when that is fewer, and how many of those sit
+  under an earlier stack: “Stack #286, 4 pull requests, 3 in this list, 1 under Stack
+  #290”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -1760,17 +1765,17 @@ spare.
   so the list’s own order, newest first, still decides which comes first.
   The pull requests in no stack follow the stacks, in the list’s order.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
-  in that order, and its badge names the other.
+  in that order, and its place names the other.
   A later stack’s row still counts it among the pull requests the list holds, and its
   tip says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
-  badges name it.
+  places name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
   them. Until a snapshot is known for the list’s own GitHub account, while none of the
   list’s pull requests is in a stack, or when the stacks cannot be read, the list stays
-  flat, as it was before stacks: the badges and the pull request page say nothing of
+  flat, as it was before stacks: the rows and the pull request page say nothing of
   stacks either. A snapshot kept through a failed or expired refresh still groups, as the
-  badges and the stack menu still show it.
+  places and the stack menu still show it.
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
   and open nothing; Enter and Space open or close it; Right opens it, or goes to its
   first pull request; Left closes it, or from a pull request in it whose files are
@@ -1793,9 +1798,16 @@ heading resolve to the same label tokens, where a stack’s row and its pull req
 start, that the two kinds of row hover and focus alike, that the toolbar fits the
 default pane with room to spare, that real keys and a press move focus and open and
 close a stack, that a member’s changed files are a level further in, that the first
-stack’s row is in view after grouping arrives and after Left then Right, that a badge
-names another stack by its glyph, and that the menu lists the group’s order with its
-positions in text ink.
+stack’s row is in view after grouping arrives and after Left then Right, that a member’s
+place is on its number’s line, before the number, in the number’s ink, and names another
+stack by its glyph, that a member’s row draws no stack icon and its title has a
+first-level row’s room less its indent, and that the menu lists the group’s order with
+its positions in text ink.
+`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows from 420 px to the 180
+px minimum and holds that a place arriving moves nothing on its row’s title line and
+leaves the title its width, that it sits before the number, which shows whole, that
+nothing ends past the row, and that one stack’s place shows whole and, at 300 px and
+wider, keeps its row two lines.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
 

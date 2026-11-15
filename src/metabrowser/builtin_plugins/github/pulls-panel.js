@@ -3448,13 +3448,18 @@ export function mountPullsPanel(container, ctx, mb) {
     return { at, ...when };
   }
 
-  /** A passive badge stays inside the row's one primary link. Under a stack's row, its
-   * position in that stack comes first and any other stack's is named (pull-stacks.js).
+  /**
+   * A stack member's place in its stack, on its number's line, before the number: "1/6 ·
+   * #455 · author" (docs/design-system.md, "Stacks"). It has no stack icon of its own: the
+   * stack's row it sits under has it. The place of its row's own stack comes first, bare,
+   * and any other stack's is named by the Layers glyph before its number. A passive part of
+   * the row's one primary link, named by its tip.
+   *
    * @param {HTMLElement} element
    * @param {number} number
    * @param {number | null} [under]
    */
-  function paintStackBadge(element, number, under = null) {
+  function paintPlace(element, number, under = null) {
     const caption = stackCaption(stackIndex, stackIdentity, number, under);
     const text = caption?.text ?? "";
     const hint = caption?.hint ?? "";
@@ -3471,15 +3476,6 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     element.setAttribute("aria-label", hint);
     element.replaceChildren(
-      ...(stackSvg === null
-        ? []
-        : [
-            h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
-              document.importNode(stackSvg, true),
-            ]),
-          ]),
-      // Another stack's position is named by the Layers glyph before its number
-      // (docs/design-system.md, "Stacks"); its words are the tip's.
       h(
         "span",
         { class: "github-pull-stack-position" },
@@ -3496,26 +3492,30 @@ export function mountPullsPanel(container, ctx, mb) {
           part.position,
         ]),
       ),
+      h("span", { class: "github-pulls-sep" }, [" · "]),
     );
   }
 
   /**
-   * The muted line: the number, the author, and the merge. The stack's position is not on
-   * it: it arrives from its own answer, and on this line, which wraps, it moved what was
-   * before it or took a line of its own and moved every row below. It is on the title
-   * line instead (`buildRow`).
+   * The muted line: a stack member's place (`paintPlace`), the number, and the author. A
+   * row names no branches: the page does, and the row's room goes to its title
+   * (docs/design-system.md, "The Pulls Tab"). The title's line holds only the title and its
+   * age, so a member's place, which once had a column there, gives the title that room.
    *
    * @param {PullRow} row
+   * @param {HTMLElement} place The row's place, kept across the line built again.
    */
-  function rowMeta(row) {
+  function rowMeta(row, place) {
     // A line that wraps (github/styles.css, `.github-pulls-line`): the author carries the
     // separator before it, so it moves to the next line whole, and a separator that starts
-    // a line is clipped. A row names no branches: the page does, and the row's room goes to
-    // its title (docs/design-system.md, "The Pulls Tab").
+    // a line is clipped. The place and the number are one part, which never breaks.
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [
-        h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        h("span", { class: "github-pulls-id" }, [
+          place,
+          h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        ]),
         h("span", { class: "github-pulls-by" }, [
           separator(),
           // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
@@ -3554,7 +3554,7 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
-      const meta = rowMeta(row);
+      const meta = rowMeta(row, entry.stack);
       entry.row.insertBefore(meta, entry.meta);
       entry.meta.remove();
       entry.meta = meta;
@@ -3582,11 +3582,10 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       [when.label],
     );
-    // The stack's position has a column of its own on the title line, between the title
-    // and the age: arriving, it cuts the title shorter and moves nothing.
-    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
-    paintStackBadge(stack, row.number);
-    const meta = rowMeta(row);
+    // A stack member's place, on the number's line (`rowMeta`); empty and hidden until the
+    // row sits under a stack's row.
+    const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
@@ -3603,7 +3602,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-expanded": "false",
           tabindex: "-1",
         },
-        [toggle, icon, title, stack, updated, meta],
+        [toggle, icon, title, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -3938,7 +3937,7 @@ export function mountPullsPanel(container, ctx, mb) {
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
-      paintStackBadge(entry.stack, row.number, placed.stack);
+      paintPlace(entry.stack, row.number, placed.stack);
       // A pull request under a stack's row is a level in, and its changed files with it
       // (`--github-pulls-level` in github/styles.css; pull-files-view.js reads the level).
       entry.row.setAttribute("aria-level", String(placed.level));

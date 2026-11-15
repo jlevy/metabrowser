@@ -350,10 +350,8 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The stack position's column takes what the title and it share, but 4ch of title.
-    assert " ".join(columns.group(1).split()) == (
-        "16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch)) 5ch"
-    )
+    # The title takes its line but the age: a stack member's place is on the muted line.
+    assert " ".join(columns.group(1).split()) == "16px 16px minmax(0, 1fr) 5ch"
     assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
     count = _rule(css, ".github-pulls-filters .count")
     assert "min-width: 3ch;" in count
@@ -362,25 +360,28 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
 
 
-def test_a_pulls_rows_stack_position_has_a_column_on_the_title_line() -> None:
-    """It arrives from its own answer. On the muted line, which wraps, it moved the merge
-    or added a line to its row (review E1 on #370); in a column of its own before the age,
-    it cuts the title shorter and moves nothing. github-pull-header-chrome.mjs measures it,
-    and github-pulls-panel-session.js pins the built row's order."""
+def test_a_stack_members_place_is_on_its_numbers_line() -> None:
+    """A stack member's place in its stack is on the muted line, before its number: "1/6 ·
+    #455 · author" (mb-dzsi). Its column on the title line, between the title and the age
+    (review E1 on #370), took the title's room; the place now arrives with the row's move
+    under its stack's row, so it moves nothing that had not moved. The title's line is the
+    title and its age. github-pulls-stacks-chrome.mjs measures the title's room, and
+    github-pulls-panel-session.js pins the built row's order."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert "[toggle, icon, title, updated, meta]," in panel
     meta = panel[panel.index("function rowMeta(") :]
     meta = meta[: meta.index("\n  }\n")]
-    assert "stack" not in meta
-    assert "[toggle, icon, title, stack, updated, meta]," in panel
+    assert meta.index("place,") < meta.index('"github-pulls-number"'), "the place leads the line"
     css = _github_css()
-    stack = _rule(css, ".github-pulls-row > .github-pulls-stack")
-    assert "grid-row: 1;" in stack and "grid-column: 4;" in stack
-    # It shrinks below its position and cuts it short (review F1 on #370). It is centred
-    # with the row's boxes: on the title's baseline its taller box grew the row 3 px.
-    assert "min-width: 0;" in stack and "overflow: hidden;" in stack
-    assert "align-self" not in stack
-    assert "align-items: center;" in _rule(css, ".github-pulls-row")
-    position = _rule(css, ".github-pulls-row > .github-pulls-stack > .github-pull-stack-position")
-    assert "min-width: 0;" in position and "text-overflow: ellipsis;" in position
-    assert "grid-column: 5;" in _rule(css, ".github-pulls-row > .github-pulls-age")
+    # The place and the number are one part of the wrapping line, which never breaks;
+    # alone on a line too short for it, the place ends in an ellipsis and the number shows
+    # whole (github-pull-header-chrome.mjs measures it at 180 to 420 px).
+    part = _rule(css, ".github-pulls-id")
+    assert "white-space: nowrap;" in part and "min-width: 0;" in part
+    assert "flex: none;" in _rule(css, ".github-pulls-number")
+    assert "text-overflow: ellipsis;" in _rule(
+        css, ".github-pulls-place > .github-pull-stack-position"
+    )
+    assert ".github-pulls-row > .github-pulls-stack" not in css
+    assert "grid-column: 4;" in _rule(css, ".github-pulls-row > .github-pulls-age")

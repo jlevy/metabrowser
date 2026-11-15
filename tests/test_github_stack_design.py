@@ -1,6 +1,6 @@
 """One stack design, held by the source (docs/design-system.md, "Stacks").
 
-The pull request page's stack button and menu, a Pulls row's position badge, and the
+The pull request page's stack button and menu, a Pulls row's place, and the
 Pulls tab's stack groups name a stack one way. These checks hold the source to that
 without a browser: one label class for the menu's heading and a stack row's header, read
 from the shell's group heading and its label tokens and restyled nowhere; one function

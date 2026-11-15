@@ -30,7 +30,7 @@
 // past it in a 360 px pane, and the pane scrolled sideways. The row structure itself is
 // pinned browserless in github-pull-page-mount-behavior.js.
 //
-// The session also lays out Pulls rows as their stack positions arrive, and the file
+// The session also lays out Pulls rows as their stack places arrive, and the file
 // header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
@@ -349,13 +349,16 @@ const RECORDS = [
   ["merged", { longNames: true, avatar: true }],
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
-// github-pulls-panel-session.js pins: the toggle, the state icon, the title, the stack
-// position, the age, and the muted line. Every row's parts are read before and after each
-// row's stack position arrives, and only the title's width may change, where it is cut.
+// github-pulls-panel-session.js pins: the toggle, the state icon, the title, and the age
+// on the title line, and the muted line under it, where a stack member's place comes
+// before its number (mb-dzsi). Each row is a member, a level in under its stack's row.
+// Every part of the title line is read, from its row's top, before and after each row's
+// place arrives, the title's width with it: the place is not on that line, so the title
+// keeps all its room. A place that sends the author to a line of its own makes its row a
+// line taller, and so moves the rows below it: that is read as `grew`.
 const PULLS_ROWS = `async (rows, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
-  const mb = window.metabrowser;
   const h = (tag, attributes = {}, children = []) => {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
@@ -374,46 +377,45 @@ const PULLS_ROWS = `async (rows, width) => {
       identity.prepend(h("img", { class: "github-pull-avatar", alt: "", width: "18", height: "18" }));
     }
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
-    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
+    const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const number = h("span", { class: "github-pulls-number" }, ["#" + row.number]);
     const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
     const anchor = h("a", { class: "github-pulls-row collapsed", href: "#", role: "treeitem" }, [
       h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }),
       state.pullStateIcon("open"),
       title,
-      stack,
-      h("span", { class: "github-pulls-age" }, ["12mo"]),
+      age,
       h("span", { class: "github-pulls-meta" }, [
         h("span", { class: "github-pulls-line" }, [
-          h("span", { class: "github-pulls-number" }, ["#" + row.number]),
+          h("span", { class: "github-pulls-id" }, [place, number]),
           h("span", { class: "github-pulls-by" }, [separator(), identity]),
         ]),
       ]),
     ]);
-    list.append(h("li", { class: "github-pulls-item", role: "none" }, [anchor]));
-    return { anchor, stack, title, row };
+    list.append(h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [anchor]));
+    return { anchor, place, number, title, age, row };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  // Each row's own boxes and all it holds but the position itself, read as they were drawn.
-  const watched = built.map(({ anchor, stack }) =>
-    [anchor, ...anchor.querySelectorAll("*")].filter((node) => node !== stack),
-  );
+  // Each row's title line, its width with it, read from its row's top as it was drawn.
+  const titleLine = built.map(({ anchor, title, age }) => [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon"), title, age]);
   const read = () =>
-    built.map(({ title }, at) =>
-      watched[at].map((node) => {
+    titleLine.map((nodes, at) => {
+      const top = built[at].anchor.getBoundingClientRect().top;
+      return nodes.map((node) => {
         const r = node.getBoundingClientRect();
-        // The title's width is where it is cut, which the position's arrival may change.
-        return [r.left, r.top, node === title ? 0 : r.width, r.height].map((value) => Math.round(value * 100) / 100);
-      }),
-    );
+        return [r.left, r.top - top, r.width, r.height].map((value) => Math.round(value * 100) / 100);
+      });
+    });
   const before = read();
-  for (const { stack, row } of built) {
-    stack.hidden = false;
-    stack.append(
-      h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }),
-      // As pulls-panel.js#paintStackBadge draws it: another stack is the Layers glyph
-      // before its number, written here as "#N".
+  const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
+  for (const { place, row } of built) {
+    place.hidden = false;
+    // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
+    // number, written here as "#N", and a separator ends the place.
+    place.append(
       h(
         "span",
         { class: "github-pull-stack-position" },
@@ -430,26 +432,34 @@ const PULLS_ROWS = `async (rows, width) => {
           ];
         }),
       ),
+      h("span", { class: "github-pulls-sep" }, [" · "]),
     );
   }
   await frames();
   const after = read();
-  return built.map(({ anchor, stack, title, row }, at) => {
-    const moved = watched[at].flatMap((node, index) =>
+  return built.map(({ anchor, place, number, title, age, row }, at) => {
+    const moved = titleLine[at].flatMap((node, index) =>
       JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
         ? []
-        : [[node.className || node.tagName, before[at][index], after[at][index]]],
+        : [[node.className.baseVal ?? node.className, before[at][index], after[at][index]]],
     );
-    const s = stack.getBoundingClientRect();
+    const position = place.querySelector(".github-pull-stack-position");
+    const p = position.getBoundingClientRect();
+    const n = number.getBoundingClientRect();
+    const box = anchor.getBoundingClientRect();
+    const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
+    const meta = anchor.querySelector(".github-pulls-meta").getBoundingClientRect();
     return {
       number: row.number,
       moved,
-      between: s.width > 0 && s.left >= title.getBoundingClientRect().right - 0.5 && s.right <= anchor.querySelector(".github-pulls-age").getBoundingClientRect().left + 0.5,
+      // Before the number, on its line, in its type: the same top in the same size.
+      before: p.width > 0 && place.getBoundingClientRect().right <= n.left + 0.5 && Math.abs(p.top - n.top) < 0.5,
+      // The number shows whole, inside the muted line's clip.
+      whole: n.left >= meta.left - 0.5 && n.right <= meta.right + 0.5 && number.scrollWidth <= Math.ceil(n.width),
       // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
-      inside:
-        [...anchor.querySelectorAll(".github-pulls-age, .github-pulls-stack")].every(
-          (node) => node.getBoundingClientRect().right <= anchor.getBoundingClientRect().right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5,
-        ) && nav.scrollWidth <= nav.clientWidth,
+      inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
+      cut: position.scrollWidth > position.clientWidth,
+      grew: Math.round((box.height - heights[at]) * 100) / 100,
       title: Math.round(title.getBoundingClientRect().width * 10) / 10,
     };
   });
@@ -476,7 +486,7 @@ const PULLS = [
     avatar: false,
     stack: "1/2",
   },
-  // Wider than half of what the title and the position share in a 180 px pane: cut short.
+  // Two stacks and three: wider than a narrow pane's muted line, the place is cut short.
   {
     number: 4242,
     title: "Two stacks, two digits each",
@@ -729,18 +739,32 @@ async function main() {
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
           check(
-            `${where}: a late stack position moves nothing, here or below`,
+            `${where}: a late stack place moves nothing on its row's title line, nor cuts the title`,
             row.moved.length === 0,
             JSON.stringify(row.moved),
           );
           check(
-            `${where}: the stack position sits between the title and the age`,
-            row.between,
+            `${where}: the stack place sits before the number, on its line`,
+            row.before,
             JSON.stringify(row),
           );
+          check(`${where}: the number shows whole`, row.whole, JSON.stringify(row));
           check(
-            `${where}: the position and the age end inside the row, and nothing scrolls sideways`,
+            `${where}: the place, the number, and the age end inside the row, and nothing scrolls sideways`,
             row.inside,
+            JSON.stringify(row),
+          );
+          const oneStack = !PULLS.find((pull) => pull.number === row.number).stack.includes(" · ");
+          check(
+            `${where}: one stack's place shows whole`,
+            !row.cut || !oneStack,
+            JSON.stringify(row),
+          );
+          // At the default pane's width and wider, measured: two stacks with a 39-character
+          // login keep two lines at 300 px, and three stacks take a third at 300 px.
+          check(
+            `${where}: one stack's place keeps its row two lines`,
+            width < 300 || !oneStack || row.grew === 0,
             JSON.stringify(row),
           );
           check(
@@ -748,6 +772,9 @@ async function main() {
             row.title >= 20,
             JSON.stringify(row),
           );
+        }
+        if (process.env.METABROWSER_PULLS_HEADER_MEASURE) {
+          console.error(JSON.stringify({ width, rows }));
         }
         lap(`the Pulls rows at ${width} px`);
       }

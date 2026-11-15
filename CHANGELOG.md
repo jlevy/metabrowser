@@ -7,6 +7,11 @@ All notable changes to Metabrowser are documented here.
 - A Pulls row no longer names its branches, so its title has more room; the pull
   request’s page still names them, head → base.
 
+- A stack member’s place in its stack is on its number’s line, before the number, as
+  “1/6 · #455 · jlevy”, and its row draws no stack icon: the stack’s row above it has
+  one. Its title’s line holds only the title and the age, so the title has all that room:
+  at the default pane, 166 px where it had 65 to 125.
+
 - The Pulls tab groups a native GitHub stack’s pull requests under a “Stack #N” row,
   open by default, with the stack’s pull requests under it top of the stack first, as
   the pull request page’s stack menu lists them, and the pull requests in no stack after
@@ -14,8 +19,8 @@ All notable changes to Metabrowser are documented here.
   when they cannot be read, the list stays as it was.
   A stack’s row counts the pull requests of it the list holds, and its tip says where
   any sit under another stack.
-  A pull request in two stacks appears once, under the first, and its badge names the
-  other stack by the stack icon and its number before its position, everywhere a badge
+  A pull request in two stacks appears once, under the first, and its place names the
+  other stack by the stack icon and its number before its position, everywhere a place
   shows two positions; it showed two bare positions, such as “4/4 · 2/2”. A stack’s row
   opens and closes like a folder: J and K stop on it, Enter, Space, and the arrow keys
   open, close, enter, and leave it.

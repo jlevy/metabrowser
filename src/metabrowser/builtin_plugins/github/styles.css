@@ -644,28 +644,20 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target: the chevron, the state icon, the title, the stack position, and
-   the age on the first, and the muted line under the title. A row is a container, so its chevron leads in the 16px
-   box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's
-   baseline (docs/design-system.md, "Row Text Shares a Baseline"); the muted line is alone on
-   its own, with no baseline to share. */
+/* Two lines and one target: the chevron, the state icon, the title, and the age on the
+   first, and the muted line under the title. A row is a container, so its chevron leads in
+   the 16px box a folder's takes (docs/design-system.md, "Container Rows"). The row centers
+   its boxes and its text opts in to the first line's baseline (docs/design-system.md, "Row
+   Text Shares a Baseline"); the muted line is alone on its own, with no baseline to share. */
 /* The age has a column of one width, so an age that grows a digit does not move the title's
    cut. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
-   engine. Before it, the stack position's column is as wide as its position and empty
-   without a stack: a position that arrives cuts the title shorter and moves nothing, and
-   the row keeps its height. On the muted line, which wraps, it moved the merge's arrow 34
-   to 54 px, or took a line of its own and moved every row below 18 px. The column takes
-   all of the room the title and it share, the row's width less the chevron's, the icon's,
-   and the age's columns and the four gaps, but 4ch the title keeps: a position wider than
-   that is cut short, with all of it in its tooltip, rather than pushing the age out of
-   the row. At the 180 px pane, two stacks' "12/23 · 10/14" pushed the age 17.5 px right
-   and the pane scrolled sideways; one stack's position still shows whole there. */
+   engine. The title takes the rest of its line: a stack member's place in its stack, which
+   had a column of its own between the title and the age, is on the muted line, before the
+   number (`.github-pulls-place`, mb-dzsi), so the title has that room. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns:
-    16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch))
-    5ch;
+  grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
@@ -698,7 +690,7 @@
 }
 .github-pulls-row > .github-pulls-age {
   grid-row: 1;
-  grid-column: 5;
+  grid-column: 4;
   justify-self: end;
   white-space: nowrap;
 }
@@ -754,35 +746,41 @@
   width: var(--github-pulls-sep);
   text-align: center;
 }
+/* The line's first part: a stack member's place, if any, and the number, which never part.
+   It makes up the line's one-separator offset. Alone on a line too short for it, it
+   shrinks: the place ends in an ellipsis, with all of it in its tip, and the number shows
+   whole (below). */
+.github-pulls-id {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  min-width: 0;
+  margin-inline-start: var(--github-pulls-sep);
+  white-space: nowrap;
+}
 .github-pulls-number {
+  flex: none;
   color: var(--text);
   font-size: var(--nav-font-size);
-  margin-inline-start: var(--github-pulls-sep);
 }
-.github-pulls-stack {
+/* A stack member's place in its stack, before its number on the muted line, in the
+   number's type and ink, "1/6" before "#N" (`.github-pulls-id`). Its own stack's position is
+   bare, as the row sits under that stack's row, and another stack's is named by the Layers
+   glyph. */
+.github-pulls-place {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  align-items: baseline;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--nav-font-size);
 }
-.github-pulls-stack[hidden] {
+.github-pulls-place[hidden] {
   display: none;
 }
-/* The title line's places: the title, the stack position's column, and the age (above). */
+/* The title line's places: the title, and the age (above). */
 .github-pulls-row > .github-pulls-title {
   grid-row: 1;
   grid-column: 3;
-}
-/* Centred with the row's other boxes (`align-items: center`), not on the title's baseline:
-   its 18 px box hung from that baseline grew the row 3 px and moved the title and the
-   muted line down. */
-.github-pulls-row > .github-pulls-stack {
-  grid-row: 1;
-  grid-column: 4;
-  min-width: 0;
-  overflow: hidden;
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
    on the row turn it, as they turn a folder's. */
@@ -1023,8 +1021,9 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
-/* A Pulls row's position past its column's ceiling ends in an ellipsis (`.github-pulls-row`). */
-.github-pulls-row > .github-pulls-stack > .github-pull-stack-position {
+/* A Pulls row's place too wide for its line ends in an ellipsis, the number whole after it
+   (`.github-pulls-id`). */
+.github-pulls-place > .github-pull-stack-position {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1067,7 +1066,7 @@
 
 /* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
    One design names a stack wherever one is shown: the pull request page's stack button
-   and menu, a Pulls row's position badge, and the Pulls tab's stack groups.
+   and menu, a Pulls row's place, and the Pulls tab's stack groups.
      .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label
                                   register (gray, all caps, tracked), so the menu's
                                   heading and a stack row's are one class and resolve to

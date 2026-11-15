@@ -230,13 +230,17 @@ it:
 
 - **More of each title** (the owner’s requests after review A on #450): a Pulls row
   names no branches (`mb-ghff`); the pull request’s page keeps them.
+  A stack member’s place sits before its number on the metadata line, “1/6 · #455”, with
+  no stack icon of its own, so the title’s line holds only the title and the age
+  (`mb-dzsi`).
 
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,
   stated once in a “Stacks” section of `docs/design-system.md`. It covers:
   - the “Stack #N” label: gray, all caps and tracked, in the label register of the stack
     menu’s heading, at the inset `mb-s6vu` sets for menu group headings;
-  - the position badge and its icon;
+  - the position: after its icon on the stack button, and before the number, with no
+    icon, in a Pulls row (`mb-dzsi`);
   - member rows: title, position, number, and the current pull request’s mark;
   - member order;
   - links and their hover and focus states;

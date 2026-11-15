@@ -2112,7 +2112,7 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
     assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
     by_rule = github[".github-pulls-by"]
     assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")

@@ -48,7 +48,8 @@ async function settle() {
  * Mount the production panel over a stand-in for the DOM, on the recorded All list and
  * stack snapshot, and drive what its handle and its list do with a stack's row: Space's
  * toggle, Right and Left (a member's files open, then closed), and a press. Each step
- * prints the tree's drawn rows with their roles and places.
+ * prints the tree's drawn rows with their roles and places, and the mounted list each
+ * member's muted line as drawn: its place in its stacks, its number, and its author.
  */
 async function mountStory() {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
@@ -211,6 +212,35 @@ async function mountStory() {
       });
     };
     await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
+    // Each member's muted line as drawn (pulls-panel.js#paintPlace and #rowMeta): its place
+    // before its number, "3/3 · #8", where another stack's glyph is written ⧉, and no
+    // stack icon on its row, whose stack's row has it (mb-dzsi).
+    const find = (node, name) =>
+      node.classList?.contains(name)
+        ? node
+        : (node.childNodes ?? []).reduce((found, child) => found ?? find(child, name), null);
+    const textOf = (node) =>
+      node.data !== undefined
+        ? node.data
+        : node.classList?.contains("github-pull-stack-other")
+          ? "⧉"
+          : (node.childNodes ?? []).map(textOf).join("");
+    const memberLines = drawnRows()
+      .filter((row) => row.getAttribute("aria-level") === "2")
+      .map((row) => {
+        assert.equal(
+          find(row, "github-pull-stack-icon"),
+          null,
+          "a member's row draws no stack icon",
+        );
+        const id = find(row, "github-pulls-id");
+        assert.equal(
+          id.childNodes[0],
+          find(row, "github-pulls-place"),
+          "the place leads the number",
+        );
+        return `#${row.dataset.number}: ${textOf(find(row, "github-pulls-line"))}`;
+      });
     await step("Space on the stack's row (the handle's toggleStack) closes it", () =>
       handle.toggleStack(286),
     );
@@ -233,6 +263,7 @@ async function mountStory() {
     );
     handle.dispose();
     return {
+      "member lines": memberLines,
       files: { "Right on #8": filesOpen, "then Left": filesClosed },
       label: { text: label.textContent, classes: label.className },
       steps,

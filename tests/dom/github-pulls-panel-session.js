@@ -1228,10 +1228,11 @@ async function paintStory(panel, selection = false) {
     // The line wraps: the author carries the separator before it, so it moves to the next
     // line whole. A row names no branches; the pull request's page does.
     const line = child(metadata, "github-pulls-line");
-    const numberLabel = child(line, "github-pulls-number");
+    const id = child(line, "github-pulls-id");
+    const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    // The stack's position is on the title line, between the title and the age, and not on
-    // the muted line, which wraps: there its late arrival moved the merge or added a line.
+    // The title's line is the title and its age; a stack member's place is on the muted
+    // line, before the number, so the title has the room (mb-dzsi).
     // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
     const order = row(hostile)
       .childNodes.filter((node) => typeof node.className === "string")
@@ -1242,15 +1243,16 @@ async function paintStory(panel, selection = false) {
           "github-pulls-toggle",
           "github-pull-state-icon",
           "github-pulls-title",
-          "github-pulls-stack",
           "github-pulls-age",
           "github-pulls-meta",
         ]),
-      `the row is the toggle, the state icon, the title, the stack position, the age, and the muted line: ${order}`,
+      `the row is the toggle, the state icon, the title, the age, and the muted line: ${order}`,
     );
     assert(
-      !line.childNodes.some((node) => node.classList?.contains("github-pulls-stack")),
-      "the muted line holds no stack position",
+      id.childNodes[0].classList.contains("github-pulls-place") &&
+        id.childNodes[0].hidden &&
+        id.childNodes[0].textContent === "",
+      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
     );
     assert(
       metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
@@ -1259,7 +1261,7 @@ async function paintStory(panel, selection = false) {
     assert(
       !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
         line.childNodes.length === 2,
-      "the line has the number and the author, and no merge",
+      "the line has the place and number, and the author, and no merge",
     );
     assert(
       by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",

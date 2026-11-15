@@ -88,10 +88,14 @@ const LIST = `(() => {
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
       open.members.push({
         number: Number(row.dataset.number),
-        badge: row.querySelector(".github-pulls-stack")?.textContent ?? "",
+        // Its place in its stacks, on its number's line, before the number (mb-dzsi).
+        badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
+        line: row.querySelector(".github-pulls-line")?.textContent ?? "",
         // Another stack named in it, by the Layers glyph before its number.
-        others: row.querySelectorAll(".github-pulls-stack .github-pull-stack-other svg").length,
-        tip: row.querySelector(".github-pulls-stack")?.getAttribute("aria-label") ?? "",
+        others: row.querySelectorAll(".github-pulls-place .github-pull-stack-other svg").length,
+        // A member's row draws no stack icon: the stack's row it sits under has it.
+        icons: row.querySelectorAll(".github-pull-stack-icon").length,
+        tip: row.querySelector(".github-pulls-place")?.getAttribute("aria-label") ?? "",
       });
     } else {
       open = null;
@@ -292,7 +296,7 @@ try {
 
   if (before) {
     // The stack badges arrive from the same snapshot, on rows near the list's end; the
-    // list draws no groups.
+    // list draws no groups. That shell drew a badge on the title line, `.github-pulls-stack`.
     // Scrolled to the end as it grows: the rows near it mount once the window reaches them.
     await waitFor(
       `(document.querySelector(".tree-content").scrollTop = 1e6) && document.querySelector('a.github-pulls-row[data-number="10"]') !== null`,
@@ -334,6 +338,25 @@ try {
         first.members[0].tip === "Stack #286, position 4 of 4; Stack #300, position 2 of 2" &&
         !list.stacks.slice(1).some((s) => s.members.some((m) => m.number === 10)),
       JSON.stringify(list.stacks),
+    );
+    check(
+      "a member's place is on its number's line, before the number, as 1/6 · #455 reads",
+      first?.members[0]?.line.startsWith("4/4 · 300 2/2 · #10 · ") &&
+        first.members[1]?.line.startsWith("3/4 · #9 · "),
+      JSON.stringify(first?.members.map((m) => m.line)),
+    );
+    check(
+      "a member's row draws no stack icon",
+      list.stacks.every((stack) => stack.members.every((m) => m.icons === 0)),
+      JSON.stringify(list.stacks.map((stack) => stack.members.map((m) => m.icons))),
+    );
+    // Its place on the title line once cut a member's title to 65 px at the default pane,
+    // where a first-level row's had 176 (mb-dzsi, measured before the change).
+    check(
+      "a member's title has a first-level row's room, less its one indent",
+      Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&
+        Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.treeIndent)) < 0.5,
+      JSON.stringify(list.titleRoom),
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
@@ -521,7 +544,7 @@ try {
       classes: heading.className,
       members: [...menu.querySelectorAll(".github-pull-stack-member")].map((a) => Number(new URL(a.href).pathname.split("/")[2])),
       tip: document.querySelector(".github-pull-stack-trigger[aria-expanded='true']")?.dataset.tipText ?? null,
-      // A member's position, title and number, and a Pulls badge's position: their ink.
+      // A member's position, title and number, and a Pulls row's place: their ink.
       ink: (() => {
         const color = (selector) => {
           const el = document.querySelector(selector);
@@ -537,7 +560,7 @@ try {
           title: color(".github-pull-stack-menu .github-pull-stack-member-title"),
           number: color(".github-pull-stack-menu .github-pull-stack-member-number"),
           trigger: color(".github-pull-stack-trigger[aria-expanded='true'] .github-pull-stack-position"),
-          badge: color(".github-pulls-row .github-pulls-stack:not([hidden]) .github-pull-stack-position"),
+          badge: color(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
           text,
         };
       })(),
@@ -582,6 +605,11 @@ try {
       menu.ink.position === menu.ink.title &&
         menu.ink.title === menu.ink.number &&
         menu.ink.position === menu.ink.text,
+      JSON.stringify(menu.ink),
+    );
+    check(
+      "a Pulls row's place is in its number's ink, the row's text",
+      menu.ink.badge === menu.ink.text,
       JSON.stringify(menu.ink),
     );
   }

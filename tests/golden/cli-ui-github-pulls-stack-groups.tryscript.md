@@ -29,12 +29,13 @@ Enter opens or closes it, Right opens it or goes to its first pull request, and 
 closes it, or from a pull request in it goes to it.
 
 Each step’s `rows` are what a reader sees: a stack’s row with its count, place, and tip,
-its pull requests a level in with their badges, and then the ends of the rest.
+its pull requests a level in with their places, and then the ends of the rest.
 After a walk, `read ahead after the last open` is what the open asks to read next: its
 neighbours as drawn, a stack’s row passed over, then the first pull requests drawn.
 `mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
 Right, and Left reach it, and a press on a stack’s row, printing the tree’s roles,
-levels, places, expansion, and Tab stop at each step.
+levels, places, expansion, and Tab stop at each step, and each member’s muted line as
+drawn: its place in its stack before its number, “3/3 · #8 · maintainer”.
 `menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
 stack’s label on the shared label classes, and its members are the group’s, in one
 order. Every step holds the session’s invariants: each listed pull request is drawn once
@@ -317,6 +318,11 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     }
   ],
   "mounted": {
+    "member lines": [
+      "#8: 3/3 · #8 · maintainer",
+      "#7: 2/3 · #7 · forker",
+      "#6: 1/3 · #6 · contributor"
+    ],
     "files": {
       "Right on #8": "true",
       "then Left": "false"
