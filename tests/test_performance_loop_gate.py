@@ -850,7 +850,7 @@ def _recordable_run(
         "inventory_work": {},
     }
     # Each startup script, read back from the server: 7,000 bytes that gzip to a few dozen.
-    module._served_body = lambda _port, _path: b"x" * 7000
+    module._served_body = lambda _port, _path, _timeout_s: b"x" * 7000
     corpus = tmp_path / "corpus"
     (corpus / "nested").mkdir(parents=True)
     (corpus / "nested" / "sample.txt").write_text("sample\n", encoding="utf-8")
@@ -918,7 +918,7 @@ def test_record_reads_the_startup_transfer_as_the_remote_path_sends_it(tmp_path:
     bodies = {path: (path * 300).encode() for path in payload["startup_script_paths"]}
     asked: list[tuple[int, str]] = []
 
-    def served(port: int, path: str) -> bytes:
+    def served(port: int, path: str, _timeout_s: float) -> bytes:
         asked.append((port, path))
         return bodies[path]
 
@@ -1700,3 +1700,36 @@ def test_flat_stress_budget_check_reads_a_declared_fractional_maximum(
     )
 
     assert _budget_divergences(release, stress) == divergences
+
+
+def test_reading_the_startup_scripts_back_is_bounded_in_size_and_time() -> None:
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    module = _runner()
+
+    class _Big(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = b"x" * 2048
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *_args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Big)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        assert len(module._served_body(port, "/static/a.js", 5.0)) == 2048
+        module.STARTUP_SCRIPT_MAX_BYTES = 1024
+        with pytest.raises(SystemExit, match="over 1,024 bytes"):
+            module._served_body(port, "/static/a.js", 5.0)
+    finally:
+        server.shutdown()
+        server.server_close()
+    with pytest.raises(SystemExit, match="more than 0 s"):
+        module._startup_script_transfer_kb(["/static/a.js"], lambda _p, _t: b"", deadline_s=0)

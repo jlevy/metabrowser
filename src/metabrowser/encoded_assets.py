@@ -12,7 +12,8 @@ read once, gzipped once, in a thread, and sent from memory after that.
 addresses with the same headers; an answer is gzipped exactly when the middleware would
 gzip it (:func:`metabrowser.delivery.gzip_wanted`, and not under
 :data:`~metabrowser.delivery.GZIP_MINIMUM_SIZE`), its decoded bytes are the file's, and
-it now carries a ``Content-Length`` where a streamed one did not. Only an answer the
+it now carries a ``Content-Length`` where a streamed one did not. A ``HEAD`` for a static
+file is the file response's, as before, and reads nothing. Only an answer the
 server would mark ``immutable`` is held, so a page from before an edit, which asks with
 an old stamp and is answered ``no-cache``, still reads the file.
 
@@ -50,7 +51,9 @@ if TYPE_CHECKING:
 # with the server at 106 MB resident afterwards. The bound holds the whole set two and a
 # half times over, so an operator's plugin directory of the built-ins' size still fits,
 # and a process holds at most what its pages asked for. Past the bound the least recently
-# used go first and are read again when next asked for: a cost, not an error.
+# used go first and are read again when next asked for: a cost, not an error. Reads and
+# compressions still running are not counted until they finish (loading_cache), so for
+# as long as a landing's misses run, the store can hold their bytes past the bound.
 MAX_ENCODED_ASSET_BYTES = 16 * 1024 * 1024
 # The byte bound is the one that binds; this only bounds the index, at the asset trees'
 # file bound (asset_stamps.MAX_TREE_FILES) in each encoding, for four trees.

@@ -285,10 +285,12 @@ class StampedStaticFiles(StaticFiles):
             current
             and requested is not None
             and response.status_code == 200
+            and scope.get("method") == "GET"
             and "range" not in Headers(scope=scope)
         ):
             # The bytes the stamp names, from memory, compressed once (H115). A range is
             # left to the file response, which serves one; nothing the shell asks for is.
+            # So is a HEAD, whose file response reads nothing and is never compressed.
             headers = {k: v for k, v in response.headers.items() if k != "content-length"}
             return EncodedAssetResponse(
                 key=requested,

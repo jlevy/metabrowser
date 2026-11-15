@@ -8,7 +8,9 @@ keeps nothing, so the next call loads again.
 
 What is kept is bounded by a count and, given a *weigh* function, by a total weight too:
 the least recently used values go first, and a value heavier than the whole bound is
-returned to its callers and not kept.
+returned to its callers and not kept. A value is weighed when its load finishes, so the
+loads in progress are not counted: while they run, the memory held can pass the bound
+by what they hold, until each one finishes and the oldest kept values are let go.
 
 Not specific to the repository cache: the GitHub plugin shares a comparison's manifest
 load this way, and a revision page's Markdown render; ``encoded_assets`` keeps the

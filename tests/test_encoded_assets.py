@@ -127,12 +127,15 @@ def test_an_asset_under_the_floor_is_sent_as_it_is(
 
 
 def test_a_head_a_range_and_a_revalidation_keep_their_answers(
-    client: TestClient, store: EncodedAssets
+    client: TestClient, store: EncodedAssets, compressions: list[int]
 ) -> None:
     address, content = _stamped_static("app.js")
     head = client.head(address, headers=GZIP)
+    # A HEAD is the file response's, as before: the identity length, nothing read or held.
     assert head.status_code == 200 and head.content == b""
-    assert int(head.headers["content-length"]) == len(delivery.gzip_bytes(content))
+    assert int(head.headers["content-length"]) == len(content)
+    assert "content-encoding" not in head.headers
+    assert compressions == [] and store.held_bytes == 0
     ranged = client.get(address, headers={**GZIP, "range": "bytes=0-9"})
     assert ranged.status_code == 206
     etag = head.headers["etag"]

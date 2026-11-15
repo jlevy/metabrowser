@@ -36,12 +36,16 @@ function transferKb(list) {
 
 // The addresses of those scripts, path and query, which `run.py record` reads again from
 // the measured server to give `startup_script_transfer_kb` as the remote path sends them:
-// a server started for local use sends a loopback browser its scripts uncompressed.
+// a server started for local use sends a loopback browser its scripts uncompressed. Only
+// the ones the browser fetched: one its cache answered transferred nothing, and counted
+// as nothing in the transfer above.
 function startupScriptPaths(list) {
-  return list.map((r) => {
-    const url = new URL(r.name);
-    return url.pathname + url.search;
-  });
+  return list
+    .filter((r) => (r.transferSize || 0) > 0)
+    .map((r) => {
+      const url = new URL(r.name);
+      return url.pathname + url.search;
+    });
 }
 
 (async () => {

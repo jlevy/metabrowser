@@ -338,6 +338,9 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
     assert probe["names"] == [entry["name"] for entry in counted]
     assert probe["kb"] == check.transfer_kb(scripts)
     assert probe["paths"] == [f"{script.url_path}?v=1" for script in scripts]
+    # A script the browser's cache answered transferred nothing, and is not read back.
+    cached = {"name": f"{origin}/static/app.js?v=2", "startTime": 5, "transferSize": 0}
+    assert _probe([*counted, cached])["paths"] == probe["paths"]
 
 
 def test_the_loop_reads_the_number_this_check_computes() -> None:
@@ -353,7 +356,7 @@ def test_the_loop_reads_the_number_this_check_computes() -> None:
     scripts = check.measure(check.render_folder_shell())
     client = TestClient(server.app, base_url="http://127.0.0.1")
 
-    def read(path: str) -> bytes:
+    def read(path: str, _timeout_s: float) -> bytes:
         answer = client.get(path, headers={"Accept-Encoding": "identity"})
         assert "content-encoding" not in answer.headers, path
         return answer.content

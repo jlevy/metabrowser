@@ -809,24 +809,41 @@ def _inventory_facts(port: int) -> dict[str, Any]:
     }
 
 
-def _served_body(port: int, path: str) -> bytes:
+# Bounds on reading the startup scripts back. The startup scripts came to 624,836 bytes
+# decoded in 20 files on 2026-11-14, the largest static file is 318 KB, and the budget
+# ceiling is 220 KB compressed: a script past 8 MiB, or a read-back past a minute, is not
+# a measurement this gate can make, and record refuses it rather than wait.
+STARTUP_SCRIPT_MAX_BYTES = 8 * 1024 * 1024
+STARTUP_SCRIPTS_READ_DEADLINE_S = 60.0
+
+
+def _served_body(port: int, path: str, timeout_s: float) -> bytes:
     """What the measured server answers *path* with, uncompressed, as a client that asks."""
 
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}", headers={"Accept-Encoding": "identity"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:
             if response.headers.get("Content-Encoding", "identity") != "identity":
                 raise SystemExit(f"{path} was sent encoded to a client that refused it")
-            return cast("bytes", response.read())
+            body = cast("bytes", response.read(STARTUP_SCRIPT_MAX_BYTES + 1))
+            if len(body) > STARTUP_SCRIPT_MAX_BYTES:
+                raise SystemExit(
+                    f"startup script {path} is over {STARTUP_SCRIPT_MAX_BYTES:,} bytes"
+                )
+            return body
     except OSError as error:
         raise SystemExit(
             f"could not read startup script {path} from the server: {error}"
         ) from error
 
 
-def _startup_script_transfer_kb(paths: list[str], read: Callable[[str], bytes]) -> int:
+def _startup_script_transfer_kb(
+    paths: list[str],
+    read: Callable[[str, float], bytes],
+    deadline_s: float = STARTUP_SCRIPTS_READ_DEADLINE_S,
+) -> int:
     """``startup_script_transfer_kb`` as the remote path sends the scripts.
 
     The budget (performance-budgets.toml) was set as what a browser on loopback was sent
@@ -840,10 +857,18 @@ def _startup_script_transfer_kb(paths: list[str], read: Callable[[str], bytes]) 
     the 300 bytes Resource Timing adds for a response's headers, rounded as probe.js
     rounds. On a build that gzips toward loopback this is the browser's figure byte for
     byte, which is how ``devtools/check_startup_scripts.py`` arrives at the same number
-    on every lint.
+    on every lint. *paths* are the scripts the browser fetched (probe.js leaves out one
+    its cache answered, which the browser's figure counted as nothing), and *read* is
+    given what is left of *deadline_s* for each.
     """
 
-    total = sum(sent_size(read(path)) + RESOURCE_TIMING_HEADER_BYTES for path in paths)
+    deadline = time.monotonic() + deadline_s
+    total = 0
+    for path in paths:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SystemExit(f"reading the startup scripts back took more than {deadline_s:.0f} s")
+        total += sent_size(read(path, remaining)) + RESOURCE_TIMING_HEADER_BYTES
     return int(total / 1024 + 0.5)
 
 
@@ -1345,7 +1370,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         # what the remote path sends (_startup_script_transfer_kb).
         run["startup_script_loopback_transfer_kb"] = probe.get("startup_script_transfer_kb")
         run["startup_script_transfer_kb"] = _startup_script_transfer_kb(
-            cast("list[str]", startup_paths), lambda path: _served_body(port, path)
+            cast("list[str]", startup_paths),
+            lambda path, timeout_s: _served_body(port, path, timeout_s),
         )
         config = load_performance_config(Path(args.budgets))
         issues = [
