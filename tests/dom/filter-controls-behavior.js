@@ -498,6 +498,47 @@ assertMissing("group labels are escaped", hostile, '"><img>');
       chips = [chip("files"), chip("size")];
     },
   });
+  // A key held with Command, Control, or Option is the browser's: Command-Left and
+  // Alt-Left go back, and Command-Up scrolls to the top. A segmented group's arrows and a
+  // menu's rows move only unmodified.
+  const menuRow = {
+    focus() {
+      focused = menuRow;
+    },
+    closest: (selector) =>
+      selector === ".chip-menu-panel"
+        ? { querySelectorAll: () => [menuRow, menuRow] }
+        : selector === ".chip-menu-item"
+          ? menuRow
+          : null,
+  };
+  const swallowed = [];
+  for (const [target, keys] of [
+    [chips[0], ["ArrowLeft", "ArrowRight", "Home", "End", "r"]],
+    [menuRow, ["ArrowDown", "ArrowUp", "Home", "End", "r"]],
+  ]) {
+    for (const key of keys) {
+      for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+        let prevented = false;
+        listeners.keydown({
+          key,
+          [modifier]: true,
+          target,
+          preventDefault() {
+            prevented = true;
+          },
+        });
+        if (prevented) {
+          swallowed.push(`${target === menuRow ? "menu" : "group"} ${modifier} ${key}`);
+        }
+      }
+    }
+  }
+  if (swallowed.length > 0 || chosen.length > 0) {
+    failures.push(
+      `a modified key is the browser's: ${swallowed.join(", ")}; chose ${chosen.join()}`,
+    );
+  }
   listeners.keydown({ key: "ArrowRight", target: chips[0], preventDefault() {} });
   if (chosen.join() !== "size") {
     failures.push(`an arrow key selects: ${chosen.join()}`);

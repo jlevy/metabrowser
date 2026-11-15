@@ -114,4 +114,29 @@ import WebKit
         #expect(!window.failures.contains { $0.reported })
         withExtendedLifetime(webView) {}
     }
+
+    /// What a window remembers of a load on its way, when Command-R loads its page again
+    /// (review A5 on #433). While the load waits, `webView.url` names the page it is loading
+    /// and the current history item the page committed before it, so the window remembers
+    /// the page in flight before it stops the load; this records what `url` names after the
+    /// stop, which is why the remembering comes first.
+    @Test func aLoadOnItsWayIsTheURLUntilItStops() async throws {
+        let (webView, window, server, url) = try page()
+        defer { server.stop() }
+        webView.load(URLRequest(url: url))
+        #expect(await eventually { window.heldResponses.count == 1 })
+        window.answerAll(.allow)
+        #expect(await eventually { window.commits.count == 1 })
+        let committed = try #require(webView.url)
+        let next = try #require(URL(string: url.absoluteString + "?next"))
+        webView.load(URLRequest(url: next))
+        #expect(webView.url == next, "the load's page, as soon as it is submitted")
+        #expect(await eventually { window.heldResponses.count == 1 })
+        #expect(webView.url == next, "the load's page, while its response waits")
+        #expect(webView.backForwardList.currentItem?.url == committed)
+        webView.stopLoading()
+        window.answerAll(.cancel)
+        #expect(await eventually { webView.url == committed }, "after the stop, the committed page again")
+        withExtendedLifetime(webView) {}
+    }
 }

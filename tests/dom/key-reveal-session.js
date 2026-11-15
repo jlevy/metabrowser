@@ -952,9 +952,10 @@ function plainPage() {
   return plain;
 }
 
-// The session's three parts, each its own command in the golden, so no transcript block
-// grows past what tryscript can match: the keymap of a folder's files, the gesture, and
-// the main tabs with the pull request stack and a mirror's pin.
+// The session's parts, each its own command in the golden, so no transcript block grows
+// past what tryscript can match: the keymap of a folder's files, the gesture, the main
+// tabs with the pull request stack and a mirror's pin, and the chords left to the browser.
+// The first three print the shell keys they registered (tests/test_keymap.py reads them).
 const PARTS = {
   /** A plain folder: Files only, every multi-view kind, and the view tab letters. */
   async keymap() {
@@ -1196,6 +1197,79 @@ const PARTS = {
     return { steps, pages: [plain] };
   },
 
+  /**
+   * Command, Control, and Option chords are the browser's (mb-i1wy): Command-R reloads
+   * wherever focus is, and so does every other chord. Each place focus can be is entered
+   * once, and every letter, digit, and named key is pressed there with each chord; none
+   * may be taken (`preventDefault`), run a command, or move focus. Option-Tab is the one
+   * exception, and is not pressed: a modal's focus trap keeps it, since Safari moves focus
+   * with it.
+   */
+  async modified() {
+    const page = plainPage();
+    const keys = [
+      ..."abcdefghijklmnopqrstuvwxyz123456789?/",
+      ...["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"],
+      ...["Enter", " ", "Escape", "Tab", "Backspace"],
+    ];
+    const chords = {
+      Command: { metaKey: true },
+      "Shift-Command": { metaKey: true, shiftKey: true },
+      Control: { ctrlKey: true },
+      Option: { altKey: true },
+    };
+    const places = [
+      ["the page", () => page.document.body.focus()],
+      ["a tree row", () => page.rows[0].focus()],
+      ["Quick Search's field", () => page.press("t")],
+      ["Help", () => page.press("?", { shiftKey: true })],
+      ["the file type filter's open menu", () => page.press("2")],
+    ];
+    const steps = [];
+    for (const [place, enter] of places) {
+      page.document.body.focus();
+      enter();
+      page.record(place); // takes what entering did, so `did` below is the chords' own
+      const where = () =>
+        page.document.activeElement === page.document.body
+          ? "body"
+          : describe(page.document.activeElement);
+      const focus = where();
+      let presses = 0;
+      const taken = [];
+      for (const [chord, init] of Object.entries(chords)) {
+        for (const name of keys) {
+          if (chord === "Option" && name === "Tab") {
+            continue;
+          }
+          presses += 1;
+          if (page.press(name, init)) {
+            taken.push(`${chord}-${name === " " ? "Space" : name}`);
+          }
+        }
+      }
+      const after = page.record(place);
+      const focusAfter = where();
+      steps.push({
+        place,
+        focus,
+        presses,
+        commandR: taken.includes("Command-r") ? "taken" : "left to the browser",
+        taken,
+        did: after.did ?? [],
+        focusMoved: focusAfter === focus ? null : focusAfter,
+      });
+      page.press("Escape");
+    }
+    const failed = steps.filter(
+      (step) => step.taken.length > 0 || step.did.length > 0 || step.focusMoved,
+    );
+    if (failed.length > 0) {
+      throw new Error(`a page key took a chord: ${JSON.stringify(failed, null, 2)}`);
+    }
+    return { steps, pages: [page], chords: Object.keys(chords), keys: keys.length };
+  },
+
   /** The main tabs, the commit view, the pull request stack, and a mirror's pin. */
   async tabs() {
     const steps = [];
@@ -1376,7 +1450,13 @@ async function main() {
   if (!Object.hasOwn(PARTS, part)) {
     throw new Error(`Unknown part ${part}; the parts are ${Object.keys(PARTS).join(", ")}`);
   }
-  const { steps, pages } = await PARTS[part]();
+  const { steps, pages, chords, keys } = await PARTS[part]();
+  if (part === "modified") {
+    // The keymap's parts print the shell keys they registered; this one registers the
+    // same keymap and prints only what the chords did.
+    process.stdout.write(`${render({ part, chords, keys, steps })}\n`);
+    return;
+  }
   const shellKeys = new Set(pages.flatMap((page) => [...page.shellKeys]));
   const shellCommands = new Set(pages.flatMap((page) => [...page.shellCommands]));
   process.stdout.write(

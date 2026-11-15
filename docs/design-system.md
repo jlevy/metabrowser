@@ -1721,6 +1721,31 @@ The keys and buttons that have no key, and why: every copy control, ancillary; a
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
 Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
 
+### Browser and App Keys
+
+A key held with Command, Control, or Option belongs to the browser, and in the macOS app
+to the app’s menus. No shortcut above uses one, and no page handler takes one: a handler
+that cancelled a chord would keep it from the browser, and the app’s web view hands
+every key to the page before its menus.
+`tests/test_modified_keys.py` lists each `keydown` handler and what leaves chords alone
+in it. The one exception is Option-Tab inside a dialog or an open menu: its focus trap
+keeps it, because Safari moves focus with Option-Tab.
+
+| Key | Meaning | Where |
+| --- | --- | --- |
+| Command-R (Control-R or F5 elsewhere) | Reload | Everywhere, whatever has focus |
+
+Command-R always reloads.
+In a browser it is the browser’s own Reload, in the page, a tree row, Quick Search’s
+field, Help, or an open menu alike; the `modified` part of
+`tests/dom/key-reveal-session.js` presses it in each of those places.
+In the macOS app it is View > Reload Page, which is never disabled in a folder window:
+while the status view covers the page it loads the page again, starts the server or
+waits for the start under way, or, after the server failed, restarts it as Retry does
+([apps/macos/README.md](../apps/macos/README.md#the-window) has each case).
+The app’s other keys are the standard ones of its menus: Back and Forward are Command-\[
+and Command-\], and Restart Server is Command-Option-R.
+
 ### Help and the Reveal
 
 Help lists the letters by meaning, group by group, and the numbers once, in an “On this
