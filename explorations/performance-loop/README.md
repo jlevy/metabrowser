@@ -682,10 +682,13 @@ after (`rev-parse`, `diff`), a 450 KB commit past it 4 and 3, and the root commi
 6; every answer was byte-equal, and the candidate’s own count matched its trace on every
 sample. Two counts differ from these by design, and `tests/test_diff_one_run.py` holds
 them. A server’s first comparison of a folder or store also asks `git config` whether a
-textconv driver is named, beside its listing run, so it counts one more process; the
-warm-up request of each route absorbs it.
-Where a driver is named, the page’s files are diffed in a run of their own, with their
-drivers, as before: 3 processes, and 4 for the first.
+textconv driver is named, beside its listing run, so it counts one more process, and a
+folder’s very first asks `git var` too, which system file Git reads; the warm-up request
+of each route absorbs them.
+The answer is kept only while every configuration file Git reads is unchanged, and not
+at all where it cannot be sure which those are (`textconv.py`), so such a folder asks
+every time. Where a driver is named, the page’s files are diffed in a run of their own,
+with their drivers, as before: 3 processes, and 4 for the first.
 
 `--check-repo` with `--check-control` and `--check-candidate` adds a correctness check
 between pairs, untimed: a scratch clone the timed servers never serve, whose refs it

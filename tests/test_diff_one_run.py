@@ -434,22 +434,33 @@ def test_a_listing_run_that_fails_leaves_the_comparison_to_todays_runs(
     assert one_run == today - 1, "the listing and patch runs of before, and one rev-parse"
 
 
-def test_a_cold_configuration_is_asked_beside_the_one_run(repo: tuple[Path, str, str]) -> None:
+def test_a_cold_configuration_is_asked_beside_the_one_run(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A server's first comparison of a folder asks whether a textconv driver is named,
-    while the one run runs; the answer is kept for the next."""
+    beside the one run, and the answer is kept for the next. The very first also asks Git
+    which system file it reads (`git var`), which is kept for the server's life."""
     root, _base, target = repo
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     textconv.forget()
-    one_run = GitDiffSource(root, patch_with_listing=True)
-    cold, answer = _answer(one_run, {"revision": target})
+    cold, answer = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
     warm, again = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
     assert (cold, warm) == (3, 2)
     assert answer == again == _answer(_Today(root), {"revision": target})[1]
+    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "no-system-file"))
+    textconv.forget()
+    first, _ = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    warm, _ = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    assert (first, warm) == (4, 2)
 
 
 # ── A textconv driver (review of #449, H1) ──────────────────────────────
 
 
-def test_a_textconv_driver_is_run_only_as_the_page_ran_it(tmp_path: Path) -> None:
+def test_a_textconv_driver_is_run_only_as_the_page_ran_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The reviewer's case, without its second a conversion: files a driver converts, some
     binary, which the listing says are binary and the page never hydrates, and some text,
     which it does, with the driver, on both sides. The one run runs no driver; the page's
@@ -481,6 +492,7 @@ def test_a_textconv_driver_is_run_only_as_the_page_ran_it(tmp_path: Path) -> Non
         return processes, len(calls.read_text().splitlines()) if calls.exists() else 0, answer
 
     today = driven(_Today(root))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")  # no system file to ask Git the place of
     textconv.forget()
     cold = driven(GitDiffSource(root, patch_with_listing=True))
     warm = driven(GitDiffSource(root, patch_with_listing=True))
