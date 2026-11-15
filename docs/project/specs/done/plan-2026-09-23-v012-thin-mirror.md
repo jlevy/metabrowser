@@ -1,9 +1,15 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Done; shipped in 0.12.0, tagged 2026-11-08. The design was decided on
-2026-09-23 and revised the same day after an independent design review.
-[Delivery](#delivery) maps each step and follow-up to its pull request, all of them
-merged.
+**Status:** Done; released in 0.12.0, tagged at `87b8ec81`
+([#344](https://github.com/jlevy/metabrowser/pull/344)) and published on 2026-11-09
+(`mb-4bd2`). The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+how the release candidate was qualified.
+The design was decided on 2026-09-23 and revised the same day after an independent
+design review. [Delivery](#delivery) maps each step and follow-up to its pull request,
+all of them merged. The
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) records how the
+stack landed.
 
 This plan supersedes the remaining v0.12 phases in
 [Open Repositories from Git URLs](../active/plan-2026-08-11-open-repo-from-git-url.md)
@@ -265,13 +271,15 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 
 ## Capability Map
 
-The Alpha column is on `main` and first ships in 0.12.0.
+The Alpha column shipped in 0.12.0.
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
 the run against it.
 
-The Later column is what v0.12 leaves out.
-Nothing in it gates 0.12.0, and none of it was delivered by the landing: it stays work
-for a later release, with its own plan only where a row links one.
+The Later column is what this plan left out.
+The pull-request list shipped in 0.12.0 through the
+[Pulls tab plan](../active/plan-2026-10-01-github-pulls-tab.md); the rest is work for a
+later release, with its own plan only where a row links one, and `mb-1wk1` lists the
+rows no other bead tracks.
 
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
@@ -283,8 +291,8 @@ for a later release, with its own plan only where a row links one.
 | Pull request: conversation, reviews, review comments | Yes (review comments listed with file and line) | Inline anchoring in the diff |
 | Pull request: checks and statuses summary | Yes | Logs |
 | Pull request: Files changed | Yes (merge-base diff) |  |
-| Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit |
-| Pull request list for a repository |  | Yes: [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) |
+| Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit; a pull request’s two sides have one since [#347](https://github.com/jlevy/metabrowser/pull/347), after 0.12.0 |
+| Pull request list for a repository |  | Shipped in 0.12.0: [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) |
 | Issues, Actions, releases, blame |  | Yes |
 | SSH remotes, GitHub Enterprise hosts |  | Yes |
 
@@ -300,7 +308,7 @@ for a later release, with its own plan only where a row links one.
 | Provider snapshot store, manifests, resource profiles for pull-request data | One JSON file per pull request |
 | Binding and rebind state machine | Records are refetched; canonical sources are stable |
 | New public URL-reducer, router, address-space, and nav-panel SDKs | Existing reducer hook and plugin routes |
-| Attaching user checkouts; fork mirrors | Deferred; `refs/pull/<n>/head` carries fork commits |
+| Attaching user checkouts; fork mirrors | Deferred here; `refs/pull/<n>/head` carries fork commits. The [checkout review plan](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) later lets a named or served checkout lend its objects |
 
 `GIT_NO_LAZY_FETCH` and the store-spawn guard stay as defensive settings.
 The Hosted Review Format and `provider_resources` code that was in the stack was removed
@@ -367,14 +375,15 @@ Follow-up pull requests extended those steps, in stack order, and landed with th
 | [#268](https://github.com/jlevy/metabrowser/pull/268) | Separate cache and configuration roots; a page kept for Back releases its event streams, integrating [#262](https://github.com/jlevy/metabrowser/pull/262), which was closed unmerged; the mirror heading’s sizing; the vulnerable glob dependency removed | `mb-j2b7`, `mb-tdmd`, `mb-19fc` |
 
 The test pull requests from #252 on are the release work of the test-suite review
-(`mb-06up`), whose remaining children follow the release.
+(`mb-06up`), whose remaining children are open after the release.
 The [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
 how each pull request above was reviewed, except #260, which changes documents only and
 has no row.
 
-Later: the pull-request list and pull requests on a local checkout
-([GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md)), inline review anchoring, SSH,
-Enterprise hosts, issues, and rebind.
+The pull-request list and pull requests on a local checkout followed in 0.12.0, through
+the [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) and
+[checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans.
+Still later: inline review anchoring, SSH, Enterprise hosts, issues, and rebind.
 
 ## Testing
 

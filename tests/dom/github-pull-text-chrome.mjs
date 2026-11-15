@@ -95,7 +95,7 @@ const MEASURE = `async (texts, document_html) => {
   };
   const prose = (html) => inert.kpressProse(inert.sanitizeHtml(html, base), document);
   const cards = texts.map(({ part, html }) => {
-    const text = el("div", "github-pull-text", [
+    const text = el("div", "github-pull-text chrome-prose", [
       el("div", "metabrowser-kpress-host", [el("article", "kpress kpress-inert", [prose(html)])]),
     ]);
     text.setAttribute("data-part", part);

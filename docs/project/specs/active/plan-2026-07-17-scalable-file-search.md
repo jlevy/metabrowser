@@ -1,6 +1,6 @@
 # Feature: Quick Search
 
-**Date:** 2026-07-17 (last updated 2026-11-06)
+**Date:** 2026-07-17 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
@@ -70,7 +70,7 @@ inventory and navigation prerequisites.
 
 | Capability | Current State | Consequence |
 | --- | --- | --- |
-| Server inventory | `InventoryIndex` asynchronously tracks up to 500,000 files at depth 20 and can snapshot `all-known` entries | A server provider can search filenames without another crawl |
+| Server inventory | The inventory engine’s Python provider asynchronously tracks up to 500,000 files (`INVENTORY_MAX_FILES`) with no depth limit and can snapshot `all-known` entries | A server provider can search filenames without another crawl |
 | Initial browser inventory | `/api/events?scope=root-depth-2` replaces `FileStore` with entries through depth two | `FileStore` is a partial candidate source, not a complete filename catalog |
 | Lazy navigation | `/api/tree` returns the initial tree and lazy subtree responses; direct children are mounted in pages of 200 | Files encountered through navigation are known to the browser even though they are not added to `FileStore` |
 | Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
@@ -538,7 +538,9 @@ results hierarchical.
   live event plane
 - [x] Provide `navigateToPath` and lazy reveal behavior that can open an unmounted path
 - [ ] Add a monotonic public inventory revision and a revision-only event that survives
-  event-scope filtering without sending deep entry snapshots
+  event-scope filtering without sending deep entry snapshots.
+  Only the deferred server filename provider (`mb-3arq`) needs it; the client catalog
+  converges through `catalog.change` and its own change subscription (Phase 2.1)
 
 ### Phase 1: Client-Only Quick File Finder
 
@@ -576,7 +578,9 @@ results hierarchical.
   reconnect payload landed mid-walk
 - [x] Wire the feed into the event-stream handlers and update palette and provider
   status wording for the complete case
-- [ ] Measure payload size, transfer time, and scan latency at the inventory cap
+- [ ] Measure payload size, transfer time, and scan latency at the inventory cap.
+  exp-034 priced `/api/catalog` at 300,000 rows on a settled flat corpus, a 15.9 MB body
+  in 2,575 ms (`mb-qtgj`); the 500,000-file cap itself is unmeasured
 
 The feed is authoritative about membership, not just contents.
 A payload from a finished walk lists every file the index holds, so applying it retires
@@ -653,7 +657,7 @@ Two alternatives were considered and are recorded so they are not rediscovered:
   right asymptotics, but it only earns its complexity past the design center — where the
   dominant cost is the provider scan itself, not removals, and the answer is the
   server-side fallback rather than client data-structure work.
-  Deferred behind the measurement checkbox above.
+  Deferred behind the measurement checkbox above (`mb-s8zj`).
 - A **deferred sweep** (mark removed prefixes, filter at snapshot time) looks free
   because `snapshot()` already pays a sort per revision, but `remove(dir)` followed by
   `upsert(child)` is only correct if every entry carries a sequence number.

@@ -1,14 +1,18 @@
 # Feature: Opt-In Trusted-Local File Editing
 
-**Date:** 2026-07-16 (last updated 2026-07-17)
+**Date:** 2026-07-16 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
 **Status:** Mutation workflow planned; startup capability gate implemented.
 
-`--allow-edits` and `METAB_ALLOW_EDITS` already publish the mutations capability.
-No built-in write route consumes it.
-Rename, move, trash, their safety checks, and the editing UI below remain future work.
+`--allow-edits` and `METAB_ALLOW_EDITS` already publish the mutations capability
+(`capabilities.py`, #209). No built-in write route consumes it.
+Rename, move, trash, their safety checks, and the editing UI below remain future work
+(`mb-wcb0`). The first slice, regular-file rename and quarantine trash through
+`POST /api/mutate` with a nav-tree context menu, is specified in
+[menu primitives and gated file actions](plan-2026-08-06-menu-primitives-and-file-actions.md)
+Phase 2 (`mb-0d6a`).
 
 ## Overview
 

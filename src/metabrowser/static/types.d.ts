@@ -301,6 +301,13 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
   }>;
 }>;
 
+/** The shell's text helpers the Files totals are written with (app.js). */
+type MetabrowserTreeSummaryFormat = {
+  esc(value: unknown): string;
+  formatCount(n: number): string;
+  formatSize(bytes: number): string;
+};
+
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
@@ -349,6 +356,29 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
       failures: number;
     }>;
   }>;
+  /** The Files totals' navigation metadata line, and its two live-patched figures. */
+  treeSummaryHtml(
+    summary:
+      | {
+          files?: unknown;
+          size: number;
+          ignored_files?: number;
+          ignored_size?: number;
+        }
+      | null
+      | undefined,
+    fallbackFiles: number | null | undefined,
+    fallbackSize: number | null | undefined,
+    format: MetabrowserTreeSummaryFormat,
+  ): string;
+  treeSummaryCountHtml(
+    files: number | null | undefined,
+    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatCount">,
+  ): string;
+  treeSummarySizeHtml(
+    bytes: number | null | undefined,
+    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatSize">,
+  ): string;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,

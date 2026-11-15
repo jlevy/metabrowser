@@ -361,8 +361,10 @@ needs a signed-in `gh`.
 - **The source view’s Load more appended one text node per chunk,** which WebKit lays
   out three to five times slower than Chrome; on a bare page, text nodes of at most
   65,536 characters laid out in 0.53 to 0.56 of Chrome’s time.
-  The source view now splits appended text that way (`TEXT_NODE_MAX_LENGTH` in
-  `static/source-append.js`), after this run.
+  The source view splits appended text that way since #367 (`TEXT_NODE_MAX_LENGTH` in
+  `static/source-append.js`); after it the Load more row still measured 2.25 to 2.46
+  times Chrome and the first-click probe 2.45 to 2.51 times, and the gate reruns
+  (`mb-76nv`).
 - **WebKit does not defer new `content-visibility` blocks as Chrome does,** so the
   binary view ran 1.4 to 2.7 times Chrome; highlighting and the diff switch, 1.1 to 1.5
   times, show the general cost of style and layout under these conditions.

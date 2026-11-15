@@ -2,10 +2,13 @@
 
 **Status:** Overlay acquisition, bounded explicit recovery, and checkout-backed PR
 comparisons are implemented in [#283](https://github.com/jlevy/metabrowser/pull/283) and
-[#288](https://github.com/jlevy/metabrowser/pull/288) and shipped in 0.12.0.
-[Delivery](#delivery) maps the implemented scope.
-Two steps remain planned: [Conversions](#conversions) between a full store and an
-overlay, which no bead tracks yet, and broader deepening (`mb-dqvj`).
+[#288](https://github.com/jlevy/metabrowser/pull/288) and shipped in 0.12.0, published
+on 2026-11-09. The [shared loading contract](#shared-loading-contract-for-pr-review)
+landed after that release, in #346 to #349 on 2026-11-11. [Delivery](#delivery) maps the
+implemented scope; the
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+how the 0.12.0 candidate was qualified.
+Conversions and broader deepening remain future work.
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -364,9 +367,12 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 
 ### Shared Loading Contract for PR Review
 
-**Status:** Implemented for checkouts; manifests and full-file documents share their
-loads, and idle preparation is limited as described below.
-The automatic Changes request can land independently.
+**Status:** Implemented in [#346](https://github.com/jlevy/metabrowser/pull/346) (the
+automatic Changes request), [#347](https://github.com/jlevy/metabrowser/pull/347) (exact
+revision files), [#348](https://github.com/jlevy/metabrowser/pull/348) (shared loads and
+idle preparation) and [#349](https://github.com/jlevy/metabrowser/pull/349) (rendered
+Markdown redlines), merged on 2026-11-11 (`mb-a9ek`). Manifests and full-file documents
+share their loads, and idle preparation is limited as described below.
 The checkout’s **Files** tab continues to read live files and **Commits** continues to
 read local refs, including unpushed commits.
 In both source modes, PR comparisons and file views at a revision read through the same
@@ -618,14 +624,17 @@ The same rules in both scenarios, and one boundary the review sharpened.
   the server allowlist and the page’s inert rebuild, with no branch on the profile, and
   the hostile corpus run under both.
 - **A pull request’s code always uses an immutable revision and the untrusted profile.**
-  Today the managed server opens a file by serving its pin.
-  On a folder server, Changes renders the diff over the overlay, and View file controls
-  are absent. An overlay is a `RepositoryStoreTarget` like a full store, read under
-  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. The planned
-  [revision-scoped document view](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
-  keeps those same restrictions on either server, without switching its source.
-  **Planned:** a test of this restriction over every entry point to PR content on a
-  trusted folder server, the trust row of [Parity and Tests](#parity-and-tests).
+  On a folder server, Changes renders the diff over the overlay.
+  On either server, View file and View at base open the file at that exact commit on an
+  inert revision page, `GET /api/plugin/github/pull-snapshot`, without switching the
+  served pin or the folder’s source
+  ([#347](https://github.com/jlevy/metabrowser/pull/347), the
+  [revision-scoped document view](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision));
+  on a mirror, a file at the commit its page shows still opens in the app’s viewer.
+  An overlay is a `RepositoryStoreTarget` like a full store, read under
+  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this
+  restriction over every entry point to PR content on a trusted folder server, the trust
+  row of [Parity and Tests](#parity-and-tests).
   Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
   untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
@@ -756,13 +765,13 @@ state is reached by a transcript.
 
 ## Delivery
 
-The implemented scopes below are present on
-[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
-The
+Steps 1, 2, and 4 below were present on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b)
+and shipped in 0.12.0. The
 [postlanding integration review](https://github.com/jlevy/metabrowser/pull/297#pullrequestreview-5770654024)
-records their current source and acceptance evidence.
-Conversions and broader deepening remain future work; merging the implemented subset
-does not complete those steps or publish a release.
+records their source and acceptance evidence.
+The shared loading contract followed in #346 to #349. Conversions and broader deepening
+remain future work.
 
 | Step | Implemented scope or remaining work | Owning evidence |
 | --- | --- | --- |
@@ -771,6 +780,7 @@ does not complete those steps or publish a release.
 | 3. Conversions | Full-store/overlay repack routes are not implemented | [Conversions](#conversions), future work |
 | 4. Overlay inside the folder server | Recognized main, linked, and subdirectory checkouts read shared metadata. Changes prepares a missing comparison without changing the folder root or its checkout | [#288](https://github.com/jlevy/metabrowser/pull/288) |
 | 5. Broader deepening | Unshallowing as an independent measured background feature remains outside the bounded certainty recovery path | `mb-dqvj`, future work |
+| [Shared loading contract](#shared-loading-contract-for-pr-review) | The automatic Changes request, exact revision files, shared loads and idle preparation, and rendered Markdown redlines, in both source modes | [#346](https://github.com/jlevy/metabrowser/pull/346) to [#349](https://github.com/jlevy/metabrowser/pull/349) (`mb-a9ek`), after 0.12.0 |
 
 Repair can still be unavailable: the origin may no longer serve an old object, missing
 ancestry may prevent negotiation, or a missing pinned root tree may prevent startup
@@ -834,7 +844,7 @@ For a documentation agent, after step 1 and again after step 2:
 - `docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md`: already points here
   from “The alternates option”, the Files changed case, and decision 4; its step 5 text
   is rewritten when step 4 above starts.
-- `docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
+- `docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
   Principles that “No Git object is deleted in v1” applies to Metabrowser’s own store
   and that this plan says what an overlay borrows.
 - `docs/qa-v012-repository-library.md`: a part for the checkout scenario, including a

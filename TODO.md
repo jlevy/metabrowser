@@ -9,12 +9,12 @@ Checked items below are supported today; unchecked items are planned work.
 
 ## Release State
 
-The latest release is 0.12.0, tagged on 2026-11-08. It adds the repository mirror and
-GitHub browsing: open a Git or GitHub URL, read pull requests from the Pulls tab, and
-reopen what was fetched while offline.
+The latest release is 0.12.0, tagged on 2026-11-08 and published on 2026-11-09. It adds
+the repository mirror and GitHub browsing: open a Git or GitHub URL, read pull requests
+from the Pulls tab, and reopen what was fetched while offline.
 Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md).
-Three 0.12 release-gate beads are still open: the landing differential (`mb-2g6f`), the
-quiet-machine rehearsal (`mb-cf6y`), and the human sign-off matrix (`mb-etqi`).
+The owner-deferred 0.12 checks are open beads under `mb-425f`, among them the landing
+differential (`mb-2g6f`) and the human sign-off matrix (`mb-etqi`).
 
 ## Where Work Stands
 
@@ -30,7 +30,7 @@ quiet-machine rehearsal (`mb-cf6y`), and the human sign-off matrix (`mb-etqi`).
 | CLI parity and goldens | [Functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [API envelope contract](docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md) | The route, kind, model, persisted-state, and functional-aspect gates are enforced; migrating the remaining UI behavior and a schema for the envelopes remain |
 | File search | [Quick Search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | The client file finder and PR completions are implemented; full-text search is planned |
 | Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline delivered; extensions partly delivered, with the remaining scope below |
-| Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
+| Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; on-demand loading exists, but the Mermaid module entry still needs a dynamic import or a module entry in `asset-loader.js` |
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Shared modal foundation delivered; action menus and file mutations planned |
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md), [editor plugin editing contract](docs/project/specs/active/plan-2026-07-17-editor-plugin-editing-contract.md) | Startup capability gate implemented; rename, move, trash, and editor plugins planned |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Scan status, counts, and pending directory aggregates implemented; recent-directory items remain |
@@ -62,12 +62,11 @@ boundary.
 Remaining work from the
 [extensions plan](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md):
 
-- [ ] Interpret the reserved `_mb_` query namespace in the URL codec.
-  The namespace is reserved and pinned by codec tests, but no key is interpreted, so a
-  query passes through verbatim.
-  This blocks the next item.
-- [ ] Add source-view line-location targets (`_mb_view`, `_mb_lines`), so a link can
-  address a line range inside a rendered or source view.
+- [x] Address a line range inside a source view: shipped as GitHub-style `#L` fragments
+  (#235, #239), without the reserved `_mb_` keys.
+- [ ] Interpret the reserved `_mb_` query namespace in the URL codec (`mb-npkt`). The
+  baseline reserved the namespace and pinned it with codec tests but interprets no key,
+  so query stays verbatim passthrough; nothing consumes it yet.
 - [ ] Evaluate frontmatter alias target lookup.
   Still a question, not a commitment.
 - [ ] Add explicit mounted roots for multi-repository and cross-vault navigation.
@@ -91,7 +90,8 @@ One navigation gap sits outside that plan:
   rather than as a large panel inside Overview
 - [ ] Modularize the browser shell and static assets so layout, navigation, and plugin
   rendering can evolve independently
-- [ ] Add real-browser coverage for DOM behavior and versioned payload contracts
+- [ ] Cover DOM lifecycle browserlessly against the production JavaScript (`mb-wgka`)
+  and pin the versioned payload contracts with a schema (`mb-xzb1`)
 - [x] Add
   [contextual keyboard help and accessible tree navigation](docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
   through one shortcut registry, with the
@@ -200,7 +200,7 @@ stronger security boundary than transparent single-file compression.
   [HTML rendering and content-trust model](docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md):
   sandboxed `/raw` responses, same-origin proof on `/api`, and the `--untrusted` profile
 - [ ] Send a strict Content Security Policy when active content is on, as the shell
-  already does when `--no-active-content` or `--untrusted` turns it off
+  already does when `--no-active-content` or `--untrusted` turns it off (`mb-gluj`)
 
 The renderer sanitizes untrusted document HTML, and event data is escaped before DOM
 insertion.

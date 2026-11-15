@@ -1,10 +1,11 @@
 # Plan: A Machine-Readable Contract for the API Envelopes
 
-**Date:** 2026-08-30
+**Date:** 2026-08-30 (last updated 2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Status:** Draft. The gating decision is closed: the envelopes stay internal.
+No phase has started; epic `mb-xzb1` tracks each phase as a bead.
 
 ## The Gap
 
@@ -14,8 +15,10 @@ Neither reports what a route *answers*, and the map document describes each enve
 prose — “the file or folder envelope: kind, views, content window” — that nothing checks
 against the response.
 
-The shapes do exist in code: 31 `TypedDict` declarations across `wire_models.py` and
-`git/wire.py`, with 12 `validate_*` functions.
+The shapes do exist in code: `TypedDict` declarations in `wire_models.py` and
+`git/wire.py`, with `validate_*` functions for the tree, rollup, and Git families, and,
+since this plan was written, in `cache/wire.py`, `source_routes.py`, `root_identity.py`,
+and the GitHub plugin’s route modules.
 That is a real contract.
 It is invisible outside Python, unversioned, and unreachable from the CLI that exists to
 make every model inspectable.
@@ -65,9 +68,10 @@ of this work.
 | Surface | Declaration today | What generation yields |
 | --- | --- | --- |
 | `/api/git/*` | 13 `TypedDict`s, all `total=True`, six validators | A real schema. `TypeAdapter(GitRepoInfo).json_schema()` verified. |
-| `/api/tree`, `/api/rollup` | 18 `TypedDict`s, but `DirNode` is `total=False` with `children: list[Any]` | **Nearly empty.** Verified: no `required`, and `children` as `{"items": {}}`. |
+| `/api/tree`, `/api/rollup` | 22 `TypedDict`s, but `DirNode` is `total=False` with `children: list[Any] \| None` | **Nearly empty.** Verified: no `required`, and `children` as an array with `"items": {}` or `null`. |
+| `/api/cache/*`, `/api/source/*`, `/api/identity` | `TypedDict`s in `cache/wire.py`, `source_routes.py`, and `root_identity.py`, all `total=True` (`cache/wire.py` marks conditional keys `NotRequired`), no validators | A schema with `required` keys; `TypeAdapter(CacheLayoutResponse).json_schema()` verified. |
 | `/api/file` | None. `FileNode` is a tree row, not the response envelope with `kind`, `views`, and the content window | Nothing |
-| Plugin data hooks | None | Nothing |
+| Plugin data hooks | The built-in GitHub plugin’s routes declare `TypedDict` envelopes, such as `PullEnvelope`; the other built-in hooks have none | For GitHub, a schema with `required` keys (`PullEnvelope` verified); nothing for the rest |
 
 So the generator is the cheap part and the declarations are the work.
 
@@ -144,9 +148,9 @@ and state. An envelope is produced and consumed by one artifact in one request.
    If that cannot be made to work, the plan stops here and is reconsidered, because
    everything after it depends on the schema being checkable against reality.
 3. **The route and its golden.** `GET /api/schema`, its parity row, and a transcript.
-4. **Author declarations for `/api/file` and the plugin hooks.** This is the phase the
-   earlier draft hid: these envelopes have no `TypedDict` at all, and writing them is
-   ordinary design work with a real cost.
+4. **Author declarations for `/api/file` and the plugin hooks that lack them.** This is
+   the phase the earlier draft hid: these envelopes have no `TypedDict` at all, and
+   writing them is ordinary design work with a real cost.
 5. **Decide whether to tighten the tree and rollup declarations**, as a contract change
    argued on its own merits, with a check that no producer violates the tightened shape.
    Not a documentation task.

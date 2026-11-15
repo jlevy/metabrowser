@@ -493,6 +493,15 @@ hides content carries the host’s `disclosure-toggle` class so clicking it neve
 text; a native `summary` needs nothing
 ([Disclosure Toggles Never Select Text](design-system.md#disclosure-toggles-never-select-text)).
 
+A view that shows a message about the content, such as a description or a comment, plain
+or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
+never on its page, and sets no face of its own: chrome prose is sans under either
+reading font, and a document shown beside it keeps the reader’s reading font.
+A view whose container carries `md-body` gets the reading font on its Markdown’s
+headings, paragraphs, lists, and quotes only, so anything else it draws, such as a
+toolbar or an empty state, keeps the chrome face without a face of its own
+([Serif Is for Documents](design-system.md#serif-is-for-documents)).
+
 `ensureAsset(name)` loads a vendored library the shell does not put on every page, and
 resolves once its globals are present.
 Await it before touching the library: a loaded bundle resolves immediately, simultaneous

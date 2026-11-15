@@ -2,17 +2,20 @@
 
 **Status:** Done.
 The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
-checkout-backed comparisons shipped in 0.12.0; the revisions dated after 2026-11-08 are
-on `main` and listed under Unreleased in `CHANGELOG.md`. [Delivery](#delivery) records
-the owning layers. Local links for timeline commits remain a follow-up (`mb-g47g`). The
-original design prose remains background where a revision supersedes it.
+checkout-backed comparisons are implemented on `main` and shipped in 0.12.0 (tagged
+`v0.12.0` at `87b8ec81` and published 2026-11-09); later revisions below are on `main`.
+[Delivery](#delivery) records the owning layers.
+Open follow-ups: the expected file count (`mb-egnj`), the shared manifest (`mb-w5rc`), a
+patch-free fallback file list (`mb-0cr3`), reconciling removed catalog rows (`mb-dpvu`),
+an unreachable footer branch (`mb-xl14`), and local timeline commit links (`mb-g47g`).
+The original design prose remains background where a revision supersedes it.
 
-This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which
-stays the authority for the mirror, `gh`, and pull-request records.
+This plan builds on the [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md),
+which stays the authority for the mirror, `gh`, and pull-request records.
 It replaces the list, panel, and checkout-attachment designs in
 [GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md),
-which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan is
-`mb-qftx`).
+which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan’s spec
+bead is `mb-qftx` and its epic is `mb-8rpp`).
 
 ## Catalog Revision
 
@@ -34,8 +37,8 @@ The current route and storage contracts are in
 
 Visible Pulls and PR pages follow catalog updates and recover from temporary GitHub CLI
 or connection failures.
-The [PR watch plan](plan-2026-11-06-pr-watch-and-reconnect.md) defines when the watch
-runs, how Reload and the shared status work, and what recovery the tests cover.
+The [PR watch plan](../done/plan-2026-11-06-pr-watch-and-reconnect.md) defines when the
+watch runs, how Reload and the shared status work, and what recovery the tests cover.
 
 ## Changed-File Disclosure
 
@@ -350,14 +353,17 @@ background, and keeps working offline.
   A checkout whose remote is an SSH address on github.com is still identified, because
   identity is read from configuration and nothing is fetched over SSH.
 - Inline review anchoring in the diff.
-- Search across pull requests, and sort orders other than GitHub’s default.
+- Sort orders other than GitHub’s default.
+  Search across pull requests was added later; see
+  [Search From the Catalog](#search-from-the-catalog).
 - A public plugin SDK for navigation panels.
 
 ## Rules This Work Keeps
 
-The thin-mirror plan’s [Principles](plan-2026-09-23-v012-thin-mirror.md#principles)
-apply unchanged. Five rules follow from them and from the user’s decisions, and every
-step is reviewed against them:
+The thin-mirror plan’s
+[Principles](../done/plan-2026-09-23-v012-thin-mirror.md#principles) apply unchanged.
+Five rules follow from them and from the user’s decisions, and every step is reviewed
+against them:
 
 - **A plain folder starts no `gh` and no network.** Serving a folder that is not a
   GitHub repository loads none of the cache or the GitHub plugin and spawns nothing.
@@ -984,7 +990,8 @@ A row is a container in the sense of
 item-like, because selecting it opens the pull request, and folder-like, because it
 expands to its changed files.
 That document’s Collection panels section promised this.
-It predates the thin mirror, so its `ChangeRequestIndex` wording is corrected in step 4.
+It predates the thin mirror; the landing docs reconciliation (#298, `3f5bd2d3`)
+corrected its `ChangeRequestIndex` wording.
 
 **What a reader sees.** Expanding a row shows the changed files as a tree, with folders
 that expand and collapse exactly as they do in the Files tab.
@@ -1084,6 +1091,8 @@ The list has two sources:
   the mirror has already fetched, it is the local comparison’s manifest, which needs no
   network and is far faster.
   The tree adds no second fetch of a comparison the page has already asked for.
+  The list job still computes that manifest itself rather than reading the one Changes
+  keeps (`mb-w5rc`).
 - Otherwise it is GitHub’s list, one `gh api` request per 100 files:
 
 ```
@@ -1099,9 +1108,10 @@ An observed account change stops publication and marks previously checked prefix
 stale; the
 [changed-file contract](../../architecture/arch-github-pull-requests.md#changed-files)
 describes the ownership and cache behavior.
-While it fills, the panel says how much it has: N of M files where the record gives M
-(`changed_files`), and otherwise N files with the page count from the `Link` header,
-since that gives pages and not files.
+While it fills, the panel says how much it has: N files with the page count from the
+`Link` header, since that gives pages and not files.
+N of M, with M from the record’s `changed_files`, waits on `mb-egnj`: the record does
+not carry that field yet.
 
 - A row keeps `path`, `previous_path`, `status`, `additions`, and `deletions`. The patch
   GitHub embeds is dropped.
@@ -1602,7 +1612,7 @@ By the user, in their words where quoted.
   lands.
 
 **2026-09-23**, from the thin-mirror plan’s
-[Decisions](plan-2026-09-23-v012-thin-mirror.md#decisions-2026-09-23-by-the-user)
+[Decisions](../done/plan-2026-09-23-v012-thin-mirror.md#decisions-2026-09-23-by-the-user)
 
 - Metabrowser is as thin a wrapper as possible over `git` and `gh`.
 - The cache is a plain mirror.

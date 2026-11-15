@@ -1,10 +1,11 @@
 # Plan for Event-Based Pull-Request Freshness and Budgeted Prefetch
 
-**Status:** Done. Merged to `main` in pull request
-[#355](https://github.com/jlevy/metabrowser/pull/355) after 0.12.0, so it first ships in
-the next release. It was the second pull request of the spinner-free refresh stack (epic
-`mb-c93s`, closed). One GraphQL query per record refresh was a separate change
-(`mb-xhtc`, closed).
+**Status:** Done, merged after 0.12.0, so it first ships in the next release.
+Pull request #355 (bead `mb-wlx0`), the second of the spinner-free refresh stack (epic
+`mb-c93s`), landed on `main` with the presentation pull request #354 (`mb-wl9x`) in
+93badac9 on 2026-11-11. The changed-files prefetch of the rows rested on and in view
+(T3) followed in #424 (`mb-5mcn`). One GraphQL query per record refresh is a later,
+separate change (`mb-6aa8`) and is out of scope.
 
 ## Reader Behavior
 

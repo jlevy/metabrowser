@@ -1,6 +1,7 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22; status updated
+2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
@@ -13,7 +14,8 @@ Its Simplify step then changed part of that foundation; the
 replaced.
 
 **Status:** Phases 0 through 1B were built on the v0.12 stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218), and shipped in 0.12.0; their
+[#218](https://github.com/jlevy/metabrowser/stack/218), which landed on `main` and first
+shipped in 0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09; their
 acceptance closed with foundation stabilization in
 [#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
 then changed part of that foundation, and
@@ -23,9 +25,10 @@ Phases 2A through 2C are superseded: the thin-mirror plan’s
 [Delivery](../done/plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull
 requests that open, serve, refresh, and re-pin a repository URL in their place, so the
 unchecked items in those phases will not be done as written.
-SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work: the catalog
-(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`), each
-described under its Later heading below.
+SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work under epic
+`mb-k7zy`: the catalog (`mb-0ybg`), Windows owner-only storage (`mb-pyqf`), and very
+large repositories (`mb-dqvj`). The chooser (`mb-vmzy`) is tracked by the native macOS
+app epic, `mb-1apq`.
 
 ## Vision
 
@@ -2110,6 +2113,12 @@ done as written.
   the exact green provider-job head.
 
 ### Later: Generic catalog, refresh, and cache management
+
+**Addendum (2026-11-14):** Phase 2B was superseded, and the thin-mirror Simplify step
+([#228](https://github.com/jlevy/metabrowser/pull/228)) removed convergence, subject
+refs, leases, and store reclamation.
+The read-only `/api/cache/` routes already report layout, sources, and stores.
+Re-plan the items below against the thin-mirror plan before starting `mb-0ybg`.
 
 Phase 2B ships the provider-facing job lifecycle and selected-ref fetching needed for
 v0.12.0. The operations below build on that service but remain outside the initial

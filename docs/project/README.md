@@ -187,6 +187,8 @@ A research record stays here while it informs open work, and moves to
 
 ## Reviews
 
+- [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md):
+  every bead closed, updated, or held in the audit after 0.12.0, with its evidence
 - [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md):
   each intended change to v0.11.0 behavior with its changelog entry, pull request, and
   check, and the unintended differences the landing gate found

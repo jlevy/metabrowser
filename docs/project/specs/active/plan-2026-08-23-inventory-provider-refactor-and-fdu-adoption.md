@@ -1,11 +1,13 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-08-26)
+**Date:** 2026-08-23 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Checkpoints 2A and 2B complete; Checkpoints 2C and 2D,
-which add and adopt the fdu provider, are planned.
+**Status:** Phase 1 and Checkpoint 2B shipped in v0.10.0 through #74, #99, and #101;
+Checkpoint 2A was measured.
+Checkpoints 2C and 2D (`mb-hej8`) have not started: Python is the only provider the
+factory builds.
 
 ## Overview
 

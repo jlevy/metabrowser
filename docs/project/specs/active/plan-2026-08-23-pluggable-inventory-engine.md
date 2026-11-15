@@ -1,10 +1,12 @@
 # Feature: Pluggable Inventory Engine
 
-**Date:** 2026-08-23 (last updated 2026-08-24)
+**Date:** 2026-08-23 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Phase 2 planned
+**Status:** Phase 1, the Python reference provider, shipped in v0.10.0 through #74, #99,
+and #101. Phase 2, the fdu provider (`mb-hej8`), is planned; its native adoption gates
+are `mb-6o0l`, `mb-iyu7`, and `mb-l2eh`.
 
 ## Overview
 
