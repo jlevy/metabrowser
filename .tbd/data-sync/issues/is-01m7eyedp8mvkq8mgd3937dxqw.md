@@ -5,7 +5,8 @@ title: "Diff summary: one collapsible changed-files tree with folder roll-ups, r
 kind: feature
 status: in_progress
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T06:32:50.040Z
+updated_at: 2026-11-15T06:38:07.568Z
 started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
