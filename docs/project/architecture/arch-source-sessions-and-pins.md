@@ -210,8 +210,20 @@ The page stays cacheable; on a history landing, and only then, the guard asks
 `Cache-Control: no-store` would have kept every pin page out of the back/forward cache;
 the comparison is measured in the module header and in
 [the history-landing record](../../../explorations/history-landing/README.md).
-The functional rows `source.stale-pin-guard` and `source.history-landing` in
-[the map](arch-views-models-routes.md) pin both behaviors.
+The functional rows `source.stale-pin-guard` and `source.history-landing` in the
+[parity registry](arch-parity-registry.md) pin both behaviors.
+
+**View file.** On a pin’s page, a diff’s file bar opens the changed file at either side
+of the change. The comparison document says which commit each side belongs to, so a side
+at the commit the page shows is a link to its `/view/` address, and a side at another
+commit is a button that switches the pin with `POST /api/source/pin`, naming the address
+so the answer’s `view_href` says where to go.
+A pull request’s Changes never switches the pin: every side at another commit links to
+the GitHub plugin’s revision page.
+Only a regular file’s side gets a control, since a submodule’s side is another
+repository’s commit and a symbolic link’s would open its target.
+`builtin_plugins/diff/diff-view-file.js` holds the rules in its header, and the parity
+rows `diff.view-file` and `diff.view-file-sides` pin them.
 
 ## How a Mirror’s Page Names Itself
 

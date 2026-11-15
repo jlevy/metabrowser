@@ -109,6 +109,15 @@ the app’s 1,200 × 820 window and a load average of 6 to 14. Each sample was a
 browser running the same in-page probe, and each round alternated which build and which
 engine went first.
 
+Two costs remain in WebKit.
+The first click takes this file past 100,000 lines, so the gutter gains a digit, the
+code column narrows, and WebKit lays out all of the code again where Chrome does not:
+that click took 2.45 to 2.51 times Chrome’s time, and 546 to 555 ms against Chrome’s 379
+to 389 ms with the gutter’s width held by a diagnostic stylesheet.
+The 1.4 times left matches the source view’s grid: in one bare-page run, WebKit took
+about four times as long to append the same text into a grid like the view’s as into a
+plain `pre`. The later clicks took 1.10 to 1.21 times Chrome’s time.
+
 ### Syntax highlighting spends elements and main-thread time
 
 Highlight.js lexing is only part of the cost.

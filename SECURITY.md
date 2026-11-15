@@ -57,7 +57,8 @@ names you control.
 `--no-active-content` and `--allow-edits` set those switches one at a time.
 A flag outranks its environment variable, so `--untrusted` stays conservative whatever
 the environment says.
-[The command-line guide](docs/command-line.md) owns every flag and environment variable.
+The command-line guide owns the [trust flags](docs/command-line.md#content-trust) and
+every [environment variable](docs/command-line.md#environment-variables).
 
 **`.env` files.** Metabrowser reads `.env` and `.env.local` from the working directory
 and its parents, so running `metab` inside a cloned repository reads that repository’s

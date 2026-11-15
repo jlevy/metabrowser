@@ -17,7 +17,8 @@ Metabrowser discovers plugins in this order:
    the process environment.
    A `.env` file cannot supply that variable: the `.env` chain walks up from the working
    directory, so a repository browsed from inside itself would otherwise become a plugin
-   source. [Command Line](command-line.md) lists the variables a `.env` file may set.
+   source. [Command Line](command-line.md#environment-variables) lists the variables a
+   `.env` file may set.
 
 Later plugins win plugin-name collisions.
 Kind classifiers use explicit priorities and stable discovery order as a tiebreaker.

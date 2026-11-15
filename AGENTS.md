@@ -47,8 +47,8 @@ Every user-visible functional aspect is also runnable from a command line.
   route is inspectable and golden-pinned for free.
 
 - `devtools/check_parity.py` enforces route and functional evidence and names what is
-  missing. The tables, exemption list, and reasons live in
-  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+  missing. The tables, exemption list, and reasons live in the
+  [Parity Registry](docs/project/architecture/arch-parity-registry.md).
 
 - A new route arrives with its parity row and a golden, or the build fails.
   There is no `gap` status: every registered surface is either covered by a transcript

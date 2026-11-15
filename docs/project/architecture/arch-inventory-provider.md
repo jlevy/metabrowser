@@ -187,6 +187,10 @@ registered query. The row orders above are total, and the module docstring of
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
+Recent ranks ignored files last, then newest first, then by canonical path, and applies
+its row bound after that ranking, so a dependency install that writes thousands of files
+cannot crowd out the reader’s own work; the rows it keeps are then ordered newest first.
+The ranking holds whatever the match count.
 Recent returns `RecentRecord` rows containing path, extension, size, modification time,
 and ignored state. The name derives from the canonical path; directory aggregates and
 host preview and activity decorations are absent because the Recent response consumes
@@ -221,7 +225,8 @@ implementing it in every production provider.
 ## Filesystem Records and Host Decorations
 
 `InventoryEntry` contains served-root-relative filesystem facts: lossless path identity,
-object type, logical extension, size, modification time, ignore state, and optional
+object type, logical extension (the bounded compound tail `fs_paths.derive_ext` defines,
+so `archive.tar.gz` has `.tar.gz`), size, modification time, ignore state, and optional
 directory aggregates.
 Path-bearing contract records use one canonical POSIX-relative grammar: the root is
 `""`, absolute paths, backslashes, nulls, `.` and `..` segments, duplicate separators,

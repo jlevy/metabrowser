@@ -19,7 +19,7 @@ It holds for any implementation behind
 including a native one.
 An engine’s measured unit costs do not survive replacing it, so each engine documents
 its own: the Python reference provider’s are in
-[the Python inventory engine](project/architecture/arch-inventory-engine-python.md).
+[the Python inventory engine](project/architecture/arch-inventory-engine-python.md#unit-costs).
 
 It is the backend counterpart to the
 [Web Performance Framework](web-performance-framework.md), which measures what a reader

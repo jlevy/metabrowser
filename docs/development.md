@@ -95,7 +95,9 @@ importing plugin internals.
 The served root’s inventory comes from one provider behind the provider-neutral
 contract; only the sealed factory imports a concrete one.
 Selecting a provider, its debug report, and running a benchmark against it are in the
-[Inventory Provider Contract](project/architecture/arch-inventory-provider.md).
+[Inventory Provider Contract](project/architecture/arch-inventory-provider.md), and
+[Adding a Provider](project/architecture/arch-inventory-provider.md#adding-a-provider)
+lists what a new one brings.
 
 ## Benchmarking Scan and Serve
 

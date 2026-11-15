@@ -67,6 +67,16 @@ the SDK on purpose.
 Each store owns its bounds and invalidation, and a plugin reads one only through its SDK
 projection, never `app.js`’s variables.
 
+**Filtering** decides membership over the server’s inventory, never over rows mounted in
+the DOM. `/api/tree` takes type, recency, size, and ignored-file constraints and answers
+the matching leaves with their folder ancestry, so a collapsed or paged subtree is
+unknown only to the renderer.
+When a recency window hides older files, the panel switches to `/api/recent`, whose flat
+newest-first leaves pass the same other constraints, and `tree-filter-model.js` clusters
+them before the tree draws them.
+Live events are rechecked against the filter between those fetches, but they never
+decide a folder’s membership or counts.
+
 ## The Preview Pane
 
 ### Claims
@@ -146,6 +156,34 @@ document does not wait for the embeds of the one it replaces.
 A fatal Worker failure, such as a module that cannot load, rejects every mount’s pending
 work; each renders its authored Markdown with a diagnostic, and the next request starts
 a new Worker.
+
+## Markdown Link Resolution
+
+The Markdown plugin decides what an authored link names; the shell decides how that
+target is spelled as a `/view/` address.
+The resolvers do no I/O, so each decision is testable against a catalog snapshot.
+A target passes through these in order, all under `builtin_plugins/markdown/`:
+
+1. **Scheme dispatch** (`links.js`): `http`, `https`, `mailto`, and `tel` stay external,
+   and an unsafe scheme is disabled with a visible reason.
+2. **Exact resolution** (`links.js`): relative, `./`, `../`, and leading-slash targets
+   resolve from the source document as GitHub resolves them.
+   A missing target keeps its URL and opens the ordinary not-found state; nothing
+   guesses by basename.
+   Embedded media goes through `/raw`.
+3. **GitHub localization** (`github-localizer.js`): a `github.com` blob or tree URL
+   opens locally only when the served repository’s identity proves it names the served
+   tree: origin, branch or exact revision, and served subdirectory.
+   `repository_context.py` reads that identity from Git metadata with bounded reads and
+   no Git process. Anything unproven stays an outbound link.
+4. **Published-site routes** (`project-adapters.js`): with an MkDocs, Docusaurus, or
+   Jekyll configuration at the served root, a published route such as `/guide/` falls
+   back to the source document behind it, and only after exact resolution fails.
+5. **Wiki links** (`wiki-resolver.js`): `[[...]]` resolves to an exact path, then the
+   source directory, then a unique catalog match.
+   An ambiguous or missing note renders visibly with its candidates, and a name unique
+   in an incomplete catalog stays pending until the catalog is complete, so a target
+   never depends on walk order.
 
 ## Quick Search
 

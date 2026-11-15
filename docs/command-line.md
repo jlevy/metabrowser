@@ -109,8 +109,8 @@ closes and the server stops itself.
 The server prints `Stopping Metabrowser: stdin closed.` and exits with status 0, and it
 stops the Git and `gh` processes it started.
 Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual.
-[The CLI architecture](project/architecture/arch-cli.md) describes how the stop works
-and what it covers.
+[The CLI architecture](project/architecture/arch-cli.md#stopping-when-stdin-closes)
+describes how the stop works and what it covers.
 
 ### Serving a Git Source
 

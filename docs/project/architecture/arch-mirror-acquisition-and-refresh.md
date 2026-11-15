@@ -139,7 +139,9 @@ checkout the reader named, so the fetch brings only what that checkout lacks.
 Every reader of a store is the same for both modes: the served pin, the batch readers,
 `pull_refs.py`, `update.py`, the freshness window, the fetch lock, and the pull-request
 records. The design and its experiments are in the
-[pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md).
+[pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md),
+and what borrowing means for content trust is in
+[Borrowed Objects](arch-server-and-content.md#borrowed-objects).
 
 - **Only a checkout the reader names lends.** `--checkout` names it once, and the store
   remembers it. Any directory a reader stands in can be made to look like a checkout of
