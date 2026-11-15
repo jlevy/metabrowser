@@ -991,7 +991,8 @@ type MetabrowserFilterControls = {
     key: string;
     label?: string;
     pressed?: boolean;
-    title?: string;
+    /** The tooltip, as `data-tip-text`; filter-controls.js reads `tip`, never `title`. */
+    tip?: string;
   }): string;
 };
 

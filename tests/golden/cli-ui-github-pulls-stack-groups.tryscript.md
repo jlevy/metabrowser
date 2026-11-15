@@ -19,7 +19,9 @@ requests in the list, top of the stack first, as the pull request page’s stack
 lists them.
 The stacks come in the order of their first pull request in the list, and the
 pull requests in no stack follow them, in the list’s order.
-A pull request in two stacks sits once, under the first, and its badge names the other.
+A pull request in two stacks sits once, under the first, and its badge names the other
+by the Layers glyph, written ⧉ here, before its number; the other stack’s row still
+counts it, and its tip says where it sits.
 Until stacks are known for the list’s own GitHub account, and while none of the list’s
 pull requests is in one, the list stays flat and the option says why.
 The reader’s choice persists; with none made, grouping is on.
@@ -29,6 +31,11 @@ closes it, or from a pull request in it goes to it.
 
 Each step’s `rows` are what a reader sees: a stack’s row with its count, place, and tip,
 its pull requests a level in with their badges, and then the ends of the rest.
+After a walk, `read ahead after the last open` is what the open asks to read next: its
+neighbours as drawn, a stack’s row passed over, then the first pull requests drawn.
+`mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
+Right, and Left reach it, and a press on a stack’s row, printing the tree’s roles,
+levels, places, expansion, and Tab stop at each step.
 `menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
 stack’s label on the shared label classes, and its members are the group’s, in one
 order. Every step holds the session’s invariants: each listed pull request is drawn once
@@ -59,7 +66,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "option": {
         "available": false,
         "on": false,
-        "tip": "Group by stack: this repository's stacks are not known yet."
+        "tip": "Group by stack: reading this repository's stacks…"
       },
       "rows": [
         "#106",
@@ -133,6 +140,12 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         6,
         106,
         6
+      ],
+      "read ahead after the last open": [
+        7,
+        106,
+        8,
+        105
       ]
     },
     {
@@ -359,8 +372,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "▾ Stack #290 (3) [1/99] · Stack #290, 3 pull requests",
         "    #10 3/3 [1/3]",
         "    #9 2/3 [2/3]",
-        "    #8 1/3 · #286 3/3 [3/3]",
-        "▾ Stack #286 (2 of 3) [2/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    #8 1/3 · ⧉286 3/3 [3/3]",
+        "▾ Stack #286 (3) [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
         "    #7 2/3 [1/2]",
         "    #6 1/3 [2/2]",
         "#106 [3/99]",
@@ -379,7 +392,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "rows": [
         "▾ Stack #290 (2 of 3) [1/1] · Stack #290, 3 pull requests, 2 in this list",
         "    #9 2/3 [1/2]",
-        "    #8 1/3 · #286 3/3 [2/2]"
+        "    #8 1/3 · ⧉286 3/3 [2/2]"
       ]
     },
     {
@@ -431,6 +444,120 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     }
   ],
+  "mounted": {
+    "option": {
+      "word": "Stacks",
+      "name": "Group by stack",
+      "pressed": "true",
+      "disabled": "false",
+      "tip": "Group by stack",
+      "description": null
+    },
+    "files": {
+      "Right on #8": "true",
+      "then Left": "false"
+    },
+    "label": {
+      "text": "Stack #286",
+      "classes": "group-heading github-pull-stack-label"
+    },
+    "steps": [
+      {
+        "step": "mounted: Stack #286 open, its pull requests a level in",
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "#8 · treeitem · level 2 · 1/3 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Space on the stack's row (the handle's toggleStack) closes it",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "and again opens it",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "#8 · treeitem · level 2 · 1/3 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Right on the stack's row goes to its first pull request, which opens",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ],
+        "opened": [
+          8
+        ]
+      },
+      {
+        "step": "Right on that pull request opens its files",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Left first closes its files, keeping the pull request",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Left again goes to the stack's row",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "#8 · treeitem · level 2 · 1/3 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Left on the stack's row closes it",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "a press on the stack's row opens it",
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "#8 · treeitem · level 2 · 1/3 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      }
+    ]
+  },
   "menu": {
     "heading": "Stack #290",
     "headingClasses": "group-heading github-pull-stack-label",

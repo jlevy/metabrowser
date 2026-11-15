@@ -413,7 +413,24 @@ const PULLS_ROWS = `async (rows, width) => {
     stack.hidden = false;
     stack.append(
       h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }),
-      h("span", { class: "github-pull-stack-position" }, [row.stack]),
+      // As pulls-panel.js#paintStackBadge draws it: another stack is the Layers glyph
+      // before its number, written here as "#N".
+      h(
+        "span",
+        { class: "github-pull-stack-position" },
+        row.stack.split(" · ").flatMap((part, at) => {
+          const named = /^#([0-9]+) (.+)$/.exec(part);
+          return [
+            ...(at === 0 ? [] : [" · "]),
+            ...(named === null
+              ? [part]
+              : [
+                  h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }),
+                  named[1] + " " + named[2],
+                ]),
+          ];
+        }),
+      ),
     );
   }
   await frames();

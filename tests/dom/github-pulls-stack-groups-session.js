@@ -44,6 +44,237 @@ async function settle() {
   }
 }
 
+/**
+ * Mount the production panel over a stand-in for the DOM, on the recorded All list and
+ * stack snapshot, and drive what its handle and its list do with a stack's row: Space's
+ * toggle, Right and Left (a member's files open, then closed), and a press. Each step
+ * prints the tree's drawn rows with their roles and places, and the option's chip.
+ */
+async function mountStory() {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const { FakeNode } = require("./pulls-test-dom.js");
+  /** The toolbar's markup: the filter chips and the Group by stack chip it was drawn from. */
+  let filterOptions = [];
+  let toggleSpec = null;
+  class PanelElement extends FakeElement {
+    set innerHTML(markup) {
+      super.innerHTML = markup;
+      if (this.classList.contains("github-pulls-filters")) {
+        for (const option of filterOptions) {
+          const chip = new PanelElement("button");
+          chip.dataset.chipValue = option.value;
+          chip.append(option.label);
+          this.append(chip);
+        }
+        const toggle = new PanelElement("button");
+        toggle.className = `chip chip-toggle ${toggleSpec.className}`;
+        toggle.setAttribute("data-chip-key", toggleSpec.key);
+        toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
+        toggle.setAttribute("data-tip-text", toggleSpec.tip);
+        toggle.append(toggleSpec.label);
+        this.append(toggle);
+      }
+    }
+    querySelectorAll(selector) {
+      return selector === "button" && this.classList.contains("github-pulls-filters")
+        ? this.childNodes
+        : super.querySelectorAll();
+    }
+  }
+  const frames = [];
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    addEventListener() {},
+    createElement: (tag) => new PanelElement(tag),
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new PanelElement(node.localName),
+  };
+  const answer = (body, status = 200) =>
+    Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
+  const opened = [];
+  const globals = {
+    document,
+    window: {
+      addEventListener() {},
+      setTimeout: () => 0,
+      clearTimeout() {},
+      requestAnimationFrame(callback) {
+        frames.push(callback);
+        return frames.length;
+      },
+      cancelAnimationFrame() {},
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+    HTMLElement: FakeElement,
+    Element: FakeElement,
+    MouseEvent: class {},
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new PanelElement("svg") } };
+      }
+    },
+    IntersectionObserver: class {
+      takeRecords() {}
+      observe() {}
+      disconnect() {}
+    },
+    fetch(route) {
+      if (route.startsWith("/api/plugin/github/pulls?")) {
+        return answer(route.includes("&after=") ? lists.more_window.body : lists.current.body);
+      }
+      if (route === "/api/plugin/github/stacks") {
+        return answer(stacks.current.body);
+      }
+      if (route === "/api/plugin/github/pulls-prefetch") {
+        return answer({ prefetch: "not_due" });
+      }
+      // A refresh, a record, or a pull request's files: nothing this story reads.
+      return answer(null, 404);
+    },
+  };
+  const saved = {};
+  for (const [name, value] of Object.entries(globals)) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+  const paint = async () => {
+    await settle();
+    for (const frame of frames.splice(0)) {
+      frame();
+    }
+    await settle();
+  };
+  try {
+    const container = new PanelElement("div");
+    const handle = panel.mountPullsPanel(
+      container,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: null,
+          open: (route) => opened.push(route.number),
+          file: null,
+          fileHref: (number, file) => `/pull/${number}/files/${file}`,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      {
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+        filterControls: {
+          groupHtml({ options }) {
+            filterOptions = options;
+            return "<div></div>";
+          },
+          toggleHtml(spec) {
+            toggleSpec = spec;
+            return "<button></button>";
+          },
+          bind: () => () => {},
+        },
+        formatAge: () => ({ label: "1m", className: "age-min" }),
+        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      },
+    );
+    await paint();
+    const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+    const filters = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const chip = filters.childNodes.find(
+      (node) => node.dataset.chipKey === "github-pulls-group-by-stack",
+    );
+    const rowOf = (item) => item.childNodes[0];
+    const drawnRows = () =>
+      list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
+    const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286");
+    const pull = (number) => drawnRows().find((row) => row.dataset.number === String(number));
+    /** The tree as drawn, to the first pull request in no stack, with its roles and places. */
+    const tree = () => {
+      const rows = drawnRows();
+      const end = rows.findIndex(
+        (row) => row.getAttribute("aria-level") === "1" && !row.dataset.stack,
+      );
+      return rows
+        .slice(0, end + 1)
+        .map((row) =>
+          [
+            row.dataset.stack ? `Stack #${row.dataset.stack}` : `#${row.dataset.number}`,
+            row.getAttribute("role"),
+            `level ${row.getAttribute("aria-level")}`,
+            `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
+            `expanded ${row.getAttribute("aria-expanded")}`,
+            row.getAttribute("tabindex") === "0" ? "Tab stop" : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        );
+    };
+    const steps = [];
+    const step = async (what, act) => {
+      const handled = act();
+      await paint();
+      steps.push({
+        step: what,
+        ...(handled === undefined ? {} : { handled }),
+        tree: tree(),
+        ...(opened.length > 0 ? { opened: opened.splice(0) } : {}),
+      });
+    };
+    await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
+    const option = {
+      word: chip.textContent,
+      name: chip.getAttribute("aria-label"),
+      pressed: chip.getAttribute("aria-pressed"),
+      disabled: chip.getAttribute("aria-disabled"),
+      tip: chip.dataset.tipText,
+      description: chip.getAttribute("aria-description"),
+    };
+    await step("Space on the stack's row (the handle's toggleStack) closes it", () =>
+      handle.toggleStack(286),
+    );
+    await step("and again opens it", () => handle.toggleStack(286));
+    await step("Right on the stack's row goes to its first pull request, which opens", () =>
+      handle.expand(),
+    );
+    await step("Right on that pull request opens its files", () => handle.expand());
+    const filesOpen = pull(8).getAttribute("aria-expanded");
+    await step("Left first closes its files, keeping the pull request", () => handle.collapse());
+    const filesClosed = pull(8).getAttribute("aria-expanded");
+    await step("Left again goes to the stack's row", () => handle.collapse());
+    await step("Left on the stack's row closes it", () => handle.collapse());
+    // A press on the stack's label, as a click lands: the row takes the anchor and opens.
+    const label = stackRow().childNodes.find((node) =>
+      node.classList?.contains("github-pull-stack-label"),
+    );
+    await step("a press on the stack's row opens it", () =>
+      list.listeners.get("click")({ target: label, button: 0, preventDefault() {} }),
+    );
+    handle.dispose();
+    return {
+      option,
+      files: { "Right on #8": filesOpen, "then Left": filesClosed },
+      label: { text: label.textContent, classes: label.className },
+      steps,
+    };
+  } finally {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[name];
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  }
+}
+
 (async () => {
   const stackModule = await import(pathToFileURL(path.join(GITHUB, "pull-stacks.js")).href);
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
@@ -53,14 +284,18 @@ async function settle() {
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
   function mount({ filter = "all", list = "current", groupByStack = null } = {}) {
-    const log = { opened: [], marks: [], choices: [] };
+    const log = { opened: [], marks: [], choices: [], prefetch: [] };
     let model = null;
     let anchor = null;
     const timers = new Map();
     let nextTimer = 1;
     const controller = panel.createPullsController(
       {
-        request(method, route) {
+        request(method, route, options) {
+          if (route === "/api/plugin/github/pulls-prefetch") {
+            // What an open asks to read ahead: its neighbours as drawn, and the top.
+            log.prefetch.push(options.body);
+          }
           if (method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
             const answer = route.includes("&after=") ? lists.more_window : lists[list];
             return Promise.resolve({ status: answer.status, etag: answer.etag, body: answer.body });
@@ -133,8 +368,11 @@ async function settle() {
 
   /** What a reader sees of the rows: every stack and the rows under it, then the ends. */
   function drawn(model, identity, stackIndex) {
+    // A badge as drawn: another stack is the Layers glyph, written ⧉, before its number.
     const caption = (number, under) =>
-      stackCaption(stackIndex, identity, number, under)?.text ?? "";
+      (stackCaption(stackIndex, identity, number, under)?.parts ?? [])
+        .map((part) => (part.stack === null ? part.position : `⧉${part.stack} ${part.position}`))
+        .join(" · ");
     if (model.stacks.rows === null) {
       const rows = model.rows.map((row) => `#${row.number} ${caption(row.number, null)}`.trim());
       return rows.length > 4 ? [...rows.slice(0, 3), "…", rows.at(-1)] : rows;
@@ -228,7 +466,13 @@ async function settle() {
   for (const name of ["J", "J", "J", "J", "K"]) {
     await story.key(name);
   }
-  record("J walks into the stack and out past it, K steps back; only pulls open", story, current);
+  // The last open, #6, reads ahead its neighbours as drawn, #7 above it and #106 below, a
+  // stack's row passed over, and the top: the stack's pull requests first.
+  const ahead = story.log.prefetch.at(-1);
+  story.log.prefetch.length = 0;
+  record("J walks into the stack and out past it, K steps back; only pulls open", story, current, {
+    "read ahead after the last open": ahead?.records ?? null,
+  });
   await story.key("Left");
   record("Left on a pull request in a stack goes to the stack's row", story, current);
   await story.key("Left");
@@ -297,6 +541,11 @@ async function settle() {
   await settle();
   record("stacks read for another account: flat", other, current);
 
+  // ── The mounted panel: the keys' routing through its handle, a press on a stack's row,
+  // and the tree's roles, over a stand-in for the DOM (as github-pulls-panel-session.js
+  // mounts it). Layout, focus rings, and scrolling stay the paint row's, measured in Chrome.
+  const mounted = await mountStory();
+
   // ── The page's stack menu lists the members in the groups' order, under one label.
   const listeners = new Map();
   globalThis.HTMLElement = FakeElement;
@@ -335,6 +584,7 @@ async function settle() {
     `${JSON.stringify(
       {
         steps,
+        mounted,
         menu: {
           heading: heading.textContent,
           headingClasses: heading.className,

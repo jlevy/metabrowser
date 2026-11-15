@@ -354,7 +354,7 @@ def test_a_commits_address_in_a_folder_draws_no_commits(tmp_path: Path) -> None:
 
 
 def test_a_rows_text_is_only_ever_text() -> None:
-    """The one markup the panel parses is the shell's own chip group.
+    """The one markup the panel parses is the shell's own: its chip group and toggle.
 
     The panel session's `paint` is the evidence: it builds the rows and reads a title written
     as markup back as one text node. This is the second line, for code the session's rows do
@@ -364,7 +364,9 @@ def test_a_rows_text_is_only_ever_text() -> None:
 
     source = PANEL.read_text(encoding="utf-8")
     assert source.count("innerHTML") == 1
-    assert "filters.innerHTML = controls.groupHtml(" in source
+    assert re.search(r"filters\.innerHTML =\s*controls\.groupHtml\(", source)
+    # The Group by stack chip, drawn by the same renderer into the same toolbar markup.
+    assert source.count("controls.toggleHtml(") == 1
     assert "insertAdjacentHTML" not in source
     assert "outerHTML" not in source
     # The window's internally measured numeric gap is the sole inline style. Values from

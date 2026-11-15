@@ -764,6 +764,21 @@ async function paintStory(panel, selection = false) {
   let aged = 0;
   let keyed = 0;
   let filterOptions = [];
+  // The Group by stack chip, as filter-controls.js's toggleHtml draws it from its spec.
+  let toggleSpec = null;
+  const drawToggle = (Element, into) => {
+    if (toggleSpec === null) {
+      return;
+    }
+    const toggle = new Element("button");
+    toggle.className = `chip chip-toggle ${toggleSpec.className}`;
+    toggle.setAttribute("data-chip-key", toggleSpec.key);
+    toggle.setAttribute("aria-pressed", String(toggleSpec.pressed === true));
+    toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
+    toggle.setAttribute("data-tip-text", toggleSpec.tip);
+    toggle.append(toggleSpec.label);
+    into.append(toggle);
+  };
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
       super.innerHTML = markup;
@@ -774,6 +789,7 @@ async function paintStory(panel, selection = false) {
           chip.append(option.label);
           this.append(chip);
         }
+        drawToggle(FakeElement, this);
       }
     }
     querySelectorAll(selector) {
@@ -863,6 +879,10 @@ async function paintStory(panel, selection = false) {
         groupHtml({ options }) {
           filterOptions = options;
           return "<div></div>";
+        },
+        toggleHtml(spec) {
+          toggleSpec = spec;
+          return "<button></button>";
         },
         bind: () => () => {},
       },
@@ -1542,6 +1562,21 @@ async function paintStory(panel, selection = false) {
 async function numberStory(panel) {
   const vm = require("node:vm");
   let filterOptions = [];
+  // The Group by stack chip, as filter-controls.js's toggleHtml draws it from its spec.
+  let toggleSpec = null;
+  const drawToggle = (Element, into) => {
+    if (toggleSpec === null) {
+      return;
+    }
+    const toggle = new Element("button");
+    toggle.className = `chip chip-toggle ${toggleSpec.className}`;
+    toggle.setAttribute("data-chip-key", toggleSpec.key);
+    toggle.setAttribute("aria-pressed", String(toggleSpec.pressed === true));
+    toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
+    toggle.setAttribute("data-tip-text", toggleSpec.tip);
+    toggle.append(toggleSpec.label);
+    into.append(toggle);
+  };
   class NumberedElement extends FakeElement {
     get parentElement() {
       return this.parentNode instanceof FakeElement ? this.parentNode : null;
@@ -1589,6 +1624,7 @@ async function numberStory(panel) {
           chip.append(option.label);
           this.append(chip);
         }
+        drawToggle(NumberedElement, this);
       }
     }
     querySelectorAll(selector) {
@@ -1599,8 +1635,7 @@ async function numberStory(panel) {
     }
   }
   /** A control's own label: its first text, before a tally or a badge. */
-  // A control's words, or, for one that is a glyph, its accessible name.
-  const name = (node) => node.childNodes[0]?.textContent.trim() || node.getAttribute("aria-label");
+  const name = (node) => node.childNodes[0]?.textContent.trim();
   const element = (tag, label) => {
     const made = new NumberedElement(tag);
     made.append(label);
@@ -1725,6 +1760,10 @@ async function numberStory(panel) {
           filterOptions = options;
           return "<div></div>";
         },
+        toggleHtml(spec) {
+          toggleSpec = spec;
+          return "<button></button>";
+        },
         bind(_root, handlers) {
           chipChange = handlers.onChange;
           return () => {};
@@ -1763,8 +1802,8 @@ async function numberStory(panel) {
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
     const reload = filters.childNodes.at(-1);
     assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
-    const grouping = filters.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-group-toggle"),
+    const grouping = filters.childNodes.find(
+      (node) => node.dataset.chipKey === "github-pulls-group-by-stack",
     );
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
@@ -1834,7 +1873,7 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Group by stack,5 Reload,6 View on GitHub",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Stacks,5 Reload,6 View on GitHub",
       "the chips, Group by stack, and Reload take 1 to 5 in reading order, before the page's link",
     );
     // While the list and its stacks are unknown, Group by stack keeps its number and, like

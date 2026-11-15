@@ -112,6 +112,28 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "/pull/3900",
       "address": "/view/"
     },
+    "Space on a stack's row closes the stack": {
+      "handled": true,
+      "did": [
+        "closed Stack #286"
+      ],
+      "focus on": "Stack #286",
+      "address": "/view/"
+    },
+    "holding Space on it leaves it closed": {
+      "handled": true,
+      "did": [],
+      "focus on": "Stack #286",
+      "address": "/view/"
+    },
+    "Space again opens it": {
+      "handled": true,
+      "did": [
+        "opened Stack #286"
+      ],
+      "focus on": "Stack #286",
+      "address": "/view/"
+    },
     "J on it is the list's": {
       "handled": true,
       "did": [

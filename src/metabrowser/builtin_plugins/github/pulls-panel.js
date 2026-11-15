@@ -99,6 +99,9 @@ const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" }
 const FILTER_GROUP = "github-pulls-filter";
 // The Group by stack option's chip, and the preference that keeps the reader's choice.
 const GROUP_TOGGLE = "github-pulls-group-by-stack";
+// The chip's word: short enough for the toolbar of the narrowest pane, beside the three
+// filters and Reload; its name and tip say the rest.
+const GROUP_CHIP_WORD = "Stacks";
 const GROUP_PREFERENCE = "github.pulls.groupByStack";
 
 /** A stored choice, or null for none: on by default. @param {unknown} value */
@@ -403,32 +406,48 @@ function watchPaused(envelope) {
  * badges and the page's stack menu still show it (docs/design-system.md, "Stacks"). The
  * reader's choice, *choice*, persists; with none made, grouping is on.
  *
+ * Why there is no snapshot is the stack refresh's outcome, which names its remedy as the
+ * connection line does for the list's own (`FAILURES`); one not tried yet is being read.
+ * With more of the list still to read (*more*), the rows read so far are all it can judge.
+ *
  * @param {import("./pull-stacks.js").StackIndex} index
  * @param {import("./pull-stacks.js").StackIdentity | null} identity The list's.
  * @param {boolean | null} choice
  * @param {{stacks: number}} grouped `groupByStack`'s answer for the list.
+ * @param {boolean} [more] Whether the list has rows not read yet.
  * @returns {{available: boolean, on: boolean, tip: string}}
  */
-export function describeStackGrouping(index, identity, choice, grouped) {
+export function describeStackGrouping(index, identity, choice, grouped, more = false) {
   const off = (/** @type {string} */ why) => ({
     available: false,
     on: false,
     tip: `${GROUP_BY_STACK}: ${why}`,
   });
-  if (!index.known || identity === null) {
+  const reason = index.reason;
+  if (!index.known || identity === null || reason === "not_cached") {
     return off("reading this repository's stacks…");
   }
-  if (index.reason === "gh_stack_missing") {
+  if (reason === "gh_stack_missing") {
     return off("needs GitHub CLI's stack extension, gh stack.");
   }
-  if (index.reason !== null) {
-    return off("this repository's stacks are not known yet.");
+  if (reason === "rate_limited") {
+    return off("GitHub rate limit reached; the stacks are read again once it resets.");
+  }
+  if (reason !== null) {
+    const remedy = Object.hasOwn(FAILURES, reason)
+      ? ` ${FAILURES[/** @type {keyof typeof FAILURES} */ (reason)]}`
+      : "";
+    return off(`this repository's stacks could not be read.${remedy}`);
   }
   if (index.source !== identity.source || index.reader !== identity.reader) {
     return off("the stacks known are another GitHub account's.");
   }
   if (grouped.stacks === 0) {
-    return off("no pull request in this list is in a stack.");
+    return off(
+      more
+        ? "no pull request read so far is in a stack."
+        : "no pull request in this list is in a stack.",
+    );
   }
   const on = choice ?? true;
   return { available: true, on, tip: GROUP_BY_STACK };
@@ -891,7 +910,14 @@ export function createPullsController(deps, options = {}) {
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
     const setSize = envelope?.total ?? Math.max(envelope?.fetched ?? 0, list.rows.length);
-    const key = JSON.stringify([filter, list.version, groupingInputs, identity, setSize]);
+    const key = JSON.stringify([
+      filter,
+      list.version,
+      groupingInputs,
+      identity,
+      setSize,
+      list.nextAfter !== null,
+    ]);
     if (grouped?.key === key) {
       return grouped;
     }
@@ -900,7 +926,13 @@ export function createPullsController(deps, options = {}) {
       collapsed: closedStacks,
       setSize,
     });
-    const option = describeStackGrouping(stackIndex, identity, groupChoice, answer);
+    const option = describeStackGrouping(
+      stackIndex,
+      identity,
+      groupChoice,
+      answer,
+      list.nextAfter !== null,
+    );
     const rows = option.available && option.on ? answer.rows : null;
     const keys = rows === null ? numbers : rows.map((row) => row.key);
     grouped = {
@@ -2151,11 +2183,25 @@ export function createPullsController(deps, options = {}) {
       };
       return true;
     }
-    const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
-    const near = [at - 1, at + 1]
-      .filter((index) => index >= 0 && index < list.rows.length)
-      .map((index) => list.rows[index].number);
-    const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
+    // The rows as they are drawn and walked, grouped by stack or not: the anchor's
+    // neighbours are the pull requests a key reaches next, a stack's row passed over, and the
+    // top is the first pull requests drawn.
+    const order = grouping();
+    const pulls = order.keys.filter((key) => key > 0);
+    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
+    /** @type {number[]} */
+    const near = [];
+    for (let index = at - 1; index >= 0; index -= 1) {
+      if (order.keys[index] > 0) {
+        near.push(order.keys[index]);
+        break;
+      }
+    }
+    const after = order.keys.slice(at + 1).find((key) => key > 0);
+    if (after !== undefined) {
+      near.push(after);
+    }
+    const top = pulls.slice(0, PREFETCH_TOP_ROWS);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
     const listed = (/** @type {number} */ number) => list.keys.has(number);
@@ -3185,17 +3231,34 @@ export function mountPullsPanel(container, ctx, mb) {
     throw new Error("metabrowser github plugin: the shared filter controls are unavailable");
   }
   const filters = h("div", { class: "github-pulls-filters" });
-  filters.innerHTML = controls.groupHtml({
-    key: FILTER_GROUP,
-    select: "one",
-    layout: "joined",
-    label: "Show",
-    options: LISTS.map((value) => ({
-      value,
-      label: LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (value)],
-    })),
-    value: nav.filter,
-  });
+  filters.innerHTML =
+    controls.groupHtml({
+      key: FILTER_GROUP,
+      select: "one",
+      layout: "joined",
+      label: "Show",
+      options: LISTS.map((value) => ({
+        value,
+        label: LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (value)],
+      })),
+      value: nav.filter,
+    }) +
+    // Group by stack: a standalone boolean chip of the filter family (docs/design-system.md,
+    // "Filter Controls"), drawn by the shared renderer with its word. Its name says what it
+    // does, and its tip whether it can and, when it cannot, why ("Stacks").
+    controls.toggleHtml({
+      key: GROUP_TOGGLE,
+      label: GROUP_CHIP_WORD,
+      ariaLabel: GROUP_BY_STACK,
+      tip: GROUP_BY_STACK,
+      className: "github-pulls-group-toggle",
+    });
+  /** The Group by stack chip the renderer drew. @type {HTMLButtonElement | null} */
+  const groupToggle =
+    [...filters.querySelectorAll("button")].find(
+      (button) => button.dataset.chipKey === GROUP_TOGGLE,
+    ) ?? null;
+  groupToggle?.setAttribute("aria-disabled", "true");
   /** @type {{chip: HTMLButtonElement, value: keyof typeof LIST_LABELS, tally: HTMLElement}[]} */
   const tallies = [...filters.querySelectorAll("button")].flatMap((chip) => {
     const value = chip.dataset.chipValue;
@@ -3230,28 +3293,7 @@ export function mountPullsPanel(container, ctx, mb) {
     ["Reload"],
   );
   reloadButton.addEventListener("click", () => void controller.reload());
-  // Group by stack: a standalone boolean chip of the filter family (docs/design-system.md,
-  // "Filter Controls"), whose glyph is the stack design's Layers icon ("Stacks"). Its name
-  // says what it does, and its tip whether it can and, when it cannot, why.
-  const groupToggle = h(
-    "button",
-    {
-      type: "button",
-      class: "chip chip-toggle github-pulls-group-toggle",
-      "data-chip-key": GROUP_TOGGLE,
-      "aria-pressed": "false",
-      "aria-disabled": "true",
-      "aria-label": GROUP_BY_STACK,
-    },
-    [
-      h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
-        mb.icons?.layers === undefined
-          ? null
-          : new DOMParser().parseFromString(mb.icons.layers, "text/html").body.firstElementChild,
-      ]),
-    ],
-  );
-  filters.append(groupToggle, reloadButton);
+  filters.append(reloadButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -3329,8 +3371,15 @@ export function mountPullsPanel(container, ctx, mb) {
   let rowIndices = new Map();
   /** @type {Map<string, HTMLElement>} */
   const gaps = new Map();
-  /** @type {{number: number, offset: number} | null} */
+  /**
+   * The row the reader is reading, its key and its distance from the scroller's top, which
+   * a paint keeps: a pull request's row or a stack's, the first one in view.
+   *
+   * @type {{key: number, offset: number} | null}
+   */
   let readingPlace = null;
+  /** Whether the rows last painted were grouped by stack. */
+  let paintedGrouped = false;
   /** @type {number | null} */
   let windowFrame = null;
   /** @type {number | null} */
@@ -3590,7 +3639,24 @@ export function mountPullsPanel(container, ctx, mb) {
               document.importNode(stackSvg, true),
             ]),
           ]),
-      h("span", { class: "github-pull-stack-position" }, [text]),
+      // Another stack's position is named by the Layers glyph before its number
+      // (docs/design-system.md, "Stacks"); its words are the tip's.
+      h(
+        "span",
+        { class: "github-pull-stack-position" },
+        caption.parts.flatMap((part, at) => [
+          ...(at === 0 ? [] : [" · "]),
+          ...(part.stack === null
+            ? []
+            : [
+                h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }, [
+                  stackSvg === null ? null : document.importNode(stackSvg, true),
+                ]),
+                `${part.stack} `,
+              ]),
+          part.position,
+        ]),
+      ),
     );
   }
 
@@ -3848,13 +3914,18 @@ export function mountPullsPanel(container, ctx, mb) {
     if (view === undefined) {
       return null;
     }
-    const visible = [...painted.entries()].sort(
-      (left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0),
-    );
-    for (const [number, entry] of visible) {
-      const box = entry.item.getBoundingClientRect();
+    // Every drawn row, a stack's included: opening a stack at the top of the view keeps its
+    // header where it is, rather than the pull request after it.
+    const visible = [
+      ...[...painted.entries()].map(([key, entry]) => /** @type {const} */ ([key, entry.item])),
+      ...[...paintedStacks.entries()].map(
+        ([key, entry]) => /** @type {const} */ ([key, entry.item]),
+      ),
+    ].sort((left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0));
+    for (const [key, item] of visible) {
+      const box = item.getBoundingClientRect();
       if (box.bottom > view.top && box.top < view.bottom) {
-        return { number, offset: box.top - view.top };
+        return { key, offset: box.top - view.top };
       }
     }
     return null;
@@ -4071,9 +4142,12 @@ export function mountPullsPanel(container, ctx, mb) {
       alignRefreshing(list);
     }
     if (readingPlace !== null && tab.scrollRoot !== null) {
-      const entry = painted.get(readingPlace.number);
-      if (entry !== undefined && view !== undefined) {
-        const delta = entry.item.getBoundingClientRect().top - view.top - readingPlace.offset;
+      const item =
+        readingPlace.key < 0
+          ? paintedStacks.get(readingPlace.key)?.item
+          : painted.get(readingPlace.key)?.item;
+      if (item !== undefined && view !== undefined) {
+        const delta = item.getBoundingClientRect().top - view.top - readingPlace.offset;
         if (Math.abs(delta) >= 0.5) {
           tab.scrollRoot.scrollTop += delta;
         }
@@ -4162,6 +4236,9 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /** @param {StackGrouping} grouping */
   function paintGroupToggle(grouping) {
+    if (groupToggle === null) {
+      return;
+    }
     const pressed = String(grouping.available && grouping.on);
     const disabled = String(!grouping.available);
     if (groupToggle.getAttribute("aria-pressed") !== pressed) {
@@ -4218,6 +4295,13 @@ export function mountPullsPanel(container, ctx, mb) {
         ? model.rowsVersion
         : `${model.rowsVersion}:${model.stacks.version}`;
     if (version !== paintedVersion) {
+      // A grouped order replacing the drawn one at the top of the list, as the stacks arriving
+      // after the first paint or the option turned on, keeps the top, as arrivals at the top
+      // do: kept in place, the first pull request read pushed the stacks' rows above the view.
+      if ((model.stacks.rows !== null || paintedGrouped) && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+        readingPlace = null;
+      }
+      paintedGrouped = model.stacks.rows !== null;
       paintedVersion = version;
       paintRows(model);
       placeRows(model.setSize);
@@ -4477,15 +4561,17 @@ export function mountPullsPanel(container, ctx, mb) {
       });
     }
     // Group by stack's number turns it, as its click does; unavailable, it does nothing.
-    mb.shortcuts.attach(groupToggle, {
-      activate() {
-        controller.setGroupByStack(groupToggle.getAttribute("aria-pressed") !== "true");
-        groupToggle.focus();
-      },
-      id: "github.pulls.group-by-stack",
-      numbered: true,
-      signal,
-    });
+    if (groupToggle !== null) {
+      mb.shortcuts.attach(groupToggle, {
+        activate() {
+          controller.setGroupByStack(groupToggle.getAttribute("aria-pressed") !== "true");
+          groupToggle.focus();
+        },
+        id: "github.pulls.group-by-stack",
+        numbered: true,
+        signal,
+      });
+    }
     mb.shortcuts.attach(reloadButton, {
       activate: () => void controller.reload(),
       id: "github.pulls.reload",

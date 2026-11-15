@@ -954,7 +954,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Group by stack",
+      "4 Stacks",
       "5 Reload",
       "6 View on GitHub"
     ],
@@ -962,7 +962,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       {
         "what": "press 4",
         "handled": true,
-        "focused": "Group by stack"
+        "focused": "Stacks"
       }
     ],
     "Reload waits": [
@@ -978,7 +978,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Group by stack",
+      "4 Stacks",
       "5 Reload",
       "6 View on GitHub"
     ],
@@ -1054,7 +1054,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Group by stack 4, Reload 5, Modified within none, File type none, View on GitHub 6",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Stacks 4, Reload 5, Modified within none, File type none, View on GitHub 6",
     "the Files tab": [
       "1 Modified within",
       "2 File type",
@@ -1115,7 +1115,7 @@ overwrite a new owner.
 
 ```console
 $ node tests/dom/github-pull-stacks-behavior.js
-{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3"},"shared":{"text":"3/3 · #900 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2"},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
+{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3","parts":[{"position":"2/3","stack":null}]},"shared":{"text":"3/3 · 900 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2","parts":[{"position":"3/3","stack":null},{"position":"1/2","stack":900}]},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
 ? 0
 ```
 
