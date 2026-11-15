@@ -180,11 +180,10 @@ interrupted write leaves the previous record.
 
 The files under `sources/<slug>/pulls/` and a store’s `github-pull-manifests/` belong to
 the GitHub plugin and are not SoftSchema contracts.
-Each is a Pydantic model with its own schema version, read with a size bound and written
-atomically under the source-alias lock; a file another schema wrote is fetched again,
-never migrated. Nothing in the cache enumerates them, so the layout, probe, sweep, and
-`/api/cache/` projections leave them alone.
-[GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them.
+Nothing in the cache enumerates them, so the layout, probe, sweep, and `/api/cache/`
+projections leave them alone.
+[GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them
+and how each is written.
 
 ## Repository Stores
 

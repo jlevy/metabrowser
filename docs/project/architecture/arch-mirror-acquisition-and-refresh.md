@@ -339,16 +339,40 @@ A folder, or a pin with no mirror, answers `unsupported_for_subject`.
 
 ### What a Mirror’s Page Is Called
 
-A served mirror is named by its repository, as a checkout would be: `repository_name` in
-`cache/served_mirror.py` applies the rule `git clone` names a directory by, the last
-segment of the origin’s address without `/.git` or `.git`. `display_directory` there
-says where the mirror is kept: the store’s bare repository, with the home directory as
-`~` when the cache is under it.
-The status route answers both as `name` and `location`, beside `origin`, `borrows`, and
-`shallow`. `location` is the one field of any route’s answer that names a path in the
-cache, and `borrows` the one that names a checkout.
-Both are display text that no route accepts back; every other answer stays path-free,
-which `tests/test_serve_pin.py` checks across every registered route of a served mirror.
+A served mirror’s page is headed as a folder’s is, by a name, with the place it is kept
+in sight:
+
+- **Name:** the repository’s name as `git clone` would name its directory, the last
+  segment of the origin’s address without `/.git` or `.git` (`repository_name` in
+  `cache/served_mirror.py`). The GitHub URL reducer lowercases owner and repository so
+  every spelling shares one mirror, so a GitHub repository is named in lowercase.
+  A pin with no mirror is headed by its ref and commit.
+- **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
+  origin without its scheme and the pin, which never names the cache.
+- **Commit:** the ref and short commit follow the name, with a control that copies the
+  full commit.
+- **Location:** a note after the address names the store’s bare repository, with the
+  home directory as `~` when it is under it (`display_directory`). Nothing is checked
+  out, so the location is not drawn as the start of the address, and its tooltip says it
+  is a bare repository.
+  `static/mirror-heading.js` draws it, and the server writes it only into a mirror’s
+  page.
+
+An origin is untrusted: its name is display text that passes through `display_segment`,
+is cut when too long, and is escaped on the server and again in the page.
+
+The status route (`SourceStatus` in `source_routes.py`) answers `name`, `origin`,
+`location`, `borrows`, and `shallow`. `location` is the one field of any route’s answer
+that names a path in the cache, and `borrows` names the checkout a mirror borrows
+objects from, under the same exception; no route accepts either back.
+The shell writes the same text into the navigation heading’s `data-mirror-location` and
+`data-mirror-tip` attributes.
+`tests/test_serve_pin.py` fails if the application home, the origin’s path, the store’s
+key, or the stores’ directory appears anywhere else in a served mirror’s bodies and
+headers. Repository content cannot read the location: Markdown and pull-request text
+reach the page only as the inert allowlist, and the page’s Content-Security-Policy runs
+no script and loads no stylesheet a repository supplies
+([the content-trust model](arch-server-and-content.md#content-trust-model)).
 
 ## Object Recovery
 

@@ -1592,15 +1592,10 @@ every key to the page before its menus.
 in it. The one exception is Option-Tab inside a dialog or an open menu: its focus trap
 keeps it, because Safari moves focus with Option-Tab.
 
-| Key | Meaning | Where |
-| --- | --- | --- |
-| Command-R (Control-R or F5 elsewhere) | Reload | Everywhere, whatever has focus |
-
-Command-R always reloads: in a browser it is the browser’s own Reload, wherever focus
-is, and the `modified` part of `tests/dom/key-reveal-session.js` presses it in each
-place the shell puts focus; in the macOS app it is View > Reload Page, which is never
-disabled in a folder window.
-[Keyboard Shortcuts](keyboard-shortcuts.md) lists the app’s menu keys.
+So Command-R always reloads, whatever has focus: the `modified` part of
+`tests/dom/key-reveal-session.js` presses it in each place the shell puts focus.
+[Keyboard Shortcuts](keyboard-shortcuts.md#browser-and-app-keys) is the user reference,
+with the app’s menu keys.
 
 ### Keyboard Keys
 
@@ -1954,9 +1949,9 @@ The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
 The shortcut groups end with one note, “Press `Shift` to see relevant shortcut
-reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. The View
-tabs, Controls, and Filters groups say “Available while the tabs are shown.”, “Available
-while the control is shown.”, and “Available while the Files tab is shown.”
+reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. Each
+group says when its keys apply, in the `context` that `GROUP_DEFINITIONS` in
+`static/keyboard-shortcuts.js` gives it.
 
 ### Plugin Keys
 

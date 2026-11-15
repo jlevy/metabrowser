@@ -144,9 +144,8 @@ It covers the whole body, because every field is a function of the index at that
 version, the request’s bounds, or a constant.
 And the version only moves forward within a provider session, so a tag is never reused
 for different content.
-A `304` therefore means the index has not changed; it means the filesystem has not
-changed only while the provider is observing it, which
-[Live Delivery](arch-live-delivery.md#freshness) covers.
+A `304` therefore means the index has not changed; what that says about the filesystem
+is [Freshness](arch-live-delivery.md#freshness) in Live Delivery.
 During a scan the version moves on every write, so nothing is reused, which is correct:
 the answer is changing.
 

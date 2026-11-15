@@ -65,12 +65,13 @@ Each layer has a `--log-level debug` line that proves it ran:
 
 For a tree row that does not update:
 
-1. Confirm the path is beneath the served root and not under a hidden segment.
-   The Python engine’s watcher also ignores what `watchfiles`’ default filter ignores,
-   such as `node_modules` and `__pycache__`; see
-   [Python Inventory Engine](project/architecture/arch-inventory-engine-python.md#the-watcher).
-2. Read `/api/capabilities`: the watcher’s mode (`native` or `polling`), its state, and
-   `events.stream`. A failed watch reports `failed` there and in the server log.
+1. Confirm the path is beneath the served root, not under a hidden segment, and not one
+   the engine’s watcher filters out; the engine’s document lists what its watcher
+   ignores, as
+   [The Watcher](project/architecture/arch-inventory-engine-python.md#the-watcher) does
+   for the Python engine.
+2. Read `/api/capabilities`: the watcher’s mode and state, and `events.stream`. A failed
+   watch reports `failed` there and in the server log.
 3. Check `/_debug/inventory` for the provider’s state and version, then request the
    entry through its ordinary route, such as `/api/tree?path=…`.
 4. Read the `/api/events` stream for the snapshot, a change naming the path, or a

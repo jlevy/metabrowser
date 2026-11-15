@@ -45,7 +45,7 @@ and read projection for one root.
   file.
 
 How long a walk takes depends on the tree and the filesystem, slower on network mounts;
-measured scan times are in [Scale Benchmark](../../scale-benchmark.md).
+[Scale Benchmark](../../scale-benchmark.md) measures it on synthetic trees.
 
 ## The Watcher
 
@@ -180,9 +180,11 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
 
 ## Unit Costs
 
-Measured in isolation on Darwin 25.5.0 with CPython 3.14 by
-`explorations/performance-loop/scan_bench.py`, as recorded in
-[exp-026](../../../explorations/performance-loop/experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md).
+Each operation was timed alone on Darwin 25.5.0 with CPython 3.14;
+[exp-026](../../../explorations/performance-loop/experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md)
+records the first three and tests the model they give against measured scans.
+No committed script reproduces the table: `explorations/performance-loop/scan_bench.py`
+times whole scans, not single calls.
 The right-hand column is the cost of putting the operation on the per-entry path for one
 300,000-entry tree:
 
@@ -196,7 +198,7 @@ The right-hand column is the cost of putting the operation on the per-entry path
 | `native_inventory_path`, nothing to unescape | 0.14 us | 42 ms |
 
 Two design constraints follow from the
-[per-entry rule](arch-inventory-provider.md#the-per-entry-rule):
+[per-entry rule](../../engine-performance-model.md#the-per-entry-rule):
 
 - **The walker yields the retained record.** A contract entry per discovered entry would
   add a construction and two validations per entry.
@@ -246,7 +248,7 @@ it.
 - [Live Delivery](arch-live-delivery.md): what consumes its changes
 - [Engine Performance Model](../../engine-performance-model.md): how these costs are
   measured
-- [Scale Benchmark](../../scale-benchmark.md): end-to-end scan and serving figures
+- [Scale Benchmark](../../scale-benchmark.md): the end-to-end scan and serving benchmark
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -27,11 +27,12 @@ what a reader does with them is in
 ## The Provider Boundary
 
 Core names no provider.
-It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for six
-things: URL reducers, Git configuration for a remote (the credential helper), a check
+It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for
+seven things: URL reducers, Git configuration for a remote (the credential helper), what
+to say when a source was not found or needs credentials (`credential_hint`), a check
 before a first clone, a mirror’s `repository_context`, the commit a pull-request URL
 pins, and the set of pull requests a server keeps fresh.
-`GithubProvider` in `provider.py` answers all six.
+`GithubProvider` in `provider.py` answers all seven.
 The URL reducer in `urls.py` claims github.com and raw.githubusercontent.com; its
 docstring tabulates every URL shape it accepts and what each selects.
 
@@ -59,9 +60,17 @@ account stop together.
 
 ## Files Beside a Source
 
-Every file is disposable: a Pydantic model with its own bounds and schema version, read
-with a size bound and written atomically by the home’s private file writer under the
-source-alias lock. A file another schema wrote is fetched again, never migrated.
+Every file is disposable and carries its own schema version.
+
+- **The JSON files** are Pydantic models with their own bounds, read with a size bound
+  and written atomically by the home’s private file writer under the source-alias lock.
+  A file another schema wrote is fetched again, never migrated.
+- **The catalog** is a SQLite database: a page’s rows, counts, and resume cursor commit
+  together under the same lock, and `pull_catalog.py`’s docstring says when a catalog
+  this release cannot use is replaced.
+- **The prepared manifests** beside a store are written atomically without a lock: each
+  key has one of a fixed set of slots, so a collision replaces a slot and costs only a
+  later miss (`pull_manifest.py`).
 
 | File | Holds | Module |
 | --- | --- | --- |

@@ -32,7 +32,7 @@ Each aim ships in part today; the planned rest links its plan.
 - **Live and large.** The served tree is watched and its changes stream to the page;
   indexing runs in the background, so the first view does not wait for a full crawl; and
   serving stops at `INVENTORY_MAX_FILES` (`settings.py`).
-  [Scale Benchmark](scale-benchmark.md) holds the measured figures.
+  [Scale Benchmark](scale-benchmark.md) measures it.
   Planned: a second inventory engine behind the provider contract
   ([inventory provider plan](project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md),
   Phase 2), and a million-file tree browsed rather than cut off
@@ -70,7 +70,7 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | --- | --- | --- | --- |
 | CLI | `cli/` | Parse the one flat command, start the server and open the page, run `--api`, `--show`, `--walk`, and `--diff` in process, and tunnel to a remote host | [CLI](project/architecture/arch-cli.md) |
 | Server and routes | `server.py`, `view_routes.py`, `paths_safe.py`, `gz_io.py`, `http_caching.py`, `asset_stamps.py`, `inert_html.py`, `kpress_adapter.py` | Resolve every path beneath the served root, answer envelopes, raw bytes, and assets, and apply the content-trust model | [Server and Content](project/architecture/arch-server-and-content.md), [the map](project/architecture/arch-views-models-routes.md) |
-| Inventory provider and engine | `inventory_engine/` (`contract.py`, `coordinator.py`, `factory.py`, engines under `providers/`), `inventory_rollup.py`, `file_type_registry.py` | Hold a bounded index of the served tree and answer bounded, versioned queries over it | [Inventory Provider](project/architecture/arch-inventory-provider.md), [Python Engine](project/architecture/arch-inventory-engine-python.md) |
+| Inventory provider and engine | `inventory_engine/` (`contract.py`, `coordinator.py`, `factory.py`, engines under `providers/`), `inventory_rollup.py`, `file_type_registry.py`; the Python engine’s `walker.py` and `watch_backends.py`; `walk.py` for `--walk` | Hold a bounded index of the served tree and answer bounded, versioned queries over it | [Inventory Provider](project/architecture/arch-inventory-provider.md), [Python Engine](project/architecture/arch-inventory-engine-python.md) |
 | Live delivery | `events.py`, `events_route.py`, `sse.py`, `active_tracker.py`, `activity.py`; `static/catalog-feed.js` | Carry the provider’s change feed to the browser’s stores, and recover a client that falls behind | [Live Delivery](project/architecture/arch-live-delivery.md) |
 | Git | `git/` | Run every Git command on a served repository through one bounded process boundary (`git/process.py`), and serve history, graph checkpoints, commit detail, and Git trees | [Git](project/architecture/arch-git.md) |
 | Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one subject a server serves, a folder or a pinned Git revision, with its capabilities, and switch the pin | [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
@@ -93,6 +93,8 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 - **The engine sits behind a provider contract.** Everything above
   `inventory_engine/contract.py` relies only on what a provider guarantees, so the
   engine can change without the layers above it.
+  One exception: `metab --walk` (`walk.py`) drives the Python walker directly, to show
+  what it yields, so it does not go through the provider.
   `inventory_engine/factory.py` lists the engines a build ships, and
   `METABROWSER_INVENTORY_PROVIDER` selects one.
   Engine detail (the walker, its threads, the watcher backend, and unit costs) lives

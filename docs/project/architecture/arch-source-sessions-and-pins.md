@@ -227,40 +227,10 @@ rows `diff.view-file` and `diff.view-file-sides` pin them.
 
 ## How a Mirror’s Page Names Itself
 
-A served mirror’s page is headed as a folder’s is, by a name, with the place it is kept
-in sight:
-
-- **Name:** the repository’s name as `git clone` would name its directory, from the
-  origin’s last path segment (`repository_name` in `cache/served_mirror.py`). The GitHub
-  URL reducer lowercases owner and repository so every spelling shares one mirror, so a
-  GitHub repository is named in lowercase.
-  A pin with no mirror is headed by its ref and commit.
-- **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
-  origin without its scheme and the pin, which never names the cache.
-- **Commit:** the ref and short commit follow the name, with a control that copies the
-  full commit.
-- **Location:** a note after the address names the store’s bare repository, with the
-  home directory as `~` when it is under it (`display_directory`). Nothing is checked
-  out, so the location is not drawn as the start of the address, and its tooltip says it
-  is a bare repository.
-  `static/mirror-heading.js` draws it, and the server writes it only into a mirror’s
-  page.
-
-An origin is untrusted: its name is display text that passes through `display_segment`,
-is cut when too long, and is escaped on the server and again in the page.
-
-Every route answer stays free of cache and store paths, with one exception held to an
-exact form. The status envelope (`SourceStatus` in `source_routes.py`) carries `name`,
-`origin`, `location`, and `borrows`; `location` and `borrows` are the only fields that
-name a path in the cache, and no route accepts either back.
-The shell writes the same text into the navigation heading’s `data-mirror-location` and
-`data-mirror-tip` attributes.
-`tests/test_serve_pin.py` fails if the application home, the origin’s path, the store’s
-key, or the stores’ directory appears anywhere else in a served mirror’s bodies and
-headers. Repository content cannot read the location: Markdown and pull-request text
-reach the page only as the inert allowlist, and the page’s Content-Security-Policy runs
-no script and loads no stylesheet a repository supplies.
-The [content-trust model](arch-server-and-content.md) describes each defense.
+A served mirror’s page is headed by its repository’s name, as a folder’s is by its own,
+and every route answer stays free of cache and store paths but one field.
+[What a Mirror’s Page Is Called](arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)
+holds the naming rule, the exception, and the test that guards it.
 
 ## References
 

@@ -29,7 +29,7 @@ produce is refused rather than ignored.
 | Issue one route | `--api ROUTE` | `api_cli.py`; `acquire_cli.py` for cache routes; `git_pin_cli.py` on a pin |
 | Report one selection | `--show PATH` | `show_cli.py`; `git_pin_cli.py` on a pin |
 | Navigation check | `--check-api` | `check_api.py` |
-| Inventory walk | `--walk` | `walk_cli.py` |
+| Inventory walk | `--walk` | `walk_cli.py`, with `walk.py`, which calls the Python walker directly rather than the provider |
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
@@ -60,10 +60,10 @@ exit.
    trust profile, then the log level applies.
    The log level must precede the server import, because `server.py` configures logging
    when it is imported.
-3. **Selection.** A file given as ROOT becomes its parent folder plus a `--path`
-   selection. `validate_contained_path` checks that a selection stays inside the root.
-4. **Plugins.** `apply_extra_plugin_dirs` merges `--plugins-dir` with
-   `METABROWSER_PLUGINS_DIRS`.
+3. **Root.** A file given as ROOT becomes its parent folder plus a `--path` selection.
+4. **Plugins, then the selection.** `apply_extra_plugin_dirs` merges `--plugins-dir`
+   with `METABROWSER_PLUGINS_DIRS`, and then `validate_contained_path` checks that a
+   selection stays inside the root.
 5. **Server import.** `serve_until_interrupted` imports `server.py`, which discovers
    plugins at import. It then resolves KPress’s browser assets and the static asset
    stamps, so the first page request does not pay for them while the inventory walk

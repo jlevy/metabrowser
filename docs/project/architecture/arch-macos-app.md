@@ -1,8 +1,9 @@
 # Native macOS App Architecture
 
 **Status:** Built: an alpha AppKit and `WKWebView` shell in `apps/macos/`, built from
-source, and built and tested on every change by `.github/workflows/macos-app.yml`; its
-release pipeline has run only with an ad hoc signature.
+source. `.github/workflows/macos-app.yml` builds and tests it on each push and pull
+request that its path filter matches, a change to the app among them; its release
+pipeline has run only with an ad hoc signature.
 Planned: host mode, the agent front door, a signed and notarized release, and updates,
 in the [native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md).
 The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is open

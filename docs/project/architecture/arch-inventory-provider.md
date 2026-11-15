@@ -345,41 +345,13 @@ gap. A provider never drops one failed chunk and continues while claiming freshn
 
 ## The Per-Entry Rule
 
-**Nothing goes on the per-entry path without a measured reason.** The trees people open
-hold hundreds of thousands of entries, so everything an engine does once per entry is
-multiplied by a number nobody chose: at 300,000 entries, one microsecond per entry is
-0.3 seconds.
-
-The per-entry path is everything between the filesystem naming an entry and the engine
-retaining a record for it.
-It is not the place for validation that could happen once at a boundary, for a
-conversion that exists to satisfy a type, or for publishing a change no reader has seen.
-Each is defensible in isolation, and none survives being multiplied by the size of a
-real tree.
-
-- **The filesystem work is usually not the problem.** Two engines walking the same tree
-  issue the same directory reads and stats.
-  When one is slower and the syscall counts match, the difference is in the language
-  runtime, on this path.
-  Counting the syscalls first stops a CPU problem from being investigated as an I/O
-  problem.
-- **A boundary crossed per entry is a boundary in the hot path.** This contract exists
-  to be crossed by *queries*, which are few, not by every discovered entry, which are
-  many. An engine that constructs the contract’s types per entry has moved a boundary
-  cost onto the multiplied path.
-  The walker produces what the engine retains; conversion happens where results cross
-  out, in proportion to what is read rather than to what exists.
-- **A layering rule will be satisfied by whatever route is available.** An import ban is
-  a statement about dependency, not cost, and routing a hot path through a validating
-  type to avoid naming a record obeys its letter.
-  When a type belongs to neither side of a boundary, move it to a module that belongs to
-  neither.
-
+This contract is crossed by queries, which are few, not by every discovered entry, so an
+engine follows the
+[per-entry rule](../../engine-performance-model.md#the-per-entry-rule): nothing goes on
+the per-entry path without a measured reason.
 That is why the contract’s entry type is not what a walker yields, and why a provider
 keys its store by the canonical identity rather than escaping on every row of every
-read. Each engine states its unit costs against this rule in its own document; the
-measurement discipline is in
-[Engine Performance Model](../../engine-performance-model.md).
+read. Each engine states its unit costs against the rule in its own document.
 
 ## Work and Performance Evidence
 
@@ -392,8 +364,8 @@ Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-de
 mapping, and `/_debug/inventory` reports it when `METABROWSER_DEBUG` is set.
 
 The serving benchmark records the same identities, so runs on two providers differ by a
-declared provider axis rather than by separate harnesses; its results are in
-[Scale Benchmark](../../scale-benchmark.md).
+declared provider axis rather than by separate harnesses;
+[Scale Benchmark](../../scale-benchmark.md) says what it measures and how to run it.
 The performance gate shared by every provider is in the
 [load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md) and the
 [provider plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md).
@@ -440,7 +412,9 @@ A new provider:
 4. reruns the serving benchmark with `--provider` and records the result in
    [Scale Benchmark](../../scale-benchmark.md).
 
-Nothing above this contract changes.
+Nothing above this contract changes, with one exception: `metab --walk` (`walk.py`)
+calls the Python walker’s `walk_tree` directly, to show what the walker yields, so it
+walks with the Python engine whichever provider serves.
 
 ## Provider Conformance Registry
 

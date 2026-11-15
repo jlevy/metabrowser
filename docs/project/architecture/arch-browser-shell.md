@@ -254,9 +254,10 @@ A library that installs a global loads through `asset-loader.js`. The server pub
 the bundles as `METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)` appends a bundle’s
 scripts in order, since a Chart.js plugin is inert without `Chart`. A loaded set and an
 in-flight map make concurrent callers share one load.
-An ES module tree loads with dynamic `import()`, as `loadKpressAssets` does; its
-specifiers are relative, so it needs no import map, and only the entry point needs the
-digest `_static_asset_url` adds.
+KPress loads through `loadKpressAssets` in `static/plugin-sdk.js` instead: its
+stylesheets first, then the import map the KPress asset manifest carries, when it has
+one, then the manifest’s module and classic entry points as scripts, with its
+table-of-contents module through dynamic `import()`.
 
 Moving a library off the eager path needs an absence contract at every consumer: a guard
 that skips a missing global becomes one that awaits the loader, and late arrival

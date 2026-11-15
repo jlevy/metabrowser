@@ -249,7 +249,7 @@ directory totals store zero-fills its aggregate and marks it `state: "pending"`,
 pending state win over the numbers beside it rather than reading the zeros as a settled
 “0 files.”
 
-Where two provisional sources meet, the folder Overview takes the walker’s finalized
+Where two provisional sources meet, the folder Overview takes the provider’s finalized
 aggregate when it exists and the rollup otherwise.
 During a scan both are lower bounds that only grow and either can be the stale one, so
 the panel takes whichever has counted more, whole, never mixing fields, and never
@@ -257,11 +257,14 @@ replaces numbers on screen with a spinner.
 
 ## Freshness
 
-A `304`, or a quiet stream, means the index has not changed.
+A `304`, or a quiet stream, means the index has not changed
+([Validators and Caching](arch-server-and-content.md#validators-and-caching) says why).
 It means the filesystem has not changed only while the provider is observing it:
 
-- **Observation latency** depends on the provider’s observer; the Python engine polls on
-  network and unrecognized filesystems, so a change there arrives late, never never.
+- **Observation latency** depends on the provider’s observer: one that polls sees a
+  change late, never not at all.
+  [The Watcher](arch-inventory-engine-python.md#the-watcher) says when the Python engine
+  polls.
 - **A failed observer** marks the provider’s freshness stale with an `observation_gap`
   issue, and the bus projects it as a `capability.update` whose watcher state is
   `failed`. Nothing downstream can tell a quiet filesystem from a dead watch, so the
