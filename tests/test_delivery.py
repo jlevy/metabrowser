@@ -8,7 +8,6 @@ that reaches it from its own loopback; and a request a proxy names is compressed
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -23,13 +22,6 @@ from metabrowser.cli.main import _app  # pyright: ignore[reportPrivateUsage]
 from metabrowser.encoded_assets import EncodedAssets
 
 GZIP = {"accept-encoding": "gzip, deflate, br, zstd"}
-
-
-@pytest.fixture(autouse=True)
-def restore_mode() -> Iterator[None]:
-    before = delivery.serving_locally()
-    yield
-    delivery.serve_locally(before)
 
 
 def _scope(client: tuple[str, int] | None, **headers: str) -> dict[str, Any]:

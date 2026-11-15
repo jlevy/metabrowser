@@ -3910,10 +3910,9 @@ async def kpress_static_asset(request: Request) -> Response:
     if current:
         # Compressed once under the ETag, which is KPress's hash of these bytes (H115).
         # KPress reads the file itself, so the read above is still paid on each request.
-        content = asset.content
         return EncodedAssetResponse(
             key=f"kpress:{asset.etag}",
-            load=lambda: content,
+            identity=asset.content,
             headers=headers,
             media_type=asset.media_type,
         )

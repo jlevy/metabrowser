@@ -129,30 +129,39 @@ def file_loader(path: Path, digest: str, digest_of: Callable[[bytes], str]) -> C
 class EncodedAssetResponse(Response):
     """An asset at a current stamped address, sent from :data:`ENCODED_ASSETS`.
 
-    *headers* are the ones the route would send with the file; ``Content-Length``,
-    ``Content-Encoding``, and ``Vary`` are set here, as the gzip middleware sets them.
-    An answer sent identity is left for the middleware to pass on, and its ``Vary`` with
-    it, because the middleware makes the same decision (:func:`delivery.gzip_wanted`).
+    The bytes are *identity*, when the route holds them already, as KPress's does, or what
+    *load* reads the first time. *headers* are the ones the route would send with the
+    file; ``Content-Length``, ``Content-Encoding``, and ``Vary`` are set here, as the gzip
+    middleware sets them. An answer sent identity is left for the middleware to pass on,
+    and its ``Vary`` with it, because the middleware makes the same decision
+    (:func:`delivery.gzip_wanted`).
     """
 
     def __init__(
         self,
         *,
         key: str,
-        load: Callable[[], bytes],
         headers: Mapping[str, str],
         media_type: str | None,
+        load: Callable[[], bytes] | None = None,
+        identity: bytes | None = None,
         store: EncodedAssets | None = None,
     ) -> None:
-        super().__init__(content=b"", headers=dict(headers), media_type=media_type)
+        if (load is None) == (identity is None):
+            raise ValueError("an encoded asset is given its bytes or a way to read them")
+        super().__init__(content=identity or b"", headers=dict(headers), media_type=media_type)
         self._key = key
         self._load = load
+        self._identity = identity
         self._store = store if store is not None else ENCODED_ASSETS
 
     @override
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         try:
-            identity = await self._store.identity(self._key, self._load)
+            if self._load is None:
+                identity = self._identity or b""
+            else:
+                identity = await self._store.identity(self._key, self._load)
         except AssetChanged as changed:
             # Not the bytes the address names: an ordinary answer, revalidated next time,
             # which the middleware compresses as it compresses any other.

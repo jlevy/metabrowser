@@ -270,3 +270,29 @@ def test_a_file_loader_refuses_bytes_its_digest_does_not_name(tmp_path: Path) ->
     assert encoded_assets.file_loader(path, content_digest(b"a"), content_digest)() == b"a"
     with pytest.raises(AssetChanged):
         encoded_assets.file_loader(path, content_digest(b"b"), content_digest)()
+
+
+def test_an_asset_given_its_bytes_reads_nothing_and_has_them_as_its_body(
+    store: EncodedAssets, compressions: list[int]
+) -> None:
+    body = b"kpress(); " * 400
+
+    async def answer(_request: Request) -> Response:
+        return EncodedAssetResponse(
+            key="given", identity=body, headers={}, media_type="text/javascript"
+        )
+
+    made = EncodedAssetResponse(key="given", identity=body, headers={}, media_type=None)
+    assert made.body == body, "a caller that reads the response's body sees the bytes"
+    app = Starlette(
+        routes=[Route("/x", answer)],
+        middleware=[Middleware(server_timing.TimedGZipMiddleware, minimum_size=1024)],
+    )
+    sent = TestClient(app).get("/x", headers=GZIP)
+    assert sent.headers["content-encoding"] == "gzip" and sent.content == body
+    assert compressions == [len(body)]
+    assert not store.holds("given", "identity")
+    with pytest.raises(ValueError, match="its bytes or a way to read them"):
+        EncodedAssetResponse(
+            key="both", identity=body, load=lambda: body, headers={}, media_type=None
+        )
