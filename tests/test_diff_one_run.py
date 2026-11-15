@@ -9,6 +9,7 @@ same answer, or the same refusal, byte for byte; the process counts are what cha
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import subprocess
 from collections.abc import Callable, Sequence
@@ -21,6 +22,7 @@ from starlette.testclient import TestClient
 from metabrowser import server, server_timing
 from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.diff.adapters import git as adapter
+from metabrowser.diff.adapters import textconv
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import Availability, ChangeKind, ChangeSetManifest
@@ -28,6 +30,8 @@ from metabrowser.git import process as git_process
 from metabrowser.git.process import (
     GitCommandError,
     GitLocation,
+    GitTimeoutError,
+    as_location,
     repository_store_target,
     run_git_at,
 )
@@ -106,10 +110,17 @@ def _answer(
     return record.git_processes(), json.dumps(answer, sort_keys=True)
 
 
+def _warm(location: Path | GitLocation) -> None:
+    """Ask once whether the configuration names a textconv driver, outside any count, as a
+    server's first comparison of a folder does (``test_a_cold_configuration_...``)."""
+    asyncio.run(textconv.read_textconv_named(as_location(location)))
+
+
 def _both(
     location: Path | GitLocation, intent: dict[str, Any], ask: Ask = _first_page
 ) -> tuple[tuple[int, str], tuple[int, str]]:
     today = _answer(_Today(location), intent, ask)
+    _warm(location)
     one_run = _answer(GitDiffSource(location, patch_with_listing=True), intent, ask)
     assert one_run[1] == today[1]
     return today, one_run
@@ -177,7 +188,8 @@ def test_a_folders_diff_settings_reach_the_one_run_as_they_reached_the_two(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Prefixes and an external driver, which the patch runs pin away, and the context, the
-    algorithm, an order file, and a textconv driver, which a folder's runs honor."""
+    algorithm, and an order file, which a folder's runs honor. A textconv driver is the one
+    setting the one run does not honor (``test_a_textconv_driver_...``)."""
     root = tmp_path / "configured"
     root.mkdir()
     base, target = build_diff_fixture(root)
@@ -193,13 +205,8 @@ def test_a_folders_diff_settings_reach_the_one_run_as_they_reached_the_two(
         ("diff.context", "1"),
         ("diff.algorithm", "patience"),
         ("diff.orderFile", str(order)),
-        ("diff.upper.textconv", "tr a-z A-Z <"),
     ):
         git(root, "config", key, value)
-    (root / ".git" / "info").mkdir(exist_ok=True)
-    (root / ".git" / "info" / "attributes").write_text("*.md diff=upper\n*.py diff=upper\n")
-    shown = git(root, "diff", "--no-ext-diff", base, target, "--", "new.md")
-    assert b"+BODY" in shown, "the textconv driver runs"
     _assert_one_run_is_the_two(root, {"left": base, "right": target}, monkeypatch)
     monkeypatch.undo()
     _both(root, {"left": base, "right": target}, _every_ask)
@@ -381,6 +388,35 @@ def test_the_bound_of_a_page_is_spent_alike_from_the_one_runs_patch(
             assert first["too_large"] and first["deferred"]
 
 
+def test_a_listing_run_that_times_out_is_not_run_again(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The listing run would only time out again, after as long, rename detection and all
+    (#449, M1): the timeout is the answer, which the route says as a 504."""
+    root, _base, target = repo
+    real = git_process.git_executable()
+    assert real is not None
+    slow = tmp_path / "slow-git"
+    slow.write_text(
+        '#!/bin/sh\nfor a in "$@"; do [ "$a" = diff ] && sleep 2 </dev/null >/dev/null 2>&1; '
+        f'done\nexec {real} "$@"\n'
+    )
+    slow.chmod(0o755)
+    _warm(root)
+    source = GitDiffSource(root, patch_with_listing=True)
+    resolved = asyncio.run(source.resolve({"revision": target}))
+    monkeypatch.setattr(git_process, "git_executable", lambda: str(slow))
+    quick = dataclasses.replace(git_process.READ_POLICY, timeout_s=0.5)
+    monkeypatch.setattr(git_process, "READ_POLICY", quick)
+    record, token = server_timing.begin()
+    try:
+        with pytest.raises(GitTimeoutError):
+            asyncio.run(source.manifest(resolved))
+    finally:
+        server_timing.end(record, token)
+    assert record.git_processes() == 1, "the listing run alone, not the listing run again"
+
+
 def test_a_listing_run_that_fails_leaves_the_comparison_to_todays_runs(
     repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -396,6 +432,127 @@ def test_a_listing_run_that_fails_leaves_the_comparison_to_todays_runs(
     (today, _), (one_run, _) = _both(root, {"revision": target})
     # The failure is injected without a process; a real one would bring the two level.
     assert one_run == today - 1, "the listing and patch runs of before, and one rev-parse"
+
+
+def test_a_cold_configuration_is_asked_beside_the_one_run(repo: tuple[Path, str, str]) -> None:
+    """A server's first comparison of a folder asks whether a textconv driver is named,
+    while the one run runs; the answer is kept for the next."""
+    root, _base, target = repo
+    textconv.forget()
+    one_run = GitDiffSource(root, patch_with_listing=True)
+    cold, answer = _answer(one_run, {"revision": target})
+    warm, again = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    assert (cold, warm) == (3, 2)
+    assert answer == again == _answer(_Today(root), {"revision": target})[1]
+
+
+# ── A textconv driver (review of #449, H1) ──────────────────────────────
+
+
+def test_a_textconv_driver_is_run_only_as_the_page_ran_it(tmp_path: Path) -> None:
+    """The reviewer's case, without its second a conversion: files a driver converts, some
+    binary, which the listing says are binary and the page never hydrates, and some text,
+    which it does, with the driver, on both sides. The one run runs no driver; the page's
+    files run in a run of their own as before, so the driver runs as often as it did."""
+    root = tmp_path / "textconv"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    calls = tmp_path / "calls.log"
+    driver = tmp_path / "driver.sh"
+    driver.write_text(f'#!/bin/sh\necho "$1" >> {calls}\ncat "$1"\n')
+    driver.chmod(0o755)
+    for kind in ("pdf", "md"):
+        git(root, "config", f"diff.{kind}conv.textconv", str(driver))
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "attributes").write_text("*.pdf diff=pdfconv\n*.md diff=mdconv\n")
+    for version in ("one", "two"):
+        (root / "a.txt").write_text(f"plain {version}\n")
+        for n in range(4):
+            (root / f"doc{n}.pdf").write_bytes(b"%PDF\x00" + f"doc {n} {version}".encode())
+        for n in range(2):
+            (root / f"note{n}.md").write_text(f"note {n} {version}\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", version)
+    target = git(root, "rev-parse", "HEAD").decode().strip()
+
+    def driven(source: GitDiffSource) -> tuple[int, int, str]:
+        calls.unlink(missing_ok=True)
+        processes, answer = _answer(source, {"revision": target})
+        return processes, len(calls.read_text().splitlines()) if calls.exists() else 0, answer
+
+    today = driven(_Today(root))
+    textconv.forget()
+    cold = driven(GitDiffSource(root, patch_with_listing=True))
+    warm = driven(GitDiffSource(root, patch_with_listing=True))
+    assert today[1] == 4, "two text files on the page, each side converted, no binary one"
+    assert (today[0], cold[0], warm[0]) == (4, 4, 3)
+    assert cold[1:] == warm[1:] == today[1:]
+    manifest = json.loads(today[2])["manifest"]["files"]
+    assert {c["availability"] for c in manifest if c["new"]["path"].endswith(".pdf")} == {"binary"}
+
+
+# ── A page Git pairs otherwise alone (review of #449, L1) ──────────────
+
+
+def _commit_of(root: Path, files: dict[bytes, bytes]) -> str:
+    """A commit whose tree holds *files*, written with `mktree`."""
+    env = _env(root, "2026-01-01T00:00:00 +0000")
+
+    def run(*args: str, stdin: bytes) -> str:
+        out = subprocess.run(
+            ["git", "-C", str(root), *args], input=stdin, check=True, capture_output=True, env=env
+        )
+        return out.stdout.decode().strip()
+
+    records = b"".join(
+        b"100644 blob "
+        + run("hash-object", "-w", "--stdin", stdin=body).encode()
+        + b"\t"
+        + name
+        + b"\0"
+        for name, body in sorted(files.items())
+    )
+    return run("commit-tree", run("mktree", "-z", stdin=records), "-m", "tree", stdin=b"")
+
+
+def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
+    tmp_path: Path,
+) -> None:
+    """Fifty-eight changed files, so the page is fifty of them. Asked alone, the page's
+    paths pair its renames otherwise than the whole comparison did, so today's page left
+    out the files the manifest lists as those renames. The one run's patch is the whole
+    comparison's, which pairs them as the manifest does: they have their hunks."""
+
+    def body(changed: dict[int, str]) -> bytes:
+        return b"".join(
+            (f"{changed[i]} {i}\n" if i in changed else f"common line {i} of the source\n").encode()
+            for i in range(100)
+        )
+
+    root = tmp_path / "pairing"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    base_files = {b"W": body({}), b"X": body(dict.fromkeys(range(10), "bee"))}
+    base_files |= {f"m{i:02d}".encode(): f"filler {i}\n".encode() for i in range(55)}
+    target_files = {f"m{i:02d}".encode(): f"filler {i} changed\n".encode() for i in range(55)}
+    target_files |= {
+        b"a-U": body(dict.fromkeys(range(80, 100), "you")),
+        b"b-Y": body(dict.fromkeys(range(95, 100), "why")),
+        b"zzz-V": body({}),
+    }
+    base, target = _commit_of(root, base_files), _commit_of(root, target_files)
+    intent = {"left": base, "right": target}
+    _warm(root)
+    _, today = _answer(_Today(root), intent)
+    one_run_count, one_run = _answer(GitDiffSource(root, patch_with_listing=True), intent)
+    _, everything = _answer(_Today(root), intent, lambda m: [[c.id for c in m.files]])
+    page_today = json.loads(today)["hydrations"][0]
+    page_now = json.loads(one_run)["hydrations"][0]
+    assert page_today["left_out"], "the case: today's page left files out"
+    assert page_now["left_out"] == [] and one_run_count == 2
+    whole = json.loads(everything)["hydrations"][0]["patches"]
+    assert page_now["patches"] == {file_id: whole[file_id] for file_id in page_now["patches"]}
+    assert set(page_now["patches"]) == set(page_today["patches"]) | set(page_today["left_out"])
 
 
 # ── Names with unusual bytes, and binary files ──────────────────────────
