@@ -4,6 +4,28 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Command-R always reloads.
+  In the macOS app, View > Reload Page was disabled while the window showed its status
+  view, and did nothing in a tab still loading or reloading its page.
+  It now reloads in every state.
+  With no page it loads the page again; on “Starting…” it waits for the start under way,
+  or starts a stopped server; after the server failed it restarts it, as Retry does.
+  A dialog or panel the page opened is cancelled first; the app’s own sheets, such as
+  the offer to restart after an upgrade or a download’s save panel, stay.
+  In a browser and in the app, keys held with Command, Control, or Option are left to
+  the browser everywhere: the tree map, the Files tab’s filters, the branch switcher,
+  and a pull request’s stack menu no longer take Command-Up, Command-Left, or the like
+  as a plain arrow, and a dialog’s focus trap no longer takes Command-Tab or
+  Control-Tab. The Keyboard Shortcuts section of `docs/design-system.md` now documents
+  Command-R.
+
+- A heading that opens a pull request’s description, comment, or review no longer sits
+  pressed under the card’s header.
+  It had 8 px above it and 16 px below, so it read as part of the header rather than of
+  its section; a text now has 16 px above and below it, as GitHub pads a comment.
+  Headings inside a text keep the spacing they have in a Markdown file: 32 px above an
+  h1 or h2 after a paragraph, list, code block, or quotation, and 16 px below.
+
 - Reading Metabrowser’s private cache costs less on a busy server.
   Every read checks that no other user can read or replace what it reads, and it used to
   open each directory on the way again to check it.

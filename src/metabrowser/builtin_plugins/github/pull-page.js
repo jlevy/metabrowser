@@ -3261,6 +3261,11 @@ export function createStackMenu(initial, number, deps) {
   root.addEventListener(
     "keydown",
     (event) => {
+      // A key held with Command, Control, or Option is the browser's: Command-R
+      // reloads, Command-Left goes back, and Command-Down scrolls to the end.
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
       const key = event.key;
       if (event.target === trigger && (key === "Enter" || key === " ")) {
         event.preventDefault();
@@ -3335,7 +3340,11 @@ export function createStackMenu(initial, number, deps) {
   document.addEventListener(
     "keydown",
     (event) => {
-      if (root.open && event.key === "Escape") {
+      if (
+        root.open &&
+        event.key === "Escape" &&
+        !(event.altKey || event.ctrlKey || event.metaKey)
+      ) {
         event.preventDefault();
         close(true);
       }

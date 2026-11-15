@@ -203,8 +203,11 @@ folder="$(mktemp -d)"
    With the server answering,
    `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
    `open -a "$app" "$folder/a.md" "$folder/b.md"` end on `b.md`.
-3. **stderr in the log.** `tail "$logs"/*.log` shows the server’s stderr lines (its
-   `INFO:` lines) beside its `Serving` line, which came through stdout.
+3. **stdout and stderr in the log.** `tail "$logs"/*.log` shows the server’s `Serving`
+   and `Plugins:` lines, which came through stdout.
+   A server serving without trouble writes nothing to stderr.
+   What it writes there when its stdin closes, “Stopping Metabrowser: stdin closed.”,
+   ends the folder’s log after the crash in step 4.
 4. **After a crash.** With the folder open,
    `pkill -9 -f "$app/Contents/MacOS/Metabrowser"`. Within a second
    `pgrep -fl -- "--exit-on-eof"` finds no server, and the folder’s log ends with
@@ -971,6 +974,29 @@ Terminal launch.
   The page calls only the web’s `window.print()`; frames inside it keep WebKit’s, which
   does nothing. If the web content process dies, the window reloads, at most twice in 30
   seconds, and then shows the status view.
+- **Reload:** Command-R, View > Reload Page, reloads in every state a folder window can
+  be in, so it is never disabled while one is key (`PageReload`, `PageMenu`). With its
+  page on screen, WebKit reloads the page.
+  With the server ready and no page to reload, the window loads its page again once the
+  server answers its health check: a page still loading, a discarded tab coming back, a
+  tab WebKit opened whose first load has not committed, or a page that failed while the
+  server stayed ready, so one tab’s failed page restarts nothing under the folder’s
+  other tabs. With no server and no failure, as on “Starting…”, it starts the server,
+  joining a start already under way rather than stopping it.
+  After the server failed, it does what the failure view’s Retry and File > Restart
+  Server (Command-Option-R) do: a fresh server, then the page.
+  A start waiting for a `metab` the app can run is asked again, and Settings opens if
+  there is still none.
+  A restored folder waiting for its tab to be selected starts as selecting it does.
+  A sheet the page opened goes first, answered as Cancel: its `alert`, `confirm`, or
+  `prompt`, a file input’s open panel, or the print panel (`PageSheets`). The app’s own
+  sheets stay, and the reload runs behind them: the runtime-upgrade offer, a download’s
+  save panel, and a failed download’s alert.
+  The page sees each key before the menu and takes none held with Command or Control,
+  nor any held with Option except Tab, which a dialog’s or menu’s focus trap keeps
+  because Safari moves focus with it (`tests/test_modified_keys.py`), so Command-R
+  reaches the menu with focus in a field, Quick Search, Help, or a menu of the page.
+  The app’s own windows, Settings and About, have no page and no Reload.
 
 ### Files, Tabs, Recents, and the Last Session
 
