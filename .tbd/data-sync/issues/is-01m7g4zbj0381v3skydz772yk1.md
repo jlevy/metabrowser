@@ -3,9 +3,9 @@ type: is
 id: is-01m7g4zbj0381v3skydz772yk1
 title: "Pulls toolbar: drop the Stacks toggle; group by stack always"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T17:44:40.767Z
-updated_at: 2026-11-15T17:50:35.849Z
+updated_at: 2026-11-15T19:01:55.354Z
 started_at: 2026-11-15T17:50:35.848Z
+closed_at: 2026-11-15T19:01:55.352Z
+close_reason: null
+resolution: null
+duplicate_of: null
 ---
 Found in #450's review A (finding A4) and measured by its fix (2026-11-15).
 
@@ -30,3 +34,5 @@ Done when the Pulls toolbar fits the default 299 px pane with no overflow, measu
 ## Notes
 
 Decision, the user (2026-11-15), verbatim: "also we can drop the "Stacks" button altogether and just keep it on always in the Pulls tab". So: remove the Group by stack toggle and its setting; the Pulls tab always groups by stack. Without the chip the toolbar has its 23 px to spare at the default 299 px pane, so the overflow ends; the Chrome test asserts no overflow at that width. Supersedes the icon-only and menu options.
+
+Done in 6913d420f on claude/pulls-stack-groups (#450): toggle, preference, and its number removed; Reload is 4 and a pull request page's numbers start at 5. Chrome at the 299 px pane: toolbar overflow 36 px -> 0, 23 px to spare (tests/dom/github-pulls-stacks-chrome.mjs checks no overflow and spare > 0). Title room unchanged by this bead.
