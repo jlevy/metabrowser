@@ -1207,13 +1207,13 @@ async function headerShape(page) {
             [
               "bug",
               "d73a4a",
-              "--label-r:215;--label-g:58;--label-b:74;--label-h:354;--label-s:66;--label-l:54",
+              "--github-label-r:215;--github-label-g:58;--github-label-b:74;--github-label-h:354;--github-label-s:66;--github-label-l:54",
               "Something isn't working",
             ],
             [
               "enhancement",
               "a2eeef",
-              "--label-r:162;--label-g:238;--label-b:239;--label-h:181;--label-s:71;--label-l:79",
+              "--github-label-r:162;--github-label-g:238;--github-label-b:239;--github-label-h:181;--github-label-s:71;--github-label-l:79",
               null,
             ],
             ["needs review", null, null, null],

@@ -366,6 +366,19 @@ const MEASURE = `async (arrangement, width, theme) => {
   });
   const gap = parseFloat(getComputedStyle(body()).rowGap);
   const rhythm = parseFloat(getComputedStyle(body()).getPropertyValue("--github-pull-rhythm"));
+  // Review comments: its heading over its first card, and each card over the next.
+  const threads = (() => {
+    const section = container.querySelector(".github-pull-threads");
+    const heading = section?.querySelector(":scope > h2");
+    const cards = section ? [...section.querySelectorAll(":scope > .github-pull-card")] : [];
+    if (!heading || cards.length < 2) return null;
+    const r = (node) => node.getBoundingClientRect();
+    return {
+      sectionGap: parseFloat(getComputedStyle(section).getPropertyValue("--github-pull-gap")),
+      headingToCard: round(r(cards[0]).top - r(heading).bottom),
+      between: cards.slice(1).map((card, at) => round(r(card).top - r(cards[at]).bottom)),
+    };
+  })();
   window.__dispose = () => handle.dispose();
   return {
     width,
@@ -375,6 +388,7 @@ const MEASURE = `async (arrangement, width, theme) => {
     waited,
     gap,
     rhythm,
+    threads,
     navSize,
     items,
     // To the conversation's end: the page past it is the window's.
@@ -588,6 +602,19 @@ function hold(measured, image) {
     `${where}: every pair shows the same space, to the face's pixel`,
     shown.length > 0 && Math.max(...shown) - Math.min(...shown) <= 1,
     JSON.stringify(spaces),
+  );
+  // Under Review comments the rhythm is between its cards only: its heading sits over the
+  // first at the sections' own gap, as every section's heading does over its content. With
+  // the rhythm as the section's gap it stood 20 px over its first card (mb-xlla).
+  const threads = measured.threads;
+  check(
+    `${where}: Review comments' heading is the sections' gap over its first card, and its cards the rhythm apart`,
+    threads !== null &&
+      threads.sectionGap < rhythm &&
+      Math.abs(threads.headingToCard - threads.sectionGap) < 0.5 &&
+      threads.between.length > 0 &&
+      threads.between.every((space) => Math.abs(space - rhythm) < 0.5),
+    JSON.stringify(threads),
   );
   for (const row of commits) {
     const label = `${where}: commit "${row.label}"`;

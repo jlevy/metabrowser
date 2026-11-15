@@ -3,6 +3,15 @@
    markup. What is here is their placement, and the few forms only this page has, all from host
    tokens. Colors are design tokens. */
 
+/* An author's avatar and the gap after it (`.github-pull-identity`), on the page and on a
+   Pulls row. The Conversation timeline's geometry is theirs: where a commit's subject starts,
+   the x of the line down the avatars' centers, an absent avatar's empty slot, and the floor
+   an author keeps before it ends in an ellipsis. */
+.github-pull,
+.github-pulls {
+  --github-pull-avatar-size: 18px;
+  --github-pull-identity-gap: 4px;
+}
 .github-pull {
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
@@ -215,7 +224,6 @@
 .github-pull-badge[data-state="stale"],
 .github-pull-badge[data-state="unknown"],
 .github-pull-badge[data-state="outdated"],
-.github-pull-badge[data-state="COMMENTED"],
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
@@ -250,55 +258,73 @@
 }
 /* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
    formula of github.com's own label stylesheet (Primer's .IssueLabel, read 2026-11-15),
-   with its constants and its custom properties' names under a label- prefix, from the
-   --label-r/g/b/h/s/l the page sets on the chip (labelColorProperties in pull-page.js).
-   docs/design-system.md, "Label Colors", says why these colors are not oklch.
+   with its constants, from the --github-label-r/g/b/h/s/l the page sets on the chip
+   (labelColorProperties in pull-page.js). docs/design-system.md, "Label Colors", says why
+   these colors are not oklch. Its custom properties are under the plugin's --github-label-
+   prefix, so none shares the shell's label register's --label- names (--label-color,
+   --label-font-size): each is Primer's of the same part, --github-label-r, -g, -b, -h, -s,
+   and -l its --label-r to --label-l; --github-label-lightness its --perceived-lightness;
+   -switch its --lightness-switch; -threshold its --lightness-threshold; -border-threshold,
+   -border-alpha, -background-alpha, and -lighten-by its --border-threshold,
+   --border-alpha, --background-alpha, and --lighten-by.
    Light: the color is the ground; the text is black above a perceived lightness of 0.453
    and white below it; the border, 25 points darker, shows only on a label paler than 0.96.
    Dark: the color at 0.18 alpha is the ground; the text is the color lightened by however
    far it is under 0.6; the border is that text at 0.3 alpha. */
 .github-pull-label[data-color] {
-  --label-lightness: calc(
-    ((var(--label-r) * 0.2126) + (var(--label-g) * 0.7152) + (var(--label-b) * 0.0722)) /
+  --github-label-lightness: calc(
+    (
+      (var(--github-label-r) * 0.2126) +
+      (var(--github-label-g) * 0.7152) +
+      (var(--github-label-b) * 0.0722)
+    ) /
     255
   );
-  --label-switch: max(0, min(calc((1 / (var(--label-threshold) - var(--label-lightness)))), 1));
-  --label-threshold: 0.453;
-  --label-border-threshold: 0.96;
-  --label-border-alpha: max(
+  --github-label-switch: max(
     0,
-    min(calc((var(--label-lightness) - var(--label-border-threshold)) * 100), 1)
+    min(calc((1 / (var(--github-label-threshold) - var(--github-label-lightness)))), 1)
   );
-  background: rgb(var(--label-r), var(--label-g), var(--label-b));
+  --github-label-threshold: 0.453;
+  --github-label-border-threshold: 0.96;
+  --github-label-border-alpha: max(
+    0,
+    min(calc((var(--github-label-lightness) - var(--github-label-border-threshold)) * 100), 1)
+  );
+  background: rgb(var(--github-label-r), var(--github-label-g), var(--github-label-b));
   border-color: hsla(
-    var(--label-h),
-    calc(var(--label-s) * 1%),
-    calc((var(--label-l) - 25) * 1%),
-    var(--label-border-alpha)
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) - 25) * 1%),
+    var(--github-label-border-alpha)
   );
-  color: hsl(0deg, 0%, calc(var(--label-switch) * 100%));
+  color: hsl(0deg, 0%, calc(var(--github-label-switch) * 100%));
 }
 /* The dark theme's, scoped as every rule here is: :where() adds no specificity, so this rule,
    later, wins over the light one only in the dark theme. */
 .github-pull-label[data-color]:where([data-theme="dark"] *) {
-  --label-threshold: 0.6;
-  --label-background-alpha: 0.18;
-  --label-border-alpha: 0.3;
-  --label-lighten-by: calc(
-    ((var(--label-threshold) - var(--label-lightness)) * 100) *
-    var(--label-switch)
+  --github-label-threshold: 0.6;
+  --github-label-background-alpha: 0.18;
+  --github-label-border-alpha: 0.3;
+  --github-label-lighten-by: calc(
+    ((var(--github-label-threshold) - var(--github-label-lightness)) * 100) *
+    var(--github-label-switch)
   );
-  background: rgba(var(--label-r), var(--label-g), var(--label-b), var(--label-background-alpha));
+  background: rgba(
+    var(--github-label-r),
+    var(--github-label-g),
+    var(--github-label-b),
+    var(--github-label-background-alpha)
+  );
   border-color: hsla(
-    var(--label-h),
-    calc(var(--label-s) * 1%),
-    calc((var(--label-l) + var(--label-lighten-by)) * 1%),
-    var(--label-border-alpha)
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%),
+    var(--github-label-border-alpha)
   );
   color: hsl(
-    var(--label-h),
-    calc(var(--label-s) * 1%),
-    calc((var(--label-l) + var(--label-lighten-by)) * 1%)
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
 /* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
@@ -411,8 +437,9 @@
 
 /* ── The Conversation timeline ──────────────────────────────────
    docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
-   and line, and its subject starts where an author's name does after the 18 px avatar, or
-   its empty slot, and the identity's 4 px gap: its frame is as wide as a card's and draws
+   and line, and its subject starts where an author's name does after the avatar, or its
+   empty slot, and the identity's gap (--github-pull-avatar-size, --github-pull-identity-gap,
+   18 px and 4 px): its frame is as wide as a card's and draws
    nothing. Its box is its line, with no room of its own above or below, so its text is as
    far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
    revision's own size, one step below the text beside it (`.git-commit-sha`). Measured in
@@ -423,7 +450,12 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
-  padding: 0 var(--github-pull-text-inset) 0 calc(var(--github-pull-text-inset) + 18px + 4px);
+  padding: 0 var(--github-pull-text-inset) 0
+    calc(
+      var(--github-pull-text-inset) +
+      var(--github-pull-avatar-size) +
+      var(--github-pull-identity-gap)
+    );
   border-inline: 1px solid transparent;
   font-size: var(--body-font-size);
 }
@@ -447,8 +479,8 @@
 .github-pull-event {
   --github-pull-line: 2px;
   --github-pull-node: 8px;
-  /* The avatar's center: the head's inset and half its 18 px. */
-  --github-pull-rail: calc(var(--github-pull-text-inset) + 9px);
+  /* The avatar's center: the head's inset and half the avatar. */
+  --github-pull-rail: calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2);
   /* A commit's first line: half of it. */
   --github-pull-node-y: 0.5lh;
   position: relative;
@@ -632,9 +664,13 @@
   gap: var(--github-pull-gap);
   margin-block-start: var(--content-padding-y);
 }
-/* Review comments, a comment's card from the next, at the Conversation's rhythm. */
-.github-pull-threads {
-  gap: var(--github-pull-rhythm);
+/* Review comments, a comment's card from the next, at the Conversation's rhythm. The heading
+   sits over the first card at the section's gap, as every section's heading sits over its
+   content: with the rhythm as the section's gap, it stood 20 px over its first card where
+   other headings stand 12 px over theirs. The margin is the rhythm less the gap the column
+   already puts between two cards. */
+.github-pull-threads > .github-pull-card + .github-pull-card {
+  margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }
 .github-pull-checks {
   list-style: none;
@@ -913,8 +949,8 @@
 }
 /* The line's first part: a stack member's place, if any, and the number, which never part.
    It makes up the line's one-separator offset. Alone on a line too short for it, it
-   shrinks: the place ends in an ellipsis, with all of it in its tip, and the number shows
-   whole (below). */
+   shrinks: the place ends in an ellipsis, with all of it in its accessible name, since the
+   Pulls column has no tooltips, and the number shows whole (below). */
 .github-pulls-id {
   display: inline-flex;
   flex: 0 1 auto;
@@ -1243,15 +1279,15 @@
 .github-pull-identity {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--github-pull-identity-gap);
   vertical-align: baseline;
 }
 .github-pull-avatar {
   display: inline-block;
   flex: none;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: var(--github-pull-avatar-size);
+  height: var(--github-pull-avatar-size);
   border-radius: 50%;
 }
 /* A Conversation card head's author with no usable avatar keeps the avatar's box, empty,
@@ -1261,21 +1297,21 @@
   display: inline-block;
   flex: none;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: var(--github-pull-avatar-size);
+  height: var(--github-pull-avatar-size);
 }
 /* In the pull request's author row the author gives way after the action
    (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of the name,
    which then ends in an ellipsis, as a Pulls row's author does (`.github-pulls-by`). Without
    a floor of its own a long login kept its whole width and pushed what followed it out of
-   the row. The avatar's share is its 18px and the identity's 4px gap. */
+   the row. The avatar's share is its size and the identity's gap. */
 .github-pull-meta-details > .github-pull-identity {
   flex: 0 100 auto;
   min-width: 1.75em;
   overflow: hidden;
 }
 .github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar) {
-  min-width: calc(18px + 4px + 1.75em);
+  min-width: calc(var(--github-pull-avatar-size) + var(--github-pull-identity-gap) + 1.75em);
 }
 .github-pull-meta-details .github-pull-author {
   min-width: 0;
@@ -1286,7 +1322,7 @@
 /* The author never gets narrower than its separator, its avatar if it has one, and a little
    of the name, so neither the separator nor the avatar stands without a visible name: past
    that, the author and its separator move to the next line together. Above it the name
-   ends in an ellipsis. The avatar's share is its 18px and the identity's 4px gap
+   ends in an ellipsis. The avatar's share is its size and the identity's gap
    (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
    hidden, so the name's share is still there. */
 .github-pulls-by {
@@ -1298,7 +1334,12 @@
   overflow: hidden;
 }
 .github-pulls-by:has(.github-pull-avatar) {
-  min-width: calc(var(--github-pulls-sep) + 18px + 4px + 1.75em);
+  min-width: calc(
+    var(--github-pulls-sep) +
+    var(--github-pull-avatar-size) +
+    var(--github-pull-identity-gap) +
+    1.75em
+  );
 }
 .github-pulls-by > .github-pull-identity {
   min-width: 0;

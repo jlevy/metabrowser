@@ -1059,7 +1059,7 @@ async function main() {
             check(
               `${where}: carries the properties github.com gave this color`,
               chip.properties ===
-                `--label-r:${r};--label-g:${g};--label-b:${b};--label-h:${h};--label-s:${s};--label-l:${l}`,
+                `--github-label-r:${r};--github-label-g:${g};--github-label-b:${b};--github-label-h:${h};--github-label-s:${s};--github-label-l:${l}`,
               JSON.stringify(chip),
             );
             const formula = labelFormula(hex, computed.properties, theme);

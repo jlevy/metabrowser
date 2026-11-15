@@ -474,7 +474,7 @@ export function labelColorProperties(color) {
     }
   }
   const [h, s, l] = [hue, saturation * 100, lightness * 100].map(Math.round);
-  return `--label-r:${r};--label-g:${g};--label-b:${b};--label-h:${h};--label-s:${s};--label-l:${l}`;
+  return `--github-label-r:${r};--github-label-g:${g};--github-label-b:${b};--github-label-h:${h};--github-label-s:${s};--github-label-l:${l}`;
 }
 
 /**
