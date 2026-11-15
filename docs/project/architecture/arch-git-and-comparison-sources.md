@@ -590,7 +590,7 @@ source-neutral, and the renderer starts having to know what produced its input.
 
 **Status:** implemented by one provider, the built-in GitHub plugin
 (`builtin_plugins/github/`). Its design is in the
-[thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) and
+[thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md) and
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records);
 this section records only the boundary a provider must not cross, because that boundary
 is an architectural commitment rather than a plan detail.

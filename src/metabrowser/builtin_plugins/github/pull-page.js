@@ -3815,7 +3815,9 @@ export function mountPullPage(container, ctx, mb) {
    * @param {boolean} truncated
    */
   function textBlock(part, value, truncated) {
-    const element = h("div", { class: "github-pull-text", "data-part": part });
+    // A message about the content, so sans under either reading font: the host's chrome
+    // prose (docs/design-system.md, "Serif Is for Documents").
+    const element = h("div", { class: "github-pull-text chrome-prose", "data-part": part });
     if (value.trim() === "") {
       element.append(
         h("p", { class: "github-pull-empty" }, [

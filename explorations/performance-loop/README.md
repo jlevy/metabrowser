@@ -174,7 +174,11 @@ records. For a round, that means:
   exclusion and analysis scripts by sha256, committed before the first result is read.
   A change to either after that is a deviation.
   The record gives the change, which verdicts it moved, and the coordinator’s ruling,
-  and both versions stay in the branch’s history (exp-079).
+  and both versions stay in the branch’s history (exp-079). Its `method.analysis` names
+  each script with its sha256, which must be one the protocol registered.
+  A script changed afterwards gives its new sha256 together with `registered_sha256` and
+  a `deviation` reason, and the storage test then requires a Deviation section in the
+  record.
 
 ## Running a round
 
@@ -1271,22 +1275,30 @@ Only the coordinator starts the series itself.
 The driver drives `transitions.mjs` only and needs macOS (`pmset`, `caffeinate`). The
 rules it enforces are the round’s registered ones:
 
-- **The lock.** The series lock under the git common dir, so no two timed series overlap
-  on one machine.
+- **The lock.** The series lock under the git common dir, so no two `paced-series.sh`
+  series overlap on one machine.
+  `run.py`, `startup_pairs.py`, `wkprobe`, and a hand-run `transitions.mjs` take no
+  lock, and the driver waits only for a live `transitions.mjs` run, so start none of
+  them while a series holds the lock.
 - **Load.** The one-minute load stays under the registered bound for 60 s before each
   pair.
 - **Power.** Low Power Mode and the power source are read before and after every pair,
   and sampled every 15 s. The judged mode is the one read before the first attempt.
-  A pair measured in another mode is excluded and not judged.
+  A pair measured in another mode, or with power unreadable, is excluded and not judged;
+  unreadable power before the first attempt stops the series, since there is no judged
+  mode.
 - **The corpus.** Never fetch, pull, or check out inside the corpus checkout.
   The standing corpus v2 is `7a02fed4` checked out, trunk `083e78e4`, refs digest
   `387f68dc4e8eb8e0` (`provenance.mjs`’s `corpusProvenance`). The driver refuses to
   start a pair on any other digest.
-  In the campaign’s last week an unidentified `git fetch --quiet origin` moved its
-  `origin/main` mid-campaign, and only the digest showed it.
+  On 2026-11-14 an unidentified `git fetch --quiet origin` moved its `origin/main`
+  during exp-086’s round (exp-079’s protocol records it); the trunk and the refs digest
+  both showed it, and the driver checks both.
 - **Order.** Which condition leads alternates by attempt.
-- **Stops.** The series stops at its target of judged pairs or its cap on attempts, and
-  an exit trap releases the lock however it ends.
+- **Stops.** The series stops at its target of judged pairs, or with a nonzero exit at
+  its cap on attempts, and an exit trap releases the lock.
+  A driver killed by SIGKILL, a crash, or a restart skips the trap and leaves its lock,
+  which `--check` reports as stale and nothing removes on its own.
 
 **A closing round** measures final `main` against the campaign’s control and judges
 every landed hypothesis on its own record’s criteria (exp-079). Final `main` is one
@@ -2192,13 +2204,23 @@ A candidate is accepted when all of these hold:
 
 - the median of the metric the hypothesis named moved in the predicted direction,
 - the two ranges do not overlap, at three or more runs per condition, and for a time or
-  frame count, two or more back-to-back pairs are beyond the tolerance (the pair rule
-  `compare` applies; ranges apart with every pair within the tolerance is not a result),
+  frame count, two or more back-to-back pairs are beyond the tolerance (ranges apart
+  with every pair within the tolerance is not a result),
 - nothing else in the table moved the wrong way without being accounted for, and
 - the complexity is worth it.
 
 The first three are arithmetic.
 The fourth is a judgment and gets written as one.
+
+**Which tool applies the pair rule.** Only `judge()` in `transitions-stats.mjs` applies
+it, for the transition scenario’s `compare` and for `wkprobe-stats.mjs`: it computes
+each pair’s ratio and judges at 1.3x unless the protocol registers another
+`--tolerance`. `run.py compare` and `probe-server` compute no pair ratios, and
+`startup_pairs.py summarize --ratios` prints them but judges nothing.
+A round on those tools registers, in its protocol, the tolerance it judges at (careful
+or rough cut, as
+[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)
+defines them) and the script that applies the rule.
 
 **What the third clause sees, and what accounts for a result.** The table is the one the
 hypothesis’s own record declared: its deciding metrics and guards on its transitions.

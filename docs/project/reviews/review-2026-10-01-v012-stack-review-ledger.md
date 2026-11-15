@@ -31,7 +31,7 @@ Nothing else here was changed.
 [#265](https://github.com/jlevy/metabrowser/pull/265) at `481b64b7`, the top of GitHub
 stack [#218](https://github.com/jlevy/metabrowser/stack/218). The landing checklist in
 the
-[alpha test plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md#recording-results-and-landing)
+[alpha test plan](../specs/done/plan-2026-09-22-v012-alpha-testing.md#recording-results-and-landing)
 asks for this ledger after all functional changes.
 The previous one is the
 [stack readiness review of 2026-09-22](https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244),
@@ -213,7 +213,7 @@ tbd show mb-79t3
 
 - **Review and findings** come from each description’s Review or Evidence section, from
   the comments on #125 to #225, and from the close reasons of the beads the thin-mirror
-  plan’s [Delivery](../specs/active/plan-2026-09-23-v012-thin-mirror.md#delivery) tables
+  plan’s [Delivery](../specs/done/plan-2026-09-23-v012-thin-mirror.md#delivery) tables
   name.
 - **What followed a review** is
   `git log --no-merges <reviewed commit>..<head> ^<base branch>`.

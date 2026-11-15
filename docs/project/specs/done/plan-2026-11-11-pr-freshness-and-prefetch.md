@@ -1,10 +1,11 @@
 # Plan for Event-Based Pull-Request Freshness and Budgeted Prefetch
 
-**Status.** Implemented in draft pull request #355, revised for its first reviews (A and
-B); not merged. This is the second pull request of the spinner-free refresh stack (epic
-`mb-c93s`, bead `mb-wlx0`), based on the presentation pull request (`mb-wl9x`, branch
-`claude/pr-refresh-without-spinners`). One GraphQL query per record refresh is a later,
-separate change (`mb-xhtc`) and is out of scope.
+**Status.** Implemented and merged.
+Pull request #355 (bead `mb-wlx0`), the second of the spinner-free refresh stack (epic
+`mb-c93s`), landed on `main` with the presentation pull request #354 (`mb-wl9x`) in
+93badac9 on 2026-11-11. The changed-files prefetch of the rows rested on and in view
+(T3) followed in #424 (`mb-5mcn`). One GraphQL query per record refresh is a later,
+separate change (`mb-6aa8`) and is out of scope.
 
 ## Reader Behavior
 
@@ -376,8 +377,8 @@ Filled in as each budget lands, beside its constant.
 ## References
 
 - [Watching pull requests](plan-2026-11-06-pr-watch-and-reconnect.md)
-- [The Pulls tab](plan-2026-10-01-github-pulls-tab.md)
-- [Review mirror and checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
+- [The Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md)
+- [Review mirror and checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
 - [Repository sources and provider mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
 - [Reviewing pull requests](../../../reviewing-pull-requests.md)
 - [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)

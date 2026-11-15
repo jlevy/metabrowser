@@ -380,6 +380,11 @@ function parseFakeHtml(html, document) {
     "- [ ] Review [[Meeting Notes]] per [spec](https://example.com/spec)\n" +
       "  - [x] Follow up in [[Notes#Actions|actions]] and [the [[Hidden]] log](log.md)\n",
   );
+  // A heading's anchors open its inline content, one per hierarchical name and
+  // each name once, and add no line; a list item above `---` is no heading.
+  const headingPreparation = wikiParser.preprocessObsidianWiki(
+    "# Guide\n## Setup\nUsage\n=====\n- step\n---\n## Setup\n",
+  );
 
   const incompleteAdapter = adapters
     .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false))
@@ -617,6 +622,7 @@ function parseFakeHtml(html, document) {
           truncated: truncated.result,
         },
         wikiPreprocessing: {
+          headings: headingPreparation.source.split("\n"),
           taskList: {
             source: taskListPreparation.source.split("\n"),
             targetCount: taskListPreparation.targetCount,
