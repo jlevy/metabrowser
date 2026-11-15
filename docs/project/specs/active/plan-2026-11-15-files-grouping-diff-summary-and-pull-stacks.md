@@ -190,21 +190,44 @@ it:
 
 - **The option:** a control in the Pulls tab’s toolbar groups the list by stack.
   The choice persists.
+
 - **Stack rows:**
   - Each stack with at least one pull request in the current list gets a row reading
     “Stack #N”, with the number of its pull requests.
     The row is open by default.
-  - Under it are the stack’s pull requests present in the list, in stack order, each
-    keeping its own toggle for its changed files.
+  - Under it are the stack’s pull requests present in the list, in the order the pull
+    request page’s stack menu uses (top of the stack first), each keeping its own toggle
+    for its changed files.
   - Pull requests in no stack follow the stacks, in the list’s own order.
+
 - **Shared membership:** a pull request in more than one stack appears once, under the
   first stack that lists it, and its badge names the others.
+
 - **Missing or stale stack data:** the list stays flat, the option says why, and nothing
   waits for the stack poller.
+
 - **Keyboard:** a stack row is a tree row, like a folder, for the Pulls keys (J, K, and
   the expand and collapse keys).
+
 - **Parity:** grouping, ordering and membership belong to the browserless Pulls model,
   with a session and golden.
+
+- **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
+  the pull request page’s stack button and menu (`pull-page.js`) share one design,
+  stated once in a “Stacks” section of `docs/design-system.md`. It covers:
+  - the “Stack #N” label: gray, all caps and tracked, in the label register of the stack
+    menu’s heading, at the inset `mb-s6vu` sets for menu group headings;
+  - the position badge and its icon;
+  - member rows: title, position, number, and the current pull request’s mark;
+  - member order;
+  - links and their hover and focus states;
+  - the hover tip text.
+
+  The stack group row’s header uses that label, and its hover, focus and link behavior
+  match the member rows’ wherever the two do the same thing.
+  Every surface that labels a stack its own way moves onto the shared classes and
+  tokens. A test pins that the stack menu’s heading and the group row’s header resolve to
+  the same label tokens, and that member order matches the stack menu’s.
 
 ### Conversation Timeline
 
