@@ -4,13 +4,13 @@ id: is-01m7f48yt1kh06jf6nmd4j3pes
 title: "Group by: compute every group in one pass over the index; a large folder takes about a second"
 kind: task
 status: open
-priority: 2
-version: 2
+priority: 1
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-15T08:13:12.384Z
-updated_at: 2026-11-15T09:23:48.599Z
+updated_at: 2026-11-15T20:10:17.076Z
 ---
 Found while building mb-sogv (Files Group by, #445, pull request 2 of the 2026-11-15 plan stack).
 
