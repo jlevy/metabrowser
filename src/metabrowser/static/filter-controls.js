@@ -1,6 +1,6 @@
 // Filter controls — the one chip family every filtering surface uses.
 // See docs/design-system.md ("Filter Controls") for the visual
-// contract and docs/project/specs/active/
+// contract and docs/project/specs/done/
 // plan-2026-08-09-nav-filter-controls.md for why it exists.
 //
 // Three shapes, one atom:

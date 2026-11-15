@@ -965,6 +965,8 @@ var keyReveal = null;
 var detachPluginShortcuts = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
+// The most file rows one Quick Search query ranks and draws. The palette's row cap adds
+// the pull-request group's own limit (`PULL_RESULT_LIMIT` in search-controller.js).
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -4506,7 +4508,7 @@ function renderRecentList(data) {
 // The drawer carries no section headings: an extension menu, a size
 // ramp, and a checkbox labelled "Show ignored" say what they are.
 //
-// See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
+// See docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 
 var filterState = /** @type {any} */ (window).metabrowser?.filterState || null;
 var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
@@ -6940,7 +6942,8 @@ function notifyFileStoreSubscribers(evt) {
 // applyCellPatch picks the matching DOM target.
 //
 // Directory aggregates, file updates, inserts, and removals all use this
-// path. See the realtime-debugging guide for the layer-by-layer contract.
+// path. See docs/project/architecture/arch-live-delivery.md#the-browsers-stores for the
+// contract, and the realtime-debugging guide for following an update layer by layer.
 function computeCellPatch(entry, options) {
   if (entry.type === "dir") {
     var dirMtimeSec = entry.newest_mtime_ns

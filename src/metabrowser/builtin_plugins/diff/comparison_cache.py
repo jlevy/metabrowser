@@ -22,8 +22,8 @@ What the answer depends on, other than the two commit IDs:
   the token ``http_caching.store_tag`` makes, which the shell gives the page beside the
   build. A folder has no token, so the browser's HTTP cache never keeps its answers. The
   Commits panel does keep them in the page, until Refresh, by commit ID; that keep and
-  what it does not notice are in ``static/git-panel.js`` and the architecture document
-  ``arch-git-and-comparison-sources.md``.
+  what it does not notice are in ``static/git-panel.js`` and in arch-diff-pipeline.md,
+  "Caches".
 - A store's Git configuration and attributes. Its reads ignore user and system
   configuration and the reader's attributes files (``STORE_READ_POLICY``: ``HOME`` and
   ``XDG_CONFIG_HOME`` hold nothing, ``GIT_ATTR_NOSYSTEM`` is set), and read no commit's

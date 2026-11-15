@@ -1,6 +1,6 @@
 // Shared filter state — the one vocabulary behind the navigation
 // filter bar and any future filtering surface. See
-// docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
+// docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 //
 // State shape (v1):
 //   { recency: "all"|"live"|"1h"|"24h"|"7d"|"30d",

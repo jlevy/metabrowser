@@ -13,7 +13,8 @@
   // The most items the revealed strip lists; later ones in the surface order drop first
   // and stay in Help. Seven is the most that keeps the strip within the panel's bottom
   // quarter with the navigation pane at its 180px minimum and the page at 100% zoom, the
-  // rule the reveal check in docs/qa-v012-repository-library.md measures it against. The
+  // rule the reveal check in docs/project/qa/qa-2026-09-19-v012-repository-library.md
+  // measures it against. The
   // most the `reveal` surface lists at once is eight, on a file of a mirror's pin with a
   // hosted origin (Help, Quick Search, Files, Commits, Pulls, Up, Copy, Branch), so there
   // Branch drops. Each row of the revealed layer is 32px, a 20px keycap with 3px above

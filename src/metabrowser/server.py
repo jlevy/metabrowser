@@ -1814,7 +1814,8 @@ async def index(
     # below starts them on the first idle callback after DOMContentLoaded, so
     # they do not compete with the tree render, and no later than
     # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
-    # indefinitely. See docs/development.md "Asset Loading Tiers".
+    # indefinitely. See docs/project/architecture/arch-browser-shell.md,
+    # "Asset Loading Tiers".
     optional_script_assets = [
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
@@ -1822,8 +1823,8 @@ async def index(
     # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
     # eager loading measured ~374 ms of every document's load event whether or
-    # not that view was ever opened. See docs/development.md "Asset Loading
-    # Tiers" and the load-time plan for the measurement.
+    # not that view was ever opened. See docs/project/architecture/arch-browser-shell.md,
+    # "Asset Loading Tiers", and the load-time plan for the measurement.
     main_tabs_asset = {"src": _static_asset_url("main-tabs.js"), "provides": "MetabrowserMainTabs"}
     on_demand_script_bundles = {
         # Idle prefetch and plugin demand share this loader. A plugin may call
@@ -4204,7 +4205,8 @@ from metabrowser.tree import (
 )
 
 # Honor the CLI's --plugins-dir flags (merged into METABROWSER_PLUGINS_DIRS
-# by the CLI) and direct-import settings loaded from .env / .env.local above.
+# by the CLI) and that variable when it is exported. A dotenv file cannot
+# supply it (``metabrowser.dotenv.ALLOWED_KEYS``).
 # Anything in this list is operator-named — auto-discovery from the served
 # root or the user's home is intentionally NOT a source (trust model).
 _extra_plugin_dirs: list[Path] = []
@@ -4232,8 +4234,8 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 
 
 # Pre-compile plugin kind rules and view bindings for fast lookup at
-# request time. Order is the discovery order; ties broken by plugin
-# name. Higher priority wins.
+# request time. Higher priority wins; within a priority, the plugin
+# discovered first wins (``CompiledKindRule.sort_key``).
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):

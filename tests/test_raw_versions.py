@@ -6,7 +6,7 @@ the version in the image's address. So a browser that reuses an image by its add
 Chrome's list of available images on a return to a document, a reload's cache -- asks
 again when the file was replaced. ``/raw`` keeps an answer for a year only for a raster
 image at the version the file has now, whose execution policy is the same in both trust
-profiles, and revalidates every other (``SECURITY.md``):
+profiles, and revalidates every other (``arch-server-and-content.md``, "Raw Responses"):
 ``tests/test_raw_profile_cache_chrome.py`` follows an SVG's old address across a switch to
 ``--untrusted`` in Chrome.
 """

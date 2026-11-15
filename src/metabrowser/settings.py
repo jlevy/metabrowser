@@ -205,7 +205,7 @@ RECENT_DEFAULT_WINDOW = "24h"
 # thread idle most of the time; 10 000 spends nearly half of it and
 # the payload starts to matter. The cap also stopped being the thing
 # that hides a user's own work once truncation learned to drop
-# gitignored files first (see ``collect_recent_entries``) — it now
+# gitignored files first (see the Python provider's ``_recent_projection``) — it now
 # only bounds how much build output rides along, so headroom here
 # buys a large monorepo room for its *tracked* churn rather than more
 # ``node_modules``.

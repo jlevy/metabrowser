@@ -17,12 +17,12 @@
 // Both engines run probe.js, so they time the same intervals with the same code. Results
 // go to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora),
 // samples.jsonl (every record), summary.json, and summary.md, the table
-// docs/large-content-rendering.md quotes. Every process and listener a run starts is
-// stopped when the run ends: normally, by an error, by an uncaught exception, or by
-// SIGHUP, SIGINT, or SIGTERM (processes.mjs). A harness killed outright stops nothing
-// itself: metab ends with its stdin, as webkit-driver does while measuring, a driver
-// check runs on to its own end, at most 600 s, and a Chrome sample in progress is left
-// running.
+// docs/project/architecture/arch-macos-app.md quotes ("Measured in WebKit"). Every
+// process and listener a run starts is stopped when the run ends: normally, by an error,
+// by an uncaught exception, or by SIGHUP, SIGINT, or SIGTERM (processes.mjs). A harness
+// killed outright stops nothing itself: metab ends with its stdin, as webkit-driver does
+// while measuring, a driver check runs on to its own end, at most 600 s, and a Chrome
+// sample in progress is left running.
 //
 // A pair passes when WebKit's value is under 1.3 times Chrome's; a metric passes when
 // every pair does, the rule of the 2026-11-08 packaging brief, except that a pair of times
@@ -849,8 +849,8 @@ async function runChecks(driver, servers, corpus, scratch, cleanup) {
 function writeSummary(out, meta, samples) {
   const summary = summarize(samples, {
     pairs: meta.pairs,
-    // The runs docs/large-content-rendering.md quotes predate meta.cases, so their summary
-    // covers the cases they sampled.
+    // The runs docs/project/architecture/arch-macos-app.md quotes predate meta.cases, so
+    // their summary covers the cases they sampled.
     cases: meta.cases ?? [],
     diagnostic: (caseName) => CASES[caseName]?.diagnostic === true,
   });

@@ -3,7 +3,8 @@
 Runs fresh baseline/candidate/candidate/baseline processes. Measures file reads,
 validators, and concurrent inventory requests with and without Recent. Output includes
 raw samples, response checks, runtimes, dependency versions and host/process load.
-The root is read-only; put output and logs outside it. See docs/engine-performance-model.md.
+The root is read-only; put output and logs outside it. See docs/development.md,
+"Comparing File Navigation Without a Browser".
 """
 
 from __future__ import annotations

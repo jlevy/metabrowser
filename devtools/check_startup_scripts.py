@@ -49,7 +49,7 @@ script-initiated request there fails the check as well.
 
 Run it through ``make lint-check``. When it fails it lists the scripts by size, because
 the fix is to move code out of one of them or behind the first usable tree: see "Asset
-Loading Tiers" in ``docs/development.md``.
+Loading Tiers" in ``docs/project/architecture/arch-browser-shell.md``.
 """
 
 from __future__ import annotations
