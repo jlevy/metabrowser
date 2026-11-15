@@ -1517,6 +1517,9 @@ a commit. It is said the way a card head says a comment:
   inset, inside a 1 px frame as wide as a card’s that draws nothing.
   Its subject is bold in text ink where a head’s author is, and starts where the
   author’s name does after the 18 px avatar.
+  A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
+  from assistive technology (`authorLabel`’s `slot`), so every head’s name and every
+  commit’s subject start at one x. The header and Pulls rows draw no such box.
   “committed” and the age read as a head’s “commented” and age do, with no quieter ink
   or size. The hash is the [GitHub action](#chrome) at a revision’s own
   `--nav-font-size`, one step below the text beside it, as in the
@@ -1526,7 +1529,7 @@ a commit. It is said the way a card head says a comment:
   as far below the event above it as a card head’s text does.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
-  center of the card heads’ avatars.
+  center of the card heads’ avatars and their empty slots.
   Each commit has a solid `--muted` dot on the line at its first line, the shape of the
   history graph’s [commit nodes](#commit-nodes).
   The line starts at the first event, ends at the last, and breaks wherever something
@@ -1540,11 +1543,20 @@ It adds no token: its geometry is the avatar’s, the card head’s, and the pag
 
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
-and the pixels painted.
+and the pixels painted, with one head drawn with only its slot.
 In Chrome 152, the glyphs of a commit and of a card head both sit 16 px below the event
 above. Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs
 sat 13 px below the event above, 1 px under its row’s top and 6 px over its bottom, and
 nothing joined the events.
+
+In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2), run through the
+WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the same page and
+layouts, every one of that test’s layout checks passes in both themes, apart from its
+pixel reads, which the driver cannot make: an event card computes to `overflow-x: clip`
+and `overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
+line’s x to the following event’s connector, which it would not do for a clipped one,
+and 9 px beside it to the page.
+Each node sits 0.5 px below its first line’s middle there, as in Chrome.
 
 ### Chrome
 

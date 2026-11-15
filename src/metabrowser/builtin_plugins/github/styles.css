@@ -315,9 +315,10 @@
    docs/design-system.md, "Conversation Timeline". A commit row is a card head without its
    card: the head's box, type, and line, in a frame as wide as a card's that draws nothing,
    so its text sits in its row as a head's sits in its card, and its subject starts where
-   an author's name does after the 18 px avatar and the identity's 4 px gap. Its hash takes a revision's own size, one step below the text
-   beside it (`.git-commit-sha`). Measured in Chrome 152 before this: the row was set at
-   12 px against the head's 14, its text 1 px under its top and 6 px over its bottom. */
+   an author's name does after the 18 px avatar, or its empty slot, and the identity's
+   4 px gap. Its hash takes a revision's own size, one step below the text beside it
+   (`.git-commit-sha`). Measured in Chrome 152 before this: the row was set at 12 px
+   against the head's 14, its text 1 px under its top and 6 px over its bottom. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;
@@ -1208,6 +1209,16 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+/* A Conversation card head's author with no usable avatar keeps the avatar's box, empty,
+   so the timeline's line and the commits beside it line up with every head ("Conversation
+   Timeline"). */
+.github-pull-avatar-slot {
+  display: inline-block;
+  flex: none;
+  align-self: center;
+  width: 18px;
+  height: 18px;
 }
 /* In the pull request's state row the author gives way after the action and before the
    merge (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of

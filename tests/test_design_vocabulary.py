@@ -2161,7 +2161,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
     # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus, at its row's size.
+    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
+    # check's are at their row's size; a commit hash is one step below its row (below).
     for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
@@ -2183,9 +2184,16 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
         github[".github-pull-commit .github-pull-age"]
         == (github[".github-pull-card-head .github-pull-age"])
     )
-    assert 'h("span", { class: "github-pull-quiet" }, ["committed "' not in page
+    # The row's when is a plain span in the row's type; the Chrome test holds its ink.
+    assert 'h("span", {}, ["committed ", age(event.committed_at)])' in page
     # The events the line joins: the description, each comment and review, and each commit.
     assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
+    # Their heads keep an avatar's slot for an author without one; the header and Pulls
+    # rows do not ask for it.
+    assert page.count("{ slot: true }") == 2, "the description's head and a card's"
+    slot = github[".github-pull-avatar-slot"]
+    avatar = github[".github-pull-avatar"]
+    assert (slot["width"], slot["height"]) == (avatar["width"], avatar["height"])
     node = github[".github-pull-commit::after"]
     assert (node["border-radius"], node["background"]) == ("var(--radius-circle)", "var(--muted)")
     # A button that moves the pin looks as a link does: no primitive's border or fill.

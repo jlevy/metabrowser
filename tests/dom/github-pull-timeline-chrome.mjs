@@ -22,6 +22,8 @@
 //   age as a comment's, and its hash one step below, as a revision is beside body text;
 // - a commit row's text sits in its row as a card head's sits in its card, with as much
 //   room above it as below, and one gap between every two events;
+// - every card head's avatar, or the empty slot of one for an author without one, is on
+//   the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
 //   node to the next, and is drawn nowhere else: not above the first event, past the last,
 //   or across anything that is not an event. Each commit has a node on the line, at its
@@ -191,8 +193,13 @@ const MEASURE = `async (arrangement, width, theme) => {
   await handle.ready;
   handle.activate();
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  // The commits took 34 to 40 ms to arrive on a Mac (\`waited\` in each record); the bound
+  // is the shared waitFor's 20 s (chrome-session.mjs), since this session's 48 s bound is
+  // set for a loaded CI runner, on which an inner bound must not fire first.
+  const began = performance.now();
   const until = async (test, what) => {
-    for (let turn = 0; turn < 400; turn += 1) {
+    const deadline = performance.now() + 20000;
+    while (performance.now() < deadline) {
       if (test()) return;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -212,10 +219,14 @@ const MEASURE = `async (arrangement, width, theme) => {
       "the commits among the cards",
     );
   }
-  // Every card head with the avatar slot authorLabel draws, without a request: the
-  // recorded authors have no avatar URL, and most authors have one.
-  for (const identity of body().querySelectorAll(":scope > .github-pull-card > .github-pull-card-head .github-pull-identity")) {
-    if (!identity.querySelector(".github-pull-avatar")) {
+  const waited = Math.round(performance.now() - began);
+  // The recorded authors have no avatar URL, so each head draws the avatar's empty slot.
+  // Most authors have one, so every head but the description's gets the image authorLabel
+  // draws in that slot, without a request; the description keeps its slot.
+  const heads = [...body().querySelectorAll(":scope > .github-pull-card > .github-pull-card-head")];
+  for (const head of heads.slice(1)) {
+    const slot = head.querySelector(".github-pull-identity > .github-pull-avatar-slot");
+    if (slot) {
       const image = document.createElement("img");
       image.className = "github-pull-avatar";
       image.alt = "";
@@ -224,7 +235,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       image.src = "data:image/svg+xml," + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#8a8f98"/></svg>',
       );
-      identity.prepend(image);
+      slot.replaceWith(image);
     }
   }
   await Promise.allSettled([...container.querySelectorAll(".github-pull-avatar")].map((image) => image.decode()));
@@ -316,9 +327,10 @@ const MEASURE = `async (arrangement, width, theme) => {
     } else if (kind === "card") {
       const head = node.querySelector(":scope > .github-pull-card-head");
       const author = head?.querySelector(".github-pull-author");
-      const avatar = head?.querySelector(".github-pull-avatar");
+      const avatar = head?.querySelector(".github-pull-avatar, .github-pull-avatar-slot");
       item.text = author ? firstLine(author) : null;
       item.avatar = avatar ? box(avatar) : null;
+      item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
       item.headOnly = node.children.length === 1;
       item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
     }
@@ -331,6 +343,7 @@ const MEASURE = `async (arrangement, width, theme) => {
     theme,
     arrangement,
     timelineAsked,
+    waited,
     gap,
     navSize,
     items,
@@ -533,6 +546,27 @@ function hold(measured, image) {
     parts.length > 0 && parts.every((part) => Math.abs(part.x - rail) <= 0.5),
     `${JSON.stringify(parts.map((part) => part.x))} against ${rail}`,
   );
+  // Every card head, the description's among them with only the avatar's empty slot, has
+  // its avatar or slot on the line and its name where the commits' subjects start.
+  check(
+    `${where}: the head with no avatar keeps the avatar's slot`,
+    cards.filter((card) => card.slot).length === 1 && cards[0].slot,
+    JSON.stringify(cards.map((card) => card.slot)),
+  );
+  for (const card of cards) {
+    const label = `${where}: card "${card.label}"`;
+    const center = card.avatar ? (card.avatar.left + card.avatar.right) / 2 : Number.NaN;
+    check(
+      `${label} has its ${card.slot ? "avatar's slot" : "avatar"} on the line`,
+      Math.abs(center - rail) <= 0.5,
+      `${center} against ${rail}`,
+    );
+    check(
+      `${label}'s name starts where the commits' subjects do`,
+      card.text !== null && commits.every((row) => Math.abs(row.text.left - card.text.left) < 0.5),
+      `${card.text?.left} against ${commits.map((row) => row.text.left)}`,
+    );
+  }
   for (const row of commits) {
     const node = row.after;
     const label = `${where}: commit "${row.label}"`;

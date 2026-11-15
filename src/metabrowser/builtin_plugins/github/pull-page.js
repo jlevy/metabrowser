@@ -3008,15 +3008,22 @@ export function avatarUrl(value) {
  * the network again, and when the header built its actor on every tab switch and poll the
  * unchanged avatar had no image for that round trip after each one.
  *
+ * A Conversation card head passes `slot`: an author with no usable avatar then keeps the
+ * avatar's empty box, so the name starts where its neighbors' names do and the timeline's
+ * line meets the head where an avatar would be (docs/design-system.md, "Conversation
+ * Timeline"). The header and Pulls rows leave the name where it is.
+ *
  * @param {string} name
  * @param {unknown} url
  * @param {string} [className]
- * @param {{loading?: "lazy" | "eager"}} [options]
+ * @param {{loading?: "lazy" | "eager", slot?: boolean}} [options]
  */
-export function authorLabel(name, url, className = "", { loading = "lazy" } = {}) {
+export function authorLabel(name, url, className = "", { loading = "lazy", slot = false } = {}) {
   const label = h("span", { class: "github-pull-identity" });
   const safe = avatarUrl(url);
-  if (safe !== null) {
+  if (safe === null && slot) {
+    label.append(h("span", { class: "github-pull-avatar-slot", "aria-hidden": "true" }));
+  } else if (safe !== null) {
     const image = h("img", {
       class: "github-pull-avatar",
       alt: "",
@@ -4845,7 +4852,7 @@ export function mountPullPage(container, ctx, mb) {
       () =>
         h("section", { class: "page-card github-pull-card github-pull-event" }, [
           h("div", { class: "github-pull-card-head" }, [
-            authorLabel(pull.author, pull.avatar),
+            authorLabel(pull.author, pull.avatar, "", { slot: true }),
             " opened ",
             age(pull.created),
           ]),
@@ -4869,7 +4876,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const item of model.corePreview ? [] : model.timeline) {
       const card = section(["card", pull.state, item], () => {
         const head = h("div", { class: "github-pull-card-head" }, [
-          authorLabel(item.author, item.avatar),
+          authorLabel(item.author, item.avatar, "", { slot: true }),
         ]);
         if (item.review !== null) {
           head.append(" ", badge(item.review.state, item.review.label, "review"));

@@ -71,8 +71,9 @@ request must prove.
 ## Non-Goals
 
 - **Follow-ups found in review,** which have their own beads: `mb-cz9v` (the wiki
-  parser’s heading regexes) and `mb-o11s` (KPress’s `:root` aliases replacing the
-  shell’s font tokens).
+  parser’s heading regexes), `mb-o11s` (KPress’s `:root` aliases replacing the shell’s
+  font tokens), and `mb-yp9p` (commits that answer after a pull request’s Conversation
+  has painted go after everything, Review comments included, rather than in time order).
 - **Visual restyling** beyond what each bead names.
 - **New stack data:** the stack groups use the native stack envelope the Pulls tab
   already reads (`builtin_plugins/github/pull-stacks.js`).
@@ -242,8 +243,12 @@ it:
   comment’s.
 - **Spacing:** commits and comments are spaced consistently, with room above each run of
   commits.
-- **The line:** a timeline line runs down the Conversation tab and joins every event,
-  following the structure of GitHub’s pull request page but not its assets or brand.
+- **The line:** a timeline line runs down the Conversation tab and joins every two
+  adjacent events, following the structure of GitHub’s pull request page but not its
+  assets or brand. It breaks wherever something that is not an event, such as Review
+  comments or a note, stands between two events, so commits that answer after the
+  conversation has painted, which go after everything, get a run of their own until
+  `mb-yp9p` puts them in time order.
 - **Docs:** the rule is stated once in `docs/design-system.md`, using existing tokens.
 
 ### Sans Headings
@@ -343,7 +348,7 @@ reason. This plan moves to `docs/project/specs/done/` when pull request 7 merges
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`).
   - In flight: #437 (`mb-a9be`), #438 (`mb-k838`).
-  - Deferred: `mb-cz9v`, `mb-o11s`.
+  - Deferred: `mb-cz9v`, `mb-o11s`, `mb-yp9p`.
 - **Project docs:**
   - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
   - [Design system](../../../design-system.md)

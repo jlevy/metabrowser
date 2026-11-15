@@ -10,8 +10,9 @@ places the page puts commits.
 
 Before the timeline line, in Chrome 152 on a Mac: a commit row was set at 12 px against a
 card head's 14 px, its glyphs sat 13 px below the event above where a card head's sat 16,
-1 px under its row's top and 6 px over its bottom, and nothing joined the events: 209 of
-the session's 307 checks failed.
+1 px under its row's top and 6 px over its bottom, and nothing joined the events. Before the
+avatar's slot, a card head whose author had no avatar started its name 22 px left of the
+commits' subjects.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -25,9 +26,9 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser import kpress_adapter
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
+from tests.test_github_pull_text_chrome import _kpress_static  # pyright: ignore[reportPrivateUsage]
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-timeline-chrome.mjs"
 # A cold Chrome start in CI has taken 28.2 s (tests/test_github_pull_header_chrome.py, whose
@@ -38,26 +39,6 @@ SESSION_TIMEOUT_S = 48
 # tests/test_process_group.py holds the sum under the module's timeout.
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
-
-
-def _kpress_static(into: Path) -> list[str]:
-    """KPress's tokens and the faces they name, and the document stylesheets a text loads."""
-
-    sheets = [
-        str(asset["path"])
-        for asset in kpress_adapter.document_stylesheets()["assets"]
-        if asset.get("loading") == "stylesheet"
-    ]
-    for sheet in {"css/style-tokens.css", *sheets}:
-        target = into / sheet
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(kpress_adapter.get_kpress_static_asset(sheet).content)
-    tokens = (into / "css" / "style-tokens.css").read_text(encoding="utf-8")
-    for relative in sorted(set(re.findall(r'url\("\.\./([^"]+)"\)', tokens))):
-        target = into / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(kpress_adapter.get_kpress_static_asset(relative).content)
-    return sheets
 
 
 def test_commits_and_cards_share_one_type_and_one_line_in_chrome(
