@@ -1146,7 +1146,7 @@ async def spawn_git_process(
     own_group = chosen.own_process_group and os.name == "posix"
 
     async def spawn() -> asyncio.subprocess.Process:
-        return await asyncio.create_subprocess_exec(
+        proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
@@ -1157,6 +1157,9 @@ async def spawn_git_process(
             start_new_session=own_group,
             pass_fds=tuple(pass_fds),
         )
+        # Every process the request started, a spawn its cancellation then kills included.
+        server_timing.git_process_started()
+        return proc
 
     # A group is registered as soon as it exists, so a stop that cannot unwind kills it
     # too, and a stop that begins while it is starting waits for it.
