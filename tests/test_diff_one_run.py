@@ -177,7 +177,7 @@ def test_a_folders_diff_settings_reach_the_one_run_as_they_reached_the_two(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Prefixes and an external driver, which the patch runs pin away, and the context, the
-    algorithm, and an order file, which a folder's runs honor, the listing's order too."""
+    algorithm, an order file, and a textconv driver, which a folder's runs honor."""
     root = tmp_path / "configured"
     root.mkdir()
     base, target = build_diff_fixture(root)
@@ -193,8 +193,13 @@ def test_a_folders_diff_settings_reach_the_one_run_as_they_reached_the_two(
         ("diff.context", "1"),
         ("diff.algorithm", "patience"),
         ("diff.orderFile", str(order)),
+        ("diff.upper.textconv", "tr a-z A-Z <"),
     ):
         git(root, "config", key, value)
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "attributes").write_text("*.md diff=upper\n*.py diff=upper\n")
+    shown = git(root, "diff", "--no-ext-diff", base, target, "--", "new.md")
+    assert b"+BODY" in shown, "the textconv driver runs"
     _assert_one_run_is_the_two(root, {"left": base, "right": target}, monkeypatch)
     monkeypatch.undo()
     _both(root, {"left": base, "right": target}, _every_ask)
