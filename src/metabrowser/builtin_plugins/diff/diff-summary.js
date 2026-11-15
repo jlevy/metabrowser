@@ -350,9 +350,15 @@ export function mountSummaryTree(host) {
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
-      // The tooltip says what the folder's sums leave out, as its accessible name does.
+      // The tooltip says what the folder's sums leave out, as its accessible name does, and
+      // nothing when they leave nothing out: its name is on the row (docs/design-system.md,
+      // "Tooltips Add Information").
       const missing = host.tree.missingCounts(row, host.formatCount);
-      element.dataset.tipText = missing === "" ? row.name : `${row.name}, ${missing}`;
+      if (missing === "") {
+        delete element.dataset.tipText;
+      } else {
+        element.dataset.tipText = `${row.name}, ${missing}`;
+      }
     } else {
       element.dataset.tipText =
         row.previousName === null ? row.display : `${row.display}, from ${row.previousName}`;

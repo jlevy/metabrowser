@@ -263,10 +263,14 @@ glyph itself.
 | `Delete` | `Delete` | Delete | `Delete` |
 | `F2` | `F2` | F2 | `F2` |
 | `Shift`, a single key only | `Shift` | Shift | `Shift` |
+| Control with `N` or `P` | `⌃N` on macOS and iOS, `Ctrl+N` elsewhere | Control N | `Control+N` |
 
 `Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
 `appendKey()`, which renders a key that is not a binding, such as one named in a
 sentence. No binding may use it.
+A [Control chord](#control-chords) is one keycap, written as its platform writes it; the
+formatter reads the platform from the page’s navigator, and without one, as in a
+browserless session, writes `Ctrl+N`.
 
 The `.kbd` text transform produces the visible caps treatment; source markup keeps the
 mixed-case label in this table.
@@ -283,9 +287,11 @@ ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
-The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `R`,
-and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)). The letters work outside text
-fields and dialogs, with or without Shift.
+The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `P`,
+and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)): Files and Pulls take the first
+letter of their label, and Commits takes `H`, for commit History: `C` is Charts’ and
+Conversation’s, view tabs that a shell letter, reserved everywhere, would leave without
+a key. The letters work outside text fields and dialogs, with or without Shift.
 A letter opens its tab, or keeps the tab already shown, and moves focus to the panel’s
 roving row, so `F` then `↓` walks the file tree; while the panel has no rows yet, the
 tab button takes focus.
@@ -293,8 +299,10 @@ A missing tab has no target, so its letter does nothing and stays reserved.
 
 #### Binding Grammar and Accessibility
 
-- Every shortcut is a single key.
-  No binding uses Ctrl, Alt, or Meta, and the registry rejects a binding that states any
+- Every shortcut is a single key, but for the two [Control chords](#control-chords),
+  Control-N and Control-P. A binding declares Control with `control: true`, and the
+  registry rejects it with any other key.
+  No binding uses Alt or Meta, and the registry rejects a binding that states any other
   modifier policy, Shift included.
 - Shift never changes what a key means: a letter matches in either case, a named key
   such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
@@ -1192,7 +1200,7 @@ A rename in a diff reads the same way, `old → new`.
 | --- | --- |
 | Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
-| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
+| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
 | Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
@@ -1204,8 +1212,7 @@ The rendered group, for a pull request from `wip` into `topic`:
 ```html
 <span class="merge-refs" dir="ltr">
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
-  <span class="merge-refs-arrow" role="img" aria-label="merges into"
-        data-tip-text="wip merges into topic"> → </span>
+  <span class="merge-refs-arrow" role="img" aria-label="merges into"> → </span>
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
 </span>
 ```
@@ -1471,11 +1478,11 @@ The menu shows titles, ordinals, and PR numbers, ordered from stack top to base,
 the current member marked.
 Its links are created only when opened.
 Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
-On a selected PR, `N` opens the next member toward the stack top and `P` the previous
-one toward its base, with or without Shift; Help lists them in its Pull request stack
-group. A focused Pulls row keeps `J` and `K` for its own rows.
-Editors, dialogs, unknown membership, a header still held over the loading page, and
-inactive pages keep their normal keyboard behavior.
+On a selected PR, Control-N opens the next member toward the stack top and Control-P the
+previous one toward its base, with or without Shift; Help lists them in its Pull request
+stack group ([Control Chords](#control-chords)). A focused Pulls row keeps `J` and `K`
+for its own rows. Editors, dialogs, unknown membership, a header still held over the
+loading page, and inactive pages keep their normal keyboard behavior.
 Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
@@ -1682,14 +1689,17 @@ A row names no branches: the pull request’s page names them, head → base, as
 (`mb-ghff`). A stack member’s place in its stack comes first on the metadata line,
 before its number and in the number’s size and ink: “1/6 · #455 · jlevy”, its position
 bold (`mb-dzsi`). It has no stack icon of its own: the stack’s row it sits under has
-one. A second stack’s position is named by its number, the tooltip names the stack and
-every position ([Stacks](#stacks)), and a place too wide for its line is cut short with
-an ellipsis, the number whole after it.
-The title’s line holds only the title and the age, so a member’s title has the room a
-first-level row’s has, less its one indent: at the default 299 px pane, 166 px, where a
-position on the title line left it 65 to 125. Their shared repository snapshot is
-indexed once by PR number; rows make no stack requests, and enrichment updates retain
-the row and any focused changed-file tree.
+one. A second stack’s position is named by its number, the place’s accessible name names
+the stack and every position ([Stacks](#stacks)), and a place too wide for its line is
+cut short with an ellipsis, the number whole after it.
+Nothing in the Pulls column has a tooltip: a pull request’s row, a stack’s row, and
+their parts say what they say on the row, in their accessible names, and on the page
+they open ([Tooltips Add Information](#tooltips-add-information)). The title’s line
+holds only the title and the age, so a member’s title has the room a first-level row’s
+has, less its one indent: at the default 299 px pane, 166 px, where a position on the
+title line left it 65 to 125. Their shared repository snapshot is indexed once by PR
+number; rows make no stack requests, and enrichment updates retain the row and any
+focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1747,7 +1757,7 @@ Four states, each with the shape GitHub gives it and a color token in GitHub’s
 
 The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
 one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
-The shapes differ. In the list, the icon’s accessible name and tooltip give the state.
+The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
@@ -1783,11 +1793,11 @@ the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
-| Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
+| Updated time | `metabrowser.formatAge`; the page gives the exact time | [Age](#age); the Pulls column has no tooltips |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
-| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in the tooltip ([Stacks](#stacks)); the stack’s row above it has the icon |
+| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in its accessible name ([Stacks](#stacks)); the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1818,7 +1828,7 @@ Space toggles the focused pull request’s changed files in place.
 Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
 Space, Right, and Left open, close, enter, and leave it as a folder’s
 ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
-rows with or without Shift; walking a pull request’s stack is `N` and `P`
+rows with or without Shift; walking a pull request’s stack is Control-N and Control-P
 ([The Pull Request Page](#the-pull-request-page)). Help reads the `pull-requests` and
 `pull-stack` groups of the shortcut registry, and no surface here names a key.
 
@@ -1867,12 +1877,13 @@ surface keeps a copy of either.
   does, and a press opens or closes it as a folder’s does.
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
-  The stack button carries it, and its accessible name is “Navigate” before it.
-  The glyph in a Pulls row’s place has no words of its own: the place’s tip and
-  accessible name name each stack, “Stack #300, position 2 of 2”. A stack group’s row
-  says its size, how many the list holds when that is fewer, and how many of those sit
-  under an earlier stack: “Stack #286, 4 pull requests, 3 in this list, 1 under Stack
-  #290”.
+  The stack button carries it, as its glyph and position do not name the stack, and its
+  accessible name is “Navigate” before it.
+  The Pulls column has no tooltips: the glyph in a Pulls row’s place has no words of its
+  own, and the place’s accessible name names each stack, “Stack #300, position 2 of 2”.
+  A stack group’s row’s accessible name says its size, how many the list holds when that
+  is fewer, and how many of those sit under an earlier stack: “Stack #286, 4 pull
+  requests, 3 in this list, 1 under Stack #290”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -1891,7 +1902,7 @@ spare.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
   A later stack’s row still counts it among the pull requests the list holds, and its
-  tip says where it sits.
+  accessible name says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
   places name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
@@ -1947,16 +1958,17 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 ### The Rules
 
 - **Letters for known meanings.** A letter names something a reader can guess and keep:
-  `F` for Files, `R` for pull Requests, `H` for commit History, `T` for the file finder,
-  `U` for up. A letter means the same thing wherever it is live.
+  `F` for Files, `P` for Pulls, `H` for commit History, `T` for the file finder, `U` for
+  up. A letter means the same thing wherever it is live.
 - **Reusable semantics.** Some letters are verbs that apply wherever their meaning does,
   as Vim’s motions do.
   `J` and `K` move down and up a row in every row list.
-  `N` and `P` go to the next and previous item one level up: today the pull requests of
-  a stack, and on any later page with its own next and previous, that page’s. `V` and
-  `S` switch a file between its rendered view and its source, whatever its tabs are
-  called. A page with a natural next and previous uses `N` and `P`, a rendered view is
-  always `V`, and no other meaning takes those letters.
+  Control-N and Control-P go to the next and previous item one level up: today the pull
+  requests of a stack, and on any later page with its own next and previous, that
+  page’s. `V` and `S` switch a file between its rendered view and its source, whatever
+  its tabs are called.
+  A page with a natural next and previous uses Control-N and Control-P, a rendered view
+  is always `V`, and no other meaning takes those keys.
 - **Numbers for situational items.** Links and one-off actions that depend on what the
   screen shows, such as the Files tab’s filters or a pull request’s Refresh, take `1`,
   `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no `0`,
@@ -1971,15 +1983,17 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   chooser, of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button.
-- **One key and no modifier.** Every shortcut is a single key, Shift changes nothing,
-  and Ctrl, Alt, and Meta stay the browser’s
+- **One key, and Control only for next and previous.** Every shortcut is a single key
+  but Control-N and Control-P ([Control Chords](#control-chords)), Shift changes
+  nothing, and Command, Option, and every other Control chord stay the browser’s
   ([Binding Grammar and Accessibility](#binding-grammar-and-accessibility)).
 
 ### Scopes and Collisions
 
-- **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`,
-  `U`, and `W` keep their meaning even where they do nothing, so a letter never means
-  one thing on one screen and another elsewhere.
+- **Shell letters are reserved everywhere.** `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`
+  keep their meaning even where they do nothing, so a letter never means one thing on
+  one screen and another elsewhere.
+  Control-N and Control-P reserve no letter: a view’s key is one letter alone.
   A manifest whose view takes one is refused: the loader rejects it, the plugin does not
   load, and `metab --doctor` reports why.
   The plugin shortcut surface refuses one too, with a console warning, and the control
@@ -2000,6 +2014,9 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   up, and `S` is Source.
 - **Numbers are scoped to the screen.** The live numbered controls, the navigation
   pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
+- **An open menu’s letters are its own.** While a menu whose rows have letters is open
+  and has focus, those letters choose its rows, ahead of the shell’s; everywhere else
+  the shell’s letters hold ([Keys in a Menu](#keys-in-a-menu)).
 
 ### The Keymap
 
@@ -2008,10 +2025,10 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 | `?` | Help | Always | Punctuation, by convention |
 | `T` or `/` | Quick Search, the file finder | Always | Letter |
 | `F` | The Files tab | Always | Letter, main tab |
-| `R` | The Pulls tab: pull Requests | The tab is drawn: a hosted origin | Letter, main tab |
+| `P` | The Pulls tab | The tab is drawn: a hosted origin | Letter, main tab |
 | `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
-| `N` or `P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open | Reusable |
+| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields | Reusable, Control chord |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown | Letter |
 | `W` | The branch or tag switcher | A mirror’s pin is served | Letter, GitHub’s convention |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown | Reusable, view tab |
@@ -2044,12 +2061,13 @@ Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
 ### Browser and App Keys
 
 A key held with Command, Control, or Option belongs to the browser, and in the macOS app
-to the app’s menus. No shortcut above uses one, and no page handler takes one: a handler
-that cancelled a chord would keep it from the browser, and the app’s web view hands
-every key to the page before its menus.
-`tests/test_modified_keys.py` lists each `keydown` handler and what leaves chords alone
-in it. The one exception is Option-Tab inside a dialog or an open menu: its focus trap
-keeps it, because Safari moves focus with Option-Tab.
+to the app’s menus, but for the two [Control chords](#control-chords) the keymap lists.
+No other shortcut uses one, and no page handler takes one: a handler that cancelled a
+chord would keep it from the browser, and the app’s web view hands every key to the page
+before its menus. `tests/test_modified_keys.py` lists each `keydown` handler and what
+leaves chords alone in it.
+The other exception is Option-Tab inside a dialog or an open menu: its focus trap keeps
+it, because Safari moves focus with Option-Tab.
 
 | Key | Meaning | Where |
 | --- | --- | --- |
@@ -2065,6 +2083,40 @@ waits for the start under way, or, after the server failed, restarts it as Retry
 ([apps/macos/README.md](../apps/macos/README.md#the-window) has each case).
 The app’s other keys are the standard ones of its menus: Back and Forward are Command-\[
 and Command-\], and Restart Server is Command-Option-R.
+
+### Control Chords
+
+Control-N and Control-P are the only chords the registry binds.
+They walk a pull request’s stack: Control-N to the next member toward the stack’s top,
+Control-P to the previous one toward its base.
+
+- **Why these two.** The letters alone are worth more to the keymap than one walk
+  through a stack: `N` is free, and `P` opens the Pulls tab.
+  With Control they mean next and previous in Emacs, readline, and the macOS text
+  system, which moves a field’s caret down and up a line with them, so the chords keep
+  the meaning they have elsewhere.
+- **Why Control, and where it reaches the page.** On macOS, Command is the command key:
+  the macOS app’s menus and the browsers there give Control with `N` or `P` no command,
+  so both chords reach the page.
+  On Windows and Linux, Control is the browser’s command key.
+  Chrome keeps Ctrl+N for a new window, and a page never sees it, so there only Ctrl+P
+  walks the stack, in place of the browser’s Print while a stack’s pull request is open;
+  Print stays in the browser’s menu.
+- **What the registry allows.** A binding declares Control with `control: true`, and
+  only with `N` or `P` (`CONTROL_CHORD_KEYS` in `static/keyboard-shortcuts.js`). The
+  chord matches Control held alone: Alt or Meta with it makes another chord, and AltGr,
+  which reports Control and Alt, types its character.
+  It never matches in a text field, even for a command that opted in, since the field
+  moves its caret with it.
+  Shift changes nothing, as for every key.
+  A chord reserves no letter, since a view’s key is one letter alone.
+- **How it is written.** Help, the Shift strip, and a badge write a chord as its
+  platform does, `⌃N` on macOS and iOS and `Ctrl+N` elsewhere; it is spoken “Control N”
+  and announced as `Control+N` ([Canonical Key Names](#canonical-key-names)).
+- **Another chord** is a design decision made here first.
+  It must keep the meaning its chord has elsewhere and take no command from the
+  platform, on macOS at least.
+  Command and Option stay the browser’s and the app’s.
 
 ### Help and the Reveal
 
@@ -2110,9 +2162,11 @@ menu or radiogroup, stays on that component’s root.
 If that behavior is advertised in Help or another hint surface, its presentation still
 comes from a registered descriptor.
 Document-level commands ignore editable controls, composition, and previously handled
-events. They never match while Ctrl, Alt, or Meta is held, and inside a text field Shift
-with an arrow, `Home`, or `End` belongs to the field, where it extends the selection.
-They prevent browser behavior only after an enabled handler reports that it acted.
+events. They never match while Alt or Meta is held, nor while Ctrl is unless the binding
+is a [Control chord](#control-chords), which never matches in a text field; and inside a
+text field Shift with an arrow, `Home`, or `End` belongs to the field, where it extends
+the selection. They prevent browser behavior only after an enabled handler reports that
+it acted.
 
 A command may opt back into an editable target only for a key that field does not
 already own. A combobox may claim the arrow keys, `Enter`, and `Escape`, because none of
@@ -2162,13 +2216,14 @@ Holding Shift alone outside a text field for the hold threshold reveals the keys
 root gains `data-key-reveal`, each live command’s first live target carries one
 `.kbd.kbd-badge` keycap, hidden from assistive technology, and the shortcut strip shows
 a second layer listing the `reveal` surface’s live commands, with every binding of an
-item that combines several, such as `N` or `P`. A key the registry handles keeps the
-reveal and moves the badges to what is live after it; any other key, a modifier, a
-pointer press, a wheel, the window losing focus, a hidden page, focus entering a text
-field, or a lost `keyup` ends it.
-Another key within the threshold, or pointer travel past the slop, keeps the reveal from
-starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without a
-flash. The reveal never calls `preventDefault()` and never announces itself; badges and
+item that combines several, such as Control-N or Control-P. A key the registry handles
+keeps the reveal and moves the badges to what is live after it; any other key, a chord,
+even a Control chord the registry handles, a modifier, a pointer press, a wheel, the
+window losing focus, a hidden page, focus entering a text field, or a lost `keyup` ends
+it. Another key within the threshold, or pointer travel past the slop, keeps the reveal
+from starting, so `?`, capitals, Shift+wheel, and Shift+click keep their meaning without
+a flash.
+The reveal never calls `preventDefault()` and never announces itself; badges and
 the revealed strip exist only while it shows.
 `static/key-reveal.js` is the state machine, and `static/shell-keymap.js` holds the
 shell’s targeted commands.
@@ -2284,8 +2339,8 @@ its Tab order and vertical navigation cannot silently fork this contract.
 Every presented command declares:
 
 - a stable identifier and scope;
-- semantic bindings, each one key with no modifier policy, and an explicit repeat
-  policy;
+- semantic bindings, each one key, or a [Control chord](#control-chords) declared with
+  `control: true`, with no other modifier policy, and an explicit repeat policy;
 - a group identifier whose heading, context sentence, and order come from one group
   registry;
 - one sentence-case action label with no terminal punctuation;
@@ -2511,8 +2566,10 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
-The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
-rotated downward; do not substitute a text caret or shrink it to fit the label.
+Opening one puts focus on its checked row, and closing it gives focus back to the
+trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+disclosure chevron at the standard chrome glyph size, rotated downward; do not
+substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
@@ -2530,8 +2587,14 @@ on a surface where scanning all values matters.
 Short sets use the joined layout.
 Sets that can exceed one line, such as agent-log event types, use the wrapping
 chip-cluster layout; segmented controls never wrap.
-A `.chip-menu` costs a click to see the options but stays one trigger wide however many
-there are, so use it when the set is unbounded or the pane cannot afford the full group.
+The one exception is a joined group in a navigation toolbar, whose pane can be dragged
+narrower than a short set: while its whole line cannot hold it joined, it takes the
+cluster layout, and it takes the joined layout back once its line can.
+`filterControls.bind` keeps every such group fitted, and `data-fit="wrap"` on the group
+is how it asks for the cluster; the Pulls tab’s Show group is one
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). A `.chip-menu` costs a click to
+see the options but stays one trigger wide however many there are, so use it when the
+set is unbounded or the pane cannot afford the full group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.
@@ -2622,8 +2685,10 @@ Clear sits beside the chevron and shows while any filter is set, Show ignored in
 it resets them all, Show ignored back on, and keeps the grouping.
 
 - **Values.** No grouping is the default and shows the one tree.
-  Age splits by modification time and File type by the registry’s display groups.
-  A Git revision has no modification times, so it offers no Age.
+  By age splits by modification time and By file type by the registry’s display groups.
+  Each row reads as the closed trigger does when it is chosen, so the menu and the
+  trigger never name one value two ways.
+  A Git revision has no modification times, so it offers no By age.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
@@ -2642,14 +2707,15 @@ it resets them all, Show ignored back on, and keeps the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
-- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
-  Other, since a link has no file type, and Age places it by its own modification time.
-  A file filter set beside the grouping leaves links out, as it does without one.
+- **Symbolic links.** Grouping keeps them, as No grouping does: By file type puts a link
+  in Other, since a link has no file type, and By age places it by its own modification
+  time. A file filter set beside the grouping leaves links out, as it does without one.
   On a Git pin a link is a blob, counted and grouped by its name as a file is.
 - **Keys.** The drawer’s filters keep their numbers while it is closed.
   Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
   the order the triggers take when it opens, and a filter’s number opens the drawer with
-  its menu.
+  its menu. Group by’s rows take `N`, `A`, and `T` while its menu is open and has focus
+  ([Keys in a Menu](#keys-in-a-menu)).
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
@@ -2664,7 +2730,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
   Clear and the badge showing, in the default font set.
   The badge sits against the chevron to make that room; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`.
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
+  system font set, the row wraps: Show ignored moves down, then Clear and the chevron
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
@@ -3105,7 +3173,79 @@ its tooltip does for a pointer.
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
 A use site does not pad, recolor, or re-letter it.
+In the navigation, a pane too narrow for its tabs wraps the bar between them
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Toolbars Wrap
+
+**A navigation toolbar that its pane is too narrow for wraps between its controls.
+Nothing in it is cut, scrolled out of reach, or cut short.** The pane drags down to 180
+px, which leaves its toolbars 179 px, and the system font set’s face is wider than the
+default one’s, so no toolbar can promise one line.
+
+The rule covers every toolbar in the navigation: the Files filter row, the Pulls
+filters, the Commits tally, which stands in the toolbar slot, and the tab bar over them.
+The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
+`static/styles.css`, which a plugin whose toolbar stands in the slot gives its row.
+
+- **One line while it fits.** A toolbar whose controls fit one line is that line, and
+  the toolbar slot’s height, `--nav-toolbar-height`, as it was before the rule.
+  A toolbar wraps only when its controls do not fit, and never adds space when they do.
+- **Where it breaks.** Between controls, in their order, each line as full as it can be,
+  so a control moves down only when it must.
+  The leading controls stay first.
+  The trailing group, which takes the line’s end with an auto margin, moves down whole
+  and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
+  The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
+  and the tab bar between its tabs.
+- **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
+  and `--nav-toolbar-gap` apart.
+  That is also the gap between controls along a line and above the first line and below
+  the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
+  it grows by a line and a gap for each line it adds.
+  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centred in
+  a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
+  is cramped and none stands taller than the rest.
+  An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
+  the lines. The Commits tally is text, so its lines are its line height apart,
+  `--nav-metadata-line-height`, as any metadata line’s are; a tab is its own line, so
+  the tab bar’s lines are a tab’s height apart.
+- **A segmented group.** One that its whole line cannot hold joined takes the cluster
+  layout until it can ([Groups Or Dropdowns](#groups-or-dropdowns)). Whether it fits is
+  measured on a copy in the joined layout, so the answer at one width is the same
+  whichever layout the group shows, and the two cannot alternate near the break.
+  A change to its text is fitted before it paints, and a change of size in the next
+  frame, which a drag across the break shows for one frame.
+- **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
+  them in their Tab order, and their keyboard numbers stay theirs.
+
+Measured in headless Chrome on 2026-11-15, the widths each toolbar is one line from,
+default font set / system font set:
+
+| Toolbar | One line from |
+| --- | --- |
+| Tab bar: Files, Pulls, Commits | 196 / 216 px |
+| Files, no filter set | 246 / 262 px |
+| Files, a filter set, “No grouping”, its widest | 298 / 317 px |
+| Pulls: Show and Reload; Open 100, Closed 2, All 102 | 276 / 308 px |
+| Pulls: Show and Reload; four-digit tallies | 303 / 341 px |
+| Commits: “5 commits begun 3mo ago” | 179 / 186 px |
+| Commits: “123,456 commits begun 12mo ago” | 211 / 238 px |
+
+The Pulls Show group is joined from 218 / 245 px with three-digit tallies (Open 100,
+Closed 200, All 300) and from 244 / 278 px with four (1,234, 5,678, 6,912), and the
+cluster below. At the narrowest pane, 179 px, with a filter set, the Files row is three
+lines: Group by, then Show ignored, then Clear and the chevron.
+The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
+holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
+`tests/test_files_tab_chrome.py` the Files row in every Group by and filter state, with
+its numbers, Tab order, and drawer at the narrowest;
+`tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and four-digit
+tallies, and the Show group’s two layouts, its observers, and their disposal; and
+`tests/test_nav_metadata_chrome.py` the Commits tally and the tab bar.
+`tests/dom/filter-controls-behavior.js` holds the fit and its observers’ lifecycle
+without a browser.
 
 ### Navigation Metadata Line
 
@@ -3142,10 +3282,12 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
   failure. Text wraps only when it is longer than the pane, and then the band grows by
-  the lines it needs: the Files split totals in a narrow pane (tracked as H54), and a
-  Pulls remedy, which keeps its whole command, as the pull request header’s does; at the
-  default pane width the remedies for an unreachable GitHub, a gh that is not signed in,
-  and a missing gh each take a second line.
+  the lines it needs: the Files split totals in a narrow pane (tracked as H54), a Pulls
+  remedy, which keeps its whole command, as the pull request header’s does, and the
+  Commits tally in the toolbar slot, between its phrases, the slot growing with it
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)); at the default pane width the
+  remedies for an unreachable GitHub, a gh that is not signed in, and a missing gh each
+  take a second line.
 
 The built-in Pulls tab uses the class; its stylesheet lays out only the lines’ spans.
 No stylesheet but the component’s sets anything on a line element beyond how a long word
@@ -3334,6 +3476,48 @@ KPress’s radii but not its type scale.
 `data-tip-text` is read by a delegated pointer listener on the document, so it works on
 markup that does not exist yet, including a plugin’s.
 
+### Tooltips Add Information
+
+**A tooltip says something the reader cannot already see, or it is not there**
+(`mb-8mpo`). A tooltip that repeats visible text is a second copy of what the reader
+just read, appearing under the pointer on its own timer, and it is removed.
+A tooltip earns its place by one of these:
+
+| Reason | Examples |
+| --- | --- |
+| The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
+| What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
+| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, and a folder’s other total |
+| What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
+| The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines |
+
+**The Pulls column has none.** A pull request’s row, a stack’s row, and their parts
+carry no tooltip: the state icon’s name, a stack place’s stacks, and a stack row’s
+counts are their accessible names, and the age’s exact time and a title cut short are on
+the page the row opens.
+A pull request’s changed files under its row keep the tooltips the tree gives a file:
+its full path when its row shows only its name, “not in this comparison”, the name it
+was renamed from, and what a folder’s sums leave out.
+
+**Restating is not adding.** A “Show ignored” check, in the Files filter row and a
+folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
+button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
+would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail
+already shows. A Files tree row’s tooltip leaves out what the row shows, its name, a
+file’s size, and a folder’s size or file count, whichever its chip holds, and gives the
+exact date and a folder’s other total.
+These were the audit’s borderline tooltips, and the reader’s decisions on them
+(`mb-8mpo`).
+
+The shell holds the repeat case.
+A `data-tip-text` that is its element’s own text, in any case and spacing, shows only
+while that text is cut short, by an ellipsis or a line clamp, so a surface may give an
+ellipsizing element its full text as a tip and the reader sees it only when the ellipsis
+hides some of it (`tipAddsInformation` in `static/app.js`). `devtools/check_tooltips.py`
+fails a literal tip that is its element’s literal text, and
+`tests/dom/github-pull-header-chrome.mjs` checks the shell’s rule in Chrome;
+`tests/dom/github-pulls-stacks-chrome.mjs` checks that the Pulls column carries no tip.
+
 ### Tooltip Input Modality
 
 **Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
@@ -3503,6 +3687,65 @@ Measured in headless Chrome on the Files type filter: every row is 29 px and the
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.
+
+### Keys in a Menu
+
+**Opening a menu puts focus in it, so its keys work at once.** Every way a filter
+dropdown opens comes to one path, `filterControls.focusMenu`: its trigger’s click,
+Enter, and Space, `↓` or `↑` on its trigger, and a filter’s number, which opens the
+drawer that holds it too.
+Focus lands on the checked row, or on the first row when none is checked, so `↑`, `↓`,
+`Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
+`W`’s branch list is the precedent: it opens with focus in its filter box.
+
+- **Closing.** Escape, a second click on the trigger, and a choice that closes a
+  single-select menu give focus back to the trigger.
+  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
+  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
+  topmost closes first.
+- **Staying.** A pick in a multi-select menu leaves it open with focus on the row
+  picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
+  refresh, puts focus back on the same control, or on the trigger of a menu the rebuild
+  closed: the bar calls `filterControls.keepFocus` around every rebuild.
+
+**An open menu that has focus can also give each of its rows a letter, and the letter
+chooses the row.** Group by’s rows are the first to have them: `N` for No grouping, `A`
+for By age, and `T` for By file type.
+
+- **Which letter.** A row’s letter is the first letter of the word that names its value:
+  No, age, and type. It is declared beside the row’s label, as `key` on an option and
+  `anyKey` for the any-row, rather than derived, so renaming a row never moves its key.
+  Two rows of one menu never share a letter; when two declare one, the first keeps it.
+  A menu that gives one row a letter gives every row one, its any-row included.
+- **When it is live.** Only while the menu is open and focus is in it, on its trigger or
+  a row. The rows’ commands sit in the menu’s own scope, active while it is open and
+  above the shell’s, so there a row’s letter outranks the shell’s, as a text field’s
+  typing does: in Group by’s menu `T` chooses By file type, where elsewhere it is Quick
+  Search. Quick Search keeps `/` there, a letter the menu does not declare still reaches
+  the shell, and every letter is the shell’s again once the menu closes or focus leaves
+  it.
+- **What it does.** A letter runs the row’s click path,
+  `filterControls.activateMenuRow`, never a synthesized click, so it does what a click
+  on the row does: a single-select menu closes on the choice, and a multi-select menu
+  stays open.
+- **How it is shown.** As every other key is: the row carries the letter as its
+  `aria-keyshortcuts`; holding Shift badges each row with its keycap and lists the
+  letters in the revealed strip, which then shows only the keys that still reach another
+  command, Quick Search by `/` alone; and Help lists them in its Menus group, “Available
+  while the menu is open and has focus.”, each by the row’s label and the menu it is in.
+- **Where.** The shell’s keymap reads the letters from the navigation pane’s filter bar
+  (`syncMenuLetters` in `static/shell-keymap.js`), so only its menus take them.
+
+`tests/dom/key-reveal-session.js` runs both on the production registry, keymap, and
+filter controls: where focus lands for each way a menu opens and closes, through a pick
+and a rebuild, and for the letters the Help group, the badges and the strip, each
+letter’s choice, and `T` as Quick Search with the menu closed or focus outside it.
+`tests/dom/filter-controls-behavior.js` pins the focus path on a rendered bar, the rows’
+markup, and the click path a letter shares, and
+`tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and what the live
+surfaces show. `tests/test_files_tab_chrome.py` reads `document.activeElement` in Chrome
+after each number, `↓` and Enter on a trigger, each letter, Escape, and a pick in File
+type as the bar rebuilds.
 
 ## Structured Data and Tables
 

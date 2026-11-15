@@ -1759,8 +1759,8 @@ while Shift is held.
 At release it wakes, badged at once while Shift is held, all three keys are live, and a
 link that had focus has it again (`tabKeysWhileHeld`). The stack keys wait with the
 header too: a stack that arrives during the hold paints its menu at release, and until
-then `N` and `P` are neither live nor in the Shift strip; at release the strip shows
-them and they walk the stack.
+then Control-N and Control-P are neither live nor in the Shift strip; at release the
+strip shows them and they walk the stack, while N alone opens nothing.
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1874,7 +1874,7 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "stackMenus": 0,
       "stackKeys": "none",
       "strip": "none",
-      "n": "not handled"
+      "control-n": "not handled"
     },
     "released": {
       "holding": false,
@@ -1890,8 +1890,9 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "stackMenus": 1,
       "stackKeys": "pulls.stack.top, pulls.stack.base",
       "strip": "pulls.stack.top, pulls.stack.base",
-      "n": "opened #8",
-      "p": "opened #6"
+      "n": "not handled",
+      "control-n": "opened #8",
+      "control-p": "opened #6"
     }
   }
 }

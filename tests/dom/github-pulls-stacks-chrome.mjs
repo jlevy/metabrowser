@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { judge, NARROWEST, SWEEP, WIDEST, WIDTHS } from "./nav-toolbar-wrap.mjs";
 
 const [base, mode] = process.argv.slice(2);
 const before = mode === "--before";
@@ -111,6 +112,18 @@ const LIST = `(() => {
   // cut at. A member's and a first-level pull request's, and the pane they are in.
   const titleBox = (number) =>
     list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+  // The Pulls column carries no tooltip (mb-8mpo): every pull request's and stack's row and
+  // its parts, after a pointer has crossed each title, as a reader's would.
+  for (const title of list.querySelectorAll(".github-pulls-row .github-pulls-title")) {
+    title.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+    // Leaving, so no hover is left to read a pull request ahead.
+    title.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  }
+  const tips = [...list.querySelectorAll(".github-pulls-row")].flatMap((row) =>
+    [row, ...row.querySelectorAll("*")]
+      .filter((node) => node.hasAttribute("data-tip-text") || node.hasAttribute("title"))
+      .map((node) => (row.dataset.number ?? "stack " + row.dataset.stack) + ": " + node.className),
+  );
   const titleRoom = {
     pane: Math.round(document.querySelector(".tree-pane").getBoundingClientRect().width),
     member: titleBox(10),
@@ -120,6 +133,7 @@ const LIST = `(() => {
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
   return {
+    tips,
     titleRoom,
     stacks,
     rows: rows.length,
@@ -375,6 +389,11 @@ try {
       JSON.stringify(first?.members.map((m) => m.line)),
     );
     check(
+      "no pull request's or stack's row, nor any part of one, carries a tooltip",
+      list.tips.length === 0,
+      JSON.stringify(list.tips),
+    );
+    check(
       "a member's row draws no stack icon",
       list.stacks.every((stack) => stack.members.every((m) => m.icons === 0)),
       JSON.stringify(list.stacks.map((stack) => stack.members.map((m) => m.icons))),
@@ -561,6 +580,250 @@ try {
       JSON.stringify(keys),
     );
     phase("keys");
+  }
+
+  if (!before) {
+    // The toolbar wraps in a narrow pane (docs/design-system.md, "Navigation Toolbars Wrap"),
+    // and its Show group, a segmented control, takes the cluster layout where its line cannot
+    // hold it joined (filter-controls.js, `fitJoinedGroups`). Every pane width from the
+    // narrowest to well past the default, in both font sets, with three- and four-digit
+    // tallies: the sweep fits the group at each width as the row's observer does a frame
+    // later.
+    await evaluate(
+      `window.wrapErrors = []; window.addEventListener("error", (event) => window.wrapErrors.push(String(event.message))), true`,
+    );
+    const ROW = "#nav-toolbar-pulls .nav-toolbar-row";
+    const SPEC = {
+      bar: "#nav-toolbar-pulls",
+      row: ROW,
+      fit: true,
+      tokens: {
+        gap: "var(--nav-toolbar-gap)",
+        line: "var(--nav-toolbar-line-height)",
+        cluster: "var(--chip-cluster-gap)",
+      },
+    };
+    // The tallies, pinned: the panel writes them on every render, so a write that would
+    // take a pinned one back is answered with the pinned text, before the browser paints.
+    // `null` lets the panel's own text stand again.
+    const TALLIES = `(texts) => {
+      window.pinnedTallies?.disconnect();
+      window.pinnedTallies = null;
+      if (texts === null) return;
+      const row = document.querySelector("${ROW}");
+      const pin = () => {
+        for (const [value, text] of Object.entries(texts)) {
+          const tally = row.querySelector('[data-chip-value="' + value + '"] .count');
+          if (tally.textContent !== text) tally.textContent = text;
+        }
+      };
+      pin();
+      window.pinnedTallies = new MutationObserver(pin);
+      window.pinnedTallies.observe(row, { childList: true, characterData: true, subtree: true });
+    }`;
+    const shown = await evaluate(
+      `Object.fromEntries([...document.querySelectorAll('${ROW} .chip-group .chip')].map((chip) => [chip.dataset.chipValue, chip.querySelector(".count").textContent]))`,
+    );
+    const font = async (name) => {
+      await evaluate(
+        `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(name)}), true`,
+      );
+      await evaluate("document.fonts.ready.then(() => true)");
+      await frames();
+    };
+    const paneWidth = (width) =>
+      evaluate(
+        `(() => { const pane = document.querySelector(".tree-pane"); pane.style.width = ${JSON.stringify(width === null ? "" : `${width + 1}px`)}; return true; })()`,
+      );
+    // Long enough for a resize to reach the row's observer, and its fit the next frame.
+    const settle = () =>
+      evaluate(
+        "new Promise((r) => { let k = 4; const step = () => (--k ? requestAnimationFrame(step) : r(true)); requestAnimationFrame(step); })",
+      );
+    // The group's layout as drawn: its fit, and whose border frames the chips.
+    const LOOK = `(() => {
+      const group = document.querySelector("${ROW} .chip-group");
+      const chip = group.querySelector(".chip");
+      return {
+        fit: group.getAttribute("data-fit"),
+        groupBorder: getComputedStyle(group).borderTopWidth,
+        chipBorder: getComputedStyle(chip).borderTopWidth,
+      };
+    })()`;
+    // Every frame of a few: the group's fit while the pane holds one width.
+    const HOLD = `new Promise((resolve) => {
+      const group = document.querySelector("${ROW} .chip-group");
+      const seen = [];
+      const step = () => {
+        seen.push(group.getAttribute("data-fit"));
+        if (seen.length < 8) requestAnimationFrame(step); else resolve(seen);
+      };
+      requestAnimationFrame(step);
+    })`;
+    // A drag across the break, a pixel a frame: the fit each frame shows.
+    const DRAG = `(from, to) => new Promise((resolve) => {
+      const pane = document.querySelector(".tree-pane");
+      const group = document.querySelector("${ROW} .chip-group");
+      const seen = [];
+      let width = from;
+      const step = () => {
+        seen.push(group.getAttribute("data-fit"));
+        if (width < to) { resolve(seen); return; }
+        pane.style.width = width + 1 + "px";
+        width -= 1;
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    })`;
+    measured.wrap = {};
+    for (const set of ["clean", "system"]) {
+      await font(set);
+      for (const [digits, texts] of [
+        ["3-digit", { open: "100", closed: "200", all: "300" }],
+        ["4-digit", { open: "1,234", closed: "5,678", all: "6,912" }],
+      ]) {
+        const label = `${set} fonts, ${digits} tallies`;
+        const swept = await evaluate(
+          `((${TALLIES})(${JSON.stringify(texts)}), (${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...SPEC })}))`,
+        );
+        const { gap, line, cluster } = swept.tokens;
+        const verdict = judge(label, swept, {
+          pad: gap,
+          line,
+          gap,
+          column: gap,
+          cluster,
+          trailing: "github-pulls-reload",
+        });
+        check(
+          `${label}: the toolbar keeps the wrap rule`,
+          verdict.failures.length === 0,
+          verdict.failures.slice(0, 6).join("\n"),
+        );
+        // Joined from one width up, the cluster below it, never one then the other again.
+        const fits = swept.rows.map((row) => row.fit);
+        const joinedFrom =
+          swept.rows.find((_row, index) => fits.slice(index).every((fit) => fit === null))?.width ??
+          null;
+        check(
+          `${label}: the group is the cluster below one width and joined from it`,
+          joinedFrom !== null &&
+            swept.rows.every((row) =>
+              row.width < joinedFrom ? row.fit === "wrap" : row.fit === null,
+            ),
+          JSON.stringify(fits),
+        );
+        measured.wrap[label] = { oneLineFrom: verdict.oneLineFrom, joinedFrom };
+        // The row's own observers, with no sweep fitting for them: joined at a pane that
+        // holds the group, the cluster at the narrowest, each a frame or two after the resize.
+        await evaluate(`(${TALLIES})(${JSON.stringify(texts)}), true`);
+        await paneWidth(WIDEST);
+        await settle();
+        const wide = await evaluate(LOOK);
+        check(
+          `${set} fonts, ${digits} tallies: at ${WIDEST} px the group is joined, one frame round its chips`,
+          wide.fit === null && wide.groupBorder === "1px" && wide.chipBorder === "0px",
+          JSON.stringify(wide),
+        );
+        await paneWidth(NARROWEST);
+        await settle();
+        const narrow = await evaluate(LOOK);
+        check(
+          `${set} fonts, ${digits} tallies: at ${NARROWEST} px the group is the cluster, a frame round each chip`,
+          narrow.fit === "wrap" && narrow.groupBorder === "0px" && narrow.chipBorder === "1px",
+          JSON.stringify(narrow),
+        );
+        await shot(`after-pulls-wrap-${set}-${digits}`, await paneClip());
+        // At the break and a pixel under it the group holds one layout, frame after frame,
+        // and a drag across the break switches it once.
+        const breakAt = measured.wrap[`${set} fonts, ${digits} tallies`].joinedFrom;
+        if (breakAt !== null && breakAt > NARROWEST) {
+          for (const [width, fit] of [
+            [breakAt - 1, "wrap"],
+            [breakAt, null],
+          ]) {
+            await paneWidth(width);
+            await settle();
+            const held = await evaluate(HOLD);
+            check(
+              `${set} fonts, ${digits} tallies: at ${width} px the group holds its layout`,
+              held.every((seen) => seen === fit),
+              JSON.stringify(held),
+            );
+          }
+          await paneWidth(breakAt + 8);
+          await settle();
+          const dragged = await evaluate(`(${DRAG})(${breakAt + 8}, ${breakAt - 8})`);
+          await settle();
+          const switches = dragged.slice(1).filter((fit, index) => fit !== dragged[index]).length;
+          check(
+            `${set} fonts, ${digits} tallies: a drag across the break switches the layout once`,
+            switches === 1 && dragged[0] === null && dragged.at(-1) === "wrap",
+            JSON.stringify(dragged),
+          );
+        }
+        await paneWidth(null);
+        await settle();
+      }
+    }
+    await evaluate(`(${TALLIES})(null), true`);
+    await evaluate(
+      `(() => { for (const [value, text] of Object.entries(${JSON.stringify(shown)})) document.querySelector('${ROW} [data-chip-value="' + value + '"] .count').textContent = text; return true; })()`,
+    );
+    await font("clean");
+    // Bound, the observers fit a group; disposed, nothing of them fires.
+    const disposal = await evaluate(`(async () => {
+      const fc = window.metabrowser.filterControls;
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      const frames = async () => { for (let k = 0; k < 4; k += 1) await frame(); };
+      const host = document.createElement("div");
+      host.className = "nav-toolbar";
+      host.dataset.navToolbar = "probe";
+      host.style.cssText = "position: fixed; inset-block-start: 0; inset-inline-start: 0; width: 120px; visibility: hidden;";
+      host.innerHTML = '<div class="nav-toolbar-row">' + fc.groupHtml({
+        key: "probe", select: "one", layout: "joined", label: "Probe", value: "a",
+        options: [{ value: "a", label: "Alpha 1,234" }, { value: "b", label: "Beta 5,678" }, { value: "c", label: "Gamma 6,912" }],
+      }) + "</div>";
+      document.body.append(host);
+      const group = host.querySelector(".chip-group");
+      const dispose = fc.bind(host.firstElementChild, {});
+      const bound = group.getAttribute("data-fit");
+      host.style.width = "1000px";
+      await frames();
+      const widened = group.getAttribute("data-fit");
+      host.style.width = "120px";
+      await frames();
+      const narrowed = group.getAttribute("data-fit");
+      dispose();
+      host.style.width = "1000px";
+      await frames();
+      const resizedAfter = group.getAttribute("data-fit");
+      group.querySelector(".chip").textContent = "A";
+      await frames();
+      const mutatedAfter = group.getAttribute("data-fit");
+      host.remove();
+      return { bound, widened, narrowed, resizedAfter, mutatedAfter };
+    })()`);
+    measured.wrapDisposal = disposal;
+    check(
+      "bound, a joined group is fitted at once and on each resize; disposed, nothing fires",
+      JSON.stringify(disposal) ===
+        JSON.stringify({
+          bound: "wrap",
+          widened: null,
+          narrowed: "wrap",
+          resizedAfter: "wrap",
+          mutatedAfter: "wrap",
+        }),
+      JSON.stringify(disposal),
+    );
+    const errors = await evaluate("window.wrapErrors");
+    check(
+      "no ResizeObserver loop error, nor any other, while the toolbar wraps",
+      errors.length === 0,
+      errors.join("\n"),
+    );
+    phase("wrapped");
   }
 
   // The page's stack menu, from a member's row, brought into view as a reader would.

@@ -187,9 +187,9 @@ const fileHeader = buttons(sandbox.headerAddressHtml("docs/a%25b.md", true));
 const folderHeader = buttons(sandbox.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
-  "the crumbs are well-formed controls with their own tooltips",
+  "the crumbs are well-formed controls with their own tooltips: a crumb's is its own name, which shows only when it is cut short",
   JSON.stringify(fileHeader.map((element) => element.getAttribute("data-tip-text"))) ===
-    JSON.stringify(["Served root", "docs", "docs/a%b.md"]),
+    JSON.stringify(["Served root", "docs", "a%b.md"]),
 );
 check("the root crumb carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
 // A document's `<label for=…>` clicks the element with that id, and the click would

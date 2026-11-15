@@ -4225,8 +4225,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The menu most recently used chooses a stack when a PR has several memberships. A header
-   * held over the loading page shows no stack menu yet, so N and P wait with it, as the tab
-   * keys do (`holdTabColumn`).
+   * held over the loading page shows no stack menu yet, so Control-N and Control-P wait with
+   * it, as the tab keys do (`holdTabColumn`).
    */
   function currentStack() {
     if (

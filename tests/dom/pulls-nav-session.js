@@ -449,20 +449,33 @@ async function stackKeysStory() {
     dispatch(event);
     return event.defaultPrevented;
   };
-  assert(press("p"));
-  assert(press("n"));
+  // Control-N and Control-P walk the stack (mb-lnqj), and Control is held alone.
+  const control = { ctrlKey: true };
+  assert(press("p", control));
+  assert(press("n", control));
   assert.deepEqual(moves, [-1, 1], "global direction reaches the active subtab without row focus");
   // Shift never changes a key, so a reader holding it still walks the stack.
-  assert(press("P", { shiftKey: true }));
-  assert(press("N", { shiftKey: true }));
-  assert.deepEqual(moves, [-1, 1, -1, 1], "Shift+P and Shift+N walk the stack as P and N do");
-  assert.equal(press("n", { metaKey: true }), false, "Command+N stays the browser's");
+  assert(press("P", { ...control, shiftKey: true }));
+  assert(press("N", { ...control, shiftKey: true }));
+  assert.deepEqual(moves, [-1, 1, -1, 1], "Shift changes neither Control-P nor Control-N");
+  // The letters alone are free. Command, and Control with Command, stay the browser's;
+  // AltGr reports Control and Alt, and types its character.
+  const plainLetters = [press("n"), press("p"), press("N", { shiftKey: true })];
+  assert.deepEqual(plainLetters, [false, false, false], "N and P alone walk nothing");
+  const otherChords = {
+    "Command-N": press("n", { metaKey: true }),
+    "Control-Command-N": press("n", { ...control, metaKey: true }),
+    "Control-Alt-N, as AltGr": press("n", { ...control, altKey: true }),
+    "Control-Alt-P, as AltGr": press("p", { ...control, altKey: true }),
+  };
+  assert.deepEqual(Object.values(otherChords), [false, false, false, false]);
+  assert.deepEqual(moves, [-1, 1, -1, 1], "only Control with N or P walks the stack");
   const rowScope = registry.activateScope("pull-rows");
   const plainJ = press("j");
   assert(plainJ);
   assert.deepEqual(page.take(), ["view told: move 1"]);
-  // On a focused row, J and K move the row with or without Shift; only N and P
-  // reach the stack.
+  // On a focused row, J and K move the row with or without Shift; only Control-N and
+  // Control-P reach the stack.
   const shiftedRowKeys = [press("J", { shiftKey: true }), press("K", { shiftKey: true })];
   const shiftedRowMoves = page.take();
   assert.deepEqual(shiftedRowKeys, [true, true]);
@@ -473,39 +486,44 @@ async function stackKeysStory() {
   fileScope();
   assert.deepEqual(shiftedFileKeys, [true, true]);
   assert.deepEqual(shiftedFileMoves, ["view told: move file 1", "view told: move file -1"]);
-  assert(press("n"), "N still walks the stack while a row has focus");
+  assert(press("n", control), "Control-N still walks the stack while a row has focus");
   assert.deepEqual(moves, [-1, 1, -1, 1, 1], "row keys never reach the stack");
-  assert.equal(press("P", { repeat: true }), false);
-  assert.equal(press("P", { target: { tagName: "INPUT" } }), false);
-  assert.equal(press("P", { target: { tagName: "DIV", isContentEditable: true } }), false);
+  assert.equal(press("p", { ...control, repeat: true }), false);
+  // A text field keeps Control-N and Control-P, which move its caret on macOS.
+  const textFields = [
+    press("p", { ...control, target: { tagName: "INPUT" } }),
+    press("n", { ...control, target: { tagName: "TEXTAREA" } }),
+    press("p", { ...control, target: { tagName: "DIV", isContentEditable: true } }),
+  ];
+  assert.deepEqual(textFields, [false, false, false], "a text field keeps both chords");
   const closeHelp = registry.activateScope("help", { exclusive: true });
-  assert.equal(press("P"), false);
+  assert.equal(press("p", control), false);
   closeHelp();
   const closeModal = registry.activateScope("dialog", { exclusive: true });
-  assert.equal(press("N"), false);
+  assert.equal(press("n", control), false);
   closeModal();
   assert.deepEqual(moves, [-1, 1, -1, 1, 1], "repeat, editor, Help and modal never navigate");
   endpoint = true;
-  assert(press("p"));
+  assert(press("p", control));
   assert.equal(moves.at(-1), "endpoint", "endpoint is consumed without a row fallback");
   assert.deepEqual(page.take(), []);
   endpoint = false;
   known = false;
-  assert.equal(press("n"), false);
+  assert.equal(press("n", control), false);
   known = true;
-  assert(press("n"), "newly known membership becomes available without re-registration");
+  assert(press("n", control), "newly known membership becomes available without re-registration");
   page.shell.pages.set(7, {});
-  assert.equal(press("p"), false, "custom PR pages may omit stack navigation");
+  assert.equal(press("p", control), false, "custom PR pages may omit stack navigation");
   page.shell.pages.set(7, { hasStack: () => true });
-  assert.equal(press("p"), false, "a partial capability cannot consume navigation");
+  assert.equal(press("p", control), false, "a partial capability cannot consume navigation");
   page.shell.pages.set(7, renderer);
   page.deps.activate("files");
-  assert.equal(press("p"), false, "a hidden Pulls panel does not own a global command");
+  assert.equal(press("p", control), false, "a hidden Pulls panel does not own a global command");
   page.deps.activate("pulls");
   page.shell.address = new URL("/pulls", "http://x");
-  assert.equal(press("p"), false, "the list has no active PR stack");
+  assert.equal(press("p", control), false, "the list has no active PR stack");
   page.shell.address = new URL("/view/README.md", "http://x");
-  assert.equal(press("n"), false, "another preview does not reuse an old PR capability");
+  assert.equal(press("n", control), false, "another preview does not reuse an old PR capability");
   page.shell.address = new URL("/pull/7/checks", "http://x");
   const help = registry
     .snapshot("help", { includeInactive: true })
@@ -516,12 +534,21 @@ async function stackKeysStory() {
   }));
   assert.deepEqual(
     Array.from(copy, (entry) => entry.keys),
-    ["N", "P"],
+    ["Control N", "Control P"],
   );
-  const visible = registry.present("pulls.stack.base").bindings.visible;
-  assert.deepEqual(Array.from(visible), ["P"]);
+  // This session's window has no navigator, so the chord is written as on Windows and Linux.
+  const presented = registry.present("pulls.stack.base").bindings;
+  const written = {
+    visible: Array.from(presented.visible),
+    aria: presented.ariaKeyshortcuts,
+  };
+  assert.deepEqual(written, { visible: ["Ctrl+P"], aria: "Control+P" });
   host.dispose();
-  assert.equal(press("p"), false, "disposed pages cannot navigate even before registry cleanup");
+  assert.equal(
+    press("p", control),
+    false,
+    "disposed pages cannot navigate even before registry cleanup",
+  );
   rowScope();
   for (const remove of unregister) {
     remove();
@@ -531,6 +558,9 @@ async function stackKeysStory() {
   return {
     directions: moves.slice(0, 2),
     shiftedDirections: moves.slice(2, 4),
+    plainLettersWalkNothing: plainLetters,
+    otherChordsWalkNothing: otherChords,
+    textFieldsKeepTheChords: textFields,
     endpointConsumed: true,
     plainJRemainsRowNavigation: plainJ,
     shiftedRowKeysMoveTheRow: { handled: shiftedRowKeys, did: shiftedRowMoves },
@@ -538,6 +568,7 @@ async function stackKeysStory() {
     guards: [
       "repeat",
       "input",
+      "textarea",
       "contenteditable",
       "Help",
       "modal",

@@ -507,10 +507,19 @@
     2 *
     var(--chip-border)
   );
-  /* The navigation's toolbar slot: one chip, 6px above and below it, and the slot's
-     bottom border. Every main tab's toolbar is this tall, so what is under it starts
-     at one y on every tab. */
-  --nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);
+  /* A navigation toolbar's line of controls: one chip's height. Every control in a
+     toolbar row is one line tall (`.nav-toolbar-row`), so every line is this tall
+     whichever controls it holds. */
+  --nav-toolbar-line-height: var(--chip-height);
+  /* The one spacing of a navigation toolbar: between its controls along a line, between
+     its lines when it wraps, and above its first line and below its last. A wrapped
+     toolbar is a grid of one spacing, so it reads as one toolbar, not as two stacked. */
+  --nav-toolbar-gap: 6px;
+  /* The navigation's toolbar slot: one line, the gap above and below it, and the slot's
+     bottom border. Every main tab's toolbar is this tall while its controls fit one
+     line, so what is under it starts at one y on every tab; each line a narrow pane
+     wraps adds a line and a gap (`.nav-toolbar-row`). */
+  --nav-toolbar-height: calc(var(--nav-toolbar-line-height) + 2 * var(--nav-toolbar-gap) + 1px);
   /* The metadata line under a main tab's toolbar (`.nav-metadata`): one line of it is the
      toolbar slot's height, its own line box, this padding above and below, and its bottom
      border. So on Commits, where the line stands in the slot, its text sits exactly where
@@ -3220,6 +3229,17 @@ a.tab-btn {
      column inset. Left-padding the bar instead would inset the label
      twice. */
   padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
+  /* A pane too narrow for every tab wraps the bar between tabs, as the toolbars
+     under it wrap (`.nav-toolbar-row`), rather than cutting the last tab off at the
+     pane's edge. A tab is its own line, its padding its spacing, so a wrapped tab
+     sits a tab's height under the one above it, on the same inset: the 1 px row
+     gap gives back the 1 px each tab lends the bar's rule (`.tab-btn`'s
+     `margin-bottom`), so a tab above does not lay its underline over the tab
+     below. Measured in headless Chrome on 2026-11-15: FILES, PULLS, COMMITS fit
+     one line from a 196 px pane in the default font set and from 216 px in the
+     system set, and the narrowest pane, 179 px, cut COMMITS by 16 and 36 px. */
+  flex-wrap: wrap;
+  row-gap: 1px;
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
@@ -3295,8 +3315,12 @@ a.tab-btn {
 }
 /* A long additive set is a chip cluster, not a segmented control.
    Each visible shape is its own target; the semantic group contributes
-   layout only, with no oversized frame or decorative end caps. */
-.chip-group[data-layout="wrap"] {
+   layout only, with no oversized frame or decorative end caps.
+   A joined group in a navigation toolbar that is wider than its line
+   takes this layout too, while it is (`data-fit="wrap"`, which
+   `fitJoinedGroups` in filter-controls.js sets): segmented controls
+   never wrap. */
+.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) {
   flex-wrap: wrap;
   gap: var(--chip-cluster-gap);
   max-width: 100%;
@@ -3305,7 +3329,7 @@ a.tab-btn {
   background: transparent;
   overflow: visible;
 }
-.chip-group[data-layout="wrap"] > .chip {
+.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {
   border: 1px solid var(--viz-border);
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
@@ -3526,19 +3550,20 @@ a.tab-btn {
      gap belongs to the drawer being open, so it opens with it — and it
      has to live here rather than as padding inside the drawer, because
      `overflow` clips a content box and leaves padding standing. */
-  column-gap: 6px;
+  column-gap: var(--nav-toolbar-gap);
   row-gap: 0;
-  padding: 6px var(--pane-header-padding-x);
+  padding: var(--nav-toolbar-gap) var(--pane-header-padding-x);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
   /* The server ships this element empty and filter-controls.js fills it, so
      without a reserved height it stands 13px tall until the chips arrive and
      then grows to 37 -- pushing the whole tree down on every load and every
-     reload. One chip, this element's 6px vertical padding, and its bottom
-     border: the same height a populated bar computes to, so nothing moves
-     when the chips land. `box-sizing` is border-box, so the padding and
-     border are inside this figure. */
+     reload. One line, this element's padding of a toolbar gap above and below
+     it, and its bottom border: the same height a populated bar computes to
+     while its row is one line, so nothing moves when the chips land.
+     `box-sizing` is border-box, so the padding and border are inside this
+     figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
@@ -3553,31 +3578,85 @@ a.tab-btn {
    in the bar's place at its height (main-tabs.js#activateNavPanel), so the tree, the
    history, and the list start at one y on every tab. Before, the bar hid on Commits
    and Pulls, and what was under it moved 37 px on every switch. A toolbar wider than a
-   narrowed pane scrolls along its one line rather than being cut: a control past the
-   pane's edge is still reached, and focus brings it into view. */
+   narrowed pane wraps rather than being cut or scrolled along one line, where a control
+   past the pane's edge was out of sight (`.nav-toolbar-row`): the slot is then as tall
+   as its lines, and what is under it starts lower by the lines added. */
 .nav-toolbar {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 6px;
-  height: var(--nav-toolbar-height);
+  gap: var(--nav-toolbar-gap);
+  min-height: var(--nav-toolbar-height);
   padding: 0 var(--pane-header-padding-x);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
-  white-space: nowrap;
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
-.nav-toolbar::-webkit-scrollbar {
-  display: none;
-}
 .nav-filter-bar[hidden],
 .nav-toolbar[hidden] {
   display: none;
+}
+
+/* ── Navigation toolbar rows ─────────────────────────────────────
+   Every main tab's row of controls, the Files filter row and the Pulls filters, is a
+   `.nav-toolbar-row`, so one rule lays them all out (docs/design-system.md,
+   "Navigation Toolbars Wrap"). While the pane holds its controls on one line, the row
+   is that line and its toolbar the slot's height, `--nav-toolbar-height`, as before.
+   In a pane too narrow for that, the row wraps between its controls, in order and as
+   late as it can, so no control is cut, scrolled out of reach, or cut short: the
+   leading controls stay first, and the trailing group, which takes the line's end
+   with an auto margin (Clear and the chevron on Files, Reload on Pulls), moves down
+   whole and stays right-aligned. A segmented group wider than a whole line takes the
+   cluster layout instead (`.chip-group[data-fit="wrap"]`).
+
+   Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
+   between controls and above the first line and below the last, so a toolbar grows
+   by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
+   control is one line tall: a shorter one, Show ignored's checkbox, is centred in a
+   line's height rather than making its line shorter, and a taller one, a `.btn` such
+   as Reload (26 px at the default size, two over a chip), is held to it rather than
+   making its line, and so the one-line toolbar, taller. A cluster's own lines are a
+   row's apart.
+
+   Measured in headless Chrome on 2026-11-15, pane widths 179 px (the narrowest, 180
+   less the pane's border) to 420 px, both font sets; the themes lay out alike. The
+   widths each row fits one line from, default set / system set, the Pulls tallies
+   "Open 100, Closed 2, All 102" unless four-digit:
+     Files, no filter set                             246 / 262
+     Files, a filter set, "No grouping" (its widest)  298 / 317
+     Pulls, Show and Reload                           276 / 308
+     Pulls, Show and Reload, four-digit tallies       303 / 341
+   Before this rule, the Files row ran up to 17.69 px past the default pane in the
+   system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
+   the default pane in the system set, scrolled out of sight (35.77 px in the default
+   set while it held a Stacks chip). The Pulls Show group alone is joined from
+   218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
+   At the narrowest pane, with a filter set, the Files row is three lines (97 px) and
+   the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
+   tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
+   this rule (tests/dom/nav-toolbar-wrap.mjs). */
+.nav-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nav-toolbar-gap);
+  min-width: 0;
+}
+.nav-toolbar-row > * {
+  min-block-size: var(--nav-toolbar-line-height);
+}
+.nav-toolbar-row > :not(.chip-group) {
+  max-block-size: var(--nav-toolbar-line-height);
+}
+.nav-toolbar-row > .chip-group:is([data-layout="wrap"], [data-fit="wrap"]) {
+  row-gap: var(--nav-toolbar-gap);
+}
+/* In the slot the row fills it, with the gap above its first line and below its last. */
+.nav-toolbar > .nav-toolbar-row {
+  flex: 1 1 auto;
+  padding-block: var(--nav-toolbar-gap);
 }
 
 /* ── Navigation metadata line ─────────────────────────────────
@@ -3630,27 +3709,27 @@ a.tab-btn {
 }
 /* On a tab with no toolbar of its own, Commits, the line is the toolbar: in the
    slot, which supplies the inset and the rule. One line of it is the slot's height
-   (`--nav-metadata-padding-y`), so its text sits where it sits under a toolbar; it
-   keeps to that one line, and the slot scrolls along it. */
+   (`--nav-metadata-padding-y`), so its text sits where it sits under a toolbar. In a
+   pane too narrow for the line it wraps between its phrases, as a metadata line does
+   ("12,345 commits", then "begun 1y ago"), and the slot grows by its line height: a
+   toolbar of text wraps as text, the toolbar rows' rule for their controls
+   (`.nav-toolbar-row`). Measured in headless Chrome on 2026-11-15, "5 commits begun
+   3mo ago" is one line from 179 px (the narrowest pane) in the default font set and
+   from 186 px in the system set, and "123,456 commits begun 12mo ago" from 211 and
+   238 px. */
 .nav-toolbar > .nav-metadata {
   flex: 1 1 auto;
-  flex-wrap: nowrap;
   min-width: 0;
   padding-inline: 0;
   border-bottom: none;
 }
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
-  row-gap: 6px;
+  row-gap: var(--nav-toolbar-gap);
 }
-/* Deliberately nowrap. The drawer toggle stays on the same line as its
-   trigger, and any grouped control in this row keeps the single-line
-   segmented-control contract. Longer value sets belong in a menu or a
-   wrapping chip cluster on another row. */
+/* The Files tab's toolbar row (`.nav-toolbar-row`), the bar's first line, over the
+   drawer. It wraps by the toolbar rows' rule: Group by, then Show ignored, then Clear
+   and the chevron, which stay together at the line's end. */
 .nav-filter-bar-main {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
   width: 100%;
 }
 .nav-filter-bar-main > .chip-group {
@@ -3683,11 +3762,8 @@ a.tab-btn {
    (a 275 px row), in the default font set, with a filter set so Clear
    and the badge "1" show: "No grouping", the widest trigger, overflowed
    by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
-   about 1 px and has 7.83; "By age" has 30.7. The row still overflows in
-   the system font set's wider face, by about 18 px at "No grouping"; in a
-   pane narrower than about 297 px at its widest; and, with no filter set,
-   in one narrower than about 245 px. tests/test_files_tab_chrome.py
-   checks the default case. */
+   about 1 px and has 7.83; "By age" has 30.7. In a narrower pane, or in
+   the system font set's wider face, the row wraps (`.nav-toolbar-row`). */
 .nav-filter-bar-end > .chip-badge {
   margin-left: 0;
   margin-right: -4px;
@@ -3750,12 +3826,13 @@ a.tab-btn {
 /* No section headings in here: an extension menu, a size ramp, and a
    checkbox labelled "Gitignored" already say what they are, and four
    uppercase labels cost more vertical space in a 300px pane than they
-   were paying for. */
+   were paying for. Its menus wrap on the toolbar's spacing, so an open
+   drawer's lines sit as far apart as the row's over them. */
 .filter-drawer-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--nav-toolbar-gap);
 }
 .filter-drawer-actions {
   display: flex;

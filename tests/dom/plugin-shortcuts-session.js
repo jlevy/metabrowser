@@ -29,13 +29,11 @@ const staticDir = path.join(repoRoot, "src/metabrowser/static");
 // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py.
 const RESERVED_SHELL_KEYS = Object.freeze({
   f: null,
-  r: null,
+  p: null,
   h: null,
   t: null,
   j: null,
   k: null,
-  n: null,
-  p: null,
   u: null,
   w: null,
   ...Object.fromEntries([..."123456789"].map((digit) => [digit, null])),
@@ -420,11 +418,11 @@ async function main() {
   view.append(find, findAgain, next);
   mb.shortcuts.attach(find, spec("demo.find", "t", "Find"));
   mb.shortcuts.attach(findAgain, spec("demo.find", "t", "Find"));
-  mb.shortcuts.attach(next, spec("demo.next", "N", "Next", { group: "view-tabs" }));
+  mb.shortcuts.attach(next, spec("demo.next", "J", "Next", { group: "view-tabs" }));
   steps.push(
-    page.record("T and N are the shell's: refused, with one warning for each command id", {
+    page.record("T and J are the shell's: refused, with one warning for each command id", {
       handledT: page.press("t"),
-      handledN: page.press("n"),
+      handledJ: page.press("j"),
     }),
   );
   const probes = [..."abcdefghijklmnopqrstuvwxyz"].map((letter) => {

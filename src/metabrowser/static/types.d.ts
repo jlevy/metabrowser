@@ -883,8 +883,9 @@ type MetabrowserFilterOption = {
   count?: number;
   icon?: string;
   iconClass?: string;
+  /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
+  key?: string;
   label: string;
-  summary?: string;
   title?: string;
   value: string;
 };
@@ -933,6 +934,8 @@ type MetabrowserFilterPreset = {
 };
 
 type MetabrowserFilterControls = {
+  /** Choose a dropdown row as a click on it does; false when no bound container holds it. */
+  activateMenuRow(row: HTMLElement): boolean;
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -943,7 +946,10 @@ type MetabrowserFilterControls = {
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
+  fitJoinedGroups(root: Element): void;
   fitOpenMenus(root: Element): void;
+  /** Focus an open dropdown's checked row, or else its first; null when it is not open. */
+  focusMenu(root: Element, key: string): HTMLElement | null;
   groupHtml(spec: {
     className?: string;
     key: string;
@@ -954,7 +960,15 @@ type MetabrowserFilterControls = {
     value: MetabrowserFilterSelection;
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  joinedGroupFits(widths: { joined: number; room: number }): boolean;
+  /**
+   * Call before rebuilding `root`'s markup, and the returned function after: focus goes
+   * back to the control that had it, or to the trigger of a menu the rebuild closed.
+   */
+  keepFocus(root: Element): () => void;
   menuGroupHtml(spec: {
+    /** The any-row's letter, as an option's `key` is its row's. */
+    anyKey?: string;
     anyLabel: string;
     anyValue?: string;
     key: string;
@@ -2270,8 +2284,12 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   }): MetabrowserSearchPaletteApi;
 }>;
 
-/** One key: a binding states no modifier policy, and Shift never changes a key. */
+/**
+ * One key, or Control with `n` or `p` (`control: true`): a binding states no other
+ * modifier policy, and Shift never changes a key.
+ */
 type MetabrowserShortcutBinding = Readonly<{
+  control?: true;
   key: string;
 }>;
 
@@ -2295,7 +2313,7 @@ type MetabrowserBindingPresentation = Readonly<{
   /** The keycaps are a run's two ends, the situational numbers 1 to 9, not alternatives. */
   range?: boolean;
   spoken: string;
-  /** One keycap label per alternative: every binding is a single key. */
+  /** One keycap label per alternative: a single key, or a Control chord such as `⌃N`. */
   visible: ReadonlyArray<string>;
 }>;
 
@@ -2378,7 +2396,7 @@ type MetabrowserShortcutRegistry = Readonly<{
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
   describeKey(key: string): MetabrowserKeyDefinition;
-  /** Whether a live command in an active layer above `scope` is bound to `key`. */
+  /** Whether a live command in an active layer above `scope` is bound to `key` alone. */
   heldAbove(scope: string, key: string): boolean;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
   /** Whether a command would run now: active scope, `available()`, and a live target. */
@@ -2406,6 +2424,8 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
+  /** The letters a binding may hold with Control: `n` and `p`. */
+  CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
   >;

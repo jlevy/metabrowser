@@ -786,10 +786,15 @@ def test_view_spec_rejects_a_key_that_is_not_one_letter() -> None:
 
 
 def test_view_spec_rejects_an_always_reserved_shell_key() -> None:
-    # The main tabs' letters and next and previous are reserved in every kind.
-    for key in ("t", "J", "f", "R", "h", "n", "P"):
+    # The main tabs' letters, Quick Search's, and the row keys are reserved in every kind:
+    # P is the Pulls tab (mb-6rfu).
+    for key in ("t", "J", "f", "P", "h"):
         with pytest.raises(ValidationError, match="reserved"):
             ViewSpec(kind="x", id="y", label="Y", key=key)
+    # Next and previous are Control-N and Control-P, which reserve no letter (mb-lnqj), and
+    # R is no longer the Pulls tab's.
+    for key in ("n", "R"):
+        assert ViewSpec(kind="x", id="y", label="Y", key=key).key == key.lower()
 
 
 def test_manifest_with_a_reserved_view_key_is_refused_at_discovery(make_plugin_dir) -> None:

@@ -378,10 +378,17 @@ def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None
     """Public page capability owns stack direction; shared scopes retain native input."""
 
     result = run_session("pulls-nav-session.js")["stack keys"]
-    # P toward the base and N toward the top, and Shift changes neither.
+    # Control-P toward the base and Control-N toward the top, and Shift changes neither
+    # (mb-lnqj).
     assert result["directions"] == [-1, 1]
     assert result["shiftedDirections"] == [-1, 1]
-    assert [entry["keys"] for entry in result["help"]] == ["N", "P"]
+    # The letters alone are free, AltGr (Control and Alt) types its character, Command
+    # stays the browser's, and a text field keeps both chords for its caret.
+    assert result["plainLettersWalkNothing"] == [False, False, False]
+    assert set(result["otherChordsWalkNothing"].values()) == {False}
+    assert "Control-Alt-N, as AltGr" in result["otherChordsWalkNothing"]
+    assert result["textFieldsKeepTheChords"] == [False, False, False]
+    assert [entry["keys"] for entry in result["help"]] == ["Control N", "Control P"]
     assert result["endpointConsumed"] is True
     assert result["plainJRemainsRowNavigation"] is True
     # A focused row keeps J and K with Shift held; they never reach the stack.
