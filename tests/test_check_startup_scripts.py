@@ -10,6 +10,7 @@ compares them with. The ceilings bound cost, not membership, so the deferred
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import tomllib
@@ -289,6 +290,7 @@ const counted = sandbox.startupScriptResources(entries, domContentLoadedEventEnd
 process.stdout.write(JSON.stringify({
   names: counted.map((entry) => entry.name),
   kb: sandbox.transferKb(counted),
+  paths: sandbox.startupScriptPaths(counted),
 }));
 """
 
@@ -335,6 +337,29 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
 
     assert probe["names"] == [entry["name"] for entry in counted]
     assert probe["kb"] == check.transfer_kb(scripts)
+    assert probe["paths"] == [f"{script.url_path}?v=1" for script in scripts]
+
+
+def test_the_loop_reads_the_number_this_check_computes() -> None:
+    """`run.py record` reads `startup_script_transfer_kb` again from the scripts the page
+    named, compressed as the remote path sends them, because a loopback browser of a
+    local server is sent them uncompressed (H115). It must stay this check's number,
+    which is the browser's on a server that compresses toward it."""
+    runner = check.ROOT / "explorations" / "performance-loop" / "run.py"
+    spec = importlib.util.spec_from_file_location("metabrowser_performance_loop", runner)
+    assert spec is not None and spec.loader is not None
+    loop = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loop)
+    scripts = check.measure(check.render_folder_shell())
+    client = TestClient(server.app, base_url="http://127.0.0.1")
+
+    def read(path: str) -> bytes:
+        answer = client.get(path, headers={"Accept-Encoding": "identity"})
+        assert "content-encoding" not in answer.headers, path
+        return answer.content
+
+    paths = [script.url_path for script in scripts]
+    assert loop._startup_script_transfer_kb(paths, read) == check.transfer_kb(scripts)
 
 
 @pytest.mark.parametrize("total", [175 * 1024 + 511, 175 * 1024 + 512, 1, 0])

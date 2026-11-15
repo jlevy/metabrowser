@@ -236,12 +236,21 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # neither decides which scripts are startup scripts. Re-derive the ceiling rather than
 # raise it: it is measured from 174 KB, and a server that stops compressing on every
 # request changes the loopback cost.
+# What the number is, since H115: the startup scripts as the remote path sends them.
+# `run.py record` reads each script the page requested before DOMContentLoaded again
+# from the measured server, compresses it as the server compresses for a client it
+# gzips for (level 6, metabrowser.delivery; `metab --remote` keeps that), and adds the
+# 300 bytes Resource Timing gives a response, which is the quantity the 220 KB above was
+# measured in. A server started for local use sends a loopback browser its scripts
+# uncompressed, so the browser's own transfer there is their decoded size; `record` keeps
+# it as `startup_script_loopback_transfer_kb`, which no budget reads.
+# devtools/check_startup_scripts.py gives the same number from the shell on every lint.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220
 policy = "gate"
 required = true
-description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+description = "Startup JavaScript before DOMContentLoaded as the remote path transfers it, gzipped at level 6 with 300 bytes a response, excluding the separately reported vendor-prefetch tier."
 
 # The exact 300,000-file cold trace measured ordinary shell CSS server work at
 # 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This

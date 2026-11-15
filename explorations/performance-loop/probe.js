@@ -34,6 +34,16 @@ function transferKb(list) {
   return Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
 }
 
+// The addresses of those scripts, path and query, which `run.py record` reads again from
+// the measured server to give `startup_script_transfer_kb` as the remote path sends them:
+// a server started for local use sends a loopback browser its scripts uncompressed.
+function startupScriptPaths(list) {
+  return list.map((r) => {
+    const url = new URL(r.name);
+    return url.pathname + url.search;
+  });
+}
+
 (async () => {
   const origin = performance.timeOrigin;
   // Freeze the navigation-time profile before this adapter runs its own
@@ -603,6 +613,7 @@ function transferKb(list) {
     script_transfer_kb: kb(scripts),
     startup_script_requests: startupScripts.length,
     startup_script_transfer_kb: kb(startupScripts),
+    startup_script_paths: startupScriptPaths(startupScripts),
     startup_script_last_response_ms: startupScripts.length
       ? Math.round(Math.max(...startupScripts.map((resource) => resource.responseEnd || 0)))
       : null,

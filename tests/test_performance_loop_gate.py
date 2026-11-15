@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import importlib.util
 import io
 import json
@@ -97,6 +98,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "shell_tools_missing": 0,
         "startup_script_requests": 22,
         "startup_script_transfer_kb": 154,
+        "startup_script_paths": [f"/static/s{index}.js?v=1" for index in range(22)],
         "startup_style_server_ms_max": 24,
         "tree_region_repaints": 1,
         "unsupported": None,
@@ -847,6 +849,8 @@ def _recordable_run(
         "inventory_provider": "python",
         "inventory_work": {},
     }
+    # Each startup script, read back from the server: 7,000 bytes that gzip to a few dozen.
+    module._served_body = lambda _port, _path: b"x" * 7000
     corpus = tmp_path / "corpus"
     (corpus / "nested").mkdir(parents=True)
     (corpus / "nested" / "sample.txt").write_text("sample\n", encoding="utf-8")
@@ -904,6 +908,39 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
     recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
     assert recorded["files"] == 101
     assert "hard performance gate failed" in capsys.readouterr().out
+
+
+def test_record_reads_the_startup_transfer_as_the_remote_path_sends_it(tmp_path: Path) -> None:
+    """A loopback browser of a local server is sent its scripts uncompressed (H115); the
+    gate keeps reading what it was set in, the scripts as the remote path gzips them."""
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    bodies = {path: (path * 300).encode() for path in payload["startup_script_paths"]}
+    asked: list[tuple[int, str]] = []
+
+    def served(port: int, path: str) -> bytes:
+        asked.append((port, path))
+        return bodies[path]
+
+    module._served_body = served
+    payload["startup_script_transfer_kb"] = 900  # what loopback carried, uncompressed
+
+    assert _record(module, payload) == 0
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    expected = sum(len(gzip.compress(body, compresslevel=6)) + 300 for body in bodies.values())
+    assert recorded["startup_script_transfer_kb"] == int(expected / 1024 + 0.5)
+    assert recorded["startup_script_loopback_transfer_kb"] == 900
+    assert asked == [(8600, path) for path in payload["startup_script_paths"]]
+
+
+def test_record_refuses_a_profile_without_its_startup_script_paths(tmp_path: Path) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    del payload["startup_script_paths"]
+
+    with pytest.raises(SystemExit, match="no startup script paths"):
+        _record(module, payload)
+    assert not module.RESULTS.exists()
 
 
 def test_record_attributes_the_profile_start_to_the_server_spawn(tmp_path: Path) -> None:

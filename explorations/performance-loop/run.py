@@ -49,6 +49,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +64,7 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO))
 
 from devtools.bench_serving import MetabBuild, attest_installed_wheel, resolve_metab_build
+from devtools.check_startup_scripts import RESOURCE_TIMING_HEADER_BYTES
 from devtools.web_performance import (
     blocking_issues,
     budget_issues,
@@ -70,6 +72,7 @@ from devtools.web_performance import (
     load_performance_config,
     validity_issues,
 )
+from metabrowser.delivery import sent_size
 
 RESULTS = HERE / "results" / "runs.jsonl"
 # Every port `serve` has handed out, recorded the moment it does. A port whose
@@ -302,6 +305,7 @@ METRICS = (
     "script_transfer_kb",
     "startup_script_requests",
     "startup_script_transfer_kb",
+    "startup_script_loopback_transfer_kb",
     "startup_script_last_response_ms",
     "startup_script_duration_max_ms",
     "startup_style_server_ms_max",
@@ -805,6 +809,44 @@ def _inventory_facts(port: int) -> dict[str, Any]:
     }
 
 
+def _served_body(port: int, path: str) -> bytes:
+    """What the measured server answers *path* with, uncompressed, as a client that asks."""
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", headers={"Accept-Encoding": "identity"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if response.headers.get("Content-Encoding", "identity") != "identity":
+                raise SystemExit(f"{path} was sent encoded to a client that refused it")
+            return cast("bytes", response.read())
+    except OSError as error:
+        raise SystemExit(
+            f"could not read startup script {path} from the server: {error}"
+        ) from error
+
+
+def _startup_script_transfer_kb(paths: list[str], read: Callable[[str], bytes]) -> int:
+    """``startup_script_transfer_kb`` as the remote path sends the scripts.
+
+    The budget (performance-budgets.toml) was set as what a browser on loopback was sent
+    for the startup scripts while the server gzipped every answer to every client. A
+    server started for local use no longer gzips toward a loopback client (H115), so the
+    browser's own figure there is the scripts' decoded size, and the gate would read a
+    different quantity under the same ceiling. It is read instead as what the ceiling
+    was calibrated in: each script the page requested before ``DOMContentLoaded``,
+    *read* from the measured build as it is, compressed as the server compresses for a
+    client it gzips for (``metabrowser.delivery``, which ``metab --remote`` keeps), plus
+    the 300 bytes Resource Timing adds for a response's headers, rounded as probe.js
+    rounds. On a build that gzips toward loopback this is the browser's figure byte for
+    byte, which is how ``devtools/check_startup_scripts.py`` arrives at the same number
+    on every lint.
+    """
+
+    total = sum(sent_size(read(path)) + RESOURCE_TIMING_HEADER_BYTES for path in paths)
+    return int(total / 1024 + 0.5)
+
+
 def _require_inventory_identity(
     walk_facts: dict[str, Any],
     inventory_facts: dict[str, Any],
@@ -1190,6 +1232,15 @@ def cmd_record(args: argparse.Namespace) -> int:
             "floor. Size the browser pane and load the page again; the tree pages its "
             "rows against the viewport, so a run measured at this size is not a run."
         )
+    startup_paths = probe.get("startup_script_paths")
+    if not is_server_sample and (
+        not isinstance(startup_paths, list)
+        or not all(isinstance(path, str) for path in cast("list[object]", startup_paths))
+    ):
+        raise SystemExit(
+            "browser profile has no startup script paths, which the startup transfer "
+            "budget is read from; re-run with the current probe.js"
+        )
     pending = _read_pending()
     measurement_run_id = _require_unused_measurement_run_id(pending)
     port = int(pending["port"])
@@ -1290,6 +1341,12 @@ def cmd_record(args: argparse.Namespace) -> int:
         "inventory_contract": inventory_contract,
     }
     if not is_server_sample:
+        # What the page was sent on loopback is kept beside the gate's number, which is
+        # what the remote path sends (_startup_script_transfer_kb).
+        run["startup_script_loopback_transfer_kb"] = probe.get("startup_script_transfer_kb")
+        run["startup_script_transfer_kb"] = _startup_script_transfer_kb(
+            cast("list[str]", startup_paths), lambda path: _served_body(port, path)
+        )
         config = load_performance_config(Path(args.budgets))
         issues = [
             *validity_issues(run, config),

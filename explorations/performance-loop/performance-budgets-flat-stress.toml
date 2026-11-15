@@ -228,7 +228,7 @@ category = "loading"
 maximum = 220
 policy = "gate"
 required = true
-description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+description = "Startup JavaScript before DOMContentLoaded as the remote path transfers it, gzipped at level 6 with 300 bytes a response, excluding the separately reported vendor-prefetch tier."
 
 # The exact 300,000-file cold trace measured ordinary shell CSS server work at
 # 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This
