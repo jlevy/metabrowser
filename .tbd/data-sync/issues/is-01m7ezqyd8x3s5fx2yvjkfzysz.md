@@ -5,7 +5,7 @@ title: "Sans Markdown: h2 headings upright; serif documents keep the italic"
 kind: bug
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:54:00.615Z
-updated_at: 2026-11-15T17:52:42.057Z
+updated_at: 2026-11-15T18:11:54.011Z
 started_at: 2026-11-15T07:10:23.619Z
 ---
 The user's request (2026-11-15), verbatim: "on the chrome or sans markdown docs let's not make the h2s italic. we can preserve the italic on the serif mode as that is more consistent with our standared past kpress stylings."
@@ -59,3 +59,5 @@ Not verified: the macOS app's WebKit; the size guard cannot see a change confine
 2026-11-15 restack: rebased onto origin/claude/pull-timeline (PR 6, 48165b77e) as 5d366e2c1. Only CHANGELOG conflicted; both entries kept, this one first. The styles.css and design-system.md hunks merged clean, and the layers below do not touch the session files, so CHECKS stays 92. After the rebase: make -o install format and lint-check pass (parity 53 routes covered, 5 exempt); test_prose_faces_chrome, test_design_vocabulary and test_process_group pass, 84 tests. Not pushed, no PR yet: the push was refused by the permission system. A draft PR body is ready for the coordinator.
 
 2026-11-15 second restack and push: 5d366e2c1 sat on an older #451 head (48165b77e), so it was rebased again, while still unpushed, onto #451's final tip f98c4af45, as 55b7a5e50. The rebase was clean, and test_prose_faces_chrome passes (1 test, 11.2 s). Pushed at the user's go-ahead ("Yes, push PR 7"), and opened as draft PR #456 (https://github.com/jlevy/metabrowser/pull/456), base claude/pull-timeline, linked into stack #446 at position 7. From here on it takes merges only: no rebase, no force-push.
+
+2026-11-15 review A (senior, round 1, at 55b7a5e5; verdict approve with nits, A1-A5 all Low): all five fixed in 19491aaac, pushed with --no-verify as a plain commit (no rebase). A1: design-system.md and the styles.css comment give h4 and h6 each a reason: h4 is KPress's sans under either reading font (document.css sets h2/h4/h6 to --kpress-font-sans, then h2 and h6 to --kpress-font-prose), so its italic is KPress's own sans style; h6 follows the reading face and keeps its italic because the user named only h2s. h6 behavior unchanged. A2: the plan's Sans Headings bullet names the two selectors and says md-body needs no rule. A3: Chrome test docstring rewrapped and reworded. A4: each pass checks chrome prose's KPress h2 box equals the Document view h2's from the same read; CHECKS 92 -> 96. A chrome-prose-only `font-weight: 650; margin-top: 0` mutant now fails 4 of 96. A5: test_serif_is_only_for_documents asserts the styles.css selectors setting font-style on `.kpress-prose h2` are exactly each sans hook (rules pointing --kpress-host-font-prose at var(--prose-sans-font)) + " .kpress-prose h2", declarations exactly {"font-style": "normal"}; mutants: rule removed fails, extra declaration fails, a third hook (whitelisted in _FACE_ROOTS) fails without the rule and passes with it. Gates: the three-file pytest run 85 passed; make -o install format clean; make -o install lint-check exit 0; pre-commit hooks passed. Dispositions comment: https://github.com/jlevy/metabrowser/pull/456#issuecomment-6898969357. Not run: make verify, pre-push gate; WebKit not verified.
