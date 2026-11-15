@@ -14,7 +14,15 @@ All notable changes to Metabrowser are documented here.
   is not shown, and a Git revision offers no Age.
   Modified within, File type, Minimum file size, and Show ignored move into the drawer
   behind the chevron, whose badge counts the filters set; Clear keeps the grouping.
-  Holding Shift numbers Group by first, then the drawer’s filters while it is open.
+  Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
+  drawer is open; a filter’s number opens the drawer with its menu.
+  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
+  their own modification time.
+  When files change, the sections refresh in place, keeping the open folders, the scroll
+  position, and the focused row.
+  For plugin authors, a `filterControls` option may carry a `summary`, the words its
+  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
+  where its row reads “Age”.
 
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.

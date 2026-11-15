@@ -1737,13 +1737,13 @@ What is numbered, in reading order, each only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, then, while the filter drawer is open, Modified within (Any age) and File type (Any type); a Git pin has no Modified within |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), open or closed as the filter drawer is; a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
-beside the Pulls tab, at `2` beside the Files tab with its drawer closed, and at `4`
-with it open.
+beside the Pulls tab and at `4` beside the Files tab, its drawer open or closed (`3` on
+a Git pin).
 
 The keys and buttons that have no key, and why: every copy control, ancillary; a changed
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
@@ -2335,24 +2335,43 @@ Clear sits beside the chevron and undoes the filters, keeping the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
+- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
+  Other, since a link has no file type, and Age places it by its own modification time.
+  A file filter set beside the grouping leaves links out, as it does without one.
+  On a Git pin a link is a blob, counted and grouped by its name as a file is.
+- **Keys.** The drawer’s filters keep their numbers while it is closed.
+  Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
+  the order the triggers take when it opens, and a filter’s number opens the drawer with
+  its menu.
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
   breathes as refreshing text does once the wait passes `--loading-state-delay`. Opening
-  the Group by menu asks for both groupings ahead of the choice.
+  the Group by menu asks ahead of the choice for each grouping it offers that is not
+  already shown.
+- **Refresh.** When files change, the sections refresh in place, in one frame: each
+  keeps its heading and updates its count, a group that fills or empties appears or
+  goes, the folders open in a section stay open, and the scroll position and the focused
+  row are kept. A folder whose cached children a write dropped is fetched before the
+  paint. A refresh that fails keeps what is shown and retries with a backoff.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
 `tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
-browserlessly in `tests/dom/files-group-by-session.js`; and
-`tests/test_files_tab_chrome.py` measures the row, the drawer, the numbers, and the
-sections’ headings in Chrome.
+browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
+`tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
+the row, the drawer, the numbers, the sections’ headings, and a refresh after a write in
+Chrome.
 
 Measured in headless Chrome on a served folder (2026-11-15), grouping costs the server a
 pass over the index per group: on 22,104 files File type answered in 106 ms where the
 ungrouped tree took 34 ms, and on 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19
 s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown.
+spinner shown. Computing every group in one pass over the index is tracked as `mb-navs`.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
 
 ### Filters Say What They Do Not Know
 
