@@ -2090,8 +2090,11 @@ def test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks(
 
 
 def test_group_filter_fields_are_validated() -> None:
-    for name in ("band_within_seconds", "older_than_seconds"):
-        with pytest.raises(ValueError, match=f"{name} must be positive"):
-            InventoryFilter(**{name: 0}, as_of_ns=1)
-        with pytest.raises(ValueError, match="requires as_of_ns"):
-            InventoryFilter(**{name: 1})
+    with pytest.raises(ValueError, match="band_within_seconds must be positive"):
+        InventoryFilter(band_within_seconds=0, as_of_ns=1)
+    with pytest.raises(ValueError, match="older_than_seconds must be positive"):
+        InventoryFilter(older_than_seconds=0, as_of_ns=1)
+    with pytest.raises(ValueError, match="requires as_of_ns"):
+        InventoryFilter(band_within_seconds=1)
+    with pytest.raises(ValueError, match="requires as_of_ns"):
+        InventoryFilter(older_than_seconds=1)
