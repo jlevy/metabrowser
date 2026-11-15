@@ -180,12 +180,13 @@ with the discussion.
 ## What the Page Shows
 
 The header has the title, state, branches, labels, and dates.
-PR numbers use dark text, usernames use bold normal text ink at the surface’s normal
-size, and branch names use smaller ref chips, consistently with the Pulls list and Git
-history. Hover or focus a copyable branch chip to reveal its copy control; it copies the
-full branch name. The author’s small circular avatar appears beside the username when
-available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
-condensed navigation keeps short ages.
+PR numbers use bold dark text, usernames use bold normal text ink at the surface’s
+normal size, and branch names use smaller ref chips, consistently with the Pulls list
+and Git history. Hover or focus a copyable branch chip to reveal its copy control; it
+copies the full branch name.
+The author’s small circular avatar appears beside the username when available.
+Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; condensed
+navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.
 When switching from useful content, that content stays visible until the new description
 or an actionable failure is ready.

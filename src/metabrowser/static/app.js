@@ -5003,14 +5003,14 @@ function renderRecentList(data) {
 
 // ── Navigation filter bar ───────────────────────────────────────
 //
-// One always-visible row (recency) plus a drawer holding type, size,
-// and gitignored visibility. Controls come from the shared chip family
+// One always-visible row (Group by and Show ignored) plus a drawer
+// holding the three filters. Controls come from the shared chip family
 // (static/filter-controls.js) and every click writes through to the
 // shared state (static/filter-state.js), so the bar holds no state of
 // its own.
 //
-// The drawer carries no section headings: an extension menu, a size
-// ramp, and a checkbox labelled "Show ignored" say what they are.
+// The drawer carries no section headings: its three menus' triggers
+// say what they are.
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
@@ -5287,7 +5287,10 @@ function renderNavFilterBar() {
     return;
   }
   var st = filterState.get();
+  // Clear resets every filter, Show ignored included; the chevron's badge counts only the
+  // filters behind it, because Show ignored on the row shows its own state.
   var count = filterState.activeCount();
+  var drawerCount = treeFilterModel.drawerFilterCount(st);
   var fc = filterControls;
   // The three filters, each a dropdown. A Git pin has no mtime, so recency is omitted
   // rather than offered as a 409.
@@ -5327,10 +5330,12 @@ function renderNavFilterBar() {
   });
   var main =
     '<div class="nav-filter-bar-main">' +
-    // Group by is the row's one control: splitting the tree by age or by type is the
-    // simplest way to see a folder, and it removes nothing, so it needs no drawer. The
-    // filters, which do remove rows, sit behind the chevron, whose badge counts the ones
-    // set (docs/design-system.md, "Filter Controls").
+    // Group by leads the row: splitting the tree by age or by type is the simplest way to
+    // see a folder, and it removes nothing, so it needs no drawer. Show ignored follows it,
+    // a checkbox whose tick states its own direction, so it needs no drawer either. The
+    // filters, which remove rows by value, sit behind the chevron, whose badge counts the
+    // ones set (docs/design-system.md, "Grouping the Files Tree"). A Git revision has no
+    // gitignored entries to show, so it has no Show ignored.
     fc.menuGroupHtml({
       key: "group",
       select: "one",
@@ -5342,6 +5347,14 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",
     }) +
+    (isGitRevisionSource()
+      ? ""
+      : fc.checkHtml({
+          key: "showIgnored",
+          label: "Show ignored",
+          checked: st.showIgnored,
+          tip: "Show gitignored entries, dimmed",
+        })) +
     '<span class="nav-filter-bar-end">' +
     // Clear sits on the row with the chevron: it can only appear when a filter is set,
     // and having to open the drawer to undo one is a step too many. "Clear", not "Clear
@@ -5354,12 +5367,12 @@ function renderNavFilterBar() {
       icon: ICONS.toggle || "",
       className: "filter-drawer-toggle disclosure-toggle",
       pressed: filterDrawerOpen,
-      badge: count,
+      badge: drawerCount,
       // A glyph-only control needs a name that says what happens, and
       // the badge is decorative once the count is spoken here.
       ariaLabel:
         (filterDrawerOpen ? "Hide filters" : "Show filters") +
-        (count > 0 ? ` (${count} active)` : ""),
+        (drawerCount > 0 ? ` (${drawerCount} active)` : ""),
       tip: filterDrawerOpen ? "Hide filters" : "Filters",
       controls: "filter-drawer",
     }) +
@@ -5380,14 +5393,6 @@ function renderNavFilterBar() {
     recencyMenu +
     typeMenu +
     sizeMenu +
-    (isGitRevisionSource()
-      ? ""
-      : fc.checkHtml({
-          key: "showIgnored",
-          label: "Show ignored",
-          checked: st.showIgnored,
-          tip: "Show gitignored entries, dimmed",
-        })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
   if (_groupingPending && filesPanelUsesGroupedSource()) {
@@ -5411,7 +5416,7 @@ function applyDrawerOpenState() {
     drawer.toggleAttribute("inert", !filterDrawerOpen);
   }
   if (toggle) {
-    var count = filterState ? filterState.activeCount() : 0;
+    var count = filterState ? treeFilterModel.drawerFilterCount(filterState.get()) : 0;
     toggle.setAttribute("aria-pressed", String(filterDrawerOpen));
     toggle.setAttribute(
       "aria-label",

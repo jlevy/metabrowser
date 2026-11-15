@@ -102,6 +102,9 @@
     }
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
+      // A pull request's number, which the button sets in its own weight
+      // (docs/design-system.md, "Pull Request Numbers").
+      pullNumber: label.kind === "Pull request" ? label.name : null,
       selectedRef:
         label.kind === "Branch" || label.kind === "Tag"
           ? {
@@ -427,6 +430,11 @@
             copy: "sibling",
           }),
         );
+      } else if (model.pullNumber !== null) {
+        const number = document.createElement("span");
+        number.className = "source-ref-selector-pull-number";
+        number.textContent = model.pullNumber;
+        parts.label.append(model.button.slice(0, -model.pullNumber.length), number);
       } else {
         parts.label.textContent = model.button;
       }

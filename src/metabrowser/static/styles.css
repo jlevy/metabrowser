@@ -391,6 +391,13 @@
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  /* A pull request's number, "#N", wherever it names the pull request:
+     bold, the weight of a stack's position, so "1/6 · #N" reads as one
+     identifier. Every surface that shows one takes this token: a Pulls row,
+     a stack menu's member, the pull request's title, a Quick Search result,
+     and the ref selector (docs/design-system.md, "Pull Request Numbers";
+     mb-vrvs). */
+  --pull-number-weight: var(--weight-bold);
 
   /* Small-caps label style (shared by tabs, table headers, stat labels,
      section labels, and the embedded-document TOC title). Same size as
@@ -414,6 +421,17 @@
      this to their left padding per level, so depth reads in the text
      position while the hover and selection shapes stay constant. */
   --tree-indent: 16px;
+  /* A tree row's leading slot: a folder's or a container's chevron, a file's
+     type icon, a change letter, and a Pulls row's chevron, state icon, and a
+     stack's Layers icon, one width, so they make one column and the names
+     after them line up (mb-hmv7). It is the glyph's own width: a 12px chevron
+     sits 1px in, and a file icon fills it, 6px (the row's gap) from its name.
+     Measured in Chrome at the default pane (tests/test_files_tab_chrome.py,
+     tests/test_github_pulls_stacks_chrome.py): at 16px, one step wider than
+     the glyph, a Files name started 22px from the row's content edge, and a
+     Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
+     pull request's title 4px wider. */
+  --tree-icon-slot: 14px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -448,9 +466,9 @@
      row's leading mark, so icons stay interchangeable wherever they
      appear. --icon-btn-size is the hit target the interactive ones get;
      see the `── Icon buttons ──` primitive below. The alignment boxes
-     that reserve a row's icon column (tree rows, palette rows, menu
-     rows) are 16px, one step wider than the glyph, so the glyph has
-     room to sit optically centered. The one deliberate exception is
+     that reserve a palette or menu row's icon column are 16px, one step
+     wider than the glyph, so the glyph has room to sit optically
+     centered; a tree row's is --tree-icon-slot, the glyph's own width. The one deliberate exception is
      `.menu-seg svg`, where the glyph is the whole label of a segmented
      chooser rather than a mark beside text; it is sized in place. */
   --icon-glyph: 14px;
@@ -1838,8 +1856,9 @@ summary {
   cursor: default;
   pointer-events: none;
 }
-/* 16px alignment box + --icon-glyph mark, same as a tree row and a
-   palette row, so a menu row's icon column lines up with theirs. */
+/* 16px alignment box + --icon-glyph mark, same as a palette row, so a
+   menu row's icon column lines up with a palette row's. A tree row's slot
+   is the glyph's own width (--tree-icon-slot). */
 .menu-item-icon {
   display: flex;
   width: 16px;
@@ -2478,6 +2497,9 @@ html.theme-anim .menu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.source-ref-selector-pull-number {
+  font-weight: var(--pull-number-weight);
+}
 .source-ref-selector-panel {
   position: absolute;
   top: calc(100% + 2px);
@@ -2783,7 +2805,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
 .tree-item.tree-page-more {
-  padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+  /* On the names' column: the row's inset, its slot, and its gap. */
+  padding: 2px 12px 2px
+    calc(10px + var(--tree-icon-slot) + 6px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
@@ -2833,7 +2857,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
 }
 .tree-item-icon {
   flex-shrink: 0;
-  width: 16px;
+  width: var(--tree-icon-slot);
   height: 16px;
   display: flex;
   align-items: center;
@@ -2859,6 +2883,12 @@ html[data-prose-font="sans"] .kpress-prose h2,
 .file-identity-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
+}
+/* In a tree row the file's icon is in the row's one slot, as a chevron is
+   (--tree-icon-slot). */
+.tree-item-icon.file-identity-icon {
+  width: var(--tree-icon-slot);
+  flex-basis: var(--tree-icon-slot);
 }
 /* Compression overlay — reuses the existing 16x16 envelope as the
    positioning anchor and tucks a small badge into the bottom-right.
@@ -3484,7 +3514,8 @@ a.tab-btn {
    Sits between the nav tab bar and the scrolling tree, outside the
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
-   recency; everything else lives in the drawer one toggle down. */
+   Group by and Show ignored; the three filters live in the drawer one
+   toggle down. */
 .nav-filter-bar {
   display: flex;
   align-items: center;
@@ -3633,8 +3664,8 @@ a.tab-btn {
 .nav-filter-bar-main > .chip-group > .chip {
   padding-inline: 7px;
 }
-/* Pushes the drawer toggle and Clear to the trailing edge, so the
-   recency group always starts at the same x as the tree's first row. */
+/* Pushes the drawer toggle and Clear to the trailing edge, so Group by
+   always starts at the same x as the tree's first row. */
 .nav-filter-bar-end {
   position: relative;
   display: flex;
@@ -3642,6 +3673,24 @@ a.tab-btn {
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+/* The chevron's count sits outside its fixed-size button
+   (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
+   sits against the chevron: the margin cancels the span's gap on that
+   side, and the 5 px a badge keeps from a chip's label goes, since the
+   gap already parts it from Clear. That gives the row 9 px (mb-x1h6).
+   Measured in headless Chrome on 2026-11-15 at the default 299 px bar
+   (a 275 px row), in the default font set, with a filter set so Clear
+   and the badge "1" show: "No grouping", the widest trigger, overflowed
+   by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
+   about 1 px and has 7.83; "By age" has 30.7. The row still overflows in
+   the system font set's wider face, by about 18 px at "No grouping"; in a
+   pane narrower than about 297 px at its widest; and, with no filter set,
+   in one narrower than about 245 px. tests/test_files_tab_chrome.py
+   checks the default case. */
+.nav-filter-bar-end > .chip-badge {
+  margin-left: 0;
+  margin-right: -4px;
 }
 /* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
    focus, and a badge that sits beside the chevron, Modified within's before File type's.
@@ -5294,6 +5343,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-pull-number {
   color: var(--text);
+  font-weight: var(--pull-number-weight);
 }
 .search-palette-option mark {
   color: inherit;
@@ -5550,21 +5600,21 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 /* Container rows: a file that is also folder-like. Its chevron sits in
-   the same 16px alignment box a folder's does, so names line up at every
-   indent level; its children carry a kind badge in place of an icon. */
+   the same slot a folder's does (--tree-icon-slot), so names line up at
+   every indent level; its children carry a kind badge in place of an icon. */
 .tree-container > .tree-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 12px;
-  margin: 0 2px;
+  margin: 0 calc((var(--tree-icon-slot) - 12px) / 2);
   flex: none;
 }
 .tree-container-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
   flex: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
@@ -5591,10 +5641,10 @@ pre.code-block.metabrowser-source-lines > code {
 .expanded .toggle-chevron {
   transform: rotate(90deg);
 }
-/* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the chevron inside its
-   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+/* Left-align folder names with file names. A file row leads with its icon
+   in the row's slot (.tree-item-icon, --tree-icon-slot); a folder row leads
+   with the chevron inside its .tree-toggle wrapper, whose inline margins
+   make its margin box the slot's width (glyph stays 12px, centered), so
    names align at every indent level. Scoped to .tree-folder so the shared
    tally-tree chevron is unaffected. The entire folder row shares one
    disclosure-and-navigation action. */
@@ -5602,7 +5652,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-inline: 2px;
+  margin-inline: calc((var(--tree-icon-slot) - 12px) / 2);
   flex-shrink: 0;
   border-radius: var(--radius-circle);
 }

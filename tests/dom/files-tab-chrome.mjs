@@ -10,13 +10,14 @@
 //
 // What it measures is layout, which no browserless DOM computes: where a menu's group
 // heading starts against its rows, how tall an open menu is drawn against its rows and
-// the window, which controls the bar's row and closed drawer hold and which take keyboard
-// numbers, where a Group by section's heading starts against its tree, and whether a
-// refresh after a write keeps the scroll position and the focused row
-// (docs/design-system.md, "Groups in a Menu", "Menu Height", and "Grouping the Files
-// Tree"). The requests and sections themselves run browserlessly in
-// tests/dom/files-group-by-session.js. The pure rule,
-// `menuMaxHeight`, is checked without a browser in tests/dom/filter-controls-behavior.js.
+// the window, which controls the bar's row and closed drawer hold, whether the row fits
+// its pane, and which take keyboard numbers, where a Group by section's heading starts
+// against its tree, and whether a refresh after a write keeps the scroll position and the
+// focused row, and a tree row's leading slot, a folder's chevron and a file's icon, against
+// the name after it (docs/design-system.md, "Groups in a Menu", "Menu Height", "Grouping
+// the Files Tree", and "One Glyph Size"). The requests and sections themselves run browserlessly in
+// tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
+// a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -139,6 +140,39 @@ const MEASURE = `(key) => {
   };
 }`;
 
+// A tree row's leading slot: a folder's chevron and a file's type icon, at one depth, each
+// in its box from the row's content edge, and where the name after it starts. The box is
+// `--tree-icon-slot` wide (styles.css, mb-hmv7); a folder's chevron is its toggle's margin
+// box, as a container row's is.
+const SLOTS = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const measure = (row, slot) => {
+    const box = row.getBoundingClientRect();
+    const style = getComputedStyle(row);
+    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const r = slot.getBoundingClientRect();
+    const s = getComputedStyle(slot);
+    const glyph = slot.querySelector("svg").getBoundingClientRect();
+    const left = r.left - parseFloat(s.marginLeft);
+    return {
+      slot: round(r.width + parseFloat(s.marginLeft) + parseFloat(s.marginRight)),
+      fromInset: round(left - inset),
+      glyph: round(glyph.width),
+      glyphFromSlot: round(glyph.left - left),
+      name: round(row.querySelector(".tree-item-name").getBoundingClientRect().left - inset),
+      gap: parseFloat(style.columnGap),
+    };
+  };
+  const folder = tree.querySelector('.tree-folder[data-path="src"]');
+  const file = tree.querySelector('.tree-file[data-path="README.md"]');
+  return {
+    token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
+    folder: measure(folder, folder.querySelector(":scope > .tree-toggle")),
+    file: measure(file, file.querySelector(":scope > .tree-item-icon")),
+  };
+})()`;
+
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
   row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
@@ -148,6 +182,35 @@ const ROW = `(() => ({
   drawerOpen: document.getElementById("filter-drawer").dataset.open,
   drawerInert: document.getElementById("filter-drawer").inert,
 }))()`;
+
+// Whether the row fits its pane: Group by's trigger and Show ignored at their natural
+// widths, the room to spare before Clear and the chevron, and what the badge counts.
+// `spare` is the space between Show ignored and the trailing span beyond the row's gap,
+// less how far that span runs past the row's edge: positive when the row fits with room
+// left, negative by the overflow when it does not (the span's auto margin is 0 then, so
+// the space alone cannot say).
+const ROW_FIT = `(() => {
+  const row = document.querySelector(".nav-filter-bar-main");
+  const trigger = row.querySelector('[data-chip-menu-toggle="group"]');
+  const check = row.querySelector(".filter-check");
+  const end = row.querySelector(".nav-filter-bar-end");
+  const round = (value) => Math.round(value * 100) / 100;
+  const rowBox = row.getBoundingClientRect();
+  const endBox = end.getBoundingClientRect();
+  const gap = parseFloat(getComputedStyle(row).columnGap);
+  const overflow = Math.max(0, endBox.right - rowBox.right);
+  return {
+    trigger: trigger.textContent.trim(),
+    pane: round(document.getElementById("nav-filter-bar").getBoundingClientRect().width),
+    row: row.clientWidth,
+    content: row.scrollWidth,
+    spare: round(endBox.left - check.getBoundingClientRect().right - gap - overflow),
+    triggerClipped: trigger.scrollWidth > trigger.clientWidth,
+    checkClipped: check.scrollWidth > check.clientWidth,
+    clear: Boolean(end.querySelector("[data-chip-clear]")),
+    badge: end.querySelector(".chip-badge")?.textContent.trim() || null,
+  };
+})()`;
 
 // Which filter menu is open, and whether the drawer is.
 const OPEN_MENU = `({
@@ -277,8 +340,29 @@ try {
   );
 
   const result = { gear };
-  // Group by is the row's one control; the three filters wait in the closed drawer.
+  // Group by and Show ignored are the row; the three filters wait in the closed drawer.
   result.row = await browser.evaluate(ROW);
+  // The row at its widest: a filter set, so Clear and the badge show, under each Group by
+  // value. Then Show ignored off alone: Clear shows, and the badge leaves it out.
+  const setFilters = async (patch) => {
+    await browser.evaluate(`window.metabrowser.filterState.set(${JSON.stringify(patch)}), true`);
+    await browser.evaluate(frames);
+  };
+  await setFilters({ size: "1m" });
+  result.rowFit = {};
+  for (const group of ["none", "age", "type"]) {
+    await setFilters({ group });
+    result.rowFit[group] = await browser.evaluate(ROW_FIT);
+  }
+  await setFilters({ size: "all", group: "none", showIgnored: false });
+  result.ignoredOff = await browser.evaluate(ROW_FIT);
+  await setFilters({ showIgnored: true });
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  await browser.waitFor(
+    `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
+    30000,
+  );
+  await browser.evaluate(frames);
   // The numbers: 1 is Group by, and the drawer's filters keep theirs while it is closed,
   // on stand-ins beside the chevron.
   await press("1");
@@ -397,6 +481,7 @@ try {
   result.ungrouped = await browser.evaluate(
     `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
   );
+  result.slots = await browser.evaluate(SLOTS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

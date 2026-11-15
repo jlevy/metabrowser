@@ -26,45 +26,70 @@ All notable changes to Metabrowser are documented here.
   spacing are unchanged.
   See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
 
+- A pull request’s page header gives the head and base branches a line of their own,
+  under “jlevy wants to merge 2 commits”, instead of ending that sentence with them.
+  The state badge (Draft, Open, Merged, Closed) moves down a line, to lead “Opened 9h
+  ago · updated …”. The stack button moves from the end of the labels row to the right
+  end of the author’s row, under the end of the title, and its menu opens from there;
+  arriving after the page, it still moves nothing.
+  A short title now starts at the header’s left edge with its icon, instead of sitting
+  centred, and the pull request’s number ends at the right edge, above the stack button,
+  for every title.
+
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and its text sits as far below the event above as a comment header’s
-  does. A line now joins the description, comments, reviews, and commits down the
-  avatars’ column, with a dot at each commit, as on GitHub’s own pull request page.
+  header’s type, and a run of commits stands at least as far from the comment above and
+  below it as one commit stands from the next.
+  A line now joins the description, comments, reviews, and commits down the avatars’
+  column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
   See [Conversation Timeline](docs/design-system.md#conversation-timeline).
 
-- The Pulls tab can group a native GitHub stack’s pull requests under a “Stack #N” row,
+- A Pulls row no longer names its branches, so its title has more room; the pull
+  request’s page still names them, head → base.
+
+- A pull request’s number is bold wherever it names the pull request: a Pulls row, the
+  pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
+  one width for a chevron and a file type icon alike, so names start 2px sooner and a
+  pull request’s title is 4px wider.
+
+- A stack member’s place in its stack is on its number’s line, before the number, as
+  “1/6 · #455 · jlevy”, and its row draws no stack icon: the stack’s row above it has
+  one. Its title’s line holds only the title and the age, so the title has all that room:
+  at the default pane, 166 px where it had 65 to 125.
+
+- The Pulls tab groups a native GitHub stack’s pull requests under a “Stack #N” row,
   open by default, with the stack’s pull requests under it top of the stack first, as
   the pull request page’s stack menu lists them, and the pull requests in no stack after
-  the stacks. Stacks, a chip in the Pulls toolbar named Group by stack, turns it on and
-  off; it is on once the repository’s stacks are known, and your choice is kept.
+  the stacks. It always groups once the repository’s stacks are known; until then, or
+  when they cannot be read, the list stays as it was.
   A stack’s row counts the pull requests of it the list holds, and its tip says where
   any sit under another stack.
-  A pull request in two stacks appears once, under the first, and its badge names the
-  other stack by the stack icon and its number before its position, everywhere a badge
-  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. Until the
-  stacks are known, or when they cannot be read, the list stays as it was and the chip
-  says why and what to do.
-  A stack’s row opens and closes like a folder: J and K stop on it, Enter, Space, and
-  the arrow keys open, close, enter, and leave it.
-  The chip takes `4` among the Pulls tab’s numbers, so Reload is now `5`. The stack
-  row’s header and the stack menu’s heading are now one label, gray, all caps, and
-  tracked, and the menu’s positions are in the row’s ink rather than link blue
+  A pull request in two stacks appears once, under the first, and its place names the
+  other stack by the stack icon and its number before its position, everywhere a place
+  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. A stack’s row
+  opens and closes like a folder: J and K stop on it, Enter, Space, and the arrow keys
+  open, close, enter, and leave it.
+  The stack row’s header and the stack menu’s heading are now one label, gray, all caps,
+  and tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
-- The Files tab has a Group by menu, the one control on its filter row: No grouping,
-  Age, or File type. Grouped, the tree splits into sections, each headed like a menu
-  group with the group’s file count and holding a full tree of the group’s files after
-  the filters. Age groups are disjoint bands: Live, then Past hour, Past day, Past week,
-  and Past month, each holding only what the bands before it do not, then Older.
+- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
+  type. Grouped, the tree splits into sections, each headed like a menu group with the
+  group’s file count and holding a full tree of the group’s files after the filters.
+  Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
+  month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
   is not shown, and a Git revision offers no Age.
-  Modified within, File type, Minimum file size, and Show ignored move into the drawer
-  behind the chevron, whose badge counts the filters set; Clear keeps the grouping.
+  Show ignored moves out of the drawer to follow it on the row, and Modified within and
+  File type move into the drawer behind the chevron beside Minimum file size; the
+  chevron’s badge counts the ones of those three that are set.
+  Clear resets every filter, Show ignored included, and keeps the grouping.
   Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
   drawer is open; a filter’s number opens the drawer with its menu.
   Grouping keeps symbolic links: File type puts them in Other, and Age places them by
@@ -599,10 +624,10 @@ All notable changes to Metabrowser are documented here.
   design system’s reveal motion, `--motion-reveal`.
 
 - The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
-  Open, Closed, and All and put focus on the chosen filter, `4` is Group by stack, and
-  `5` is Reload, each of which does nothing while it waits, as a click does.
+  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
+  does nothing while it waits, as a click does.
   The navigation pane’s numbers come first, so beside the Pulls tab a pull request
-  page’s View on GitHub and the actions after it now start at `6`. Holding Shift shows
+  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
   each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull

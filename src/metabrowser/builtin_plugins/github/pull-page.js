@@ -3534,18 +3534,25 @@ export function mountPullPage(container, ctx, mb) {
       { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
-  // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
-  // labels row: arriving, it moves nothing, and takes its width from the labels, which the
-  // row cuts shorter, a label that showed whole among them. At the end of the state row it
-  // took its width from the sentence and the merge, which slid up to 35 px. With no stack
-  // the slot holds a strut.
+  // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
+  // the author's row, under the title's end (mb-cf0l): arriving, it lands in the row's
+  // empty end and moves nothing, and where the row has no room left the sentence is cut
+  // short at its end, never moved. With no stack the slot holds a strut, which gives the row
+  // a chip's height. At the end of the row that also held the branches, a chip took its
+  // width from the sentence and the merge, which slid up to 35 px.
   const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const labelList = h("div", { class: "github-pull-label-list" });
-  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
+  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn]);
+  // The head and base branches, on a line of their own under the author's sentence: a line
+  // tall, the merge's arrow's, while no record is shown too.
+  const branchesRow = h("div", { class: "github-pull-branches" });
+  // The pull request's state leads the row of its ages: its badge, then when it was
+  // opened, updated, merged, or closed.
+  const openedRow = h("div", { class: "github-pull-opened" });
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4280,8 +4287,8 @@ export function mountPullPage(container, ctx, mb) {
       headerPart("badge", [pull.state, pull.stateLabel], () => badge(pull.state, pull.stateLabel)),
       ...badgeSizers,
     ]);
-    // A narrow row gives way in its sentence first and its branches last: the action is
-    // cut short before the merge's names are (styles.css, "One line").
+    // A narrow row gives way in its sentence first: the action is cut short before the
+    // author is (styles.css, "One line"). The branches have the line below to themselves.
     const actor = pull.actor;
     placeChildren(stateDetails, [
       ...(actor === null
@@ -4292,10 +4299,10 @@ export function mountPullPage(container, ctx, mb) {
             ),
           ]),
       headerPart("action", [actor === null, pull.action], () =>
-        h("span", { class: "github-pull-action" }, [
-          `${actor === null ? "" : " "}${pull.action}: `,
-        ]),
+        h("span", { class: "github-pull-action" }, [`${actor === null ? "" : " "}${pull.action}`]),
       ),
+    ]);
+    placeChildren(branchesRow, [
       headerPart("branches", [pull.headRef, pull.head, pull.baseRef, pull.base], () =>
         mb.mergeRefs(
           { name: pull.headRef, label: pull.head },
@@ -4473,7 +4480,8 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      children.push(title, paintStateRow(pull), opened.row);
+      placeChildren(openedRow, [stateBadge, opened.row]);
+      children.push(title, paintStateRow(pull), branchesRow, openedRow);
       // A row that is always there, so a pull request with labels is as tall as one without.
       placeChildren(
         labelList,
@@ -4493,14 +4501,15 @@ export function mountPullPage(container, ctx, mb) {
       if (model.status !== "unavailable") {
         placeChildren(stateBadge, []);
         placeChildren(stateDetails, []);
-        placeChildren(labelList, []);
-        children.push(
-          stateRow,
+        placeChildren(branchesRow, []);
+        placeChildren(openedRow, [
+          stateBadge,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
-          labelsRow,
-        );
+        ]);
+        placeChildren(labelList, []);
+        children.push(stateRow, branchesRow, openedRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
