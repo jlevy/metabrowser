@@ -5,7 +5,8 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Approved 2026-11-14, with the decisions below.
-Implemented in one pull request; the baseline benchmark results wait on an idle machine.
+Implemented in one pull request, including the baseline benchmark results (recorded
+2026-11-15).
 
 ## Overview
 

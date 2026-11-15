@@ -1,8 +1,8 @@
 # Scale Benchmark
 
-**Status:** Built: `make benchmark` measures the Python inventory provider.
-Planned: the recorded Python baseline below, and results for another provider once one
-is registered.
+**Status:** Built: `make benchmark` measures the Python inventory provider, and the
+Python baseline below was recorded on 2026-11-15. Planned: results for another provider
+once one is registered.
 
 A few figures anyone can reproduce on their own machine, published as evidence for the
 README’s claim about large trees.
@@ -55,10 +55,19 @@ command with `--provider`, and its rows go beside the ones below.
 
 ## Results
 
-The Python-provider baseline is planned: it is run on an otherwise idle machine and
-recorded here with the date, the `metab --version` output, the provider, the machine’s
-chip and memory, the load average from `uptime` at the start, and how long each size
-took.
+The Python-provider baseline, recorded on 2026-11-15:
+
+| Provider | Files | First folder counts (s) | Scan with a client attached (s) | Peak server RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: |
+| python | 100,000 | 1.19 | 5.5 | 174 |
+| python | 300,000 | 1.38 | 19.3 | 331 |
+
+- **Build:** `metab 0.12.1.dev1037+19f4d5e4 (+1105 commits, c8ef5d9ed)`.
+- **Machine:** Apple M1 Pro, 32 GB, macOS 26.5.2.
+- **Load at the start:** 1.50, 1.83, 1.79 (1, 5, and 15 minutes, from `uptime`).
+- **Time:** `make benchmark` took 1 minute 38 seconds in all.
+  The 100,000-file run took about 26 seconds and the 300,000-file run about 72 seconds,
+  each including building its corpus and the settled phase.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
