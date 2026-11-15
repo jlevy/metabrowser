@@ -5,7 +5,7 @@ title: Tooltips only when they add information; none on Pulls nav rows
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:23.202Z
-updated_at: 2026-11-15T19:39:25.434Z
+updated_at: 2026-11-15T19:51:10.889Z
 started_at: 2026-11-15T19:27:09.431Z
 closed_at: 2026-11-15T19:39:25.433Z
 close_reason: null
@@ -35,3 +35,5 @@ Done when:
 ## Notes
 
 Done in bd90edd32 on claude/tooltips-substantive (cut from ebc2e03d1, pushed, no PR). Removed: every tip on Pulls rows and stack rows (state icon name, age exact time, stack place hint, stack row hint, title/meta cut-short tips); changed-files folder tips that only repeat the folder name (Pulls files tree and diff summary); 'Load more of this file' on Load more. Shell guard: app.js tipAddsInformation shows a data-tip-text equal to its element's own text only while cut short. devtools/check_tooltips.py fails a literal tip equal to its element's literal text. Principle stated in docs/design-system.md, 'Tooltips Add Information'. Chrome: tests/dom/github-pulls-stacks-chrome.mjs (no tip on any Pulls row or part), tests/dom/github-pull-header-chrome.mjs (the rule on whole, spaced, cut, glyph anchors). Borderline tips kept and listed for the user in the report: Pulls changed-file rows' tips, 'Show ignored' tips, treemap parent button, merge arrow, html 'Open as full page', source ref toggle, crumbs.
+
+Decisions (the user, 2026-11-15, on the coordinator's picks: "Use your picks"), applied in f354fcb91: (1) Pulls changed-file rows' tips: keep. (2) 'Show ignored' tips, Files and folder rollup: remove. (3) Treemap parent button 'Open X in Treemap': remove. (4) Merge arrow 'wip merges into topic': remove. (5) HTML preview 'Open as full page': keep. (6) Ref selector 'Switch branch or tag': keep. (7) Nested crumbs' full-path tips: removed; a crumb's tip is now its own name, which the shell shows only while the crumb is cut short (flagged to the coordinator). (8) Files tree rows' rich tooltip: trimmed, leaving out a file's size and the total a folder's chip holds, keeping the exact date and a folder's other total; pinned in tests/test_files_tab_chrome.py.
