@@ -371,6 +371,10 @@ check("blank frames that still show the origin's prompt are reported apart", () 
   assert.equal(b.blankFramesOriginPrompt, 0);
 });
 
+const REG = {
+  pane: { selector: "#p", track: ["y"] },
+  row: { selector: ".sel", track: ["y"], group: "tree", identity: "data-path" },
+};
 // Revision 6, mb-s0e4: a frame is [begin, state, read, read cost, seen].
 check("the input's own frame is in its window though stamped before the input", () => {
   // The input at 100; Chrome stamps the frame that draws it 0.2 ms earlier, and a frame
@@ -416,6 +420,40 @@ check("the input's own frame is in its window though stamped before the input", 
     0,
   );
 });
+check("a frame read before the input is out of its window though stamped after it", () => {
+  // Review of #442: the input at 1000; a frame Chrome stamped 0.3 ms after it was read
+  // before it, so it shows the origin and is not the transition's.
+  const frames = [
+    [983.4, "E", 984, 0.1, 0],
+    [1000.3, "E", 1001, 0.1, 0],
+    [1016.9, "E", 1018, 0.1, 1],
+    [1033.6, "U", 1035, 0.1, 1],
+    [1050.2, "U", 1051, 0.1, 1],
+  ];
+  const a = accountFrames({
+    frames,
+    origin: 1000,
+    windowEnd: 1500,
+    readyAt: 1033.6,
+    readyRead: 1035,
+    readyNext: 1050.2,
+    initialCode: "E",
+  });
+  assert.equal(a.framesToReady, 2);
+  assert.equal(a.blankFramesBeforeReady, 1);
+  assert.equal(a.framesInWindow, 3);
+  // A 40 px move its pre-input read logged is where the region stood at the input.
+  const m = regionMovement(
+    { pane: [0, 0, 10, 10] },
+    [
+      [1000.3, "pane", [0, 40, 10, 10], 0],
+      [1033.6, "pane", [0, 40, 10, 10], 1],
+    ],
+    1000,
+    REG,
+  );
+  assert.equal(m.groups.page.path, 0);
+});
 check("the origin's prompt lasts while only the pending modifier changes", () => {
   const frames = grid(["E", "Eb", "Eb", "EPb", "U"]);
   const a = accountFrames({
@@ -445,10 +483,6 @@ check("the origin's prompt lasts while only the pending modifier changes", () =>
 
 // ---------------------------------------------------------------------- region movement
 
-const REG = {
-  pane: { selector: "#p", track: ["y"] },
-  row: { selector: ".sel", track: ["y"], group: "tree", identity: "data-path" },
-};
 check("movement over two frames is net and path, not the largest step", () => {
   const m = regionMovement(
     { pane: [0, 100, 10, 10] },
@@ -1145,6 +1179,77 @@ check("memory read between transitions is not the standard regime", () => {
   const res = cmp(series(flagged, flagged));
   assert.ok(res.notes.some((n) => /NOT THE STANDARD REGIME: memory read after files\.a/.test(n)));
   refuses(() => cmp(series(() => {}, flagged)), /regime/);
+});
+check("truncated searches and slow reads are counted and reported", () => {
+  const frames = [
+    [100, "", 102, 0.3, 1, 0],
+    [100 + I, "", 102 + I, 5.2, 1, 1],
+    [100 + 2 * I, "U", 102 + 2 * I, 5.6, 1, 1],
+  ];
+  const a = accountFrames({
+    frames,
+    origin: 99,
+    windowEnd: frames.at(-1)[0],
+    readyAt: frames[2][0],
+    readyRead: frames[2][2],
+    readyNext: null,
+  });
+  assert.equal(a.searchTruncatedFrames, 2);
+  assert.equal(a.readCostMaxMs, 5.6);
+  // compare and summarize name a transition whose read passed the ceiling or whose search
+  // was cut, on either side.
+  const slow = (r) => setT(r, "files.a", { readCostMaxMs: 5.6, searchTruncatedFrames: 2 });
+  const res = cmp(series(() => {}, slow));
+  assert.equal(stats.READ_COST_CEILING_MS, 4);
+  assert.ok(
+    res.notes.some((n) =>
+      /^INSTRUMENT COST: in condition b.*files\.a \(longest read 5\.6 ms\)/.test(n),
+    ),
+    res.notes,
+  );
+  assert.ok(
+    res.notes.some((n) =>
+      /^SEARCH TRUNCATED: in condition b.*files\.a \(6 frame\(s\) in 3 run/.test(n),
+    ),
+  );
+  assert.ok(!res.notes.some((n) => /in condition a/.test(n) && /INSTRUMENT|TRUNCATED/.test(n)));
+  const text = summarize(series(() => {}, slow)).join("\n");
+  assert.match(text, /instrument cost over 4 ms in `files\.a` \(longest read 5\.6 ms\)/);
+});
+check("blank and ready metrics are not judged where a search was cut", () => {
+  // The candidate's arm check stopped at its budget in every run, and it reads worse: its
+  // ready and blank metrics are a gap with the reason, not a wrong-way result; its counts
+  // and the other transition are judged as before.
+  const cut = (r) =>
+    setT(r, "files.a", { searchTruncatedBeforeInput: 1, paintedReadyMs: 90, blankFrames: 3 });
+  const res = cmp(series(() => {}, cut));
+  for (const key of ["painted_ready_ms", "blank_frames"]) {
+    const e = find(res, "files.a", key);
+    assert.equal(e.outcome, "truncated", key);
+    assert.equal(e.wrongWay, false, key);
+    assert.match(
+      e.verdict,
+      /^not judged: the content search stopped at its hit-test budget in 0 a and 3 b frame/,
+    );
+    assert.ok(res.gaps.some((g) => g.id === "files.a" && g.metric === key));
+  }
+  assert.equal(find(res, "files.a", "requests_data").outcome, "none");
+  assert.equal(find(res, "files.b", "painted_ready_ms").outcome, "none");
+  assert.equal(res.wrongWay.length, 0);
+  assert.equal(res.exitCode, 1);
+  // The frames before the input are counted apart from the window's.
+  const a = accountFrames({
+    frames: [
+      [90, "", 91, 4.1, 0, 1],
+      [100, "U", 101, 0.3, 1, 0],
+    ],
+    origin: 95,
+    windowEnd: 100,
+    readyAt: 100,
+    readyRead: 101,
+    readyNext: null,
+  });
+  assert.deepEqual([a.searchTruncatedBeforeInput, a.searchTruncatedFrames], [1, 0]);
 });
 check("revision 5 rows compare with each other, noting what revision 6 changed", () => {
   const five = (r) => {

@@ -8,6 +8,61 @@ import path from "node:path";
 export const SCENARIO = "transition-navigation/v1";
 export const SCENARIO_REVISION = 6;
 export const MIN_RUNS = 3;
+// A frame whose recorder read took longer than this may have been delayed by the
+// instrument rather than the product: about a quarter of a 60 Hz frame. Reads on the
+// product's views measured 0.4 to 2.5 ms a frame; the bounded search's worst case on the
+// synthetic pages, a blank screen past a long list (the walk's 1,500 visits, about 2 ms,
+// then the hit test's 3 ms budget and the point it started), is about 5 ms, so it is
+// named. compare and summarize name every transition that read longer (revision 6).
+export const READ_COST_CEILING_MS = 4;
+
+/**
+ * Transitions whose recorder read exceeded READ_COST_CEILING_MS in some frame, or whose
+ * content search stopped at its hit-test budget, from `collect` entries: "id (…)".
+ */
+export function instrumentDisturbed(entries) {
+  const out = { slow: [], truncated: [] };
+  for (const e of entries) {
+    const cost = (e.values.read_cost_max_ms ?? []).map((x) => x.v);
+    if (cost.length && Math.max(...cost) > READ_COST_CEILING_MS) {
+      out.slow.push(`${e.id} (longest read ${Math.max(...cost)} ms)`);
+    }
+    const cut = truncation(e);
+    if (cut.total > 0) {
+      out.truncated.push(`${e.id} (${cut.total} frame(s) in ${cut.runs} run(s))`);
+    }
+  }
+  return out;
+}
+
+/**
+ * The frames of one transition, from arm to the end of its window, whose content search
+ * stopped at its hit-test budget, summed over a condition's runs: in the window, and in
+ * the arm check and the frames before the input, which the ready-before-input guard read.
+ */
+export function truncation(entry) {
+  const byRun = new Map();
+  for (const key of ["search_truncated_frames", "search_truncated_before_input"]) {
+    for (const x of entry?.values[key] ?? []) {
+      byRun.set(x.pair, (byRun.get(x.pair) ?? 0) + x.v);
+    }
+  }
+  const counts = [...byRun.values()];
+  return { total: counts.reduce((a, v) => a + v, 0), runs: counts.filter((v) => v > 0).length };
+}
+
+// The judged metrics a truncated search can bend: a frame that read blank with content on
+// screen, readiness found late, or a subject shown before the input not seen. On a
+// transition with truncated searches on either side they are a gap, not a judgement.
+const BENT_BY_TRUNCATION = new Set([
+  "painted_ready_ms",
+  "ready_ms",
+  "frames_to_ready",
+  "blank_frames",
+  "blank_frames_after_ready",
+  "blank_ms",
+  "ready_after_last_input_ms",
+]);
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
 // one revision against each other, with this note, and refuses to mix revisions.
@@ -94,11 +149,15 @@ export const METRICS = [
   T("window_ms", (t) => t.windowMs, null),
   T("long_task_max_ms", (t) => t.longTasks?.maxMs),
   T("input_span_ms", (t) => t.inputSpanMs, null),
+  // A hover-click's realized dwell, the pointer's arrival to the press (revision 6).
+  T("hover_dwell_ms", (t) => t.hoverDwellMs, null),
   T("ready_after_last_input_ms", (t) => t.readyAfterLastInputMs),
   // The recorder's own work in each frame (revision 6): shown, so a comparison can see
   // when the instrument cost one condition more, and never judged.
   T("read_cost_max_ms", (t) => t.readCostMaxMs, null),
   T("read_cost_to_ready_ms", (t) => t.readCostToReadyMs, null),
+  C("search_truncated_frames", (t) => t.searchTruncatedFrames, null),
+  C("search_truncated_before_input", (t) => t.searchTruncatedBeforeInput, null),
   ...[
     ["shell_tools_ready_ms", "shellToolsReady"],
     ["styled_markdown_ms", "styledMarkdown"],
@@ -597,6 +656,23 @@ export function compareRuns(
 
   const ca = collect(A);
   const cb = collect(B);
+  // Where the instrument may have disturbed what it measured (revision 6).
+  for (const [c, entries] of [
+    [A, ca],
+    [B, cb],
+  ]) {
+    const d = instrumentDisturbed([...entries.values()]);
+    if (d.slow.length) {
+      notes.push(
+        `INSTRUMENT COST: in condition ${c.label}, the recorder's read took longer than ${READ_COST_CEILING_MS} ms in a frame of ${d.slow.length} transition(s), which may have delayed those frames: ${d.slow.join("; ")}`,
+      );
+    }
+    if (d.truncated.length) {
+      notes.push(
+        `SEARCH TRUNCATED: in condition ${c.label}, the content search stopped at its hit-test budget in frames of ${d.truncated.length} transition(s), where on-screen content can have read as blank: ${d.truncated.join("; ")}`,
+      );
+    }
+  }
   const entries = [];
   const gaps = [];
   for (const id of new Set([...ca.keys(), ...cb.keys()])) {
@@ -638,6 +714,13 @@ export function compareRuns(
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
+      const [ta, tb] = [truncation(ea), truncation(eb)];
+      if (BENT_BY_TRUNCATION.has(m.key) && m.better !== null && (ta.total || tb.total)) {
+        j.outcome = "truncated";
+        j.wrongWay = false;
+        j.verdict = `not judged: the content search stopped at its hit-test budget in ${ta.total} ${A.label} and ${tb.total} ${B.label} frame(s) of this transition, from arm to the end of its window, where on-screen content can have read as blank, readiness as late, or a subject shown before the input as not shown (gap)`;
+        gaps.push({ id, metric: m.key, reason: j.verdict });
+      }
       // The window ends a settle time after the ready frame, so a condition that is ready
       // sooner is watched for less time: a settle time one side reached after the other
       // side's window closed cannot be compared. Revision 6 marks both directions (before,
@@ -862,6 +945,7 @@ const TABLES = [
     sparse: true,
     columns: [
       ["input_span_ms", "Input span ms"],
+      ["hover_dwell_ms", "Hover dwell ms"],
       ["ready_after_last_input_ms", "Ready after last input ms"],
       ["file_envelope_requests", "File envelopes"],
       ["post_body_bytes", "POST body bytes"],
@@ -876,6 +960,7 @@ const TABLES = [
     // A row only when something here differs from a single-input transition's defaults.
     keep: (v) =>
       v.list_row_replacements !== undefined ||
+      v.hover_dwell_ms !== undefined ||
       ["input_span_ms", "post_body_bytes", "tree_movement_path_px", "palette_movement_px"].some(
         (k) => v[k]?.some((x) => x.v > 0),
       ),
@@ -905,6 +990,7 @@ const TABLES = [
     columns: [
       ["read_cost_max_ms", "Longest read ms"],
       ["read_cost_to_ready_ms", "Reads to ready ms"],
+      ["search_truncated_frames", "Truncated searches"],
     ],
   },
 ];
@@ -978,6 +1064,15 @@ export function summarize(rows, { condition = null, allowMixed = false } = {}) {
       );
     }
     const entries = [...collect(c).values()];
+    const disturbed = instrumentDisturbed(entries);
+    for (const x of disturbed.slow) {
+      out.push(
+        `- instrument cost over ${READ_COST_CEILING_MS} ms in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`,
+      );
+    }
+    for (const x of disturbed.truncated) {
+      out.push(`- content search truncated in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`);
+    }
     for (const e of entries.filter((x) => x.subjects.size > 1)) {
       out.push(`- subject drift in \`${e.id}\`: ${[...e.subjects].join(", ")}`);
     }
@@ -1077,7 +1172,12 @@ export function keepTransition(t) {
     memory: t.memory,
     readCostMaxMs: t.readCostMaxMs,
     readCostToReadyMs: t.readCostToReadyMs,
+    searchTruncatedFrames: t.searchTruncatedFrames,
+    searchTruncatedBeforeInput: t.searchTruncatedBeforeInput,
+    readyBeforeInputUncertain: t.readyBeforeInputUncertain,
+    convergedUncertain: t.convergedUncertain,
     inputSpanMs: t.inputSpanMs,
+    hoverDwellMs: t.hoverDwellMs,
     readyAfterLastInputMs: t.readyAfterLastInputMs,
     milestones: t.milestones,
     milestonesMissing: t.milestonesMissing,
