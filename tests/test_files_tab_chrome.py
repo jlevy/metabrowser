@@ -12,8 +12,9 @@ opens the Modified within menu in both. This judges what it measured against
 - the Modified within menu, with few rows, keeps its natural height in both windows;
 - Group by and Show ignored are the row and the three filters wait in the closed drawer;
   the row fits the default pane at its widest, under every Group by value with Clear and
-  the chevron's badge showing, and the badge leaves Show ignored out; and the keyboard
-  numbers follow what is on screen ("Grouping the Files Tree");
+  the chevron's badge showing, and the badge leaves Show ignored out; Group by's rows read
+  as its trigger does; and the keyboard numbers follow what is on screen ("Grouping the
+  Files Tree");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
@@ -218,6 +219,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
+    # Group by's rows read as its closed trigger does (mb-4mir).
+    assert measured["groupRows"] == ["No grouping", "By age", "By file type"]
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at

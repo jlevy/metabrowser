@@ -333,6 +333,10 @@ try {
   // on stand-ins beside the chevron.
   await press("1");
   result.keyOneOpens = await browser.evaluate(OPEN_MENU);
+  // Group by's rows read as its trigger does: "By age", not "Age".
+  result.groupRows = await browser.evaluate(
+    `[...document.querySelectorAll("#filter-group-menu .menu-item-label")].map((label) => label.textContent)`,
+  );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   // 3 is File type: it opens the closed drawer with its menu.

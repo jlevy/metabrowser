@@ -2568,8 +2568,10 @@ Clear sits beside the chevron and shows while any filter is set, Show ignored in
 it resets them all, Show ignored back on, and keeps the grouping.
 
 - **Values.** No grouping is the default and shows the one tree.
-  Age splits by modification time and File type by the registry’s display groups.
-  A Git revision has no modification times, so it offers no Age.
+  By age splits by modification time and By file type by the registry’s display groups.
+  Each row reads as the closed trigger does when it is chosen, so the menu and the
+  trigger never name one value two ways.
+  A Git revision has no modification times, so it offers no By age.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
@@ -2588,9 +2590,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
-- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
-  Other, since a link has no file type, and Age places it by its own modification time.
-  A file filter set beside the grouping leaves links out, as it does without one.
+- **Symbolic links.** Grouping keeps them, as No grouping does: By file type puts a link
+  in Other, since a link has no file type, and By age places it by its own modification
+  time. A file filter set beside the grouping leaves links out, as it does without one.
   On a Git pin a link is a blob, counted and grouped by its name as a file is.
 - **Keys.** The drawer’s filters keep their numbers while it is closed.
   Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in

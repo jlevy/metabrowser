@@ -884,7 +884,6 @@ type MetabrowserFilterOption = {
   icon?: string;
   iconClass?: string;
   label: string;
-  summary?: string;
   title?: string;
   value: string;
 };

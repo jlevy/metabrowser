@@ -40,27 +40,25 @@ All notable changes to Metabrowser are documented here.
   tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
-- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
-  type. Grouped, the tree splits into sections, each headed like a menu group with the
-  group’s file count and holding a full tree of the group’s files after the filters.
+- The Files tab has a Group by menu, first on its filter row: No grouping, By age, or By
+  file type, each read the same in the menu and on its closed trigger.
+  Grouped, the tree splits into sections, each headed like a menu group with the group’s
+  file count and holding a full tree of the group’s files after the filters.
   Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
   month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
-  is not shown, and a Git revision offers no Age.
+  is not shown, and a Git revision offers no By age.
   Show ignored moves out of the drawer to follow it on the row, and Modified within and
   File type move into the drawer behind the chevron beside Minimum file size; the
   chevron’s badge counts the ones of those three that are set.
   Clear resets every filter, Show ignored included, and keeps the grouping.
   Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
   drawer is open; a filter’s number opens the drawer with its menu.
-  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
-  their own modification time.
+  Grouping keeps symbolic links: By file type puts them in Other, and By age places them
+  by their own modification time.
   When files change, the sections refresh in place, keeping the open folders, the scroll
   position, and the focused row.
-  For plugin authors, a `filterControls` option may carry a `summary`, the words its
-  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
-  where its row reads “Age”.
 
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.

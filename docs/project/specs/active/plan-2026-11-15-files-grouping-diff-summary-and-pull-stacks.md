@@ -8,8 +8,9 @@
 
 ## Overview
 
-Seven changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of seven pull requests on `main`:
+Seven changes from the owner’s requests of 2026-11-15, and a follow-up on the Files
+Group by menu from the same day.
+They land as one native GitHub stack of eight pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -25,6 +26,8 @@ stack of seven pull requests on `main`:
    spacing, with a timeline line joining them.
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
+8. **Group by menu:** its rows read “By age” and “By file type”, as its closed trigger
+   does (`mb-4mir`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -40,7 +43,8 @@ request must prove.
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
   - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
-    values are No grouping (the default), Age, and File type.
+    values are No grouping (the default), By age, and By file type, which read the same
+    in the menu and on its closed trigger (`mb-4mir`).
   - The three filters (Modified within, File type, Minimum file size) move into the
     chevron drawer.
   - When grouping is on, the tree splits into headed sections.
@@ -128,6 +132,7 @@ it:
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
+| 8 | `claude/menu-keys` | `mb-4mir` | Changes the Group by menu that pull request 2 adds, on the Files filter row as pull request 4 left it |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -157,7 +162,7 @@ it:
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
-  Age.
+  By age.
 - **File type groups:** the taxonomy’s groups, with Documentation before Code, then
   Data, Archives and Media in their current order, and Other last for files in no group.
   The order is defined in one place and shared by every surface that lists the groups.
@@ -325,6 +330,11 @@ it:
 - [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
   #438’s Chrome session.
 
+### Phase 8: The Group By Menu (pull request 8)
+
+- [ ] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
+  pinned in Chrome and in the Group by session’s golden.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -350,7 +360,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 7 merges.
+This plan moves to `docs/project/specs/done/` when pull request 8 merges.
 
 ## Open Questions
 
@@ -368,7 +378,8 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`; `mb-4mir`, a
+  follow-up on the Group by menu.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

@@ -506,8 +506,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       menuId: "filter-group-menu",
       open: filterOpenMenu === "group",
       options: [
-        { label: "Age", value: "age" },
-        { label: "File type", value: "type" },
+        { label: "By age", value: "age" },
+        { label: "By file type", value: "type" },
       ],
       select: "one",
       value: "none",

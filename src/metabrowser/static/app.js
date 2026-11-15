@@ -5196,12 +5196,13 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping". A Git revision has no mtime, so it offers no
-// Age, as it offers no Modified within.
+// Group by's choices beside "No grouping", each read the same on its row and on the closed
+// trigger. A Git revision has no mtime, so it offers no By age, as it offers no Modified
+// within.
 function filterGroupOptions() {
   var options = [
-    { value: "age", label: "Age", summary: "By age" },
-    { value: "type", label: "File type", summary: "By file type" },
+    { value: "age", label: "By age" },
+    { value: "type", label: "By file type" },
   ];
   return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
 }
