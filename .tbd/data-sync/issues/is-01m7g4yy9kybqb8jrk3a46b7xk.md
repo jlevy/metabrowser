@@ -3,15 +3,19 @@ type: is
 id: is-01m7g4yy9kybqb8jrk3a46b7xk
 title: "Files tab: Show ignored sits beside Group by on the filter row"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T17:44:27.186Z
-updated_at: 2026-11-15T17:44:27.186Z
+updated_at: 2026-11-15T17:45:10.439Z
+started_at: 2026-11-15T17:45:10.438Z
 ---
 The user's request (2026-11-15), verbatim:
 

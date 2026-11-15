@@ -1,17 +1,17 @@
 ---
 type: is
 id: is-01m7g4zbj0381v3skydz772yk1
-title: "Pulls toolbar: fit the default 299 px pane with the Group by stack toggle"
+title: "Pulls toolbar: drop the Stacks toggle; group by stack always"
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-15T17:44:40.767Z
-updated_at: 2026-11-15T17:44:40.767Z
+updated_at: 2026-11-15T17:49:21.409Z
 ---
 Found in #450's review A (finding A4) and measured by its fix (2026-11-15).
 
@@ -22,3 +22,7 @@ Options put to the user (decision pending):
 - Move Group by stack into a menu.
 
 Done when the Pulls toolbar fits the default 299 px pane with no overflow, measured in Chrome and asserted in tests/dom/github-pulls-stacks-chrome.mjs, and the Stacks section of docs/design-system.md records the measurement.
+
+## Notes
+
+Decision, the user (2026-11-15), verbatim: "also we can drop the "Stacks" button altogether and just keep it on always in the Pulls tab". So: remove the Group by stack toggle and its setting; the Pulls tab always groups by stack. Without the chip the toolbar has its 23 px to spare at the default 299 px pane, so the overflow ends; the Chrome test asserts no overflow at that width. Supersedes the icon-only and menu options.
