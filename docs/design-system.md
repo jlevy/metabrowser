@@ -1192,7 +1192,7 @@ A rename in a diff reads the same way, `old → new`.
 | --- | --- |
 | Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
-| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
+| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
 | Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
@@ -1204,8 +1204,7 @@ The rendered group, for a pull request from `wip` into `topic`:
 ```html
 <span class="merge-refs" dir="ltr">
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
-  <span class="merge-refs-arrow" role="img" aria-label="merges into"
-        data-tip-text="wip merges into topic"> → </span>
+  <span class="merge-refs-arrow" role="img" aria-label="merges into"> → </span>
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
 </span>
 ```
@@ -3336,9 +3335,9 @@ A tooltip earns its place by one of these:
 | --- | --- |
 | The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
 | What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
-| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s size and date |
-| What a control does that its words do not say | The ref selector’s “Switch branch or tag”, a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
-| The whole of something cut short | A chip’s full name, a crumb’s full path, a diff file bar’s path, the page title past its two lines |
+| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, and a folder’s other total |
+| What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
+| The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines |
 
 **The Pulls column has none.** A pull request’s row, a stack’s row, and their parts
 carry no tooltip: the state icon’s name, a stack place’s stacks, and a stack row’s
@@ -3347,6 +3346,16 @@ the page the row opens.
 A pull request’s changed files under its row keep the tooltips the tree gives a file:
 its full path when its row shows only its name, “not in this comparison”, the name it
 was renamed from, and what a folder’s sums leave out.
+
+**Restating is not adding.** A “Show ignored” check, in the Files filter row and a
+folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
+button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
+would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail
+already shows. A Files tree row’s tooltip leaves out what the row shows, its name, a
+file’s size, and a folder’s size or file count, whichever its chip holds, and gives the
+exact date and a folder’s other total.
+These were the audit’s borderline tooltips, and the reader’s decisions on them
+(`mb-8mpo`).
 
 The shell holds the repeat case.
 A `data-tip-text` that is its element’s own text, in any case and spacing, shows only

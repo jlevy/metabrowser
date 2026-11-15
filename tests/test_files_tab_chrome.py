@@ -232,6 +232,27 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         )
         assert slot["name"] == 14 + slot["gap"] == 20, (kind, slot)
 
+    # A tree row's tooltip leaves out what the row shows, its name, a file's size, and the
+    # total a folder's chip holds, and gives the exact date and a folder's other total
+    # (mb-8mpo). The row's chips here are sizes.
+    tips = measured["treeTips"]
+    assert tips["file"] == {
+        "chip": "size",
+        "visible": True,
+        "size": False,
+        "count": False,
+        "lines": 1,
+        "name": False,
+    }, tips
+    assert tips["folder"] == {
+        "chip": "size",
+        "visible": True,
+        "size": False,
+        "count": True,
+        "lines": 2,
+        "name": False,
+    }, tips
+
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}

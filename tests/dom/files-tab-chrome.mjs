@@ -173,6 +173,35 @@ const SLOTS = `(() => {
   };
 })()`;
 
+// A tree row's tooltip, after its delay: what it holds, and what the row's chip shows. It
+// leaves out what the row shows and gives the exact date (mb-8mpo, docs/design-system.md,
+// "Tooltips Add Information").
+const TREE_TIPS = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const read = async (row) => {
+    row.dispatchEvent(new MouseEvent("mouseenter"));
+    await wait(450);
+    const tip = document.querySelector(".custom-tooltip");
+    const chip = row.querySelector(".tree-item-size");
+    const shown = {
+      chip: chip === null ? null : chip.classList.contains("count") ? "count" : "size",
+      visible: tip !== null && tip.style.display === "block",
+      size: tip?.querySelector(".size") !== null,
+      count: tip?.querySelector(".count") !== null,
+      lines: tip === null ? 0 : tip.querySelectorAll(".tip-detail").length,
+      name: tip?.querySelector(".tip-name") !== null,
+    };
+    row.dispatchEvent(new MouseEvent("mouseleave"));
+    await wait(250);
+    return shown;
+  };
+  return {
+    file: await read(tree.querySelector('.tree-file[data-path="README.md"]')),
+    folder: await read(tree.querySelector('.tree-folder[data-path="src"]')),
+  };
+})()`;
+
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
   row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
@@ -482,6 +511,7 @@ try {
     `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
   );
   result.slots = await browser.evaluate(SLOTS);
+  result.treeTips = await browser.evaluate(TREE_TIPS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

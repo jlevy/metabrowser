@@ -330,9 +330,10 @@ function isOwnedControl(element) {
  * changes nothing, but a run of links with one dead segment in the middle
  * reads as a bug rather than as a rule.
  *
- * Each crumb carries the path it navigates to as its tooltip, because a narrow
- * pane ellipsizes the crumbs themselves and the hover is then the only place
- * the whole component is legible.
+ * A crumb's tooltip is its own name, which the shell shows only while a narrow
+ * pane has cut the crumb short (`tipAddsInformation`): the trail itself shows
+ * the path, so a crumb repeats none of it (docs/design-system.md, "Tooltips Add
+ * Information").
  *
  * @param {string} path served-root-relative path; "" is the root itself
  * @param {boolean} isFile whether the last component names a file
@@ -352,7 +353,7 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
     );
   }
   return (
@@ -3280,15 +3281,19 @@ treePane.addEventListener(
       return;
     }
     var d = item.dataset;
-    // The tree row already shows the name, so the hover tooltip omits it and
-    // shows size + date only (the name would be duplicative).
+    // The tooltip gives what the row does not show (docs/design-system.md,
+    // "Tooltips Add Information"): the exact date, and a folder's other total.
+    // The row shows the name, a file's size, and a folder's size or file count,
+    // whichever its chip holds, so the tooltip leaves those out.
     var includeName = false;
+    var chip = item.querySelector(".tree-item-size");
+    var shows = chip === null ? null : chip.classList.contains("count") ? "count" : "size";
     var html;
     if (d.tipType === "dir") {
       html = folderTooltipHtml(
         d.tipName,
-        parseTipNumber(d.tipFiles),
-        parseTipNumber(d.tipSize),
+        shows === "count" ? undefined : parseTipNumber(d.tipFiles),
+        shows === "size" ? undefined : parseTipNumber(d.tipSize),
         parseTipNumber(d.tipMtime),
         includeName,
       );
@@ -3297,12 +3302,14 @@ treePane.addEventListener(
     } else {
       html = fileTooltipHtml(
         d.tipName,
-        parseTipNumber(d.tipSize),
+        shows === "size" ? undefined : parseTipNumber(d.tipSize),
         parseTipNumber(d.tipMtime),
         includeName,
       );
     }
-    showTooltip(html, item);
+    if (html) {
+      showTooltip(html, item);
+    }
   },
   true,
 );
@@ -5398,7 +5405,6 @@ function renderNavFilterBar() {
           key: "showIgnored",
           label: "Show ignored",
           checked: st.showIgnored,
-          tip: "Show gitignored entries, dimmed",
         })) +
     '<span class="nav-filter-bar-end">' +
     // Clear sits on the row with the chevron: it can only appear when a filter is set,

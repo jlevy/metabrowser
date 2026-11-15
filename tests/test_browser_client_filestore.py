@@ -276,12 +276,15 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
     assert "includeName === false" in js
 
     listener_start = js.index('treePane.addEventListener(\n  "mouseenter"')
-    listener_block = js[listener_start : listener_start + 1400]
-    # Every tree row already shows its name, so the hover tooltip omits it and
-    # shows size + date only (never duplicative).
+    listener_block = js[listener_start : listener_start + 2000]
+    # Every tree row already shows its name, a file's size, and a folder's size or count,
+    # so the hover tooltip omits them and gives the exact date and a folder's other total
+    # (mb-8mpo); tests/dom/files-tab-chrome.mjs reads it in Chrome.
     assert "var includeName = false" in listener_block
     assert "folderTooltipHtml(" in listener_block
     assert "fileTooltipHtml(" in listener_block
+    assert 'shows === "count" ? undefined : parseTipNumber(d.tipFiles)' in listener_block
+    assert listener_block.count('shows === "size" ? undefined : parseTipNumber(d.tipSize)') == 2
 
 
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
@@ -765,10 +768,14 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # A narrow pane ellipsizes the crumbs, so each one names its whole
     # component on hover rather than only the head of it — through the app's
     # own tooltip, because the browser's would be a second one on the same
-    # surface. See devtools/check_tooltips.py.
+    # surface. See devtools/check_tooltips.py. The tip is the crumb's own name,
+    # which the shell shows only while the crumb is cut short: the trail already
+    # shows the path (mb-8mpo, "Tooltips Add Information").
     assert (
-        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}"' in fn_block
+        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}"'
+        in fn_block
     )
+    assert 'displayPath(walked))}"' not in fn_block
     assert "title=" not in fn_block
 
 
