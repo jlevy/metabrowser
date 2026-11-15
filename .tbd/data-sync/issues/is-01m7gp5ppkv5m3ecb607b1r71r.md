@@ -3,15 +3,19 @@ type: is
 id: is-01m7gp5ppkv5m3ecb607b1r71r
 title: "Consistency fixes: docs and CHANGELOG (mb-r5jr review B1-B8, A8, C1, C3, C7)"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7g5yrx2z5bck8g4p1y4g6rx
+hold: null
+hold_until: null
 created_at: 2026-11-15T22:45:14.578Z
-updated_at: 2026-11-15T22:45:14.578Z
+updated_at: 2026-11-15T22:46:12.413Z
+started_at: 2026-11-15T22:46:12.401Z
 ---
 Docs fixes from the mb-r5jr design-system consistency review (2026-11-15), as one pull request on top of the code-fix pull request: B1 (the CHANGELOG Unreleased block reads as one change from 0.12.0), B2, B3, B5-B8, A8, and the coordinator's decisions C1 and C7 and the C3 sentence. The full findings and decisions are in the coordinator's attic/coord/reviews/mb-r5jr-findings.md.
 
