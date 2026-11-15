@@ -535,7 +535,7 @@ The two standard setup flows come first; see the
 - Pull requests: jlevy/metabrowser#341 (spike), jlevy/metabrowser#352 (research and this
   plan), jlevy/metabrowser#353 (folder identity), jlevy/metabrowser#357 (the v1
   milestone), the v1 stack above the spike: jlevy/metabrowser#359,
-  jlevy/metabrowser#361, jlevy/metabrowser#362, jlevy/metabrowser#363, and
+  jlevy/metabrowser#361, jlevy/metabrowser#362, jlevy/metabrowser#363,
   jlevy/metabrowser#377, jlevy/metabrowser#384, and jlevy/metabrowser#388, the core
   changes it needed: jlevy/metabrowser#366 (`--exit-on-eof`) and jlevy/metabrowser#367
   (`mb-551q`), and the title-bar follow-ups: jlevy/metabrowser#391,

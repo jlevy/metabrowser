@@ -382,8 +382,9 @@ It closed with five of its blockers deferred by the owner and still open:
 
 - the landing gate’s data and browser differentials against v0.11.0 (`mb-2g6f`, with
   `mb-cz5s` under it);
-- the folder comparison of more than 50 files on the tagged tree (`mb-8pyc`): it last
-  ran on `426ce7b6`, whose tree is not the tag’s;
+- the attribution of the folder comparison of more than 50 files to the release commit,
+  and its owner acceptance (`mb-8pyc`); the comparison itself passed on `a5390794`,
+  whose tree is the tag’s;
 - the timed previous-release comparison, step 3 of the release checklist (`mb-cf6y`);
 - the full QA runbook on an installed wheel (`mb-m20f`);
 - the checks only a person can make (`mb-etqi`).
