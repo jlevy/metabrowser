@@ -5,7 +5,7 @@ title: "Rendered Markdown: chrome always sans, documents serif unless the sans p
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-14T18:21:18.188Z
-updated_at: 2026-11-15T05:07:16.600Z
+updated_at: 2026-11-15T05:20:08.697Z
 started_at: 2026-11-14T18:21:23.995Z
 ---
 The user (2026-11-14): "Let's make sure we have a clear system about when we use serif and sans-serif for rendered markdown. chrome and PR descriptions etc are always sans. but document rendering is by default serif, unless we have preferences settings set to sans serif, and then they are sans serif too. for documents, when we render them in rendered view, they should use document rendering, so be serif unless sans is enabled in preferences."
@@ -28,7 +28,7 @@ Done when every surface that renders Markdown is inventoried with its context (c
 
 ## Notes
 
-Draft PR #438 (branch claude/markdown-font-rule), head 6cae1afd: 5708e456 plus a merge of origin/main 4310f5ac (#432).
+Draft PR #438 (branch claude/markdown-font-rule), head edfea5ce: 5708e456, a merge of origin/main 4310f5ac (#432), and edfea5ce (the Chrome session reads a drawn face only after layout, after a CI run where test (3.13) reported no face for the commit body).
 
 Mechanism: one host class, `.chrome-prose` (static/styles.css), on the element that holds a message, never on a page. It sets `font-family: var(--prose-sans-font)` and `--kpress-host-font-prose: var(--prose-sans-font)`. Carried by pull-page.js textBlock (PR description, comments, reviews, and review-thread comments, plain and rendered) and by the git-panel.js commit body. Documents keep the html[data-prose-font] path; the md-body fallback reads --kpress-font-prose. Removed: the page-wide .github-pull bridge, .github-pull-plain font-family, and .git-commit-body font-family. The rule is stated once in docs/design-system.md, "Serif Is for Documents"; docs/plugins.md tells plugin authors to use the class.
 
