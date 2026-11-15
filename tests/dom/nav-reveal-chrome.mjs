@@ -141,12 +141,24 @@ try {
       await press("/", { code: "Slash", keyCode: 191, text: "/" });
       await chrome.waitFor(open, 1000).catch(() => {});
     }
+    // The query as typed, and its own results: a list still showing an earlier query's
+    // results is not this query's.
+    await evaluate(`(() => {
+      const input = document.activeElement;
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
     await send("Input.insertText", { text: query });
     await waitFor(
-      `[...document.querySelectorAll('[role="option"]')].some((o) => o.textContent.includes(${JSON.stringify(expect)}))`,
+      `document.activeElement?.value === ${JSON.stringify(query)} && document.querySelector('[role="option"][aria-selected="true"]')?.textContent.includes(${JSON.stringify(expect)}) === true`,
       `Quick Search finds ${expect}`,
     );
+    await frames();
     await press("Enter", { code: "Enter", keyCode: 13, text: "\r" });
+    await waitFor(
+      `document.activeElement?.matches?.(".search-palette-input") !== true`,
+      "Quick Search opens its result",
+    );
   };
   /** Wait for a route's row, selected and in view, then record what the pane shows. */
   const revealed = async (label, selector, tab) => {
@@ -194,12 +206,25 @@ try {
   await evaluate(
     `toggleTreeFolder(document.querySelector('#tab-files .tree-folder[data-path="long"]'))`,
   );
-  // Closed, and done travelling, as a reader sees it before reaching for Quick Search.
+  // Closed, and done travelling, as a reader sees it before reaching for Quick Search: the
+  // close travels about 140 ms, and the tree's scroll shrinks with it, so the step waits
+  // until no animation runs and the scroll has held still for three frames.
   await waitFor(
-    `(() => { const children = document.querySelector('#tab-files .tree-folder[data-path="long"]').nextElementSibling; return children.classList.contains("tree-children-collapsed") && children.getAnimations({ subtree: true }).length === 0; })()`,
+    `new Promise((resolve) => {
+      const children = document.querySelector('#tab-files .tree-folder[data-path="long"]').nextElementSibling;
+      const scroller = document.getElementById("tree-content");
+      let still = 0;
+      let last = scroller.scrollTop;
+      const tick = () => {
+        const settled = children.classList.contains("tree-children-collapsed") && children.getAnimations({ subtree: true }).length === 0 && scroller.scrollTop === last;
+        still = settled ? still + 1 : 0;
+        last = scroller.scrollTop;
+        if (still >= 3) { resolve(true); } else { requestAnimationFrame(tick); }
+      };
+      requestAnimationFrame(tick);
+    })`,
     "the long folder closes",
   );
-  await frames();
   await quickSearch("f250", "f250");
   phase("quick search: the file shown");
   await revealed("Quick Search, the file shown", fileRow("long/f250.txt"), "files");
