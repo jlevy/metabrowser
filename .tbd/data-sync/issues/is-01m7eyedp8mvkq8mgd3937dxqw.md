@@ -5,7 +5,7 @@ title: "Diff summary: one collapsible changed-files tree with folder roll-ups, r
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T07:30:07.900Z
+updated_at: 2026-11-15T07:59:16.079Z
 started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -80,3 +80,9 @@ Tests: tests/dom/diff-summary-session.js + tests/golden/cli-ui-diff-summary.trys
 Measured (headless Chrome 152, 1280x900, PR #260 as a patch: 596 files/649 rows; synthetic 2,000-file patch: 3,221 rows; 7 loads, two runs, load avg 12-39): header paints in the first file bar's frame, no later than main's line; open after hover 15.5-16.4 ms (max 19) and 42-46.8 ms (max 65.7) press-to-frame, 61 rows drawn, no long task; no-hover press 15-17 / 39-50 ms; deep folder toggle 9-26 ms. Real arrow keys and Enter verified in Chrome.
 
 Local: make -o install lint-check passes; focused pytest (240 + 23 incl. Chrome nav-metadata/pull-header) and 59 related tryscript goldens pass. Not verified: the Pulls tab's roll-ups in a real browser (fake-DOM only); the PR page's Changes in a real browser (exercised via patch files; same mountDiffView).
+Fourth commit, 56790847a fix(diff): a Diff summary shows paths by the server's rule, and opens files at their address (coordinator's follow-up, 2026-11-15):
+- Paths: MetabrowserChangedFilesTree gains displayPath (invisible_chars.py's tables and rule in the browser; a lone surrogate shows as three U+FFFD, as the server's decode makes it). changeSummaryRow(change, display) takes it; the path stays the row's identity. tests/test_changed_files_display.py compares displayPath with the server's display_path for every code point the tables name and its neighbours, in six contexts (about 31,000 names), plus a bidi override and a zero-width space. API change for PR 5: displayPath added; nothing renamed or removed; controller.tree() unchanged.
+- Address: the render ctx gains openFile (types.d.ts); pull-page.js's Changes passes open({number, tab: "files", file, replace: false, jumped: false}), the Pulls tree's route, so a summary press makes /pull/<n>/files/<path> and Back returns. A patch file has no per-file address for a place in its whole diff, so there the summary still jumps in place (say so in the PR body).
+- Red on 689a56e0a: the session throws "a row shows a character a reader cannot see"; diff-view-behavior fails "a path's bidi control shows as U+FFFD" and "a file the summary opens goes to the host's address for it"; the pending-file test fails "Changes gives the diff a file's address"; displayPath is not a function.
+- Chrome: the Pulls tab's production tree paint, under a Pulls row with the real stylesheets in a served stand-in checkout, fed the recorded pull-files answer for #106 (249 files): folder rows show roll-ups (src/app +1,086 −479, plugins/github +1,076 −478) at the row's end in the status colors, with aria-labels. Screenshot attic/shots/after-pulls-tab-folder-rollups.png. A pull request's Changes could not fetch its comparison in that stand-in, so the address change is pinned browserlessly only. The tab click had to wait for the shell's tools; before that the panel was mounted hidden and its trees never polled (same on main).
+- Local: make -o install lint-check passes; 260 focused tests (incl. the two Chrome tests) and 59 related goldens pass.
