@@ -221,9 +221,15 @@ export function mountFileTree(host) {
     element.setAttribute("aria-setsize", String(row.setSize));
     element.setAttribute("aria-label", labelOf(row));
     if (row.kind === "folder") {
-      // The tooltip says what the folder's sums leave out, as its accessible name does.
+      // The tooltip says what the folder's sums leave out, as its accessible name does, and
+      // nothing when they leave nothing out: its name is on the row (docs/design-system.md,
+      // "Tooltips Add Information").
       const missing = controller.tree()?.missingCounts(row, host.formatCount) ?? "";
-      element.dataset.tipText = missing === "" ? row.name : `${row.name}, ${missing}`;
+      if (missing === "") {
+        delete element.dataset.tipText;
+      } else {
+        element.dataset.tipText = `${row.name}, ${missing}`;
+      }
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));

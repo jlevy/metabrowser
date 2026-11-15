@@ -231,21 +231,27 @@ def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
 def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
     """Segmented controls stay on one line. A long additive set wraps as
     individually bounded chips without an enclosing pill, so every visible
-    shape remains an interactive target."""
+    shape remains an interactive target. A joined group in a navigation
+    toolbar that its line cannot hold is drawn the same way while it cannot
+    (`data-fit="wrap"`, filter-controls.js `fitJoinedGroups`), rather than
+    folding one pill across lines."""
 
     css = _read("styles.css")
     joined_start = css.index(".chip-group {")
     joined_block = css[joined_start : css.index("}", joined_start)]
     assert "flex-wrap: nowrap;" in joined_block
 
-    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    cluster = '.chip-group:is([data-layout="wrap"], [data-fit="wrap"])'
+    wrapped_start = css.index(f"{cluster} {{")
     wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
     assert "flex-wrap: wrap;" in wrapped_block
     assert "gap: var(--chip-cluster-gap);" in wrapped_block
     assert "border: 0;" in wrapped_block
     assert "background: transparent;" in wrapped_block
+    controls = _read("filter-controls.js")
+    assert 'group.setAttribute("data-fit", "wrap");' in controls
 
-    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_start = css.index(f"{cluster} > .chip {{")
     chip_block = css[chip_start : css.index("}", chip_start)]
     assert "border: 1px solid var(--viz-border);" in chip_block
     assert "border-radius: var(--radius-pill);" in chip_block
@@ -775,7 +781,7 @@ def test_a_closed_bar_is_vertically_symmetric() -> None:
     start = css.index(".nav-filter-bar {")
     block = css[start : start + 700]
     assert "row-gap: 0;" in block
-    assert "column-gap: 6px;" in block
+    assert "column-gap: var(--nav-toolbar-gap);" in block
     assert '.nav-filter-bar:has(.filter-drawer[data-open="true"])' in css
 
 
@@ -1472,7 +1478,10 @@ def test_the_nav_column_shares_one_vertical_rhythm() -> None:
 
     css = _read("styles.css")
     bar_start = css.index(".nav-filter-bar {")
-    assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 900]
+    assert (
+        "padding: var(--nav-toolbar-gap) var(--pane-header-padding-x);"
+        in css[bar_start : bar_start + 900]
+    )
 
     sum_start = css.index(".nav-metadata {")
     sum_block = css[sum_start : css.index("}", sum_start)]

@@ -1200,7 +1200,7 @@ A rename in a diff reads the same way, `old → new`.
 | --- | --- |
 | Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
-| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
+| Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
 | Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
@@ -1212,8 +1212,7 @@ The rendered group, for a pull request from `wip` into `topic`:
 ```html
 <span class="merge-refs" dir="ltr">
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
-  <span class="merge-refs-arrow" role="img" aria-label="merges into"
-        data-tip-text="wip merges into topic"> → </span>
+  <span class="merge-refs-arrow" role="img" aria-label="merges into"> → </span>
   <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
 </span>
 ```
@@ -1552,9 +1551,9 @@ and commits, in the order the page places them
 A commit is an event of the same weight as a comment, so it is not set smaller for being
 a commit. It is said the way a card head says a comment:
 
-- **Type:** a commit row is a card head without its card.
-  It is set at `--body-font-size` on the head’s line, in a box of the head’s height and
-  inset, inside a 1 px frame as wide as a card’s that draws nothing.
+- **Type:** a commit row is set as a card head is.
+  It is set at `--body-font-size` on the head’s line, and its box is that line, with no
+  room of its own above or below, in a frame as wide as a card’s that draws nothing.
   Its subject is bold in text ink where a head’s author is, and starts where the
   author’s name does after the 18 px avatar.
   A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
@@ -1565,12 +1564,21 @@ a commit. It is said the way a card head says a comment:
   `--nav-font-size`, one step below the text beside it, as in the
   [Git Commit Summary](#git-commit-summary).
 
-- **Spacing:** two cards, or two commits, are `--github-pull-gap` apart.
-  A commit row keeps a room between its text and its edge (its 1 px frame, the head’s 3
-  px, and at least the line’s half-leading), so two commits’ glyphs are the gap and two
-  rooms apart. A run of commits keeps that room outside it too, past the gap, so the
-  space from a card’s edge, or Review comments’, to a run’s first commit, and from its
-  last commit to the card below, is at least the space between two commits.
+- **Headings:** every event’s heading reads alike (mb-novh): the author, a plain verb in
+  the heading’s own type, and the age, “jlevy opened 4d ago”, “jlevy commented 4d ago”,
+  “jlevy reviewed 4d ago”, and a commit’s “committed 4d ago”.
+  A boxed chip follows the age only where it says a state the verb does not: a review’s
+  Approved, Changes requested, or Dismissed, in its status ink, as GitHub marks them.
+  A plain review is all in its verb, and a pending one in its “(pending)”, so neither
+  has a chip; a chip on every review read “Reviewed” as a status where a comment’s
+  “commented” was plain text.
+
+- **Spacing:** one rhythm (mb-w7rt). Every two consecutive events are
+  `--github-pull-rhythm` (20 px) apart, card to card, card to commit, commit to card,
+  and commit to commit alike, and so are two review comments under Review comments.
+  The space is what the reader sees: a card’s border, and a commit’s text, whose row is
+  its line. 20 px is the space between two commits’ text that the owner called good; the
+  12 px between cards read as crowded.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1583,14 +1591,17 @@ a commit. It is said the way a card head says a comment:
 
 This is the structure of GitHub’s own pull request page, a line down the timeline with a
 mark at each commit, drawn in the shell’s tokens and none of GitHub’s assets.
-It adds no token: its geometry is the avatar’s, the card head’s, and the page’s gap.
+Its one token is the rhythm; the rest of its geometry is the avatar’s and the card
+head’s.
 
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
 and the pixels painted, with one head drawn with only its slot.
-In Chrome 152 and in the app’s WebKit alike, a run’s first commit’s glyphs sit 23.5 px
-below the card above, and its last commit’s 23.5 px above the card below, against 20 px
-between two commits’; before the run kept its room outside it, both were 16 px.
+In Chrome 152 every pair of events is 20 px apart, card border or commit text, in both
+themes and at 980 and 420 px.
+Before the rhythm, two cards were 12 px apart, a card and a commit 23.5 px, and two
+commits 20 px; before a run of commits kept a room outside it (mb-xz1r), a card and a
+commit were 16 px apart.
 Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
 px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
 joined the events.
@@ -1602,14 +1613,15 @@ pixel reads, which the driver cannot make: an event card computes to `overflow-x
 and `overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
 line’s x to the following event’s connector, which it would not do for a clipped one,
 and 9 px beside it to the page.
-Each node sits 0.5 px below its first line’s middle there, as in Chrome.
+Each node sits 0.5 px below its first line’s middle there, as in Chrome, and every pair
+of events is 20 px apart, as in Chrome.
 
 ### Chrome
 
 | Element | Primitive | Why |
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
-| State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
+| State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
@@ -1678,14 +1690,17 @@ A row names no branches: the pull request’s page names them, head → base, as
 (`mb-ghff`). A stack member’s place in its stack comes first on the metadata line,
 before its number and in the number’s size and ink: “1/6 · #455 · jlevy”, its position
 bold (`mb-dzsi`). It has no stack icon of its own: the stack’s row it sits under has
-one. A second stack’s position is named by its number, the tooltip names the stack and
-every position ([Stacks](#stacks)), and a place too wide for its line is cut short with
-an ellipsis, the number whole after it.
-The title’s line holds only the title and the age, so a member’s title has the room a
-first-level row’s has, less its one indent: at the default 299 px pane, 166 px, where a
-position on the title line left it 65 to 125. Their shared repository snapshot is
-indexed once by PR number; rows make no stack requests, and enrichment updates retain
-the row and any focused changed-file tree.
+one. A second stack’s position is named by its number, the place’s accessible name names
+the stack and every position ([Stacks](#stacks)), and a place too wide for its line is
+cut short with an ellipsis, the number whole after it.
+Nothing in the Pulls column has a tooltip: a pull request’s row, a stack’s row, and
+their parts say what they say on the row, in their accessible names, and on the page
+they open ([Tooltips Add Information](#tooltips-add-information)). The title’s line
+holds only the title and the age, so a member’s title has the room a first-level row’s
+has, less its one indent: at the default 299 px pane, 166 px, where a position on the
+title line left it 65 to 125. Their shared repository snapshot is indexed once by PR
+number; rows make no stack requests, and enrichment updates retain the row and any
+focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1743,7 +1758,7 @@ Four states, each with the shape GitHub gives it and a color token in GitHub’s
 
 The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
 one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
-The shapes differ. In the list, the icon’s accessible name and tooltip give the state.
+The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
@@ -1825,11 +1840,11 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
-| Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
+| Updated time | `metabrowser.formatAge`; the page gives the exact time | [Age](#age); the Pulls column has no tooltips |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
-| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in the tooltip ([Stacks](#stacks)); the stack’s row above it has the icon |
+| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in its accessible name ([Stacks](#stacks)); the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1909,12 +1924,13 @@ surface keeps a copy of either.
   does, and a press opens or closes it as a folder’s does.
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
-  The stack button carries it, and its accessible name is “Navigate” before it.
-  The glyph in a Pulls row’s place has no words of its own: the place’s tip and
-  accessible name name each stack, “Stack #300, position 2 of 2”. A stack group’s row
-  says its size, how many the list holds when that is fewer, and how many of those sit
-  under an earlier stack: “Stack #286, 4 pull requests, 3 in this list, 1 under Stack
-  #290”.
+  The stack button carries it, as its glyph and position do not name the stack, and its
+  accessible name is “Navigate” before it.
+  The Pulls column has no tooltips: the glyph in a Pulls row’s place has no words of its
+  own, and the place’s accessible name names each stack, “Stack #300, position 2 of 2”.
+  A stack group’s row’s accessible name says its size, how many the list holds when that
+  is fewer, and how many of those sit under an earlier stack: “Stack #286, 4 pull
+  requests, 3 in this list, 1 under Stack #290”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -1933,7 +1949,7 @@ spare.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
   A later stack’s row still counts it among the pull requests the list holds, and its
-  tip says where it sits.
+  accessible name says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
   places name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
@@ -2045,6 +2061,9 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   up, and `S` is Source.
 - **Numbers are scoped to the screen.** The live numbered controls, the navigation
   pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
+- **An open menu’s letters are its own.** While a menu whose rows have letters is open
+  and has focus, those letters choose its rows, ahead of the shell’s; everywhere else
+  the shell’s letters hold ([Keys in a Menu](#keys-in-a-menu)).
 
 ### The Keymap
 
@@ -2594,8 +2613,10 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
-The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
-rotated downward; do not substitute a text caret or shrink it to fit the label.
+Opening one puts focus on its checked row, and closing it gives focus back to the
+trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+disclosure chevron at the standard chrome glyph size, rotated downward; do not
+substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
@@ -2613,8 +2634,14 @@ on a surface where scanning all values matters.
 Short sets use the joined layout.
 Sets that can exceed one line, such as agent-log event types, use the wrapping
 chip-cluster layout; segmented controls never wrap.
-A `.chip-menu` costs a click to see the options but stays one trigger wide however many
-there are, so use it when the set is unbounded or the pane cannot afford the full group.
+The one exception is a joined group in a navigation toolbar, whose pane can be dragged
+narrower than a short set: while its whole line cannot hold it joined, it takes the
+cluster layout, and it takes the joined layout back once its line can.
+`filterControls.bind` keeps every such group fitted, and `data-fit="wrap"` on the group
+is how it asks for the cluster; the Pulls tab’s Show group is one
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). A `.chip-menu` costs a click to
+see the options but stays one trigger wide however many there are, so use it when the
+set is unbounded or the pane cannot afford the full group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.
@@ -2705,8 +2732,10 @@ Clear sits beside the chevron and shows while any filter is set, Show ignored in
 it resets them all, Show ignored back on, and keeps the grouping.
 
 - **Values.** No grouping is the default and shows the one tree.
-  Age splits by modification time and File type by the registry’s display groups.
-  A Git revision has no modification times, so it offers no Age.
+  By age splits by modification time and By file type by the registry’s display groups.
+  Each row reads as the closed trigger does when it is chosen, so the menu and the
+  trigger never name one value two ways.
+  A Git revision has no modification times, so it offers no By age.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
@@ -2725,14 +2754,15 @@ it resets them all, Show ignored back on, and keeps the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
-- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
-  Other, since a link has no file type, and Age places it by its own modification time.
-  A file filter set beside the grouping leaves links out, as it does without one.
+- **Symbolic links.** Grouping keeps them, as No grouping does: By file type puts a link
+  in Other, since a link has no file type, and By age places it by its own modification
+  time. A file filter set beside the grouping leaves links out, as it does without one.
   On a Git pin a link is a blob, counted and grouped by its name as a file is.
 - **Keys.** The drawer’s filters keep their numbers while it is closed.
   Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
   the order the triggers take when it opens, and a filter’s number opens the drawer with
-  its menu.
+  its menu. Group by’s rows take `N`, `A`, and `T` while its menu is open and has focus
+  ([Keys in a Menu](#keys-in-a-menu)).
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
@@ -2747,7 +2777,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
   Clear and the badge showing, in the default font set.
   The badge sits against the chevron to make that room; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`.
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
+  system font set, the row wraps: Show ignored moves down, then Clear and the chevron
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
@@ -3188,7 +3220,79 @@ its tooltip does for a pointer.
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
 A use site does not pad, recolor, or re-letter it.
+In the navigation, a pane too narrow for its tabs wraps the bar between them
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Toolbars Wrap
+
+**A navigation toolbar that its pane is too narrow for wraps between its controls.
+Nothing in it is cut, scrolled out of reach, or cut short.** The pane drags down to 180
+px, which leaves its toolbars 179 px, and the system font set’s face is wider than the
+default one’s, so no toolbar can promise one line.
+
+The rule covers every toolbar in the navigation: the Files filter row, the Pulls
+filters, the Commits tally, which stands in the toolbar slot, and the tab bar over them.
+The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
+`static/styles.css`, which a plugin whose toolbar stands in the slot gives its row.
+
+- **One line while it fits.** A toolbar whose controls fit one line is that line, and
+  the toolbar slot’s height, `--nav-toolbar-height`, as it was before the rule.
+  A toolbar wraps only when its controls do not fit, and never adds space when they do.
+- **Where it breaks.** Between controls, in their order, each line as full as it can be,
+  so a control moves down only when it must.
+  The leading controls stay first.
+  The trailing group, which takes the line’s end with an auto margin, moves down whole
+  and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
+  The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
+  and the tab bar between its tabs.
+- **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
+  and `--nav-toolbar-gap` apart.
+  That is also the gap between controls along a line and above the first line and below
+  the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
+  it grows by a line and a gap for each line it adds.
+  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centred in
+  a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
+  is cramped and none stands taller than the rest.
+  An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
+  the lines. The Commits tally is text, so its lines are its line height apart,
+  `--nav-metadata-line-height`, as any metadata line’s are; a tab is its own line, so
+  the tab bar’s lines are a tab’s height apart.
+- **A segmented group.** One that its whole line cannot hold joined takes the cluster
+  layout until it can ([Groups Or Dropdowns](#groups-or-dropdowns)). Whether it fits is
+  measured on a copy in the joined layout, so the answer at one width is the same
+  whichever layout the group shows, and the two cannot alternate near the break.
+  A change to its text is fitted before it paints, and a change of size in the next
+  frame, which a drag across the break shows for one frame.
+- **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
+  them in their Tab order, and their keyboard numbers stay theirs.
+
+Measured in headless Chrome on 2026-11-15, the widths each toolbar is one line from,
+default font set / system font set:
+
+| Toolbar | One line from |
+| --- | --- |
+| Tab bar: Files, Pulls, Commits | 196 / 216 px |
+| Files, no filter set | 246 / 262 px |
+| Files, a filter set, “No grouping”, its widest | 298 / 317 px |
+| Pulls: Show and Reload; Open 100, Closed 2, All 102 | 276 / 308 px |
+| Pulls: Show and Reload; four-digit tallies | 303 / 341 px |
+| Commits: “5 commits begun 3mo ago” | 179 / 186 px |
+| Commits: “123,456 commits begun 12mo ago” | 211 / 238 px |
+
+The Pulls Show group is joined from 218 / 245 px with three-digit tallies (Open 100,
+Closed 200, All 300) and from 244 / 278 px with four (1,234, 5,678, 6,912), and the
+cluster below. At the narrowest pane, 179 px, with a filter set, the Files row is three
+lines: Group by, then Show ignored, then Clear and the chevron.
+The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
+holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
+`tests/test_files_tab_chrome.py` the Files row in every Group by and filter state, with
+its numbers, Tab order, and drawer at the narrowest;
+`tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and four-digit
+tallies, and the Show group’s two layouts, its observers, and their disposal; and
+`tests/test_nav_metadata_chrome.py` the Commits tally and the tab bar.
+`tests/dom/filter-controls-behavior.js` holds the fit and its observers’ lifecycle
+without a browser.
 
 ### Navigation Metadata Line
 
@@ -3225,10 +3329,12 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
   failure. Text wraps only when it is longer than the pane, and then the band grows by
-  the lines it needs: the Files split totals in a narrow pane (tracked as H54), and a
-  Pulls remedy, which keeps its whole command, as the pull request header’s does; at the
-  default pane width the remedies for an unreachable GitHub, a gh that is not signed in,
-  and a missing gh each take a second line.
+  the lines it needs: the Files split totals in a narrow pane (tracked as H54), a Pulls
+  remedy, which keeps its whole command, as the pull request header’s does, and the
+  Commits tally in the toolbar slot, between its phrases, the slot growing with it
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)); at the default pane width the
+  remedies for an unreachable GitHub, a gh that is not signed in, and a missing gh each
+  take a second line.
 
 The built-in Pulls tab uses the class; its stylesheet lays out only the lines’ spans.
 No stylesheet but the component’s sets anything on a line element beyond how a long word
@@ -3417,6 +3523,48 @@ KPress’s radii but not its type scale.
 `data-tip-text` is read by a delegated pointer listener on the document, so it works on
 markup that does not exist yet, including a plugin’s.
 
+### Tooltips Add Information
+
+**A tooltip says something the reader cannot already see, or it is not there**
+(`mb-8mpo`). A tooltip that repeats visible text is a second copy of what the reader
+just read, appearing under the pointer on its own timer, and it is removed.
+A tooltip earns its place by one of these:
+
+| Reason | Examples |
+| --- | --- |
+| The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
+| What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
+| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, and a folder’s other total |
+| What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
+| The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines |
+
+**The Pulls column has none.** A pull request’s row, a stack’s row, and their parts
+carry no tooltip: the state icon’s name, a stack place’s stacks, and a stack row’s
+counts are their accessible names, and the age’s exact time and a title cut short are on
+the page the row opens.
+A pull request’s changed files under its row keep the tooltips the tree gives a file:
+its full path when its row shows only its name, “not in this comparison”, the name it
+was renamed from, and what a folder’s sums leave out.
+
+**Restating is not adding.** A “Show ignored” check, in the Files filter row and a
+folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
+button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
+would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail
+already shows. A Files tree row’s tooltip leaves out what the row shows, its name, a
+file’s size, and a folder’s size or file count, whichever its chip holds, and gives the
+exact date and a folder’s other total.
+These were the audit’s borderline tooltips, and the reader’s decisions on them
+(`mb-8mpo`).
+
+The shell holds the repeat case.
+A `data-tip-text` that is its element’s own text, in any case and spacing, shows only
+while that text is cut short, by an ellipsis or a line clamp, so a surface may give an
+ellipsizing element its full text as a tip and the reader sees it only when the ellipsis
+hides some of it (`tipAddsInformation` in `static/app.js`). `devtools/check_tooltips.py`
+fails a literal tip that is its element’s literal text, and
+`tests/dom/github-pull-header-chrome.mjs` checks the shell’s rule in Chrome;
+`tests/dom/github-pulls-stacks-chrome.mjs` checks that the Pulls column carries no tip.
+
 ### Tooltip Input Modality
 
 **Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
@@ -3586,6 +3734,65 @@ Measured in headless Chrome on the Files type filter: every row is 29 px and the
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.
+
+### Keys in a Menu
+
+**Opening a menu puts focus in it, so its keys work at once.** Every way a filter
+dropdown opens comes to one path, `filterControls.focusMenu`: its trigger’s click,
+Enter, and Space, `↓` or `↑` on its trigger, and a filter’s number, which opens the
+drawer that holds it too.
+Focus lands on the checked row, or on the first row when none is checked, so `↑`, `↓`,
+`Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
+`W`’s branch list is the precedent: it opens with focus in its filter box.
+
+- **Closing.** Escape, a second click on the trigger, and a choice that closes a
+  single-select menu give focus back to the trigger.
+  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
+  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
+  topmost closes first.
+- **Staying.** A pick in a multi-select menu leaves it open with focus on the row
+  picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
+  refresh, puts focus back on the same control, or on the trigger of a menu the rebuild
+  closed: the bar calls `filterControls.keepFocus` around every rebuild.
+
+**An open menu that has focus can also give each of its rows a letter, and the letter
+chooses the row.** Group by’s rows are the first to have them: `N` for No grouping, `A`
+for By age, and `T` for By file type.
+
+- **Which letter.** A row’s letter is the first letter of the word that names its value:
+  No, age, and type. It is declared beside the row’s label, as `key` on an option and
+  `anyKey` for the any-row, rather than derived, so renaming a row never moves its key.
+  Two rows of one menu never share a letter; when two declare one, the first keeps it.
+  A menu that gives one row a letter gives every row one, its any-row included.
+- **When it is live.** Only while the menu is open and focus is in it, on its trigger or
+  a row. The rows’ commands sit in the menu’s own scope, active while it is open and
+  above the shell’s, so there a row’s letter outranks the shell’s, as a text field’s
+  typing does: in Group by’s menu `T` chooses By file type, where elsewhere it is Quick
+  Search. Quick Search keeps `/` there, a letter the menu does not declare still reaches
+  the shell, and every letter is the shell’s again once the menu closes or focus leaves
+  it.
+- **What it does.** A letter runs the row’s click path,
+  `filterControls.activateMenuRow`, never a synthesized click, so it does what a click
+  on the row does: a single-select menu closes on the choice, and a multi-select menu
+  stays open.
+- **How it is shown.** As every other key is: the row carries the letter as its
+  `aria-keyshortcuts`; holding Shift badges each row with its keycap and lists the
+  letters in the revealed strip, which then shows only the keys that still reach another
+  command, Quick Search by `/` alone; and Help lists them in its Menus group, “Available
+  while the menu is open and has focus.”, each by the row’s label and the menu it is in.
+- **Where.** The shell’s keymap reads the letters from the navigation pane’s filter bar
+  (`syncMenuLetters` in `static/shell-keymap.js`), so only its menus take them.
+
+`tests/dom/key-reveal-session.js` runs both on the production registry, keymap, and
+filter controls: where focus lands for each way a menu opens and closes, through a pick
+and a rebuild, and for the letters the Help group, the badges and the strip, each
+letter’s choice, and `T` as Quick Search with the menu closed or focus outside it.
+`tests/dom/filter-controls-behavior.js` pins the focus path on a rendered bar, the rows’
+markup, and the click path a letter shares, and
+`tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and what the live
+surfaces show. `tests/test_files_tab_chrome.py` reads `document.activeElement` in Chrome
+after each number, `↓` and Enter on a trigger, each letter, Escape, and a pick in File
+type as the bar rebuilds.
 
 ## Structured Data and Tables
 

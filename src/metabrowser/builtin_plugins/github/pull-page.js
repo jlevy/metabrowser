@@ -218,13 +218,22 @@ const SETUP_FAILURES = Object.freeze({
     "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
+/**
+ * A review's state, said by a chip after its heading where the verb does not say it
+ * (mb-novh): every review's heading reads "author reviewed age", as a comment's reads
+ * "author commented age", and Approved, Changes requested, and Dismissed are the review's
+ * own states, as GitHub marks them. A plain review (COMMENTED) is all in its verb, and a
+ * pending one in its "(pending)", so neither has a chip. A state GitHub adds later is
+ * shown as itself.
+ *
+ * @type {Readonly<Record<string, string | null>>}
+ */
 const REVIEW_STATES = Object.freeze({
   APPROVED: "approved",
-  CHANGES_REQUESTED: "requested changes",
-  COMMENTED: "reviewed",
-  DISMISSED: "review dismissed",
-  PENDING: "review pending",
+  CHANGES_REQUESTED: "changes requested",
+  COMMENTED: null,
+  DISMISSED: "dismissed",
+  PENDING: null,
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -287,7 +296,7 @@ const TRUNCATED = Object.freeze({
  *   at: string | null,
  *   text: string,
  *   truncated: boolean,
- *   review: {state: string, label: string} | null,
+ *   review: {state: string, label: string | null} | null,
  * }} TimelineItem
  */
 
@@ -536,7 +545,7 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: REVIEW_STATES[state] ?? state.toLowerCase() },
+      review: { state, label: state in REVIEW_STATES ? REVIEW_STATES[state] : state.toLowerCase() },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
@@ -4897,12 +4906,15 @@ export function mountPullPage(container, ctx, mb) {
         const head = h("div", { class: "github-pull-card-head" }, [
           authorLabel(item.author, item.avatar, "", { slot: true }),
         ]);
-        if (item.review !== null) {
+        // Every event's heading reads alike: the author, a plain verb, and the age, and a
+        // review's chip after them only for a state its verb does not say (mb-novh).
+        head.append(
+          item.review === null ? " commented " : " reviewed ",
+          item.at === null ? "(pending)" : age(item.at),
+        );
+        if (item.review !== null && item.review.label !== null) {
           head.append(" ", badge(item.review.state, item.review.label, "review"));
-        } else {
-          head.append(" commented");
         }
-        head.append(" ", item.at === null ? "(pending)" : age(item.at));
         const built = h(
           "section",
           { class: `page-card github-pull-card github-pull-${item.kind} github-pull-event` },
@@ -4980,7 +4992,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function reviewThreads(model) {
-    const threads = h("section", { class: "github-pull-section" }, [
+    // Review comments are spaced as the Conversation's events are (mb-w7rt).
+    const threads = h("section", { class: "github-pull-section github-pull-threads" }, [
       h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
     ]);
     for (const comment of model.reviewComments) {

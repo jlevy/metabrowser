@@ -886,8 +886,8 @@
     arrow.className = "merge-refs-arrow";
     arrow.setAttribute("role", "img");
     arrow.setAttribute("aria-label", MERGE_ARROW_NAME);
-    // The whole statement, which a narrow place may have cut both names short of.
-    arrow.dataset.tipText = `${source.label ?? source.name} ${MERGE_ARROW_NAME} ${target.label ?? target.name}`;
+    // No tooltip: it would restate the two names beside it, and a chip cut short carries
+    // its own (docs/design-system.md, "Tooltips Add Information").
     // The spaces are text, so a copied selection reads "wip → topic".
     arrow.textContent = " → ";
     const group = document.createElement("span");
@@ -1384,7 +1384,7 @@
     const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${handler}${delegateOwnerAttribute()} data-tip-text="Load more of this file">` +
+      `${handler}${delegateOwnerAttribute()}>` +
       "Load more</button>"
     );
   }
