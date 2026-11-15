@@ -404,7 +404,7 @@ def main() -> int:
         )
     print(
         "  Move code that the first tree does not need out of these scripts; see "
-        '"Asset Loading Tiers" in docs/development.md.',
+        '"Asset Loading Tiers" in docs/project/architecture/arch-browser-shell.md.',
         file=sys.stderr,
     )
     return 1
