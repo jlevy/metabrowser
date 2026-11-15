@@ -1216,6 +1216,41 @@ check("truncated searches and slow reads are counted and reported", () => {
   const text = summarize(series(() => {}, slow)).join("\n");
   assert.match(text, /instrument cost over 4 ms in `files\.a` \(longest read 5\.6 ms\)/);
 });
+check("blank and ready metrics are not judged where a search was cut", () => {
+  // The candidate's arm check stopped at its budget in every run, and it reads worse: its
+  // ready and blank metrics are a gap with the reason, not a wrong-way result; its counts
+  // and the other transition are judged as before.
+  const cut = (r) =>
+    setT(r, "files.a", { searchTruncatedBeforeInput: 1, paintedReadyMs: 90, blankFrames: 3 });
+  const res = cmp(series(() => {}, cut));
+  for (const key of ["painted_ready_ms", "blank_frames"]) {
+    const e = find(res, "files.a", key);
+    assert.equal(e.outcome, "truncated", key);
+    assert.equal(e.wrongWay, false, key);
+    assert.match(
+      e.verdict,
+      /^not judged: the content search stopped at its hit-test budget in 0 a and 3 b frame/,
+    );
+    assert.ok(res.gaps.some((g) => g.id === "files.a" && g.metric === key));
+  }
+  assert.equal(find(res, "files.a", "requests_data").outcome, "none");
+  assert.equal(find(res, "files.b", "painted_ready_ms").outcome, "none");
+  assert.equal(res.wrongWay.length, 0);
+  assert.equal(res.exitCode, 1);
+  // The frames before the input are counted apart from the window's.
+  const a = accountFrames({
+    frames: [
+      [90, "", 91, 4.1, 0, 1],
+      [100, "U", 101, 0.3, 1, 0],
+    ],
+    origin: 95,
+    windowEnd: 100,
+    readyAt: 100,
+    readyRead: 101,
+    readyNext: null,
+  });
+  assert.deepEqual([a.searchTruncatedBeforeInput, a.searchTruncatedFrames], [1, 0]);
+});
 check("revision 5 rows compare with each other, noting what revision 6 changed", () => {
   const five = (r) => {
     r.scenario_revision = 5;
