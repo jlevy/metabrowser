@@ -9,11 +9,12 @@ env:
 This session runs the production filter state and tree filter model from a command line.
 It pins which request each Group by and filter choice makes, how the server’s grouped
 answer becomes sections in its order, how a folder inside a section opens under that
-section’s group, that Clear keeps the grouping, which band a file’s age falls in, and
-that a malformed answer is refused.
-It also pins the shell’s Group by decisions, held as pure functions: each section’s
-share of the first paint’s rows, the order a revealed row is looked for in, the reopen
-plan after a refresh, and the prefetch’s keep, abort, take, and clear.
+section’s group, which filters Clear and the chevron’s badge each count (Show ignored,
+on the row beside Group by, counts for Clear only), that Clear resets Show ignored and
+keeps the grouping, which band a file’s age falls in, and that a malformed answer is
+refused. It also pins the shell’s Group by decisions, held as pure functions: each
+section’s share of the first paint’s rows, the order a revealed row is looked for in,
+the reopen plan after a refresh, and the prefetch’s keep, abort, take, and clear.
 The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
 first one.
 
@@ -26,49 +27,64 @@ $ node tests/dom/files-group-by-session.js
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=type&depth=2",
-      "activeFilters": 0
+      "activeFilters": 0,
+      "drawerFilters": 0
     },
     {
       "chose": "types .md and .py",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=type&types=.md%2C.py&depth=2",
-      "activeFilters": 1
+      "activeFilters": 1,
+      "drawerFilters": 1
     },
     {
       "chose": "Modified within Past hour",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=type&types=.md%2C.py&recency=1h&depth=2",
-      "activeFilters": 2
+      "activeFilters": 2,
+      "drawerFilters": 2
+    },
+    {
+      "chose": "Show ignored off",
+      "source": "grouped",
+      "action": "load-groups",
+      "request": "/api/tree?group_by=type&types=.md%2C.py&include_ignored=0&recency=1h&depth=2",
+      "activeFilters": 3,
+      "drawerFilters": 2
     },
     {
       "chose": "Clear",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=type&depth=2",
-      "activeFilters": 0
+      "activeFilters": 0,
+      "drawerFilters": 0
     },
     {
       "chose": "Age",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=age&depth=2",
-      "activeFilters": 0
+      "activeFilters": 0,
+      "drawerFilters": 0
     },
     {
       "chose": "No grouping",
       "source": "recent",
       "action": "load-recent",
       "request": "/api/recent?window=24h&limit=5000",
-      "activeFilters": 1
+      "activeFilters": 1,
+      "drawerFilters": 1
     },
     {
       "chose": "Any age",
       "source": "tree",
       "action": "load-tree",
       "request": "/api/tree",
-      "activeFilters": 0
+      "activeFilters": 0,
+      "drawerFilters": 0
     }
   ],
   "sections": [
