@@ -503,6 +503,16 @@ type MetabrowserFormatterRuntime = Readonly<{
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
   sizeClass(value: number): "" | "size-large";
+  /** A commit's or pull request's title as markup, its prefix in `span.title-prefix`. */
+  titleHtml(title: string): string;
+  /** A commit's or pull request's title as nodes, its prefix in `span.title-prefix`. */
+  titleNodes(
+    doc: Document,
+    title: string,
+    part?: (text: string, start: number) => Array<Node | string>,
+  ): Array<Node | string>;
+  /** A title's conventional-commit prefix and the rest after it, or null. */
+  titlePrefix(title: string): { prefix: string; rest: string } | null;
 }>;
 
 type MetabrowserFileTypeCategoryId = string;
@@ -888,8 +898,9 @@ type MetabrowserFilterOption = {
   count?: number;
   icon?: string;
   iconClass?: string;
+  /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
+  key?: string;
   label: string;
-  summary?: string;
   title?: string;
   value: string;
 };
@@ -938,6 +949,8 @@ type MetabrowserFilterPreset = {
 };
 
 type MetabrowserFilterControls = {
+  /** Choose a dropdown row as a click on it does; false when no bound container holds it. */
+  activateMenuRow(row: HTMLElement): boolean;
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -948,7 +961,10 @@ type MetabrowserFilterControls = {
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
+  fitJoinedGroups(root: Element): void;
   fitOpenMenus(root: Element): void;
+  /** Focus an open dropdown's checked row, or else its first; null when it is not open. */
+  focusMenu(root: Element, key: string): HTMLElement | null;
   groupHtml(spec: {
     className?: string;
     key: string;
@@ -959,7 +975,15 @@ type MetabrowserFilterControls = {
     value: MetabrowserFilterSelection;
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  joinedGroupFits(widths: { joined: number; room: number }): boolean;
+  /**
+   * Call before rebuilding `root`'s markup, and the returned function after: focus goes
+   * back to the control that had it, or to the trigger of a menu the rebuild closed.
+   */
+  keepFocus(root: Element): () => void;
   menuGroupHtml(spec: {
+    /** The any-row's letter, as an option's `key` is its row's. */
+    anyKey?: string;
     anyLabel: string;
     anyValue?: string;
     key: string;
@@ -1331,6 +1355,9 @@ type MetabrowserSdk = {
     options?: { style?: "compact" | "relative" },
   ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
+  /** A commit's or pull request's title as nodes for its element: a conventional-commit
+   *  prefix in `span.title-prefix`, at regular weight, then the rest. */
+  titleNodes(title: string): Array<Node | string>;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;

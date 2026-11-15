@@ -23,7 +23,7 @@ $ node tests/dom/files-group-by-session.js
 {
   "steps": [
     {
-      "chose": "File type",
+      "chose": "By file type",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=type&depth=2",
@@ -63,7 +63,7 @@ $ node tests/dom/files-group-by-session.js
       "drawerFilters": 0
     },
     {
-      "chose": "Age",
+      "chose": "By age",
       "source": "grouped",
       "action": "load-groups",
       "request": "/api/tree?group_by=age&depth=2",
@@ -208,14 +208,14 @@ $ node tests/dom/files-group-by-session.js
       "kept": 1
     },
     {
-      "step": "choose Age",
+      "step": "choose By age",
       "started": [],
       "aborted": [],
       "kept": 0,
       "took": true
     },
     {
-      "step": "choose Age again",
+      "step": "choose By age again",
       "started": [],
       "aborted": [],
       "kept": 0,

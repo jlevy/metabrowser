@@ -351,6 +351,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     link: (target) => page.h("a", { href: `/pull/${target}/checks` }),
     icon: null,
     currentTitle: "Current",
+    titleNodes: api.titleNodes,
     onOpen() {},
   });
   const menuHost = new Element("main");

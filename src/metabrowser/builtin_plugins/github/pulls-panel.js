@@ -3219,9 +3219,12 @@ export function mountPullsPanel(container, ctx, mb) {
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
-  // at the slot's height, so the list starts where the Files tree does.
+  // at the slot's height, so the list starts where the Files tree does. There they are a
+  // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
+  // line's end (`.nav-toolbar-row` in the shell's styles.css).
   const toolbar = nav.toolbar ?? null;
   if (toolbar) {
+    filters.classList.add("nav-toolbar-row");
     toolbar.replaceChildren(filters);
     container.replaceChildren(status, connection, list, empty, foot, live);
   } else {
@@ -3523,7 +3526,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * #455 · author" (docs/design-system.md, "Stacks"). It has no stack icon of its own: the
    * stack's row it sits under has it. The place of its row's own stack comes first, bare,
    * and any other stack's is named by the Layers glyph before its number. A passive part of
-   * the row's one primary link, named by its tip.
+   * the row's one primary link, named by its accessible name; the Pulls column shows no
+   * tooltips (docs/design-system.md, "Tooltips Add Information").
    *
    * @param {HTMLElement} element
    * @param {number} number
@@ -3533,11 +3537,13 @@ export function mountPullsPanel(container, ctx, mb) {
     const caption = stackCaption(stackIndex, stackIdentity, number, under);
     const text = caption?.text ?? "";
     const hint = caption?.hint ?? "";
-    if (element.dataset.stackLabel === text && element.dataset.tipText === hint) {
+    if (
+      element.dataset.stackLabel === text &&
+      (element.getAttribute("aria-label") ?? "") === hint
+    ) {
       return;
     }
     element.dataset.stackLabel = text;
-    element.dataset.tipText = hint;
     element.hidden = caption === null;
     if (caption === null) {
       element.replaceChildren();
@@ -3603,7 +3609,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function patchRow(entry, row, key) {
     const before = entry.info;
     if (row.title !== before.title) {
-      entry.title.textContent = row.title;
+      entry.title.replaceChildren(...mb.titleNodes(row.title));
     }
     if (row.state !== before.state) {
       const icon = pullStateIcon(row.state);
@@ -3617,11 +3623,6 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.label = when.label;
       entry.age.textContent = when.label;
       entry.age.className = `github-pulls-age ${when.className}`;
-      if (when.at === null) {
-        entry.age.removeAttribute("data-tip-text");
-      } else {
-        entry.age.dataset.tipText = mb.formatTimestamp(when.at);
-      }
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
       const meta = rowMeta(row, entry.stack);
@@ -3643,15 +3644,12 @@ export function mountPullsPanel(container, ctx, mb) {
   function buildRow(row, key) {
     const when = rowAge(row);
     const { at } = when;
-    const title = h("span", { class: "github-pulls-title" }, [row.title]);
-    const updated = h(
-      "span",
-      {
-        class: `github-pulls-age ${when.className}`,
-        ...(at === null ? {} : { "data-tip-text": mb.formatTimestamp(at) }),
-      },
-      [when.label],
-    );
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
+    // No tooltip, as nothing in the Pulls column has one: the page has the exact time
+    // (docs/design-system.md, "Tooltips Add Information").
+    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
     // A stack member's place, on the number's line (`rowMeta`); empty and hidden until the
     // row sits under a stack's row.
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
@@ -3792,7 +3790,6 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.label.textContent = group.label;
       entry.count.textContent = group.count;
       entry.row.setAttribute("aria-label", group.hint);
-      entry.row.dataset.tipText = group.hint;
       entry.row.setAttribute("aria-expanded", String(group.expanded));
       entry.row.classList.toggle("expanded", group.expanded);
       entry.row.classList.toggle("collapsed", !group.expanded);
@@ -4505,16 +4502,6 @@ export function mountPullsPanel(container, ctx, mb) {
       const row = rowOf(event.target);
       if (row === null) {
         return;
-      }
-      // Cut short by an ellipsis, a row's tooltip carries the whole of it.
-      for (const part of row.querySelectorAll(".github-pulls-title, .github-pulls-meta")) {
-        if (part instanceof HTMLElement) {
-          if (part.scrollWidth > part.clientWidth) {
-            part.dataset.tipText = part.textContent ?? "";
-          } else {
-            delete part.dataset.tipText;
-          }
-        }
       }
       window.clearTimeout(peekTimer);
       const number = Number(row.dataset.number);

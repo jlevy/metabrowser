@@ -519,6 +519,10 @@ Useful helpers include:
   `sizeHtml`. `formatAge(epochSeconds, {style: "relative"})` returns labels such as
   `2h ago`, `just now`, or `in 2h`; its default compact style suits dense navigation.
   Both styles return the same freshness-class vocabulary;
+- `titleNodes(title)` for a commit’s or a pull request’s title, as the nodes its element
+  holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
+  which the host draws at regular weight, then the rest, which keeps the element’s
+  weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -566,6 +570,15 @@ window when its trigger opens it and when the window resizes; a view that render
 open another way calls `filterControls.fitOpenMenus(root)` after rendering.
 See [Groups in a Menu](design-system.md#groups-in-a-menu) and
 [Menu Height](design-system.md#menu-height).
+
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
 
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,

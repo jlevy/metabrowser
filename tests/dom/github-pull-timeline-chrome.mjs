@@ -20,10 +20,11 @@
 // What it holds (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"):
 // - a commit row is set in the type of a card head: the same size and line, its verb and
 //   age as a comment's, and its hash one step below, as a revision is beside body text;
-// - a commit row's text sits in its row as a card head's sits in its card, with as much
-//   room above it as below, and one gap between two cards or two commits;
-// - a run of commits stands at least as far from the card or section above it, and the
-//   card below it, as one commit's glyphs stand from the next's;
+// - every heading reads alike (mb-novh): the author, a plain verb, and the age, and a boxed
+//   chip after the age only for a review state the verb does not say;
+// - one rhythm (mb-w7rt): every two consecutive events are the timeline's one token apart,
+//   a card by its border and a commit by its text, card to card, card to commit, commit to
+//   card, and commit to commit alike, and roomier than the 12 px cards had;
 // - every card head's avatar, or the empty slot of one for an author without one, is on
 //   the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
@@ -185,6 +186,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -322,6 +324,9 @@ const MEASURE = `async (arrangement, width, theme) => {
       // Where the row's last line of glyphs ends, however it wraps.
       const whole = document.createRange();
       whole.selectNodeContents(node);
+      item.textTop = round(
+        Math.min(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.top)) + scrollY,
+      );
       item.textEnd = round(
         Math.max(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.bottom)) + scrollY,
       );
@@ -341,10 +346,26 @@ const MEASURE = `async (arrangement, width, theme) => {
       item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
       item.headOnly = node.children.length === 1;
       item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
+      // The heading as read: its words, the verb said in the head's own text, and its chips.
+      item.heading = head ? head.textContent.replace(/\\s+/g, " ").trim() : null;
+      item.verb = head
+        ? [...head.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent.trim())
+            .filter(Boolean)
+        : [];
+      item.chips = head
+        ? [...head.querySelectorAll(".github-pull-badge")].map((chip) => ({
+            text: chip.textContent,
+            last: chip === head.lastElementChild && chip.previousElementSibling?.classList.contains("github-pull-age"),
+            boxed: getComputedStyle(chip).borderTopStyle !== "none",
+          }))
+        : [];
     }
     return item;
   });
   const gap = parseFloat(getComputedStyle(body()).rowGap);
+  const rhythm = parseFloat(getComputedStyle(body()).getPropertyValue("--github-pull-rhythm"));
   window.__dispose = () => handle.dispose();
   return {
     width,
@@ -353,6 +374,7 @@ const MEASURE = `async (arrangement, width, theme) => {
     timelineAsked,
     waited,
     gap,
+    rhythm,
     navSize,
     items,
     // To the conversation's end: the page past it is the window's.
@@ -457,7 +479,7 @@ const drawnWithin = (parts, x, from, to) =>
     );
 
 function hold(measured, image) {
-  const { items, gap } = measured;
+  const { items } = measured;
   const where = `${measured.arrangement} at ${measured.width} px, ${measured.theme}`;
   const commits = items.filter((item) => item.kind === "commit");
   const cards = items.filter((item) => item.kind === "card");
@@ -499,71 +521,76 @@ function hold(measured, image) {
     );
   }
 
-  // Spacing: one gap between two cards and between two commits, and a commit's text where a
-  // card head's is.
-  for (const [index, item] of items.entries()) {
-    const next = items[index + 1];
-    if (isEvent(item) && isEvent(next) && item.kind === next.kind) {
-      const between = next.box.top - item.box.bottom;
-      check(
-        `${where}: one gap after "${item.label}"`,
-        Math.abs(between - gap) < 0.5,
-        `${round(between)} px`,
-      );
-    }
+  // Every event's heading reads alike (mb-novh): the author, a plain verb in the head's own
+  // text, and the age, and a boxed chip after the age only for a review's state the verb
+  // does not say. The recorded reviews are a plain one, which has none, and an approval.
+  for (const card of cards) {
+    const label = `${where}: card "${card.label}"`;
+    const verb = card.verb[0];
+    check(
+      `${label}'s heading is the author, a plain verb, and the age`,
+      ["opened", "commented", "reviewed"].includes(verb) &&
+        card.heading.startsWith(`${card.heading.split(" ")[0]} ${verb} `),
+      JSON.stringify({ heading: card.heading, verb: card.verb }),
+    );
+    check(
+      `${label} boxes only a state its verb does not say, after its age`,
+      card.chips.every(
+        (chip) =>
+          chip.boxed &&
+          chip.last &&
+          ["Approved", "Changes requested", "Dismissed"].includes(chip.text),
+      ),
+      JSON.stringify(card.chips),
+    );
   }
-  // A run of commits stands off what is around it at least as far as one commit's text
-  // stands from the next's: from the edge of a card or section above to the first commit's
-  // glyphs, and from the last commit's glyphs to the card below.
-  const runs = [];
+  const reviews = cards.filter((card) => card.verb[0] === "reviewed");
+  check(
+    `${where}: a plain review has no chip, and an approval one, "Approved"`,
+    reviews.length === 2 &&
+      reviews.some((card) => card.chips.length === 0) &&
+      reviews.some((card) => card.chips.length === 1 && card.chips[0].text === "Approved"),
+    JSON.stringify(reviews.map((card) => [card.heading, card.chips])),
+  );
+  // One rhythm (mb-w7rt): the visible space between any two consecutive events, card or
+  // commit, is the timeline's one token, roomier than the 12 px cards had. Visible is a card's
+  // border, and a commit row's text, whose row is its line: so every box is the token apart,
+  // and a commit's text is the token from a card's border and from the next commit's. In
+  // Chrome 152 every pair measured the token exactly; a face whose glyphs sit higher or lower
+  // in their line may differ by its half-leading, a pixel at most.
+  const rhythm = measured.rhythm;
+  check(`${where}: the rhythm is one token, roomier than 12 px`, rhythm > 12, String(rhythm));
+  const top = (item) => (item.kind === "commit" ? item.textTop : item.box.top);
+  const end = (item) => (item.kind === "commit" ? item.textEnd : item.box.bottom);
+  const spaces = [];
   for (const [index, item] of items.entries()) {
     const next = items[index + 1];
-    if (item.kind === "commit" && next?.kind === "commit") {
-      runs.push(next.text.top - item.textEnd);
-    }
-  }
-  const pitch = Math.max(...runs);
-  check(`${where}: two commits in a run`, runs.length > 0, JSON.stringify(runs));
-  for (const [index, item] of items.entries()) {
-    const next = items[index + 1];
-    if (next === undefined || (item.kind === "commit") === (next.kind === "commit")) {
+    if (!isEvent(next)) {
       continue;
     }
-    const space =
-      item.kind === "commit" ? next.box.top - item.textEnd : next.text.top - item.box.bottom;
+    const pair = `${item.kind} to ${next.kind}`;
+    const between = next.box.top - item.box.bottom;
     check(
-      `${where}: from "${item.label}" to "${next.label}" is at least the space between two commits`,
-      space + 0.01 >= pitch,
-      `${round(space)} against ${round(pitch)} px`,
+      `${where}: ${pair}, "${item.label}" to "${next.label}", are the rhythm apart`,
+      Math.abs(between - rhythm) < 0.5,
+      `${round(between)} against ${rhythm} px`,
+    );
+    const space = top(next) - end(item);
+    spaces.push([pair, round(space)]);
+    check(
+      `${where}: ${pair}, "${item.label}" to "${next.label}", show the rhythm between them`,
+      space >= rhythm - 1 && space <= rhythm + 1,
+      `${round(space)} against ${rhythm} px`,
     );
   }
-  // A card that is only its head, the review with no text: a commit row on one line is that
-  // card's box, with its text as far from each edge. (Above and below differ by the face's
-  // rounding of its half-leading, the same in both.)
-  const bare = cards.find((card) => card.headOnly && card.text);
-  const above = (item) => item.text.top - item.box.top;
-  const below = (item) => item.box.bottom - item.text.bottom;
-  const tall = (item) => item.box.bottom - item.box.top;
-  check(`${where}: a card that is only its head`, bare !== undefined);
+  const shown = spaces.map(([, space]) => space);
+  check(
+    `${where}: every pair shows the same space, to the face's pixel`,
+    shown.length > 0 && Math.max(...shown) - Math.min(...shown) <= 1,
+    JSON.stringify(spaces),
+  );
   for (const row of commits) {
     const label = `${where}: commit "${row.label}"`;
-    check(
-      `${label} has a card head's room above its text`,
-      bare !== undefined && Math.abs(above(row) - above(bare)) < 0.5,
-      `${round(above(row))} against ${bare && round(above(bare))} px`,
-    );
-    if (bare !== undefined && row.lines === 1) {
-      check(
-        `${label} is as tall as a card that is only its head`,
-        Math.abs(tall(row) - tall(bare)) < 0.5,
-        `${round(tall(row))} against ${round(tall(bare))} px`,
-      );
-      check(
-        `${label} has a card head's room below its text`,
-        Math.abs(below(row) - below(bare)) < 0.5,
-        `${round(below(row))} against ${round(below(bare))} px`,
-      );
-    }
     check(
       `${label} starts where a name after its avatar does`,
       Math.abs(row.text.left - head.text.left) < 0.5,

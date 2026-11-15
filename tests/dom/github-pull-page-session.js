@@ -117,7 +117,8 @@ function summarize(model) {
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
       (item) =>
-        `${item.kind} ${item.author}${item.review ? ` [${item.review.label}]` : ""} ${item.at ?? "pending"} ${item.part}`,
+        // A review's chip is only for a state its verb does not say (mb-novh).
+        `${item.kind} ${item.author}${item.review?.label ? ` [${item.review.label}]` : ""} ${item.at ?? "pending"} ${item.part}`,
     ),
     reviewComments: model.reviewComments.map(
       (comment) =>

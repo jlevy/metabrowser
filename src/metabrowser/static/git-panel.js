@@ -374,7 +374,9 @@
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
     html += '<div class="git-commit-header">';
-    html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
     html += '<span class="git-commit-revision">';
@@ -438,6 +440,19 @@
    */
   function ageClass(epochSeconds) {
     return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
+  }
+
+  /**
+   * A commit's subject as escaped markup, from the shared title primitive, so a history
+   * row, the commit's page, and its tooltip draw a conventional-commit prefix as a pull
+   * request's title does: in `span.title-prefix`, at regular weight (docs/design-system.md,
+   * "Titles").
+   *
+   * @param {string} subject
+   * @returns {string}
+   */
+  function subjectHtml(subject) {
+    return window.MetabrowserFormatters.titleHtml(subject);
   }
 
   /**
@@ -2075,7 +2090,7 @@
     const refs = renderRefBadges(commit.refs || []);
     body.innerHTML =
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
-      `<span class="git-graph-subject">${escapeHtml(commit.subject)}</span>` +
+      `<span class="git-graph-subject">${subjectHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
       `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
