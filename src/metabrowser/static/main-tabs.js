@@ -27,6 +27,7 @@
         focusRow: () => deps.focusFilesRow(),
         onFirstShow: null,
         onShow: () => deps.filesShown(),
+        onHide: () => deps.filesHidden(),
       },
     ];
     /** @type {Set<string>} */

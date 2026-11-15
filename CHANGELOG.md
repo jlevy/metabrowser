@@ -27,14 +27,17 @@ All notable changes to Metabrowser are documented here.
 - The Files tab’s File type menu shows up to 16 rows before it scrolls, where it showed
   about 8, and never reaches past the window: in a short window it stops 8 px above the
   bottom edge and scrolls inside, and it fits itself again when the window is resized.
-  A menu with fewer rows, such as Modified within, keeps its size.
+  The other filter menus follow the same rule; one with few rows, such as Modified
+  within, keeps its size unless the window is too short to hold it.
   Its group headings, such as “Groups” and “Code”, now start on the menu’s left edge,
   over the check marks, instead of indented to the row labels as if they were rows.
-  A pull request’s stack menu heads its members the same way.
-  For plugin authors, menu groups have one pattern: a `.menu-group` with `role="group"`
-  and `aria-labelledby` naming its `.group-heading`, which draws its own divider; the
-  `.menu-section-label` class is gone.
-  `filterControls.fitOpenMenus(root)` sizes an open filter dropdown
+  A pull request’s stack menu heads its members the same way, and screen readers now
+  read its name once. The gear menu’s “Max text width” label starts on the same edge as
+  the menu’s title. For plugin authors, menu groups have one pattern: a `.menu-group`
+  with `role="group"` and `aria-labelledby` naming its `.group-heading`, which draws its
+  own divider; the `.menu-section-label` class is gone.
+  `filterControls.bind` fits a filter dropdown when its trigger opens it, and
+  `filterControls.fitOpenMenus(root)` fits one rendered open another way
   ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
   [Menu Height](docs/design-system.md#menu-height)).
 

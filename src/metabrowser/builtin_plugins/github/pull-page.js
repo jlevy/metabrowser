@@ -3144,11 +3144,14 @@ export function createStackMenu(initial, number, deps) {
       count,
     ],
   );
+  // The menu's rows are all one group, so its heading names the menu itself
+  // (docs/design-system.md, "Groups in a Menu"): one name, read once.
+  const labelId = `${menuId}-heading`;
   const menu = h("div", {
     class: "menu github-pull-stack-menu",
     id: menuId,
     role: "menu",
-    "aria-label": `Stack #${stack.number}`,
+    "aria-labelledby": labelId,
   });
   root.append(trigger);
   const listening = new AbortController();
@@ -3157,11 +3160,10 @@ export function createStackMenu(initial, number, deps) {
   const links = [];
   /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
-  // The members are one named group, in the host's menu group pattern
-  // (docs/design-system.md, "Groups in a Menu").
-  const labelId = `${menuId}-heading`;
+  // The members under the heading that names them and the menu: the host's group
+  // look, with no group role, since a menu of one group is named by its heading.
   const label = h("div", { class: "group-heading", id: labelId }, [`Stack #${stack.number}`]);
-  const group = h("div", { class: "menu-group", role: "group", "aria-labelledby": labelId });
+  const group = h("div", { class: "menu-group" });
   let populated = false;
 
   function updateTitles() {

@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft
+**Status:** In Review
 
 ## Overview
 
@@ -33,8 +33,8 @@ request must prove.
 ## Goals
 
 - **Menus** (`mb-s6vu`, `mb-1wfn`):
-  - A menu group’s heading sits at the menu’s row inset, not indented to the icon or
-    check column.
+  - A menu group’s heading sits at the menu’s row inset, not indented to the rows’
+    labels.
   - Every menu that groups rows uses one documented pattern that plugins can reach.
   - The Files type filter menu takes its natural height, up to about 16 rows, and always
     stays inside the window.
@@ -120,17 +120,19 @@ it:
 
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
-| 1 | `claude/menu-group-pattern` | `mb-s6vu`, `mb-1wfn`, this plan | The group heading pattern that pull requests 2, 4 and 5 reuse |
+| 1 | `claude/menu-group-pattern` | `mb-s6vu`, `mb-1wfn`, this plan | The group heading pattern that pull requests 2 and 5 reuse |
 | 2 | `claude/menu-groups-height` | `mb-sogv` | Reuses the heading pattern for the Files tree’s group headings |
-| 3 | `claude/diff-fold-inline` | `mb-m5dd` | Shares `diff/styles.css` with pull request 4 |
+| 3 | `claude/diff-fold-inline` | `mb-m5dd` | Stacked to serialize merges, with no code dependency on the layer below; shares `diff/styles.css` with pull request 4 |
 | 4 | `claude/diff-summary` | `mb-epw2` | Shares the Pulls tree model with pull request 5 |
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
-| 7 | `claude/sans-h2-upright` | `mb-l4vm` | Extends #438’s prose-face rule and Chrome session |
+| 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
   on their parent; after the first push, no rebase and no force-push.
+  A fix on a lower layer reaches the layers above by merging each owning branch’s tip
+  into the layer above it, bottom up, never by `gh stack rebase`.
 - **Opening the stack:** the stack opens as drafts after #437 and #438 merge.
 - **Merging:** pull requests merge in order, each at the owner’s word.
 
@@ -142,7 +144,7 @@ it:
 - The type filter menu’s cap is measured from the row height rather than written as
   pixels. The menu is capped by the space between its trigger and the window’s edge,
   re-measured on open and on resize, and scrolls inside itself past that.
-  The age menu keeps its size.
+  The age menu keeps its natural height in any window tall enough to hold it.
 
 ### Files Group By
 
@@ -159,8 +161,13 @@ it:
   not shown. A section’s heading uses the menu group pattern and carries the group’s
   count.
 - **Persistence:** the choice persists the way the filter state does.
-  The keyboard shortcuts that open or badge the filter menus keep working once those
-  menus move into the drawer.
+- **Keys:** the filter shortcuts keep working once the filters move into the drawer.
+  Group by, on the row, is `1`, and the drawer’s filters keep their numbers whether or
+  not the drawer is open; a filter’s number opens the drawer with its menu.
+- **Section semantics:** a Files section takes the `.group-heading` look and names its
+  section and its tree through `aria-labelledby`; it keeps the tree’s own semantics, a
+  `role="tree"` per section, and takes no `role="group"`, which in a tree means a tree
+  item’s children.
 - **Parity:** membership, ordering and counts belong to a route or model reached through
   `metab`, with a nontrivial golden.
 
@@ -311,8 +318,10 @@ it:
   behavior, why a browserless form would be dishonest, and its evidence.
 - **Measurement:** measure in headless Chrome through `tests/dom/chrome-session.mjs`,
   not in the app’s built-in browser pane.
-  Each pull request includes before and after screenshots, and the large-list features
-  include first paint and open times measured against the current behavior.
+  Each pull request’s body carries its measurements, and the large-list features include
+  first paint and open times measured against the current behavior.
+  Before and after screenshots are kept with the local evidence and shown to the owner
+  on request.
 - **Red, then green:** every new test fails on `main` before its fix.
 - **CI:** each pull request runs the full gate.
   Local runs are focused tests plus `make -o install lint-check`.
@@ -322,8 +331,10 @@ it:
 ## Rollout Plan
 
 The pull requests ship as drafts in one native stack and merge in order at the owner’s
-word. Each bead closes when its pull request merges, with the merge commit in its close
-reason. This plan moves to `docs/project/specs/done/` when pull request 7 merges.
+word.
+A phase is ticked when its pull request merges, and each bead closes then, with the
+merge commit in its close reason.
+This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 
 ## Open Questions
 
@@ -341,8 +352,8 @@ reason. This plan moves to `docs/project/specs/done/` when pull request 7 merges
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`.
 - **Earlier pull requests from the same round:**
-  - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`).
-  - In flight: #437 (`mb-a9be`), #438 (`mb-k838`).
+  - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
+    (`mb-a9be`), #438 (`mb-k838`).
   - Deferred: `mb-cz9v`, `mb-o11s`.
 - **Project docs:**
   - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)

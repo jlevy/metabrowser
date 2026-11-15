@@ -29,6 +29,7 @@ import os
 import socket
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -90,7 +91,7 @@ def _close(actual: float, expected: float) -> bool:
     return abs(actual - expected) <= TOLERANCE
 
 
-def _row(menu: dict[str, object]) -> float:
+def _row(menu: dict[str, Any]) -> float:
     heights = menu["rowHeights"]
     assert isinstance(heights, list) and len(heights) == 1, (
         f"every row of a menu is one height: {heights}"
@@ -98,16 +99,16 @@ def _row(menu: dict[str, object]) -> float:
     return float(heights[0])
 
 
-def _cap(menu: dict[str, object]) -> float:
+def _cap(menu: dict[str, Any]) -> float:
     """The row cap: 16 rendered rows and the panel's padding and border."""
 
-    return MAX_ROWS * _row(menu) + float(menu["frame"])  # type: ignore[arg-type]
+    return MAX_ROWS * _row(menu) + float(menu["frame"])
 
 
-def _room(menu: dict[str, object]) -> float:
+def _room(menu: dict[str, Any]) -> float:
     """The room between the menu's top and the window's bottom edge, less the margin."""
 
-    return float(menu["windowHeight"]) - WINDOW_MARGIN - float(menu["top"])  # type: ignore[arg-type]
+    return float(menu["windowHeight"]) - WINDOW_MARGIN - float(menu["top"])
 
 
 def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
@@ -129,7 +130,11 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert result.returncode == 0, result.stderr or result.stdout
     # Shown with the failure: every measurement, and each phase's time.
     print(result.stdout, result.stderr)
-    measured = json.loads(result.stdout.strip().splitlines()[-1])
+    measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
+
+    # The gear menu's title, labelled row, and foot start on one inset.
+    gear = measured["gear"]
+    assert gear["title"] is not None and gear["title"] == gear["labelledRow"] == gear["foot"], gear
 
     tall = measured["typesTall"]
     # The headings: "Groups", then one per taxonomy group with families in this folder.
@@ -152,6 +157,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert _cap(tall) < _room(tall), tall
     assert _close(tall["height"], _cap(tall)), tall
     assert tall["scrollHeight"] > tall["clientHeight"], tall
+    # Scrolling, the menu keeps its separator's 1px rule.
+    assert tall["separators"] == [1], tall
 
     # Short, whether the window shrank under the open menu or it opened there: the room
     # sets the height, and the menu stops the margin short of the window's edge.

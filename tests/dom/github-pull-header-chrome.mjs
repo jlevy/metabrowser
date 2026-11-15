@@ -267,10 +267,13 @@ const MEASURE = `async (name, change, tab, width) => {
             (textLeft(heading) - box(member).left - parseFloat(getComputedStyle(member).paddingLeft)) * 100,
           ) / 100
         : null;
-    chipMoves.headingNamesGroup =
+    // A menu of one group: its heading names the menu, once, over its members.
+    const menuElement = probe.element.querySelector(".github-pull-stack-menu");
+    chipMoves.headingNamesMenu =
       heading !== null &&
-      heading.parentElement.getAttribute("role") === "group" &&
-      heading.parentElement.getAttribute("aria-labelledby") === heading.id &&
+      menuElement?.getAttribute("aria-labelledby") === heading.id &&
+      !menuElement.hasAttribute("aria-label") &&
+      !heading.parentElement.hasAttribute("role") &&
       heading.parentElement.contains(member);
     probe.dispose();
     holder.remove();
@@ -666,9 +669,9 @@ async function main() {
                 String(shape.chipMoves.headingInset),
               );
               check(
-                `${where}: the stack menu's heading names the group of its members`,
-                shape.chipMoves.headingNamesGroup === true,
-                String(shape.chipMoves.headingNamesGroup),
+                `${where}: the stack menu's heading names the menu, once`,
+                shape.chipMoves.headingNamesMenu === true,
+                String(shape.chipMoves.headingNamesMenu),
               );
             }
             seen[`${label} ${tab || "conversation"}`] = shape;

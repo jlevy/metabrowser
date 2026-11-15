@@ -4177,6 +4177,7 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       filesShown: resumeRootSummaryRefresh,
+      filesHidden: closeFilterMenu,
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
@@ -5245,6 +5246,17 @@ function applyDrawerOpenState() {
     );
     toggle.dataset.tipText = filterDrawerOpen ? "Hide filters" : "Filters";
   }
+}
+
+// The Files toolbar is hidden with its panel. A filter menu left open there is not on
+// screen to use, and with no box to measure it would be fitted to nothing and come back
+// as an empty sliver, so it closes.
+function closeFilterMenu() {
+  if (filterOpenMenu === null) {
+    return;
+  }
+  filterOpenMenu = null;
+  renderNavFilterBar();
 }
 
 /**
