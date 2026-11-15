@@ -53,9 +53,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from starlette.datastructures import QueryParams
+from starlette.datastructures import Headers, QueryParams
 from starlette.staticfiles import StaticFiles
 
+from metabrowser.encoded_assets import EncodedAssetResponse, file_loader
 from metabrowser.http_caching import stamped_asset_cache_control
 
 if TYPE_CHECKING:
@@ -251,7 +252,9 @@ class StampedStaticFiles(StaticFiles):
     ``immutable``; a missing or different one -- an older page, or a hand-written URL --
     is ``no-cache``, so it is revalidated rather than kept under the wrong address. The
     digest names bytes, not a name, size, and time, so a packager that normalizes times
-    cannot give two releases one address (review C of #372, C3).
+    cannot give two releases one address (review C of #372, C3). An immutable answer is
+    sent from memory, read and compressed once under that digest
+    (:mod:`metabrowser.encoded_assets`).
     """
 
     def __init__(self, *, directory: Path, tree: StampedTree) -> None:
@@ -278,6 +281,21 @@ class StampedStaticFiles(StaticFiles):
             current = requested == stamp.digests.get(rel) and stamp.holds(rel, stat_result)
         # Set on the 304 too: a revalidation's answer refreshes the headers a browser holds.
         response.headers["cache-control"] = stamped_asset_cache_control(current=current)
+        if (
+            current
+            and requested is not None
+            and response.status_code == 200
+            and "range" not in Headers(scope=scope)
+        ):
+            # The bytes the stamp names, from memory, compressed once (H115). A range is
+            # left to the file response, which serves one; nothing the shell asks for is.
+            headers = {k: v for k, v in response.headers.items() if k != "content-length"}
+            return EncodedAssetResponse(
+                key=requested,
+                load=file_loader(Path(full_path), requested, content_digest),
+                headers=headers,
+                media_type=None,
+            )
         return response
 
 

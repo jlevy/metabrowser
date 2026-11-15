@@ -8,7 +8,8 @@ plugins:
   /api/file helper. The shell addresses them as
   ``/plugin-static/<plugin>/@<digest>/<resource>``, a stamp of the whole
   directory (:mod:`metabrowser.asset_stamps`), and the answer there is
-  immutable while the stamp is current; the unstamped address is revalidated.
+  immutable while the stamp is current, and sent from memory, compressed once
+  (:mod:`metabrowser.encoded_assets`); the unstamped address is revalidated.
 - ``GET|POST /api/plugin/<plugin>/<route>`` — dispatches to the Python
   sidekick callable declared in the manifest's ``[[data_hook]]`` block.
 
@@ -35,7 +36,8 @@ from starlette.routing import Route
 from strif import file_mtime_hash
 
 from metabrowser import server_timing
-from metabrowser.asset_stamps import StampedTree, split_stamp
+from metabrowser.asset_stamps import StampedTree, content_digest, split_stamp
+from metabrowser.encoded_assets import EncodedAssetResponse, file_loader
 from metabrowser.http_caching import (
     build_scoped_etag,
     editable_install,
@@ -122,6 +124,15 @@ def _make_plugin_static_handler(
             return Response(status_code=304, headers=headers)
 
         media_type, _ = mimetypes.guess_type(str(resolved))
+        digest = stamp.digests.get(rel) if current and stamp is not None else None
+        if digest is not None:
+            # The bytes the stamp names, from memory, compressed once (H115).
+            return EncodedAssetResponse(
+                key=digest,
+                load=file_loader(resolved, digest, content_digest),
+                headers=headers,
+                media_type=media_type or "application/octet-stream",
+            )
         # Off the event loop: the largest built-in asset is a few hundred KB, an operator's
         # plugin directory has no bound.
         with server_timing.phase("read"):
