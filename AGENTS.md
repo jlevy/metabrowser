@@ -116,6 +116,15 @@ this repository’s structural facts and standing answers.
 - Format all human-authored Markdown through `make format`, which invokes the exact
   `flowmark-rs` pin the Makefile records in `FLOWMARK_VERSION`.
 - Link to source documentation instead of duplicating long policy text.
+- Values live in code: document a constant, limit, default, timeout, or enumerated list
+  beside its definition, with the measurement that set it where there is one.
+  A document names the constant and its file and says what it means, and restates the
+  value only where a test pins the copy, as `tests/test_keymap.py` does for the keyboard
+  table. A restated value drifts silently from its constant: the large-content limits
+  table gave `DEFAULT_ACCENT_RUN_BUDGET` as 60,000 while the constant was 400,000. No
+  check can find a restated value, so this is a rule; `tests/test_docs_discipline.py`
+  checks the rest: that links and document paths in source resolve, and that every
+  document is reachable from its index.
 - Architecture documents follow the layout convention in
   [Architecture Documents](docs/development.md#architecture-documents): status first,
   one subject per document, and a named check for any table of registered surfaces.
